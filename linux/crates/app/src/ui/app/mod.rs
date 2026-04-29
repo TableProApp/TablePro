@@ -26,11 +26,34 @@ use super::sidebar_row::{SidebarRow, SidebarRowOutput};
 use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
 use crate::services::database_service::ConnectionHealth;
 
+/// Decrement a tab's pending-save counter in the close-after-save map.
+/// Returns `true` if the entry just dropped to zero (the caller should
+/// fire `WorkspaceTabClosed`); returns `false` if there's still another
+/// in-flight save for that tab, or if the entry was never present.
+///
+/// Used by both browse `SaveCompletedForTab` and structure
+/// `on_structure_save_completed` so a Table tab with both kinds of
+/// pending changes only closes after BOTH saves succeed.
+pub(super) fn dec_close_after_save(
+    map: &mut std::collections::HashMap<Uuid, u32>,
+    tab_id: &Uuid,
+) -> bool {
+    if let Some(count) = map.get_mut(tab_id) {
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            map.remove(tab_id);
+            return true;
+        }
+    }
+    false
+}
+
 pub struct App {
     registry: Arc<DriverRegistry>,
     window: adw::ApplicationWindow,
     split_view: adw::OverlaySplitView,
     window_title: adw::WindowTitle,
+    sidebar_title: adw::WindowTitle,
     disconnect_action: gio::SimpleAction,
     sidebar_factory: FactoryVecDeque<SidebarRow>,
     sidebar_schemas: std::rc::Rc<std::cell::RefCell<Vec<Option<String>>>>,
@@ -79,12 +102,16 @@ pub struct App {
     default_page_size: u64,
     saved_connections: Vec<SavedConnection>,
     connected: bool,
-    /// Tabs the user picked "Save" on in a close-confirmation dialog.
-    /// On `SaveCompletedForTab`, if the id is in this set, the tab is
-    /// closed automatically so the user gets the close they asked for
-    /// without a second click. On `SaveFailedForTab` the id is removed
-    /// (abort the close so they can fix the error and retry).
-    close_after_save: std::rc::Rc<std::cell::RefCell<std::collections::HashSet<Uuid>>>,
+    /// Tabs the user picked "Save" on in a close-confirmation dialog,
+    /// counted by remaining saves before the close fires. A Table tab
+    /// with both browse-dirty AND structure-dirty dispatches two saves
+    /// (one of each kind) so its entry starts at 2 — the first
+    /// completion decrements to 1 (no close yet), the second decrements
+    /// to 0 and finally fires `WorkspaceTabClosed`. A `SaveFailed`
+    /// removes the entry entirely (abort all close intents for that
+    /// tab so the user can fix the error and retry). See
+    /// `dec_close_after_save` for the decrement helper.
+    close_after_save: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, u32>>>,
     /// Set when the user picked "Save" on the *window*-close dialog.
     /// While true, the last `SaveCompletedForTab` that empties
     /// `close_after_save` triggers `window.close()`. A `SaveFailed`
@@ -115,8 +142,6 @@ pub struct App {
 }
 
 pub struct EditorTabSlot {
-    #[allow(dead_code)]
-    pub id: Uuid,
     pub controller: Controller<SqlEditor>,
     pub page: adw::TabPage,
     pub query: String,
@@ -469,15 +494,6 @@ pub enum AppMsg {
     /// the sidebar factory without going through the full Connected
     /// path.
     TablesReloaded(Vec<TableInfo>),
-    /// Ctrl+Z on a Structure tab. The Structure-side Ctrl+Z UI is
-    /// not yet wired; the handler is in place so the keybinding
-    /// can be added in a one-line follow-up.
-    #[allow(dead_code)]
-    UndoActiveStructureTab,
-    /// Ctrl+Y on a Structure tab. Same status as
-    /// `UndoActiveStructureTab`.
-    #[allow(dead_code)]
-    RedoActiveStructureTab,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -614,6 +630,7 @@ impl SimpleComponent for App {
                             set_show_end_title_buttons: false,
 
                             #[wrap(Some)]
+                            #[name = "sidebar_title"]
                             set_title_widget = &adw::WindowTitle {
                                 set_title: &crate::tr!("Tables"),
                             },
@@ -688,30 +705,32 @@ impl SimpleComponent for App {
         if let Some(display) = gtk::gdk::Display::default() {
             let provider = gtk::CssProvider::new();
             provider.load_from_string(
-                "label.tp-cell-modified, editablelabel.tp-cell-modified {\
+                ".tp-cell-modified {\
                     background: alpha(@warning_color, 0.15);\
                 }\
-                label.tp-row-pending-insert, editablelabel.tp-row-pending-insert {\
+                .tp-row-pending-insert {\
                     background: alpha(@success_color, 0.12);\
                 }\
-                label.tp-row-pending-delete, editablelabel.tp-row-pending-delete {\
+                .tp-row-pending-delete {\
                     text-decoration: line-through;\
                     color: alpha(@error_color, 0.7);\
                     background: alpha(@error_color, 0.08);\
                 }\
+                /* NULL sentinel: italic only — opacity already comes\
+                   from the `dim-label` Adwaita class added alongside.\
+                */\
                 label.tp-null-sentinel {\
                     font-style: italic;\
-                    opacity: 0.55;\
                 }\
                 /* Cell focus ring. GtkColumnView's default focus chevron\
                    on cells is a 1px outline that disappears against the\
                    selected-row highlight. A 2px inset accent ring is the\
-                   spreadsheet-standard focus-cell signal and matches\
-                   what GNOME Builder draws for its source-buffer cursor.\
+                   spreadsheet-standard focus-cell signal. Selectors are\
+                   explicit to avoid stacking on `GtkCheckButton`, which\
+                   already paints its own focus indicator.\
                 */\
                 columnview > listview > row > cell:focus-within > label,\
-                columnview > listview > row > cell:focus-within > editablelabel,\
-                columnview > listview > row > cell:focus-within > checkbutton {\
+                columnview > listview > row > cell:focus-within > .tp-cell-editor {\
                     box-shadow: inset 0 0 0 2px @accent_color;\
                     border-radius: 2px;\
                 }\
@@ -760,8 +779,8 @@ impl SimpleComponent for App {
         // a per-tab close so failures abort cleanly.
         let force_close: std::rc::Rc<std::cell::Cell<bool>> = std::rc::Rc::new(std::cell::Cell::new(false));
         let force_close_for_close = force_close.clone();
-        let close_after_save_for_close: std::rc::Rc<std::cell::RefCell<std::collections::HashSet<Uuid>>> =
-            std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashSet::new()));
+        let close_after_save_for_close: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, u32>>> =
+            std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
         let close_window_after_save_for_close: std::rc::Rc<std::cell::Cell<bool>> =
             std::rc::Rc::new(std::cell::Cell::new(false));
         let in_flight_saves: std::rc::Rc<std::cell::Cell<usize>> = std::rc::Rc::new(std::cell::Cell::new(0));
@@ -851,12 +870,18 @@ impl SimpleComponent for App {
                             // the set drains. Any SaveFailed aborts.
                             let browse_tabs: Vec<Uuid> = crate::services::change_tracker::pending_tabs();
                             let structure_tabs: Vec<Uuid> = crate::services::structure_tracker::pending_tabs();
-                            close_after_save_for_resp
-                                .borrow_mut()
-                                .extend(browse_tabs.iter().copied());
-                            close_after_save_for_resp
-                                .borrow_mut()
-                                .extend(structure_tabs.iter().copied());
+                            // Counter increments — a Table tab listed in both
+                            // sets bumps to 2 so the window close waits for
+                            // BOTH the browse save and the structure save.
+                            {
+                                let mut map = close_after_save_for_resp.borrow_mut();
+                                for id in browse_tabs.iter().copied() {
+                                    *map.entry(id).or_insert(0) += 1;
+                                }
+                                for id in structure_tabs.iter().copied() {
+                                    *map.entry(id).or_insert(0) += 1;
+                                }
+                            }
                             close_window_after_save_for_resp.set(true);
                             for id in browse_tabs {
                                 let _ = input_sender_for_resp.send(AppMsg::SaveActiveBrowseTabById(id));
@@ -1128,6 +1153,7 @@ impl SimpleComponent for App {
             window: root.clone(),
             split_view: widgets.split_view.clone(),
             window_title: widgets.window_title.clone(),
+            sidebar_title: widgets.sidebar_title.clone(),
             disconnect_action,
             sidebar_factory,
             sidebar_schemas,
@@ -1258,11 +1284,13 @@ impl SimpleComponent for App {
                 self.dispatch_to_tab(tab_id, BrowseTabInput::SaveCompleted);
                 // If the user picked Save in a close-confirmation
                 // dialog, fire the close now that the commit succeeded.
-                let was_close_after = self.close_after_save.borrow_mut().remove(&tab_id);
-                if was_close_after {
+                // The counter ensures a tab with BOTH browse-dirty and
+                // structure-dirty waits for both saves before closing.
+                let drained = dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab_id);
+                if drained {
                     sender.input(AppMsg::WorkspaceTabClosed(tab_id));
                 }
-                // If we're in a window-close-Save-all flow and the set
+                // If we're in a window-close-Save-all flow and the map
                 // just drained, the window can finally close.
                 if self.close_window_after_save.get() && self.close_after_save.borrow().is_empty() {
                     self.close_window_after_save.set(false);
@@ -1291,12 +1319,11 @@ impl SimpleComponent for App {
                 self.dispatch_to_tab(id, BrowseTabInput::CommitSave);
             }
             AppMsg::UndoActiveBrowseTab => {
-                // Route through the tab so the visual revert happens
-                // alongside the tracker pop. Calling `tracker.undo()`
-                // here directly would update the tracker (counter
-                // drops, .tp-cell-modified class clears) but leave
-                // the RowObject's cell at the post-edit value, so
-                // the cell text would refuse to revert.
+                // Ctrl+Z routes to BrowseTab undo only. Structure
+                // editing follows the snapshot+diff model — DDL undo
+                // is a session-level Discard, not a per-keystroke
+                // history. Inside a Structure-mode Entry, the native
+                // `gtk::Text` undo handles per-field text revert.
                 if let Some(id) = self.selected_browse_tab_id() {
                     self.dispatch_to_tab(id, BrowseTabInput::Undo);
                 }
@@ -1337,8 +1364,6 @@ impl SimpleComponent for App {
             AppMsg::StructureTabDirtyChanged(tab_id, dirty) => self.refresh_structure_tab_dirty(tab_id, dirty),
             AppMsg::SchemaChanged { schema, table } => self.on_schema_changed(schema, table, sender),
             AppMsg::TablesReloaded(tables) => self.on_tables_reloaded(tables),
-            AppMsg::UndoActiveStructureTab => self.undo_active_structure_tab(),
-            AppMsg::RedoActiveStructureTab => self.redo_active_structure_tab(),
             AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionsLoaded(connections) => {

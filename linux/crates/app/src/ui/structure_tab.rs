@@ -1,30 +1,40 @@
 //! Structure workspace tab — full schema-management UI for CREATE /
 //! DROP / ALTER TABLE, indexes, and foreign keys.
 //!
-//! Layout (adw::ToolbarView):
+//! Layout (adw::ToolbarView, no internal HeaderBar — the wrapper's
+//! Data/Structure HeaderBar already provides one toolbar strip):
 //!
-//!   ┌─ HeaderBar { Entry(table name), DropDown(schema) } ──────┐
-//!   ├─ ViewSwitcher: Columns | Indexes | FKs | SQL Preview ────┤
+//!   ┌─ Content ────────────────────────────────────────────────┐
+//!   │   (New mode) AdwPreferencesGroup { name entry }          │
+//!   │   Centred AdwViewSwitcher: Columns | Indexes | FKs | SQL │
 //!   │ ┌─ ViewStack ─────────────────────────────────────────┐  │
-//!   │ │ Columns: ColumnView (Name, Type, Null, Default,     │  │
-//!   │ │   PK, Auto, ✕) + "Add Column" button                │  │
-//!   │ │ Indexes: ColumnView (Name, Cols, Unique, ✕)         │  │
-//!   │ │ FKs: ColumnView (Name, Cols, Refs, RefCols, ✕)      │  │
+//!   │ │ Columns: boxed-list of AdwExpanderRow (per column,  │  │
+//!   │ │   header = Name + summary, body = Name/Type/Null/   │  │
+//!   │ │   Default/PK/AutoInc rows) + AdwButtonRow add row   │  │
+//!   │ │ Indexes: boxed-list (Name, Cols, Unique, trash)     │  │
+//!   │ │ FKs: boxed-list (Name, Cols, Refs, RefCols, trash)  │  │
 //!   │ │ SQL Preview: SourceView5 (read-only, sql highlight) │  │
 //!   │ └─────────────────────────────────────────────────────┘  │
 //!   ├─ ActionBar { pending count | Discard | Save | Drop } ────┤
 //!   └──────────────────────────────────────────────────────────┘
 //!
-//! Editing flow: every cell mutation pushes a `StructureOp` into the
-//! per-tab `StructureChangeTracker`. The tracker's `OpsChanged` event
-//! triggers `regenerate_sql_preview`, which calls `materialize` and
-//! sets the SourceView buffer text. The Save button reads
-//! `materialize` again and dispatches `ExecuteTransaction` to App.
+//! Editing flow (snapshot + diff). On load we capture the canonical
+//! schema into `original_*` snapshots. Every cell mutation updates
+//! the live model and calls `recompute_dirty_state`, which runs
+//! `sql_ddl::diff_to_ops` against the snapshot, regenerates the SQL
+//! preview from the resulting `Vec<StructureOp>`, and stores those
+//! ops in a passive per-tab `StructureChangeTracker` so out-of-band
+//! callers (close-with-pending dialog, save dispatcher) can read the
+//! current dirty state without touching the UI. There is no per-op
+//! undo / redo — the snapshot is the only restore point, exposed via
+//! the Discard button. Save calls `materialize_ops` against the same
+//! diff and dispatches `ExecuteTransaction` to App.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use relm4::adw::prelude::*;
+use relm4::gtk::gio;
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, adw, gtk};
 use sourceview5::prelude::BufferExt;
 
@@ -32,7 +42,9 @@ use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn};
 use tablepro_core::{ColumnInfo, ForeignKeyInfo, IndexInfo};
 use uuid::Uuid;
 
-use crate::services::structure_tracker::{self, StructureOp, StructureTrackerEvent};
+use crate::services::structure_tracker;
+use crate::ui::structure_tab_dialogs::{present_fk_dialog, present_index_dialog};
+use tablepro_core::sql_ddl::{StructureOp, diff_to_ops, materialize_ops};
 
 /// Whether the Structure tab is editing an existing table or
 /// drafting a brand-new one.
@@ -139,14 +151,6 @@ fn driver_can_drop_foreign_key(driver_id: &str) -> bool {
     !matches!(driver_id, "sqlite")
 }
 
-// MySQL drag-reorder support is wired in a follow-up commit; the
-// helper stays here so the v1 UI can detect support without circular
-// imports later.
-#[allow(dead_code)]
-fn driver_supports_reorder(driver_id: &str) -> bool {
-    matches!(driver_id, "mysql")
-}
-
 pub struct StructureTab {
     tab_id: Uuid,
     schema: Option<String>,
@@ -156,10 +160,25 @@ pub struct StructureTab {
     columns: Rc<RefCell<Vec<DraftColumn>>>,
     indexes: Rc<RefCell<Vec<IndexInfo>>>,
     foreign_keys: Rc<RefCell<Vec<ForeignKeyInfo>>>,
+    /// Snapshot of the columns / indexes / FKs / table name the
+    /// driver returned at load time. The "edit" surface is the diff
+    /// between these and the live `columns` / `indexes` /
+    /// `foreign_keys` / `table_name` fields — `materialize_ops`
+    /// produces SQL by walking that diff. Discard simply copies the
+    /// snapshots back over the live fields.
+    original_table_name: Rc<RefCell<String>>,
+    original_columns: Rc<RefCell<Vec<tablepro_core::ColumnInfo>>>,
+    original_indexes: Rc<RefCell<Vec<IndexInfo>>>,
+    original_fks: Rc<RefCell<Vec<ForeignKeyInfo>>>,
 
     // Widget refs we touch from `update`.
     inner_stack: gtk::Stack,
-    name_entry: gtk::Entry,
+    /// `AdwStatusPage` shown when initial structure fetch fails.
+    /// Holding a reference so `LoadFailed` can set its description
+    /// to the driver error inline — replaces the previous redundant
+    /// modal `ShowAlert` that double-surfaced the same text.
+    error_status: adw::StatusPage,
+    name_entry: adw::EntryRow,
     /// The PreferencesGroup wrapping `name_entry` — visible only in
     /// New mode. Hidden after SaveCompleted promotes the tab to Edit.
     name_row: adw::PreferencesGroup,
@@ -173,9 +192,12 @@ pub struct StructureTab {
     drop_button: gtk::Button,
 
     last_dirty: Rc<RefCell<bool>>,
-    /// Suppress reentrant rebuilds: setting Entry text triggers
-    /// changed-signal echoes that would push duplicate RenameTable
-    /// ops onto the tracker. `Cell` (not `RefCell`) because GTK can
+    /// Suppress reentrant rebuilds: programmatic `set_text` /
+    /// `set_active` while seeding row widgets fires `changed` /
+    /// `notify::active` signals synchronously. Without this guard,
+    /// the row's connect_* callbacks would treat seeding as a user
+    /// edit and shift the live model away from the snapshot, surfacing
+    /// phantom pending changes. `Cell` (not `RefCell`) because GTK can
     /// fire those signals re-entrantly during `clear_box` while
     /// another `borrow_mut` is still live on the stack — a
     /// `RefCell::borrow` racing it would panic.
@@ -187,6 +209,25 @@ pub struct StructureTab {
     /// confusing UX is worse than the no-op rename the user has to
     /// do afterwards).
     next_column_seq: Rc<RefCell<usize>>,
+    /// Popovers attached to column rows (currently only the type
+    /// suggestions popover). Each `rebuild_columns_view` call must
+    /// `popdown` and clear this list before `clear_box`, otherwise an
+    /// open popover keeps a strong reference to the now-detached
+    /// AdwEntryRow and a click on a suggestion `set_text`s a stale
+    /// widget. The detached entry's `changed` handler then dispatches
+    /// `ColumnEdited` with whatever index was captured at build time —
+    /// which may now point at a different (or nonexistent) column.
+    column_popovers: Rc<RefCell<Vec<gtk::Popover>>>,
+    /// True between `SaveCompleted` and the matching `StructureLoaded`
+    /// (or `LoadFailed`). During this window the live model has been
+    /// committed to the database but `original_*` snapshots still hold
+    /// the pre-save state. Diffing the live model against the stale
+    /// snapshot would surface phantom pending ops — visible to the user
+    /// as a spurious "Save changes?" prompt if they close the tab
+    /// mid-refetch. `recompute_dirty_state` short-circuits while this
+    /// flag is set; `StructureLoaded` flips it back and triggers a
+    /// fresh recompute against the up-to-date snapshots.
+    refetching: Rc<Cell<bool>>,
 }
 
 #[derive(Debug)]
@@ -200,8 +241,6 @@ pub enum StructureTabInput {
     Save,
     Discard,
     DropTableRequested,
-    PendingCountChanged(usize),
-    Cleared,
     SaveCompleted {
         new_table_name: Option<String>,
     },
@@ -250,64 +289,154 @@ pub enum StructureTabOutput {
 }
 
 impl StructureTab {
+    /// Compute the pending-op list from the diff between original
+    /// snapshot and current model state. The single source of truth
+    /// for "what will Save emit?". Pure function on the live state.
+    ///
+    /// New-mode short-circuits to a single `CreateTable` op (or zero
+    /// ops when the column list is empty).
+    fn current_diff_ops(&self) -> Vec<StructureOp> {
+        if matches!(*self.mode.borrow(), StructureMode::New) {
+            let columns = self.columns.borrow().clone();
+            if columns.is_empty() {
+                return Vec::new();
+            }
+            return vec![StructureOp::CreateTable {
+                schema: self.schema.clone(),
+                table: self.table_name.borrow().clone(),
+                columns,
+                indexes: self.indexes.borrow().clone(),
+                fks: self.foreign_keys.borrow().clone(),
+            }];
+        }
+        diff_to_ops(
+            self.schema.as_deref(),
+            &self.original_table_name.borrow(),
+            &self.table_name.borrow(),
+            &self.original_columns.borrow(),
+            &self.columns.borrow(),
+            &self.original_indexes.borrow(),
+            &self.indexes.borrow(),
+            &self.original_fks.borrow(),
+            &self.foreign_keys.borrow(),
+        )
+    }
+
+    /// Refresh action-bar state + SQL preview + emit `DirtyChanged`
+    /// based on the current diff. Called after every model mutation.
+    /// Also populates the per-tab tracker cache so out-of-band
+    /// callers (close-with-pending, save-by-id) can read the same op
+    /// list without re-deriving it from the tab's model.
+    ///
+    /// No-op while `refetching` is set: between `SaveCompleted` and
+    /// `StructureLoaded`, `original_*` is stale, so diffing the live
+    /// model would produce ops for changes that were already
+    /// committed. The cache is left at whatever `SaveCompleted`
+    /// cleared it to (empty); `StructureLoaded` flips the flag and
+    /// runs a fresh recompute against the up-to-date snapshots.
+    fn recompute_dirty_state(&self, sender: &ComponentSender<Self>) {
+        if self.refetching.get() {
+            return;
+        }
+        let ops = self.current_diff_ops();
+        let count = ops.len();
+        self.refresh_buttons(count);
+        self.regenerate_sql_preview_from(&ops);
+
+        let ops_for_cache = ops.clone();
+        structure_tracker::with_tab(self.tab_id, |t| t.set_ops(ops_for_cache));
+
+        let dirty = count > 0;
+        let mut last = self.last_dirty.borrow_mut();
+        if *last != dirty {
+            *last = dirty;
+            let _ = sender.output(StructureTabOutput::DirtyChanged(dirty));
+        }
+    }
+
     fn refresh_buttons(&self, pending_count: usize) {
         let has_pending = pending_count > 0;
         self.save_button.set_sensitive(has_pending);
         self.discard_button.set_sensitive(has_pending);
         if has_pending {
-            self.pending_label
-                .set_label(&crate::tr!("{n} pending changes").replace("{n}", &pending_count.to_string()));
+            let label = if pending_count == 1 {
+                crate::tr!("1 pending change")
+            } else {
+                crate::tr!("{n} pending changes").replace("{n}", &pending_count.to_string())
+            };
+            self.pending_label.set_label(&label);
             self.pending_label.set_visible(true);
         } else {
             self.pending_label.set_visible(false);
         }
     }
 
-    fn regenerate_sql_preview(&self) {
-        let text = match structure_tracker::with_tab_ref(self.tab_id, |t| t.materialize(&self.driver_id)) {
-            Some(Ok(stmts)) if !stmts.is_empty() => stmts.join(";\n\n") + ";",
-            Some(Ok(_)) => crate::tr!("-- No pending changes."),
-            Some(Err(e)) => format!("-- {e}"),
-            None => crate::tr!("-- Tracker unavailable."),
+    fn regenerate_sql_preview_from(&self, ops: &[StructureOp]) {
+        let text = match materialize_ops(ops, &self.driver_id) {
+            Ok(stmts) if !stmts.is_empty() => stmts.join(";\n\n") + ";",
+            Ok(_) => crate::tr!("-- No pending changes."),
+            Err(e) => format!("-- {e}"),
         };
         self.sql_buffer.set_text(&text);
     }
 
     fn rebuild_columns_view(&self, sender: ComponentSender<Self>) {
         // Tear down + rebuild. Editing happens infrequently enough
-        // that rebuilding the whole list per change is cheap. The
-        // outer columns_box holds (ListBox + Add button) so the rows
-        // get the standard `.boxed-list` styling: rounded corners,
-        // separators between rows, hover highlight.
+        // that rebuilding the whole layout per change is cheap.
         //
         // suppress_emit must be true while we tear down + recreate
-        // the row widgets: Entry::set_text and CheckButton::set_active
-        // for the initial values fire `changed` / `toggled` signals
-        // synchronously, and the row's connect_* callbacks (registered
-        // earlier in the build) would treat those as user edits and
-        // push phantom AlterColumn ops onto the tracker — every Edit-
-        // mode reload would land 7 columns × ~3 fields ≈ 19 spurious
-        // pending changes. We re-enable emit on the next idle tick so
-        // legitimate user input afterwards flows through.
+        // the row widgets: AdwEntryRow::set_text and SwitchRow::set_active
+        // for the initial values fire `changed` / `notify::active`
+        // signals synchronously, and the row's connect_* callbacks
+        // (registered earlier in the build) would treat those as user
+        // edits — every Edit-mode reload would shift the live model
+        // away from the snapshot and surface phantom pending changes.
+        // We re-enable emit on the next idle tick so legitimate user
+        // input afterwards flows through.
         self.suppress_emit.set(true);
+        // Popdown + drop any popovers attached to the previous rows
+        // before they're unparented. An open suggestions popover holds
+        // the old AdwEntryRow alive via a closure clone; without this
+        // step a click on a suggestion after a Refresh would `set_text`
+        // a detached widget and dispatch `ColumnEdited` with a stale
+        // index (see `column_popovers` doc on `StructureTab`).
+        {
+            let mut popovers = self.column_popovers.borrow_mut();
+            for p in popovers.drain(..) {
+                p.popdown();
+            }
+        }
         clear_box(&self.columns_box);
         let driver_id = self.driver_id.clone();
+
+        // Native column editor: boxed-list `gtk::ListBox` of one
+        // `adw::ExpanderRow` per column. Each expander's collapsed
+        // header reads as a row in a Settings-style list (column
+        // name + summary subtitle); expanding reveals AdwEntryRow /
+        // AdwSwitchRow children for the editable attributes. Add
+        // Column appears as the trailing AdwButtonRow inside the
+        // same boxed-list — the GNOME pattern matching Settings's
+        // "Add Network" or Builder's run-config list.
         let list = boxed_list();
         for (i, col) in self.columns.borrow().iter().enumerate() {
-            let row = wrap_in_list_row(build_column_row(
+            list.append(&build_column_expander_row(
                 i,
                 col,
                 &driver_id,
                 sender.clone(),
                 self.suppress_emit.clone(),
+                self.column_popovers.clone(),
             ));
-            list.append(&row);
         }
-        self.columns_box.append(&list);
-        let add_button = make_add_button(&crate::tr!("Add Column"));
+        let add_row = adw::ButtonRow::builder()
+            .title(crate::tr!("Add Column"))
+            .start_icon_name("list-add-symbolic")
+            .build();
         let sender_for_add = sender.clone();
-        add_button.connect_clicked(move |_| sender_for_add.input(StructureTabInput::AddColumn));
-        self.columns_box.append(&wrap_button_in_row(add_button));
+        add_row.connect_activated(move |_| sender_for_add.input(StructureTabInput::AddColumn));
+        list.append(&add_row);
+        self.columns_box.append(&list);
+
         let suppress = self.suppress_emit.clone();
         relm4::gtk::glib::idle_add_local_once(move || {
             suppress.set(false);
@@ -318,22 +447,24 @@ impl StructureTab {
         clear_box(&self.indexes_box);
         let list = boxed_list();
         for (i, idx) in self.indexes.borrow().iter().enumerate() {
-            let row = wrap_in_list_row(build_index_row(i, idx, sender.clone()));
-            list.append(&row);
+            list.append(&build_index_row(i, idx, sender.clone()));
         }
-        self.indexes_box.append(&list);
-        let add_button = make_add_button(&crate::tr!("Add Index…"));
+        let add_row = adw::ButtonRow::builder()
+            .title(crate::tr!("Add Index…"))
+            .start_icon_name("list-add-symbolic")
+            .build();
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
         let parent_box = self.indexes_box.clone();
-        add_button.connect_clicked(move |_| {
+        add_row.connect_activated(move |_| {
             present_index_dialog(
                 parent_box.upcast_ref(),
                 &columns_for_dialog.borrow(),
                 sender_for_add.clone(),
             );
         });
-        self.indexes_box.append(&wrap_button_in_row(add_button));
+        list.append(&add_row);
+        self.indexes_box.append(&list);
     }
 
     fn rebuild_fks_view(&self, sender: ComponentSender<Self>) {
@@ -341,41 +472,25 @@ impl StructureTab {
         let driver_id = self.driver_id.clone();
         let list = boxed_list();
         for (i, fk) in self.foreign_keys.borrow().iter().enumerate() {
-            let row = wrap_in_list_row(build_fk_row(i, fk, &driver_id, sender.clone()));
-            list.append(&row);
+            list.append(&build_fk_row(i, fk, &driver_id, sender.clone()));
         }
-        self.fks_box.append(&list);
-        let add_button = make_add_button(&crate::tr!("Add Foreign Key…"));
+        let add_row = adw::ButtonRow::builder()
+            .title(crate::tr!("Add Foreign Key…"))
+            .start_icon_name("list-add-symbolic")
+            .build();
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
         let parent_box = self.fks_box.clone();
-        add_button.connect_clicked(move |_| {
+        add_row.connect_activated(move |_| {
             present_fk_dialog(
                 parent_box.upcast_ref(),
                 &columns_for_dialog.borrow(),
                 sender_for_add.clone(),
             );
         });
-        self.fks_box.append(&wrap_button_in_row(add_button));
+        list.append(&add_row);
+        self.fks_box.append(&list);
     }
-}
-
-/// Build a flat "+ Label" button with both icon and label visible.
-/// `gtk::Button::builder().icon_name(...).label(...)` doesn't work
-/// the way it reads — the two property setters compete for the
-/// button's child slot, so whichever is set last replaces the
-/// other. To get both visible we have to set the child to a
-/// horizontal Box containing the image + label by hand.
-fn make_add_button(label: &str) -> gtk::Button {
-    let inner = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(8)
-        .build();
-    inner.append(&gtk::Image::from_icon_name("list-add-symbolic"));
-    inner.append(&gtk::Label::new(Some(label)));
-    let button = gtk::Button::builder().child(&inner).build();
-    button.add_css_class("flat");
-    button
 }
 
 /// Build a `gtk::ListBox` with the `.boxed-list` HIG style class. Used
@@ -394,146 +509,161 @@ fn boxed_list() -> gtk::ListBox {
     list
 }
 
-/// Wrap a content widget in a non-activatable `gtk::ListBoxRow` so it
-/// participates in the boxed-list styling without GTK trying to treat
-/// it as an action target.
-fn wrap_in_list_row(content: gtk::Widget) -> gtk::ListBoxRow {
-    let row = gtk::ListBoxRow::builder().activatable(false).selectable(false).build();
-    row.set_child(Some(&content));
-    row
-}
-
-fn wrap_button_in_row(button: gtk::Button) -> gtk::Box {
-    let row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .margin_top(6)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    row.append(&button);
-    row
-}
-
 fn clear_box(b: &gtk::Box) {
     while let Some(child) = b.first_child() {
         b.remove(&child);
     }
 }
 
-/// Build one row for the Columns view. SQLite-restricted fields render
-/// as set_sensitive(false) with explanatory tooltips so the user
-/// understands why they can't edit. Non-original (newly added) columns
-/// always allow full editing — those become AddColumn ops which SQLite
-/// accepts at execution time.
+/// Render a draft column's summary line for the collapsed expander
+/// header — `varchar(255) · NOT NULL · Primary key`. Order: type,
+/// nullability, primary key, auto-increment. Empty parts are skipped
+/// so a freshly-added column with default state shows the minimum
+/// useful information.
+fn format_column_subtitle(col: &DraftColumn) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if !col.data_type.trim().is_empty() {
+        parts.push(col.data_type.clone());
+    }
+    parts.push(if col.nullable {
+        crate::tr!("nullable")
+    } else {
+        crate::tr!("NOT NULL")
+    });
+    if col.primary_key {
+        parts.push(crate::tr!("Primary key"));
+    }
+    if col.auto_increment {
+        parts.push(crate::tr!("auto-increment"));
+    }
+    parts.join(" · ")
+}
+
+/// Build one collapsible column row as `adw::ExpanderRow`. Collapsed
+/// state shows the column name (title) + summary subtitle; expanded
+/// reveals one `AdwEntryRow` / `AdwSwitchRow` per editable attribute.
+/// SQLite-restricted fields render as `set_sensitive(false)` with
+/// explanatory tooltips so the user understands why they can't edit.
+/// Non-original (newly-added) columns always allow full editing —
+/// those become `AddColumn` ops which SQLite accepts at execution.
 ///
 /// `suppress_emit` lets the caller mark a window during which signal
-/// callbacks should NOT push edits onto the change tracker. Used by
-/// rebuild_columns_view to silence the spurious `changed` / `toggled`
-/// emissions GTK fires while we set initial values on freshly-built
-/// widgets.
-fn build_column_row(
+/// callbacks should NOT push edits onto the model. Used during
+/// `rebuild_columns_view` to silence the `changed` / `toggled`
+/// emissions GTK fires while initial values are stamped onto the
+/// freshly-built widgets.
+fn build_column_expander_row(
     index: usize,
     col: &DraftColumn,
     driver_id: &str,
     sender: ComponentSender<StructureTab>,
     suppress_emit: Rc<Cell<bool>>,
-) -> gtk::Widget {
-    let row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(6)
-        .margin_top(6)
-        .margin_bottom(6)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-
+    popover_registry: Rc<RefCell<Vec<gtk::Popover>>>,
+) -> adw::ExpanderRow {
     let is_existing = col.original.is_some();
     let limit_for_existing = is_existing && driver_id == "sqlite";
 
-    // Name
-    let name_entry = gtk::Entry::builder()
-        .text(&col.name)
-        .placeholder_text(crate::tr!("column_name"))
-        .hexpand(true)
+    let row = adw::ExpanderRow::builder()
+        .title(glib::markup_escape_text(&col.name))
+        .subtitle(glib::markup_escape_text(&format_column_subtitle(col)))
         .build();
-    name_entry.set_widget_name(&format!("col-name-{index}"));
+    row.set_widget_name(&format!("col-row-{index}"));
+
+    // Trash button as a header-suffix on the expander row itself —
+    // remains visible whether the row is expanded or collapsed.
+    let remove_button = gtk::Button::builder()
+        .icon_name("user-trash-symbolic")
+        .tooltip_text(crate::tr!("Remove column"))
+        .valign(gtk::Align::Center)
+        .build();
+    remove_button.add_css_class("flat");
+    if is_existing && !driver_can_drop_column(driver_id) {
+        remove_button.set_sensitive(false);
+    }
+    let sender_for_remove = sender.clone();
+    remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveColumn(index)));
+    row.add_suffix(&remove_button);
+
+    // Name (AdwEntryRow). The expander's title mirrors this entry
+    // live so the collapsed header always reflects the user's input.
+    let name_row = adw::EntryRow::builder().title(crate::tr!("Name")).build();
+    name_row.set_text(&col.name);
+    name_row.set_widget_name(&format!("col-name-{index}"));
     let sender_for_name = sender.clone();
     let suppress_for_name = suppress_emit.clone();
-    name_entry.connect_changed(move |e| {
+    let row_for_name = row.clone();
+    name_row.connect_changed(move |e| {
         if suppress_for_name.get() {
             return;
         }
+        let text = e.text().to_string();
+        row_for_name.set_title(&glib::markup_escape_text(&text));
         sender_for_name.input(StructureTabInput::ColumnEdited {
             index,
-            field: ColumnField::Name(e.text().to_string()),
+            field: ColumnField::Name(text),
         });
     });
-    row.append(&name_entry);
+    row.add_row(&name_row);
 
-    // Type combo. ComboBoxText was soft-deprecated in GTK 4.10 in
-    // favour of gtk::DropDown — but DropDown doesn't natively support
-    // dropdown-with-free-text without a custom factory + entry. The
-    // narrow allow covers ONLY the construction + property access on
-    // ComboBoxText so a future deprecation elsewhere in the file
-    // still surfaces a warning.
-    let type_combo = build_type_combo(driver_id);
-    if let Some(entry) = combo_entry(&type_combo) {
-        entry.set_text(&col.data_type);
-        let sender_for_type = sender.clone();
-        let suppress_for_type = suppress_emit.clone();
-        entry.connect_changed(move |e| {
-            if suppress_for_type.get() {
-                return;
-            }
-            sender_for_type.input(StructureTabInput::ColumnEdited {
-                index,
-                field: ColumnField::Type(e.text().to_string()),
-            });
-        });
-    }
+    // Type (AdwEntryRow — free text). A suffix MenuButton offers the
+    // curated `driver_types()` suggestions; free-text input remains the
+    // primary path so custom types like `decimal(10,2)` or Postgres
+    // `enum` literals work without enumeration.
+    let type_row = adw::EntryRow::builder().title(crate::tr!("Type")).build();
+    type_row.set_text(&col.data_type);
     if limit_for_existing && !driver_can_alter_column_type(driver_id) {
-        type_combo.set_sensitive(false);
-        type_combo.set_tooltip_text(Some(&crate::tr!("Type changes aren't supported by SQLite.")));
+        type_row.set_sensitive(false);
+        type_row.set_tooltip_text(Some(&crate::tr!("Type changes aren't supported by SQLite.")));
     }
-    type_combo.set_size_request(180, -1);
-    row.append(&type_combo);
+    let sender_for_type = sender.clone();
+    let suppress_for_type = suppress_emit.clone();
+    type_row.connect_changed(move |e| {
+        if suppress_for_type.get() {
+            return;
+        }
+        sender_for_type.input(StructureTabInput::ColumnEdited {
+            index,
+            field: ColumnField::Type(e.text().to_string()),
+        });
+    });
+    let (suggestions_button, suggestions_popover) =
+        build_type_suggestions_button(driver_id, &type_row);
+    type_row.add_suffix(&suggestions_button);
+    popover_registry.borrow_mut().push(suggestions_popover);
+    row.add_row(&type_row);
 
-    // Nullable
-    let nullable_check = gtk::CheckButton::builder()
-        .label(crate::tr!("Nullable"))
+    // Nullable (AdwSwitchRow).
+    let nullable_row = adw::SwitchRow::builder()
+        .title(crate::tr!("Nullable"))
         .active(col.nullable)
         .build();
     if limit_for_existing && !driver_can_alter_column_nullable(driver_id) {
-        nullable_check.set_sensitive(false);
-        nullable_check.set_tooltip_text(Some(&crate::tr!("Nullability changes aren't supported by SQLite.")));
+        nullable_row.set_sensitive(false);
+        nullable_row.set_tooltip_text(Some(&crate::tr!("Nullability changes aren't supported by SQLite.")));
     }
     let sender_for_null = sender.clone();
     let suppress_for_null = suppress_emit.clone();
-    nullable_check.connect_toggled(move |c| {
+    nullable_row.connect_active_notify(move |s| {
         if suppress_for_null.get() {
             return;
         }
         sender_for_null.input(StructureTabInput::ColumnEdited {
             index,
-            field: ColumnField::Nullable(c.is_active()),
+            field: ColumnField::Nullable(s.is_active()),
         });
     });
-    row.append(&nullable_check);
+    row.add_row(&nullable_row);
 
-    // Default
-    let default_entry = gtk::Entry::builder()
-        .text(col.default_value.as_deref().unwrap_or(""))
-        .placeholder_text(crate::tr!("DEFAULT"))
-        .build();
-    default_entry.set_size_request(120, -1);
+    // Default value (AdwEntryRow). Empty input means no DEFAULT clause.
+    let default_row = adw::EntryRow::builder().title(crate::tr!("Default value")).build();
+    default_row.set_text(col.default_value.as_deref().unwrap_or(""));
     if limit_for_existing && !driver_can_alter_column_default(driver_id) {
-        default_entry.set_sensitive(false);
-        default_entry.set_tooltip_text(Some(&crate::tr!("Default changes aren't supported by SQLite.")));
+        default_row.set_sensitive(false);
+        default_row.set_tooltip_text(Some(&crate::tr!("Default changes aren't supported by SQLite.")));
     }
     let sender_for_default = sender.clone();
     let suppress_for_default = suppress_emit.clone();
-    default_entry.connect_changed(move |e| {
+    default_row.connect_changed(move |e| {
         if suppress_for_default.get() {
             return;
         }
@@ -544,111 +674,99 @@ fn build_column_row(
             field: ColumnField::Default(value),
         });
     });
-    row.append(&default_entry);
+    row.add_row(&default_row);
 
-    // PK
-    let pk_check = gtk::CheckButton::builder()
-        .label(crate::tr!("PK"))
+    // Primary key (AdwSwitchRow).
+    let pk_row = adw::SwitchRow::builder()
+        .title(crate::tr!("Primary key"))
         .active(col.primary_key)
-        .tooltip_text(crate::tr!("Primary key"))
         .build();
     let sender_for_pk = sender.clone();
     let suppress_for_pk = suppress_emit.clone();
-    pk_check.connect_toggled(move |c| {
+    pk_row.connect_active_notify(move |s| {
         if suppress_for_pk.get() {
             return;
         }
         sender_for_pk.input(StructureTabInput::ColumnEdited {
             index,
-            field: ColumnField::PrimaryKey(c.is_active()),
+            field: ColumnField::PrimaryKey(s.is_active()),
         });
     });
-    row.append(&pk_check);
+    row.add_row(&pk_row);
 
-    // Auto-increment
-    let auto_check = gtk::CheckButton::builder()
-        .label(crate::tr!("Auto"))
+    // Auto-increment (AdwSwitchRow). Bound `sensitive` to PK's
+    // `active` so the affordance reflects the driver-level constraint
+    // (MySQL rejects AUTO_INCREMENT on non-PK; Postgres SERIAL
+    // implies PK).
+    let auto_row = adw::SwitchRow::builder()
+        .title(crate::tr!("Auto increment"))
+        .subtitle(crate::tr!("MySQL AUTO_INCREMENT / Postgres SERIAL"))
         .active(col.auto_increment)
-        .tooltip_text(crate::tr!("Auto-increment / SERIAL"))
+        .build();
+    auto_row.set_sensitive(col.primary_key);
+    pk_row
+        .bind_property("active", &auto_row, "sensitive")
+        .sync_create()
         .build();
     let sender_for_auto = sender.clone();
     let suppress_for_auto = suppress_emit;
-    auto_check.connect_toggled(move |c| {
+    auto_row.connect_active_notify(move |s| {
         if suppress_for_auto.get() {
             return;
         }
         sender_for_auto.input(StructureTabInput::ColumnEdited {
             index,
-            field: ColumnField::AutoIncrement(c.is_active()),
+            field: ColumnField::AutoIncrement(s.is_active()),
         });
     });
-    row.append(&auto_check);
+    row.add_row(&auto_row);
 
-    // Remove (trash) button
-    let remove_button = gtk::Button::builder()
-        .icon_name("user-trash-symbolic")
-        .tooltip_text(crate::tr!("Remove column"))
-        .build();
-    remove_button.add_css_class("flat");
-    remove_button.add_css_class("destructive-action");
-    if is_existing && !driver_can_drop_column(driver_id) {
-        remove_button.set_sensitive(false);
-    }
-    let sender_for_remove = sender.clone();
-    remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveColumn(index)));
-    row.append(&remove_button);
-
-    row.upcast()
+    row
 }
 
-fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSender<StructureTab>) -> gtk::Widget {
-    let row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(6)
-        .margin_top(6)
-        .margin_bottom(6)
-        .margin_start(12)
-        .margin_end(12)
+/// Index row as a native `AdwActionRow` — title is the index name,
+/// subtitle is the comma-separated column list. UNIQUE / PRIMARY are
+/// small caption suffixes, the trash button is an end-suffix. The row
+/// participates in `boxed-list` styling for free; no manual margins.
+fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSender<StructureTab>) -> adw::ActionRow {
+    // Empty columns array means the driver returned a malformed index
+    // (corrupt catalog or driver bug). Render a dim "—" subtitle so
+    // the user sees something rather than an empty cell.
+    let subtitle = if idx.columns.is_empty() {
+        "—".to_string()
+    } else {
+        idx.columns.join(", ")
+    };
+    let row = adw::ActionRow::builder()
+        .title(glib::markup_escape_text(&idx.name))
+        .subtitle(glib::markup_escape_text(&subtitle))
         .build();
-
-    let name_label = gtk::Label::builder()
-        .label(&idx.name)
-        .xalign(0.0)
-        .hexpand(true)
-        .ellipsize(gtk::pango::EllipsizeMode::End)
-        .build();
-    if idx.primary {
-        name_label.add_css_class("dim-label");
-    }
-    row.append(&name_label);
-
-    let cols_label = gtk::Label::builder()
-        .label(idx.columns.join(", "))
-        .xalign(0.0)
-        .hexpand(true)
-        .build();
-    cols_label.add_css_class("dim-label");
-    row.append(&cols_label);
 
     if idx.unique {
-        let badge = gtk::Label::builder().label(crate::tr!("UNIQUE")).build();
+        let badge = gtk::Label::builder()
+            .label(crate::tr!("UNIQUE"))
+            .valign(gtk::Align::Center)
+            .build();
         badge.add_css_class("caption");
         badge.add_css_class("dim-label");
-        row.append(&badge);
+        row.add_suffix(&badge);
     }
     if idx.primary {
-        let badge = gtk::Label::builder().label(crate::tr!("PRIMARY")).build();
+        let badge = gtk::Label::builder()
+            .label(crate::tr!("PRIMARY"))
+            .valign(gtk::Align::Center)
+            .build();
         badge.add_css_class("caption");
         badge.add_css_class("accent");
-        row.append(&badge);
+        row.add_suffix(&badge);
     }
 
     let remove_button = gtk::Button::builder()
         .icon_name("user-trash-symbolic")
         .tooltip_text(crate::tr!("Remove index"))
+        .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
-    remove_button.add_css_class("destructive-action");
     // Primary index isn't user-droppable — it's owned by the PK
     // column constraint and removing it breaks the table.
     if idx.primary {
@@ -659,310 +777,64 @@ fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSender<Struct
     }
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveIndex(index)));
-    row.append(&remove_button);
+    row.add_suffix(&remove_button);
 
-    row.upcast()
+    row
 }
 
+/// Foreign-key row as a native `AdwActionRow`. Subtitle encodes both
+/// local columns and the reference target so users see the full
+/// relationship in a glance: `col_a, col_b → other_table (ref_a, ref_b)`.
 fn build_fk_row(
     index: usize,
     fk: &ForeignKeyInfo,
     driver_id: &str,
     sender: ComponentSender<StructureTab>,
-) -> gtk::Widget {
-    let row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(6)
-        .margin_top(6)
-        .margin_bottom(6)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-
-    let name_label = gtk::Label::builder()
-        .label(&fk.name)
-        .xalign(0.0)
-        .hexpand(true)
-        .ellipsize(gtk::pango::EllipsizeMode::End)
-        .build();
-    row.append(&name_label);
-
-    let cols_label = gtk::Label::builder()
-        .label(fk.columns.join(", "))
-        .xalign(0.0)
-        .hexpand(true)
-        .build();
-    cols_label.add_css_class("dim-label");
-    row.append(&cols_label);
-
-    let ref_text = match &fk.ref_schema {
-        Some(s) if !s.is_empty() => format!("→ {s}.{} ({})", fk.ref_table, fk.ref_columns.join(", ")),
-        _ => format!("→ {} ({})", fk.ref_table, fk.ref_columns.join(", ")),
+) -> adw::ActionRow {
+    let qualified_ref = match &fk.ref_schema {
+        Some(s) if !s.is_empty() => format!("{s}.{}", fk.ref_table),
+        _ => fk.ref_table.clone(),
     };
-    let ref_label = gtk::Label::builder().label(&ref_text).xalign(0.0).hexpand(true).build();
-    ref_label.add_css_class("dim-label");
-    row.append(&ref_label);
+    let mut subtitle = format!(
+        "{} → {qualified_ref} ({})",
+        fk.columns.join(", "),
+        fk.ref_columns.join(", "),
+    );
+    // Show ON DELETE / ON UPDATE inline so the user can read the
+    // referential semantics without re-opening the row. Both fields
+    // are `Option<String>` — `None` means the driver returned an
+    // unrecognised value, render a dash; `Some` is the explicit
+    // action chosen at create time (including "NO ACTION").
+    if fk.on_delete.is_some() || fk.on_update.is_some() {
+        subtitle.push_str(&format!(
+            " · ON DELETE {} · ON UPDATE {}",
+            fk.on_delete.as_deref().unwrap_or("—"),
+            fk.on_update.as_deref().unwrap_or("—"),
+        ));
+    }
+
+    let row = adw::ActionRow::builder()
+        .title(glib::markup_escape_text(&fk.name))
+        .subtitle(glib::markup_escape_text(&subtitle))
+        .build();
 
     let remove_button = gtk::Button::builder()
         .icon_name("user-trash-symbolic")
         .tooltip_text(crate::tr!("Remove foreign key"))
+        .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
-    remove_button.add_css_class("destructive-action");
     if !driver_can_drop_foreign_key(driver_id) {
         remove_button.set_sensitive(false);
         remove_button.set_tooltip_text(Some(&crate::tr!("Dropping a foreign key isn't supported by SQLite.")));
     }
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveForeignKey(index)));
-    row.append(&remove_button);
+    row.add_suffix(&remove_button);
 
-    row.upcast()
+    row
 }
 
-/// Show the "Add Index" form dialog. The dialog wraps an
-/// AdwAlertDialog around a body Box with name entry + column
-/// multi-select + unique toggle.
-/// Build the standard form-dialog skeleton: AdwDialog with an
-/// AdwToolbarView, a HeaderBar carrying Cancel + suggested-action
-/// submit buttons, and a vertically-scrolling content box. Returned
-/// `(dialog, content, submit_btn)` lets the caller append form
-/// widgets to `content` and observe `submit_btn` for the Add action.
-///
-/// Per HIG, AlertDialog is for confirmation / yes-no prompts; data
-/// entry forms belong on AdwDialog with explicit headerbar buttons.
-fn build_form_dialog(title: &str, submit_label: &str) -> (adw::Dialog, gtk::Box, gtk::Button) {
-    let dialog = adw::Dialog::builder()
-        .title(title)
-        .content_width(420)
-        .content_height(560)
-        .build();
-
-    let header = adw::HeaderBar::builder()
-        .show_start_title_buttons(false)
-        .show_end_title_buttons(false)
-        .build();
-    let cancel_btn = gtk::Button::with_label(&crate::tr!("Cancel"));
-    let submit_btn = gtk::Button::with_label(submit_label);
-    submit_btn.add_css_class("suggested-action");
-    header.pack_start(&cancel_btn);
-    header.pack_end(&submit_btn);
-
-    let content = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(12)
-        .margin_top(18)
-        .margin_bottom(18)
-        .margin_start(18)
-        .margin_end(18)
-        .build();
-    let scroller = gtk::ScrolledWindow::builder()
-        .child(&content)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vexpand(true)
-        .hexpand(true)
-        .build();
-
-    let toolbar_view = adw::ToolbarView::new();
-    toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&scroller));
-    dialog.set_child(Some(&toolbar_view));
-
-    let dialog_for_cancel = dialog.clone();
-    cancel_btn.connect_clicked(move |_| {
-        dialog_for_cancel.close();
-    });
-
-    (dialog, content, submit_btn)
-}
-
-fn present_index_dialog(parent: &gtk::Widget, columns: &[DraftColumn], sender: ComponentSender<StructureTab>) {
-    let (dialog, body, submit_btn) = build_form_dialog(&crate::tr!("Add Index"), &crate::tr!("Add"));
-
-    let name_entry = gtk::Entry::builder().placeholder_text(crate::tr!("index_name")).build();
-    body.append(&gtk::Label::builder().label(crate::tr!("Name")).xalign(0.0).build());
-    body.append(&name_entry);
-
-    body.append(
-        &gtk::Label::builder()
-            .label(crate::tr!("Columns"))
-            .xalign(0.0)
-            .margin_top(6)
-            .build(),
-    );
-    let columns_list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
-    columns_list.add_css_class("boxed-list");
-    let column_checks: Rc<RefCell<Vec<(String, gtk::CheckButton)>>> = Rc::new(RefCell::new(Vec::new()));
-    for col in columns {
-        let row = adw::ActionRow::builder().title(&col.name).build();
-        let check = gtk::CheckButton::new();
-        check.set_valign(gtk::Align::Center);
-        row.add_suffix(&check);
-        row.set_activatable_widget(Some(&check));
-        columns_list.append(&row);
-        column_checks.borrow_mut().push((col.name.clone(), check));
-    }
-    body.append(&columns_list);
-
-    let unique_check = gtk::CheckButton::builder().label(crate::tr!("Unique")).build();
-    unique_check.set_margin_top(6);
-    body.append(&unique_check);
-
-    let column_checks_for_resp = column_checks.clone();
-    let sender_for_resp = sender.clone();
-    let dialog_for_submit = dialog.clone();
-    submit_btn.connect_clicked(move |_| {
-        let name = name_entry.text().to_string();
-        if name.trim().is_empty() {
-            return;
-        }
-        let cols: Vec<String> = column_checks_for_resp
-            .borrow()
-            .iter()
-            .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
-            .collect();
-        if cols.is_empty() {
-            return;
-        }
-        sender_for_resp.input(StructureTabInput::AddIndex(IndexInfo {
-            name,
-            columns: cols,
-            unique: unique_check.is_active(),
-            primary: false,
-        }));
-        dialog_for_submit.close();
-    });
-
-    dialog.present(Some(parent));
-}
-
-/// Show the "Add Foreign Key" form dialog. The reference table /
-/// columns are free-text in v1 (no live drop-down of available
-/// tables) — that requires plumbing list_tables through the tab,
-/// follow-up commit.
-fn present_fk_dialog(parent: &gtk::Widget, columns: &[DraftColumn], sender: ComponentSender<StructureTab>) {
-    let (dialog, body, submit_btn) = build_form_dialog(&crate::tr!("Add Foreign Key"), &crate::tr!("Add"));
-
-    let name_entry = gtk::Entry::builder().placeholder_text(crate::tr!("fk_name")).build();
-    body.append(&gtk::Label::builder().label(crate::tr!("Name")).xalign(0.0).build());
-    body.append(&name_entry);
-
-    body.append(
-        &gtk::Label::builder()
-            .label(crate::tr!("Columns"))
-            .xalign(0.0)
-            .margin_top(6)
-            .build(),
-    );
-    let columns_list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
-    columns_list.add_css_class("boxed-list");
-    let column_checks: Rc<RefCell<Vec<(String, gtk::CheckButton)>>> = Rc::new(RefCell::new(Vec::new()));
-    for col in columns {
-        let row = adw::ActionRow::builder().title(&col.name).build();
-        let check = gtk::CheckButton::new();
-        check.set_valign(gtk::Align::Center);
-        row.add_suffix(&check);
-        row.set_activatable_widget(Some(&check));
-        columns_list.append(&row);
-        column_checks.borrow_mut().push((col.name.clone(), check));
-    }
-    body.append(&columns_list);
-
-    body.append(
-        &gtk::Label::builder()
-            .label(crate::tr!("References (table)"))
-            .xalign(0.0)
-            .margin_top(6)
-            .build(),
-    );
-    let ref_table_entry = gtk::Entry::builder()
-        .placeholder_text(crate::tr!("schema.referenced_table"))
-        .build();
-    body.append(&ref_table_entry);
-
-    body.append(
-        &gtk::Label::builder()
-            .label(crate::tr!("Reference columns"))
-            .xalign(0.0)
-            .margin_top(6)
-            .build(),
-    );
-    let ref_cols_entry = gtk::Entry::builder().placeholder_text(crate::tr!("col1, col2")).build();
-    body.append(&ref_cols_entry);
-
-    let actions = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(8)
-        .margin_top(6)
-        .build();
-    let on_delete = gtk::DropDown::from_strings(&["NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"]);
-    let on_update = gtk::DropDown::from_strings(&["NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"]);
-    actions.append(
-        &gtk::Label::builder()
-            .label(crate::tr!("ON DELETE"))
-            .valign(gtk::Align::Center)
-            .build(),
-    );
-    actions.append(&on_delete);
-    actions.append(
-        &gtk::Label::builder()
-            .label(crate::tr!("ON UPDATE"))
-            .valign(gtk::Align::Center)
-            .margin_start(12)
-            .build(),
-    );
-    actions.append(&on_update);
-    body.append(&actions);
-
-    let column_checks_for_resp = column_checks.clone();
-    let actions_text = ["NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"];
-    let sender_for_resp = sender.clone();
-    let dialog_for_submit = dialog.clone();
-    submit_btn.connect_clicked(move |_| {
-        let name = name_entry.text().to_string();
-        let ref_table = ref_table_entry.text().to_string();
-        if name.trim().is_empty() || ref_table.trim().is_empty() {
-            return;
-        }
-        let cols: Vec<String> = column_checks_for_resp
-            .borrow()
-            .iter()
-            .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
-            .collect();
-        if cols.is_empty() {
-            return;
-        }
-        let ref_cols: Vec<String> = ref_cols_entry
-            .text()
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        if ref_cols.is_empty() {
-            return;
-        }
-        let (ref_schema, ref_table_only) = match ref_table.split_once('.') {
-            Some((s, t)) => (Some(s.trim().to_string()), t.trim().to_string()),
-            None => (None, ref_table),
-        };
-        let action_at = |idx: u32| -> Option<String> {
-            let s = actions_text.get(idx as usize)?;
-            if *s == "NO ACTION" { None } else { Some((*s).into()) }
-        };
-        sender_for_resp.input(StructureTabInput::AddForeignKey(ForeignKeyInfo {
-            name,
-            columns: cols,
-            ref_schema,
-            ref_table: ref_table_only,
-            ref_columns: ref_cols,
-            on_delete: action_at(on_delete.selected()),
-            on_update: action_at(on_update.selected()),
-        }));
-        dialog_for_submit.close();
-    });
-
-    dialog.present(Some(parent));
-}
 
 /// Validate the model against driver constraints before Save. Returns
 /// the first user-visible error string, or None if all checks pass.
@@ -970,7 +842,11 @@ fn validate_save(table_name: &str, columns: &[DraftColumn], mode: StructureMode)
     if matches!(mode, StructureMode::New) && table_name.trim().is_empty() {
         return Err(crate::tr!("Table name is required."));
     }
-    if matches!(mode, StructureMode::New) && columns.is_empty() {
+    // Empty-columns guard applies in BOTH modes. In Edit mode, the
+    // user pressing the trash on every row would otherwise produce
+    // a Save that drops every column — most drivers either reject
+    // this with an opaque error or silently degenerate the table.
+    if columns.is_empty() {
         return Err(crate::tr!("At least one column is required."));
     }
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
@@ -1004,19 +880,6 @@ impl SimpleComponent for StructureTab {
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         structure_tracker::open_tab(init.tab_id);
-
-        // Embedded headerbar — Structure tab is inside an AdwTabView,
-        // not a top-level window. Show neither set of window controls
-        // (the AdwApplicationWindow already paints the real ones), and
-        // put the AdwViewSwitcher in the title slot — that's the
-        // GNOME convention for tab-internal page switching (Builder,
-        // Settings, Calendar). The previous "Entry + driver Label"
-        // title widget was redundant: tab title already shows the
-        // table name and the window subtitle already shows the driver.
-        let header = adw::HeaderBar::builder()
-            .show_start_title_buttons(false)
-            .show_end_title_buttons(false)
-            .build();
 
         let view_stack = adw::ViewStack::new();
 
@@ -1083,19 +946,54 @@ impl SimpleComponent for StructureTab {
             apply_sql_scheme(&buffer_for_theme);
         });
         let sql_scroll = gtk::ScrolledWindow::builder().child(&sql_view).vexpand(true).build();
+        // Copy SQL toolbar — saves the user from clicking into the
+        // sourceview, Ctrl+A, Ctrl+C every time they want to paste
+        // the generated DDL into a different tool.
+        let copy_sql_btn = gtk::Button::builder()
+            .icon_name("edit-copy-symbolic")
+            .tooltip_text(crate::tr!("Copy SQL to clipboard"))
+            .halign(gtk::Align::End)
+            .build();
+        copy_sql_btn.add_css_class("flat");
+        let buffer_for_copy = sql_buffer.clone();
+        copy_sql_btn.connect_clicked(move |btn| {
+            let text = buffer_for_copy.text(&buffer_for_copy.start_iter(), &buffer_for_copy.end_iter(), false);
+            btn.clipboard().set_text(text.as_str());
+        });
+        let sql_toolbar = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .margin_top(6)
+            .margin_bottom(0)
+            .margin_start(6)
+            .margin_end(6)
+            .hexpand(true)
+            .build();
+        let toolbar_spacer = gtk::Label::builder().hexpand(true).build();
+        sql_toolbar.append(&toolbar_spacer);
+        sql_toolbar.append(&copy_sql_btn);
+        let sql_page_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+        sql_page_box.append(&sql_toolbar);
+        sql_page_box.append(&sql_scroll);
         let sql_page = view_stack.add_titled_with_icon(
-            &sql_scroll,
+            &sql_page_box,
             Some("sql"),
             &crate::tr!("SQL Preview"),
             "text-x-generic-symbolic",
         );
         let _ = sql_page;
 
+        // Inline switcher centred above the form. We can't add a
+        // second AdwHeaderBar to the tab — the wrapper's "Data /
+        // Structure" header already takes that role. A centred
+        // ViewSwitcher with margins reads as a section navigation
+        // without spawning a second toolbar strip.
         let view_switcher = adw::ViewSwitcher::builder()
             .stack(&view_stack)
             .policy(adw::ViewSwitcherPolicy::Wide)
+            .halign(gtk::Align::Center)
+            .margin_top(6)
+            .margin_bottom(6)
             .build();
-        header.set_title_widget(Some(&view_switcher));
 
         // Inner stack swaps between "loading" / "editor" / "error" so
         // Edit-mode tabs show a spinner until fetch_structure_data
@@ -1113,33 +1011,48 @@ impl SimpleComponent for StructureTab {
             .orientation(gtk::Orientation::Vertical)
             .spacing(0)
             .build();
-        // New-mode only: prominent name row at the top of the editor.
-        // Edit mode hides this — the tab title already shows the name
-        // and rename is a separate (sidebar context-menu) action that
-        // we don't want users triggering accidentally by clicking a
-        // floating text field. The name_entry widget itself is still
-        // built and stored in the model so update()'s SaveCompleted
-        // path can `set_text` it when New mode promotes to Edit.
-        let name_entry = gtk::Entry::builder()
-            .text(&init.table)
-            .placeholder_text(crate::tr!("table_name"))
-            .build();
+        // New-mode only: name row at the top of the editor. Edit mode
+        // hides this — the tab title already shows the name and rename
+        // is a separate (sidebar context-menu) action that we don't
+        // want users triggering accidentally by clicking a floating
+        // text field. The name_entry widget itself is still built and
+        // stored in the model so update()'s SaveCompleted path can
+        // `set_text` it when New mode promotes to Edit.
+        //
+        // Native pattern: a single AdwEntryRow with title "Name". The
+        // title floats large when empty (acts as the placeholder) and
+        // shrinks to a small label above the typed value — matching
+        // GNOME Settings's text input pattern. The PreferencesGroup
+        // around it carries only the helper description; no redundant
+        // "New table" title since the tab title already says so.
+        let name_entry = adw::EntryRow::builder().title(crate::tr!("Name")).build();
+        name_entry.set_text(&init.table);
         let name_row = adw::PreferencesGroup::builder()
-            .title(crate::tr!("New table"))
-            .description(crate::tr!("Pick a name and add at least one column to save."))
+            .description(crate::tr!("Add a name and at least one column to save."))
             .margin_top(12)
             .margin_bottom(6)
             .margin_start(12)
             .margin_end(12)
             .build();
-        let name_action_row = adw::ActionRow::builder().title(crate::tr!("Name")).build();
-        name_action_row.add_suffix(&name_entry);
-        name_action_row.set_activatable_widget(Some(&name_entry));
-        name_row.add(&name_action_row);
+        name_row.add(&name_entry);
         name_row.set_visible(matches!(init.mode, StructureMode::New));
         editor_box.append(&name_row);
+        editor_box.append(&view_switcher);
         editor_box.append(&view_stack);
-        inner_stack.add_named(&editor_box, Some("editor"));
+        // Constrain content width on wide windows so forms don't
+        // stretch to ridiculous proportions (without this a single
+        // "Add Column" row spans the entire monitor on a wide screen).
+        // AdwClamp matches the GNOME Settings / Builder pattern;
+        // 900sp gives room for the column-row attributes (Name, Type,
+        // Default…) without overflowing on small screens. No outer
+        // ScrolledWindow because each view in `view_stack` already has
+        // its own scroller — wrapping again would double-scroll.
+        let editor_clamp = adw::Clamp::builder()
+            .maximum_size(900)
+            .tightening_threshold(700)
+            .child(&editor_box)
+            .build();
+        inner_stack.add_named(&editor_clamp, Some("editor"));
 
         let error_status = adw::StatusPage::builder()
             .icon_name("dialog-error-symbolic")
@@ -1188,8 +1101,9 @@ impl SimpleComponent for StructureTab {
         let sender_for_drop = sender.clone();
         drop_button.connect_clicked(move |_| sender_for_drop.input(StructureTabInput::DropTableRequested));
 
-        // Top header + content + bottom bar.
-        root.add_top_bar(&header);
+        // Content + bottom bar. The Data/Structure outer header
+        // already supplies the toolbar strip — Structure's own
+        // sub-navigation lives inline inside `editor_box`.
         root.set_content(Some(&inner_stack));
         root.add_bottom_bar(&action_bar);
 
@@ -1205,14 +1119,8 @@ impl SimpleComponent for StructureTab {
             sender_for_name.input(StructureTabInput::TableNameEdited(e.text().to_string()));
         });
 
-        // Subscribe to the per-tab tracker.
-        let (tracker_tx, tracker_rx) = relm4::channel::<StructureTrackerEvent>();
-        structure_tracker::with_tab(init.tab_id, |t| t.subscribe(tracker_tx));
-        let input_for_tracker = sender.input_sender().clone();
-        relm4::spawn_local(tracker_rx.forward(input_for_tracker, |event| match event {
-            StructureTrackerEvent::OpsChanged(n) => StructureTabInput::PendingCountChanged(n),
-            StructureTrackerEvent::Cleared => StructureTabInput::Cleared,
-        }));
+        // No tracker subscription — dirty state is computed from the
+        // diff between snapshot + current model on every mutation.
 
         // Edit mode: kick the App for fetch_structure_data — unless
         // the parent (Table tab in Data mode) explicitly deferred us
@@ -1224,13 +1132,18 @@ impl SimpleComponent for StructureTab {
         let model = StructureTab {
             tab_id: init.tab_id,
             schema: init.schema,
+            original_table_name: Rc::new(RefCell::new(init.table.clone())),
             table_name: Rc::new(RefCell::new(init.table)),
             mode: Rc::new(RefCell::new(init.mode)),
             driver_id: init.driver_id,
             columns: Rc::new(RefCell::new(Vec::new())),
             indexes: Rc::new(RefCell::new(Vec::new())),
             foreign_keys: Rc::new(RefCell::new(Vec::new())),
+            original_columns: Rc::new(RefCell::new(Vec::new())),
+            original_indexes: Rc::new(RefCell::new(Vec::new())),
+            original_fks: Rc::new(RefCell::new(Vec::new())),
             inner_stack,
+            error_status: error_status.clone(),
             name_entry,
             name_row,
             columns_box,
@@ -1244,6 +1157,8 @@ impl SimpleComponent for StructureTab {
             last_dirty: Rc::new(RefCell::new(false)),
             suppress_emit,
             next_column_seq: Rc::new(RefCell::new(1)),
+            column_popovers: Rc::new(RefCell::new(Vec::new())),
+            refetching: Rc::new(Cell::new(false)),
         };
 
         // Initial render so New-mode tabs aren't blank.
@@ -1255,61 +1170,55 @@ impl SimpleComponent for StructureTab {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             StructureTabInput::StructureLoaded { columns, indexes, fks } => {
-                // App now coalesces the three fetches into one
-                // message; replace the model wholesale and rebuild
-                // the UI once.
+                // App coalesces the three fetches into one message.
+                // Snapshot all three lists into `original_*` slots so
+                // Discard restores the canonical loaded state without
+                // a refetch — including columns the user later removed
+                // (whose `DraftColumn.original` would otherwise vanish
+                // when the row is dropped from `self.columns`).
+                *self.original_columns.borrow_mut() = columns.clone();
                 *self.columns.borrow_mut() = columns.into_iter().map(DraftColumn::from_info).collect();
-                *self.indexes.borrow_mut() = indexes;
-                *self.foreign_keys.borrow_mut() = fks;
+                *self.indexes.borrow_mut() = indexes.clone();
+                *self.original_indexes.borrow_mut() = indexes;
+                *self.foreign_keys.borrow_mut() = fks.clone();
+                *self.original_fks.borrow_mut() = fks;
                 self.inner_stack.set_visible_child_name("editor");
+                // End of refetch window: snapshots are now authoritative,
+                // so resume diff-based dirty tracking. The recompute call
+                // sees live model == snapshots and clears the tracker /
+                // emits DirtyChanged(false), which discards any phantom
+                // ops the user could have provoked during the window.
+                self.refetching.set(false);
+                self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
             }
             StructureTabInput::LoadFailed(message) => {
+                // Surface the driver error inline on the StatusPage —
+                // a modal AdwAlertDialog would duplicate the same
+                // text and force the user to dismiss it before they
+                // can see the page.
+                self.error_status.set_description(Some(&message));
                 self.inner_stack.set_visible_child_name("error");
-                let _ = sender.output(StructureTabOutput::ShowAlert {
-                    title: crate::tr!("Couldn't load structure"),
-                    body: message,
-                });
+                // Bail out of the refetch window even on failure so
+                // recompute_dirty_state doesn't stay frozen if the user
+                // later retries via the error page's reload action.
+                self.refetching.set(false);
             }
             StructureTabInput::Refresh => {
                 self.rebuild_columns_view(sender.clone());
                 self.rebuild_indexes_view(sender.clone());
                 self.rebuild_fks_view(sender.clone());
-                self.regenerate_sql_preview();
+                self.regenerate_sql_preview_from(&self.current_diff_ops());
             }
             StructureTabInput::TableNameEdited(text) => {
-                let mode = *self.mode.borrow();
-                if matches!(mode, StructureMode::New) {
-                    *self.table_name.borrow_mut() = text.clone();
-                    // For New mode we rebuild the CreateTable op below
-                    // in update_create_op_for_new(). For Edit mode the
-                    // RenameTable op is the right ledger entry.
-                    self.update_create_op_for_new();
-                } else {
-                    let old_name = self.table_name.borrow().clone();
-                    if old_name != text && !text.is_empty() {
-                        let schema = self.schema.clone();
-                        structure_tracker::with_tab(self.tab_id, |t| {
-                            t.push(
-                                StructureOp::RenameTable {
-                                    schema: schema.clone(),
-                                    old_name: old_name.clone(),
-                                    new_name: text.clone(),
-                                },
-                                StructureOp::RenameTable {
-                                    schema: schema.clone(),
-                                    old_name: text.clone(),
-                                    new_name: old_name.clone(),
-                                },
-                            );
-                        });
-                        *self.table_name.borrow_mut() = text;
-                    }
+                let prev = self.table_name.borrow().clone();
+                if prev == text {
+                    return;
                 }
-                self.regenerate_sql_preview();
+                *self.table_name.borrow_mut() = text;
+                self.recompute_dirty_state(&sender);
             }
             StructureTabInput::ColumnEdited { index, field } => {
-                let mode = *self.mode.borrow();
                 let mut cols = self.columns.borrow_mut();
                 let Some(col) = cols.get_mut(index) else {
                     return;
@@ -1319,70 +1228,33 @@ impl SimpleComponent for StructureTab {
                     ColumnField::Name(s) => col.name = s,
                     ColumnField::Type(s) => col.data_type = s,
                     ColumnField::Nullable(b) => col.nullable = b,
-                    ColumnField::PrimaryKey(b) => col.primary_key = b,
+                    ColumnField::PrimaryKey(b) => {
+                        col.primary_key = b;
+                        // Auto-increment requires PK in every supported
+                        // driver (MySQL rejects, Postgres SERIAL implies
+                        // PK). When PK toggles off, the bound `sensitive`
+                        // greys out the Auto checkbox visually but its
+                        // `active` stays true — the model would then
+                        // emit AUTO_INCREMENT in an invalid context.
+                        // Coerce off here so model + tracker stay in
+                        // sync with what the driver will accept.
+                        if !b {
+                            col.auto_increment = false;
+                        }
+                    }
                     ColumnField::AutoIncrement(b) => col.auto_increment = b,
                     ColumnField::Default(s) => col.default_value = s,
                 }
                 let new_col = col.clone();
                 drop(cols);
-                // Skip when nothing actually changed. The Entry /
-                // CheckButton handlers that drive ColumnEdited fire
-                // not just on user typing — they also echo on
-                // programmatic set_text / set_active during widget
-                // teardown / focus shifts / IME events. Without this
-                // guard each Refresh + interaction can stamp a string
-                // of phantom AlterColumn ops onto the tracker.
+                // Echo guard — connect_changed / connect_toggled fire
+                // on programmatic widget set during rebuild, with the
+                // value already matching the model. Skipping the
+                // recompute saves a no-op diff pass.
                 if prev == new_col {
-                    self.regenerate_sql_preview();
                     return;
                 }
-                if matches!(mode, StructureMode::New) {
-                    self.update_create_op_for_new();
-                } else if let Some(orig) = new_col.original.as_ref() {
-                    // Existing column: push AlterColumn op only when
-                    // the post-edit state actually differs from the
-                    // baseline ColumnInfo. If the user toggled then
-                    // toggled back, the model returns to original and
-                    // the tracker shouldn't carry a no-op op.
-                    let baseline = DraftColumn::from_info(orig.clone());
-                    if baseline == new_col {
-                        // User reverted to original — strip any prior
-                        // AlterColumn ops on this column from the
-                        // tracker so dirty-count drops back to zero
-                        // for this attribute.
-                        let column_name = new_col.name.clone();
-                        let table = self.table_name.borrow().clone();
-                        structure_tracker::with_tab(self.tab_id, |t| {
-                            let table_for_filter = table.clone();
-                            t.retain_ops(|op| {
-                                matches!(op, StructureOp::AlterColumn { table: t, column: c, .. }
-                                    if *t == table_for_filter && c.name == column_name)
-                            });
-                        });
-                    } else {
-                        let table = self.table_name.borrow().clone();
-                        let schema = self.schema.clone();
-                        structure_tracker::with_tab(self.tab_id, |t| {
-                            t.push(
-                                StructureOp::AlterColumn {
-                                    schema: schema.clone(),
-                                    table: table.clone(),
-                                    column: new_col.clone(),
-                                },
-                                StructureOp::AlterColumn {
-                                    schema: schema.clone(),
-                                    table: table.clone(),
-                                    column: prev.clone(),
-                                },
-                            );
-                        });
-                    }
-                } else {
-                    // Newly-added column in Edit mode: surgical
-                    // replace of pending AddColumn ops.
-                    self.update_added_columns_ops();
-                }
-                self.regenerate_sql_preview();
+                self.recompute_dirty_state(&sender);
             }
             StructureTabInput::AddColumn => {
                 let new_col = DraftColumn {
@@ -1399,174 +1271,51 @@ impl SimpleComponent for StructureTab {
                     auto_increment: false,
                     default_value: None,
                 };
-                self.columns.borrow_mut().push(new_col.clone());
-                let mode = *self.mode.borrow();
-                if matches!(mode, StructureMode::Edit) {
-                    let table = self.table_name.borrow().clone();
-                    let schema = self.schema.clone();
-                    structure_tracker::with_tab(self.tab_id, |t| {
-                        t.push(
-                            StructureOp::AddColumn {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                column: new_col.clone(),
-                            },
-                            StructureOp::DropColumn {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                column_name: new_col.name.clone(),
-                            },
-                        );
-                    });
-                } else {
-                    self.update_create_op_for_new();
-                }
+                self.columns.borrow_mut().push(new_col);
+                self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
             }
             StructureTabInput::RemoveColumn(index) => {
-                let mode = *self.mode.borrow();
-                let removed = {
+                {
                     let mut cols = self.columns.borrow_mut();
                     if index >= cols.len() {
                         return;
                     }
-                    cols.remove(index)
-                };
-                if matches!(mode, StructureMode::Edit) {
-                    if removed.original.is_some() {
-                        let table = self.table_name.borrow().clone();
-                        let schema = self.schema.clone();
-                        let drop_op = StructureOp::DropColumn {
-                            schema: schema.clone(),
-                            table: table.clone(),
-                            column_name: removed.name.clone(),
-                        };
-                        let restore_op = StructureOp::AddColumn {
-                            schema: schema.clone(),
-                            table: table.clone(),
-                            column: removed.clone(),
-                        };
-                        structure_tracker::with_tab(self.tab_id, |t| t.push(drop_op, restore_op));
-                    } else {
-                        self.update_added_columns_ops();
-                    }
-                } else {
-                    self.update_create_op_for_new();
+                    cols.remove(index);
                 }
+                self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
             }
             StructureTabInput::AddIndex(index) => {
-                self.indexes.borrow_mut().push(index.clone());
-                let mode = *self.mode.borrow();
-                let table = self.table_name.borrow().clone();
-                let schema = self.schema.clone();
-                if matches!(mode, StructureMode::Edit) {
-                    let inverse_name = index.name.clone();
-                    structure_tracker::with_tab(self.tab_id, |t| {
-                        t.push(
-                            StructureOp::AddIndex {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                index: index.clone(),
-                            },
-                            StructureOp::DropIndex {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                index_name: inverse_name,
-                            },
-                        );
-                    });
-                } else {
-                    self.update_create_op_for_new();
-                }
+                self.indexes.borrow_mut().push(index);
+                self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
             }
             StructureTabInput::RemoveIndex(idx_pos) => {
-                let mode = *self.mode.borrow();
-                let removed = {
+                {
                     let mut idxs = self.indexes.borrow_mut();
                     if idx_pos >= idxs.len() {
                         return;
                     }
-                    idxs.remove(idx_pos)
-                };
-                if matches!(mode, StructureMode::Edit) {
-                    let table = self.table_name.borrow().clone();
-                    let schema = self.schema.clone();
-                    structure_tracker::with_tab(self.tab_id, |t| {
-                        t.push(
-                            StructureOp::DropIndex {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                index_name: removed.name.clone(),
-                            },
-                            StructureOp::AddIndex {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                index: removed.clone(),
-                            },
-                        );
-                    });
-                } else {
-                    self.update_create_op_for_new();
+                    idxs.remove(idx_pos);
                 }
+                self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
             }
             StructureTabInput::AddForeignKey(fk) => {
-                self.foreign_keys.borrow_mut().push(fk.clone());
-                let mode = *self.mode.borrow();
-                let table = self.table_name.borrow().clone();
-                let schema = self.schema.clone();
-                if matches!(mode, StructureMode::Edit) {
-                    let inverse_name = fk.name.clone();
-                    structure_tracker::with_tab(self.tab_id, |t| {
-                        t.push(
-                            StructureOp::AddForeignKey {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                fk: fk.clone(),
-                            },
-                            StructureOp::DropForeignKey {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                fk_name: inverse_name,
-                            },
-                        );
-                    });
-                } else {
-                    self.update_create_op_for_new();
-                }
+                self.foreign_keys.borrow_mut().push(fk);
+                self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
             }
             StructureTabInput::RemoveForeignKey(idx_pos) => {
-                let mode = *self.mode.borrow();
-                let removed = {
+                {
                     let mut fks = self.foreign_keys.borrow_mut();
                     if idx_pos >= fks.len() {
                         return;
                     }
-                    fks.remove(idx_pos)
-                };
-                if matches!(mode, StructureMode::Edit) {
-                    let table = self.table_name.borrow().clone();
-                    let schema = self.schema.clone();
-                    structure_tracker::with_tab(self.tab_id, |t| {
-                        t.push(
-                            StructureOp::DropForeignKey {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                fk_name: removed.name.clone(),
-                            },
-                            StructureOp::AddForeignKey {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                fk: removed.clone(),
-                            },
-                        );
-                    });
-                } else {
-                    self.update_create_op_for_new();
+                    fks.remove(idx_pos);
                 }
+                self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
             }
             StructureTabInput::Save => {
@@ -1577,50 +1326,52 @@ impl SimpleComponent for StructureTab {
                     let _ = sender.output(StructureTabOutput::ShowToast(message));
                     return;
                 }
-                let result = structure_tracker::with_tab_ref(self.tab_id, |t| t.materialize(&self.driver_id));
-                match result {
-                    Some(Ok(statements)) if !statements.is_empty() => {
+                let ops = self.current_diff_ops();
+                match materialize_ops(&ops, &self.driver_id) {
+                    Ok(statements) if !statements.is_empty() => {
                         self.save_button.set_sensitive(false);
                         self.discard_button.set_sensitive(false);
                         let _ = sender.output(StructureTabOutput::ExecuteTransaction { statements });
                     }
-                    Some(Ok(_)) => {
+                    Ok(_) => {
                         let _ = sender.output(StructureTabOutput::ShowToast(crate::tr!("Nothing to save.")));
                     }
-                    Some(Err(BuildDdlError::SqliteNotSupported(detail))) => {
+                    Err(BuildDdlError::SqliteNotSupported(detail)) => {
                         let _ = sender.output(StructureTabOutput::ShowAlert {
                             title: crate::tr!("Cannot save"),
                             body: crate::tr!("SQLite doesn't support: {detail}").replace("{detail}", detail),
                         });
                     }
-                    Some(Err(e)) => {
+                    Err(e) => {
                         let _ = sender.output(StructureTabOutput::ShowAlert {
                             title: crate::tr!("Cannot save"),
                             body: format!("{e}"),
                         });
                     }
-                    None => {}
                 }
             }
             StructureTabInput::Discard => {
-                structure_tracker::with_tab(self.tab_id, |t| t.clear());
-                // Reset the model to original state. For New mode that's
-                // empty; for Edit mode the originals are still in
-                // DraftColumn.original, so re-derive them.
+                // Snapshot+diff model: Discard = current state ←
+                // original snapshot. New mode clears everything since
+                // the snapshot itself is empty.
                 let mode = *self.mode.borrow();
                 if matches!(mode, StructureMode::New) {
                     self.columns.borrow_mut().clear();
                     self.indexes.borrow_mut().clear();
                     self.foreign_keys.borrow_mut().clear();
                 } else {
-                    let originals: Vec<DraftColumn> = self
-                        .columns
+                    *self.table_name.borrow_mut() = self.original_table_name.borrow().clone();
+                    *self.columns.borrow_mut() = self
+                        .original_columns
                         .borrow()
                         .iter()
-                        .filter_map(|c| c.original.clone().map(DraftColumn::from_info))
+                        .cloned()
+                        .map(DraftColumn::from_info)
                         .collect();
-                    *self.columns.borrow_mut() = originals;
+                    *self.indexes.borrow_mut() = self.original_indexes.borrow().clone();
+                    *self.foreign_keys.borrow_mut() = self.original_fks.borrow().clone();
                 }
+                self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
             }
             StructureTabInput::DropTableRequested => {
@@ -1629,45 +1380,42 @@ impl SimpleComponent for StructureTab {
                     table: self.table_name.borrow().clone(),
                 });
             }
-            StructureTabInput::PendingCountChanged(n) => {
-                self.refresh_buttons(n);
-                let dirty = n > 0;
-                let mut last = self.last_dirty.borrow_mut();
-                if *last != dirty {
-                    *last = dirty;
-                    let _ = sender.output(StructureTabOutput::DirtyChanged(dirty));
-                }
-            }
-            StructureTabInput::Cleared => {
-                self.refresh_buttons(0);
-                let mut last = self.last_dirty.borrow_mut();
-                if *last {
-                    *last = false;
-                    let _ = sender.output(StructureTabOutput::DirtyChanged(false));
-                }
-            }
             StructureTabInput::SaveCompleted { new_table_name } => {
                 if let Some(name) = new_table_name {
                     *self.mode.borrow_mut() = StructureMode::Edit;
                     *self.table_name.borrow_mut() = name.clone();
-                    self.suppress_emit.set(true);
+                    *self.original_table_name.borrow_mut() = name.clone();
                     self.name_entry.set_text(&name);
-                    self.suppress_emit.set(false);
                     self.drop_button.set_visible(true);
-                    // New mode → Edit mode: the prominent name row at
-                    // the top of the editor was a New-mode-only
-                    // affordance. Hide it now that the tab represents
-                    // a real, persisted table.
                     self.name_row.set_visible(false);
                 }
-                structure_tracker::with_tab(self.tab_id, |t| t.clear());
                 if matches!(*self.mode.borrow(), StructureMode::Edit) {
+                    // Eagerly zero the dirty state before the async refetch
+                    // round-trip. Without this, recompute_dirty_state would
+                    // diff the live model against the pre-save snapshot for
+                    // the entire FetchStructure window, producing phantom
+                    // pending ops for changes that were just committed —
+                    // and the close-with-pending dialog would surface them
+                    // if the user closed the tab during the refetch. The
+                    // SQL preview is also reset to "no pending changes" so
+                    // a New→Edit promotion doesn't leave a stale CREATE
+                    // TABLE statement visible in the preview pane until
+                    // StructureLoaded arrives.
+                    structure_tracker::with_tab(self.tab_id, |t| t.clear());
+                    self.refresh_buttons(0);
+                    self.regenerate_sql_preview_from(&[]);
+                    let mut last = self.last_dirty.borrow_mut();
+                    if *last {
+                        *last = false;
+                        let _ = sender.output(StructureTabOutput::DirtyChanged(false));
+                    }
+                    drop(last);
+                    self.refetching.set(true);
                     let _ = sender.output(StructureTabOutput::FetchStructure);
                 }
             }
             StructureTabInput::SaveFailed(message) => {
-                let pending = structure_tracker::with_tab_ref(self.tab_id, |t| t.pending_count()).unwrap_or(0);
-                self.refresh_buttons(pending);
+                self.recompute_dirty_state(&sender);
                 let _ = sender.output(StructureTabOutput::ShowAlert {
                     title: crate::tr!("Save failed"),
                     body: message,
@@ -1677,98 +1425,78 @@ impl SimpleComponent for StructureTab {
     }
 }
 
-impl StructureTab {
-    /// Rebuild the single CreateTable op for New mode from current
-    /// model state. Called whenever any field changes.
-    fn update_create_op_for_new(&self) {
-        let table = self.table_name.borrow().clone();
-        let columns = self.columns.borrow().clone();
-        let indexes = self.indexes.borrow().clone();
-        let fks = self.foreign_keys.borrow().clone();
-        let schema = self.schema.clone();
-        structure_tracker::with_tab(self.tab_id, |t| {
-            t.clear();
-            t.push(
-                StructureOp::CreateTable {
-                    schema: schema.clone(),
-                    table: table.clone(),
-                    columns,
-                    indexes,
-                    fks,
-                },
-                // Inverse for CreateTable is unsupported (we don't undo
-                // a draft create); push a stub for symmetry.
-                StructureOp::CreateTable {
-                    schema,
-                    table,
-                    columns: vec![],
-                    indexes: vec![],
-                    fks: vec![],
-                },
-            );
-        });
-    }
+/// Build a suffix MenuButton for the type AdwEntryRow that opens a
+/// native `gtk::PopoverMenu` listing curated `driver_types()` for
+/// `driver_id`. Selecting an entry rewrites the target row's text
+/// (which fires the row's `changed` signal — the existing handler
+/// picks up the new value). Free-text input via the entry stays as
+/// the primary path.
+///
+/// Implementation: a `gio::Menu` model + `MenuButton.set_menu_model`
+/// causes GTK to render a `gtk::PopoverMenu` automatically. That is
+/// the same widget powering app menus, right-click menus, and
+/// gnome-menus across the desktop, so the rendering is identical to
+/// every other GNOME menu the user has ever seen — proper menu-item
+/// padding, hover/active states, separators, focus ring, all native.
+///
+/// Each type-name menu item activates a single SimpleAction
+/// (`types.apply`) parameterised by the type string. The action is
+/// stored in a per-button action group so two columns' menus don't
+/// collide on the action name.
+///
+/// Returns the button plus the auto-built PopoverMenu so the caller
+/// can register it for popdown on rebuild — otherwise an open menu
+/// would keep its captured target alive and dispatch a click into a
+/// detached AdwEntryRow.
+fn build_type_suggestions_button(
+    driver_id: &str,
+    target: &adw::EntryRow,
+) -> (gtk::MenuButton, gtk::Popover) {
+    // Per-button action group: one action `apply` keyed by `String`
+    // parameter. Each menu item activates `types.apply::<typename>`.
+    let action_group = gio::SimpleActionGroup::new();
+    let apply_action = gio::SimpleAction::new(
+        "apply",
+        Some(&String::static_variant_type()),
+    );
+    let target_for_action = target.clone();
+    apply_action.connect_activate(move |_, param| {
+        if let Some(s) = param.and_then(|v| v.get::<String>()) {
+            target_for_action.set_text(&s);
+        }
+    });
+    action_group.add_action(&apply_action);
 
-    /// In Edit mode, walk the model's newly-added columns (where
-    /// `original.is_none()`) and rebuild `AddColumn` ops for them.
-    /// Existing columns' `AlterColumn` ops are pushed inline as the
-    /// user edits each field; `AddColumn` payloads need this surgical
-    /// rewrite because the user can edit the same draft column's
-    /// fields multiple times after adding it.
-    fn update_added_columns_ops(&self) {
-        let table = self.table_name.borrow().clone();
-        let schema = self.schema.clone();
-        let new_cols: Vec<DraftColumn> = self
-            .columns
-            .borrow()
-            .iter()
-            .filter(|c| c.original.is_none())
-            .cloned()
-            .collect();
-        structure_tracker::with_tab(self.tab_id, |t| {
-            // Strip every prior AddColumn op on this table so the
-            // tracker reflects only the latest column-state.
-            let table_for_filter = table.clone();
-            t.retain_ops(|op| matches!(op, StructureOp::AddColumn { table: t, .. } if *t == table_for_filter));
-            // Re-push current state. Inverse for each is the matching
-            // DropColumn so undo restores the prior model.
-            for col in new_cols {
-                t.push(
-                    StructureOp::AddColumn {
-                        schema: schema.clone(),
-                        table: table.clone(),
-                        column: col.clone(),
-                    },
-                    StructureOp::DropColumn {
-                        schema: schema.clone(),
-                        table: table.clone(),
-                        column_name: col.name.clone(),
-                    },
-                );
-            }
-        });
-    }
-}
-
-/// Build the per-column type combo box with curated suggestions for
-/// `driver_id`. ComboBoxText is soft-deprecated since GTK 4.10; the
-/// allow attribute is scoped to this builder so the file's other
-/// deprecation warnings (if any future API gets soft-removed) stay
-/// visible.
-#[allow(deprecated)]
-fn build_type_combo(driver_id: &str) -> gtk::ComboBoxText {
-    let combo = gtk::ComboBoxText::with_entry();
+    // Build the menu model: every type becomes a labeled item that
+    // activates the apply action with the type string as parameter.
+    // gtk::PopoverMenu renders each gio::MenuItem as a native menu
+    // entry (no separator handling needed for a flat list).
+    let menu = gio::Menu::new();
     for ty in driver_types(driver_id) {
-        combo.append_text(ty);
+        let item = gio::MenuItem::new(Some(ty), None);
+        item.set_action_and_target_value(
+            Some("types.apply"),
+            Some(&ty.to_variant()),
+        );
+        menu.append_item(&item);
     }
-    combo
-}
 
-/// Pull the inner `gtk::Entry` out of a `gtk::ComboBoxText` so callers
-/// can wire change signals on the editable text field.
-#[allow(deprecated)]
-fn combo_entry(combo: &gtk::ComboBoxText) -> Option<gtk::Entry> {
-    combo.child().and_then(|c| c.dynamic_cast::<gtk::Entry>().ok())
+    let button = gtk::MenuButton::builder()
+        .icon_name("pan-down-symbolic")
+        .tooltip_text(crate::tr!("Suggested types"))
+        .valign(gtk::Align::Center)
+        .build();
+    button.add_css_class("flat");
+    button.insert_action_group("types", Some(&action_group));
+    button.set_menu_model(Some(&menu));
+
+    // The PopoverMenu is auto-created by MenuButton from the menu
+    // model. Hand it back so the caller can `popdown` it before the
+    // owning column row is torn down on Refresh.
+    let popover = button
+        .popover()
+        .expect("MenuButton creates a PopoverMenu when a menu model is set");
+    (button, popover)
 }
 
 /// Pick the sourceview5 style scheme matching the active Adwaita

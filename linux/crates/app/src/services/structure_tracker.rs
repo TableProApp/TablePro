@@ -1,156 +1,37 @@
-//! Per-tab DDL changeset tracker for the Structure workspace tab.
+//! Passive per-tab DDL ops cache for the Structure workspace tab.
 //!
-//! Mirrors the architecture of `change_tracker.rs` (thread-local
-//! registry keyed by tab UUID, subscription channel, undo / redo
-//! stacks) but operates at the schema-operation level instead of the
-//! row-data level. Row DML and DDL have fundamentally different
-//! shapes (DML keys by RowKey + cell coords; DDL keys by table /
-//! column name) and trying to share the abstraction would force
-//! both sides into an awkward generic shell. Two parallel modules
-//! is cleaner.
+//! StructureTab now owns the canonical source of truth for pending
+//! changes — it computes them on every edit by diffing the loaded
+//! snapshot against the live model (`sql_ddl::diff_to_ops`). On each
+//! recompute the tab calls [`with_tab`] to overwrite this cache so
+//! out-of-band callers (close-with-pending dialog, save-by-id, the
+//! window-close prompt) can ask whether a tab is dirty and emit its
+//! current SQL without coupling to the tab's UI internals.
 //!
-//! Threading: GTK main thread only (relm4 contract). `RefCell`
-//! interior mutability rather than `Mutex`. Tests construct fresh
-//! `StructureTrackerRegistry::new()` instances to avoid contaminating
-//! each other through the thread-local global.
+//! There is no undo / redo machinery here — DDL undo is a session
+//! concept (Discard reverts the model to the snapshot). Per-keystroke
+//! op history is the wrong granularity for schema editing and was
+//! removed in the Structure-Refactor batch.
+//!
+//! Threading: GTK main thread only. `RefCell` interior mutability.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use uuid::Uuid;
 
-use tablepro_core::sql_ddl::{
-    BuildDdlError, DraftColumn, build_add_column, build_add_foreign_key, build_alter_column, build_create_index,
-    build_create_table, build_drop_column, build_drop_foreign_key, build_drop_index, build_rename_column,
-    build_rename_table, build_reorder_column,
-};
-use tablepro_core::{ForeignKeyInfo, IndexInfo};
+use tablepro_core::sql_ddl::{BuildDdlError, StructureOp, materialize_ops};
 
-const UNDO_LIMIT: usize = 50;
-
-/// One pending DDL operation. The tracker accumulates a `Vec<StructureOp>`
-/// and `materialize` walks it to produce the ordered SQL strings
-/// per driver dialect.
-#[derive(Debug, Clone)]
-pub enum StructureOp {
-    /// Whole-table create. Used by `New` mode where there's exactly
-    /// one CreateTable op rebuilt from the in-memory model on every
-    /// edit. `Edit` mode never produces this variant.
-    CreateTable {
-        schema: Option<String>,
-        table: String,
-        columns: Vec<DraftColumn>,
-        indexes: Vec<IndexInfo>,
-        fks: Vec<ForeignKeyInfo>,
-    },
-    RenameTable {
-        schema: Option<String>,
-        old_name: String,
-        new_name: String,
-    },
-    AddColumn {
-        schema: Option<String>,
-        table: String,
-        column: DraftColumn,
-    },
-    DropColumn {
-        schema: Option<String>,
-        table: String,
-        column_name: String,
-    },
-    /// Renames a column inline. The Structure tab UI doesn't yet
-    /// expose this op as a dedicated affordance — column-name edits
-    /// today round-trip through Drop+Add via the AlterColumn path —
-    /// but `materialize` knows how to emit the SQL when a future UI
-    /// flow pushes it.
-    #[allow(dead_code)]
-    RenameColumn {
-        schema: Option<String>,
-        table: String,
-        old_name: String,
-        new_name: String,
-    },
-    /// Single op for any combination of type / nullable / default
-    /// changes on one column. Materialize groups all AlterColumn ops
-    /// for the same column into one MODIFY COLUMN statement on
-    /// MySQL; Postgres and SQLite emit per-attribute statements.
-    AlterColumn {
-        schema: Option<String>,
-        table: String,
-        column: DraftColumn,
-    },
-    /// MySQL-only column reorder via `MODIFY COLUMN ... AFTER`.
-    /// `after = None` means `FIRST`. Drag-reorder UI not yet wired —
-    /// the materialize path is in place so adding the gesture later
-    /// is one UI commit.
-    #[allow(dead_code)]
-    ReorderColumn {
-        schema: Option<String>,
-        table: String,
-        column: DraftColumn,
-        after: Option<String>,
-    },
-    AddIndex {
-        schema: Option<String>,
-        table: String,
-        index: IndexInfo,
-    },
-    DropIndex {
-        schema: Option<String>,
-        table: String,
-        index_name: String,
-    },
-    AddForeignKey {
-        schema: Option<String>,
-        table: String,
-        fk: ForeignKeyInfo,
-    },
-    DropForeignKey {
-        schema: Option<String>,
-        table: String,
-        fk_name: String,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum StructureTrackerEvent {
-    /// Pending op count changed; carries the new count.
-    OpsChanged(usize),
-    /// Tracker was wiped (Discard or post-Save).
-    Cleared,
-}
-
-/// Paired (forward, inverse) entry stored on undo / redo deques. Both
-/// directions are kept so `redo` can re-establish the correct undo
-/// step without asking the caller to re-derive it.
-#[derive(Debug, Clone)]
-struct OpPair {
-    forward: StructureOp,
-    inverse: StructureOp,
-}
-
+/// Per-tab cache. Holds the current pending-op list emitted by the
+/// tab's diff. `materialize` re-runs SQL emission on demand; the
+/// cache means out-of-band callers don't have to re-derive ops from
+/// the tab's model.
 #[derive(Debug, Default)]
 pub struct StructureChangeTracker {
     ops: Vec<StructureOp>,
-    /// Stores `(forward, inverse)` pairs for every entry currently in
-    /// `ops` plus any entries the user has undone. `undo()` pops the
-    /// most recent pair, applies the inverse to the caller's model,
-    /// and moves the pair to `redo`. `redo()` reverses the move.
-    undo: VecDeque<OpPair>,
-    redo: VecDeque<OpPair>,
-    subscribers: Vec<relm4::Sender<StructureTrackerEvent>>,
 }
 
 impl StructureChangeTracker {
-    #[cfg(test)]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn pending_count(&self) -> usize {
-        self.ops.len()
-    }
-
     pub fn has_pending(&self) -> bool {
         !self.ops.is_empty()
     }
@@ -159,289 +40,28 @@ impl StructureChangeTracker {
         &self.ops
     }
 
-    /// Surgically remove every op for which `predicate` returns true.
-    /// Drops the matching entries from `ops`, `undo`, and `redo` in
-    /// lockstep so the undo invariant (ops length == undo length)
-    /// holds. Used by Structure tab to replace stale `AddColumn` ops
-    /// when the user edits a freshly-added column's name / type.
-    pub fn retain_ops<F: Fn(&StructureOp) -> bool>(&mut self, predicate: F) {
-        let before = self.ops.len();
-        self.ops.retain(|op| !predicate(op));
-        self.undo.retain(|pair| !predicate(&pair.forward));
-        self.redo.retain(|pair| !predicate(&pair.forward));
-        if self.ops.len() != before {
-            self.emit(StructureTrackerEvent::OpsChanged(self.ops.len()));
-        }
-    }
-
-    pub fn subscribe(&mut self, sender: relm4::Sender<StructureTrackerEvent>) {
-        self.subscribers.push(sender);
-    }
-
-    fn emit(&self, event: StructureTrackerEvent) {
-        for s in &self.subscribers {
-            let _ = s.send(event.clone());
-        }
-    }
-
-    /// Push an op + its inverse for one-step undo. The caller must
-    /// have already mutated the in-memory model; this just records
-    /// for materialize + undo.
-    pub fn push(&mut self, op: StructureOp, inverse: StructureOp) {
-        self.ops.push(op.clone());
-        if self.undo.len() == UNDO_LIMIT {
-            self.undo.pop_front();
-        }
-        self.undo.push_back(OpPair { forward: op, inverse });
-        self.redo.clear();
-        self.emit(StructureTrackerEvent::OpsChanged(self.ops.len()));
-    }
-
-    /// Pop the most recent op + its inverse. Returns the inverse op
-    /// for the caller to apply against the model. The pair moves to
-    /// `redo` so a subsequent redo() can re-apply the forward op and
-    /// re-establish the undo entry.
-    pub fn undo(&mut self) -> Option<StructureOp> {
-        let pair = self.undo.pop_back()?;
-        self.ops.pop()?;
-        let inverse = pair.inverse.clone();
-        self.redo.push_back(pair);
-        self.emit(StructureTrackerEvent::OpsChanged(self.ops.len()));
-        Some(inverse)
-    }
-
-    /// Pop the most recent redo entry. Returns the forward op for the
-    /// caller to re-apply; the pair moves back to `undo` so undo()
-    /// can reverse it again.
-    pub fn redo(&mut self) -> Option<StructureOp> {
-        let pair = self.redo.pop_back()?;
-        let forward = pair.forward.clone();
-        self.ops.push(forward.clone());
-        self.undo.push_back(pair);
-        self.emit(StructureTrackerEvent::OpsChanged(self.ops.len()));
-        Some(forward)
-    }
-
-    #[cfg(test)]
-    pub fn can_undo(&self) -> bool {
-        !self.undo.is_empty()
-    }
-
-    #[cfg(test)]
-    pub fn can_redo(&self) -> bool {
-        !self.redo.is_empty()
+    /// Replace the cached op list. Called by StructureTab on every
+    /// model mutation; the tab is the source of truth for what ops
+    /// the diff currently produces.
+    pub fn set_ops(&mut self, ops: Vec<StructureOp>) {
+        self.ops = ops;
     }
 
     pub fn clear(&mut self) {
         self.ops.clear();
-        self.undo.clear();
-        self.redo.clear();
-        // Cleared subsumes "count is now zero"; subscribers that need
-        // both signals derive count=0 from the Cleared variant.
-        self.emit(StructureTrackerEvent::Cleared);
     }
 
-    /// Walk the op log and produce ordered DDL statements ready for
-    /// `Connection::execute`. Statement ordering avoids dependency
-    /// errors:
-    ///
-    ///   1. RenameTable (rename targets the old name; later ops use new)
-    ///   2. DropForeignKey
-    ///   3. DropIndex
-    ///   4. DropColumn
-    ///   5. RenameColumn (so subsequent alters use the new name)
-    ///   6. AlterColumn (MySQL: grouped per column into one MODIFY)
-    ///   7. AddColumn
-    ///   8. ReorderColumn (MySQL only)
-    ///   9. AddIndex
-    ///  10. AddForeignKey
-    ///
-    /// For `New` mode (single `CreateTable` op): bypasses the ordering
-    /// pipeline entirely and uses `build_create_table` to emit the
-    /// CREATE TABLE + secondary CREATE INDEX / ADD FK statements
-    /// inline.
     pub fn materialize(&self, driver_id: &str) -> Result<Vec<String>, BuildDdlError> {
-        // Fast path: New-mode CreateTable.
-        if let Some(StructureOp::CreateTable {
-            schema,
-            table,
-            columns,
-            indexes,
-            fks,
-        }) = self.ops.first()
-            && self.ops.len() == 1
-        {
-            return build_create_table(driver_id, schema.as_deref(), table, columns, indexes, fks);
-        }
-
-        let mut out: Vec<String> = Vec::new();
-
-        // Phase 1: rename table
-        for op in &self.ops {
-            if let StructureOp::RenameTable {
-                schema,
-                old_name,
-                new_name,
-            } = op
-            {
-                out.push(build_rename_table(driver_id, schema.as_deref(), old_name, new_name)?);
-            }
-        }
-
-        // Phase 2: drop FKs
-        for op in &self.ops {
-            if let StructureOp::DropForeignKey { schema, table, fk_name } = op {
-                out.push(build_drop_foreign_key(driver_id, schema.as_deref(), table, fk_name)?);
-            }
-        }
-
-        // Phase 3: drop indexes
-        for op in &self.ops {
-            if let StructureOp::DropIndex {
-                schema,
-                table,
-                index_name,
-            } = op
-            {
-                out.push(build_drop_index(driver_id, schema.as_deref(), table, index_name)?);
-            }
-        }
-
-        // Phase 4: drop columns
-        for op in &self.ops {
-            if let StructureOp::DropColumn {
-                schema,
-                table,
-                column_name,
-            } = op
-            {
-                out.push(build_drop_column(driver_id, schema.as_deref(), table, column_name)?);
-            }
-        }
-
-        // Phase 5: rename columns
-        for op in &self.ops {
-            if let StructureOp::RenameColumn {
-                schema,
-                table,
-                old_name,
-                new_name,
-            } = op
-            {
-                out.push(build_rename_column(
-                    driver_id,
-                    schema.as_deref(),
-                    table,
-                    old_name,
-                    new_name,
-                )?);
-            }
-        }
-
-        // Phase 6: alter columns. MySQL needs all alter-attribute ops
-        // per (schema, table, column_name) collapsed into a single
-        // MODIFY COLUMN statement. Postgres and SQLite emit per-op.
-        if driver_id == "mysql" {
-            // Walk in op-order so the LAST alter wins (the user's
-            // most-recent intent for that column). Build an ordered
-            // index of (key → final DraftColumn) so insertion order is
-            // preserved deterministically.
-            let mut order: Vec<(Option<String>, String, String)> = Vec::new();
-            let mut latest: HashMap<(Option<String>, String, String), DraftColumn> = HashMap::new();
-            for op in &self.ops {
-                if let StructureOp::AlterColumn { schema, table, column } = op {
-                    let key = (schema.clone(), table.clone(), column.name.clone());
-                    if !latest.contains_key(&key) {
-                        order.push(key.clone());
-                    }
-                    latest.insert(key, column.clone());
-                }
-            }
-            for key in order {
-                if let Some(col) = latest.get(&key) {
-                    match build_alter_column(driver_id, key.0.as_deref(), &key.1, col) {
-                        // MySQL emits exactly one MODIFY COLUMN; the
-                        // Vec is always length 1. Postgres returns
-                        // up to three statements when type +
-                        // nullable + default all changed in the same
-                        // op; flatten them.
-                        Ok(stmts) => out.extend(stmts),
-                        // NoChange means the post-edit state matches
-                        // the original — no statements to emit. Real
-                        // errors still propagate.
-                        Err(BuildDdlError::NoChange) => {}
-                        Err(e) => return Err(e),
-                    }
-                }
-            }
-        } else {
-            for op in &self.ops {
-                if let StructureOp::AlterColumn { schema, table, column } = op {
-                    match build_alter_column(driver_id, schema.as_deref(), table, column) {
-                        Ok(stmts) => out.extend(stmts),
-                        Err(BuildDdlError::NoChange) => {}
-                        Err(e) => return Err(e),
-                    }
-                }
-            }
-        }
-
-        // Phase 7: add columns
-        for op in &self.ops {
-            if let StructureOp::AddColumn { schema, table, column } = op {
-                out.push(build_add_column(driver_id, schema.as_deref(), table, column)?);
-            }
-        }
-
-        // Phase 8: reorder columns (MySQL only)
-        for op in &self.ops {
-            if let StructureOp::ReorderColumn {
-                schema,
-                table,
-                column,
-                after,
-            } = op
-            {
-                out.push(build_reorder_column(
-                    driver_id,
-                    schema.as_deref(),
-                    table,
-                    column,
-                    after.as_deref(),
-                )?);
-            }
-        }
-
-        // Phase 9: add indexes
-        for op in &self.ops {
-            if let StructureOp::AddIndex { schema, table, index } = op {
-                out.push(build_create_index(driver_id, schema.as_deref(), table, index)?);
-            }
-        }
-
-        // Phase 10: add FKs
-        for op in &self.ops {
-            if let StructureOp::AddForeignKey { schema, table, fk } = op {
-                out.push(build_add_foreign_key(driver_id, schema.as_deref(), table, fk)?);
-            }
-        }
-
-        Ok(out)
+        materialize_ops(&self.ops, driver_id)
     }
 }
 
-/// Per-tab tracker registry. Singleton via `thread_local!` since all
-/// UI work runs on the GTK main thread.
 #[derive(Debug, Default)]
 pub struct StructureTrackerRegistry {
     trackers: HashMap<Uuid, StructureChangeTracker>,
 }
 
 impl StructureTrackerRegistry {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn open_tab(&mut self, tab_id: Uuid) {
         self.trackers.entry(tab_id).or_default();
     }
@@ -450,57 +70,70 @@ impl StructureTrackerRegistry {
         self.trackers.remove(&tab_id);
     }
 
-    pub fn any_pending(&self) -> bool {
+    pub fn with_tab<F, R>(&mut self, tab_id: Uuid, f: F) -> R
+    where
+        F: FnOnce(&mut StructureChangeTracker) -> R,
+    {
+        f(self.trackers.entry(tab_id).or_default())
+    }
+
+    pub fn with_tab_ref<F, R>(&self, tab_id: Uuid, f: F) -> Option<R>
+    where
+        F: FnOnce(&StructureChangeTracker) -> R,
+    {
+        self.trackers.get(&tab_id).map(f)
+    }
+
+    pub fn any_pending_globally(&self) -> bool {
         self.trackers.values().any(|t| t.has_pending())
     }
 
     pub fn pending_tabs(&self) -> Vec<Uuid> {
         self.trackers
             .iter()
-            .filter(|(_, t)| t.has_pending())
-            .map(|(id, _)| *id)
+            .filter_map(|(id, t)| if t.has_pending() { Some(*id) } else { None })
             .collect()
     }
 }
 
 thread_local! {
-    static REGISTRY: RefCell<StructureTrackerRegistry> = RefCell::new(StructureTrackerRegistry::new());
+    static REGISTRY: RefCell<StructureTrackerRegistry> = RefCell::new(StructureTrackerRegistry::default());
 }
 
-pub fn with_tab<F, R>(tab_id: Uuid, f: F) -> Option<R>
+pub fn open_tab(tab_id: Uuid) {
+    REGISTRY.with(|r| r.borrow_mut().open_tab(tab_id));
+}
+
+pub fn close_tab(tab_id: Uuid) {
+    REGISTRY.with(|r| r.borrow_mut().close_tab(tab_id));
+}
+
+pub fn with_tab<F, R>(tab_id: Uuid, f: F) -> R
 where
     F: FnOnce(&mut StructureChangeTracker) -> R,
 {
-    REGISTRY.with(|reg| reg.borrow_mut().trackers.get_mut(&tab_id).map(f))
+    REGISTRY.with(|r| r.borrow_mut().with_tab(tab_id, f))
 }
 
 pub fn with_tab_ref<F, R>(tab_id: Uuid, f: F) -> Option<R>
 where
     F: FnOnce(&StructureChangeTracker) -> R,
 {
-    REGISTRY.with(|reg| reg.borrow().trackers.get(&tab_id).map(f))
-}
-
-pub fn open_tab(tab_id: Uuid) {
-    REGISTRY.with(|reg| reg.borrow_mut().open_tab(tab_id));
-}
-
-pub fn close_tab(tab_id: Uuid) {
-    REGISTRY.with(|reg| reg.borrow_mut().close_tab(tab_id));
+    REGISTRY.with(|r| r.borrow().with_tab_ref(tab_id, f))
 }
 
 pub fn any_pending_globally() -> bool {
-    REGISTRY.with(|reg| reg.borrow().any_pending())
+    REGISTRY.with(|r| r.borrow().any_pending_globally())
 }
 
 pub fn pending_tabs() -> Vec<Uuid> {
-    REGISTRY.with(|reg| reg.borrow().pending_tabs())
+    REGISTRY.with(|r| r.borrow().pending_tabs())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tablepro_core::ColumnInfo;
+    use tablepro_core::sql_ddl::DraftColumn;
 
     fn dc(name: &str, ty: &str) -> DraftColumn {
         DraftColumn {
@@ -514,292 +147,56 @@ mod tests {
         }
     }
 
-    fn dc_with_original(name: &str, ty: &str) -> DraftColumn {
-        let info = ColumnInfo {
-            name: name.into(),
-            data_type: ty.into(),
-            nullable: true,
-            primary_key: false,
-            is_auto_increment: false,
-            default_value: None,
-            is_generated: false,
-        };
-        DraftColumn::from_info(info)
+    #[test]
+    fn empty_tracker_has_no_pending() {
+        let t = StructureChangeTracker::default();
+        assert!(!t.has_pending());
+        assert_eq!(t.ops().len(), 0);
     }
 
     #[test]
-    fn empty_tracker_pending_count_zero() {
-        let t = StructureChangeTracker::new();
-        assert_eq!(t.pending_count(), 0);
+    fn set_ops_replaces_cache() {
+        let mut t = StructureChangeTracker::default();
+        t.set_ops(vec![StructureOp::AddColumn {
+            schema: None,
+            table: "t".into(),
+            column: dc("a", "int"),
+        }]);
+        assert!(t.has_pending());
+        assert_eq!(t.ops().len(), 1);
+        t.set_ops(vec![]);
         assert!(!t.has_pending());
     }
 
     #[test]
-    fn push_and_undo_round_trip() {
-        let mut t = StructureChangeTracker::new();
-        let col = dc("a", "int");
-        let op = StructureOp::AddColumn {
+    fn materialize_emits_sql() {
+        let mut t = StructureChangeTracker::default();
+        t.set_ops(vec![StructureOp::AddColumn {
             schema: None,
             table: "t".into(),
-            column: col.clone(),
-        };
-        let inverse = StructureOp::DropColumn {
-            schema: None,
-            table: "t".into(),
-            column_name: "a".into(),
-        };
-        t.push(op, inverse);
-        assert_eq!(t.pending_count(), 1);
-        assert!(t.can_undo());
-        let popped = t.undo().unwrap();
-        assert!(matches!(popped, StructureOp::DropColumn { .. }));
-        assert_eq!(t.pending_count(), 0);
-        assert!(t.can_redo());
+            column: dc("a", "int"),
+        }]);
+        let sql = t.materialize("postgres").unwrap();
+        assert_eq!(sql.len(), 1);
+        assert!(sql[0].contains("ALTER TABLE"));
     }
 
     #[test]
-    fn clear_drops_all_state() {
-        let mut t = StructureChangeTracker::new();
-        t.push(
-            StructureOp::AddColumn {
+    fn registry_isolates_per_tab() {
+        let mut r = StructureTrackerRegistry::default();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        r.with_tab(a, |t| {
+            t.set_ops(vec![StructureOp::AddColumn {
                 schema: None,
                 table: "t".into(),
                 column: dc("a", "int"),
-            },
-            StructureOp::DropColumn {
-                schema: None,
-                table: "t".into(),
-                column_name: "a".into(),
-            },
-        );
-        t.clear();
-        assert_eq!(t.pending_count(), 0);
-        assert!(!t.can_undo());
-        assert!(!t.can_redo());
-    }
-
-    #[test]
-    fn materialize_create_table_new_mode() {
-        let mut t = StructureChangeTracker::new();
-        t.push(
-            StructureOp::CreateTable {
-                schema: None,
-                table: "users".into(),
-                columns: vec![{
-                    let mut c = dc("id", "integer");
-                    c.primary_key = true;
-                    c.auto_increment = true;
-                    c.nullable = false;
-                    c
-                }],
-                indexes: vec![],
-                fks: vec![],
-            },
-            // Inverse for a CreateTable is "drop the table" — but
-            // CreateTable is a New-mode-only op, undo isn't supported.
-            // Push a stub inverse for symmetry.
-            StructureOp::CreateTable {
-                schema: None,
-                table: "users".into(),
-                columns: vec![],
-                indexes: vec![],
-                fks: vec![],
-            },
-        );
-        let stmts = t.materialize("postgres").unwrap();
-        assert_eq!(stmts.len(), 1);
-        assert!(stmts[0].contains("CREATE TABLE \"users\""));
-        assert!(stmts[0].contains("SERIAL PRIMARY KEY"));
-    }
-
-    #[test]
-    fn materialize_orders_drop_fk_before_drop_index_before_drop_column() {
-        let mut t = StructureChangeTracker::new();
-        // Push in user-natural order: add a column, drop a FK, drop an
-        // index, drop a column. Materialize must reorder.
-        t.push(
-            StructureOp::AddColumn {
-                schema: None,
-                table: "t".into(),
-                column: dc("new_col", "int"),
-            },
-            StructureOp::DropColumn {
-                schema: None,
-                table: "t".into(),
-                column_name: "new_col".into(),
-            },
-        );
-        t.push(
-            StructureOp::DropForeignKey {
-                schema: None,
-                table: "t".into(),
-                fk_name: "fk_1".into(),
-            },
-            StructureOp::AddForeignKey {
-                schema: None,
-                table: "t".into(),
-                fk: ForeignKeyInfo {
-                    name: "fk_1".into(),
-                    columns: vec!["a".into()],
-                    ref_schema: None,
-                    ref_table: "u".into(),
-                    ref_columns: vec!["id".into()],
-                    on_delete: None,
-                    on_update: None,
-                },
-            },
-        );
-        t.push(
-            StructureOp::DropIndex {
-                schema: None,
-                table: "t".into(),
-                index_name: "i_1".into(),
-            },
-            StructureOp::AddIndex {
-                schema: None,
-                table: "t".into(),
-                index: IndexInfo {
-                    name: "i_1".into(),
-                    columns: vec!["a".into()],
-                    unique: false,
-                    primary: false,
-                },
-            },
-        );
-        t.push(
-            StructureOp::DropColumn {
-                schema: None,
-                table: "t".into(),
-                column_name: "old_col".into(),
-            },
-            StructureOp::AddColumn {
-                schema: None,
-                table: "t".into(),
-                column: dc("old_col", "int"),
-            },
-        );
-        let stmts = t.materialize("postgres").unwrap();
-        // Order: drop-fk (1), drop-index (2), drop-column (3), add-column (4).
-        assert_eq!(stmts.len(), 4);
-        assert!(stmts[0].contains("DROP CONSTRAINT \"fk_1\""));
-        assert!(stmts[1].contains("DROP INDEX") && stmts[1].contains("i_1"));
-        assert!(stmts[2].contains("DROP COLUMN \"old_col\""));
-        assert!(stmts[3].contains("ADD COLUMN \"new_col\""));
-    }
-
-    #[test]
-    fn materialize_mysql_groups_alter_column_into_one_modify() {
-        let mut t = StructureChangeTracker::new();
-        let mut col = dc_with_original("status", "VARCHAR(64)");
-        col.nullable = false;
-        t.push(
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "t".into(),
-                column: col.clone(),
-            },
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "t".into(),
-                column: dc_with_original("status", "VARCHAR(64)"),
-            },
-        );
-        // Second alter on same column with a default.
-        col.default_value = Some("'open'".into());
-        t.push(
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "t".into(),
-                column: col.clone(),
-            },
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "t".into(),
-                column: dc_with_original("status", "VARCHAR(64)"),
-            },
-        );
-        let stmts = t.materialize("mysql").unwrap();
-        // Both alters collapse into ONE MODIFY COLUMN reflecting the
-        // final post-edit state.
-        assert_eq!(stmts.len(), 1);
-        assert!(stmts[0].contains("MODIFY COLUMN `status`"));
-        assert!(stmts[0].contains("NOT NULL"));
-        assert!(stmts[0].contains("DEFAULT 'open'"));
-    }
-
-    #[test]
-    fn materialize_postgres_emits_per_attribute_alter() {
-        let mut t = StructureChangeTracker::new();
-        // Two separate alters → two separate Postgres statements.
-        let mut col_a = dc_with_original("x", "text");
-        col_a.nullable = false;
-        let mut col_b = dc_with_original("x", "text");
-        col_b.default_value = Some("'foo'".into());
-        t.push(
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "t".into(),
-                column: col_a,
-            },
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "t".into(),
-                column: dc_with_original("x", "text"),
-            },
-        );
-        t.push(
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "t".into(),
-                column: col_b,
-            },
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "t".into(),
-                column: dc_with_original("x", "text"),
-            },
-        );
-        let stmts = t.materialize("postgres").unwrap();
-        assert_eq!(stmts.len(), 2);
-        assert!(stmts.iter().any(|s| s.contains("SET NOT NULL")));
-        assert!(stmts.iter().any(|s| s.contains("SET DEFAULT 'foo'")));
-    }
-
-    #[test]
-    fn registry_isolates_tabs() {
-        let mut reg = StructureTrackerRegistry::new();
-        let a = Uuid::new_v4();
-        let b = Uuid::new_v4();
-        reg.open_tab(a);
-        reg.open_tab(b);
-        reg.trackers.get_mut(&a).unwrap().push(
-            StructureOp::AddColumn {
-                schema: None,
-                table: "t".into(),
-                column: dc("x", "int"),
-            },
-            StructureOp::DropColumn {
-                schema: None,
-                table: "t".into(),
-                column_name: "x".into(),
-            },
-        );
-        assert!(reg.any_pending());
-        let pending: Vec<_> = reg.pending_tabs();
-        assert_eq!(pending.len(), 1);
-        assert!(pending.contains(&a));
-    }
-
-    #[test]
-    fn subscribe_increments_subscriber_count() {
-        // The subscribe contract (events emit through the channel) is
-        // exercised end-to-end by the BrowseTab tests in change_tracker;
-        // this tracker uses the identical pattern. Test only the sync
-        // observable: subscribers vec grows on subscribe.
-        let (tx, _rx) = relm4::channel::<StructureTrackerEvent>();
-        let mut t = StructureChangeTracker::new();
-        assert_eq!(t.subscribers.len(), 0);
-        t.subscribe(tx);
-        assert_eq!(t.subscribers.len(), 1);
+            }])
+        });
+        assert!(r.with_tab_ref(a, |t| t.has_pending()).unwrap());
+        assert!(!r.with_tab_ref(b, |t| t.has_pending()).unwrap_or(false));
+        assert_eq!(r.pending_tabs(), vec![a]);
+        r.close_tab(a);
+        assert!(!r.any_pending_globally());
     }
 }

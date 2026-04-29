@@ -46,6 +46,14 @@ impl App {
             .tooltip_text(crate::tr!("View open tabs"))
             .valign(gtk::Align::Center)
             .build();
+        // Hide the overview button until there are at least 2 tabs —
+        // its grid is meaningless when there's only one page open.
+        // Bound via property-binding so it tracks `n-pages` live.
+        overview_button.set_visible(tab_view.n_pages() > 1);
+        let overview_button_for_pages = overview_button.clone();
+        tab_view.connect_n_pages_notify(move |view| {
+            overview_button_for_pages.set_visible(view.n_pages() > 1);
+        });
         tab_bar.set_start_action_widget(Some(&overview_button));
 
         // "+" button in the tab bar opens a new editor (query) tab —
@@ -53,7 +61,7 @@ impl App {
         // Browse tabs come from sidebar clicks.
         let new_query_button = gtk::Button::builder()
             .icon_name("tab-new-symbolic")
-            .tooltip_text(crate::tr!("New query"))
+            .tooltip_text(crate::tr!("New query (Ctrl+E)"))
             .valign(gtk::Align::Center)
             .build();
         new_query_button.add_css_class("flat");
@@ -171,7 +179,6 @@ impl App {
             // via on_editor_tab_query_changed.
             write_workspace_tab_id(&page, tab_id);
             let slot = EditorTabSlot {
-                id: tab_id,
                 controller: editor,
                 page: page.clone(),
                 query: String::new(),
@@ -215,50 +222,13 @@ impl App {
             self.workspace_outer_stack.set_visible_child_name("empty");
             return;
         }
+        // Legacy Browse / Structure records are migrated to Table by
+        // `clamp_connection`, so the load path only has to handle
+        // Editor + Table. Unknown variants are stripped by clamp too.
         for record in &saved.tabs {
             match record {
-                // Legacy Browse records (pre-M-1): rehydrate as a
-                // Table tab in Data mode. The unified slot owns both
-                // controllers, so the user gets the AdwViewSwitcher
-                // even on a workspace_state.json from an older build.
-                WorkspaceTabRecord::Browse {
-                    schema,
-                    table,
-                    offset,
-                    page_size,
-                    sort_col,
-                    sort_asc,
-                } => {
-                    self.append_table_tab(
-                        schema.clone(),
-                        table.clone(),
-                        super::TableMode::Data,
-                        *offset,
-                        *page_size,
-                        match (sort_col, sort_asc) {
-                            (Some(c), Some(a)) => Some((*c, *a)),
-                            _ => None,
-                        },
-                        sender.clone(),
-                    );
-                }
                 WorkspaceTabRecord::Editor { query } => {
                     self.append_editor_tab(Some(query.clone()), sender.clone());
-                }
-                // Legacy Structure(Edit) records (pre-M-1): rehydrate
-                // as a Table tab opened directly to Structure mode.
-                // New-mode Structure tabs never persist (drafts), so
-                // an Edit-mode rehydrate is the only case here.
-                WorkspaceTabRecord::Structure { schema, table } => {
-                    self.append_table_tab(
-                        schema.clone(),
-                        table.clone(),
-                        super::TableMode::Structure,
-                        0,
-                        self.default_page_size,
-                        None,
-                        sender.clone(),
-                    );
                 }
                 WorkspaceTabRecord::Table {
                     schema,
@@ -286,8 +256,10 @@ impl App {
                         sender.clone(),
                     );
                 }
-                WorkspaceTabRecord::Unknown => {
-                    // Forward-compat: silently skip unknown tab kinds.
+                WorkspaceTabRecord::Browse { .. }
+                | WorkspaceTabRecord::Structure { .. }
+                | WorkspaceTabRecord::Unknown => {
+                    // Unreachable post-clamp.
                 }
             }
         }
@@ -387,7 +359,7 @@ impl App {
         let connection_id = database_service::instance().active_id();
         let read_only = self.read_only;
 
-        // Browse-side controller. Same wiring as `append_browse_tab_inner`.
+        // Browse-side controller for the Data view of this Table tab.
         let browse_init = BrowseTabInit {
             tab_id,
             schema: schema.clone(),
@@ -454,23 +426,20 @@ impl App {
                 }
             });
 
-        // Wrapper widget: vertical Box of [pill ViewSwitcher | ViewStack].
-        // The two controllers' ToolbarView roots are inserted as
-        // ViewStack children; AdwViewSwitcher binds to the same stack
-        // and surfaces a centred pill toggle. Stack pages get
-        // user-facing titles + symbolic icons so the switcher pill
-        // renders correctly even on first paint.
+        // Wrapper: AdwToolbarView whose top-bar is a flat AdwHeaderBar
+        // hosting the Data/Structure ViewSwitcher in its title slot.
+        // Matches the GNOME Calendar / Files pattern: per-content
+        // header with the view switcher centred in the title widget.
+        // The `flat` style class drops the headerbar's separator so
+        // it reads as a content header, not a window header.
         let view_stack = adw::ViewStack::new();
-        let data_page =
-            view_stack.add_titled_with_icon(browse.widget(), Some("data"), &crate::tr!("Data"), "view-list-symbolic");
-        let _ = data_page;
-        let structure_page = view_stack.add_titled_with_icon(
+        view_stack.add_titled_with_icon(browse.widget(), Some("data"), &crate::tr!("Data"), "view-list-symbolic");
+        view_stack.add_titled_with_icon(
             structure.widget(),
             Some("structure"),
             &crate::tr!("Structure"),
             "view-grid-symbolic",
         );
-        let _ = structure_page;
         view_stack.set_visible_child_name(match initial_mode {
             super::TableMode::Data => "data",
             super::TableMode::Structure => "structure",
@@ -479,20 +448,16 @@ impl App {
             .stack(&view_stack)
             .policy(adw::ViewSwitcherPolicy::Wide)
             .build();
-        let switcher_holder = gtk::CenterBox::builder()
-            .margin_top(6)
-            .margin_bottom(6)
-            .margin_start(12)
-            .margin_end(12)
+        let switcher_header = adw::HeaderBar::builder()
+            .show_start_title_buttons(false)
+            .show_end_title_buttons(false)
+            .title_widget(&switcher)
             .build();
-        switcher_holder.set_center_widget(Some(&switcher));
+        switcher_header.add_css_class("flat");
 
-        let wrapper = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .vexpand(true)
-            .build();
-        wrapper.append(&switcher_holder);
-        wrapper.append(&view_stack);
+        let wrapper = adw::ToolbarView::builder().build();
+        wrapper.add_top_bar(&switcher_header);
+        wrapper.set_content(Some(&view_stack));
 
         // Mode-change observer: keep slot.mode in sync with the stack
         // visible child so persistence reflects the user's last view.
@@ -572,7 +537,6 @@ impl App {
         write_workspace_tab_id(&page, tab_id);
 
         let slot = EditorTabSlot {
-            id: tab_id,
             controller: editor,
             page: page.clone(),
             query,
@@ -663,16 +627,20 @@ impl App {
                     }
                     "save" => {
                         // Mark the tab so SaveCompletedForTab will close
-                        // it once the transaction commits. SaveFailed
-                        // removes it and aborts the close.
-                        close_after_save.borrow_mut().insert(id);
+                        // it once the transaction commits. The counter
+                        // increments once per dispatched save: a Table
+                        // tab dirty on both sides bumps to 2, and the
+                        // close fires only after BOTH saves drain it.
+                        // SaveFailed removes the entry entirely and
+                        // aborts the close.
+                        let pending_saves: u32 = u32::from(data_dirty) + u32::from(struct_dirty);
+                        if pending_saves > 0 {
+                            *close_after_save.borrow_mut().entry(id).or_insert(0) += pending_saves;
+                        }
                         // Revert AdwTabView's "closing" state for now
                         // (the user might still cancel via SaveFailed).
                         tab_view_for_resp.close_page_finish(&page_for_resp, false);
                         // Dispatch the right save path per dirty side.
-                        // A Table tab with both sides dirty fires both;
-                        // the close completes only after the last
-                        // SaveCompleted drains close_after_save.
                         if data_dirty {
                             sender_for_resp.input(AppMsg::SaveActiveBrowseTabById(id));
                         }

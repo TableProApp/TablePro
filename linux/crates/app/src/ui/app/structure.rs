@@ -187,6 +187,16 @@ impl App {
     /// close-with-pending dialog's "Save" branch — the user might be
     /// closing a background tab via its X button.
     pub(super) fn save_structure_tab_by_id(&mut self, tab_id: Uuid, sender: ComponentSender<Self>) {
+        // If a save is already in flight for this tab, do nothing —
+        // calling `on_execute_structure_transaction` would silently
+        // early-return on the duplicate insert, never firing a
+        // completion. The in-flight save's `on_structure_save_completed`
+        // (or _failed) drains `close_after_save` for `tab_id`, so the
+        // close-with-pending flow still resolves through that path.
+        if self.structure_saves_in_flight.borrow().contains(&tab_id) {
+            tracing::debug!(?tab_id, "save_structure_tab_by_id: save already in flight; deferring to first dispatch");
+            return;
+        }
         let driver_id = self.driver_id().to_string();
         let result = structure_tracker::with_tab_ref(tab_id, |t| t.materialize(&driver_id));
         match result {
@@ -269,15 +279,15 @@ impl App {
             sender.input(AppMsg::StructureSaveFailed(tab_id, crate::tr!("No active connection.")));
             return;
         };
-        let (schema, prev_table, mode) = {
+        let mode = {
             let tabs = self.workspace_tabs.borrow();
             let Some(slot) = tabs.get(&tab_id) else {
                 self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
                 return;
             };
             match slot {
-                WorkspaceTab::Structure(s) => (s.schema.clone(), s.table.clone(), s.mode),
-                WorkspaceTab::Table(s) => (s.schema.clone(), s.table.clone(), s.structure_mode),
+                WorkspaceTab::Structure(s) => s.mode,
+                WorkspaceTab::Table(s) => s.structure_mode,
                 _ => {
                     self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
                     return;
@@ -290,7 +300,7 @@ impl App {
         let new_table_name = if matches!(mode, StructureMode::New) {
             structure_tracker::with_tab_ref(tab_id, |t| {
                 t.ops().iter().find_map(|op| {
-                    if let crate::services::structure_tracker::StructureOp::CreateTable { table, .. } = op {
+                    if let tablepro_core::sql_ddl::StructureOp::CreateTable { table, .. } = op {
                         Some(table.clone())
                     } else {
                         None
@@ -342,10 +352,9 @@ impl App {
                 })
                 .drop_on_shutdown()
         });
-        let _ = (schema, prev_table);
     }
 
-    /// Save resolved successfully. Two cases post-M-1 cleanup:
+    /// Save resolved successfully. Two cases:
     ///
     /// 1. **New-Table draft (`Structure` slot)**: CreateTable
     ///    succeeded so the table now exists. Close the draft and
@@ -373,9 +382,8 @@ impl App {
             UpdateInPlace(Option<String>, String),
             Skip,
         }
-        // Post-M-1 cleanup: `WorkspaceTab::Structure` only exists for
-        // New-Table drafts. Edit-mode DDL flows through Table tabs
-        // exclusively. Match accordingly.
+        // `WorkspaceTab::Structure` only exists for New-Table drafts;
+        // Edit-mode DDL flows through Table tabs exclusively.
         let kind = {
             let tabs = self.workspace_tabs.borrow();
             match tabs.get(&tab_id) {
@@ -388,6 +396,7 @@ impl App {
             }
         };
 
+        let kind_promoted = matches!(kind, SaveKind::PromoteNewToTable(..));
         match kind {
             SaveKind::PromoteNewToTable(schema, name) => {
                 if let Some(tab_view) = self.workspace_tab_view.clone() {
@@ -425,6 +434,25 @@ impl App {
                 });
             }
             SaveKind::Skip => {}
+        }
+
+        // Mirror the browse `SaveCompletedForTab` cleanup. Without this,
+        // a close-with-pending dialog that picked "Save" leaves the tab
+        // open after a successful structure save (the dialog inserted
+        // tab_id into close_after_save, expecting completion to drain
+        // it). For PromoteNewToTable the original Structure tab was
+        // already closed by `finish_close_workspace_tab`; the
+        // `WorkspaceTabClosed` here is therefore dispatched only for
+        // UpdateInPlace and Skip paths where the tab is still alive.
+        // The window-close-after-save check runs unconditionally since
+        // the counter membership was consumed either way.
+        let drained = super::dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab_id);
+        if drained && !kind_promoted {
+            sender.input(AppMsg::WorkspaceTabClosed(tab_id));
+        }
+        if self.close_window_after_save.get() && self.close_after_save.borrow().is_empty() {
+            self.close_window_after_save.set(false);
+            self.window.close();
         }
     }
 
@@ -578,15 +606,9 @@ impl App {
                 })
                 .drop_on_shutdown()
         });
-        // Refetching individual Browse tabs is wired in the next
-        // milestone alongside the sidebar refresh path; the
-        // TablesReloaded handler below covers the sidebar side.
     }
 
     pub(super) fn on_tables_reloaded(&mut self, tables: Vec<tablepro_core::TableInfo>) {
-        // Rebuild the sidebar factory the same way `Connected` does.
-        // The connection.rs helper exposes `repopulate_sidebar` for
-        // exactly this use case.
         self.repopulate_sidebar(&tables);
     }
 
@@ -624,31 +646,4 @@ impl App {
         self.refresh_window_title();
     }
 
-    pub(super) fn undo_active_structure_tab(&self) {
-        if let Some(id) = self.selected_structure_tab_id() {
-            structure_tracker::with_tab(id, |t| t.undo());
-        }
-    }
-
-    pub(super) fn redo_active_structure_tab(&self) {
-        if let Some(id) = self.selected_structure_tab_id() {
-            structure_tracker::with_tab(id, |t| t.redo());
-        }
-    }
-
-    pub(super) fn selected_structure_tab_id(&self) -> Option<Uuid> {
-        let tab_view = self.workspace_tab_view.as_ref()?;
-        let page = tab_view.selected_page()?;
-        let id = crate::ui::app::read_workspace_tab_id(&page)?;
-        let tabs = self.workspace_tabs.borrow();
-        let slot = tabs.get(&id)?;
-        // For Table tabs, only count as "structure tab" when the
-        // user is actually viewing the Structure axis — Ctrl+Z on a
-        // Data-mode tab should hit the data-side undo, not DDL undo.
-        match slot {
-            WorkspaceTab::Structure(_) => Some(id),
-            WorkspaceTab::Table(s) if s.mode == super::TableMode::Structure => Some(id),
-            _ => None,
-        }
-    }
 }
