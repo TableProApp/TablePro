@@ -142,6 +142,7 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableRowsProvider = tableRowsProvider
         context.coordinator.tableRowsMutator = tableRowsMutator
         context.coordinator.sortedIDs = sortedIDs
+        context.coordinator.updateCache()
         context.coordinator.syncDisplayFormats(displayFormats)
         context.coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
@@ -227,6 +228,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.tableRowsProvider = tableRowsProvider
         coordinator.tableRowsMutator = tableRowsMutator
         coordinator.sortedIDs = sortedIDs
+        coordinator.updateCache()
         coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)

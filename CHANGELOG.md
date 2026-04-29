@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Click a focused cell to start editing without a second click
 - Data grid focus ring follows the system accent color and contrast settings
 - Data grid cells expose accessibility row and column index ranges to VoiceOver on all dataset sizes
+- Data grid column headers announce sort direction and multi-sort priority to VoiceOver
 - Multi-cell paste: paste TSV data from the clipboard into the grid starting from the focused cell, grouped as a single undo action
 - Shift+Tab navigates to the previous cell in the data grid
 - Copy rows writes TSV, HTML table, and plain text to the clipboard for richer paste in spreadsheet apps
@@ -54,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Date picker popover font follows the data grid font setting
 - Data grid undo/redo uses the window's UndoManager instead of a private instance, unifying Cmd+Z across editor and grid
 - Right-click during cell editing shows the native text context menu instead of the row menu
+- Multiline cell overlay editor discards the in-progress edit when a column resize fires, instead of silently committing partial text
+- Data grid cell focus ring redraws when the user toggles Light or Dark mode mid-session, picking up the system's appearance-aware focus indicator color
+- Data grid keeps sortedIDs and cachedRowCount paired by calling updateCache() immediately after the SwiftUI bridge writes new sortedIDs to the coordinator, removing a window where the cached count and the sort permutation could disagree
+- Display formats memoized per tab on MainContentCoordinator keyed by schema version, smart-detection setting, and format-overrides version, so ValueDisplayDetector.detect runs once per result schema instead of on every SwiftUI body evaluation
 
 ### Fixed
 

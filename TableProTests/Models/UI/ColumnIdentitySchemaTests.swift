@@ -132,4 +132,70 @@ struct ColumnIdentitySchemaTests {
         #expect(before.dataIndex(from: columnId) == 2)
         #expect(after.dataIndex(from: columnId) == 0)
     }
+
+    @Test("Duplicate names ignore the duplicate column name when looking up by raw name")
+    func positionalSchemaIgnoresDuplicateRawName() {
+        let schema = ColumnIdentitySchema(columns: ["a", "b", "a"])
+        #expect(!schema.isNameBased)
+
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("a")) == nil)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("b")) == nil)
+    }
+
+    @Test("Positional schema only resolves col_N identifiers within range")
+    func positionalSchemaResolvesOnlyValidPositions() {
+        let schema = ColumnIdentitySchema(columns: ["a", "b", "a"])
+
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_0")) == 0)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_1")) == 1)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_2")) == 2)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_3")) == nil)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_-1")) == nil)
+    }
+
+    @Test("Name-based schema does not resolve positional identifiers like col_0")
+    func nameBasedSchemaDoesNotResolvePositional() {
+        let schema = ColumnIdentitySchema(columns: ["id", "name", "email"])
+
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_0")) == nil)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_1")) == nil)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_2")) == nil)
+    }
+
+    @Test("Duplicate-name positional schema disagrees with the layout key for that name")
+    func positionalSchemaIdentifiersDoNotMatchColumnNames() {
+        let schema = ColumnIdentitySchema(columns: ["id", "name", "name"])
+
+        #expect(!schema.isNameBased)
+        #expect(schema.identifier(for: 0)?.rawValue == "col_0")
+        #expect(schema.identifier(for: 1)?.rawValue == "col_1")
+        #expect(schema.identifier(for: 2)?.rawValue == "col_2")
+    }
+
+    @Test("Single column with duplicate-trigger reserved name produces positional id")
+    func singleReservedNameTriggersPositional() {
+        let schema = ColumnIdentitySchema(columns: ["__rowNumber__"])
+
+        #expect(!schema.isNameBased)
+        #expect(schema.identifier(for: 0)?.rawValue == "col_0")
+        #expect(schema.dataIndex(from: ColumnIdentitySchema.rowNumberIdentifier) == nil)
+    }
+
+    @Test("Schema with three duplicates uses positional fallback consistently")
+    func tripleDuplicateUsesPositionalFallback() {
+        let schema = ColumnIdentitySchema(columns: ["x", "x", "x"])
+
+        #expect(!schema.isNameBased)
+        for index in 0..<3 {
+            #expect(schema.identifier(for: index)?.rawValue == "col_\(index)")
+        }
+    }
+
+    @Test("Empty array column input is name-based and resolves nothing")
+    func emptyColumnsInputIsNameBased() {
+        let schema = ColumnIdentitySchema(columns: [])
+        #expect(schema.isNameBased)
+        #expect(schema.identifiers.isEmpty)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("anything")) == nil)
+    }
 }

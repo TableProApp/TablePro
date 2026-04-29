@@ -13,7 +13,7 @@ final class DataGridCellView: NSTableCellView {
     var isFocusedCell: Bool = false {
         didSet {
             guard oldValue != isFocusedCell else { return }
-            updateFocusBorder()
+            updateFocusRing()
         }
     }
 
@@ -46,18 +46,35 @@ final class DataGridCellView: NSTableCellView {
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
             backgroundView.isHidden = (backgroundStyle == .emphasized) || (changeBackgroundColor == nil)
-            if isFocusedCell { updateFocusBorder() }
+            if isFocusedCell { updateFocusRing() }
         }
     }
 
-    private func updateFocusBorder() {
+    override var focusRingMaskBounds: NSRect { bounds }
+
+    override func drawFocusRingMask() {
+        NSBezierPath(rect: bounds).fill()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard isFocusedCell, backgroundStyle != .emphasized else { return }
+        NSGraphicsContext.saveGraphicsState()
+        NSFocusRingPlacement.only.set()
+        drawFocusRingMask()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
         if isFocusedCell {
-            layer?.borderWidth = 2
-            layer?.borderColor = backgroundStyle == .emphasized
-                ? NSColor.white.withAlphaComponent(0.8).cgColor
-                : NSColor.keyboardFocusIndicatorColor.cgColor
-        } else {
-            layer?.borderWidth = 0
+            needsDisplay = true
         }
+    }
+
+    private func updateFocusRing() {
+        focusRingType = isFocusedCell ? .exterior : .none
+        noteFocusRingMaskChanged()
+        needsDisplay = true
     }
 }

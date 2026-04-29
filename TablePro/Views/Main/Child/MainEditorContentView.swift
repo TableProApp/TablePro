@@ -536,16 +536,25 @@ struct MainEditorContentView: View {
     }
 
     private func displayFormats(for tab: QueryTab) -> [ValueDisplayFormat?] {
+        let settings = AppSettingsManager.shared.dataGrid
+        let service = ValueDisplayFormatService.shared
+        let smartDetectionEnabled = settings.enableSmartValueDetection
+        let overridesVersion = service.overridesVersion
+
+        if let cached = coordinator.displayFormatsCache[tab.id],
+           cached.schemaVersion == tab.schemaVersion,
+           cached.smartDetectionEnabled == smartDetectionEnabled,
+           cached.overridesVersion == overridesVersion {
+            return cached.formats
+        }
+
         let tableRows = coordinator.tableRowsStore.existingTableRows(for: tab.id)
         let columns = tableRows?.columns ?? []
         let columnTypes = tableRows?.columnTypes ?? []
         guard !columns.isEmpty else { return [] }
 
-        let settings = AppSettingsManager.shared.dataGrid
-        let service = ValueDisplayFormatService.shared
-
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
-        if settings.enableSmartValueDetection {
+        if smartDetectionEnabled {
             let sampleRows: [[String?]]? = {
                 let rows = tableRows?.rows.prefix(10).map(\.values) ?? []
                 return rows.isEmpty ? nil : Array(rows)
@@ -582,7 +591,14 @@ struct MainEditorContentView: View {
             }
         }
 
-        return merged.contains(where: { $0 != nil }) ? merged : []
+        let result = merged.contains(where: { $0 != nil }) ? merged : []
+        coordinator.displayFormatsCache[tab.id] = DisplayFormatsCacheEntry(
+            schemaVersion: tab.schemaVersion,
+            smartDetectionEnabled: smartDetectionEnabled,
+            overridesVersion: overridesVersion,
+            formats: result
+        )
+        return result
     }
 
     /// Returns the display order as a permutation of `RowID`, or nil when no sort applies.

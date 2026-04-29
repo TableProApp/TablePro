@@ -119,7 +119,6 @@ final class SortableHeaderView: NSTableHeaderView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        window?.acceptsMouseMovedEvents = true
         window?.invalidateCursorRects(for: self)
     }
 

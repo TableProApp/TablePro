@@ -73,6 +73,23 @@ final class SortableHeaderCell: NSTableHeaderCell {
         priority: Int
     ) {}
 
+    override func accessibilityLabel() -> String? {
+        let baseLabel = super.accessibilityLabel() ?? stringValue
+        guard let direction = sortDirection else { return baseLabel }
+        let directionSuffix: String
+        switch direction {
+        case .ascending:
+            directionSuffix = String(localized: "Sorted ascending")
+        case .descending:
+            directionSuffix = String(localized: "Sorted descending")
+        }
+        guard let sortPriority, sortPriority >= 2 else {
+            return "\(baseLabel), \(directionSuffix)"
+        }
+        let prioritySuffix = String(format: String(localized: "Priority %d"), sortPriority)
+        return "\(baseLabel), \(directionSuffix), \(prioritySuffix)"
+    }
+
     private func priorityNumberString() -> String? {
         guard let sortPriority, sortPriority >= 2 else { return nil }
         return String(sortPriority)
