@@ -52,7 +52,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
             width: indicatorSize.width,
             height: indicatorSize.height
         )
-        Self.drawTintedIndicator(image: indicatorImage, in: indicatorRect)
+        Self.drawIndicator(image: indicatorImage, in: indicatorRect)
 
         if let priorityText {
             let textOriginX = indicatorOriginX - Self.indicatorSpacing - priorityWidth
@@ -79,15 +79,14 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     private static func indicatorImage(for direction: SortDirection) -> NSImage? {
-        switch direction {
-        case .ascending:
-            return NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
-        case .descending:
-            return NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
-        }
+        let symbolName = direction == .ascending ? "chevron.up" : "chevron.down"
+        let configuration = NSImage.SymbolConfiguration(pointSize: priorityFontSize, weight: .semibold)
+            .applying(.init(paletteColors: [.secondaryLabelColor]))
+        return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
     }
 
-    private static func drawTintedIndicator(image: NSImage?, in rect: NSRect) {
+    private static func drawIndicator(image: NSImage?, in rect: NSRect) {
         guard let image else { return }
         image.draw(
             in: rect,
