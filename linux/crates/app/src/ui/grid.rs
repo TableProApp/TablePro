@@ -115,6 +115,15 @@ pub fn build_column_view(
         .show_column_separators(true)
         .build();
 
+    // Right-click in the empty area below the last row → "Insert row"
+    // popover. Per-cell gestures claim their event sequence
+    // (set_state(Claimed)), so this only fires when the click missed
+    // every cell — the natural bubble-phase behaviour. Editable grids
+    // only; a read-only result grid has no insert path.
+    if let Some(s) = edit_sender.as_ref() {
+        attach_empty_space_menu(&column_view, s.clone());
+    }
+
     // For wide tables (~9+ columns) the default `expand: true` per
     // column shares the viewport fractionally and produces 20-30px
     // cells that can't show even short values. When a column has no
@@ -1361,6 +1370,36 @@ fn present_cell_popover(anchor: &gtk::Widget, menu: &gio::Menu, pointing_to: Opt
     }
     popover.connect_closed(|p| p.unparent());
     popover.popup();
+}
+
+/// Attach a "right-click on empty area below the last row → Insert
+/// row" context menu to the `ColumnView`. The per-cell gestures claim
+/// their event sequence, so the bubble-phase gesture here only fires
+/// when the click missed every cell.
+fn attach_empty_space_menu(column_view: &gtk::ColumnView, sender: relm4::Sender<GridMsg>) {
+    let menu_model = gio::Menu::new();
+    menu_model.append(Some(&crate::tr!("Insert row")), Some("grid.insert-row"));
+
+    let group = gio::SimpleActionGroup::new();
+    let insert_row = gio::ActionEntry::builder("insert-row")
+        .activate(move |_, _, _| {
+            sender.send(GridMsg::InsertRow).ok();
+        })
+        .build();
+    group.add_action_entries([insert_row]);
+    column_view.insert_action_group("grid", Some(&group));
+
+    let gesture = gtk::GestureClick::builder().button(3).build();
+    let column_view_for_gesture = column_view.clone();
+    gesture.connect_pressed(move |g, _, x, y| {
+        g.set_state(gtk::EventSequenceState::Claimed);
+        present_cell_popover(
+            column_view_for_gesture.upcast_ref(),
+            &menu_model,
+            Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)),
+        );
+    });
+    column_view.add_controller(gesture);
 }
 
 fn cell_text(widget: &gtk::Widget) -> String {
