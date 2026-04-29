@@ -85,79 +85,114 @@ enum HeaderSortCycle {
 final class SortableHeaderView: NSTableHeaderView {
     weak var coordinator: TableViewCoordinator?
 
-    private var indicatorViews: [String: NSImageView] = [:]
-    private static let ascendingImage = NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
-    private static let descendingImage = NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
+    private static let clickDragThreshold: CGFloat = 4
+    private static let resizeZoneWidth: CGFloat = 4
 
-    func updateSortIndicators(state: SortState, schema: ColumnIdentitySchema) {
-        let activeKeys: Set<String> = Set(state.columns.compactMap {
-            schema.identifier(for: $0.columnIndex)?.rawValue
-        })
+    private var pendingClickStartLocation: NSPoint?
+    private var dragOccurredDuringClick = false
+    private var mouseMovedTrackingArea: NSTrackingArea?
 
-        for (key, view) in indicatorViews where !activeKeys.contains(key) {
-            view.removeFromSuperview()
-            indicatorViews.removeValue(forKey: key)
-        }
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
 
-        for sortCol in state.columns {
-            guard let identifier = schema.identifier(for: sortCol.columnIndex) else { continue }
-            let view = indicatorViews[identifier.rawValue] ?? makeIndicatorView()
-            view.image = sortCol.direction == .ascending ? Self.ascendingImage : Self.descendingImage
-            view.setAccessibilityLabel(
-                sortCol.direction == .ascending
-                    ? String(localized: "Sort ascending")
-                    : String(localized: "Sort descending")
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let tableView = tableView else { return }
+        let zoneWidth = Self.resizeZoneWidth
+        for (index, column) in tableView.tableColumns.enumerated() {
+            guard column.resizingMask.contains(.userResizingMask) else { continue }
+            let columnRect = headerRect(ofColumn: index)
+            let cursorRect = NSRect(
+                x: columnRect.maxX - zoneWidth,
+                y: columnRect.minY,
+                width: zoneWidth * 2,
+                height: columnRect.height
             )
-            if view.superview == nil {
-                addSubview(view)
-            }
-            indicatorViews[identifier.rawValue] = view
+            addCursorRect(cursorRect, cursor: .resizeLeftRight)
         }
+    }
 
-        repositionIndicators()
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.acceptsMouseMovedEvents = true
+        window?.invalidateCursorRects(for: self)
     }
 
     override func layout() {
         super.layout()
-        repositionIndicators()
+        window?.invalidateCursorRects(for: self)
     }
 
-    private func repositionIndicators() {
-        guard let tableView = tableView else { return }
-        let padding: CGFloat = 4
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = mouseMovedTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseMoved, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        mouseMovedTrackingArea = area
+    }
 
-        for (key, view) in indicatorViews {
-            let identifier = NSUserInterfaceItemIdentifier(key)
-            let columnIndex = tableView.column(withIdentifier: identifier)
-            guard columnIndex >= 0 else {
-                view.isHidden = true
-                continue
-            }
-            view.isHidden = false
-            let columnRect = headerRect(ofColumn: columnIndex)
-            let imageSize = view.image?.size ?? NSSize(width: 9, height: 6)
-            view.frame = NSRect(
-                x: columnRect.maxX - imageSize.width - padding,
-                y: columnRect.midY - imageSize.height / 2,
-                width: imageSize.width,
-                height: imageSize.height
-            )
+    override func mouseMoved(with event: NSEvent) {
+        guard let tableView = tableView else {
+            super.mouseMoved(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        if isInResizeZone(point, in: tableView) {
+            NSCursor.resizeLeftRight.set()
+        } else {
+            NSCursor.arrow.set()
         }
     }
 
-    private func makeIndicatorView() -> NSImageView {
-        let view = NSImageView()
-        view.imageScaling = .scaleNone
-        view.imageAlignment = .alignCenter
-        view.contentTintColor = .secondaryLabelColor
-        view.translatesAutoresizingMaskIntoConstraints = true
-        return view
+    func updateSortIndicators(state: SortState, schema: ColumnIdentitySchema) {
+        guard let tableView = tableView else { return }
+
+        var priorityByIdentifier: [NSUserInterfaceItemIdentifier: (direction: SortDirection, priority: Int)] = [:]
+        for (index, sortCol) in state.columns.enumerated() {
+            guard let identifier = schema.identifier(for: sortCol.columnIndex) else { continue }
+            priorityByIdentifier[identifier] = (sortCol.direction, index + 1)
+        }
+
+        for (columnIndex, column) in tableView.tableColumns.enumerated() {
+            guard let cell = column.headerCell as? SortableHeaderCell else { continue }
+            let entry = priorityByIdentifier[column.identifier]
+            let newDirection = entry?.direction
+            let newPriority = entry?.priority
+            if cell.sortDirection != newDirection || cell.sortPriority != newPriority {
+                cell.sortDirection = newDirection
+                cell.sortPriority = newPriority
+                setNeedsDisplay(headerRect(ofColumn: columnIndex))
+            }
+        }
     }
 
-    private static let clickDragThreshold: CGFloat = 4
+    static func isInResizeZone(
+        point: NSPoint,
+        columnEdges: [CGFloat],
+        zoneWidth: CGFloat = SortableHeaderView.resizeZoneWidth
+    ) -> Bool {
+        columnEdges.contains { abs(point.x - $0) <= zoneWidth }
+    }
 
-    private var pendingClickStartLocation: NSPoint?
-    private var dragOccurredDuringClick = false
+    private func isInResizeZone(_ point: NSPoint, in tableView: NSTableView) -> Bool {
+        let edges = tableView.tableColumns.enumerated().compactMap { index, column -> CGFloat? in
+            guard column.resizingMask.contains(.userResizingMask) else { return nil }
+            return headerRect(ofColumn: index).maxX
+        }
+        return Self.isInResizeZone(point: point, columnEdges: edges)
+    }
 
     override func mouseDragged(with event: NSEvent) {
         if let start = pendingClickStartLocation {
@@ -178,6 +213,11 @@ final class SortableHeaderView: NSTableHeaderView {
         }
 
         let pointInHeader = convert(event.locationInWindow, from: nil)
+        if isInResizeZone(pointInHeader, in: tableView) {
+            super.mouseDown(with: event)
+            return
+        }
+
         let columnIndex = column(at: pointInHeader)
         guard columnIndex >= 0, columnIndex < tableView.numberOfColumns else {
             super.mouseDown(with: event)

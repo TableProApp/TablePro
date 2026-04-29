@@ -86,10 +86,10 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in initialRows.columns.enumerated() {
             guard let identifier = identitySchema.identifier(for: index) else { continue }
             let column = NSTableColumn(identifier: identifier)
-            let suppressedCell = SuppressedSortIndicatorCell(textCell: columnName)
-            suppressedCell.font = column.headerCell.font
-            suppressedCell.alignment = column.headerCell.alignment
-            column.headerCell = suppressedCell
+            let sortableCell = SortableHeaderCell(textCell: columnName)
+            sortableCell.font = column.headerCell.font
+            sortableCell.alignment = column.headerCell.alignment
+            column.headerCell = sortableCell
             if index < initialRows.columnTypes.count {
                 let typeName = initialRows.columnTypes[index].rawType ?? initialRows.columnTypes[index].displayName
                 column.headerToolTip = "\(columnName) (\(typeName))"
@@ -332,10 +332,10 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in tableRows.columns.enumerated() {
             guard let identifier = schema.identifier(for: index) else { continue }
             let column = NSTableColumn(identifier: identifier)
-            let suppressedCell = SuppressedSortIndicatorCell(textCell: columnName)
-            suppressedCell.font = column.headerCell.font
-            suppressedCell.alignment = column.headerCell.alignment
-            column.headerCell = suppressedCell
+            let sortableCell = SortableHeaderCell(textCell: columnName)
+            sortableCell.font = column.headerCell.font
+            sortableCell.alignment = column.headerCell.alignment
+            column.headerCell = sortableCell
             if index < tableRows.columnTypes.count {
                 let typeName = tableRows.columnTypes[index].rawType
                     ?? tableRows.columnTypes[index].displayName
