@@ -97,5 +97,4 @@ extension TableViewCoordinator {
         rowView.rowIndex = row
         return rowView
     }
-
 }

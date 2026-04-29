@@ -144,6 +144,12 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.sortedIDs = sortedIDs
         context.coordinator.syncDisplayFormats(displayFormats)
         context.coordinator.delegate = delegate
+        let columnLayoutBinding = $columnLayout
+        context.coordinator.onColumnLayoutDidChange = { layout in
+            if columnLayoutBinding.wrappedValue != layout {
+                columnLayoutBinding.wrappedValue = layout
+            }
+        }
         delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
         context.coordinator.dropdownColumns = configuration.dropdownColumns
         context.coordinator.typePickerColumns = configuration.typePickerColumns
@@ -230,6 +236,12 @@ struct DataGridView: NSViewRepresentable {
         coordinator.sortedIDs = sortedIDs
         coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
+        let columnLayoutBinding = $columnLayout
+        coordinator.onColumnLayoutDidChange = { layout in
+            if columnLayoutBinding.wrappedValue != layout {
+                columnLayoutBinding.wrappedValue = layout
+            }
+        }
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.dropdownColumns = configuration.dropdownColumns
         coordinator.typePickerColumns = configuration.typePickerColumns
@@ -362,52 +374,11 @@ struct DataGridView: NSViewRepresentable {
             }
 
             if !coordinator.hasUserResizedColumns, !hasSavedLayout {
-                var newWidths: [String: CGFloat] = [:]
-                for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                    guard let colIndex = Self.dataColumnIndex(from: column.identifier),
-                          colIndex < tableRows.columns.count else { continue }
-                    newWidths[tableRows.columns[colIndex]] = column.width
-                }
-                if !newWidths.isEmpty && newWidths != columnLayout.columnWidths {
-                    coordinator.isWritingColumnLayout = true
-                    Task { @MainActor in
-                        coordinator.isWritingColumnLayout = false
-                        self.columnLayout.columnWidths = newWidths
-                    }
-                }
+                coordinator.scheduleLayoutPersist()
             }
         } else {
             for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
                 column.isEditable = isEditable
-            }
-
-            guard !coordinator.isWritingColumnLayout else { return }
-
-            if coordinator.hasUserResizedColumns, tableView.tableColumns.count > 1 {
-                var currentWidths: [String: CGFloat] = [:]
-                var currentOrder: [String] = []
-                for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                    guard let colIndex = Self.dataColumnIndex(from: column.identifier),
-                          colIndex < tableRows.columns.count else { continue }
-                    let baseName = tableRows.columns[colIndex]
-                    currentWidths[baseName] = column.width
-                    currentOrder.append(baseName)
-                }
-                let widthsChanged = !currentWidths.isEmpty && currentWidths != columnLayout.columnWidths
-                let orderChanged = !currentOrder.isEmpty && columnLayout.columnOrder != currentOrder
-                if widthsChanged || orderChanged {
-                    coordinator.isWritingColumnLayout = true
-                    Task { @MainActor in
-                        coordinator.isWritingColumnLayout = false
-                        if widthsChanged {
-                            self.columnLayout.columnWidths = currentWidths
-                        }
-                        if orderChanged {
-                            self.columnLayout.columnOrder = currentOrder
-                        }
-                    }
-                }
-                coordinator.hasUserResizedColumns = false
             }
         }
     }
@@ -488,45 +459,54 @@ struct DataGridView: NSViewRepresentable {
     private static func applyColumnOrder(_ order: [String], to tableView: NSTableView, columns: [String]) {
         guard Set(order) == Set(columns) else { return }
 
-        let dataColumns = tableView.tableColumns.filter { $0.identifier.rawValue != "__rowNumber__" }
-
-        var columnMap: [String: NSTableColumn] = [:]
-        for col in dataColumns {
+        var columnByName: [String: NSTableColumn] = [:]
+        for col in tableView.tableColumns where col.identifier.rawValue != "__rowNumber__" {
             if let idx = dataColumnIndex(from: col.identifier), idx < columns.count {
-                columnMap[columns[idx]] = col
+                columnByName[columns[idx]] = col
             }
         }
 
-        for (targetIndex, columnName) in order.enumerated() {
-            guard let sourceColumn = columnMap[columnName],
-                  let currentIndex = tableView.tableColumns.firstIndex(of: sourceColumn) else { continue }
-            let targetTableIndex = tableColumnIndex(for: targetIndex)
-            if currentIndex != targetTableIndex && targetTableIndex < tableView.numberOfColumns {
-                tableView.moveColumn(currentIndex, toColumn: targetTableIndex)
+        for (targetDataIndex, columnName) in order.enumerated() {
+            guard let desired = columnByName[columnName] else { continue }
+            let targetTableIndex = tableColumnIndex(for: targetDataIndex)
+            guard targetTableIndex < tableView.numberOfColumns else { continue }
+
+            let current = tableView.tableColumns
+            var currentIndex = -1
+            for i in targetTableIndex..<current.count where current[i] === desired {
+                currentIndex = i
+                break
             }
+            guard currentIndex >= 0, currentIndex != targetTableIndex else { continue }
+            tableView.moveColumn(currentIndex, toColumn: targetTableIndex)
         }
     }
 
     // MARK: - Sort Indicator Helpers
 
+    private static let ascendingSortIndicator = NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
+    private static let descendingSortIndicator = NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
+
     private static func updateSortIndicators(tableView: NSTableView, sortState: SortState, columns: [String]) {
+        var columnByDataIndex: [Int: NSTableColumn] = [:]
         for column in tableView.tableColumns {
             guard let colIndex = dataColumnIndex(from: column.identifier),
                   colIndex < columns.count else { continue }
+            columnByDataIndex[colIndex] = column
+            tableView.setIndicatorImage(nil, in: column)
+        }
 
-            let baseName = columns[colIndex]
+        for sortCol in sortState.columns {
+            guard let column = columnByDataIndex[sortCol.columnIndex] else { continue }
+            let image = sortCol.direction == .ascending ? ascendingSortIndicator : descendingSortIndicator
+            tableView.setIndicatorImage(image, in: column)
+        }
 
-            if let sortIndex = sortState.columns.firstIndex(where: { $0.columnIndex == colIndex }) {
-                let sortCol = sortState.columns[sortIndex]
-                if sortState.columns.count > 1 {
-                    let indicator = " \(sortIndex + 1)\(sortCol.direction.indicator)"
-                    column.title = "\(baseName)\(indicator)"
-                } else {
-                    column.title = baseName
-                }
-            } else {
-                column.title = baseName
-            }
+        if let primary = sortState.columns.first,
+           let column = columnByDataIndex[primary.columnIndex] {
+            tableView.highlightedTableColumn = column
+        } else {
+            tableView.highlightedTableColumn = nil
         }
     }
 

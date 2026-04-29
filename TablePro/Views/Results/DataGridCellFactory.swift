@@ -12,11 +12,10 @@ import QuartzCore
 /// Custom button that stores FK row/column context for the click handler
 @MainActor
 final class FKArrowButton: NSButton {
-    var fkRow: Int = 0
-    var fkColumnIndex: Int = 0
+    var fkRow: Int = -1
+    var fkColumnIndex: Int = -1
 }
 
-/// Custom button that stores cell row/column context for the chevron click handler
 @MainActor
 final class CellChevronButton: NSButton {
     var cellRow: Int = -1
@@ -184,22 +183,34 @@ final class DataGridCellFactory {
         let showChevron = isDropdown
 
         if let fkButton = gridCellView.fkArrowButton {
-            fkButton.isHidden = !showFK
             if showFK {
+                fkButton.isHidden = false
                 fkButton.target = fkArrowTarget
                 fkButton.action = fkArrowAction
                 fkButton.fkRow = row
                 fkButton.fkColumnIndex = columnIndex
+            } else {
+                fkButton.isHidden = true
+                fkButton.target = nil
+                fkButton.action = nil
+                fkButton.fkRow = -1
+                fkButton.fkColumnIndex = -1
             }
         }
 
         if let chevron = gridCellView.chevronButton {
-            chevron.isHidden = !showChevron
             if showChevron {
-                chevron.cellRow = row
-                chevron.cellColumnIndex = columnIndex
+                chevron.isHidden = false
                 chevron.target = chevronTarget
                 chevron.action = chevronAction
+                chevron.cellRow = row
+                chevron.cellColumnIndex = columnIndex
+            } else {
+                chevron.isHidden = true
+                chevron.target = nil
+                chevron.action = nil
+                chevron.cellRow = -1
+                chevron.cellColumnIndex = -1
             }
         }
 

@@ -48,11 +48,6 @@ struct SortDirectionTests {
         #expect(dir == .ascending)
     }
 
-    @Test("Indicator strings are correct")
-    func indicatorStrings() {
-        #expect(SortDirection.ascending.indicator == "▲")
-        #expect(SortDirection.descending.indicator == "▼")
-    }
 }
 
 @Suite("SortColumn")

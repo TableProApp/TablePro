@@ -25,10 +25,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var primaryKeyColumns: [String] = []
     var primaryKeyColumn: String? { primaryKeyColumns.first }
     var tabType: TabType?
+    var onColumnLayoutDidChange: ((ColumnLayoutState) -> Void)?
 
     func persistColumnLayoutToStorage() {
-        guard tabType == .table else { return }
-        guard let tableView, let connectionId, let tableName, !tableName.isEmpty else { return }
+        guard let tableView else { return }
         let tableRows = tableRowsProvider()
         guard !tableRows.columns.isEmpty else { return }
 
@@ -46,7 +46,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         var layout = ColumnLayoutState()
         layout.columnWidths = widths
         layout.columnOrder = order
-        ColumnLayoutStorage.shared.save(layout, for: tableName, connectionId: connectionId)
+
+        onColumnLayoutDidChange?(layout)
+
+        if tabType == .table, let connectionId, let tableName, !tableName.isEmpty {
+            ColumnLayoutStorage.shared.save(layout, for: tableName, connectionId: connectionId)
+        }
     }
 
     weak var tableView: NSTableView?
@@ -68,7 +73,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var isSyncingSelection = false
     var isRebuildingColumns: Bool = false
     var hasUserResizedColumns: Bool = false
-    var isWritingColumnLayout: Bool = false
     var isEscapeCancelling = false
     var isCommittingCellEdit = false
     var layoutPersistTask: Task<Void, Never>?

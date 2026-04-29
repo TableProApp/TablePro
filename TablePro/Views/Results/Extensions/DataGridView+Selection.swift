@@ -20,7 +20,7 @@ extension TableViewCoordinator {
         scheduleLayoutPersist()
     }
 
-    private func scheduleLayoutPersist() {
+    func scheduleLayoutPersist() {
         layoutPersistTask?.cancel()
         layoutPersistTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(500))

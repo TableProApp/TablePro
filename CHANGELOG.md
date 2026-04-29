@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Data grid header sort indicators use NSTableView's native `highlightedTableColumn` and `setIndicatorImage(_:in:)`, replacing Unicode arrows that were embedded in the column title string. Screen readers now announce the column name and sort direction separately.
+- Data grid column layout persistence routes through a coordinator callback fired from outside SwiftUI's update cycle, removing the `Task`-based `@Binding` mutation inside `updateNSView` and the `isWritingColumnLayout` re-entry guard.
+- Data grid cell reuse resets foreign-key arrow and dropdown chevron button context (target, action, row, column) when the button hides, preventing a stale handler from firing the wrong row if the column toggles between FK-eligible and not.
+- `applyColumnOrder` scans only the unsettled tail of the column array per move, halving the constant cost on reorders with many columns.
 - Replaced RowBuffer / InMemoryRowProvider / RowDataStore with TableRows / TableRowsStore / TableRowsController. Mutations emit Delta events; the controller drives NSTableView via insertRows / removeRows / reloadData(forRowIndexes:). Sort and the display cache moved off the row provider into the data grid coordinator, keyed by Row.id.
 - Routed every TableRows mutation through `mutateActiveTableRows` on MainContentCoordinator so the active ResultSet's snapshot stays in sync with the store. The snapshot now refreshes only when the user switches result sets (saving the outgoing tab, loading the incoming one), so each insert / undo / paste no longer triggers an `@Observable` re-render of the whole editor. Fixes empty cells on Load More and CPU spikes when adding or undoing rows.
 - Undo of a cell edit clears the modified-cell highlight: `DataChangeManager.applyDataUndo` now bumps `reloadVersion` so the data grid rebuilds its visual state cache.
