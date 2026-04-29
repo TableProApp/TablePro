@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shift+Tab navigates to the previous cell in the data grid
 - Copy rows writes TSV, HTML table, and plain text to the clipboard for richer paste in spreadsheet apps
 - Row drag adds TSV and HTML representations alongside the internal drag type
+- AI provider settings allow manually entering a model name when the provider does not return one
 
 ### Changed
 
