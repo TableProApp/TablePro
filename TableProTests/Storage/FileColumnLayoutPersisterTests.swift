@@ -150,4 +150,130 @@ struct FileColumnLayoutPersisterTests {
             .load(for: "users", connectionId: connectionId)
         #expect(restored?.columnWidths == ["id": 100])
     }
+
+    @Test("Clearing the only entry removes the connection's storage file")
+    func clearingLastEntryRemovesFile() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory)
+        let connectionId = UUID()
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["id": 100]
+        persister.save(layout, for: "users", connectionId: connectionId)
+
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        #expect(FileManager.default.fileExists(atPath: fileURL.path))
+
+        persister.clear(for: "users", connectionId: connectionId)
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    @Test("Clearing one of multiple tables keeps the connection file with the rest")
+    func clearingOneOfManyKeepsFile() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory)
+        let connectionId = UUID()
+        var users = ColumnLayoutState()
+        users.columnWidths = ["id": 60]
+        var orders = ColumnLayoutState()
+        orders.columnWidths = ["total": 120]
+        persister.save(users, for: "users", connectionId: connectionId)
+        persister.save(orders, for: "orders", connectionId: connectionId)
+
+        persister.clear(for: "users", connectionId: connectionId)
+
+        let fresh = FileColumnLayoutPersister(storageDirectory: directory)
+        #expect(fresh.load(for: "users", connectionId: connectionId) == nil)
+        #expect(fresh.load(for: "orders", connectionId: connectionId)?.columnWidths == ["total": 120])
+    }
+
+    @Test("Clearing a missing entry is a no-op and never creates a file")
+    func clearingMissingEntryIsNoOp() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory)
+        let connectionId = UUID()
+        persister.clear(for: "missing", connectionId: connectionId)
+
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    @Test("Connections are isolated even when table names match")
+    func sameTableNameAcrossConnectionsAreIsolated() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let connectionA = UUID()
+        let connectionB = UUID()
+        var layoutA = ColumnLayoutState()
+        layoutA.columnWidths = ["id": 60]
+        var layoutB = ColumnLayoutState()
+        layoutB.columnWidths = ["id": 200]
+
+        persister.save(layoutA, for: "users", connectionId: connectionA)
+        persister.save(layoutB, for: "users", connectionId: connectionB)
+
+        #expect(persister.load(for: "users", connectionId: connectionA)?.columnWidths == ["id": 60])
+        #expect(persister.load(for: "users", connectionId: connectionB)?.columnWidths == ["id": 200])
+    }
+
+    @Test("Saving overwrites an existing entry instead of merging")
+    func saveOverwritesExistingEntry() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let connectionId = UUID()
+        var first = ColumnLayoutState()
+        first.columnWidths = ["id": 60, "name": 200]
+        first.columnOrder = ["id", "name"]
+        persister.save(first, for: "users", connectionId: connectionId)
+
+        var second = ColumnLayoutState()
+        second.columnWidths = ["email": 240]
+        second.columnOrder = ["email"]
+        persister.save(second, for: "users", connectionId: connectionId)
+
+        let restored = persister.load(for: "users", connectionId: connectionId)
+        #expect(restored?.columnWidths == ["email": 240])
+        #expect(restored?.columnOrder == ["email"])
+    }
+
+    @Test("columnOrder nil is preserved through round-trip")
+    func columnOrderNilRoundTrips() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let connectionId = UUID()
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["id": 60]
+        layout.columnOrder = nil
+        persister.save(layout, for: "users", connectionId: connectionId)
+
+        let restored = persister.load(for: "users", connectionId: connectionId)
+        #expect(restored?.columnOrder == nil)
+        #expect(restored?.columnWidths == ["id": 60])
+    }
+
+    @Test("Reading an empty JSON object returns nil for any table lookup")
+    func emptyEntriesFileReturnsNil() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let connectionId = UUID()
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        try Data("{}".utf8).write(to: fileURL)
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory)
+        #expect(persister.load(for: "anything", connectionId: connectionId) == nil)
+    }
 }
