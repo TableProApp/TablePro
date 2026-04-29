@@ -710,7 +710,7 @@ fn build_outcome_widget(o: &StatementOutcome, idx: usize) -> gtk::Widget {
         StatementOutcomeKind::NotRun => adw::StatusPage::builder()
             .title(crate::tr!("Statement {n} not run").replace("{n}", &(idx + 1).to_string()))
             .description(crate::tr!("Skipped because an earlier statement failed."))
-            .icon_name("emblem-synchronizing-symbolic")
+            .icon_name("media-playback-stop-symbolic")
             .vexpand(true)
             .build()
             .upcast(),

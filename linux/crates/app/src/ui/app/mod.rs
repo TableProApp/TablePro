@@ -1197,7 +1197,7 @@ impl SimpleComponent for App {
             .icon_name(StatusKind::Info.icon())
             .title(crate::tr!("Select a table"))
             .description(crate::tr!(
-                "Pick a table from the sidebar, or press Ctrl+T to open a query editor."
+                "Pick a table from the sidebar, or press Ctrl+E to open a query editor."
             ))
             .build();
         workspace_outer_stack.add_named(&workspace_empty_page, Some("empty"));

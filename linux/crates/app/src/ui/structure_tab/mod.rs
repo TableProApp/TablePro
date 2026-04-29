@@ -560,7 +560,7 @@ impl SimpleComponent for StructureTab {
         let copy_sql_btn = gtk::Button::builder()
             .icon_name("edit-copy-symbolic")
             .tooltip_text(crate::tr!("Copy SQL to clipboard"))
-            .halign(gtk::Align::End)
+            .valign(gtk::Align::Center)
             .build();
         copy_sql_btn.add_css_class("flat");
         let buffer_for_copy = sql_buffer.clone();
@@ -568,17 +568,16 @@ impl SimpleComponent for StructureTab {
             let text = buffer_for_copy.text(&buffer_for_copy.start_iter(), &buffer_for_copy.end_iter(), false);
             btn.clipboard().set_text(text.as_str());
         });
-        let sql_toolbar = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
+        // CenterBox is the native idiom for "leading / centred /
+        // trailing" toolbar layouts. The earlier hexpand label-spacer
+        // worked but was a CSS-flexbox-era pattern that fights GTK's
+        // layout system.
+        let sql_toolbar = gtk::CenterBox::builder()
             .margin_top(6)
-            .margin_bottom(0)
             .margin_start(6)
             .margin_end(6)
-            .hexpand(true)
             .build();
-        let toolbar_spacer = gtk::Label::builder().hexpand(true).build();
-        sql_toolbar.append(&toolbar_spacer);
-        sql_toolbar.append(&copy_sql_btn);
+        sql_toolbar.set_end_widget(Some(&copy_sql_btn));
         let sql_page_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
         sql_page_box.append(&sql_toolbar);
         sql_page_box.append(&sql_scroll);
@@ -609,11 +608,31 @@ impl SimpleComponent for StructureTab {
         let inner_stack = gtk::Stack::new();
         inner_stack.set_transition_type(gtk::StackTransitionType::Crossfade);
 
-        let loading_status = adw::StatusPage::builder()
-            .icon_name("emblem-synchronizing-symbolic")
-            .title(crate::tr!("Loading structure…"))
+        // AdwSpinner (libadwaita 1.6+) is the native animated spinner
+        // — pulses while the introspection round-trip is in flight.
+        // The earlier `emblem-synchronizing-symbolic` rendered as a
+        // static sync icon that read as "this could be idle". A
+        // centred vertical box with spinner + title + dim subtitle
+        // is the same pattern GNOME Software / Console use for
+        // in-flight load states.
+        let loading_spinner = adw::Spinner::builder().width_request(48).height_request(48).build();
+        let loading_title = gtk::Label::builder().label(crate::tr!("Loading structure…")).build();
+        loading_title.add_css_class("title-2");
+        let loading_subtitle = gtk::Label::builder()
+            .label(crate::tr!("Reading columns, indexes, and foreign keys…"))
             .build();
-        inner_stack.add_named(&loading_status, Some("loading"));
+        loading_subtitle.add_css_class("dim-label");
+        let loading_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .halign(gtk::Align::Center)
+            .valign(gtk::Align::Center)
+            .vexpand(true)
+            .build();
+        loading_box.append(&loading_spinner);
+        loading_box.append(&loading_title);
+        loading_box.append(&loading_subtitle);
+        inner_stack.add_named(&loading_box, Some("loading"));
 
         let editor_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -666,6 +685,28 @@ impl SimpleComponent for StructureTab {
             .icon_name("dialog-error-symbolic")
             .title(crate::tr!("Couldn't load structure"))
             .build();
+        // "Try again" — fires another FetchStructure round-trip via
+        // the existing output channel. Without this, a transient
+        // network blip on a remote DB forces the user to close and
+        // reopen the tab. Suggested-action + pill styling matches
+        // GNOME Software's "Try Again" affordance on its own
+        // load-failure page.
+        let retry_button = gtk::Button::builder()
+            .label(crate::tr!("Try Again"))
+            .halign(gtk::Align::Center)
+            .build();
+        retry_button.add_css_class("suggested-action");
+        retry_button.add_css_class("pill");
+        let sender_for_retry = sender.clone();
+        let inner_stack_for_retry = inner_stack.clone();
+        retry_button.connect_clicked(move |_| {
+            // Flip back to the loading page so the user sees we're
+            // trying — otherwise the click looks like a no-op until
+            // StructureLoaded arrives.
+            inner_stack_for_retry.set_visible_child_name("loading");
+            let _ = sender_for_retry.output(StructureTabOutput::FetchStructure);
+        });
+        error_status.set_child(Some(&retry_button));
         inner_stack.add_named(&error_status, Some("error"));
 
         inner_stack.set_visible_child_name(match init.mode {

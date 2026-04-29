@@ -83,8 +83,10 @@ pub struct BrowseTab {
     grid_search_bar: gtk::SearchBar,
     grid_search_handler: Option<glib::SignalHandlerId>,
     paginator_label: gtk::Label,
+    first_button: gtk::Button,
     prev_button: gtk::Button,
     next_button: gtk::Button,
+    last_button: gtk::Button,
     insert_button: gtk::Button,
     delete_button: gtk::Button,
     save_button: gtk::Button,
@@ -114,10 +116,15 @@ pub enum BrowseTabInput {
     Refresh,
     /// Reveal the in-grid find bar and focus it.
     FindInResults,
+    /// User clicked First page (offset → 0).
+    FirstPage,
     /// User clicked Prev page.
     PrevPage,
     /// User clicked Next page.
     NextPage,
+    /// User clicked Last page (offset → last full page based on
+    /// row count). No-op if the row count isn't known yet.
+    LastPage,
     /// Sort flipped on column idx (from grid sorter).
     SortChanged {
         col_idx: usize,
@@ -307,6 +314,16 @@ impl BrowseTab {
     /// `build_mutation_bar`) so destructive controls aren't sitting
     /// next to navigation arrows in misclick range.
     fn build_paginator(sender: ComponentSender<Self>, page_size: u64) -> Paginator {
+        // First / Last bracket the Prev / Next pair. Tables of
+        // millions of rows make Last especially valuable — without
+        // it the user has to spam Next to reach the bottom. Same
+        // visual + interaction model as TablePlus / DataGrip /
+        // DBeaver. Last stays disabled until the row count loads.
+        let first_button = gtk::Button::builder()
+            .icon_name("go-first-symbolic")
+            .tooltip_text(crate::tr!("First page"))
+            .sensitive(false)
+            .build();
         let prev_button = gtk::Button::builder()
             .icon_name("go-previous-symbolic")
             .tooltip_text(crate::tr!("Previous page (Page Up)"))
@@ -315,6 +332,11 @@ impl BrowseTab {
         let next_button = gtk::Button::builder()
             .icon_name("go-next-symbolic")
             .tooltip_text(crate::tr!("Next page (Page Down)"))
+            .sensitive(false)
+            .build();
+        let last_button = gtk::Button::builder()
+            .icon_name("go-last-symbolic")
+            .tooltip_text(crate::tr!("Last page"))
             .sensitive(false)
             .build();
         let paginator_label = gtk::Label::builder().build();
@@ -349,10 +371,14 @@ impl BrowseTab {
         let page_size_label = gtk::Label::builder().label(crate::tr!("Rows:")).build();
         page_size_label.add_css_class("dim-label");
 
+        let sender_for_first = sender.clone();
+        first_button.connect_clicked(move |_| sender_for_first.input(BrowseTabInput::FirstPage));
         let sender_for_prev = sender.clone();
         prev_button.connect_clicked(move |_| sender_for_prev.input(BrowseTabInput::PrevPage));
-        let sender_for_next = sender;
+        let sender_for_next = sender.clone();
         next_button.connect_clicked(move |_| sender_for_next.input(BrowseTabInput::NextPage));
+        let sender_for_last = sender;
+        last_button.connect_clicked(move |_| sender_for_last.input(BrowseTabInput::LastPage));
 
         // Paginator lives in a native `gtk::ActionBar` to match the
         // mutations bar and the Structure tab's bottom action bar.
@@ -375,13 +401,15 @@ impl BrowseTab {
             .build();
         export_button.add_css_class("flat");
 
-        // Prev / Next sit in a `linked` group so they read as one
-        // navigation control — same pattern GNOME Files uses on its
-        // back/forward toolbar buttons.
+        // First / Prev / Next / Last sit in a `linked` group so they
+        // read as one navigation control — same pattern GNOME Files
+        // uses on its back/forward toolbar buttons.
         let nav_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).build();
         nav_box.add_css_class("linked");
+        nav_box.append(&first_button);
         nav_box.append(&prev_button);
         nav_box.append(&next_button);
+        nav_box.append(&last_button);
 
         paginator_bar.pack_start(&nav_box);
         paginator_bar.pack_start(&paginator_label);
@@ -391,8 +419,10 @@ impl BrowseTab {
 
         Paginator {
             bar: paginator_bar,
+            first_button,
             prev_button,
             next_button,
+            last_button,
             paginator_label,
         }
     }
@@ -892,9 +922,21 @@ impl BrowseTab {
     fn refresh_grid_chrome(&self, result: &QueryResult) {
         self.refresh_crud_buttons();
         self.update_paginator_label();
-        self.prev_button.set_sensitive(self.current_offset > 0);
+        let on_first_page = self.current_offset == 0;
+        self.first_button.set_sensitive(!on_first_page);
+        self.prev_button.set_sensitive(!on_first_page);
         let n_rows = result.rows.len() as u64;
         self.next_button.set_sensitive(n_rows == self.page_size);
+        // Last only enables when we know the total AND we aren't
+        // already there. Without a known total, the button stays
+        // disabled — matches `RowCountLoaded`-gated UX everywhere
+        // else.
+        let last_target = self
+            .current_total_rows
+            .filter(|t| *t > 0)
+            .map(|t| (t - 1) / self.page_size * self.page_size);
+        self.last_button
+            .set_sensitive(last_target.is_some_and(|target| self.current_offset != target));
 
         // Empty-state: zero rows on the first page with no drafts →
         // show a status page instead of an empty grid rectangle. As
@@ -1006,20 +1048,30 @@ impl BrowseTab {
         };
         let n_rows = result.rows.len();
         if n_rows == 0 {
-            self.paginator_label
-                .set_label(&crate::tr!("No rows at offset {n}").replace("{n}", &self.current_offset.to_string()));
+            // Reachable when the user navigated past the end of a
+            // table that shrank in another session, before
+            // RowCountLoaded clamps the offset back. Human
+            // wording — the previous "No rows at offset N" read as
+            // a bug message.
+            self.paginator_label.set_label(&crate::tr!("No rows on this page"));
             return;
         }
         let start = self.current_offset + 1;
         let end = self.current_offset + n_rows as u64;
+        // Match the page-size dropdown's thousands grouping.
+        // "Rows 10,001 – 10,100 of 5,000,000" is faster to read than
+        // "Rows 10001 – 10100 of 5000000" and matches GNOME File's
+        // "1,234 items" idiom.
+        let start_s = format_thousands(start);
+        let end_s = format_thousands(end);
         let label = match self.current_total_rows {
             Some(total) => crate::tr!("Rows {start} – {end} of {total}")
-                .replace("{start}", &start.to_string())
-                .replace("{end}", &end.to_string())
-                .replace("{total}", &total.to_string()),
+                .replace("{start}", &start_s)
+                .replace("{end}", &end_s)
+                .replace("{total}", &format_thousands(total)),
             None => crate::tr!("Rows {start} – {end}")
-                .replace("{start}", &start.to_string())
-                .replace("{end}", &end.to_string()),
+                .replace("{start}", &start_s)
+                .replace("{end}", &end_s),
         };
         self.paginator_label.set_label(&label);
     }
@@ -1033,8 +1085,8 @@ impl BrowseTab {
     }
 
     fn show_loading_inner(&self, title: &str, description: &str) {
-        let spinner = gtk::Spinner::builder()
-            .spinning(true)
+        // adw::Spinner replaces deprecated gtk::Spinner (GTK 4.12+).
+        let spinner = adw::Spinner::builder()
             .width_request(32)
             .height_request(32)
             .halign(gtk::Align::Center)
@@ -1048,9 +1100,12 @@ impl BrowseTab {
     }
 
     fn show_error_inner(&self, message: &str) {
+        // Title pattern matches the structure tab ("Couldn't load
+        // structure"). The previous terse "Failed" left the user
+        // guessing what failed.
         let page = adw::StatusPage::builder()
             .icon_name("dialog-error-symbolic")
-            .title(crate::tr!("Failed"))
+            .title(crate::tr!("Couldn't load rows"))
             .description(message)
             .build();
         self.replace_status_child("error", &page);
@@ -1133,8 +1188,7 @@ impl SimpleComponent for BrowseTab {
                 },
             ))
             .child(
-                &gtk::Spinner::builder()
-                    .spinning(true)
+                &adw::Spinner::builder()
                     .width_request(32)
                     .height_request(32)
                     .halign(gtk::Align::Center)
@@ -1409,8 +1463,10 @@ impl SimpleComponent for BrowseTab {
             grid_search_bar,
             grid_search_handler: None,
             paginator_label: paginator.paginator_label,
+            first_button: paginator.first_button,
             prev_button: paginator.prev_button,
             next_button: paginator.next_button,
+            last_button: paginator.last_button,
             insert_button: mutations.insert_button,
             delete_button: mutations.delete_button,
             save_button: mutations.save_button,
@@ -1495,8 +1551,10 @@ impl SimpleComponent for BrowseTab {
                 self.current_result = None;
                 self.current_total_rows = None;
                 self.paginator_label.set_label("");
+                self.first_button.set_sensitive(false);
                 self.prev_button.set_sensitive(false);
                 self.next_button.set_sensitive(false);
+                self.last_button.set_sensitive(false);
                 self.show_error_inner(&message);
                 self.inner_stack.set_visible_child_name("error");
             }
@@ -1515,6 +1573,13 @@ impl SimpleComponent for BrowseTab {
                 }
                 self.grid_search.grab_focus();
             }
+            BrowseTabInput::FirstPage => {
+                if self.current_offset > 0 {
+                    self.current_offset = 0;
+                    let _ = sender.output(BrowseTabOutput::FetchPage);
+                    let _ = sender.output(BrowseTabOutput::StateChanged);
+                }
+            }
             BrowseTabInput::PrevPage => {
                 if self.current_offset >= self.page_size {
                     self.current_offset -= self.page_size;
@@ -1526,6 +1591,23 @@ impl SimpleComponent for BrowseTab {
                 self.current_offset += self.page_size;
                 let _ = sender.output(BrowseTabOutput::FetchPage);
                 let _ = sender.output(BrowseTabOutput::StateChanged);
+            }
+            BrowseTabInput::LastPage => {
+                let Some(total) = self.current_total_rows else {
+                    // Total unknown — Last has no target. UI keeps the
+                    // button disabled until RowCountLoaded fires, so
+                    // this branch is a defensive guard.
+                    return;
+                };
+                if total == 0 {
+                    return;
+                }
+                let last_page_offset = (total - 1) / self.page_size * self.page_size;
+                if self.current_offset != last_page_offset {
+                    self.current_offset = last_page_offset;
+                    let _ = sender.output(BrowseTabOutput::FetchPage);
+                    let _ = sender.output(BrowseTabOutput::StateChanged);
+                }
             }
             BrowseTabInput::SortChanged { col_idx, ascending } => {
                 // Idempotent: GtkColumnViewSorter fires both
@@ -2357,8 +2439,10 @@ fn format_thousands(n: u64) -> String {
 /// signature stays narrow.
 struct Paginator {
     bar: gtk::ActionBar,
+    first_button: gtk::Button,
     prev_button: gtk::Button,
     next_button: gtk::Button,
+    last_button: gtk::Button,
     paginator_label: gtk::Label,
 }
 
