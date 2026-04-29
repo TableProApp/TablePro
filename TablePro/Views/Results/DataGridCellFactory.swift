@@ -9,7 +9,6 @@
 import AppKit
 import QuartzCore
 
-/// Custom button that stores FK row/column context for the click handler
 @MainActor
 final class FKArrowButton: NSButton {
     var fkRow: Int = -1

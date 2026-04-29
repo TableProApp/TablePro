@@ -139,12 +139,6 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.sortedIDs = sortedIDs
         context.coordinator.syncDisplayFormats(displayFormats)
         context.coordinator.delegate = delegate
-        let columnLayoutBinding = $columnLayout
-        context.coordinator.onColumnLayoutDidChange = { layout in
-            if columnLayoutBinding.wrappedValue != layout {
-                columnLayoutBinding.wrappedValue = layout
-            }
-        }
         delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
         context.coordinator.dropdownColumns = configuration.dropdownColumns
         context.coordinator.typePickerColumns = configuration.typePickerColumns
@@ -154,7 +148,6 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableName = configuration.tableName
         context.coordinator.primaryKeyColumns = configuration.primaryKeyColumns
         context.coordinator.tabType = configuration.tabType
-        context.coordinator.rebuildColumnMetadataCache(from: tableRowsProvider())
         if let connectionId = configuration.connectionId {
             context.coordinator.observeTeardown(connectionId: connectionId)
         }

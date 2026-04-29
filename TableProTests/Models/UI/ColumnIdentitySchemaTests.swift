@@ -69,4 +69,43 @@ struct ColumnIdentitySchemaTests {
         #expect(schema.isNameBased)
         #expect(schema.identifier(for: 0) == nil)
     }
+
+    @Test("Inserting a new column shifts position but the existing identifier still resolves")
+    func identifiersFollowColumnsAcrossInsert() {
+        let before = ColumnIdentitySchema(columns: ["id", "name", "email"])
+        let after = ColumnIdentitySchema(columns: ["id", "created_at", "name", "email"])
+
+        let nameId = NSUserInterfaceItemIdentifier("name")
+        #expect(before.dataIndex(from: nameId) == 1)
+        #expect(after.dataIndex(from: nameId) == 2)
+
+        let emailId = NSUserInterfaceItemIdentifier("email")
+        #expect(before.dataIndex(from: emailId) == 2)
+        #expect(after.dataIndex(from: emailId) == 3)
+    }
+
+    @Test("Reordering columns reassigns indices but identifiers track the column")
+    func identifiersFollowColumnsAcrossReorder() {
+        let before = ColumnIdentitySchema(columns: ["id", "name", "email"])
+        let after = ColumnIdentitySchema(columns: ["email", "id", "name"])
+
+        for column in ["id", "name", "email"] {
+            let id = NSUserInterfaceItemIdentifier(column)
+            let beforeIndex = before.dataIndex(from: id)
+            let afterIndex = after.dataIndex(from: id)
+            #expect(beforeIndex != nil)
+            #expect(afterIndex != nil)
+            #expect(beforeIndex != afterIndex)
+        }
+    }
+
+    @Test("Removing a column drops its identifier and keeps the others")
+    func identifiersDropOnColumnRemoval() {
+        let before = ColumnIdentitySchema(columns: ["id", "name", "email"])
+        let after = ColumnIdentitySchema(columns: ["id", "email"])
+
+        #expect(after.dataIndex(from: NSUserInterfaceItemIdentifier("name")) == nil)
+        #expect(before.dataIndex(from: NSUserInterfaceItemIdentifier("email")) == 2)
+        #expect(after.dataIndex(from: NSUserInterfaceItemIdentifier("email")) == 1)
+    }
 }

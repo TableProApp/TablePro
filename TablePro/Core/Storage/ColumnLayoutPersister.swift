@@ -7,13 +7,6 @@ import Foundation
 import os
 
 @MainActor
-protocol ColumnLayoutPersisting: AnyObject {
-    func load(for tableName: String, connectionId: UUID) -> ColumnLayoutState?
-    func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID)
-    func clear(for tableName: String, connectionId: UUID)
-}
-
-@MainActor
 final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     static let shared = FileColumnLayoutPersister()
 
