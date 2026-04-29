@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Click a focused cell to start editing without a second click
 - Data grid focus ring follows the system accent color and contrast settings
 - Data grid cells expose accessibility row and column index ranges to VoiceOver on all dataset sizes
+- Data grid column headers announce sort direction and multi-sort priority to VoiceOver
 - Multi-cell paste: paste TSV data from the clipboard into the grid starting from the focused cell, grouped as a single undo action
 - Shift+Tab navigates to the previous cell in the data grid
 - Copy rows writes TSV, HTML table, and plain text to the clipboard for richer paste in spreadsheet apps
