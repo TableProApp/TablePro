@@ -4,22 +4,42 @@
 //
 
 import AppKit
+import os
 import SwiftUI
+
+private let sortLogger = Logger(subsystem: "com.TablePro", category: "DataGridSort")
 
 extension TableViewCoordinator {
     // MARK: - Native Sorting
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard !isSyncingSortDescriptors else { return }
+        guard !isSyncingSortDescriptors else {
+            sortLogger.debug("sortDescriptorsDidChange skipped: isSyncing")
+            return
+        }
 
-        guard let sortDescriptor = tableView.sortDescriptors.first,
-              let key = sortDescriptor.key,
-              let columnIndex = dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)),
-              columnIndex >= 0 && columnIndex < tableRowsProvider().columns.count else {
+        guard let sortDescriptor = tableView.sortDescriptors.first else {
+            sortLogger.debug("sortDescriptorsDidChange: no sort descriptor (cleared)")
+            return
+        }
+
+        guard let key = sortDescriptor.key else {
+            sortLogger.error("sortDescriptorsDidChange: descriptor has nil key")
+            return
+        }
+
+        guard let columnIndex = dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)) else {
+            sortLogger.error("sortDescriptorsDidChange: could not resolve key '\(key, privacy: .public)' to a data column index. Schema columns: \(self.identitySchema.identifiers.map { $0.rawValue }, privacy: .public)")
+            return
+        }
+
+        guard columnIndex >= 0, columnIndex < tableRowsProvider().columns.count else {
+            sortLogger.error("sortDescriptorsDidChange: columnIndex \(columnIndex) out of range")
             return
         }
 
         let isMultiSort = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
+        sortLogger.debug("sortDescriptorsDidChange: dispatching column=\(columnIndex) ascending=\(sortDescriptor.ascending) isMultiSort=\(isMultiSort)")
         delegate?.dataGridSort(column: columnIndex, ascending: sortDescriptor.ascending, isMultiSort: isMultiSort)
     }
 
