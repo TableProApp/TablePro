@@ -243,8 +243,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator.rebuildVisualStateCache()
 
         let currentDataColumns = tableView.tableColumns.dropFirst()
-        let currentColumnIds = currentDataColumns.map { $0.identifier.rawValue }
-        let expectedColumnIds = coordinator.identitySchema.identifiers.map { $0.rawValue }
+        let currentColumnIds = Set(currentDataColumns.map { $0.identifier.rawValue })
+        let expectedColumnIds = Set(coordinator.identitySchema.identifiers.map { $0.rawValue })
         let columnsChanged = !latestRows.columns.isEmpty && (currentColumnIds != expectedColumnIds)
 
         let isInitialDataLoad = structureChanged && oldRowCount == 0 && !latestRows.columns.isEmpty
