@@ -3,11 +3,9 @@ import Foundation
 extension MainContentCoordinator {
     func addNewRow() {
         guard !safeModeLevel.blocksAllWrites,
-              let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
-
-        let tab = tabManager.tabs[tabIndex]
-        guard tab.tableContext.isEditable, tab.tableContext.tableName != nil else { return }
+              let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tableContext.isEditable,
+              tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
         let columnDefaults = tableRowsStore.tableRows(for: tabId).columnDefaults
@@ -37,12 +35,11 @@ extension MainContentCoordinator {
 
     func deleteSelectedRows(indices: Set<Int>) {
         guard !safeModeLevel.blocksAllWrites,
-              let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count,
-              tabManager.tabs[tabIndex].tableContext.isEditable,
+              let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tableContext.isEditable,
               !indices.isEmpty else { return }
 
-        let tabId = tabManager.tabs[tabIndex].id
+        let tabId = tab.id
 
         var deleteResult = RowOperationsManager.DeleteRowsResult(
             nextRowToSelect: -1,
@@ -77,11 +74,9 @@ extension MainContentCoordinator {
 
     func duplicateSelectedRow(index: Int) {
         guard !safeModeLevel.blocksAllWrites,
-              let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
-
-        let tab = tabManager.tabs[tabIndex]
-        guard tab.tableContext.isEditable, tab.tableContext.tableName != nil else { return }
+              let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tableContext.isEditable,
+              tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
         let columns = tableRowsStore.tableRows(for: tabId).columns
@@ -110,10 +105,7 @@ extension MainContentCoordinator {
     }
 
     func undoInsertRow(at rowIndex: Int) {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
-
-        let tabId = tabManager.tabs[tabIndex].id
+        guard let tabId = tabManager.selectedTab?.id else { return }
 
         var undoResult = RowOperationsManager.UndoInsertRowResult(
             adjustedSelection: selectionState.indices,
@@ -135,10 +127,8 @@ extension MainContentCoordinator {
     }
 
     func handleUndoResult(_ result: UndoResult) {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
 
-        let tab = tabManager.tabs[tabIndex]
         let tabId = tab.id
 
         var application = RowOperationsManager.UndoApplicationResult(adjustedSelection: nil, delta: .none)
@@ -159,10 +149,7 @@ extension MainContentCoordinator {
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
-        guard let index = tabManager.selectedTabIndex,
-              !indices.isEmpty else { return }
-
-        let tab = tabManager.tabs[index]
+        guard let tab = tabManager.selectedTab, !indices.isEmpty else { return }
         let tableRows = tableRowsStore.tableRows(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
@@ -171,10 +158,7 @@ extension MainContentCoordinator {
     }
 
     func copySelectedRowsWithHeaders(indices: Set<Int>) {
-        guard let index = tabManager.selectedTabIndex,
-              !indices.isEmpty else { return }
-
-        let tab = tabManager.tabs[index]
+        guard let tab = tabManager.selectedTab, !indices.isEmpty else { return }
         let tableRows = tableRowsStore.tableRows(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
@@ -184,9 +168,7 @@ extension MainContentCoordinator {
     }
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
-        guard let index = tabManager.selectedTabIndex,
-              !indices.isEmpty else { return }
-        let tab = tabManager.tabs[index]
+        guard let tab = tabManager.selectedTab, !indices.isEmpty else { return }
         let tableRows = tableRowsStore.tableRows(for: tab.id)
         let rows = indices.sorted().compactMap { idx -> [String?]? in
             guard idx >= 0, idx < tableRows.count else { return nil }
@@ -202,10 +184,8 @@ extension MainContentCoordinator {
 
     func pasteRows() {
         guard !safeModeLevel.blocksAllWrites,
-              let index = tabManager.selectedTabIndex else { return }
-
-        let tab = tabManager.tabs[index]
-        guard tab.tabType == .table else { return }
+              let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tabType == .table else { return }
 
         let tabId = tab.id
         let columns = tableRowsStore.tableRows(for: tabId).columns
@@ -226,19 +206,19 @@ extension MainContentCoordinator {
         let newIndices = Set(pasteResult.pastedRows.map { $0.rowIndex })
         selectionState.indices = newIndices
 
-        tabManager.tabs[index].selectedRowIndices = newIndices
-        tabManager.tabs[index].hasUserInteraction = true
+        tabManager.tabs[tabIndex].selectedRowIndices = newIndices
+        tabManager.tabs[tabIndex].hasUserInteraction = true
         querySortCache.removeValue(forKey: tabId)
         dataTabDelegate?.tableViewCoordinator?.applyDelta(pasteResult.delta)
     }
 
     func updateCellInTab(rowIndex: Int, columnIndex: Int, value: String?) {
-        guard let index = tabManager.selectedTabIndex else { return }
-        let tabId = tabManager.tabs[index].id
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        let tabId = tab.id
         let delta = mutateActiveTableRows(for: tabId) { rows in
             rows.edit(row: rowIndex, column: columnIndex, value: value)
         }
-        tabManager.tabs[index].hasUserInteraction = true
+        tabManager.tabs[tabIndex].hasUserInteraction = true
         dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
     }
 }

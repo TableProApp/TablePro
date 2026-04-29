@@ -394,6 +394,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         displayCache.removeAll()
         rebuildVisualStateCache()
         updateCache()
+        guard let tableView else { return }
+        let visibleRange = tableView.rows(in: tableView.visibleRect)
+        guard visibleRange.length > 0 else { return }
+        tableView.reloadData(
+            forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
+            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
+        )
     }
 
     func commitActiveCellEdit() {
