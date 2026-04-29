@@ -1002,6 +1002,21 @@ impl SimpleComponent for App {
             .table_search_bar
             .set_key_capture_widget(Some(&widgets.sidebar_root));
 
+        // Empty-state placeholder. Shown by GtkListBox when no row is
+        // visible — covers both "the database has zero tables" and
+        // "the search filtered everything out". Without this, the
+        // sidebar renders as a blank surface and reads as broken.
+        // AdwStatusPage `.compact` is the documented empty-state
+        // widget for narrow containers (matches GNOME Files's
+        // sidebar-empty look).
+        let sidebar_placeholder = adw::StatusPage::builder()
+            .icon_name("view-list-symbolic")
+            .title(crate::tr!("No tables"))
+            .description(crate::tr!("Nothing matches the current search, or this connection has no tables yet."))
+            .build();
+        sidebar_placeholder.add_css_class("compact");
+        sidebar_listbox.set_placeholder(Some(&sidebar_placeholder));
+
         // Two-way bind the sidebar header's search toggle to the SearchBar.
         // Click toggle → SearchBar reveals + entry focuses; press Esc →
         // SearchBar hides → toggle deactivates.
@@ -1045,7 +1060,11 @@ impl SimpleComponent for App {
                 .margin_top(12)
                 .margin_bottom(6)
                 .margin_start(12)
-                .margin_end(6)
+                // Match the row body's `margin_end: 12` so the "+"
+                // button sits flush with where row content ends — the
+                // previous 6px pulled it inward of the row label edge
+                // and read as a misaligned column.
+                .margin_end(12)
                 .build();
             let label_text = current
                 .as_deref()
@@ -1056,7 +1075,13 @@ impl SimpleComponent for App {
                 .xalign(0.0)
                 .hexpand(true)
                 .build();
-            label.add_css_class("heading");
+            // GtkPlacesSidebar section-header typography: small + bold
+            // + ~55% alpha. `.heading` (libadwaita's "emphasized body")
+            // combined with `.dim-label` rendered as bold-dim at body
+            // size — too loud for a section divider. `.caption-heading`
+            // is the small-bold variant the toolkit ships for exactly
+            // this purpose.
+            label.add_css_class("caption-heading");
             label.add_css_class("dim-label");
             header_box.append(&label);
             // "+" button: emit NewTableTab carrying this schema. Flat

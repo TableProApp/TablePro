@@ -72,7 +72,10 @@ impl FactoryComponent for SidebarRow {
             #[wrap(Some)]
             set_child = &gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
+                // Icon-to-label spacing matches GtkPlacesSidebar's
+                // ~8px standard. 12 was loose enough to read as two
+                // separate columns rather than one labelled icon.
+                set_spacing: 8,
                 set_margin_start: 12,
                 set_margin_end: 12,
                 set_margin_top: 6,
