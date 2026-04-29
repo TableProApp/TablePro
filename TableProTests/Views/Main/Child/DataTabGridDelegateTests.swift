@@ -9,7 +9,7 @@ import Testing
 @testable import TablePro
 
 @MainActor
-private final class FakeRowDeltaApplier: RowDeltaApplying {
+private final class FakeTableViewCoordinator: TableViewCoordinating {
     var insertedCalls: [IndexSet] = []
     var removedCalls: [IndexSet] = []
     var fullReplaceCount: Int = 0
@@ -55,7 +55,7 @@ struct DataTabGridDelegateTests {
     @Test("dataGridDidInsertRows(at:) forwards the IndexSet to applyInsertedRows")
     func insertForwardsIndices() {
         let delegate = DataTabGridDelegate()
-        let applier = FakeRowDeltaApplier()
+        let applier = FakeTableViewCoordinator()
         delegate.tableViewCoordinator = applier
 
         let indices = IndexSet([1, 3, 5])
@@ -70,7 +70,7 @@ struct DataTabGridDelegateTests {
     @Test("dataGridDidRemoveRows(at:) forwards the IndexSet to applyRemovedRows")
     func removeForwardsIndices() {
         let delegate = DataTabGridDelegate()
-        let applier = FakeRowDeltaApplier()
+        let applier = FakeTableViewCoordinator()
         delegate.tableViewCoordinator = applier
 
         let indices = IndexSet(integersIn: 4..<7)
@@ -85,7 +85,7 @@ struct DataTabGridDelegateTests {
     @Test("dataGridDidReplaceAllRows() forwards to applyFullReplace")
     func fullReplaceForwards() {
         let delegate = DataTabGridDelegate()
-        let applier = FakeRowDeltaApplier()
+        let applier = FakeTableViewCoordinator()
         delegate.tableViewCoordinator = applier
 
         delegate.dataGridDidReplaceAllRows()
