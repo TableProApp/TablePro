@@ -120,11 +120,12 @@ struct DataGridView: NSViewRepresentable {
 
         applyColumnVisibility(to: tableView, coordinator: context.coordinator, columns: initialRows.columns)
 
-        if let headerView = tableView.headerView {
-            let headerMenu = NSMenu()
-            headerMenu.delegate = context.coordinator
-            headerView.menu = headerMenu
-        }
+        let sortableHeader = SortableHeaderView(frame: tableView.headerView?.frame ?? .zero)
+        sortableHeader.coordinator = context.coordinator
+        let headerMenu = NSMenu()
+        headerMenu.delegate = context.coordinator
+        sortableHeader.menu = headerMenu
+        tableView.headerView = sortableHeader
 
         let hasMoveRow = delegate != nil
         if hasMoveRow {
@@ -421,6 +422,8 @@ struct DataGridView: NSViewRepresentable {
     private func syncSortDescriptors(tableView: NSTableView, coordinator: TableViewCoordinator, columns: [String]) {
         coordinator.isSyncingSortDescriptors = true
         defer { coordinator.isSyncingSortDescriptors = false }
+
+        coordinator.currentSortState = sortState
 
         Self.sortDiagLogger.debug("syncSortDescriptors: sortState.columns=\(sortState.columns.map { "\($0.columnIndex):\($0.direction == .ascending ? "asc" : "desc")" }, privacy: .public)")
 

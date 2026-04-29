@@ -28,6 +28,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var layoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister.shared
     var onColumnLayoutDidChange: ((ColumnLayoutState) -> Void)?
     private(set) var identitySchema: ColumnIdentitySchema = .empty
+    var currentSortState: SortState = SortState()
 
     func columnIdentifier(for dataIndex: Int) -> NSUserInterfaceItemIdentifier? {
         identitySchema.identifier(for: dataIndex)
