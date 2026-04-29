@@ -206,6 +206,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func updateCache() {
+        cachedTableRows = tableRowsProvider()
         cachedRowCount = sortedIDs?.count ?? cachedTableRows.count
         cachedColumnCount = cachedTableRows.columns.count
     }
