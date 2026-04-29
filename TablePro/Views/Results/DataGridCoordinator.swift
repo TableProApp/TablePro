@@ -99,7 +99,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var cachedColumnCount: Int = 0
     private(set) var enumOrSetColumns: Set<Int> = []
     private(set) var fkColumns: Set<Int> = []
-    var isSyncingSortDescriptors: Bool = false
     var isSyncingSelection = false
     var isRebuildingColumns: Bool = false
     var isEscapeCancelling = false

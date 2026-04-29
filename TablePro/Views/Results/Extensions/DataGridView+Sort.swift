@@ -7,29 +7,6 @@ import AppKit
 import SwiftUI
 
 extension TableViewCoordinator {
-    // MARK: - Native Sorting
-
-    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard !isSyncingSortDescriptors else { return }
-
-        guard let newDescriptor = tableView.sortDescriptors.first,
-              let key = newDescriptor.key,
-              let columnIndex = dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)),
-              columnIndex >= 0, columnIndex < tableRowsProvider().columns.count else {
-            return
-        }
-
-        if let oldDescriptor = oldDescriptors.first,
-           oldDescriptor.key == newDescriptor.key,
-           oldDescriptor.ascending == false,
-           newDescriptor.ascending == true {
-            delegate?.dataGridClearSort()
-            return
-        }
-
-        delegate?.dataGridSort(column: columnIndex, ascending: newDescriptor.ascending, isMultiSort: false)
-    }
-
     // MARK: - Double-Click Column Divider Auto-Fit
 
     func tableView(_ tableView: NSTableView, sizeToFitWidthOfColumn columnIndex: Int) -> CGFloat {

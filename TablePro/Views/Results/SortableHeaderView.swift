@@ -5,6 +5,35 @@
 
 import AppKit
 
+enum HeaderSortAction: Equatable {
+    case sort(columnIndex: Int, ascending: Bool, isMultiSort: Bool)
+    case clear
+}
+
+enum HeaderSortCycle {
+    static func nextAction(
+        state: SortState,
+        clickedColumn: Int,
+        isMultiSort: Bool
+    ) -> HeaderSortAction {
+        if isMultiSort {
+            let alreadyPresent = state.columns.contains(where: { $0.columnIndex == clickedColumn })
+            return .sort(columnIndex: clickedColumn, ascending: !alreadyPresent, isMultiSort: true)
+        }
+
+        guard let primary = state.columns.first, primary.columnIndex == clickedColumn else {
+            return .sort(columnIndex: clickedColumn, ascending: true, isMultiSort: false)
+        }
+
+        switch primary.direction {
+        case .ascending:
+            return .sort(columnIndex: clickedColumn, ascending: false, isMultiSort: false)
+        case .descending:
+            return .clear
+        }
+    }
+}
+
 @MainActor
 final class SortableHeaderView: NSTableHeaderView {
     weak var coordinator: TableViewCoordinator?
@@ -79,9 +108,7 @@ final class SortableHeaderView: NSTableHeaderView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags.contains(.shift),
-              let tableView = tableView,
+        guard let tableView = tableView,
               let coordinator = coordinator else {
             super.mouseDown(with: event)
             return
@@ -101,8 +128,24 @@ final class SortableHeaderView: NSTableHeaderView {
             return
         }
 
-        let existing = coordinator.currentSortState.columns.first(where: { $0.columnIndex == dataIndex })
-        let ascending = existing == nil
-        coordinator.delegate?.dataGridSort(column: dataIndex, ascending: ascending, isMultiSort: true)
+        let isMultiSort = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .contains(.shift)
+        let action = HeaderSortCycle.nextAction(
+            state: coordinator.currentSortState,
+            clickedColumn: dataIndex,
+            isMultiSort: isMultiSort
+        )
+
+        switch action {
+        case .sort(let columnIndex, let ascending, let isMultiSort):
+            coordinator.delegate?.dataGridSort(
+                column: columnIndex,
+                ascending: ascending,
+                isMultiSort: isMultiSort
+            )
+        case .clear:
+            coordinator.delegate?.dataGridClearSort()
+        }
     }
 }

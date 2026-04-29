@@ -420,9 +420,6 @@ struct DataGridView: NSViewRepresentable {
     }
 
     private func syncSortDescriptors(tableView: NSTableView, coordinator: TableViewCoordinator, columns: [String]) {
-        coordinator.isSyncingSortDescriptors = true
-        defer { coordinator.isSyncingSortDescriptors = false }
-
         coordinator.currentSortState = sortState
 
         let primaryIdentifier: NSUserInterfaceItemIdentifier?
