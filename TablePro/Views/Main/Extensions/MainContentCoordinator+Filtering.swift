@@ -81,10 +81,10 @@ extension MainContentCoordinator {
 
     func restoreFiltersForTable(_ tableName: String) {
         filterStateManager.restoreLastFilters(for: tableName)
-        guard let (_, idx) = tabManager.selectedTabAndIndex else { return }
-        tabManager.tabs[idx].filterState = filterStateManager.saveToTabState()
+        guard let (_, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
         if filterStateManager.hasAppliedFilters {
-            rebuildTableQuery(at: idx)
+            rebuildTableQuery(at: tabIndex)
         }
     }
 

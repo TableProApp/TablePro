@@ -41,8 +41,8 @@ extension MainContentCoordinator {
            current.tabType == .table,
            current.tableContext.tableName == tableName,
            current.tableContext.databaseName == currentDatabase {
-            if showStructure, let (_, idx) = tabManager.selectedTabAndIndex {
-                tabManager.tabs[idx].display.resultsViewMode = .structure
+            if showStructure, let (_, tabIndex) = tabManager.selectedTabAndIndex {
+                tabManager.tabs[tabIndex].display.resultsViewMode = .structure
             }
             return
         }

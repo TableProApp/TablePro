@@ -46,8 +46,8 @@ extension MainContentCoordinator {
            current.tableContext.databaseName == currentDatabase,
            current.tableContext.schemaName == targetSchema {
             applyFKFilter(filter, for: referencedTable)
-            if let (_, idx) = tabManager.selectedTabAndIndex {
-                tabManager.tabs[idx].filterState = filterStateManager.saveToTabState()
+            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
+                tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
             }
             return
         }
