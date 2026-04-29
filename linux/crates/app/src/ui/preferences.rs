@@ -1,38 +1,8 @@
 use relm4::adw::prelude::*;
-use relm4::gtk::{gio, glib};
+use relm4::gtk::gio;
 use relm4::{adw, gtk};
 
 use crate::services::preferences::{self, Preferences};
-
-/// Clear keyboard focus whenever the page becomes visible.
-///
-/// AdwPreferencesDialog auto-grabs focus on the first focusable row
-/// of the active page (libadwaita's accessibility default). For our
-/// pages that's an `AdwSpinRow` or `AdwSwitchRow` — both noticeable
-/// because mouse-scroll over a focused SpinRow changes its value
-/// while the user is just reading. Result: opening the dialog or
-/// switching to the Editor tab and scrolling the wheel silently
-/// edits the font size / timeout etc.
-///
-/// Solution: schedule an idle hop after the page maps and call
-/// `parent_window.set_focus(None)`, which clears any focus libadwaita
-/// grabbed during the map. The idle hop matters because libadwaita's
-/// grab runs DURING the map; clearing synchronously inside the
-/// `map` handler races with it. Tab-key users still reach rows via
-/// the natural focus chain — they just start one Tab earlier.
-fn clear_focus_on_map(page: &adw::PreferencesPage) {
-    page.connect_map(|p| {
-        let parent_win = p.root().and_then(|r| r.downcast::<gtk::Window>().ok());
-        if let Some(win) = parent_win {
-            glib::idle_add_local_once(move || {
-                // Disambiguate between RootExt::set_focus and
-                // GtkWindowExt::set_focus — both apply to gtk::Window.
-                // We want the GtkWindow-level focus reset.
-                gtk::prelude::GtkWindowExt::set_focus(&win, gtk::Widget::NONE);
-            });
-        }
-    });
-}
 
 pub fn present(parent: &impl IsA<gtk::Widget>) {
     let window = adw::PreferencesDialog::builder()
@@ -183,9 +153,6 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
     editor_group.add(&timeout_row);
 
     editor.add(&editor_group);
-
-    clear_focus_on_map(&general);
-    clear_focus_on_map(&editor);
 
     window.add(&general);
     window.add(&editor);
