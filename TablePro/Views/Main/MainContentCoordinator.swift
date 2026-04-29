@@ -31,6 +31,13 @@ struct QuerySortCacheEntry {
     let schemaVersion: Int
 }
 
+struct DisplayFormatsCacheEntry {
+    let schemaVersion: Int
+    let smartDetectionEnabled: Bool
+    let overridesVersion: Int
+    let formats: [ValueDisplayFormat?]
+}
+
 /// Sidebar table loading state — single source of truth for sidebar UI
 enum SidebarLoadingState: Equatable {
     case idle
@@ -146,6 +153,8 @@ final class MainContentCoordinator {
 
     /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
     @ObservationIgnored var querySortCache: [UUID: QuerySortCacheEntry] = [:]
+
+    @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
 
     @ObservationIgnored var pendingScrollToTopAfterReplace: Set<UUID> = []
 
@@ -350,6 +359,9 @@ final class MainContentCoordinator {
     func cleanupSortCache(openTabIds: Set<UUID>) {
         if querySortCache.keys.contains(where: { !openTabIds.contains($0) }) {
             querySortCache = querySortCache.filter { openTabIds.contains($0.key) }
+        }
+        if displayFormatsCache.keys.contains(where: { !openTabIds.contains($0) }) {
+            displayFormatsCache = displayFormatsCache.filter { openTabIds.contains($0.key) }
         }
         for (tabId, task) in activeSortTasks where !openTabIds.contains(tabId) {
             task.cancel()
@@ -585,6 +597,7 @@ final class MainContentCoordinator {
 
         tableRowsStore.tearDown()
         querySortCache.removeAll()
+        displayFormatsCache.removeAll()
         cachedTableColumnTypes.removeAll()
         cachedTableColumnNames.removeAll()
 

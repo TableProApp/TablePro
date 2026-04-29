@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multiline cell overlay editor discards the in-progress edit when a column resize fires, instead of silently committing partial text
 - Data grid cell change highlights (deleted, inserted, modified) re-resolve under the active appearance when the user toggles Light or Dark mode mid-session
 - Data grid keeps sortedIDs and cachedRowCount paired by calling updateCache() immediately after the SwiftUI bridge writes new sortedIDs to the coordinator, removing a window where the cached count and the sort permutation could disagree
+- Display formats memoized per tab on MainContentCoordinator keyed by schema version, smart-detection setting, and format-overrides version, so ValueDisplayDetector.detect runs once per result schema instead of on every SwiftUI body evaluation
 
 ### Fixed
 

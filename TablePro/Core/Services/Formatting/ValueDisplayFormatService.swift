@@ -18,6 +18,8 @@ final class ValueDisplayFormatService {
     /// Auto-detected formats keyed by "connectionId.tableName.columnName" for per-connection isolation.
     private var autoDetectedFormats: [String: ValueDisplayFormat] = [:]
 
+    private(set) var overridesVersion: Int = 0
+
     private init() {}
 
     // MARK: - Format Application
@@ -102,6 +104,8 @@ final class ValueDisplayFormatService {
         } else {
             ValueDisplayFormatStorage.shared.save(overrides, for: tableName, connectionId: connectionId)
         }
+
+        overridesVersion &+= 1
     }
 
     // MARK: - Private Formatting
