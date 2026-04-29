@@ -140,7 +140,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.dismiss(commit: true)
+                self?.dismiss(commit: false)
             }
         }
     }
