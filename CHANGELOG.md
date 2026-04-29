@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Right-click during cell editing shows the native text context menu instead of the row menu
 - Multiline cell overlay editor discards the in-progress edit when a column resize fires, instead of silently committing partial text
 - Data grid cell change highlights (deleted, inserted, modified) re-resolve under the active appearance when the user toggles Light or Dark mode mid-session
+- Data grid keeps sortedIDs and cachedRowCount paired by calling updateCache() immediately after the SwiftUI bridge writes new sortedIDs to the coordinator, removing a window where the cached count and the sort permutation could disagree
 
 ### Fixed
 
