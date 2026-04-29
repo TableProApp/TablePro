@@ -85,7 +85,10 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in initialRows.columns.enumerated() {
             guard let identifier = identitySchema.identifier(for: index) else { continue }
             let column = NSTableColumn(identifier: identifier)
-            column.title = columnName
+            let suppressedCell = SuppressedSortIndicatorCell(textCell: columnName)
+            suppressedCell.font = column.headerCell.font
+            suppressedCell.alignment = column.headerCell.alignment
+            column.headerCell = suppressedCell
             if index < initialRows.columnTypes.count {
                 let typeName = initialRows.columnTypes[index].rawType ?? initialRows.columnTypes[index].displayName
                 column.headerToolTip = "\(columnName) (\(typeName))"
@@ -334,7 +337,10 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in tableRows.columns.enumerated() {
             guard let identifier = schema.identifier(for: index) else { continue }
             let column = NSTableColumn(identifier: identifier)
-            column.title = columnName
+            let suppressedCell = SuppressedSortIndicatorCell(textCell: columnName)
+            suppressedCell.font = column.headerCell.font
+            suppressedCell.alignment = column.headerCell.alignment
+            column.headerCell = suppressedCell
             if index < tableRows.columnTypes.count {
                 let typeName = tableRows.columnTypes[index].rawType
                     ?? tableRows.columnTypes[index].displayName
@@ -439,9 +445,6 @@ struct DataGridView: NSViewRepresentable {
             tableView.sortDescriptors = desired
         }
 
-        for column in tableView.tableColumns {
-            tableView.setIndicatorImage(nil, in: column)
-        }
         tableView.highlightedTableColumn = nil
 
         if let header = tableView.headerView as? SortableHeaderView {
