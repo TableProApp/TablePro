@@ -144,3 +144,4 @@ Libs/*.a
 Libs/.downloaded
 Libs/dylibs/
 Libs/ios/
+.claude/
