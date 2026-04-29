@@ -133,7 +133,7 @@ impl SimpleComponent for SqlEditor {
                 #[name = "cancel_button"]
                 gtk::Button {
                     set_label: &crate::tr!("Cancel"),
-                    set_tooltip_text: Some(crate::tr!("Cancel running query").as_str()),
+                    set_tooltip_text: Some(crate::tr!("Cancel running query (Esc)").as_str()),
                     set_visible: false,
                     add_css_class: "flat",
                     connect_clicked => SqlEditorInput::Cancel,
@@ -247,8 +247,25 @@ impl SimpleComponent for SqlEditor {
                 }
             }))
             .build();
+        // Esc cancels a running query. The editor tab isn't a dialog
+        // so Esc is otherwise unbound, and keyboard parity with the
+        // Run shortcut matters most when the user is trying to stop
+        // a runaway query and shouldn't have to hunt the small flat
+        // Cancel button. The Cancel handler no-ops when nothing is
+        // running, so binding unconditionally is safe.
+        let cancel_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new({
+                let sender = sender.clone();
+                move |_, _| {
+                    sender.input(SqlEditorInput::Cancel);
+                    glib::Propagation::Stop
+                }
+            }))
+            .build();
         let controller = gtk::ShortcutController::new();
         controller.add_shortcut(run_shortcut);
+        controller.add_shortcut(cancel_shortcut);
         widgets.source_view.add_controller(controller);
 
         let drop_target = gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
@@ -258,7 +275,21 @@ impl SimpleComponent for SqlEditor {
                 && let Some(path) = file.path()
                 && let Ok(text) = std::fs::read_to_string(&path)
             {
-                view_for_drop.buffer().set_text(&text);
+                let buffer = view_for_drop.buffer();
+                let (start, end) = buffer.bounds();
+                let existing_empty = buffer.text(&start, &end, false).trim().is_empty();
+                if existing_empty {
+                    // Empty buffer: replace wholesale — most natural
+                    // for "open this SQL file in the editor".
+                    buffer.set_text(&text);
+                } else {
+                    // Non-empty buffer: insert at cursor. Replacing
+                    // would silently destroy whatever the user had
+                    // typed, which fails GNOME Builder / Text Editor
+                    // expectations for drag-and-drop. Insert is
+                    // additive and undoable via Ctrl+Z.
+                    buffer.insert_at_cursor(&text);
+                }
                 return true;
             }
             false
@@ -830,17 +861,31 @@ fn apply_editor_scheme(view: &sourceview5::View) {
 fn apply_editor_font_size(_view: &sourceview5::View, font_size: u32) {
     // GTK 4.10+ removed per-widget CssProvider (gtk::Widget::style_context()
     // is deprecated). The replacement is display-scoped — register the rule
-    // once on the default display; the textview selector ensures only
-    // SourceView / TextView descendants are affected (gtk::Entry doesn't
-    // match). Multiple invocations stack harmlessly when the rule body is
-    // identical, but if the font size has changed since the last call we
-    // need a fresh provider per call.
-    let css = format!("textview, textview text {{ font-size: {font_size}pt; }}");
-    let provider = gtk::CssProvider::new();
-    provider.load_from_string(&css);
-    if let Some(display) = gtk::gdk::Display::default() {
-        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    // on the default display; the textview selector ensures only SourceView
+    // / TextView descendants are affected (gtk::Entry doesn't match).
+    //
+    // Track the live provider in a thread-local so the previous one is
+    // removed before the new one is installed. Without this, every
+    // editor-tab open (and every preferences change) added a fresh
+    // provider that nothing ever cleaned up — a slow CSS-provider leak
+    // visible in heavy sessions.
+    thread_local! {
+        static EDITOR_FONT_PROVIDER: std::cell::RefCell<Option<gtk::CssProvider>> =
+            const { std::cell::RefCell::new(None) };
     }
+    let Some(display) = gtk::gdk::Display::default() else {
+        return;
+    };
+    EDITOR_FONT_PROVIDER.with(|cell| {
+        if let Some(prev) = cell.borrow_mut().take() {
+            gtk::style_context_remove_provider_for_display(&display, &prev);
+        }
+        let css = format!("textview, textview text {{ font-size: {font_size}pt; }}");
+        let provider = gtk::CssProvider::new();
+        provider.load_from_string(&css);
+        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        *cell.borrow_mut() = Some(provider);
+    });
 }
 
 #[cfg(test)]
