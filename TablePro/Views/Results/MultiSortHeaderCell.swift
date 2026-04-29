@@ -7,38 +7,19 @@ import AppKit
 
 @MainActor
 final class MultiSortHeaderCell: NSTableHeaderCell {
-    var sortIndicatorImage: NSImage?
+    var sortAscending: Bool?
     var sortPriority: Int = 0
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
-        let imageGap: CGFloat = 4
+        super.drawInterior(withFrame: cellFrame, in: controlView)
 
-        var titleFrame = cellFrame
-        if let image = sortIndicatorImage {
-            titleFrame.size.width -= image.size.width + imageGap * 2
-        }
-        super.drawInterior(withFrame: titleFrame, in: controlView)
-
-        guard let image = sortIndicatorImage else { return }
-        let imageRect = NSRect(
-            x: cellFrame.maxX - image.size.width - imageGap,
-            y: cellFrame.midY - image.size.height / 2,
-            width: image.size.width,
-            height: image.size.height
+        guard let ascending = sortAscending else { return }
+        super.drawSortIndicator(
+            withFrame: cellFrame,
+            in: controlView,
+            ascending: ascending,
+            priority: sortPriority
         )
-
-        let drawable: NSImage
-        if image.isTemplate {
-            drawable = NSImage(size: image.size, flipped: false) { rect in
-                image.draw(in: rect)
-                NSColor.labelColor.withAlphaComponent(0.4).set()
-                rect.fill(using: .sourceAtop)
-                return true
-            }
-        } else {
-            drawable = image
-        }
-        drawable.draw(in: imageRect)
     }
 
     override func drawSortIndicator(
