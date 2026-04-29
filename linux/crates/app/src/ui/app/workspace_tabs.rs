@@ -585,15 +585,23 @@ impl App {
                 WorkspaceTab::Table(s) => s.page.clone(),
             });
             let Some(page) = page else { return };
+            // Tab title without the dirty bullet — the heading reads
+            // as the natural-language name of the tab (`categories`),
+            // not `• categories`. Strip a leading "• " if present.
+            let raw_title = page.title().to_string();
+            let tab_label = raw_title.strip_prefix("• ").unwrap_or(&raw_title).to_string();
             // Cancel | Discard(destructive) | Save(suggested), Save is
             // default. Mirrors GNOME Text Editor's close-with-unsaved
-            // template (libadwaita AdwAlertDialog reference).
-            let dialog = adw::AlertDialog::new(
-                Some(&crate::tr!("Save changes?")),
-                Some(&crate::tr!(
-                    "This tab has unsaved edits. Save commits them now, Discard throws them away."
-                )),
-            );
+            // template (libadwaita AdwAlertDialog reference). Naming
+            // the tab in the heading + factual body copy follows the
+            // GNOME HIG pattern for destructive-confirmation dialogs.
+            let dialog = adw::AlertDialog::new(None, None);
+            dialog.set_heading(Some(
+                &crate::tr!("Save changes to “{name}”?").replace("{name}", &tab_label),
+            ));
+            dialog.set_body(&crate::tr!(
+                "Unsaved changes will be permanently lost if you discard them."
+            ));
             dialog.add_response("cancel", &crate::tr!("Cancel"));
             dialog.add_response("discard", &crate::tr!("Discard"));
             dialog.add_response("save", &crate::tr!("Save"));

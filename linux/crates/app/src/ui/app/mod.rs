@@ -831,12 +831,17 @@ impl SimpleComponent for App {
             let has_pending = crate::services::change_tracker::any_pending_globally()
                 || crate::services::structure_tracker::any_pending_globally();
             if !force_close_for_close.get() && has_pending {
-                let dialog = adw::AlertDialog::new(
-                    Some(&crate::tr!("Save changes?")),
-                    Some(&crate::tr!(
-                        "One or more tabs have unsaved edits. Save commits them all now, Discard throws them away."
-                    )),
-                );
+                // Plural-form heading matches the per-tab dialog's
+                // tone — factual GNOME HIG language rather than the
+                // colloquial "throws them away" the body used to
+                // carry. Per-tab dialog stays specific ("Save changes
+                // to {name}"); window close groups across N tabs so
+                // it stays generic.
+                let dialog = adw::AlertDialog::new(None, None);
+                dialog.set_heading(Some(&crate::tr!("Save changes before closing?")));
+                dialog.set_body(&crate::tr!(
+                    "One or more tabs have unsaved changes. They will be permanently lost if you discard them."
+                ));
                 dialog.add_response("cancel", &crate::tr!("Cancel"));
                 dialog.add_response("discard", &crate::tr!("Discard"));
                 dialog.add_response("save", &crate::tr!("Save"));
