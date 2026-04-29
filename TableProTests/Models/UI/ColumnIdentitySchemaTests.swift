@@ -108,4 +108,28 @@ struct ColumnIdentitySchemaTests {
         #expect(before.dataIndex(from: NSUserInterfaceItemIdentifier("email")) == 2)
         #expect(after.dataIndex(from: NSUserInterfaceItemIdentifier("email")) == 1)
     }
+
+    @Test("A column literally named col_0 stays name-based and resolves to its own index")
+    func literalColZeroColumnNameRoundTrips() {
+        let schema = ColumnIdentitySchema(columns: ["id", "name", "col_0"])
+        #expect(schema.isNameBased == true)
+
+        let identifier = schema.identifier(for: 2)
+        #expect(identifier?.rawValue == "col_0")
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("col_0")) == 2)
+        #expect(schema.dataIndex(from: NSUserInterfaceItemIdentifier("id")) == 0)
+    }
+
+    @Test("A literal col_0 column survives reordering without colliding with positional ids")
+    func literalColZeroSurvivesReorder() {
+        let before = ColumnIdentitySchema(columns: ["id", "name", "col_0"])
+        let after = ColumnIdentitySchema(columns: ["col_0", "id", "name"])
+
+        #expect(before.isNameBased == true)
+        #expect(after.isNameBased == true)
+
+        let columnId = NSUserInterfaceItemIdentifier("col_0")
+        #expect(before.dataIndex(from: columnId) == 2)
+        #expect(after.dataIndex(from: columnId) == 0)
+    }
 }

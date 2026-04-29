@@ -114,4 +114,40 @@ struct FileColumnLayoutPersisterTests {
         #expect(restored?.columnWidths == layout.columnWidths)
         #expect(restored?.columnOrder == layout.columnOrder)
     }
+
+    @Test("Loading malformed JSON returns nil instead of crashing")
+    func malformedJSONRecovers() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let connectionId = UUID()
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        try Data("{not valid json".utf8).write(to: fileURL)
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory)
+        #expect(persister.load(for: "users", connectionId: connectionId) == nil)
+    }
+
+    @Test("Saving over a corrupted file replaces it cleanly")
+    func malformedJSONIsRecoverableBySave() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let connectionId = UUID()
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        try Data("garbage".utf8).write(to: fileURL)
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory)
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["id": 100]
+        persister.save(layout, for: "users", connectionId: connectionId)
+
+        let restored = FileColumnLayoutPersister(storageDirectory: directory)
+            .load(for: "users", connectionId: connectionId)
+        #expect(restored?.columnWidths == ["id": 100])
+    }
 }
