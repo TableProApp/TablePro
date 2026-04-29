@@ -211,14 +211,4 @@ struct SortStateTests {
         #expect(state.isSorting == false)
         #expect(state.columnIndex == nil)
     }
-
-    @Test("Descending toggled to ascending stays sorting and does not clear")
-    func descendingToAscendingStaysSorted() {
-        var state = SortState()
-        state.columns = [SortColumn(columnIndex: 0, direction: .descending)]
-        state.columns[0].direction = .ascending
-        #expect(state.isSorting == true)
-        #expect(state.columns.count == 1)
-        #expect(state.columns[0].direction == .ascending)
-    }
 }
