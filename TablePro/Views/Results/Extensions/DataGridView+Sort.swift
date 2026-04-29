@@ -19,14 +19,6 @@ extension TableViewCoordinator {
             return
         }
 
-        if let oldDescriptor = oldDescriptors.first,
-           oldDescriptor.key == newDescriptor.key,
-           oldDescriptor.ascending == false,
-           newDescriptor.ascending == true {
-            delegate?.dataGridClearSort()
-            return
-        }
-
         delegate?.dataGridSort(column: columnIndex, ascending: newDescriptor.ascending, isMultiSort: false)
     }
 
