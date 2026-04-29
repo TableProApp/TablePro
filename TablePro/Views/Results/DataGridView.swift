@@ -66,7 +66,6 @@ struct DataGridView: NSViewRepresentable {
 
     @Binding var selectedRowIndices: Set<Int>
     @Binding var sortState: SortState
-    @Binding var editingCell: CellPosition?
     @Binding var columnLayout: ColumnLayoutState
 
     // MARK: - NSViewRepresentable
@@ -554,23 +553,6 @@ struct DataGridView: NSViewRepresentable {
             tableView.selectRowIndexes(targetSelection, byExtendingSelection: false)
             coordinator.isSyncingSelection = false
         }
-
-        if let cell = editingCell {
-            let tableColumn = DataGridView.tableColumnIndex(for: cell.column)
-            if cell.row < tableView.numberOfRows && tableColumn < tableView.numberOfColumns {
-                tableView.scrollRowToVisible(cell.row)
-                Task { @MainActor [weak tableView] in
-                    guard let tableView else { return }
-                    tableView.selectRowIndexes(IndexSet(integer: cell.row), byExtendingSelection: false)
-                    tableView.editColumn(tableColumn, row: cell.row, with: nil, select: true)
-                    self.editingCell = nil
-                }
-            } else {
-                Task { @MainActor in
-                    self.editingCell = nil
-                }
-            }
-        }
     }
 
     // MARK: - Column Visibility
@@ -697,7 +679,6 @@ private let previewTableRowsForDataGrid = TableRows.from(
         isEditable: true,
         selectedRowIndices: .constant([]),
         sortState: .constant(SortState()),
-        editingCell: .constant(nil),
         columnLayout: .constant(ColumnLayoutState())
     )
     .frame(width: 600, height: 400)

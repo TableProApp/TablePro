@@ -283,8 +283,7 @@ extension MainContentView {
             pendingTruncates: $pendingTruncates,
             pendingDeletes: $pendingDeletes,
             tableOperationOptions: $tableOperationOptions,
-            rightPanelState: rightPanelState,
-            editingCell: $editingCell
+            rightPanelState: rightPanelState
         )
         actions.window = viewWindow
         coordinator.commandActions = actions

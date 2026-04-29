@@ -7,6 +7,8 @@ protocol RowDeltaApplying: AnyObject {
     func applyFullReplace()
     func applyDelta(_ delta: Delta)
     func invalidateCachesForUndoRedo()
+    func commitActiveCellEdit()
+    func beginEditing(displayRow: Int, column: Int)
 }
 
 extension TableViewCoordinator: RowDeltaApplying {}

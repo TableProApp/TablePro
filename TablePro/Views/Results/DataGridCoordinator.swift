@@ -401,6 +401,28 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         updateCache()
     }
 
+    func commitActiveCellEdit() {
+        guard let tableView, let window = tableView.window else { return }
+        if tableView.editedRow >= 0 {
+            window.makeFirstResponder(tableView)
+            return
+        }
+        if let firstResponder = window.firstResponder as? NSView,
+           firstResponder.isDescendant(of: tableView) {
+            window.makeFirstResponder(tableView)
+        }
+    }
+
+    func beginEditing(displayRow: Int, column: Int) {
+        guard let tableView else { return }
+        let displayCol = DataGridView.tableColumnIndex(for: column)
+        guard displayRow >= 0, displayRow < tableView.numberOfRows,
+              displayCol >= 0, displayCol < tableView.numberOfColumns else { return }
+        tableView.scrollRowToVisible(displayRow)
+        tableView.selectRowIndexes(IndexSet(integer: displayRow), byExtendingSelection: false)
+        tableView.editColumn(displayCol, row: displayRow, with: nil, select: true)
+    }
+
     func rebuildColumnMetadataCache(from tableRows: TableRows) {
         var enumSet = Set<Int>()
         var fkSet = Set<Int>()

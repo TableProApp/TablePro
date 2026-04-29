@@ -34,7 +34,6 @@ final class MainContentCommandActions {
     @ObservationIgnored private let pendingDeletes: Binding<Set<String>>
     @ObservationIgnored private let tableOperationOptions: Binding<[String: TableOperationOptions]>
     @ObservationIgnored private let rightPanelState: RightPanelState
-    @ObservationIgnored private let editingCell: Binding<CellPosition?>
 
     /// The window this instance belongs to — used for key-window guards.
     @ObservationIgnored weak var window: NSWindow?
@@ -55,8 +54,7 @@ final class MainContentCommandActions {
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
         tableOperationOptions: Binding<[String: TableOperationOptions]>,
-        rightPanelState: RightPanelState,
-        editingCell: Binding<CellPosition?>
+        rightPanelState: RightPanelState
     ) {
         self.coordinator = coordinator
         self.filterStateManager = filterStateManager
@@ -67,7 +65,6 @@ final class MainContentCommandActions {
         self.pendingDeletes = pendingDeletes
         self.tableOperationOptions = tableOperationOptions
         self.rightPanelState = rightPanelState
-        self.editingCell = editingCell
 
         setupSaveAction()
         setupObservers()
@@ -170,19 +167,14 @@ final class MainContentCommandActions {
         }
 
         observeKeyWindowOnly(.pasteRows) { [weak self] _ in
-            guard let self else { return }
-            var cell = self.editingCell.wrappedValue
-            self.coordinator?.pasteRows(editingCell: &cell)
-            self.editingCell.wrappedValue = cell
+            self?.coordinator?.pasteRows()
         }
     }
 
     // MARK: - Row Operations (Group A — Called Directly)
 
     func addNewRow() {
-        var cell = editingCell.wrappedValue
-        coordinator?.addNewRow(editingCell: &cell)
-        editingCell.wrappedValue = cell
+        coordinator?.addNewRow()
     }
 
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
@@ -214,10 +206,7 @@ final class MainContentCommandActions {
     func duplicateRow() {
         let indices = selectionState.indices
         guard let selectedIndex = indices.first, indices.count == 1 else { return }
-
-        var cell = editingCell.wrappedValue
-        coordinator?.duplicateSelectedRow(index: selectedIndex, editingCell: &cell)
-        editingCell.wrappedValue = cell
+        coordinator?.duplicateSelectedRow(index: selectedIndex)
     }
 
     func copySelectedRows() {
@@ -243,9 +232,7 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.pasteRows?()
         } else {
-            var cell = editingCell.wrappedValue
-            coordinator?.pasteRows(editingCell: &cell)
-            editingCell.wrappedValue = cell
+            coordinator?.pasteRows()
         }
     }
 

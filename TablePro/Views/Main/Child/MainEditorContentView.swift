@@ -36,7 +36,6 @@ struct MainEditorContentView: View {
     // MARK: - Selection State
 
     let selectionState: GridSelectionState
-    @Binding var editingCell: CellPosition?
 
     // MARK: - Callbacks
 
@@ -167,7 +166,6 @@ struct MainEditorContentView: View {
         dataTabDelegate.coordinator = coordinator
         dataTabDelegate.columnVisibilityManager = columnVisibilityManager
         dataTabDelegate.selectionState = selectionState
-        dataTabDelegate.editingCell = $editingCell
         dataTabDelegate.onCellEdit = onCellEdit
         dataTabDelegate.onSort = onSort
         dataTabDelegate.onUndoInsert = onUndoInsert
@@ -550,7 +548,6 @@ struct MainEditorContentView: View {
                 set: { selectionState.indices = $0 }
             ),
             sortState: sortStateBinding(for: tab),
-            editingCell: $editingCell,
             columnLayout: columnLayoutBinding(for: tab)
         )
         .frame(maxHeight: .infinity, alignment: .top)

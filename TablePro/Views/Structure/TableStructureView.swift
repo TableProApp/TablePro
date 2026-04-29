@@ -48,7 +48,6 @@ struct TableStructureView: View {
     @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
-    @State var editingCell: CellPosition?
     @State var structureColumnLayout = ColumnLayoutState()
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
@@ -284,7 +283,6 @@ struct TableStructureView: View {
             delegate: gridDelegate,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
-            editingCell: $editingCell,
             columnLayout: $structureColumnLayout
         )
         .safeAreaInset(edge: .top, spacing: 0) {

@@ -15,6 +15,7 @@ private final class FakeRowDeltaApplier: RowDeltaApplying {
     var fullReplaceCount: Int = 0
     var invalidateCount: Int = 0
     var deltaCalls: [Delta] = []
+    var commitEditCount: Int = 0
 
     func applyInsertedRows(_ indices: IndexSet) {
         insertedCalls.append(indices)
@@ -34,6 +35,16 @@ private final class FakeRowDeltaApplier: RowDeltaApplying {
 
     func applyDelta(_ delta: Delta) {
         deltaCalls.append(delta)
+    }
+
+    func commitActiveCellEdit() {
+        commitEditCount += 1
+    }
+
+    var beginEditingCalls: [(row: Int, column: Int)] = []
+
+    func beginEditing(displayRow: Int, column: Int) {
+        beginEditingCalls.append((row: displayRow, column: column))
     }
 }
 

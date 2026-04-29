@@ -47,7 +47,6 @@ struct MainContentView: View {
 
     // MARK: - Local State
 
-    @State var editingCell: CellPosition?
     @State var commandActions: MainContentCommandActions?
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
@@ -401,7 +400,6 @@ struct MainContentView: View {
             windowId: windowId,
             connectionId: connection.id,
             selectionState: coordinator.selectionState,
-            editingCell: $editingCell,
             onCellEdit: { rowIndex, colIndex, value in
                 coordinator.updateCellInTab(
                     rowIndex: rowIndex, columnIndex: colIndex, value: value)
@@ -413,7 +411,7 @@ struct MainContentView: View {
                     isMultiSort: isMultiSort)
             },
             onAddRow: {
-                coordinator.addNewRow(editingCell: &editingCell)
+                coordinator.addNewRow()
             },
             onUndoInsert: { rowIndex in
                 coordinator.undoInsertRow(at: rowIndex)

@@ -1,7 +1,7 @@
 import Foundation
 
 extension MainContentCoordinator {
-    func addNewRow(editingCell: inout CellPosition?) {
+    func addNewRow() {
         guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
@@ -12,6 +12,8 @@ extension MainContentCoordinator {
         let tabId = tab.id
         let columnDefaults = tableRowsStore.tableRows(for: tabId).columnDefaults
         let columns = tableRowsStore.tableRows(for: tabId).columns
+
+        dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
         var addResult: RowOperationsManager.AddNewRowResult?
         mutateActiveTableRows(for: tabId) { rows in
@@ -27,10 +29,10 @@ extension MainContentCoordinator {
         guard let result = addResult else { return }
 
         selectionState.indices = [result.rowIndex]
-        editingCell = CellPosition(row: result.rowIndex, column: 0)
         tabManager.tabs[tabIndex].hasUserInteraction = true
         querySortCache.removeValue(forKey: tabId)
         dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
+        dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
     }
 
     func deleteSelectedRows(indices: Set<Int>) {
@@ -73,7 +75,7 @@ extension MainContentCoordinator {
         }
     }
 
-    func duplicateSelectedRow(index: Int, editingCell: inout CellPosition?) {
+    func duplicateSelectedRow(index: Int) {
         guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
@@ -84,6 +86,8 @@ extension MainContentCoordinator {
         let tabId = tab.id
         let columns = tableRowsStore.tableRows(for: tabId).columns
         guard index >= 0, index < tableRowsStore.tableRows(for: tabId).count else { return }
+
+        dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
         var dupResult: RowOperationsManager.AddNewRowResult?
         mutateActiveTableRows(for: tabId) { rows in
@@ -99,10 +103,10 @@ extension MainContentCoordinator {
         guard let result = dupResult else { return }
 
         selectionState.indices = [result.rowIndex]
-        editingCell = CellPosition(row: result.rowIndex, column: 0)
         tabManager.tabs[tabIndex].hasUserInteraction = true
         querySortCache.removeValue(forKey: tabId)
         dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
+        dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
     }
 
     func undoInsertRow(at rowIndex: Int) {
@@ -196,7 +200,7 @@ extension MainContentCoordinator {
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
 
-    func pasteRows(editingCell: inout CellPosition?) {
+    func pasteRows() {
         guard !safeModeLevel.blocksAllWrites,
               let index = tabManager.selectedTabIndex else { return }
 

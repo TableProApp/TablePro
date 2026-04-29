@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import SwiftUI
 
 @MainActor
 final class DataTabGridDelegate: DataGridViewDelegate {
@@ -15,7 +14,6 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     var columnVisibilityManager: ColumnVisibilityManager?
 
     var selectionState: GridSelectionState?
-    var editingCell: Binding<CellPosition?>?
 
     var onCellEdit: ((Int, Int, String?) -> Void)?
     var onSort: ((Int, Bool, Bool) -> Void)?
@@ -59,16 +57,12 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridPasteRows() {
-        var cell = editingCell?.wrappedValue
-        coordinator?.pasteRows(editingCell: &cell)
-        editingCell?.wrappedValue = cell
+        coordinator?.pasteRows()
     }
 
     func dataGridDuplicateRow() {
         guard let selectionState, let firstIndex = selectionState.indices.first else { return }
-        var cell = editingCell?.wrappedValue
-        coordinator?.duplicateSelectedRow(index: firstIndex, editingCell: &cell)
-        editingCell?.wrappedValue = cell
+        coordinator?.duplicateSelectedRow(index: firstIndex)
     }
 
     func dataGridExportResults() {
