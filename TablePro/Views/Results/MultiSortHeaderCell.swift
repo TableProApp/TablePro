@@ -31,7 +31,7 @@ final class MultiSortHeaderCell: NSTableHeaderCell {
         if image.isTemplate {
             drawable = NSImage(size: image.size, flipped: false) { rect in
                 image.draw(in: rect)
-                NSColor.tertiaryLabelColor.set()
+                NSColor.labelColor.withAlphaComponent(0.4).set()
                 rect.fill(using: .sourceAtop)
                 return true
             }
