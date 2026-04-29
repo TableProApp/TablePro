@@ -23,7 +23,6 @@ struct RowVisualState {
 }
 
 struct DataGridIdentity: Equatable {
-    let reloadVersion: Int
     let schemaVersion: Int
     let metadataVersion: Int
     let paginationVersion: Int
@@ -35,9 +34,8 @@ struct DataGridIdentity: Equatable {
     let primaryKeyColumns: [String]
     let hiddenColumns: Set<String>
 
-    init(reloadVersion: Int, schemaVersion: Int, metadataVersion: Int, paginationVersion: Int,
+    init(schemaVersion: Int, metadataVersion: Int, paginationVersion: Int,
          rowCount: Int, columnCount: Int, isEditable: Bool, configuration: DataGridConfiguration) {
-        self.reloadVersion = reloadVersion
         self.schemaVersion = schemaVersion
         self.metadataVersion = metadataVersion
         self.paginationVersion = paginationVersion
@@ -233,7 +231,6 @@ struct DataGridView: NSViewRepresentable {
         let columnCount = latestRows.columns.count
 
         let currentIdentity = DataGridIdentity(
-            reloadVersion: changeManager.reloadVersion,
             schemaVersion: schemaVersion,
             metadataVersion: metadataVersion,
             paginationVersion: paginationVersion,
@@ -262,7 +259,6 @@ struct DataGridView: NSViewRepresentable {
             tableView.usesAlternatingRowBackgroundColors = settings.showAlternateRows
         }
 
-        let versionChanged = coordinator.lastReloadVersion != changeManager.reloadVersion
         let metadataChanged = previousIdentity.map { $0.metadataVersion != metadataVersion } ?? false
         let oldRowCount = coordinator.cachedRowCount
         let oldColumnCount = coordinator.cachedColumnCount
@@ -328,7 +324,6 @@ struct DataGridView: NSViewRepresentable {
             coordinator: coordinator,
             tableRows: latestRows,
             needsFullReload: needsFullReload,
-            versionChanged: versionChanged,
             metadataChanged: metadataChanged,
             paginationChanged: paginationChanged
         )
@@ -502,7 +497,6 @@ struct DataGridView: NSViewRepresentable {
         coordinator: TableViewCoordinator,
         tableRows: TableRows,
         needsFullReload: Bool,
-        versionChanged: Bool,
         metadataChanged: Bool = false,
         paginationChanged: Bool = false
     ) {
@@ -527,20 +521,7 @@ struct DataGridView: NSViewRepresentable {
                     tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: fkColumnIndices)
                 }
             }
-        } else if versionChanged {
-            let changedRows = changeManager.consumeChangedRowIndices()
-            if changedRows.count > 500 {
-                tableView.reloadData()
-            } else if !changedRows.isEmpty {
-                let rowIndexSet = IndexSet(changedRows)
-                let columnIndexSet = IndexSet(integersIn: 0..<tableView.numberOfColumns)
-                tableView.reloadData(forRowIndexes: rowIndexSet, columnIndexes: columnIndexSet)
-            } else if !changeManager.hasChanges {
-                tableView.reloadData()
-            }
         }
-
-        coordinator.lastReloadVersion = changeManager.reloadVersion
 
         if paginationChanged && tableView.numberOfRows > 0 {
             tableView.scrollRowToVisible(0)

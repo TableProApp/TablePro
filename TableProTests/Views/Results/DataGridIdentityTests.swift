@@ -12,7 +12,6 @@ import Testing
 @Suite("DataGridIdentity")
 struct DataGridIdentityTests {
     private func makeIdentity(
-        reloadVersion: Int = 1,
         schemaVersion: Int = 2,
         metadataVersion: Int = 3,
         paginationVersion: Int = 0,
@@ -30,7 +29,6 @@ struct DataGridIdentityTests {
         config.primaryKeyColumns = primaryKeyColumns
         config.hiddenColumns = hiddenColumns
         return DataGridIdentity(
-            reloadVersion: reloadVersion,
             schemaVersion: schemaVersion,
             metadataVersion: metadataVersion,
             paginationVersion: paginationVersion,
@@ -44,11 +42,6 @@ struct DataGridIdentityTests {
     @Test("Same values produce equal identities")
     func sameValuesAreEqual() {
         #expect(makeIdentity() == makeIdentity())
-    }
-
-    @Test("Different reloadVersion produces unequal identities")
-    func differentReloadVersion() {
-        #expect(makeIdentity(reloadVersion: 1) != makeIdentity(reloadVersion: 2))
     }
 
     @Test("Different schemaVersion produces unequal identities")

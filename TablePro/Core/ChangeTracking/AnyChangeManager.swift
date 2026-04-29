@@ -19,7 +19,6 @@ protocol ChangeManaging: AnyObject {
     )
     func undoRowDeletion(rowIndex: Int)
     func undoRowInsertion(rowIndex: Int)
-    func consumeChangedRowIndices() -> Set<Int>
 }
 
 @Observable
@@ -61,10 +60,6 @@ final class AnyChangeManager {
 
     func undoRowInsertion(rowIndex: Int) {
         wrapped.undoRowInsertion(rowIndex: rowIndex)
-    }
-
-    func consumeChangedRowIndices() -> Set<Int> {
-        wrapped.consumeChangedRowIndices()
     }
 
     init(_ manager: any ChangeManaging) {

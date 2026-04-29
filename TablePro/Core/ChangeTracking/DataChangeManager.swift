@@ -78,12 +78,6 @@ final class DataChangeManager: ChangeManaging {
         undoManager.setActionName(actionName)
     }
 
-    // MARK: - Helper Methods
-
-    func consumeChangedRowIndices() -> Set<Int> {
-        pending.consumeChangedRowIndices()
-    }
-
     // MARK: - Configuration
 
     func clearChanges() {

@@ -61,8 +61,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     @Binding var selectedRowIndices: Set<Int>
 
     var lastIdentity: DataGridIdentity?
-    var lastReloadVersion: Int = 0
-    var lastReapplyVersion: Int = -1
     private(set) var cachedRowCount: Int = 0
     private(set) var cachedColumnCount: Int = 0
     private(set) var enumOrSetColumns: Set<Int> = []
@@ -340,6 +338,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             guard row >= 0, row < tableView.numberOfRows else { return }
             guard tableColumn >= 0, tableColumn < tableView.numberOfColumns else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
+            rebuildVisualStateCache()
             tableView.reloadData(
                 forRowIndexes: IndexSet(integer: row),
                 columnIndexes: IndexSet(integer: tableColumn)
@@ -359,6 +358,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 invalidateDisplayCache(forDisplayRow: position.row, column: position.column)
             }
             guard !rowSet.isEmpty, !colSet.isEmpty else { return }
+            rebuildVisualStateCache()
             tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }

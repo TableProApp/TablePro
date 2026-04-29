@@ -18,9 +18,6 @@ final class StructureChangeManager: ChangeManaging {
     var hasChanges: Bool { !pendingChanges.isEmpty }
     var reloadVersion: Int = 0
 
-    // Track which rows changed since last reload for granular updates
-    private(set) var changedRowIndices: Set<Int> = []
-
     // Current state (loaded from database)
     private(set) var currentColumns: [EditableColumnDefinition] = []
     private(set) var currentIndexes: [EditableIndexDefinition] = []
@@ -47,13 +44,6 @@ final class StructureChangeManager: ChangeManaging {
 
     var canUndo: Bool { undoManager.canUndo }
     var canRedo: Bool { undoManager.canRedo }
-
-    /// Consume and clear changed row indices (for granular table reloads)
-    func consumeChangedRowIndices() -> Set<Int> {
-        let indices = changedRowIndices
-        changedRowIndices.removeAll()
-        return indices
-    }
 
     // MARK: - Load Schema
 
@@ -261,7 +251,6 @@ final class StructureChangeManager: ChangeManaging {
             pendingChanges[key] = .deleteColumn(column)
             trackChangeKey(key)
             if let rowIndex = workingColumns.firstIndex(where: { $0.id == id }) {
-                changedRowIndices.insert(rowIndex)
             }
         } else {
             let rowIndex = workingColumns.firstIndex(where: { $0.id == id })
@@ -273,7 +262,6 @@ final class StructureChangeManager: ChangeManaging {
             }
             if let rowIndex {
                 for i in rowIndex..<workingColumns.count {
-                    changedRowIndices.insert(i)
                 }
             }
             workingColumns.removeAll { $0.id == id }
@@ -334,7 +322,6 @@ final class StructureChangeManager: ChangeManaging {
             pendingChanges[key] = .deleteIndex(index)
             trackChangeKey(key)
             if let rowIndex = workingIndexes.firstIndex(where: { $0.id == id }) {
-                changedRowIndices.insert(rowIndex)
             }
         } else {
             let rowIndex = workingIndexes.firstIndex(where: { $0.id == id })
@@ -346,7 +333,6 @@ final class StructureChangeManager: ChangeManaging {
             }
             if let rowIndex {
                 for i in rowIndex..<workingIndexes.count {
-                    changedRowIndices.insert(i)
                 }
             }
             workingIndexes.removeAll { $0.id == id }
@@ -407,7 +393,6 @@ final class StructureChangeManager: ChangeManaging {
             pendingChanges[key] = .deleteForeignKey(fk)
             trackChangeKey(key)
             if let rowIndex = workingForeignKeys.firstIndex(where: { $0.id == id }) {
-                changedRowIndices.insert(rowIndex)
             }
         } else {
             let rowIndex = workingForeignKeys.firstIndex(where: { $0.id == id })
@@ -419,7 +404,6 @@ final class StructureChangeManager: ChangeManaging {
             }
             if let rowIndex {
                 for i in rowIndex..<workingForeignKeys.count {
-                    changedRowIndices.insert(i)
                 }
             }
             workingForeignKeys.removeAll { $0.id == id }
@@ -552,7 +536,6 @@ final class StructureChangeManager: ChangeManaging {
         pendingChanges.removeAll()
         changeOrder.removeAll()
         validationErrors.removeAll()
-        changedRowIndices.removeAll()
         resetWorkingState()
         reloadVersion += 1
         rebuildVisualStateCache()

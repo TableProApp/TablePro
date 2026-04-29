@@ -17,7 +17,6 @@ struct PendingChanges: Equatable {
     private(set) var insertedRowIndices: Set<Int> = []
     private(set) var modifiedCells: [Int: Set<Int>] = [:]
     private(set) var insertedRowData: [Int: [String?]] = [:]
-    private(set) var changedRowIndices: Set<Int> = []
 
     private var changeIndex: [RowChangeKey: Int] = [:]
 
@@ -77,7 +76,6 @@ struct PendingChanges: Equatable {
         if let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] {
             updateInsertedCell(at: insertIdx, columnIndex: columnIndex,
                                columnName: columnName, newValue: newValue)
-            changedRowIndices.insert(rowIndex)
             return true
         }
 
@@ -93,7 +91,6 @@ struct PendingChanges: Equatable {
             changeIndex[updateKey] = changes.count - 1
             modifiedCells[rowIndex, default: []].insert(columnIndex)
         }
-        changedRowIndices.insert(rowIndex)
         return true
     }
 
@@ -103,7 +100,6 @@ struct PendingChanges: Equatable {
         modifiedCells.removeValue(forKey: rowIndex)
         appendChange(RowChange(rowIndex: rowIndex, type: .delete, originalRow: originalRow))
         deletedRowIndices.insert(rowIndex)
-        changedRowIndices.insert(rowIndex)
     }
 
     mutating func recordRowInsertion(rowIndex: Int, values: [String?]) {
@@ -114,7 +110,6 @@ struct PendingChanges: Equatable {
         insertedRowData[rowIndex] = values
         appendChange(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: []))
         insertedRowIndices.insert(rowIndex)
-        changedRowIndices.insert(rowIndex)
     }
 
     // MARK: - Mutate (cancelling pending edits)
@@ -123,7 +118,6 @@ struct PendingChanges: Equatable {
         guard deletedRowIndices.contains(rowIndex) else { return false }
         removeChange(rowIndex: rowIndex, type: .delete)
         deletedRowIndices.remove(rowIndex)
-        changedRowIndices.insert(rowIndex)
         return true
     }
 
@@ -135,7 +129,6 @@ struct PendingChanges: Equatable {
         insertedRowData.removeValue(forKey: rowIndex)
 
         shiftRowIndicesDown(at: rowIndex)
-        changedRowIndices.insert(rowIndex)
         return true
     }
 
@@ -159,7 +152,6 @@ struct PendingChanges: Equatable {
             removeChange(rowIndex: rowIndex, type: .insert)
             insertedRowIndices.remove(rowIndex)
             insertedRowData.removeValue(forKey: rowIndex)
-            changedRowIndices.insert(rowIndex)
         }
 
         let sortedRemoved = validRows.sorted()
@@ -188,7 +180,6 @@ struct PendingChanges: Equatable {
         modifiedCells.removeValue(forKey: rowIndex)
         appendChange(RowChange(rowIndex: rowIndex, type: .delete, originalRow: originalRow))
         deletedRowIndices.insert(rowIndex)
-        changedRowIndices.insert(rowIndex)
     }
 
     /// Re-apply a cell edit during undo replay (skips undo registration).
@@ -213,7 +204,6 @@ struct PendingChanges: Equatable {
         if let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] {
             updateInsertedCell(at: insertIdx, columnIndex: columnIndex,
                                columnName: columnName, newValue: newValue)
-            changedRowIndices.insert(rowIndex)
             return
         }
 
@@ -229,7 +219,6 @@ struct PendingChanges: Equatable {
             changeIndex[updateKey] = changes.count - 1
             modifiedCells[rowIndex, default: []].insert(columnIndex)
         }
-        changedRowIndices.insert(rowIndex)
     }
 
     /// Replace an inserted row's cell value during undo replay (no shift, no undo).
@@ -241,7 +230,6 @@ struct PendingChanges: Equatable {
     ) {
         guard let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] else { return }
         updateInsertedCell(at: insertIdx, columnIndex: columnIndex, columnName: columnName, newValue: newValue)
-        changedRowIndices.insert(rowIndex)
     }
 
     /// Restore a cell's value during undo replay when an existing change matches.
@@ -274,7 +262,6 @@ struct PendingChanges: Equatable {
                 newValue: previousValue
             )
         }
-        changedRowIndices.insert(rowIndex)
     }
 
     /// Insert a synthetic .insert RowChange for undo replay (e.g., after redoing a deletion's undo).
@@ -291,7 +278,6 @@ struct PendingChanges: Equatable {
         if let savedValues {
             insertedRowData[rowIndex] = savedValues
         }
-        changedRowIndices.insert(rowIndex)
     }
 
     /// Insert a batch of rows (for undo replay of a batch deletion's undo).
@@ -314,7 +300,6 @@ struct PendingChanges: Equatable {
             changes.append(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: cellChanges))
             insertedRowIndices.insert(rowIndex)
             insertedRowData[rowIndex] = values
-            changedRowIndices.insert(rowIndex)
         }
         rebuildChangeIndex()
     }
@@ -338,23 +323,14 @@ struct PendingChanges: Equatable {
         insertedRowIndices.removeAll()
         modifiedCells.removeAll()
         insertedRowData.removeAll()
-        changedRowIndices.removeAll()
     }
 
-    mutating func consumeChangedRowIndices() -> Set<Int> {
-        let indices = changedRowIndices
-        changedRowIndices.removeAll()
-        return indices
-    }
-
-    /// Replace internal state from a serialized snapshot.
     mutating func restore(from snapshot: TabChangeSnapshot) {
         changes = snapshot.changes
         deletedRowIndices = snapshot.deletedRowIndices
         insertedRowIndices = snapshot.insertedRowIndices
         modifiedCells = snapshot.modifiedCells
         insertedRowData = snapshot.insertedRowData
-        changedRowIndices = []
         rebuildChangeIndex()
     }
 
@@ -471,7 +447,6 @@ struct PendingChanges: Equatable {
         if changes[updateIdx].cellChanges.isEmpty {
             removeChangeAt(updateIdx)
         }
-        changedRowIndices.insert(rowIndex)
         return true
     }
 
@@ -494,7 +469,6 @@ struct PendingChanges: Equatable {
         }
         modifiedCells = newModifiedCells
 
-        changedRowIndices = Set(changedRowIndices.map { $0 >= insertionPoint ? $0 + 1 : $0 })
         rebuildChangeIndex()
     }
 

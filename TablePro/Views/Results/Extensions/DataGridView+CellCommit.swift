@@ -39,15 +39,12 @@ extension TableViewCoordinator {
         }
         delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
         invalidateDisplayCache()
+        rebuildVisualStateCache()
 
+        let tableColumnIndex = DataGridView.tableColumnIndex(for: columnIndex)
         if storageRow != nil, case .cellChanged = delta {
-            let displayDelta: Delta = .cellChanged(
-                row: row,
-                column: DataGridView.tableColumnIndex(for: columnIndex)
-            )
-            tableRowsController.apply(displayDelta)
+            tableRowsController.apply(.cellChanged(row: row, column: tableColumnIndex))
         } else {
-            let tableColumnIndex = DataGridView.tableColumnIndex(for: columnIndex)
             tableView.reloadData(
                 forRowIndexes: IndexSet(integer: row),
                 columnIndexes: IndexSet(integer: tableColumnIndex)
