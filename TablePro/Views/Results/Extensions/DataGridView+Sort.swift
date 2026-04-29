@@ -38,8 +38,13 @@ extension TableViewCoordinator {
             return
         }
 
-        let isMultiSort = NSEvent.modifierFlags.contains(.shift)
-        sortLogger.debug("sortDescriptorsDidChange: dispatching column=\(columnIndex) ascending=\(sortDescriptor.ascending) isMultiSort=\(isMultiSort)")
+        let liveFlags = NSEvent.modifierFlags
+        let eventFlags = NSApp.currentEvent?.modifierFlags ?? []
+        let isMultiSort = liveFlags.contains(.shift) || eventFlags.contains(.shift)
+        let eventTypeRaw = Int(NSApp.currentEvent?.type.rawValue ?? 0)
+        sortLogger.debug(
+            "sortDescriptorsDidChange: column=\(columnIndex) ascending=\(sortDescriptor.ascending) isMultiSort=\(isMultiSort) liveFlags=\(liveFlags.rawValue, privacy: .public) eventFlags=\(eventFlags.rawValue, privacy: .public) eventType=\(eventTypeRaw)"
+        )
         delegate?.dataGridSort(column: columnIndex, ascending: sortDescriptor.ascending, isMultiSort: isMultiSort)
     }
 

@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 struct CellPosition: Hashable {
@@ -421,6 +422,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator.isSyncingSortDescriptors = true
         defer { coordinator.isSyncingSortDescriptors = false }
 
+        Self.sortDiagLogger.debug("syncSortDescriptors: sortState.columns=\(sortState.columns.map { "\($0.columnIndex):\($0.direction == .ascending ? "asc" : "desc")" }, privacy: .public)")
+
         if !sortState.isSorting {
             if !tableView.sortDescriptors.isEmpty {
                 tableView.sortDescriptors = []
@@ -519,6 +522,8 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Sort Indicator Helpers
 
+    fileprivate static let sortDiagLogger = Logger(subsystem: "com.TablePro", category: "DataGridSort")
+
     private static let ascendingSortIndicator: NSImage? = {
         NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
             ?? NSImage(systemSymbolName: "chevron.up", accessibilityDescription: nil)
@@ -533,6 +538,8 @@ struct DataGridView: NSViewRepresentable {
         sortState: SortState,
         schema: ColumnIdentitySchema
     ) {
+        sortDiagLogger.debug("updateSortIndicators: ascImage=\(ascendingSortIndicator != nil) descImage=\(descendingSortIndicator != nil) sortCount=\(sortState.columns.count)")
+
         var columnByDataIndex: [Int: NSTableColumn] = [:]
         for column in tableView.tableColumns {
             guard let colIndex = schema.dataIndex(from: column.identifier) else { continue }
@@ -541,9 +548,13 @@ struct DataGridView: NSViewRepresentable {
         }
 
         for sortCol in sortState.columns {
-            guard let column = columnByDataIndex[sortCol.columnIndex] else { continue }
+            guard let column = columnByDataIndex[sortCol.columnIndex] else {
+                sortDiagLogger.error("updateSortIndicators: no column for data index \(sortCol.columnIndex)")
+                continue
+            }
             let image = sortCol.direction == .ascending ? ascendingSortIndicator : descendingSortIndicator
             tableView.setIndicatorImage(image, in: column)
+            sortDiagLogger.debug("updateSortIndicators: set indicator on '\(column.identifier.rawValue, privacy: .public)' direction=\(sortCol.direction == .ascending ? "asc" : "desc")")
         }
 
         if let primary = sortState.columns.first,
