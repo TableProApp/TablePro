@@ -67,6 +67,16 @@ pub enum ConnectDialogCmd {
     TestResult(Result<usize, String>),
 }
 
+/// Which async operation (if any) is currently in flight. Drives
+/// the per-button busy-label rendering — only the *busy* button gets
+/// the in-progress wording, the other keeps its static label.
+#[derive(Debug, Clone, Copy)]
+enum BusyKind {
+    None,
+    Connecting,
+    Testing,
+}
+
 #[relm4::component(pub)]
 impl Component for ConnectDialog {
     type Init = ConnectDialogInit;
@@ -235,6 +245,13 @@ impl Component for ConnectDialog {
         }
         model.refresh_validity();
 
+        // Make Connect the dialog's default widget so pressing Enter
+        // from any AdwEntryRow submits the form. Per HIG, every
+        // dialog with a primary action should respond to Enter — the
+        // suggested-action class alone only handles styling, not the
+        // keybind.
+        root.set_default_widget(Some(&model.submit));
+
         ComponentParts { model, widgets }
     }
 
@@ -265,11 +282,11 @@ impl Component for ConnectDialog {
             }
 
             ConnectDialogInput::Submit => {
-                self.set_busy(true, &crate::tr!("Connecting…"));
+                self.set_busy(BusyKind::Connecting);
 
                 let idx = self.driver_combo.selected() as usize;
                 let Some(entry) = self.drivers.get(idx).cloned() else {
-                    self.set_busy(false, "");
+                    self.set_busy(BusyKind::None);
                     self.show_toast(&crate::tr!("No driver selected"));
                     return;
                 };
@@ -277,7 +294,7 @@ impl Component for ConnectDialog {
                 let driver = match self.registry.get(&entry.id) {
                     Some(d) => d,
                     None => {
-                        self.set_busy(false, "");
+                        self.set_busy(BusyKind::None);
                         self.show_toast(&crate::tr!("Driver {id} not registered").replace("{id}", &entry.id));
                         return;
                     }
@@ -303,7 +320,7 @@ impl Component for ConnectDialog {
                     match self.ssh.collect() {
                         Ok(inputs) => Some(inputs),
                         Err(e) => {
-                            self.set_busy(false, "");
+                            self.set_busy(BusyKind::None);
                             self.show_toast(&e);
                             return;
                         }
@@ -325,16 +342,16 @@ impl Component for ConnectDialog {
             }
 
             ConnectDialogInput::TestConnection => {
-                self.set_busy(true, &crate::tr!("Testing…"));
+                self.set_busy(BusyKind::Testing);
 
                 let idx = self.driver_combo.selected() as usize;
                 let Some(entry) = self.drivers.get(idx).cloned() else {
-                    self.set_busy(false, "");
+                    self.set_busy(BusyKind::None);
                     self.show_toast(&crate::tr!("No driver selected"));
                     return;
                 };
                 let Some(driver) = self.registry.get(&entry.id) else {
-                    self.set_busy(false, "");
+                    self.set_busy(BusyKind::None);
                     self.show_toast(&crate::tr!("Driver {id} not registered").replace("{id}", &entry.id));
                     return;
                 };
@@ -350,7 +367,7 @@ impl Component for ConnectDialog {
                     match self.ssh.collect() {
                         Ok(inputs) => Some(inputs.cfg),
                         Err(e) => {
-                            self.set_busy(false, "");
+                            self.set_busy(BusyKind::None);
                             self.show_toast(&e);
                             return;
                         }
@@ -383,7 +400,7 @@ impl Component for ConnectDialog {
     }
 
     fn update_cmd(&mut self, msg: Self::CommandOutput, sender: ComponentSender<Self>, root: &Self::Root) {
-        self.set_busy(false, "");
+        self.set_busy(BusyKind::None);
         match msg {
             ConnectDialogCmd::Result(Ok((saved, tables))) => {
                 tracing::info!(driver = %saved.driver_id, table_count = tables.len(), "connected");
@@ -467,16 +484,30 @@ impl ConnectDialog {
         self.toast_overlay.add_toast(adw::Toast::new(message));
     }
 
-    /// Disable Connect / Test while an async op is in flight; the button
-    /// label changes so the user has feedback that something is
-    /// happening (no need for a separate status line).
-    fn set_busy(&self, busy: bool, busy_label: &str) {
+    /// Disable Connect / Test while an async op is in flight and
+    /// switch the **busy** button's label to the in-progress wording
+    /// (the *other* button keeps its static label so the user isn't
+    /// confused about what's happening). The previous version
+    /// rewrote `submit.set_label("Testing…")` during a Test, leaving
+    /// the Connect button reading "Testing…" — a misleading label
+    /// for a button that isn't running the test.
+    fn set_busy(&self, kind: BusyKind) {
+        let busy = !matches!(kind, BusyKind::None);
         self.submit.set_sensitive(!busy);
         self.test_button.set_sensitive(!busy);
-        if busy {
-            self.submit.set_label(busy_label);
-        } else {
-            self.submit.set_label(&crate::tr!("Connect"));
+        match kind {
+            BusyKind::None => {
+                self.submit.set_label(&crate::tr!("Connect"));
+                self.test_button.set_label(&crate::tr!("Test"));
+            }
+            BusyKind::Connecting => {
+                self.submit.set_label(&crate::tr!("Connecting…"));
+                self.test_button.set_label(&crate::tr!("Test"));
+            }
+            BusyKind::Testing => {
+                self.submit.set_label(&crate::tr!("Connect"));
+                self.test_button.set_label(&crate::tr!("Testing…"));
+            }
         }
     }
 }
