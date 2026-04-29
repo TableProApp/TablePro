@@ -18,6 +18,15 @@ jobs:
   fast:
     name: Fast checks
     runs-on: ubuntu-24.04
+    # ubuntu-24.04 ships glib 2.80, but libadwaita 1.6 (workspace pin)
+    # transitively requires gio-2.0 >= 2.82. Building inside ubuntu:25.10
+    # gives us glib 2.84, which satisfies the system-deps check. The
+    # integration job stays on the host runner — driver crates depend
+    # only on tablepro-core, so they don't pull in libadwaita.
+    container:
+      image: ubuntu:25.10
+      env:
+        DEBIAN_FRONTEND: noninteractive
     defaults:
       run:
         working-directory: linux
@@ -26,10 +35,18 @@ jobs:
         with:
           ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
       - name: Install system dependencies
+        # ubuntu:25.10 is minimal — git for Swatinem/rust-cache key
+        # generation, curl + ca-certificates for rust-toolchain's
+        # rustup install, plus the GTK / libadwaita / sourceview /
+        # OpenSSL / libsecret -dev packages the workspace links.
+        # No sudo (container runs as root by default).
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          apt-get update
+          apt-get install -y --no-install-recommends \
             build-essential \
+            ca-certificates \
+            curl \
+            git \
             pkg-config \
             libgtk-4-dev \
             libadwaita-1-dev \
