@@ -10,11 +10,10 @@ extension TableViewCoordinator {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let column = tableColumn else { return nil }
 
-        let columnId = column.identifier.rawValue
         let tableRows = tableRowsProvider()
         let displayCount = sortedIDs?.count ?? tableRows.count
 
-        if columnId == "__rowNumber__" {
+        if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
             return cellFactory.makeRowNumberCell(
                 tableView: tableView,
                 row: row,
@@ -23,7 +22,7 @@ extension TableViewCoordinator {
             )
         }
 
-        guard let columnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { return nil }
+        guard let columnIndex = dataColumnIndex(from: column.identifier) else { return nil }
 
         guard row >= 0 && row < displayCount,
               columnIndex >= 0 && columnIndex < cachedColumnCount else {

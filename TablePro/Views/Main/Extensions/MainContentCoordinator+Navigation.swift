@@ -100,7 +100,7 @@ extension MainContentCoordinator {
             }
             // In-place navigation needs selectRedisDatabaseAndQuery to ensure the correct
             // database is SELECTed and session state is updated before querying.
-            restoreColumnLayoutForTable(tableName)
+            restoreLastHiddenColumnsForTable(tableName)
             restoreFiltersForTable(tableName)
             if navigationModel == .inPlace, let dbIndex = Int(currentDatabase) {
                 selectRedisDatabaseAndQuery(dbIndex)
@@ -128,7 +128,7 @@ extension MainContentCoordinator {
                     tabManager.tabs[tabIndex].pagination.reset()
                     toolbarState.isTableTab = true
                 }
-                restoreColumnLayoutForTable(tableName)
+                restoreLastHiddenColumnsForTable(tableName)
                 restoreFiltersForTable(tableName)
                 if let dbIndex = Int(currentDatabase) {
                     selectRedisDatabaseAndQuery(dbIndex)
@@ -212,7 +212,7 @@ extension MainContentCoordinator {
                     previewCoordinator.toolbarState.isTableTab = true
                 }
                 preview.window.makeKeyAndOrderFront(nil)
-                previewCoordinator.restoreColumnLayoutForTable(tableName)
+                previewCoordinator.restoreLastHiddenColumnsForTable(tableName)
                 previewCoordinator.restoreFiltersForTable(tableName)
                 previewCoordinator.runQuery()
                 return
@@ -282,7 +282,7 @@ extension MainContentCoordinator {
                 tabManager.tabs[tabIndex].pagination.reset()
                 toolbarState.isTableTab = true
             }
-            restoreColumnLayoutForTable(tableName)
+            restoreLastHiddenColumnsForTable(tableName)
             restoreFiltersForTable(tableName)
             runQuery()
             return

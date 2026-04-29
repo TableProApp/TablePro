@@ -66,7 +66,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.action = #selector(TableViewCoordinator.handleClick(_:))
         tableView.doubleAction = #selector(TableViewCoordinator.handleDoubleClick(_:))
 
-        let rowNumberColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("__rowNumber__"))
+        let rowNumberColumn = NSTableColumn(identifier: ColumnIdentitySchema.rowNumberIdentifier)
         rowNumberColumn.title = "#"
         rowNumberColumn.width = 40
         rowNumberColumn.minWidth = 40
@@ -78,10 +78,13 @@ struct DataGridView: NSViewRepresentable {
         rowNumberColumn.isHidden = !configuration.showRowNumbers
 
         let initialRows = tableRowsProvider()
+        context.coordinator.rebuildColumnMetadataCache(from: initialRows)
+        let identitySchema = context.coordinator.identitySchema
 
         context.coordinator.isRebuildingColumns = true
         for (index, columnName) in initialRows.columns.enumerated() {
-            let column = NSTableColumn(identifier: Self.columnIdentifier(for: index))
+            guard let identifier = identitySchema.identifier(for: index) else { continue }
+            let column = NSTableColumn(identifier: identifier)
             column.title = columnName
             if index < initialRows.columnTypes.count {
                 let typeName = initialRows.columnTypes[index].rawType ?? initialRows.columnTypes[index].displayName
@@ -99,30 +102,22 @@ struct DataGridView: NSViewRepresentable {
             column.resizingMask = .userResizingMask
             column.isEditable = isEditable
             column.sortDescriptorPrototype = NSSortDescriptor(
-                key: Self.columnIdentifier(for: index).rawValue,
+                key: identifier.rawValue,
                 ascending: true
             )
             tableView.addTableColumn(column)
         }
 
-        if !columnLayout.columnWidths.isEmpty {
-            for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                guard let colIndex = Self.dataColumnIndex(from: column.identifier),
-                      colIndex < initialRows.columns.count else { continue }
-                let baseName = initialRows.columns[colIndex]
-                if let savedWidth = columnLayout.columnWidths[baseName] {
-                    column.width = savedWidth
-                }
-            }
-            context.coordinator.hasUserResizedColumns = true
-        }
-
-        if let savedOrder = columnLayout.columnOrder {
-            DataGridView.applyColumnOrder(savedOrder, to: tableView, columns: initialRows.columns)
-        }
+        let initialLayout = context.coordinator.savedColumnLayout(binding: columnLayout)
+        applySavedLayout(
+            to: tableView,
+            coordinator: context.coordinator,
+            columns: initialRows.columns,
+            layout: initialLayout
+        )
         context.coordinator.isRebuildingColumns = false
 
-        applyColumnVisibility(to: tableView, columns: initialRows.columns)
+        applyColumnVisibility(to: tableView, coordinator: context.coordinator, columns: initialRows.columns)
 
         if let headerView = tableView.headerView {
             let headerMenu = NSMenu()
@@ -175,7 +170,7 @@ struct DataGridView: NSViewRepresentable {
         if tableView.editedRow >= 0 { return }
         if let editor = context.coordinator.overlayEditor, editor.isActive { return }
 
-        if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier.rawValue == "__rowNumber__" }) {
+        if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier == ColumnIdentitySchema.rowNumberIdentifier }) {
             let shouldHide = !configuration.showRowNumbers
             if rowNumCol.isHidden != shouldHide {
                 rowNumCol.isHidden = shouldHide
@@ -256,7 +251,7 @@ struct DataGridView: NSViewRepresentable {
 
         let currentDataColumns = tableView.tableColumns.dropFirst()
         let currentColumnIds = currentDataColumns.map { $0.identifier.rawValue }
-        let expectedColumnIds = latestRows.columns.indices.map { Self.columnIdentifier(for: $0).rawValue }
+        let expectedColumnIds = coordinator.identitySchema.identifiers.map { $0.rawValue }
         let columnsChanged = !latestRows.columns.isEmpty && (currentColumnIds != expectedColumnIds)
 
         let isInitialDataLoad = structureChanged && oldRowCount == 0 && !latestRows.columns.isEmpty
@@ -271,7 +266,7 @@ struct DataGridView: NSViewRepresentable {
             structureChanged: structureChanged
         )
 
-        applyColumnVisibility(to: tableView, columns: latestRows.columns)
+        applyColumnVisibility(to: tableView, coordinator: coordinator, columns: latestRows.columns)
 
         syncSortDescriptors(tableView: tableView, coordinator: coordinator, columns: latestRows.columns)
 
@@ -296,90 +291,136 @@ struct DataGridView: NSViewRepresentable {
             coordinator.isRebuildingColumns = true
             defer { coordinator.isRebuildingColumns = false }
 
+            let savedLayout = coordinator.savedColumnLayout(binding: columnLayout)
+
             if columnsChanged {
-                let columnsToRemove = tableView.tableColumns.filter { $0.identifier.rawValue != "__rowNumber__" }
-                for column in columnsToRemove {
-                    tableView.removeTableColumn(column)
-                }
-
-                let willRestoreWidths = !columnLayout.columnWidths.isEmpty
-                for (index, columnName) in tableRows.columns.enumerated() {
-                    let column = NSTableColumn(identifier: Self.columnIdentifier(for: index))
-                    column.title = columnName
-                    if index < tableRows.columnTypes.count {
-                        let typeName = tableRows.columnTypes[index].rawType
-                            ?? tableRows.columnTypes[index].displayName
-                        column.headerToolTip = "\(columnName) (\(typeName))"
-                    }
-                    column.headerCell.setAccessibilityLabel(
-                        String(format: String(localized: "Column: %@"), columnName)
-                    )
-                    if willRestoreWidths {
-                        column.width = columnLayout.columnWidths[columnName] ?? 100
-                    } else {
-                        column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
-                            for: columnName,
-                            columnIndex: index,
-                            tableRows: tableRows
-                        )
-                    }
-                    column.minWidth = 30
-                    column.resizingMask = .userResizingMask
-                    column.isEditable = isEditable
-                    column.sortDescriptorPrototype = NSSortDescriptor(
-                        key: Self.columnIdentifier(for: index).rawValue,
-                        ascending: true
-                    )
-                    tableView.addTableColumn(column)
-                }
+                rebuildColumns(
+                    tableView: tableView,
+                    coordinator: coordinator,
+                    tableRows: tableRows,
+                    savedLayout: savedLayout
+                )
             } else {
-                let hasSavedWidths = !columnLayout.columnWidths.isEmpty
-                for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                    guard let colIndex = Self.dataColumnIndex(from: column.identifier),
-                          colIndex < tableRows.columns.count else { continue }
-                    let columnName = tableRows.columns[colIndex]
-                    column.title = columnName
-                    if colIndex < tableRows.columnTypes.count {
-                        let typeName = tableRows.columnTypes[colIndex].rawType
-                            ?? tableRows.columnTypes[colIndex].displayName
-                        column.headerToolTip = "\(columnName) (\(typeName))"
-                    }
-                    if !hasSavedWidths {
-                        column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
-                            for: columnName,
-                            columnIndex: colIndex,
-                            tableRows: tableRows
-                        )
-                    }
-                    column.isEditable = isEditable
-                }
-            }
-            let hasSavedLayout = !columnLayout.columnWidths.isEmpty
-
-            if hasSavedLayout {
-                for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                    guard let colIndex = Self.dataColumnIndex(from: column.identifier),
-                          colIndex < tableRows.columns.count else { continue }
-                    let baseName = tableRows.columns[colIndex]
-                    if let savedWidth = columnLayout.columnWidths[baseName] {
-                        column.width = savedWidth
-                    }
-                }
-                coordinator.hasUserResizedColumns = true
+                refreshColumnTitles(
+                    tableView: tableView,
+                    coordinator: coordinator,
+                    tableRows: tableRows,
+                    hasSavedWidths: !(savedLayout?.columnWidths.isEmpty ?? true)
+                )
             }
 
-            if let savedOrder = columnLayout.columnOrder {
-                DataGridView.applyColumnOrder(savedOrder, to: tableView, columns: tableRows.columns)
-                coordinator.hasUserResizedColumns = true
-            }
+            applySavedLayout(to: tableView, coordinator: coordinator, columns: tableRows.columns, layout: savedLayout)
 
-            if !coordinator.hasUserResizedColumns, !hasSavedLayout {
+            if savedLayout == nil {
                 coordinator.scheduleLayoutPersist()
             }
         } else {
-            for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
+            for column in tableView.tableColumns
+            where column.identifier != ColumnIdentitySchema.rowNumberIdentifier {
                 column.isEditable = isEditable
             }
+        }
+    }
+
+    private func rebuildColumns(
+        tableView: NSTableView,
+        coordinator: TableViewCoordinator,
+        tableRows: TableRows,
+        savedLayout: ColumnLayoutState?
+    ) {
+        let columnsToRemove = tableView.tableColumns.filter {
+            $0.identifier != ColumnIdentitySchema.rowNumberIdentifier
+        }
+        for column in columnsToRemove {
+            tableView.removeTableColumn(column)
+        }
+
+        let willRestoreWidths = !(savedLayout?.columnWidths.isEmpty ?? true)
+        let schema = coordinator.identitySchema
+        for (index, columnName) in tableRows.columns.enumerated() {
+            guard let identifier = schema.identifier(for: index) else { continue }
+            let column = NSTableColumn(identifier: identifier)
+            column.title = columnName
+            if index < tableRows.columnTypes.count {
+                let typeName = tableRows.columnTypes[index].rawType
+                    ?? tableRows.columnTypes[index].displayName
+                column.headerToolTip = "\(columnName) (\(typeName))"
+            }
+            column.headerCell.setAccessibilityLabel(
+                String(format: String(localized: "Column: %@"), columnName)
+            )
+            if willRestoreWidths {
+                column.width = savedLayout?.columnWidths[columnName] ?? 100
+            } else {
+                column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
+                    for: columnName,
+                    columnIndex: index,
+                    tableRows: tableRows
+                )
+            }
+            column.minWidth = 30
+            column.resizingMask = .userResizingMask
+            column.isEditable = isEditable
+            column.sortDescriptorPrototype = NSSortDescriptor(
+                key: identifier.rawValue,
+                ascending: true
+            )
+            tableView.addTableColumn(column)
+        }
+    }
+
+    private func refreshColumnTitles(
+        tableView: NSTableView,
+        coordinator: TableViewCoordinator,
+        tableRows: TableRows,
+        hasSavedWidths: Bool
+    ) {
+        for column in tableView.tableColumns
+        where column.identifier != ColumnIdentitySchema.rowNumberIdentifier {
+            guard let colIndex = coordinator.dataColumnIndex(from: column.identifier),
+                  colIndex < tableRows.columns.count else { continue }
+            let columnName = tableRows.columns[colIndex]
+            column.title = columnName
+            if colIndex < tableRows.columnTypes.count {
+                let typeName = tableRows.columnTypes[colIndex].rawType
+                    ?? tableRows.columnTypes[colIndex].displayName
+                column.headerToolTip = "\(columnName) (\(typeName))"
+            }
+            if !hasSavedWidths {
+                column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
+                    for: columnName,
+                    columnIndex: colIndex,
+                    tableRows: tableRows
+                )
+            }
+            column.isEditable = isEditable
+        }
+    }
+
+    private func applySavedLayout(
+        to tableView: NSTableView,
+        coordinator: TableViewCoordinator,
+        columns: [String],
+        layout: ColumnLayoutState?
+    ) {
+        guard let layout else { return }
+
+        for column in tableView.tableColumns
+        where column.identifier != ColumnIdentitySchema.rowNumberIdentifier {
+            guard let colIndex = coordinator.dataColumnIndex(from: column.identifier),
+                  colIndex < columns.count else { continue }
+            if let savedWidth = layout.columnWidths[columns[colIndex]] {
+                column.width = savedWidth
+            }
+        }
+
+        if let savedOrder = layout.columnOrder {
+            DataGridView.applyColumnOrder(
+                savedOrder,
+                to: tableView,
+                schema: coordinator.identitySchema,
+                columns: columns
+            )
         }
     }
 
@@ -392,8 +433,8 @@ struct DataGridView: NSViewRepresentable {
                 tableView.sortDescriptors = []
             }
         } else if let firstSort = sortState.columns.first,
-                  firstSort.columnIndex >= 0 && firstSort.columnIndex < columns.count {
-            let key = Self.columnIdentifier(for: firstSort.columnIndex).rawValue
+                  let identifier = coordinator.identitySchema.identifier(for: firstSort.columnIndex) {
+            let key = identifier.rawValue
             let ascending = firstSort.direction == .ascending
             let currentDescriptor = tableView.sortDescriptors.first
             if currentDescriptor?.key != key || currentDescriptor?.ascending != ascending {
@@ -401,7 +442,11 @@ struct DataGridView: NSViewRepresentable {
             }
         }
 
-        Self.updateSortIndicators(tableView: tableView, sortState: sortState, columns: columns)
+        Self.updateSortIndicators(
+            tableView: tableView,
+            sortState: sortState,
+            schema: coordinator.identitySchema
+        )
     }
 
     private func reloadAndSyncSelection(
@@ -424,9 +469,10 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Column Visibility
 
-    private func applyColumnVisibility(to tableView: NSTableView, columns: [String]) {
-        for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-            guard let colIndex = Self.dataColumnIndex(from: column.identifier),
+    private func applyColumnVisibility(to tableView: NSTableView, coordinator: TableViewCoordinator, columns: [String]) {
+        for column in tableView.tableColumns
+        where column.identifier != ColumnIdentitySchema.rowNumberIdentifier {
+            guard let colIndex = coordinator.dataColumnIndex(from: column.identifier),
                   colIndex < columns.count else { continue }
             let columnName = columns[colIndex]
             let shouldHide = configuration.hiddenColumns.contains(columnName)
@@ -438,10 +484,6 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Column Layout Helpers
 
-    static func columnIdentifier(for dataIndex: Int) -> NSUserInterfaceItemIdentifier {
-        NSUserInterfaceItemIdentifier("col_\(dataIndex)")
-    }
-
     static func tableColumnIndex(for dataIndex: Int) -> Int {
         dataIndex + 1
     }
@@ -450,18 +492,18 @@ struct DataGridView: NSViewRepresentable {
         tableColumnIndex - 1
     }
 
-    static func dataColumnIndex(from identifier: NSUserInterfaceItemIdentifier) -> Int? {
-        let raw = identifier.rawValue
-        guard raw.hasPrefix("col_") else { return nil }
-        return Int(raw.dropFirst(4))
-    }
-
-    private static func applyColumnOrder(_ order: [String], to tableView: NSTableView, columns: [String]) {
+    private static func applyColumnOrder(
+        _ order: [String],
+        to tableView: NSTableView,
+        schema: ColumnIdentitySchema,
+        columns: [String]
+    ) {
         guard Set(order) == Set(columns) else { return }
 
         var columnByName: [String: NSTableColumn] = [:]
-        for col in tableView.tableColumns where col.identifier.rawValue != "__rowNumber__" {
-            if let idx = dataColumnIndex(from: col.identifier), idx < columns.count {
+        for col in tableView.tableColumns
+        where col.identifier != ColumnIdentitySchema.rowNumberIdentifier {
+            if let idx = schema.dataIndex(from: col.identifier), idx < columns.count {
                 columnByName[columns[idx]] = col
             }
         }
@@ -487,11 +529,14 @@ struct DataGridView: NSViewRepresentable {
     private static let ascendingSortIndicator = NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
     private static let descendingSortIndicator = NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
 
-    private static func updateSortIndicators(tableView: NSTableView, sortState: SortState, columns: [String]) {
+    private static func updateSortIndicators(
+        tableView: NSTableView,
+        sortState: SortState,
+        schema: ColumnIdentitySchema
+    ) {
         var columnByDataIndex: [Int: NSTableColumn] = [:]
         for column in tableView.tableColumns {
-            guard let colIndex = dataColumnIndex(from: column.identifier),
-                  colIndex < columns.count else { continue }
+            guard let colIndex = schema.dataIndex(from: column.identifier) else { continue }
             columnByDataIndex[colIndex] = column
             tableView.setIndicatorImage(nil, in: column)
         }

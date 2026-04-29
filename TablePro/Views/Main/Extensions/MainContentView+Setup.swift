@@ -70,7 +70,7 @@ extension MainContentView {
                             tabManager.tabs[tabIndex].content.query = filteredQuery
                         }
                         if let tableName = selectedTab.tableContext.tableName {
-                            coordinator.restoreColumnLayoutForTable(tableName)
+                            coordinator.restoreLastHiddenColumnsForTable(tableName)
                         }
                         coordinator.executeTableTabQueryDirectly()
                     }
@@ -161,7 +161,7 @@ extension MainContentView {
                         Task { await coordinator.switchDatabase(to: firstTab.tableContext.databaseName) }
                     } else {
                         if let tableName = firstTab.tableContext.tableName {
-                            coordinator.restoreColumnLayoutForTable(tableName)
+                            coordinator.restoreLastHiddenColumnsForTable(tableName)
                         }
                         coordinator.executeTableTabQueryDirectly()
                     }

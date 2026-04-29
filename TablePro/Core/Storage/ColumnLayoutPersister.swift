@@ -1,5 +1,5 @@
 //
-//  ColumnLayoutStorage.swift
+//  ColumnLayoutPersister.swift
 //  TablePro
 //
 
@@ -7,10 +7,17 @@ import Foundation
 import os
 
 @MainActor
-internal final class ColumnLayoutStorage {
-    static let shared = ColumnLayoutStorage()
+protocol ColumnLayoutPersisting: AnyObject {
+    func load(for tableName: String, connectionId: UUID) -> ColumnLayoutState?
+    func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID)
+    func clear(for tableName: String, connectionId: UUID)
+}
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ColumnLayoutStorage")
+@MainActor
+final class FileColumnLayoutPersister: ColumnLayoutPersisting {
+    static let shared = FileColumnLayoutPersister()
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ColumnLayoutPersister")
     private static let legacyKeyPrefix = "com.TablePro.columns.layout."
     private static let migrationCompleteKey = "com.TablePro.columnLayoutMigrationComplete"
 
@@ -25,19 +32,19 @@ internal final class ColumnLayoutStorage {
 
     private var cache: [UUID: [String: PersistedColumnLayout]] = [:]
 
-    private init() {
-        storageDirectory = Self.resolvedStorageDirectory()
+    init(storageDirectory: URL? = nil) {
+        self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
 
         do {
             try FileManager.default.createDirectory(
-                at: storageDirectory,
+                at: self.storageDirectory,
                 withIntermediateDirectories: true
             )
         } catch {
             Self.logger.error("Failed to create storage directory: \(error.localizedDescription)")
         }
 
-        Self.performMigrationIfNeeded(storageDirectory: storageDirectory)
+        Self.performMigrationIfNeeded(storageDirectory: self.storageDirectory)
     }
 
     func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID) {

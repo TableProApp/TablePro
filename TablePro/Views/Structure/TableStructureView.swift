@@ -245,7 +245,7 @@ struct TableStructureView: View {
                         await loadColumns()
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
-                        ColumnLayoutStorage.shared.clear(for: tableName, connectionId: connection.id)
+                        FileColumnLayoutPersister.shared.clear(for: tableName, connectionId: connection.id)
                         NotificationCenter.default.post(name: .refreshData, object: nil)
                     } catch {
                         AlertHelper.showErrorSheet(

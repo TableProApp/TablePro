@@ -86,7 +86,7 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         let column = tableColumns[clickedColumn]
-        if column.identifier.rawValue == "__rowNumber__" {
+        if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
             focusedRow = -1
             focusedColumn = -1
             return

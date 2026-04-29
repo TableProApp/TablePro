@@ -57,8 +57,8 @@ extension TableViewCoordinator {
 
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
         guard let tableColumn else { return false }
-        guard tableColumn.identifier.rawValue != "__rowNumber__" else { return false }
-        guard let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier) else { return false }
+        guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return false }
+        guard let columnIndex = dataColumnIndex(from: tableColumn.identifier) else { return false }
 
         switch inlineEditEligibility(row: row, columnIndex: columnIndex) {
         case .eligible:

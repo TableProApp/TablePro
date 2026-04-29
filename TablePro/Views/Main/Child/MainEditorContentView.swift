@@ -663,7 +663,6 @@ struct MainEditorContentView: View {
                 }
                 Task { @MainActor in
                     coordinator.isUpdatingColumnLayout = false
-                    coordinator.saveColumnLayoutForTable()
                 }
             }
         )

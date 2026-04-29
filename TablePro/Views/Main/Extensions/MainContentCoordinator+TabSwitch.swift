@@ -40,7 +40,7 @@ extension MainContentCoordinator {
                 filterStateManager.saveLastFilters(for: tableName)
             }
             saveColumnVisibilityToTab()
-            saveColumnLayoutForTable()
+            saveColumnVisibilityForActiveTable()
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
