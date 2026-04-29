@@ -55,6 +55,11 @@ pub enum HistoryDialogInput {
     ToggleSelectMode(bool),
     ToggleSelected(i64, bool),
     DeleteSelected,
+    /// Confirmed-bulk-delete arm. Bulk deletion is irreversible
+    /// (pinned entries included), so the inline `Delete` button on
+    /// the selection bar opens an `AdwAlertDialog` first; only the
+    /// destructive response routes to this variant.
+    DeleteSelectedConfirmed,
     ExportSelectedSql,
     ExportSelectedCsv,
     ClearAllRequested,
@@ -456,6 +461,40 @@ impl Component for HistoryDialog {
             }
 
             HistoryDialogInput::DeleteSelected => {
+                // Bulk deletion is irreversible and can wipe pinned
+                // entries the user marked as important; gate it
+                // behind an AdwAlertDialog confirmation before
+                // touching the database. Mirrors the Clear-All
+                // pattern below.
+                let n = self.selected_ids.len();
+                if n == 0 {
+                    return;
+                }
+                let dialog = adw::AlertDialog::new(None, None);
+                dialog.set_heading(Some(&if n == 1 {
+                    crate::tr!("Delete this query?")
+                } else {
+                    crate::tr!("Delete {n} queries?").replace("{n}", &n.to_string())
+                }));
+                dialog.set_body(&crate::tr!(
+                    "Selected entries will be permanently removed from history, including any pinned ones."
+                ));
+                dialog.add_response("cancel", &crate::tr!("Cancel"));
+                dialog.add_response("delete", &crate::tr!("Delete"));
+                dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+                dialog.set_default_response(Some("cancel"));
+                dialog.set_close_response("cancel");
+                let s = sender;
+                dialog.connect_response(None, move |d, response| {
+                    d.close();
+                    if response == "delete" {
+                        s.input(HistoryDialogInput::DeleteSelectedConfirmed);
+                    }
+                });
+                dialog.present(Some(&self.root));
+            }
+
+            HistoryDialogInput::DeleteSelectedConfirmed => {
                 let ids: Vec<i64> = self.selected_ids.drain().collect();
                 if ids.is_empty() {
                     return;
