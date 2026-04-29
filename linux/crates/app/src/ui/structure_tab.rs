@@ -124,26 +124,18 @@ fn driver_types(driver_id: &str) -> &'static [&'static str] {
     }
 }
 
-/// Whether the driver supports this kind of column-level alter on an
-/// existing column. SQLite has the most restrictions; the UI uses
-/// these to grey out non-supported cells with explanatory tooltips.
-fn driver_can_alter_column_type(driver_id: &str) -> bool {
+/// Whether the driver supports column-level ALTER on an existing
+/// column (type / nullable / default). SQLite blocks all three; the
+/// UI uses this to grey out non-supported cells with explanatory
+/// tooltips.
+fn driver_can_alter_existing_column(driver_id: &str) -> bool {
     !matches!(driver_id, "sqlite")
 }
 
-fn driver_can_alter_column_nullable(driver_id: &str) -> bool {
-    !matches!(driver_id, "sqlite")
-}
-
-fn driver_can_alter_column_default(driver_id: &str) -> bool {
-    !matches!(driver_id, "sqlite")
-}
-
-fn driver_can_drop_column(driver_id: &str) -> bool {
+fn driver_can_drop_column(_driver_id: &str) -> bool {
     // SQLite ≥ 3.35 supports DROP COLUMN; the builder doesn't probe
     // the runtime version. Always enable; the driver surfaces the
     // error if running against an older SQLite.
-    let _ = driver_id;
     true
 }
 
@@ -428,13 +420,10 @@ impl StructureTab {
                 self.column_popovers.clone(),
             ));
         }
-        let add_row = adw::ButtonRow::builder()
-            .title(crate::tr!("Add Column"))
-            .start_icon_name("list-add-symbolic")
-            .build();
         let sender_for_add = sender.clone();
-        add_row.connect_activated(move |_| sender_for_add.input(StructureTabInput::AddColumn));
-        list.append(&add_row);
+        append_add_button(&list, &crate::tr!("Add Column"), move || {
+            sender_for_add.input(StructureTabInput::AddColumn);
+        });
         self.columns_box.append(&list);
 
         let suppress = self.suppress_emit.clone();
@@ -449,21 +438,16 @@ impl StructureTab {
         for (i, idx) in self.indexes.borrow().iter().enumerate() {
             list.append(&build_index_row(i, idx, sender.clone()));
         }
-        let add_row = adw::ButtonRow::builder()
-            .title(crate::tr!("Add Index…"))
-            .start_icon_name("list-add-symbolic")
-            .build();
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
         let parent_box = self.indexes_box.clone();
-        add_row.connect_activated(move |_| {
+        append_add_button(&list, &crate::tr!("Add Index…"), move || {
             present_index_dialog(
                 parent_box.upcast_ref(),
                 &columns_for_dialog.borrow(),
                 sender_for_add.clone(),
             );
         });
-        list.append(&add_row);
         self.indexes_box.append(&list);
     }
 
@@ -474,21 +458,16 @@ impl StructureTab {
         for (i, fk) in self.foreign_keys.borrow().iter().enumerate() {
             list.append(&build_fk_row(i, fk, &driver_id, sender.clone()));
         }
-        let add_row = adw::ButtonRow::builder()
-            .title(crate::tr!("Add Foreign Key…"))
-            .start_icon_name("list-add-symbolic")
-            .build();
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
         let parent_box = self.fks_box.clone();
-        add_row.connect_activated(move |_| {
+        append_add_button(&list, &crate::tr!("Add Foreign Key…"), move || {
             present_fk_dialog(
                 parent_box.upcast_ref(),
                 &columns_for_dialog.borrow(),
                 sender_for_add.clone(),
             );
         });
-        list.append(&add_row);
         self.fks_box.append(&list);
     }
 }
@@ -513,6 +492,34 @@ fn clear_box(b: &gtk::Box) {
     while let Some(child) = b.first_child() {
         b.remove(&child);
     }
+}
+
+/// Append a trailing `adw::ButtonRow` to a boxed-list — the GNOME
+/// pattern for "Add another item" rows in Settings / Builder. The
+/// caller's closure runs on activation; what it dispatches (a model
+/// mutation for Add Column, a dialog launcher for Add Index / Add
+/// Foreign Key) is the only thing that varies between the columns,
+/// indexes, and FKs views.
+fn append_add_button(list: &gtk::ListBox, label: &str, on_activate: impl Fn() + 'static) {
+    let row = adw::ButtonRow::builder()
+        .title(label)
+        .start_icon_name("list-add-symbolic")
+        .build();
+    row.connect_activated(move |_| on_activate());
+    list.append(&row);
+}
+
+/// Tiny inline pill rendered as an AdwActionRow suffix — used by the
+/// indexes list to show UNIQUE / PRIMARY tags. `accent_class` is the
+/// CSS class controlling the colour (`dim-label`, `accent`, etc.).
+fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
+    let badge = gtk::Label::builder()
+        .label(label)
+        .valign(gtk::Align::Center)
+        .build();
+    badge.add_css_class("caption");
+    badge.add_css_class(accent_class);
+    badge
 }
 
 /// Render a draft column's summary line for the collapsed expander
@@ -611,7 +618,7 @@ fn build_column_expander_row(
     // `enum` literals work without enumeration.
     let type_row = adw::EntryRow::builder().title(crate::tr!("Type")).build();
     type_row.set_text(&col.data_type);
-    if limit_for_existing && !driver_can_alter_column_type(driver_id) {
+    if limit_for_existing && !driver_can_alter_existing_column(driver_id) {
         type_row.set_sensitive(false);
         type_row.set_tooltip_text(Some(&crate::tr!("Type changes aren't supported by SQLite.")));
     }
@@ -637,7 +644,7 @@ fn build_column_expander_row(
         .title(crate::tr!("Nullable"))
         .active(col.nullable)
         .build();
-    if limit_for_existing && !driver_can_alter_column_nullable(driver_id) {
+    if limit_for_existing && !driver_can_alter_existing_column(driver_id) {
         nullable_row.set_sensitive(false);
         nullable_row.set_tooltip_text(Some(&crate::tr!("Nullability changes aren't supported by SQLite.")));
     }
@@ -657,7 +664,7 @@ fn build_column_expander_row(
     // Default value (AdwEntryRow). Empty input means no DEFAULT clause.
     let default_row = adw::EntryRow::builder().title(crate::tr!("Default value")).build();
     default_row.set_text(col.default_value.as_deref().unwrap_or(""));
-    if limit_for_existing && !driver_can_alter_column_default(driver_id) {
+    if limit_for_existing && !driver_can_alter_existing_column(driver_id) {
         default_row.set_sensitive(false);
         default_row.set_tooltip_text(Some(&crate::tr!("Default changes aren't supported by SQLite.")));
     }
@@ -743,22 +750,10 @@ fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSender<Struct
         .build();
 
     if idx.unique {
-        let badge = gtk::Label::builder()
-            .label(crate::tr!("UNIQUE"))
-            .valign(gtk::Align::Center)
-            .build();
-        badge.add_css_class("caption");
-        badge.add_css_class("dim-label");
-        row.add_suffix(&badge);
+        row.add_suffix(&index_badge(&crate::tr!("UNIQUE"), "dim-label"));
     }
     if idx.primary {
-        let badge = gtk::Label::builder()
-            .label(crate::tr!("PRIMARY"))
-            .valign(gtk::Align::Center)
-            .build();
-        badge.add_css_class("caption");
-        badge.add_css_class("accent");
-        row.add_suffix(&badge);
+        row.add_suffix(&index_badge(&crate::tr!("PRIMARY"), "accent"));
     }
 
     let remove_button = gtk::Button::builder()
