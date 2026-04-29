@@ -85,10 +85,7 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in initialRows.columns.enumerated() {
             guard let identifier = identitySchema.identifier(for: index) else { continue }
             let column = NSTableColumn(identifier: identifier)
-            let headerCell = MultiSortHeaderCell(textCell: columnName)
-            headerCell.font = column.headerCell.font
-            headerCell.alignment = column.headerCell.alignment
-            column.headerCell = headerCell
+            column.title = columnName
             if index < initialRows.columnTypes.count {
                 let typeName = initialRows.columnTypes[index].rawType ?? initialRows.columnTypes[index].displayName
                 column.headerToolTip = "\(columnName) (\(typeName))"
@@ -337,10 +334,7 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in tableRows.columns.enumerated() {
             guard let identifier = schema.identifier(for: index) else { continue }
             let column = NSTableColumn(identifier: identifier)
-            let headerCell = MultiSortHeaderCell(textCell: columnName)
-            headerCell.font = column.headerCell.font
-            headerCell.alignment = column.headerCell.alignment
-            column.headerCell = headerCell
+            column.title = columnName
             if index < tableRows.columnTypes.count {
                 let typeName = tableRows.columnTypes[index].rawType
                     ?? tableRows.columnTypes[index].displayName
@@ -529,16 +523,8 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Sort Indicator Helpers
 
-    private static let ascendingSortIndicator: NSImage? = sortIndicatorSymbol("chevron.up")
-    private static let descendingSortIndicator: NSImage? = sortIndicatorSymbol("chevron.down")
-
-    private static func sortIndicatorSymbol(_ name: String) -> NSImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
-        image?.isTemplate = true
-        return image
-    }
+    private static let ascendingSortIndicator = NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
+    private static let descendingSortIndicator = NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
 
     private static func updateSortIndicators(
         tableView: NSTableView,
@@ -548,25 +534,23 @@ struct DataGridView: NSViewRepresentable {
         var columnByDataIndex: [Int: NSTableColumn] = [:]
         for column in tableView.tableColumns {
             tableView.setIndicatorImage(nil, in: column)
-            guard let colIndex = schema.dataIndex(from: column.identifier) else { continue }
-            columnByDataIndex[colIndex] = column
-            if let cell = column.headerCell as? MultiSortHeaderCell {
-                cell.sortIndicatorImage = nil
-                cell.sortPriority = 0
+            if let colIndex = schema.dataIndex(from: column.identifier) {
+                columnByDataIndex[colIndex] = column
             }
         }
 
-        for (priority, sortCol) in sortState.columns.enumerated() {
-            guard let column = columnByDataIndex[sortCol.columnIndex],
-                  let cell = column.headerCell as? MultiSortHeaderCell else { continue }
-            cell.sortIndicatorImage = sortCol.direction == .ascending
-                ? ascendingSortIndicator
-                : descendingSortIndicator
-            cell.sortPriority = priority + 1
+        for sortCol in sortState.columns {
+            guard let column = columnByDataIndex[sortCol.columnIndex] else { continue }
+            let image = sortCol.direction == .ascending ? ascendingSortIndicator : descendingSortIndicator
+            tableView.setIndicatorImage(image, in: column)
         }
 
-        tableView.highlightedTableColumn = nil
-        tableView.headerView?.needsDisplay = true
+        if let primary = sortState.columns.first,
+           let column = columnByDataIndex[primary.columnIndex] {
+            tableView.highlightedTableColumn = column
+        } else {
+            tableView.highlightedTableColumn = nil
+        }
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
