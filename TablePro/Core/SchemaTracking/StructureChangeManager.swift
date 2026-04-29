@@ -250,8 +250,6 @@ final class StructureChangeManager: ChangeManaging {
             undoManager.setActionName(String(localized: "Delete Column"))
             pendingChanges[key] = .deleteColumn(column)
             trackChangeKey(key)
-            if let rowIndex = workingColumns.firstIndex(where: { $0.id == id }) {
-            }
         } else {
             let rowIndex = workingColumns.firstIndex(where: { $0.id == id })
             if let column = workingColumns.first(where: { $0.id == id }) {
@@ -259,10 +257,6 @@ final class StructureChangeManager: ChangeManaging {
                     target.applySchemaUndo(.columnDelete(column: column, at: rowIndex))
                 }
                 undoManager.setActionName(String(localized: "Delete Column"))
-            }
-            if let rowIndex {
-                for i in rowIndex..<workingColumns.count {
-                }
             }
             workingColumns.removeAll { $0.id == id }
             pendingChanges.removeValue(forKey: key)
@@ -321,8 +315,6 @@ final class StructureChangeManager: ChangeManaging {
             undoManager.setActionName(String(localized: "Delete Index"))
             pendingChanges[key] = .deleteIndex(index)
             trackChangeKey(key)
-            if let rowIndex = workingIndexes.firstIndex(where: { $0.id == id }) {
-            }
         } else {
             let rowIndex = workingIndexes.firstIndex(where: { $0.id == id })
             if let index = workingIndexes.first(where: { $0.id == id }) {
@@ -330,10 +322,6 @@ final class StructureChangeManager: ChangeManaging {
                     target.applySchemaUndo(.indexDelete(index: index, at: rowIndex))
                 }
                 undoManager.setActionName(String(localized: "Delete Index"))
-            }
-            if let rowIndex {
-                for i in rowIndex..<workingIndexes.count {
-                }
             }
             workingIndexes.removeAll { $0.id == id }
             pendingChanges.removeValue(forKey: key)
@@ -392,8 +380,6 @@ final class StructureChangeManager: ChangeManaging {
             undoManager.setActionName(String(localized: "Delete Foreign Key"))
             pendingChanges[key] = .deleteForeignKey(fk)
             trackChangeKey(key)
-            if let rowIndex = workingForeignKeys.firstIndex(where: { $0.id == id }) {
-            }
         } else {
             let rowIndex = workingForeignKeys.firstIndex(where: { $0.id == id })
             if let fk = workingForeignKeys.first(where: { $0.id == id }) {
@@ -401,10 +387,6 @@ final class StructureChangeManager: ChangeManaging {
                     target.applySchemaUndo(.foreignKeyDelete(fk: fk, at: rowIndex))
                 }
                 undoManager.setActionName(String(localized: "Delete Foreign Key"))
-            }
-            if let rowIndex {
-                for i in rowIndex..<workingForeignKeys.count {
-                }
             }
             workingForeignKeys.removeAll { $0.id == id }
             pendingChanges.removeValue(forKey: key)
