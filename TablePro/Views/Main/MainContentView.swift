@@ -413,6 +413,9 @@ struct MainContentView: View {
             onClearSort: {
                 coordinator.clearSort()
             },
+            onRemoveSortColumn: { columnIndex in
+                coordinator.removeMultiSortColumn(columnIndex: columnIndex)
+            },
             onAddRow: {
                 coordinator.addNewRow()
             },

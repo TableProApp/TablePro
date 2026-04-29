@@ -7,29 +7,76 @@ import AppKit
 
 enum HeaderSortAction: Equatable {
     case sort(columnIndex: Int, ascending: Bool, isMultiSort: Bool)
+    case removeMultiSort(columnIndex: Int)
     case clear
 }
 
+struct HeaderSortTransition: Equatable {
+    let action: HeaderSortAction
+    let newState: SortState
+}
+
 enum HeaderSortCycle {
-    static func nextAction(
+    static func nextTransition(
         state: SortState,
         clickedColumn: Int,
         isMultiSort: Bool
-    ) -> HeaderSortAction {
+    ) -> HeaderSortTransition {
         if isMultiSort {
-            let alreadyPresent = state.columns.contains(where: { $0.columnIndex == clickedColumn })
-            return .sort(columnIndex: clickedColumn, ascending: !alreadyPresent, isMultiSort: true)
+            return multiSortTransition(state: state, clickedColumn: clickedColumn)
+        }
+        return singleSortTransition(state: state, clickedColumn: clickedColumn)
+    }
+
+    private static func multiSortTransition(state: SortState, clickedColumn: Int) -> HeaderSortTransition {
+        guard let existingIndex = state.columns.firstIndex(where: { $0.columnIndex == clickedColumn }) else {
+            var newState = state
+            newState.columns.append(SortColumn(columnIndex: clickedColumn, direction: .ascending))
+            return HeaderSortTransition(
+                action: .sort(columnIndex: clickedColumn, ascending: true, isMultiSort: true),
+                newState: newState
+            )
         }
 
+        let existing = state.columns[existingIndex]
+        switch existing.direction {
+        case .ascending:
+            var newState = state
+            newState.columns[existingIndex].direction = .descending
+            return HeaderSortTransition(
+                action: .sort(columnIndex: clickedColumn, ascending: false, isMultiSort: true),
+                newState: newState
+            )
+        case .descending:
+            var newState = state
+            newState.columns.remove(at: existingIndex)
+            return HeaderSortTransition(
+                action: .removeMultiSort(columnIndex: clickedColumn),
+                newState: newState
+            )
+        }
+    }
+
+    private static func singleSortTransition(state: SortState, clickedColumn: Int) -> HeaderSortTransition {
         guard let primary = state.columns.first, primary.columnIndex == clickedColumn else {
-            return .sort(columnIndex: clickedColumn, ascending: true, isMultiSort: false)
+            var newState = SortState()
+            newState.columns = [SortColumn(columnIndex: clickedColumn, direction: .ascending)]
+            return HeaderSortTransition(
+                action: .sort(columnIndex: clickedColumn, ascending: true, isMultiSort: false),
+                newState: newState
+            )
         }
 
         switch primary.direction {
         case .ascending:
-            return .sort(columnIndex: clickedColumn, ascending: false, isMultiSort: false)
+            var newState = SortState()
+            newState.columns = [SortColumn(columnIndex: clickedColumn, direction: .descending)]
+            return HeaderSortTransition(
+                action: .sort(columnIndex: clickedColumn, ascending: false, isMultiSort: false),
+                newState: newState
+            )
         case .descending:
-            return .clear
+            return HeaderSortTransition(action: .clear, newState: SortState())
         }
     }
 }
@@ -131,19 +178,25 @@ final class SortableHeaderView: NSTableHeaderView {
         let isMultiSort = event.modifierFlags
             .intersection(.deviceIndependentFlagsMask)
             .contains(.shift)
-        let action = HeaderSortCycle.nextAction(
+        let transition = HeaderSortCycle.nextTransition(
             state: coordinator.currentSortState,
             clickedColumn: dataIndex,
             isMultiSort: isMultiSort
         )
 
-        switch action {
+        dispatch(transition: transition, on: coordinator)
+    }
+
+    private func dispatch(transition: HeaderSortTransition, on coordinator: TableViewCoordinator) {
+        switch transition.action {
         case .sort(let columnIndex, let ascending, let isMultiSort):
             coordinator.delegate?.dataGridSort(
                 column: columnIndex,
                 ascending: ascending,
                 isMultiSort: isMultiSort
             )
+        case .removeMultiSort(let columnIndex):
+            coordinator.delegate?.dataGridRemoveSortColumn(columnIndex)
         case .clear:
             coordinator.delegate?.dataGridClearSort()
         }

@@ -1422,6 +1422,13 @@ final class MainContentCoordinator {
         }
     }
 
+    func removeMultiSortColumn(columnIndex: Int) {
+        guard let tab = tabManager.selectedTab else { return }
+        guard let existing = tab.sortState.columns.first(where: { $0.columnIndex == columnIndex }) else { return }
+        let ascending = existing.direction == .ascending
+        handleSort(columnIndex: columnIndex, ascending: ascending, isMultiSort: true)
+    }
+
     func clearSort() {
         guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
         guard tab.sortState.isSorting else { return }
