@@ -49,7 +49,7 @@ extension TableViewCoordinator {
 
         let tsv = tsvRows.joined(separator: "\n")
         let html = HtmlTableEncoder.encode(rows: htmlRows)
-        ClipboardService.shared.writeTabular(tsv: tsv, html: html)
+        ClipboardService.shared.writeRows(tsv: tsv, html: html)
     }
 
     func copyRowsWithHeaders(at indices: Set<Int>) {
@@ -69,7 +69,7 @@ extension TableViewCoordinator {
 
         let tsv = tsvRows.joined(separator: "\n")
         let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
-        ClipboardService.shared.writeTabular(tsv: tsv, html: html)
+        ClipboardService.shared.writeRows(tsv: tsv, html: html)
     }
 
     @MainActor

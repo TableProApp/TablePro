@@ -281,7 +281,7 @@ final class RowOperationsManager {
             result.append("\n(truncated, showing first \(Self.maxClipboardRows) of \(totalSelected) rows)")
         }
 
-        ClipboardService.shared.writeText(result)
+        ClipboardService.shared.writeRows(tsv: result, html: nil)
     }
 
     func pasteRowsFromClipboard(

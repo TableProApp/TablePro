@@ -12,12 +12,14 @@ import UniformTypeIdentifiers
 protocol ClipboardProvider {
     func readText() -> String?
     func writeText(_ text: String)
-    func writeTabular(tsv: String, html: String)
+    func writeRows(tsv: String, html: String?)
     var hasText: Bool { get }
+    var hasGridRows: Bool { get }
 }
 
 struct NSPasteboardClipboardProvider: ClipboardProvider {
     private static let tsvType = NSPasteboard.PasteboardType("public.utf8-tab-separated-values-text")
+    private static let gridRowsType = NSPasteboard.PasteboardType("com.TablePro.gridRows")
 
     func readText() -> String? {
         NSPasteboard.general.string(forType: .string)
@@ -30,16 +32,23 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         pb.setString(text, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
     }
 
-    func writeTabular(tsv: String, html: String) {
+    func writeRows(tsv: String, html: String?) {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(tsv, forType: .string)
         pb.setString(tsv, forType: Self.tsvType)
-        pb.setString(html, forType: .html)
+        if let html {
+            pb.setString(html, forType: .html)
+        }
+        pb.setString("1", forType: Self.gridRowsType)
     }
 
     var hasText: Bool {
         NSPasteboard.general.string(forType: .string) != nil
+    }
+
+    var hasGridRows: Bool {
+        NSPasteboard.general.types?.contains(Self.gridRowsType) == true
     }
 }
 

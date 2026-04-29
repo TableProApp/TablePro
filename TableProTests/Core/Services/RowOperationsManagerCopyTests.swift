@@ -5,18 +5,22 @@ import Testing
 private final class MockClipboardProvider: ClipboardProvider {
     var lastWrittenText: String?
     var textToRead: String?
+    var lastWasGridRows = false
 
     func readText() -> String? { textToRead }
 
     func writeText(_ text: String) {
         lastWrittenText = text
+        lastWasGridRows = false
     }
 
-    func writeTabular(tsv: String, html: String) {
+    func writeRows(tsv: String, html: String?) {
         lastWrittenText = tsv
+        lastWasGridRows = true
     }
 
     var hasText: Bool { textToRead != nil }
+    var hasGridRows: Bool { lastWasGridRows }
 }
 
 @MainActor
