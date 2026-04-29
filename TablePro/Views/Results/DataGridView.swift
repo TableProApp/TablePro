@@ -531,14 +531,8 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Sort Indicator Helpers
 
-    private static let ascendingSortIndicator: NSImage? = {
-        NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
-            ?? NSImage(systemSymbolName: "chevron.up", accessibilityDescription: nil)
-    }()
-    private static let descendingSortIndicator: NSImage? = {
-        NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
-            ?? NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)
-    }()
+    private static let ascendingSortIndicator = NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
+    private static let descendingSortIndicator = NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
 
     private static func updateSortIndicators(
         tableView: NSTableView,
@@ -549,7 +543,6 @@ struct DataGridView: NSViewRepresentable {
         for column in tableView.tableColumns {
             guard let colIndex = schema.dataIndex(from: column.identifier) else { continue }
             columnByDataIndex[colIndex] = column
-            tableView.setIndicatorImage(nil, in: column)
             if let cell = column.headerCell as? MultiSortHeaderCell {
                 cell.sortIndicatorImage = nil
                 cell.sortPriority = 0
@@ -557,21 +550,15 @@ struct DataGridView: NSViewRepresentable {
         }
 
         for (priority, sortCol) in sortState.columns.enumerated() {
-            guard let column = columnByDataIndex[sortCol.columnIndex] else { continue }
-            let image = sortCol.direction == .ascending ? ascendingSortIndicator : descendingSortIndicator
-            if let cell = column.headerCell as? MultiSortHeaderCell {
-                cell.sortIndicatorImage = image
-                cell.sortPriority = priority + 1
-            }
+            guard let column = columnByDataIndex[sortCol.columnIndex],
+                  let cell = column.headerCell as? MultiSortHeaderCell else { continue }
+            cell.sortIndicatorImage = sortCol.direction == .ascending
+                ? ascendingSortIndicator
+                : descendingSortIndicator
+            cell.sortPriority = priority + 1
         }
 
-        if let primary = sortState.columns.first,
-           let column = columnByDataIndex[primary.columnIndex] {
-            tableView.highlightedTableColumn = column
-        } else {
-            tableView.highlightedTableColumn = nil
-        }
-
+        tableView.highlightedTableColumn = nil
         tableView.headerView?.needsDisplay = true
     }
 
