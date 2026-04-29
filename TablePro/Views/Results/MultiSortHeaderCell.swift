@@ -10,6 +10,21 @@ final class MultiSortHeaderCell: NSTableHeaderCell {
     var sortIndicatorImage: NSImage?
     var sortPriority: Int = 0
 
+    override init(textCell string: String) {
+        super.init(textCell: string)
+    }
+
+    required init(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    override func copy(with zone: NSZone? = nil) -> Any {
+        let copy = super.copy(with: zone) as! MultiSortHeaderCell
+        copy.sortIndicatorImage = sortIndicatorImage
+        copy.sortPriority = sortPriority
+        return copy
+    }
+
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
         let imageGap: CGFloat = 4
 
