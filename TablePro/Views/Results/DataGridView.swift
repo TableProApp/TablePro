@@ -531,8 +531,21 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Sort Indicator Helpers
 
-    private static let ascendingSortIndicator = NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
-    private static let descendingSortIndicator = NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
+    private static let ascendingSortIndicator: NSImage? = {
+        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .light)
+        let image = NSImage(systemSymbolName: "chevron.up", accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        image?.isTemplate = true
+        return image
+    }()
+
+    private static let descendingSortIndicator: NSImage? = {
+        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .light)
+        let image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        image?.isTemplate = true
+        return image
+    }()
 
     private static func updateSortIndicators(
         tableView: NSTableView,
