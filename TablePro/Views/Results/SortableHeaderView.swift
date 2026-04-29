@@ -154,6 +154,22 @@ final class SortableHeaderView: NSTableHeaderView {
         return view
     }
 
+    private static let clickDragThreshold: CGFloat = 4
+
+    private var pendingClickStartLocation: NSPoint?
+    private var dragOccurredDuringClick = false
+
+    override func mouseDragged(with event: NSEvent) {
+        if let start = pendingClickStartLocation {
+            let current = convert(event.locationInWindow, from: nil)
+            if abs(current.x - start.x) > Self.clickDragThreshold ||
+                abs(current.y - start.y) > Self.clickDragThreshold {
+                dragOccurredDuringClick = true
+            }
+        }
+        super.mouseDragged(with: event)
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard let tableView = tableView,
               let coordinator = coordinator else {
@@ -173,6 +189,32 @@ final class SortableHeaderView: NSTableHeaderView {
               let dataIndex = coordinator.dataColumnIndex(from: column.identifier) else {
             super.mouseDown(with: event)
             return
+        }
+
+        let originalColumnOrder = tableView.tableColumns.map { $0.identifier }
+        let originalColumnWidths = tableView.tableColumns.map { $0.width }
+        pendingClickStartLocation = pointInHeader
+        dragOccurredDuringClick = false
+        defer {
+            pendingClickStartLocation = nil
+            dragOccurredDuringClick = false
+        }
+
+        super.mouseDown(with: event)
+
+        let columnOrderChanged = tableView.tableColumns.map { $0.identifier } != originalColumnOrder
+        let columnWidthsChanged = tableView.tableColumns.map { $0.width } != originalColumnWidths
+        if dragOccurredDuringClick || columnOrderChanged || columnWidthsChanged {
+            return
+        }
+
+        if let window {
+            let cursorInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+            let cursorInHeader = convert(cursorInWindow, from: nil)
+            if abs(cursorInHeader.x - pointInHeader.x) > Self.clickDragThreshold ||
+                abs(cursorInHeader.y - pointInHeader.y) > Self.clickDragThreshold {
+                return
+            }
         }
 
         let isMultiSort = event.modifierFlags
