@@ -26,18 +26,19 @@ final class MultiSortHeaderCell: NSTableHeaderCell {
             width: image.size.width,
             height: image.size.height
         )
-        image.draw(
-            in: imageRect,
-            from: .zero,
-            operation: .sourceOver,
-            fraction: 1.0,
-            respectFlipped: true,
-            hints: nil
-        )
+
+        let drawable: NSImage
         if image.isTemplate {
-            NSColor.secondaryLabelColor.set()
-            imageRect.fill(using: .sourceAtop)
+            drawable = NSImage(size: image.size, flipped: false) { rect in
+                image.draw(in: rect)
+                NSColor.secondaryLabelColor.set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+        } else {
+            drawable = image
         }
+        drawable.draw(in: imageRect)
     }
 
     override func drawSortIndicator(
