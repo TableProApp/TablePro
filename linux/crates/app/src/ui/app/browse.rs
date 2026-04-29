@@ -242,6 +242,7 @@ impl App {
             .filters(&filters)
             .build();
         let parent = self.window.clone();
+        let parent_for_alert = parent.clone();
         let toast_overlay = self.toast_overlay.clone();
         dialog.save(Some(&parent), gtk::gio::Cancellable::NONE, move |outcome| {
             let Ok(file) = outcome else { return };
@@ -254,9 +255,24 @@ impl App {
                 Ok(()) => toast_overlay.add_toast(relm4::adw::Toast::new(
                     &crate::tr!("Exported to {path}").replace("{path}", &path.display().to_string()),
                 )),
-                Err(e) => toast_overlay.add_toast(relm4::adw::Toast::new(
-                    &crate::tr!("Export failed: {error}").replace("{error}", &e.to_string()),
-                )),
+                // Failures use AdwAlertDialog instead of a transient
+                // toast — the user needs time to read the IO error
+                // (and probably copy the path to retry elsewhere).
+                // Matches the Save / Drop error-handling pattern.
+                Err(e) => {
+                    let alert = adw::AlertDialog::new(
+                        Some(&crate::tr!("Couldn't export")),
+                        Some(
+                            &crate::tr!("Writing {path} failed: {error}")
+                                .replace("{path}", &path.display().to_string())
+                                .replace("{error}", &e.to_string()),
+                        ),
+                    );
+                    alert.add_response("close", &crate::tr!("Close"));
+                    alert.set_default_response(Some("close"));
+                    alert.set_close_response("close");
+                    alert.present(Some(&parent_for_alert));
+                }
             }
         });
     }

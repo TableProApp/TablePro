@@ -116,6 +116,11 @@ pub enum BrowseTabInput {
     Refresh,
     /// Reveal the in-grid find bar and focus it.
     FindInResults,
+    /// Restore focus to the column view. Fired after the search bar
+    /// is closed via Escape so the next keystroke lands on the grid
+    /// (F2 to edit, Tab to traverse, etc.) instead of the floating
+    /// post-search focus state.
+    FocusGrid,
     /// User clicked First page (offset → 0).
     FirstPage,
     /// User clicked Prev page.
@@ -1255,11 +1260,17 @@ impl SimpleComponent for BrowseTab {
         let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
 
         let search_bar_for_esc = grid_search_bar.clone();
+        let sender_for_esc = sender.clone();
         let esc_shortcut = gtk::Shortcut::builder()
             .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 if search_bar_for_esc.is_search_mode() {
                     search_bar_for_esc.set_search_mode(false);
+                    // Restore focus to the grid — without this the
+                    // SearchBar leaves focus floating and the next
+                    // keystroke vanishes (or re-opens the search if
+                    // it lands on something keypress-capturing).
+                    sender_for_esc.input(BrowseTabInput::FocusGrid);
                     glib::Propagation::Stop
                 } else {
                     glib::Propagation::Proceed
@@ -1572,6 +1583,11 @@ impl SimpleComponent for BrowseTab {
                     self.grid_search_bar.set_search_mode(true);
                 }
                 self.grid_search.grab_focus();
+            }
+            BrowseTabInput::FocusGrid => {
+                if let Some(cv) = self.current_column_view.as_ref() {
+                    cv.grab_focus();
+                }
             }
             BrowseTabInput::FirstPage => {
                 if self.current_offset > 0 {

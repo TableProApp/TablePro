@@ -22,10 +22,15 @@ impl App {
         if let Some(prev) = self.connect_progress_toast.take() {
             prev.dismiss();
         }
+        // GNOME inline-metadata separator (` · `) keeps the two
+        // strings reading as one phrase rather than two sentences
+        // colliding ("Connecting… Opening MyDB" → "Connecting… ·
+        // Opening MyDB"). Same convention used in the browse
+        // paginator label and the editor status line.
         let body = if description.is_empty() {
             title.to_string()
         } else {
-            format!("{title} {description}")
+            format!("{title} · {description}")
         };
         let toast = adw::Toast::builder().title(&body).timeout(0).build();
         self.toast_overlay.add_toast(toast.clone());
