@@ -41,7 +41,14 @@ final class MultiSortHeaderCell: NSTableHeaderCell {
             width: image.size.width,
             height: image.size.height
         )
-        image.draw(in: imageRect)
+
+        let tinted = NSImage(size: image.size, flipped: false) { rect in
+            image.draw(in: rect)
+            NSColor.secondaryLabelColor.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.draw(in: imageRect)
     }
 
     override func drawSortIndicator(

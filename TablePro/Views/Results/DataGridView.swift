@@ -533,10 +533,11 @@ struct DataGridView: NSViewRepresentable {
     private static let descendingSortIndicator: NSImage? = sortIndicatorSymbol("chevron.down")
 
     private static func sortIndicatorSymbol(_ name: String) -> NSImage? {
-        let size = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
-        let palette = NSImage.SymbolConfiguration(paletteColors: [.secondaryLabelColor])
-        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(size.applying(palette))
+        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        image?.isTemplate = true
+        return image
     }
 
     private static func updateSortIndicators(
