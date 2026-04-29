@@ -67,9 +67,6 @@ final class DataGridCellView: NSTableCellView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        if let color = changeBackgroundColor {
-            backgroundView.layer?.backgroundColor = color.cgColor
-        }
         if isFocusedCell {
             needsDisplay = true
         }
