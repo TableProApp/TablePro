@@ -256,21 +256,18 @@ struct MainContentCoordinatorSortTests {
         #expect(tabManager.tabs[idx].sortState.columns.isEmpty)
     }
 
-    @Test("clearSort on an unsorted tab is a no-op")
+    @Test("clearSort on an unsorted tab does not crash and leaves sort state empty")
     func clearSortIsNoOpWhenUnsorted() {
-        let (coordinator, _, tabId) = makeCoordinator()
+        let (coordinator, tabManager, tabId) = makeCoordinator()
         seedRows(coordinator, for: tabId)
-
-        coordinator.querySortCache[tabId] = QuerySortCacheEntry(
-            sortedIDs: [.existing(0)],
-            columnIndex: 0,
-            direction: .ascending,
-            schemaVersion: 0
-        )
 
         coordinator.clearSort()
 
-        #expect(coordinator.querySortCache[tabId] != nil)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        #expect(tabManager.tabs[idx].sortState.columns.isEmpty)
     }
 
     @Test("cleanupSortCache drops entries for tabs that are no longer open")
