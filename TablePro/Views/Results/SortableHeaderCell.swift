@@ -98,7 +98,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static func indicatorImage(for direction: SortDirection) -> NSImage? {
         let symbolName = direction == .ascending ? "chevron.up" : "chevron.down"
         let configuration = NSImage.SymbolConfiguration(pointSize: priorityFontSize, weight: .semibold)
-            .applying(.init(paletteColors: [.secondaryLabelColor]))
+            .applying(.init(hierarchicalColor: .secondaryLabelColor))
         return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
     }
