@@ -439,11 +439,9 @@ struct DataGridView: NSViewRepresentable {
             tableView.sortDescriptors = desired
         }
 
-        Self.updateSortIndicators(
-            tableView: tableView,
-            sortState: sortState,
-            schema: coordinator.identitySchema
-        )
+        if let header = tableView.headerView as? SortableHeaderView {
+            header.updateSortIndicators(state: sortState, schema: coordinator.identitySchema)
+        }
     }
 
     private func reloadAndSyncSelection(
@@ -523,35 +521,6 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Sort Indicator Helpers
 
-    private static let ascendingSortIndicator = NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
-    private static let descendingSortIndicator = NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
-
-    private static func updateSortIndicators(
-        tableView: NSTableView,
-        sortState: SortState,
-        schema: ColumnIdentitySchema
-    ) {
-        var columnByDataIndex: [Int: NSTableColumn] = [:]
-        for column in tableView.tableColumns {
-            tableView.setIndicatorImage(nil, in: column)
-            if let colIndex = schema.dataIndex(from: column.identifier) {
-                columnByDataIndex[colIndex] = column
-            }
-        }
-
-        for sortCol in sortState.columns {
-            guard let column = columnByDataIndex[sortCol.columnIndex] else { continue }
-            let image = sortCol.direction == .ascending ? ascendingSortIndicator : descendingSortIndicator
-            tableView.setIndicatorImage(image, in: column)
-        }
-
-        if let primary = sortState.columns.first,
-           let column = columnByDataIndex[primary.columnIndex] {
-            tableView.highlightedTableColumn = column
-        } else {
-            tableView.highlightedTableColumn = nil
-        }
-    }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: false)
