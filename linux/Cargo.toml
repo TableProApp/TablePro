@@ -33,7 +33,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 futures = "0.3"
 gtk4 = { version = "0.11", features = ["v4_14"] }
-libadwaita = { version = "0.9", features = ["v1_5", "gtk_v4_6"] }
+libadwaita = { version = "0.9", features = ["v1_6", "gtk_v4_6"] }
 sourceview5 = { version = "0.11", features = ["v5_12"] }
 glib = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -41,7 +41,7 @@ tempfile = "3"
 testcontainers = "0.27"
 testcontainers-modules = "0.15"
 oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto"] }
-relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita", "gnome_46"] }
+relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita", "gnome_47"] }
 
 [profile.release]
 lto = "fat"

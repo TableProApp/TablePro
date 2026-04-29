@@ -275,6 +275,19 @@ impl App {
         }
         self.window.set_title(Some(&os_title));
         self.window_title.set_subtitle(&subtitle);
+
+        // Sidebar header acts as a breadcrumb: the title shows the
+        // active connection name when connected, falling back to the
+        // generic "Tables" label on the welcome screen. Subtitle stays
+        // empty — the driver / host already lives in the main header.
+        match connection_name {
+            Some(name) => {
+                self.sidebar_title.set_title(name);
+            }
+            None => {
+                self.sidebar_title.set_title(&crate::tr!("Tables"));
+            }
+        }
     }
 }
 

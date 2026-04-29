@@ -10,6 +10,12 @@ use tablepro_core::TableInfo;
 #[derive(Debug)]
 pub struct SidebarRow {
     pub info: TableInfo,
+    /// The eagerly-parented context-menu popover. Held on the model
+    /// so `shutdown` can `unparent()` it before the row's root widget
+    /// is finalized — without this, GTK warns
+    /// "Finalizing widget, but it still has children left" whenever
+    /// the sidebar rebuilds.
+    popover: Option<gtk::PopoverMenu>,
 }
 
 #[derive(Debug)]
@@ -88,7 +94,18 @@ impl FactoryComponent for SidebarRow {
     }
 
     fn init_model(info: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
-        Self { info }
+        Self { info, popover: None }
+    }
+
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
+        // Eagerly-parented popovers must be unparented before the
+        // row is finalized — GTK warns about leftover children
+        // otherwise. shutdown() runs on factory removal (sidebar
+        // rebuild, disconnect, search filter), the natural hook.
+        if let Some(popover) = self.popover.take() {
+            popover.popdown();
+            popover.unparent();
+        }
     }
 
     fn init_widgets(
@@ -159,6 +176,9 @@ impl FactoryComponent for SidebarRow {
         let popover = gtk::PopoverMenu::from_model(Some(&menu));
         popover.set_has_arrow(true);
         popover.set_parent(&root);
+        // Stash on the model so `shutdown` can unparent it before
+        // the row is finalized.
+        self.popover = Some(popover.clone());
 
         // Action group on the row (same widget the popover is
         // parented to). The muxer walks up from the popover surface

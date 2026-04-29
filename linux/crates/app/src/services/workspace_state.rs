@@ -160,44 +160,46 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
     if conn.tabs.len() > MAX_TABS_PER_CONNECTION {
         conn.tabs.truncate(MAX_TABS_PER_CONNECTION);
     }
+    // Migrate legacy Browse / Structure records to Table so the rest
+    // of the load path (and clamp logic) only deals with one variant.
+    // Browse → Table(Data); Structure → Table(Structure).
     for tab in &mut conn.tabs {
-        match tab {
+        let migrated = match std::mem::replace(tab, WorkspaceTabRecord::Unknown) {
             WorkspaceTabRecord::Browse {
                 schema,
                 table,
+                offset,
                 page_size,
-                ..
-            } => {
-                if table.len() > MAX_TABLE_NAME_BYTES {
-                    let boundary = floor_char_boundary(table, MAX_TABLE_NAME_BYTES);
-                    table.truncate(boundary);
-                }
-                if let Some(s) = schema.as_mut()
-                    && s.len() > MAX_SCHEMA_NAME_BYTES
-                {
-                    let boundary = floor_char_boundary(s, MAX_SCHEMA_NAME_BYTES);
-                    s.truncate(boundary);
-                }
-                if !PAGE_SIZE_OPTIONS.contains(page_size) {
-                    *page_size = DEFAULT_PAGE_SIZE;
-                }
-            }
+                sort_col,
+                sort_asc,
+            } => WorkspaceTabRecord::Table {
+                schema,
+                table,
+                mode: PersistedTableMode::Data,
+                offset,
+                page_size,
+                sort_col,
+                sort_asc,
+            },
+            WorkspaceTabRecord::Structure { schema, table } => WorkspaceTabRecord::Table {
+                schema,
+                table,
+                mode: PersistedTableMode::Structure,
+                offset: 0,
+                page_size: DEFAULT_PAGE_SIZE,
+                sort_col: None,
+                sort_asc: None,
+            },
+            other => other,
+        };
+        *tab = migrated;
+    }
+    for tab in &mut conn.tabs {
+        match tab {
             WorkspaceTabRecord::Editor { query } => {
                 if query.len() > MAX_QUERY_BYTES {
                     let boundary = floor_char_boundary(query, MAX_QUERY_BYTES);
                     query.truncate(boundary);
-                }
-            }
-            WorkspaceTabRecord::Structure { schema, table } => {
-                if table.len() > MAX_TABLE_NAME_BYTES {
-                    let boundary = floor_char_boundary(table, MAX_TABLE_NAME_BYTES);
-                    table.truncate(boundary);
-                }
-                if let Some(s) = schema.as_mut()
-                    && s.len() > MAX_SCHEMA_NAME_BYTES
-                {
-                    let boundary = floor_char_boundary(s, MAX_SCHEMA_NAME_BYTES);
-                    s.truncate(boundary);
                 }
             }
             WorkspaceTabRecord::Table {
@@ -220,9 +222,11 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
                     *page_size = DEFAULT_PAGE_SIZE;
                 }
             }
+            WorkspaceTabRecord::Browse { .. } | WorkspaceTabRecord::Structure { .. } => {
+                // Unreachable: legacy variants were converted above.
+            }
             WorkspaceTabRecord::Unknown => {
-                // unreachable after the retain() above, but exhaustive
-                // matching keeps the compiler honest.
+                // Unreachable: stripped by the retain() above.
             }
         }
     }
@@ -298,9 +302,14 @@ mod tests {
             active_idx: 0,
         };
         clamp_connection(&mut conn);
+        // Legacy Browse migrates to Table(Data) and the foreign page
+        // size is replaced with the default in the same pass.
         match &conn.tabs[0] {
-            WorkspaceTabRecord::Browse { page_size, .. } => assert_eq!(*page_size, DEFAULT_PAGE_SIZE),
-            _ => panic!("expected Browse"),
+            WorkspaceTabRecord::Table { mode, page_size, .. } => {
+                assert_eq!(*mode, PersistedTableMode::Data);
+                assert_eq!(*page_size, DEFAULT_PAGE_SIZE);
+            }
+            _ => panic!("expected Table after migration"),
         }
     }
 

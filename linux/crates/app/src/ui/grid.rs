@@ -23,7 +23,6 @@ pub enum GridMsg {
     /// click (column change resets order; two events, two flips).
     SortChanged(usize, bool),
     CellEdited {
-        table: String,
         row_position: u32,
         col_index: usize,
         new_value: String,
@@ -33,12 +32,10 @@ pub enum GridMsg {
         row_position: u32,
     },
     SetCellNull {
-        table: String,
         row_position: u32,
         col_index: usize,
     },
     DeleteRowAt {
-        table: String,
         row_position: u32,
     },
     /// Context-menu "Insert row" — forwarded by browse_tab as
@@ -98,9 +95,11 @@ pub fn build_column_view(
             return true;
         }
         let needle = query.to_lowercase();
-        row.cells_clone()
-            .iter()
-            .any(|v| value_to_display_text(v).to_lowercase().contains(&needle))
+        row.with_cells(|cells| {
+            cells
+                .iter()
+                .any(|v| value_to_display_text(v).to_lowercase().contains(&needle))
+        })
     });
     let filter_model = gtk::FilterListModel::new(Some(store), Some(filter.clone()));
     let selection = gtk::MultiSelection::new(Some(filter_model));
@@ -138,14 +137,12 @@ pub fn build_column_view(
         // metadata, which only knows name + data_type and conservatively
         // reports the rest as false.
         let editable = is_cell_editable(schema_columns.get(i).unwrap_or(column));
-        let sort_indicator = sort.and_then(|(c, asc)| if c == i { Some(asc) } else { None });
         let col = build_column(
             column,
             i,
             editable,
             table.to_string(),
             edit_sender.clone(),
-            sort_indicator,
             sort_sender.clone(),
             connection_id,
             tab_ctx.clone(),
@@ -222,7 +219,6 @@ fn build_column(
     editable: bool,
     table: String,
     sender: Option<relm4::Sender<GridMsg>>,
-    sort_indicator: Option<bool>,
     sort_sender: Option<relm4::Sender<GridMsg>>,
     connection_id: Option<uuid::Uuid>,
     tab_ctx: TabGridContext,
@@ -234,7 +230,6 @@ fn build_column(
     // in the editor) we always go through the read-only setup path.
     let edit_sender = if editable { sender.clone() } else { None };
     let readonly_sender = sender.clone();
-    let table_for_setup = table.clone();
     let table_for_persist = table;
 
     let column_data_type = info.data_type.clone();
@@ -247,32 +242,19 @@ fn build_column(
             // Type-specific cell widgets per HIG:
             // - Bool → GtkCheckButton (single-click toggles, native
             //   Space, no edit-mode dance).
-            // - Date → GtkEditableLabel for display + GtkCalendar
+            // - Date → CellEditor for display + GtkCalendar
             //   popover for edit (no inline typing; user picks a day).
-            // - Other types → GtkEditableLabel + text parsing on
+            // - Other types → CellEditor + text parsing on
             //   commit (parse_input_for_column on the receiving side
             //   coerces to the right native Value variant).
             if is_bool_type(&column_data_type) {
-                setup_bool_cell(item, idx, table_for_setup.clone(), column_name.clone(), edit_sender);
+                setup_bool_cell(item, idx, column_name.clone(), edit_sender);
             } else {
                 let editor_kind = classify_editor_kind(&column_data_type);
-                setup_editable_cell(
-                    item,
-                    idx,
-                    table_for_setup.clone(),
-                    column_name.clone(),
-                    edit_sender,
-                    editor_kind,
-                );
+                setup_editable_cell(item, idx, column_name.clone(), edit_sender, editor_kind);
             }
         } else {
-            setup_readonly_cell(
-                item,
-                idx,
-                table_for_setup.clone(),
-                column_name.clone(),
-                readonly_sender.clone(),
-            );
+            setup_readonly_cell(item, idx, column_name.clone(), readonly_sender.clone());
         }
     });
 
@@ -398,7 +380,7 @@ fn build_column(
 
         let is_pending_delete = pending_classes.contains(&"tp-row-pending-delete");
         let Some(child) = item.child() else { return };
-        if let Ok(label) = child.clone().downcast::<gtk::EditableLabel>() {
+        if let Ok(label) = child.clone().downcast::<super::cell_editor::CellEditor>() {
             label.set_text(&text);
             apply_cell_tooltip(label.upcast_ref(), &text, is_null);
             if is_null && !editable_for_bind {
@@ -417,7 +399,7 @@ fn build_column(
             for cls in &pending_classes {
                 label.add_css_class(cls);
             }
-            set_editable_label_strikethrough(&label, is_pending_delete);
+            label.set_strikethrough(is_pending_delete);
             POSITION_SLOT.set(&label, item.position());
         } else if let Ok(checkbox) = child.clone().downcast::<gtk::CheckButton>() {
             // Bool cell: render via active / inconsistent state. Suppress
@@ -477,7 +459,7 @@ fn build_column(
             return;
         };
         let Some(child) = item.child() else { return };
-        if let Ok(label) = child.clone().downcast::<gtk::EditableLabel>() {
+        if let Ok(label) = child.clone().downcast::<super::cell_editor::CellEditor>() {
             if label.is_editing() {
                 label.stop_editing(false);
             }
@@ -497,8 +479,6 @@ fn build_column(
         }
     });
 
-    let _ = sort_indicator; // Native ColumnView sort triangle is set on the
-    // primary sort column by the caller via sort_by_column.
     let column = gtk::ColumnViewColumn::builder()
         .title(&info.name)
         .factory(&factory)
@@ -535,34 +515,26 @@ fn build_column(
     column
 }
 
-/// Setup an editable cell. Display widget is `gtk::EditableLabel` —
-/// the same compact widget GNOME Files uses for inline filename
-/// rename. `editable=false` at rest keeps EditableLabel's built-in
-/// click-to-edit path inert; the dedicated double-click GestureClick
-/// flips it true and calls `start_editing()`. The editing-notify
-/// handler resets editable=false on exit and emits `CellEdited` if the
-/// text actually changed.
+/// Setup an editable cell. Display widget is `super::cell_editor::CellEditor`,
+/// a `Stack[Label | Text]` glib subclass. The `Label` page is shown at
+/// rest; `start_editing()` switches the stack to the `Text` page and
+/// the `editing-notify` callback fires `CellEdited` if the text changed.
 ///
 /// We require a deliberate double-click rather than the widget default
 /// (focus-then-click) because clicks in a data grid are routinely
 /// row-selection clicks — a single-click trigger would silently drop
 /// the user into edit mode on the cell they happened to land on.
-#[allow(clippy::too_many_arguments)]
 fn setup_editable_cell(
     item: &gtk::ListItem,
     idx: usize,
-    table: String,
     column_name: String,
     sender: relm4::Sender<GridMsg>,
     editor_kind: CellEditorKind,
 ) {
-    let label = gtk::EditableLabel::builder()
-        .xalign(0.0)
-        .hexpand(true)
-        .margin_start(8)
-        .margin_end(8)
-        .build();
-    label.set_editable(false);
+    let label = super::cell_editor::CellEditor::new();
+    label.set_hexpand(true);
+    label.set_margin_start(8);
+    label.set_margin_end(8);
     // Stash the column index so keyboard shortcuts (Ctrl+Shift+N)
     // can resolve `(row, col)` from the focused widget. POSITION_SLOT
     // is written by connect_bind because the position changes as
@@ -570,16 +542,9 @@ fn setup_editable_cell(
     COLUMN_SLOT.set(&label, idx);
     item.set_child(Some(&label));
 
-    attach_context_menu(
-        label.upcast_ref(),
-        idx,
-        table.clone(),
-        column_name,
-        sender.clone(),
-        true,
-    );
-    install_edit_commit_handler(&label, idx, table.clone(), sender.clone());
-    install_edit_triggers(&label, idx, table, sender, editor_kind);
+    attach_context_menu(label.upcast_ref(), idx, column_name, sender.clone(), true);
+    install_edit_commit_handler(&label, idx, sender.clone());
+    install_edit_triggers(&label, idx, sender, editor_kind);
 }
 
 /// Bool cells render as a real `gtk::CheckButton`. Click toggles, Space
@@ -589,13 +554,7 @@ fn setup_editable_cell(
 /// side. CheckButton's native focus ring already distinguishes it from
 /// the row selection, so this path doesn't need the cell focus-ring CSS
 /// added in C1.
-fn setup_bool_cell(
-    item: &gtk::ListItem,
-    idx: usize,
-    table: String,
-    column_name: String,
-    sender: relm4::Sender<GridMsg>,
-) {
+fn setup_bool_cell(item: &gtk::ListItem, idx: usize, column_name: String, sender: relm4::Sender<GridMsg>) {
     let checkbox = gtk::CheckButton::builder()
         .halign(gtk::Align::Start)
         .valign(gtk::Align::Center)
@@ -605,14 +564,7 @@ fn setup_bool_cell(
     COLUMN_SLOT.set(&checkbox, idx);
     item.set_child(Some(&checkbox));
 
-    attach_context_menu(
-        checkbox.upcast_ref(),
-        idx,
-        table.clone(),
-        column_name,
-        sender.clone(),
-        true,
-    );
+    attach_context_menu(checkbox.upcast_ref(), idx, column_name, sender.clone(), true);
     checkbox.connect_toggled(move |cb| {
         // Suppress the echo while the bind callback is driving the
         // checkbox programmatically.
@@ -623,7 +575,6 @@ fn setup_bool_cell(
         let new_value = if cb.is_active() { "true" } else { "false" };
         sender
             .send(GridMsg::CellEdited {
-                table: table.clone(),
                 row_position: position,
                 col_index: idx,
                 new_value: new_value.to_string(),
@@ -632,12 +583,11 @@ fn setup_bool_cell(
     });
 }
 
-/// Flip the EditableLabel into edit mode, clearing the `<NULL>`
-/// sentinel first so the user types into an empty entry rather than
-/// over the sentinel string. Centralised so every entry path
+/// Flip the cell into edit mode, clearing the `<NULL>` sentinel
+/// first so the user types into an empty entry rather than over
+/// the sentinel string. Centralised so every entry path
 /// (double-click, F2, Enter, context-menu Edit) behaves the same.
-fn enter_edit_mode(label: &gtk::EditableLabel) {
-    label.set_editable(true);
+fn enter_edit_mode(label: &super::cell_editor::CellEditor) {
     if label.text().as_str() == editable_null_sentinel() {
         label.set_text("");
     }
@@ -669,7 +619,7 @@ fn is_bool_type(data_type: &str) -> bool {
 }
 
 /// CSS classes that connect_bind toggles per pending-state. Centralised
-/// here so the three cell-widget branches (Label, EditableLabel,
+/// here so the three cell-widget branches (Label, CellEditor,
 /// CheckButton) clear the same set without drift.
 const PENDING_CSS_CLASSES: &[&str] = &[
     "tp-cell-modified",
@@ -724,7 +674,7 @@ fn apply_cell_tooltip(widget: &gtk::Widget, text: &str, is_null: bool) {
 /// Apply or clear a Pango strikethrough attribute on a `GtkLabel`.
 /// Used in preference to CSS `text-decoration: line-through` because
 /// GTK4's CSS engine doesn't reliably cascade text-decoration through
-/// `GtkEditableLabel`'s internal Stack > Label structure.
+/// the `CellEditor`'s internal `Stack > Label` structure.
 fn set_label_strikethrough(label: &gtk::Label, on: bool) {
     if on {
         let attrs = gtk::pango::AttrList::new();
@@ -735,30 +685,10 @@ fn set_label_strikethrough(label: &gtk::Label, on: bool) {
     }
 }
 
-/// Apply Pango strikethrough to the inner `GtkLabel` of a
-/// `GtkEditableLabel` (the one that's visible in non-edit mode).
-/// EditableLabel wraps a `GtkStack` with a Label child for display
-/// and a Text child for edit; we walk the stack to find the Label.
-/// Pending-delete rows are read-only by definition (you can't edit a
-/// row marked for deletion), so the Text path doesn't need to mirror
-/// the strikethrough.
-fn set_editable_label_strikethrough(el: &gtk::EditableLabel, on: bool) {
-    let Some(stack) = el.first_child().and_then(|w| w.dynamic_cast::<gtk::Stack>().ok()) else {
-        return;
-    };
-    let mut child = stack.first_child();
-    while let Some(c) = child {
-        if let Ok(label) = c.clone().dynamic_cast::<gtk::Label>() {
-            set_label_strikethrough(&label, on);
-        }
-        child = c.next_sibling();
-    }
-}
-
 /// Detect whether a column's declared data_type is a plain SQL date
 /// (no time component). Datetime, timestamp, and timestamptz columns
 /// fall through to text-edit because a calendar widget alone can't
-/// capture time + zone — those use the standard EditableLabel + ISO
+/// capture time + zone — those use the standard CellEditor + ISO
 /// 8601 parser.
 fn is_date_type(data_type: &str) -> bool {
     let dt = data_type.to_ascii_lowercase();
@@ -808,7 +738,7 @@ fn is_json_type(data_type: &str) -> bool {
 /// `setup_bool_cell` (CheckButton) and never reaches `setup_editable_cell`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CellEditorKind {
-    /// Default `GtkEditableLabel` with text parsing on commit.
+    /// Default `CellEditor` with text parsing on commit.
     Text,
     /// `GtkCalendar` popover, day-selected commits ISO 8601 date.
     Date,
@@ -855,7 +785,6 @@ fn move_focus(widget: &impl IsA<gtk::Widget>, direction: gtk::DirectionType) {
 fn setup_readonly_cell(
     item: &gtk::ListItem,
     idx: usize,
-    table: String,
     column_name: String,
     sender: Option<relm4::Sender<GridMsg>>,
 ) {
@@ -869,7 +798,7 @@ fn setup_readonly_cell(
         .build();
     item.set_child(Some(&label));
     if let Some(sender) = sender {
-        attach_context_menu(label.upcast_ref(), idx, table, column_name, sender, false);
+        attach_context_menu(label.upcast_ref(), idx, column_name, sender, false);
     }
 }
 
@@ -883,33 +812,28 @@ fn setup_readonly_cell(
 /// row-selection logic absorbs press events in the default Bubble
 /// phase before they can reach this cell-level controller.
 fn install_edit_triggers(
-    label: &gtk::EditableLabel,
+    label: &super::cell_editor::CellEditor,
     col_index: usize,
-    table: String,
     sender: relm4::Sender<GridMsg>,
     editor_kind: CellEditorKind,
 ) {
-    let trigger: std::rc::Rc<dyn Fn(&gtk::EditableLabel)> = match editor_kind {
-        CellEditorKind::Text => std::rc::Rc::new(|l: &gtk::EditableLabel| enter_edit_mode(l)),
+    let trigger: std::rc::Rc<dyn Fn(&super::cell_editor::CellEditor)> = match editor_kind {
+        CellEditorKind::Text => std::rc::Rc::new(|l: &super::cell_editor::CellEditor| enter_edit_mode(l)),
         CellEditorKind::Date => {
-            let table = table.clone();
             let sender = sender.clone();
-            std::rc::Rc::new(move |l| show_calendar_popover(l, col_index, &table, &sender))
+            std::rc::Rc::new(move |l| show_calendar_popover(l, col_index, &sender))
         }
         CellEditorKind::Int => {
-            let table = table.clone();
             let sender = sender.clone();
-            std::rc::Rc::new(move |l| show_spin_button_popover(l, col_index, &table, &sender, false))
+            std::rc::Rc::new(move |l| show_spin_button_popover(l, col_index, &sender, false))
         }
         CellEditorKind::Float => {
-            let table = table.clone();
             let sender = sender.clone();
-            std::rc::Rc::new(move |l| show_spin_button_popover(l, col_index, &table, &sender, true))
+            std::rc::Rc::new(move |l| show_spin_button_popover(l, col_index, &sender, true))
         }
         CellEditorKind::Json => {
-            let table = table.clone();
             let sender = sender.clone();
-            std::rc::Rc::new(move |l| show_json_popover(l, col_index, &table, &sender))
+            std::rc::Rc::new(move |l| show_json_popover(l, col_index, &sender))
         }
     };
 
@@ -932,9 +856,9 @@ fn install_edit_triggers(
     // - Not editing: F2 / Return / KP_Enter → trigger (start text edit,
     //   open calendar / spin / json popover, etc.).
     // - Editing (only reachable for `CellEditorKind::Text` since other
-    //   kinds use popovers and never enter EditableLabel edit mode):
+    //   kinds use popovers and never enter CellEditor edit mode):
     //   Tab / Shift+Tab commit + traverse. Return / Esc handled by
-    //   EditableLabel's built-ins.
+    //   CellEditor's built-in entry handlers.
     let controller = gtk::EventControllerKey::new();
     let label_for_key = label.clone();
     let trigger_for_key = trigger;
@@ -996,7 +920,7 @@ fn install_edit_triggers(
 /// cell's current date if the displayed text is a parseable ISO 8601
 /// date; otherwise the calendar shows today's month with no selection.
 /// `day-selected` formats YYYY-MM-DD and emits `GridMsg::CellEdited`.
-fn show_calendar_popover(label: &gtk::EditableLabel, col_index: usize, table: &str, sender: &relm4::Sender<GridMsg>) {
+fn show_calendar_popover(label: &super::cell_editor::CellEditor, col_index: usize, sender: &relm4::Sender<GridMsg>) {
     let calendar = gtk::Calendar::new();
     if let Ok(parsed) = chrono::NaiveDate::parse_from_str(label.text().as_str(), "%Y-%m-%d")
         && let Ok(dt) = glib::DateTime::from_local(parsed.year(), parsed.month() as i32, parsed.day() as i32, 0, 0, 0.0)
@@ -1010,7 +934,6 @@ fn show_calendar_popover(label: &gtk::EditableLabel, col_index: usize, table: &s
 
     let label_for_cal = label.clone();
     let popover_for_cal = popover.clone();
-    let table_for_cal = table.to_string();
     let sender_for_cal = sender.clone();
     calendar.connect_day_selected(move |c| {
         let dt = c.date();
@@ -1022,7 +945,6 @@ fn show_calendar_popover(label: &gtk::EditableLabel, col_index: usize, table: &s
         label_for_cal.set_text(&formatted);
         sender_for_cal
             .send(GridMsg::CellEdited {
-                table: table_for_cal.clone(),
                 row_position: position,
                 col_index,
                 new_value: formatted,
@@ -1043,9 +965,8 @@ fn show_calendar_popover(label: &gtk::EditableLabel, col_index: usize, table: &s
 /// stay on the text-edit path because GtkSpinButton is f64-internally
 /// and would lose `rust_decimal` precision.
 fn show_spin_button_popover(
-    label: &gtk::EditableLabel,
+    label: &super::cell_editor::CellEditor,
     col_index: usize,
-    table: &str,
     sender: &relm4::Sender<GridMsg>,
     is_float: bool,
 ) {
@@ -1068,7 +989,6 @@ fn show_spin_button_popover(
 
     let label_for_commit = label.clone();
     let popover_for_commit = popover.clone();
-    let table_for_commit = table.to_string();
     let sender_for_commit = sender.clone();
     spin.connect_activate(move |s| {
         // Format faithfully to the column kind: integers as "{}",
@@ -1083,7 +1003,6 @@ fn show_spin_button_popover(
         label_for_commit.set_text(&formatted);
         sender_for_commit
             .send(GridMsg::CellEdited {
-                table: table_for_commit.clone(),
                 row_position: position,
                 col_index,
                 new_value: formatted,
@@ -1101,7 +1020,7 @@ fn show_spin_button_popover(
 /// language for syntax highlighting, monospace font, line numbers.
 /// Explicit Save button (the buffer is multi-line so Enter inserts a
 /// newline rather than committing). Esc / click-outside cancels.
-fn show_json_popover(label: &gtk::EditableLabel, col_index: usize, table: &str, sender: &relm4::Sender<GridMsg>) {
+fn show_json_popover(label: &super::cell_editor::CellEditor, col_index: usize, sender: &relm4::Sender<GridMsg>) {
     let buffer = sourceview5::Buffer::new(None);
     if let Some(lang) = sourceview5::LanguageManager::default().language("json") {
         buffer.set_language(Some(&lang));
@@ -1155,7 +1074,6 @@ fn show_json_popover(label: &gtk::EditableLabel, col_index: usize, table: &str, 
 
     let label_for_commit = label.clone();
     let popover_for_commit = popover.clone();
-    let table_for_commit = table.to_string();
     let sender_for_commit = sender.clone();
     let buffer_for_commit = buffer.clone();
     save_button.connect_clicked(move |_| {
@@ -1169,7 +1087,6 @@ fn show_json_popover(label: &gtk::EditableLabel, col_index: usize, table: &str, 
         label_for_commit.set_text(&text);
         sender_for_commit
             .send(GridMsg::CellEdited {
-                table: table_for_commit.clone(),
                 row_position: position,
                 col_index,
                 new_value: text,
@@ -1186,7 +1103,7 @@ fn show_json_popover(label: &gtk::EditableLabel, col_index: usize, table: &str, 
 /// Wire `popover.connect_closed` to unparent the popover and clear the
 /// per-cell `POPOVER_SLOT`. Used by all three editor popovers
 /// (calendar, spin button, JSON sourceview) to share one lifecycle.
-fn install_popover_close_cleanup(label: &gtk::EditableLabel, popover: &gtk::Popover) {
+fn install_popover_close_cleanup(label: &super::cell_editor::CellEditor, popover: &gtk::Popover) {
     let label_for_close = label.clone();
     // Use the callback's first parameter rather than a captured clone
     // so the closure doesn't hold a strong reference back to the
@@ -1199,9 +1116,9 @@ fn install_popover_close_cleanup(label: &gtk::EditableLabel, popover: &gtk::Popo
 }
 
 /// Wire the editing-notify signal: snapshot the original text on
-/// entry, commit (or skip if unchanged) on exit, and reset
-/// `editable=false` so the next click can't enter edit mode via
-/// `EditableLabel`'s built-in click-to-edit path.
+/// entry, commit (or skip if unchanged) on exit. `CellEditor` only
+/// switches to edit mode through `start_editing()`, so there's no
+/// implicit click-to-edit path to disarm here.
 ///
 /// IME-safe: while the inner GtkText has an active preedit (CJK
 /// composition, ibus / fcitx / ime-mode entries), we ignore the
@@ -1209,21 +1126,12 @@ fn install_popover_close_cleanup(label: &gtk::EditableLabel, popover: &gtk::Popo
 /// the IME popover. The preedit-changed handler clears the gate
 /// when composition completes; the next `editing-notify(false)`
 /// after that fires the real commit.
-fn install_edit_commit_handler(
-    label: &gtk::EditableLabel,
-    col_index: usize,
-    table: String,
-    sender: relm4::Sender<GridMsg>,
-) {
-    // GtkEditableLabel delegates editable-text behaviour to a child
-    // GtkText; that child is what owns the IME context and emits
-    // preedit-changed. Walking the delegate keeps the binding
-    // independent of EditableLabel's internal Stack > Text layout.
-    if let Some(delegate) = label.delegate()
-        && let Ok(text) = delegate.downcast::<gtk::Text>()
+fn install_edit_commit_handler(label: &super::cell_editor::CellEditor, col_index: usize, sender: relm4::Sender<GridMsg>) {
+    // The cell's edit-mode child is a `gtk::Text`; that child owns
+    // the IME context and emits preedit-changed.
     {
+        let text = label.entry();
         let label_for_preedit = label.clone();
-        let table_for_preedit = table.clone();
         let sender_for_preedit = sender.clone();
         text.connect_preedit_changed(move |_t, preedit| {
             let active = !preedit.is_empty();
@@ -1232,7 +1140,7 @@ fn install_edit_commit_handler(
             // (focus left to the IME popover then back), fire the
             // pending commit now.
             if !active && !label_for_preedit.is_editing() {
-                commit_cell_edit(&label_for_preedit, col_index, &table_for_preedit, &sender_for_preedit);
+                commit_cell_edit(&label_for_preedit, col_index, &sender_for_preedit);
             }
         });
     }
@@ -1244,22 +1152,21 @@ fn install_edit_commit_handler(
             SNAPSHOT_SLOT.set(label, EditSnapshot { position, original });
             return;
         }
-        label.set_editable(false);
         // Defer commit while an IME preedit is still pending — the
         // preedit-changed handler will trigger the commit when
         // composition finishes.
         if PREEDIT_SLOT.get(label).unwrap_or(false) {
             return;
         }
-        commit_cell_edit(label, col_index, &table, &sender);
+        commit_cell_edit(label, col_index, &sender);
     });
 }
 
-/// Commit the current `EditableLabel` text via `GridMsg::CellEdited`
+/// Commit the current `CellEditor` text via `GridMsg::CellEdited`
 /// if it differs from the snapshot taken at edit-mode entry. Shared
 /// between the editing-notify path and the IME preedit-cleared path
 /// so both produce identical tracker state.
-fn commit_cell_edit(label: &gtk::EditableLabel, col_index: usize, table: &str, sender: &relm4::Sender<GridMsg>) {
+fn commit_cell_edit(label: &super::cell_editor::CellEditor, col_index: usize, sender: &relm4::Sender<GridMsg>) {
     let Some(snap) = SNAPSHOT_SLOT.take(label) else {
         return;
     };
@@ -1269,7 +1176,6 @@ fn commit_cell_edit(label: &gtk::EditableLabel, col_index: usize, table: &str, s
     }
     sender
         .send(GridMsg::CellEdited {
-            table: table.to_string(),
             row_position: snap.position,
             col_index,
             new_value,
@@ -1277,11 +1183,9 @@ fn commit_cell_edit(label: &gtk::EditableLabel, col_index: usize, table: &str, s
         .ok();
 }
 
-#[allow(clippy::too_many_arguments)]
 fn attach_context_menu(
     widget: &gtk::Widget,
     idx: usize,
-    table: String,
     column_name: String,
     sender: relm4::Sender<GridMsg>,
     editable: bool,
@@ -1291,7 +1195,7 @@ fn attach_context_menu(
     // render with separators automatically. "Edit cell" is only shown
     // when the cell widget is actually a text-editable widget;
     // CheckButton bool cells do their own editing via click/Space.
-    let is_text_editable = editable && widget.is::<gtk::EditableLabel>();
+    let is_text_editable = editable && widget.is::<super::cell_editor::CellEditor>();
     let menu = gio::Menu::new();
     if is_text_editable {
         let edit = gio::Menu::new();
@@ -1325,9 +1229,9 @@ fn attach_context_menu(
     let edit = gio::ActionEntry::builder("edit")
         .activate(move |_, _, _| {
             // Mirrors the F2 / double-click trigger. No-op for non-
-            // EditableLabel cells (the menu item is only shown for
+            // CellEditor cells (the menu item is only shown for
             // text-editable cells anyway).
-            if let Ok(label) = widget_for_edit.clone().downcast::<gtk::EditableLabel>() {
+            if let Ok(label) = widget_for_edit.clone().downcast::<super::cell_editor::CellEditor>() {
                 enter_edit_mode(&label);
             }
         })
@@ -1369,14 +1273,12 @@ fn attach_context_menu(
         })
         .build();
     let widget_for_null = widget.clone();
-    let table_for_null = table.clone();
     let set_null = gio::ActionEntry::builder("set-null")
         .activate({
             let s = sender.clone();
             move |_, _, _| {
                 let position = POSITION_SLOT.get(&widget_for_null).unwrap_or(0);
                 s.send(GridMsg::SetCellNull {
-                    table: table_for_null.clone(),
                     row_position: position,
                     col_index: idx,
                 })
@@ -1385,17 +1287,13 @@ fn attach_context_menu(
         })
         .build();
     let widget_for_delete = widget.clone();
-    let table_for_delete = table;
     let delete_row = gio::ActionEntry::builder("delete-row")
         .activate({
             let s = sender.clone();
             move |_, _, _| {
                 let position = POSITION_SLOT.get(&widget_for_delete).unwrap_or(0);
-                s.send(GridMsg::DeleteRowAt {
-                    table: table_for_delete.clone(),
-                    row_position: position,
-                })
-                .ok();
+                s.send(GridMsg::DeleteRowAt { row_position: position })
+                    .ok();
             }
         })
         .build();
@@ -1466,7 +1364,7 @@ fn present_cell_popover(anchor: &gtk::Widget, menu: &gio::Menu, pointing_to: Opt
 }
 
 fn cell_text(widget: &gtk::Widget) -> String {
-    if let Some(label) = widget.downcast_ref::<gtk::EditableLabel>() {
+    if let Some(label) = widget.downcast_ref::<super::cell_editor::CellEditor>() {
         label.text().to_string()
     } else if let Some(label) = widget.downcast_ref::<gtk::Label>() {
         label.text().to_string()
@@ -1558,7 +1456,7 @@ const PREEDIT_SLOT: WidgetSlot<bool> = WidgetSlot::new("tp-preedit-active");
 /// Look up the `(row_position, col_index)` of the currently focused
 /// cell widget. Returns `None` when the focus is outside the window
 /// or on a widget without the per-cell slots set. Widget-type-
-/// agnostic by design: works for `gtk::EditableLabel` (text cells),
+/// agnostic by design: works for `super::cell_editor::CellEditor` (text cells),
 /// `gtk::CheckButton` (bool cells), and any future cell-widget that
 /// writes the slots at setup time.
 pub(crate) fn focused_cell_coords(widget: &impl IsA<gtk::Widget>) -> Option<(u32, usize)> {

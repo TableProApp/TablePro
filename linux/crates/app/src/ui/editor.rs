@@ -133,6 +133,7 @@ impl SimpleComponent for SqlEditor {
                 #[name = "cancel_button"]
                 gtk::Button {
                     set_label: &crate::tr!("Cancel"),
+                    set_tooltip_text: Some(crate::tr!("Cancel running query").as_str()),
                     set_visible: false,
                     add_css_class: "flat",
                     connect_clicked => SqlEditorInput::Cancel,
@@ -141,6 +142,7 @@ impl SimpleComponent for SqlEditor {
                 #[name = "run_button"]
                 gtk::Button {
                     set_label: &crate::tr!("Run"),
+                    set_tooltip_text: Some(crate::tr!("Run query (Ctrl+Return)").as_str()),
                     add_css_class: "suggested-action",
                     connect_clicked => SqlEditorInput::Run,
                 },

@@ -1,10 +1,3 @@
-#![allow(dead_code)]
-// Per-tab Browse sub-component. App-side wiring (instantiation, slot
-// management, async fetch routing) lands in the follow-up integration;
-// this file is the complete view + display-state surface so the
-// integration is a pure consumer-side change.
-
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use relm4::adw::prelude::*;
@@ -68,11 +61,12 @@ pub struct BrowseTab {
     /// after the first ColumnsLoaded; mismatch implies cold-path.
     rendered_column_count: std::cell::Cell<usize>,
     /// Persistent-state banners (per HIG: banners for state, toasts
-    /// for events). Visibility is driven by SetReadOnly / ColumnsLoaded
-    /// / PendingCountChanged respectively.
+    /// for events). Pending-changes is communicated through the
+    /// ActionBar footer + tab-title bullet, not a banner — the banner
+    /// is reserved for constraint states (read-only, no-PK) the user
+    /// can't dismiss by saving.
     read_only_banner: adw::Banner,
     no_pk_banner: adw::Banner,
-    pending_banner: adw::Banner,
     /// Last-emitted dirty state. PendingCountChanged fires on every
     /// tracker mutation including count-only changes (2 → 3) where the
     /// dirty flag hasn't actually flipped. Tracking the previous flag
@@ -96,8 +90,6 @@ pub struct BrowseTab {
     save_button: gtk::Button,
     discard_button: gtk::Button,
     pending_label: gtk::Label,
-    page_size_combo: gtk::DropDown,
-    page_size_handler: Rc<RefCell<Option<glib::SignalHandlerId>>>,
     grid_sender: relm4::Sender<GridMsg>,
     /// Set to true on init / refresh; flipped off after first RowsLoaded so
     /// PageSizeChanged emits don't fire while the combo is being driven by
@@ -116,16 +108,12 @@ pub enum BrowseTabInput {
     ColumnsLoaded(Vec<ColumnInfo>),
     /// Total row count for paginator label.
     RowCountLoaded(u64),
-    /// Show "Loading…" state in the inner stack.
-    ShowLoading,
     /// Show an error status page.
     ShowError(String),
     /// Re-issue the fetch for this tab (F5).
     Refresh,
     /// Reveal the in-grid find bar and focus it.
     FindInResults,
-    /// Connection-level read-only state changed (rare; for completeness).
-    SetReadOnly(bool),
     /// User clicked Prev page.
     PrevPage,
     /// User clicked Next page.
@@ -148,20 +136,19 @@ pub enum BrowseTabInput {
     /// User clicked the Delete Selected button.
     DeleteSelectedRow,
     /// Cell-edit / set-null / delete-row / copy-as-insert events from
-    /// this tab's grid (forwarded from its own GridMsg channel).
+    /// this tab's grid (forwarded from its own GridMsg channel). The
+    /// table is implicit — each tab's grid only ever fires for its
+    /// own table.
     GridCellEdited {
-        table: String,
         row_position: u32,
         col_index: usize,
         new_value: String,
     },
     GridSetCellNull {
-        table: String,
         row_position: u32,
         col_index: usize,
     },
     GridDeleteRowAt {
-        table: String,
         row_position: u32,
     },
     GridCopyRowAsInsert {
@@ -227,7 +214,7 @@ pub enum BrowseTabInput {
     SelectAllRows,
     /// Home / End: scroll-and-focus the first / last row of the
     /// current page. Cell-level Home/End within a row would conflict
-    /// with the EditableLabel's text-edit behaviour, so we scope
+    /// with the cell editor's text-edit behaviour, so we scope
     /// these to row navigation only — matches how GtkColumnView
     /// users expect Home/End to behave in a list context.
     GoToFirstRow,
@@ -319,19 +306,15 @@ impl BrowseTab {
     /// Delete) live in a separate `gtk::ActionBar` (see
     /// `build_mutation_bar`) so destructive controls aren't sitting
     /// next to navigation arrows in misclick range.
-    fn build_paginator(
-        sender: ComponentSender<Self>,
-        page_size: u64,
-        page_size_handler_slot: Rc<RefCell<Option<glib::SignalHandlerId>>>,
-    ) -> Paginator {
+    fn build_paginator(sender: ComponentSender<Self>, page_size: u64) -> Paginator {
         let prev_button = gtk::Button::builder()
             .icon_name("go-previous-symbolic")
-            .tooltip_text(crate::tr!("Previous page"))
+            .tooltip_text(crate::tr!("Previous page (Page Up)"))
             .sensitive(false)
             .build();
         let next_button = gtk::Button::builder()
             .icon_name("go-next-symbolic")
-            .tooltip_text(crate::tr!("Next page"))
+            .tooltip_text(crate::tr!("Next page (Page Down)"))
             .sensitive(false)
             .build();
         let paginator_label = gtk::Label::builder().build();
@@ -357,13 +340,12 @@ impl BrowseTab {
             }) as u32;
         page_size_combo.set_selected(initial_idx);
         let sender_for_size = sender.clone();
-        let id = page_size_combo.connect_selected_notify(move |dd| {
+        page_size_combo.connect_selected_notify(move |dd| {
             let idx = dd.selected() as usize;
             if let Some(&size) = PAGE_SIZE_OPTIONS.get(idx) {
                 sender_for_size.input(BrowseTabInput::PageSizeChanged(size));
             }
         });
-        *page_size_handler_slot.borrow_mut() = Some(id);
         let page_size_label = gtk::Label::builder().label(crate::tr!("Rows:")).build();
         page_size_label.add_css_class("dim-label");
 
@@ -412,7 +394,6 @@ impl BrowseTab {
             prev_button,
             next_button,
             paginator_label,
-            page_size_combo,
         }
     }
 
@@ -422,12 +403,12 @@ impl BrowseTab {
     fn build_mutation_bar(sender: ComponentSender<Self>) -> Mutations {
         let insert_button = gtk::Button::builder()
             .icon_name("list-add-symbolic")
-            .tooltip_text(crate::tr!("Insert row"))
+            .tooltip_text(crate::tr!("Insert row (Ctrl+N)"))
             .sensitive(false)
             .build();
         let delete_button = gtk::Button::builder()
             .icon_name("user-trash-symbolic")
-            .tooltip_text(crate::tr!("Delete selected row"))
+            .tooltip_text(crate::tr!("Delete selected row (Delete)"))
             .sensitive(false)
             .build();
         delete_button.add_css_class("destructive-action");
@@ -445,12 +426,17 @@ impl BrowseTab {
 
         let discard_button = gtk::Button::builder()
             .label(crate::tr!("Discard"))
+            .tooltip_text(crate::tr!("Discard all pending edits"))
             .visible(false)
             .build();
         let sender_for_discard = sender.clone();
         discard_button.connect_clicked(move |_| sender_for_discard.input(BrowseTabInput::DiscardAll));
 
-        let save_button = gtk::Button::builder().label(crate::tr!("Save")).visible(false).build();
+        let save_button = gtk::Button::builder()
+            .label(crate::tr!("Save"))
+            .tooltip_text(crate::tr!("Save pending edits (Ctrl+S)"))
+            .visible(false)
+            .build();
         save_button.add_css_class("suggested-action");
         let sender_for_save = sender;
         save_button.connect_clicked(move |_| sender_for_save.input(BrowseTabInput::CommitSave));
@@ -471,54 +457,36 @@ impl BrowseTab {
         }
     }
 
-    /// Toggle visibility / label of the pending-changeset cluster
-    /// in the mutation bar AND the top-of-tab pending banner.
-    /// Hidden when there are no pending edits; shows "{n} unsaved"
-    /// with Save (.suggested-action) + Discard in the action bar,
-    /// plus an AdwBanner above the grid with a "Discard all" button
-    /// for the HIG-correct persistent-state pattern.
+    /// Toggle visibility / label of the pending-changeset cluster in
+    /// the mutation bar. Hidden when there are no pending edits; shows
+    /// "{n} unsaved change(s)" with Save (.suggested-action) + Discard.
+    /// The tab-title bullet (App-side) plus this footer cluster cover
+    /// the dirty-state communication — no banner.
     fn refresh_pending_bar(&self, count: usize) {
         let visible = count > 0;
         self.save_button.set_visible(visible);
         self.discard_button.set_visible(visible);
         self.pending_label.set_visible(visible);
         if visible {
-            self.pending_label
-                .set_label(&crate::tr!("{n} unsaved").replace("{n}", &count.to_string()));
-            // Pluralized banner copy. English plural is naive but
-            // matches GNOME's plural-aware translations downstream.
-            let banner_title = if count == 1 {
+            let label = if count == 1 {
                 crate::tr!("1 unsaved change")
             } else {
                 crate::tr!("{n} unsaved changes").replace("{n}", &count.to_string())
             };
-            self.pending_banner.set_title(&banner_title);
+            self.pending_label.set_label(&label);
         }
-        self.refresh_banner_visibility(visible);
+        self.refresh_banner_visibility();
     }
 
-    /// Reveal at most ONE banner at a time. Stacking three banners
-    /// (read-only + no-PK + pending) wastes vertical space and
-    /// creates a wall-of-warnings aesthetic that desensitises the
-    /// user to actual problems. Priority order, most-blocking first:
-    ///
-    /// 1. Read-only — every other state is moot if edits are off.
-    /// 2. No primary key — edits are blocked at row-identity level.
-    /// 3. Pending unsaved changes — informational, only meaningful
-    ///    when the previous two are clear.
-    ///
-    /// `pending_visible` is the caller's intended pending-banner
-    /// state (it carries the per-tab pending-count so this helper
-    /// doesn't need to recompute it).
-    fn refresh_banner_visibility(&self, pending_visible: bool) {
+    /// Reveal at most ONE banner at a time. Read-only takes priority
+    /// over no-PK because read-only blocks every kind of edit.
+    fn refresh_banner_visibility(&self) {
         let read_only = self.read_only;
         let no_pk = self.current_columns.iter().any(|c| !c.primary_key)
             && !self.current_columns.is_empty()
             && !self.current_columns.iter().any(|c| c.primary_key);
         self.read_only_banner.set_revealed(read_only);
         self.no_pk_banner.set_revealed(!read_only && no_pk);
-        self.pending_banner
-            .set_revealed(!read_only && !no_pk && pending_visible);
     }
 
     /// Walk the selection → FilterListModel → ListStore chain to
@@ -775,8 +743,7 @@ impl BrowseTab {
             let Some(focused) = gtk::prelude::GtkWindowExt::focus(&window) else {
                 return;
             };
-            if let Ok(label) = focused.dynamic_cast::<gtk::EditableLabel>() {
-                label.set_editable(true);
+            if let Ok(label) = focused.dynamic_cast::<super::cell_editor::CellEditor>() {
                 if label.text().as_str() == super::grid::editable_null_sentinel() {
                     label.set_text("");
                 }
@@ -967,7 +934,7 @@ impl BrowseTab {
 
     /// Force a single-row re-bind via `items_changed(pos, 1, 1)` on the
     /// FilterListModel. Used when rejecting an invalid cell edit: the
-    /// EditableLabel still holds the user's typed text after editing-
+    /// `CellEditor` still holds the user's typed text after editing-
     /// notify fires, so we trigger a re-bind to restore the canonical
     /// display from `RowObject.cell_value()` (which we did NOT mutate
     /// because the parse failed).
@@ -1024,19 +991,12 @@ impl BrowseTab {
             self.insert_button.set_tooltip_text(Some(&pk_tip));
             self.delete_button.set_tooltip_text(Some(&pk_tip));
         } else {
-            self.insert_button.set_tooltip_text(Some(&crate::tr!("Insert row")));
+            self.insert_button
+                .set_tooltip_text(Some(&crate::tr!("Insert row (Ctrl+N)")));
             self.delete_button
-                .set_tooltip_text(Some(&crate::tr!("Delete selected row")));
+                .set_tooltip_text(Some(&crate::tr!("Delete selected row (Delete)")));
         }
-        // Banner mutual exclusion lives in `refresh_banner_visibility`;
-        // forward the current pending-banner intent so the no-PK
-        // toggle doesn't override it. The pending banner reveals
-        // when there's an actual count > 0.
-        let pending_visible =
-            crate::services::change_tracker::with_tab_ref(self.tab_id, |tr| tr.pending_count() > 0).unwrap_or(false);
-        self.refresh_banner_visibility(pending_visible);
-        let _ = has_columns;
-        let _ = has_pk;
+        self.refresh_banner_visibility();
     }
 
     fn update_paginator_label(&self) {
@@ -1144,8 +1104,6 @@ impl SimpleComponent for BrowseTab {
         crate::services::change_tracker::open_tab(init.tab_id);
 
         let suppress_combo_emit = Rc::new(std::cell::Cell::new(true));
-        let page_size_handler_slot: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::new(RefCell::new(None));
-
         let grid_holder = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .vexpand(true)
@@ -1186,20 +1144,18 @@ impl SimpleComponent for BrowseTab {
         inner_stack.add_named(&initial_loading, Some("loading"));
         inner_stack.set_visible_child_name("loading");
 
-        let paginator = Self::build_paginator(sender.clone(), init.page_size, page_size_handler_slot.clone());
+        let paginator = Self::build_paginator(sender.clone(), init.page_size);
         let mutations = Self::build_mutation_bar(sender.clone());
 
-        // Per-HIG banner-vs-toast rule: persistent state lives in a
-        // banner, transient events in a toast. Three banners, all
-        // hidden until their condition triggers:
+        // Per-HIG banner rule: banners persist hard constraints the
+        // user can't fix by saving. Both reveal only when their
+        // condition triggers:
         //   - read-only: connection-wide constraint (most permanent).
         //   - no-PK: table-level constraint (per browse tab, persists
         //     until the user opens a different table).
-        //   - pending: ephemeral pending-changeset count (transient,
-        //     but state-shaped — banner is correct here, not toast).
-        // Stack order (top to bottom): read-only → no-PK → pending →
-        // search bar. Most-stable state at top so transient banners
-        // don't push it around as they appear and disappear.
+        // Pending-changes state lives in the tab-title bullet plus the
+        // ActionBar footer ("N unsaved changes / Discard / Save") —
+        // an additional banner would just duplicate that signal.
         let read_only_banner = adw::Banner::builder()
             .title(crate::tr!("Read-only connection. Editing disabled."))
             .revealed(init.read_only)
@@ -1210,18 +1166,9 @@ impl SimpleComponent for BrowseTab {
             ))
             .revealed(false)
             .build();
-        let pending_banner = adw::Banner::builder()
-            .button_label(crate::tr!("Discard all"))
-            .revealed(false)
-            .build();
-        let sender_for_pending_banner = sender.clone();
-        pending_banner.connect_button_clicked(move |_| {
-            sender_for_pending_banner.input(BrowseTabInput::DiscardAll);
-        });
 
         root.add_top_bar(&read_only_banner);
         root.add_top_bar(&no_pk_banner);
-        root.add_top_bar(&pending_banner);
         root.add_top_bar(&grid_search_bar);
         root.set_content(Some(&inner_stack));
         // Mutations bar sits below the paginator (call order = stack
@@ -1296,7 +1243,6 @@ impl SimpleComponent for BrowseTab {
                 glib::Propagation::Stop
             }))
             .build();
-        let table_for_null = init.table.clone();
         let grid_sender_for_null = grid_sender.clone();
         let null_shortcut = gtk::Shortcut::builder()
             .trigger(&gtk::ShortcutTrigger::parse_string("<Primary><Shift>n").expect("valid trigger"))
@@ -1305,11 +1251,7 @@ impl SimpleComponent for BrowseTab {
                     return glib::Propagation::Proceed;
                 };
                 grid_sender_for_null
-                    .send(GridMsg::SetCellNull {
-                        table: table_for_null.clone(),
-                        row_position,
-                        col_index,
-                    })
+                    .send(GridMsg::SetCellNull { row_position, col_index })
                     .ok();
                 glib::Propagation::Stop
             }))
@@ -1330,7 +1272,7 @@ impl SimpleComponent for BrowseTab {
             .build();
         // Ctrl+V on the grid (focus not inside a text editor): show a
         // toast explaining multi-row paste isn't supported. Cell-level
-        // paste (focus inside an EditableLabel's GtkText) is consumed
+        // paste (focus inside a CellEditor's GtkText) is consumed
         // by the entry first, so this only fires for grid-level paste
         // attempts.
         let sender_for_paste = sender.clone();
@@ -1416,28 +1358,20 @@ impl SimpleComponent for BrowseTab {
         relm4::spawn_local(grid_receiver.forward(grid_input, |msg| match msg {
             GridMsg::SortChanged(col_idx, ascending) => BrowseTabInput::SortChanged { col_idx, ascending },
             GridMsg::CellEdited {
-                table,
                 row_position,
                 col_index,
                 new_value,
             } => BrowseTabInput::GridCellEdited {
-                table,
                 row_position,
                 col_index,
                 new_value,
             },
             GridMsg::CopyToClipboard(text) => BrowseTabInput::GridCopyToClipboard(text),
             GridMsg::CopyRowAsInsert { row_position } => BrowseTabInput::GridCopyRowAsInsert { row_position },
-            GridMsg::SetCellNull {
-                table,
-                row_position,
-                col_index,
-            } => BrowseTabInput::GridSetCellNull {
-                table,
-                row_position,
-                col_index,
-            },
-            GridMsg::DeleteRowAt { table, row_position } => BrowseTabInput::GridDeleteRowAt { table, row_position },
+            GridMsg::SetCellNull { row_position, col_index } => {
+                BrowseTabInput::GridSetCellNull { row_position, col_index }
+            }
+            GridMsg::DeleteRowAt { row_position } => BrowseTabInput::GridDeleteRowAt { row_position },
             GridMsg::InsertRow => BrowseTabInput::InsertRow,
             GridMsg::DuplicateRow { row_position } => BrowseTabInput::DuplicateRow { row_position },
         }));
@@ -1462,7 +1396,6 @@ impl SimpleComponent for BrowseTab {
             rendered_column_count: std::cell::Cell::new(0),
             read_only_banner,
             no_pk_banner,
-            pending_banner,
             was_dirty: std::cell::Cell::new(false),
             pending_focus_restore: std::cell::RefCell::new(None),
             grid_search,
@@ -1476,8 +1409,6 @@ impl SimpleComponent for BrowseTab {
             save_button: mutations.save_button,
             discard_button: mutations.discard_button,
             pending_label: mutations.pending_label,
-            page_size_combo: paginator.page_size_combo,
-            page_size_handler: page_size_handler_slot,
             grid_sender,
             suppress_combo_emit,
         };
@@ -1549,12 +1480,6 @@ impl SimpleComponent for BrowseTab {
                 }
                 self.update_paginator_label();
             }
-            BrowseTabInput::ShowLoading => {
-                self.show_loading_inner(
-                    &crate::tr!("Loading…"),
-                    &crate::tr!("Fetching rows from {table}").replace("{table}", &self.table_label()),
-                );
-            }
             BrowseTabInput::ShowError(message) => {
                 // Clear any cached page state so a follow-up refresh
                 // doesn't render against the stale snapshot before
@@ -1582,20 +1507,6 @@ impl SimpleComponent for BrowseTab {
                     self.grid_search_bar.set_search_mode(true);
                 }
                 self.grid_search.grab_focus();
-            }
-            BrowseTabInput::SetReadOnly(read_only) => {
-                self.read_only = read_only;
-                let pending_visible =
-                    crate::services::change_tracker::with_tab_ref(self.tab_id, |tr| tr.pending_count() > 0)
-                        .unwrap_or(false);
-                self.refresh_banner_visibility(pending_visible);
-                self.refresh_crud_buttons();
-                // Force a full grid rebuild so editable labels turn into
-                // read-only labels (or vice versa) without waiting for the
-                // user to navigate.
-                if self.current_result.is_some() {
-                    let _ = sender.output(BrowseTabOutput::FetchPage);
-                }
             }
             BrowseTabInput::PrevPage => {
                 if self.current_offset >= self.page_size {
@@ -1816,7 +1727,6 @@ impl SimpleComponent for BrowseTab {
                 }
             }
             BrowseTabInput::GridCellEdited {
-                table: _,
                 row_position,
                 col_index,
                 new_value,
@@ -1832,17 +1742,17 @@ impl SimpleComponent for BrowseTab {
                 //
                 // On parse failure the edit is rejected: a toast
                 // explains why and `refresh_row` forces a re-bind so
-                // the EditableLabel goes back to the canonical
-                // pre-edit display. The tracker stays untouched so
-                // a single bad keystroke can't sneak into the batch.
+                // the cell goes back to the canonical pre-edit
+                // display. The tracker stays untouched so a single
+                // bad keystroke can't sneak into the batch.
                 //
-                // GtkEditableLabel's underlying GtkText handles a
-                // multi-line clipboard paste inconsistently across
-                // GTK builds — some embed literal newlines, some
-                // strip them silently. Collapse newlines / carriage
-                // returns to spaces here so a paste-induced multi-
-                // line value never reaches the SQL layer. JSON
-                // columns aren't normalised: they need real newlines.
+                // GtkText handles multi-line clipboard paste
+                // inconsistently across GTK builds — some embed
+                // literal newlines, some strip them silently.
+                // Collapse newlines / carriage returns to spaces
+                // here so a paste-induced multi-line value never
+                // reaches the SQL layer. JSON columns aren't
+                // normalised: they need real newlines.
                 let normalized = match self
                     .current_columns
                     .get(col_index)
@@ -1883,7 +1793,6 @@ impl SimpleComponent for BrowseTab {
                 });
             }
             BrowseTabInput::GridSetCellNull {
-                table: _,
                 row_position,
                 col_index,
             } => {
@@ -1895,7 +1804,7 @@ impl SimpleComponent for BrowseTab {
                     t.track_cell_edit(key, col_index, original, Value::Null);
                 });
             }
-            BrowseTabInput::GridDeleteRowAt { table: _, row_position } => {
+            BrowseTabInput::GridDeleteRowAt { row_position } => {
                 let Some((key, row)) = self.row_key_at(row_position) else {
                     return;
                 };
@@ -2165,15 +2074,10 @@ impl SimpleComponent for BrowseTab {
                             store.insert(0, &draft_row);
                         }
                     }
-                    UndoOp::Delete { row_key, .. } => {
-                        let _ = row_key;
-                    }
+                    UndoOp::Delete { .. } => {}
                 }
             }
         }
-        // Quark prevents accidental cross-page lookups; tab_id used by App
-        // to route inputs back here.
-        let _ = self.tab_id;
     }
 }
 
@@ -2449,7 +2353,6 @@ struct Paginator {
     prev_button: gtk::Button,
     next_button: gtk::Button,
     paginator_label: gtk::Label,
-    page_size_combo: gtk::DropDown,
 }
 
 /// Bundle of widgets returned by `build_mutation_bar`.

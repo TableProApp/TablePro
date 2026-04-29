@@ -58,6 +58,13 @@ impl RowObject {
         self.imp().cells.borrow().clone()
     }
 
+    /// Borrow the cell slice for the duration of `f`. Use this from
+    /// hot paths (filter / sort comparators) to avoid the per-call
+    /// allocation that `cells_clone` incurs.
+    pub fn with_cells<R>(&self, f: impl FnOnce(&[Value]) -> R) -> R {
+        f(&self.imp().cells.borrow())
+    }
+
     /// In-place cell mutation. Used by the inline-edit flow on draft
     /// rows so the grid renders the user's typed value immediately
     /// instead of waiting for a re-fetch.

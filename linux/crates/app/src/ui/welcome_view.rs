@@ -75,25 +75,23 @@ impl SimpleComponent for WelcomeView {
         empty_page.set_child(Some(&empty_btn));
         root.add_named(&empty_page, Some("empty"));
 
-        // Populated page — saved connections list.
+        // Populated page — saved connections list. AdwClamp is the
+        // GNOME pattern for "constrain reading width to a sensible
+        // max in a scrollable area"; it centres + caps width without
+        // the manual `gtk::Box` halign/margin gymnastics.
         let scroller = gtk::ScrolledWindow::builder()
             .hexpand(true)
             .vexpand(true)
             .hscrollbar_policy(gtk::PolicyType::Never)
-            // Cap the scrollable content's natural width at 560px so
-            // narrow viewports don't push past the window edge.
-            .max_content_width(560)
-            .propagate_natural_width(true)
             .build();
+        let clamp = adw::Clamp::builder().maximum_size(560).build();
         let outer = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(12)
             .margin_top(24)
             .margin_bottom(24)
-            .margin_start(24)
-            .margin_end(24)
-            .halign(gtk::Align::Center)
-            .valign(gtk::Align::Center)
+            .margin_start(12)
+            .margin_end(12)
             .build();
 
         // Single CTA on the populated page: the "+" button in the
@@ -116,8 +114,9 @@ impl SimpleComponent for WelcomeView {
         group.set_header_suffix(Some(&header_btn));
         group.add(factory.widget());
         outer.append(&group);
+        clamp.set_child(Some(&outer));
 
-        scroller.set_child(Some(&outer));
+        scroller.set_child(Some(&clamp));
         root.add_named(&scroller, Some("populated"));
         root.set_visible_child_name("empty");
 

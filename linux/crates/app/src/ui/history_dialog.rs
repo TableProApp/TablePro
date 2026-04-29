@@ -13,10 +13,10 @@ use crate::services::database_service::{self, ConnectionMetadata};
 pub struct HistoryDialog {
     root: adw::Dialog,
     search: gtk::SearchEntry,
-    pinned_heading: gtk::Label,
+    pinned_group: adw::PreferencesGroup,
     pinned_listbox: gtk::ListBox,
+    list_group: adw::PreferencesGroup,
     listbox: gtk::ListBox,
-    list_heading: gtk::Label,
     stack: gtk::Stack,
     status_page: adw::StatusPage,
 
@@ -168,17 +168,11 @@ impl Component for HistoryDialog {
         filter_group.add(&filter_status);
         filter_group.add(&filter_window);
 
-        let popover_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(6)
-            .margin_top(12)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
-        popover_box.append(&filter_group);
-        popover_box.append(&reset_button);
-        filter_popover.set_child(Some(&popover_box));
+        // Reset lives in the group's header-suffix slot so the
+        // popover content is just the AdwPreferencesGroup — no
+        // wrapper Box needed for layout.
+        filter_group.set_header_suffix(Some(&reset_button));
+        filter_popover.set_child(Some(&filter_group));
 
         for combo in [&filter_connection, &filter_status, &filter_window] {
             let s = sender.clone();
@@ -265,49 +259,37 @@ impl Component for HistoryDialog {
         let inner = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
         inner.append(&search_bar);
 
-        let pinned_heading = gtk::Label::builder()
-            .label(crate::tr!("Pinned"))
-            .xalign(0.0)
-            .margin_top(12)
-            .margin_start(12)
-            .margin_end(12)
-            .margin_bottom(6)
-            .visible(false)
-            .build();
-        pinned_heading.add_css_class("heading");
-        pinned_heading.add_css_class("dim-label");
-
-        let pinned_listbox = gtk::ListBox::builder()
-            .selection_mode(gtk::SelectionMode::None)
-            .visible(false)
-            .build();
+        // Each section is an AdwPreferencesGroup with a boxed-list
+        // ListBox. The group's `title` provides the section heading
+        // styling (matches Settings / Builder section dividers); we
+        // toggle the group's visibility instead of separate Label +
+        // ListBox visibility.
+        let pinned_listbox = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
         pinned_listbox.add_css_class("boxed-list");
-        pinned_listbox.set_margin_start(12);
-        pinned_listbox.set_margin_end(12);
-
-        let list_heading = gtk::Label::builder()
-            .label(crate::tr!("All queries"))
-            .xalign(0.0)
-            .margin_top(12)
-            .margin_start(12)
-            .margin_end(12)
-            .margin_bottom(6)
+        let pinned_group = adw::PreferencesGroup::builder()
+            .title(crate::tr!("Pinned"))
             .visible(false)
             .build();
-        list_heading.add_css_class("heading");
-        list_heading.add_css_class("dim-label");
+        pinned_group.add(&pinned_listbox);
 
         let listbox = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
         listbox.add_css_class("boxed-list");
-        listbox.set_margin_start(12);
-        listbox.set_margin_end(12);
-        listbox.set_margin_bottom(12);
+        let list_group = adw::PreferencesGroup::builder()
+            .title(crate::tr!("All queries"))
+            .visible(false)
+            .build();
+        list_group.add(&listbox);
 
-        let list_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-        list_box.append(&pinned_heading);
-        list_box.append(&pinned_listbox);
-        list_box.append(&list_heading);
-        list_box.append(&listbox);
+        let list_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        list_box.append(&pinned_group);
+        list_box.append(&list_group);
 
         let scroll = gtk::ScrolledWindow::builder()
             .child(&list_box)
@@ -376,10 +358,10 @@ impl Component for HistoryDialog {
         let model = Self {
             root: root.clone(),
             search,
-            pinned_heading,
+            pinned_group,
             pinned_listbox,
+            list_group,
             listbox,
-            list_heading,
             stack,
             status_page,
             filter_connection,
@@ -660,9 +642,8 @@ impl HistoryDialog {
         self.entries = entries.clone();
 
         if entries.is_empty() {
-            self.pinned_heading.set_visible(false);
-            self.pinned_listbox.set_visible(false);
-            self.list_heading.set_visible(false);
+            self.pinned_group.set_visible(false);
+            self.list_group.set_visible(false);
             let has_search = !self.search.text().to_string().trim().is_empty();
             let has_filter = self.filter_connection.selected() != 0
                 || self.filter_status.selected() != 0
@@ -688,9 +669,8 @@ impl HistoryDialog {
         let (pinned, regular): (Vec<_>, Vec<_>) = entries.into_iter().partition(|e| e.pinned);
         let has_pinned = !pinned.is_empty();
         let has_regular = !regular.is_empty();
-        self.pinned_heading.set_visible(has_pinned);
-        self.pinned_listbox.set_visible(has_pinned);
-        self.list_heading.set_visible(has_pinned && has_regular);
+        self.pinned_group.set_visible(has_pinned);
+        self.list_group.set_visible(has_regular);
 
         for entry in &pinned {
             let (row, popover, checkbox) = self.build_row(entry, sender.clone());
