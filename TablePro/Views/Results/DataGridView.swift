@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import os
 import SwiftUI
 
 struct CellPosition: Hashable {
@@ -425,20 +424,13 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.currentSortState = sortState
 
-        Self.sortDiagLogger.debug("syncSortDescriptors: sortState.columns=\(sortState.columns.map { "\($0.columnIndex):\($0.direction == .ascending ? "asc" : "desc")" }, privacy: .public)")
+        let desired: [NSSortDescriptor] = sortState.columns.compactMap { sortCol in
+            guard let identifier = coordinator.identitySchema.identifier(for: sortCol.columnIndex) else { return nil }
+            return NSSortDescriptor(key: identifier.rawValue, ascending: sortCol.direction == .ascending)
+        }
 
-        if !sortState.isSorting {
-            if !tableView.sortDescriptors.isEmpty {
-                tableView.sortDescriptors = []
-            }
-        } else if let firstSort = sortState.columns.first,
-                  let identifier = coordinator.identitySchema.identifier(for: firstSort.columnIndex) {
-            let key = identifier.rawValue
-            let ascending = firstSort.direction == .ascending
-            let currentDescriptor = tableView.sortDescriptors.first
-            if currentDescriptor?.key != key || currentDescriptor?.ascending != ascending {
-                tableView.sortDescriptors = [NSSortDescriptor(key: key, ascending: ascending)]
-            }
+        if !descriptorsEqual(tableView.sortDescriptors, desired) {
+            tableView.sortDescriptors = desired
         }
 
         Self.updateSortIndicators(
@@ -446,6 +438,14 @@ struct DataGridView: NSViewRepresentable {
             sortState: sortState,
             schema: coordinator.identitySchema
         )
+    }
+
+    private func descriptorsEqual(_ lhs: [NSSortDescriptor], _ rhs: [NSSortDescriptor]) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        for (a, b) in zip(lhs, rhs) where a.key != b.key || a.ascending != b.ascending {
+            return false
+        }
+        return true
     }
 
     private func reloadAndSyncSelection(
@@ -525,8 +525,6 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Sort Indicator Helpers
 
-    fileprivate static let sortDiagLogger = Logger(subsystem: "com.TablePro", category: "DataGridSort")
-
     private static let ascendingSortIndicator: NSImage? = {
         NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
             ?? NSImage(systemSymbolName: "chevron.up", accessibilityDescription: nil)
@@ -541,8 +539,6 @@ struct DataGridView: NSViewRepresentable {
         sortState: SortState,
         schema: ColumnIdentitySchema
     ) {
-        sortDiagLogger.debug("updateSortIndicators: ascImage=\(ascendingSortIndicator != nil) descImage=\(descendingSortIndicator != nil) sortCount=\(sortState.columns.count)")
-
         var columnByDataIndex: [Int: NSTableColumn] = [:]
         for column in tableView.tableColumns {
             guard let colIndex = schema.dataIndex(from: column.identifier) else { continue }
@@ -551,13 +547,9 @@ struct DataGridView: NSViewRepresentable {
         }
 
         for sortCol in sortState.columns {
-            guard let column = columnByDataIndex[sortCol.columnIndex] else {
-                sortDiagLogger.error("updateSortIndicators: no column for data index \(sortCol.columnIndex)")
-                continue
-            }
+            guard let column = columnByDataIndex[sortCol.columnIndex] else { continue }
             let image = sortCol.direction == .ascending ? ascendingSortIndicator : descendingSortIndicator
             tableView.setIndicatorImage(image, in: column)
-            sortDiagLogger.debug("updateSortIndicators: set indicator on '\(column.identifier.rawValue, privacy: .public)' direction=\(sortCol.direction == .ascending ? "asc" : "desc")")
         }
 
         if let primary = sortState.columns.first,

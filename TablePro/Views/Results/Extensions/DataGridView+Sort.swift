@@ -4,47 +4,23 @@
 //
 
 import AppKit
-import os
 import SwiftUI
-
-private let sortLogger = Logger(subsystem: "com.TablePro", category: "DataGridSort")
 
 extension TableViewCoordinator {
     // MARK: - Native Sorting
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard !isSyncingSortDescriptors else {
-            sortLogger.debug("sortDescriptorsDidChange skipped: isSyncing")
+        guard !isSyncingSortDescriptors else { return }
+
+        guard let sortDescriptor = tableView.sortDescriptors.first,
+              let key = sortDescriptor.key,
+              let columnIndex = dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)),
+              columnIndex >= 0, columnIndex < tableRowsProvider().columns.count else {
             return
         }
 
-        guard let sortDescriptor = tableView.sortDescriptors.first else {
-            sortLogger.debug("sortDescriptorsDidChange: no sort descriptor (cleared)")
-            return
-        }
-
-        guard let key = sortDescriptor.key else {
-            sortLogger.error("sortDescriptorsDidChange: descriptor has nil key")
-            return
-        }
-
-        guard let columnIndex = dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)) else {
-            sortLogger.error("sortDescriptorsDidChange: could not resolve key '\(key, privacy: .public)' to a data column index. Schema columns: \(self.identitySchema.identifiers.map { $0.rawValue }, privacy: .public)")
-            return
-        }
-
-        guard columnIndex >= 0, columnIndex < tableRowsProvider().columns.count else {
-            sortLogger.error("sortDescriptorsDidChange: columnIndex \(columnIndex) out of range")
-            return
-        }
-
-        let liveFlags = NSEvent.modifierFlags
-        let eventFlags = NSApp.currentEvent?.modifierFlags ?? []
-        let isMultiSort = liveFlags.contains(.shift) || eventFlags.contains(.shift)
-        let eventTypeRaw = Int(NSApp.currentEvent?.type.rawValue ?? 0)
-        sortLogger.debug(
-            "sortDescriptorsDidChange: column=\(columnIndex) ascending=\(sortDescriptor.ascending) isMultiSort=\(isMultiSort) liveFlags=\(liveFlags.rawValue, privacy: .public) eventFlags=\(eventFlags.rawValue, privacy: .public) eventType=\(eventTypeRaw)"
-        )
+        let isMultiSort = NSEvent.modifierFlags.contains(.shift)
+            || NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
         delegate?.dataGridSort(column: columnIndex, ascending: sortDescriptor.ascending, isMultiSort: isMultiSort)
     }
 

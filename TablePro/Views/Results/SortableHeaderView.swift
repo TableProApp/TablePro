@@ -4,12 +4,9 @@
 //
 
 import AppKit
-import os
 
 @MainActor
 final class SortableHeaderView: NSTableHeaderView {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DataGridSort")
-
     weak var coordinator: TableViewCoordinator?
 
     override func mouseDown(with event: NSEvent) {
@@ -42,7 +39,6 @@ final class SortableHeaderView: NSTableHeaderView {
             ascending = true
         }
 
-        Self.logger.debug("SortableHeaderView intercepted shift+click: column=\(dataIndex) ascending=\(ascending)")
         coordinator.delegate?.dataGridSort(column: dataIndex, ascending: ascending, isMultiSort: true)
     }
 }
