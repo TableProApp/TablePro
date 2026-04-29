@@ -268,6 +268,13 @@ fn build_column(
     });
 
     let editable_for_bind = editable && sender.is_some();
+    // Columns the database auto-fills on INSERT (auto-increment PKs,
+    // generated columns) render their NULL placeholder as `(auto)`
+    // rather than the generic `<NULL>` / `NULL` sentinels — the user
+    // shouldn't think those cells are "stored as null", they're
+    // computed by the DB at commit time. Captured by value so the
+    // bind closure doesn't borrow `info`.
+    let column_auto_filled = info.is_auto_increment || info.is_generated;
     let tab_ctx_for_bind = tab_ctx.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -311,8 +318,13 @@ fn build_column(
         // Editable cells render NULL as the italic <NULL> sentinel —
         // distinguishes a true NULL from an empty string visually.
         // Read-only cells use the regular display path which already
-        // shows "NULL" in dim text.
-        let text = if editable_for_bind {
+        // shows "NULL" in dim text. Auto-filled columns (auto-increment
+        // PKs, generated columns) render NULL as `(auto)` so a draft
+        // INSERT row reads as "DB will compute this", not "stored as
+        // null".
+        let text = if is_null && column_auto_filled {
+            auto_filled_sentinel()
+        } else if editable_for_bind {
             if is_null {
                 editable_null_sentinel()
             } else {
@@ -397,9 +409,10 @@ fn build_column(
             } else {
                 label.remove_css_class("dim-label");
             }
-            // Italic-dim render of <NULL> in editable cells
-            // distinguishes true NULL from empty string at a glance.
-            if is_null && editable_for_bind {
+            // Italic-dim render of <NULL> / (auto) sentinels — the
+            // shared italic class signals "this isn't a literal value
+            // typed by the user" regardless of which sentinel rendered.
+            if is_null && (editable_for_bind || column_auto_filled) {
                 label.add_css_class("tp-null-sentinel");
             } else {
                 label.remove_css_class("tp-null-sentinel");
@@ -617,6 +630,16 @@ pub(crate) fn editable_null_sentinel() -> String {
 /// cells dim the text and don't need the angle-bracket disambig.
 pub(crate) fn readonly_null_sentinel() -> String {
     crate::tr!("NULL")
+}
+
+/// Placeholder text rendered in a NULL cell whose value the database
+/// computes on INSERT (auto-increment primary keys, generated columns).
+/// Carries the "DB will fill this" semantic that "NULL" doesn't —
+/// a freshly added draft row no longer reads as if its id is "stored
+/// as null". Italic styling comes from the `tp-null-sentinel` CSS
+/// class applied alongside.
+pub(crate) fn auto_filled_sentinel() -> String {
+    crate::tr!("(auto)")
 }
 
 /// Detect whether a column's declared data_type is boolean. Mirrors

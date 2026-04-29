@@ -706,15 +706,15 @@ impl SimpleComponent for App {
             let provider = gtk::CssProvider::new();
             provider.load_from_string(
                 ".tp-cell-modified {\
-                    background: alpha(@warning_color, 0.15);\
+                    background: alpha(@warning_color, 0.18);\
                 }\
                 .tp-row-pending-insert {\
-                    background: alpha(@success_color, 0.12);\
+                    background: alpha(@success_color, 0.16);\
                 }\
                 .tp-row-pending-delete {\
                     text-decoration: line-through;\
                     color: alpha(@error_color, 0.7);\
-                    background: alpha(@error_color, 0.08);\
+                    background: alpha(@error_color, 0.10);\
                 }\
                 /* NULL sentinel: italic only — opacity already comes\
                    from the `dim-label` Adwaita class added alongside.\
@@ -735,19 +735,23 @@ impl SimpleComponent for App {
                     border-radius: 2px;\
                 }\
                 /* Row-level pending indicators on the leftmost cell.\
-                   A 3px inset ribbon flush to the left edge marks the\
+                   A 4px inset ribbon flush to the left edge marks the\
                    row's overall mutation state. Independent of the\
                    per-cell highlights so a row with one modified cell\
-                   still reads as a modified row at a glance.\
+                   still reads as a modified row at a glance. The\
+                   `solid` (non-alpha) accent matches the saturation of\
+                   GNOME Builder's diff gutters — at 3px+alpha the\
+                   ribbon was effectively invisible against tinted row\
+                   backgrounds.\
                 */\
                 .tp-row-leftmost-insert {\
-                    box-shadow: inset 3px 0 0 @success_color;\
+                    box-shadow: inset 4px 0 0 @success_color;\
                 }\
                 .tp-row-leftmost-update {\
-                    box-shadow: inset 3px 0 0 @warning_color;\
+                    box-shadow: inset 4px 0 0 @warning_color;\
                 }\
                 .tp-row-leftmost-delete {\
-                    box-shadow: inset 3px 0 0 @error_color;\
+                    box-shadow: inset 4px 0 0 @error_color;\
                 }\
                 /* One-shot flash on the row that produced a failing\
                    commit statement. Animation fades the red overlay\
