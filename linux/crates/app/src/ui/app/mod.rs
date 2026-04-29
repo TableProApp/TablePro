@@ -1686,6 +1686,15 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
         &crate::tr!("Set focused cell to NULL"),
     ));
     browse.append(&shortcut_entry("<Primary>a", &crate::tr!("Select all rows")));
+    browse.append(&shortcut_entry(
+        "<Shift>Pointer_Button1",
+        &crate::tr!("Extend row selection to clicked row"),
+    ));
+    browse.append(&shortcut_entry(
+        "<Primary>Pointer_Button1",
+        &crate::tr!("Toggle clicked row in selection"),
+    ));
+    browse.append(&shortcut_entry("Escape", &crate::tr!("Clear multi-row selection")));
     browse.append(&shortcut_entry("<Primary>c", &crate::tr!("Copy selected rows as TSV")));
     browse.append(&shortcut_entry("Page_Up", &crate::tr!("Previous page")));
     browse.append(&shortcut_entry("Page_Down", &crate::tr!("Next page")));

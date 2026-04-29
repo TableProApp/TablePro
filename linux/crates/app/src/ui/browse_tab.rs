@@ -83,6 +83,12 @@ pub struct BrowseTab {
     grid_search_bar: gtk::SearchBar,
     grid_search_handler: Option<glib::SignalHandlerId>,
     paginator_label: gtk::Label,
+    /// Live count of selected rows. Hidden when 0 or 1 rows are
+    /// selected; shows "{n} selected" once the user shift-clicks
+    /// or Ctrl+clicks to build a multi-row selection. Updated via
+    /// the selection model's connect_selection_changed signal so it
+    /// stays in sync without polling.
+    selection_label: gtk::Label,
     first_button: gtk::Button,
     prev_button: gtk::Button,
     next_button: gtk::Button,
@@ -121,6 +127,11 @@ pub enum BrowseTabInput {
     /// (F2 to edit, Tab to traverse, etc.) instead of the floating
     /// post-search focus state.
     FocusGrid,
+    /// Clear a multi-row selection (Esc when 2+ rows are selected
+    /// and no search bar / cell editor is active). Single-row
+    /// selections are intentionally preserved — unselecting the
+    /// only-row would strand the keyboard focus indicator.
+    ClearSelection,
     /// User clicked First page (offset → 0).
     FirstPage,
     /// User clicked Prev page.
@@ -348,6 +359,18 @@ impl BrowseTab {
         paginator_label.add_css_class("dim-label");
         paginator_label.set_accessible_role(gtk::AccessibleRole::Status);
 
+        // Selection count badge — sits beside the paginator label.
+        // Hidden when 0–1 rows selected; appears when the user
+        // shift-clicks a range or ctrl-clicks to multi-select.
+        // `accent` class draws the user's eye to it; AccessibleRole
+        // Status is the same role we use for the paginator label so
+        // a screen reader announces both as live regions.
+        let selection_label = gtk::Label::builder().visible(false).build();
+        selection_label.add_css_class("accent");
+        selection_label.add_css_class("caption-heading");
+        selection_label.set_accessible_role(gtk::AccessibleRole::Status);
+        selection_label.set_margin_start(12);
+
         // Use thousands-separated labels (100 / 500 / 1,000 / 5,000 /
         // 10,000) instead of "1 K" abbreviations. With a visible
         // "Rows:" label inline (below) the dropdown's purpose is
@@ -418,6 +441,7 @@ impl BrowseTab {
 
         paginator_bar.pack_start(&nav_box);
         paginator_bar.pack_start(&paginator_label);
+        paginator_bar.pack_start(&selection_label);
         paginator_bar.pack_end(&export_button);
         paginator_bar.pack_end(&page_size_combo);
         paginator_bar.pack_end(&page_size_label);
@@ -429,6 +453,7 @@ impl BrowseTab {
             next_button,
             last_button,
             paginator_label,
+            selection_label,
         }
     }
 
@@ -882,6 +907,22 @@ impl BrowseTab {
         self.current_column_view = Some(column_view.clone());
         self.rendered_column_count.set(self.current_columns.len());
 
+        // Selection-changed signal updates the count badge and the
+        // Delete button's tooltip live. The new MultiSelection is a
+        // fresh instance per rebuild, so the previous binding (if
+        // any) drops with the old selection — no leak.
+        let selection_label_for_signal = self.selection_label.clone();
+        let delete_button_for_signal = self.delete_button.clone();
+        if let Some(sel) = self.current_selection.as_ref() {
+            sel.connect_selection_changed(move |sel, _, _| {
+                let n = sel.selection().size() as u32;
+                update_selection_chrome(&selection_label_for_signal, &delete_button_for_signal, n);
+            });
+            // Page rebuild clears MultiSelection's bitset; reset the
+            // chrome explicitly so a stale "5 selected" doesn't linger.
+            update_selection_chrome(&self.selection_label, &self.delete_button, 0);
+        }
+
         // Re-prepend any pending draft rows so they survive page changes,
         // sort flips, and F5 refresh. The tracker is the canonical source
         // of truth for drafts; the grid model is rebuilt fresh on every
@@ -1273,6 +1314,17 @@ impl SimpleComponent for BrowseTab {
                     sender_for_esc.input(BrowseTabInput::FocusGrid);
                     glib::Propagation::Stop
                 } else {
+                    // Esc on the grid (no search, no edit) clears a
+                    // multi-row selection. Spreadsheet convention
+                    // (Excel / LibreOffice / DataGrip): Esc cancels
+                    // the in-progress selection without deleting
+                    // anything. Single-row selections fall through
+                    // because GtkColumnView treats single-select as
+                    // "the focused row" and unselecting it would
+                    // strand the focus indicator. Cell-edit Esc fires
+                    // first via the editor's capture-phase handler
+                    // and never reaches us.
+                    sender_for_esc.input(BrowseTabInput::ClearSelection);
                     glib::Propagation::Proceed
                 }
             }))
@@ -1474,6 +1526,7 @@ impl SimpleComponent for BrowseTab {
             grid_search_bar,
             grid_search_handler: None,
             paginator_label: paginator.paginator_label,
+            selection_label: paginator.selection_label,
             first_button: paginator.first_button,
             prev_button: paginator.prev_button,
             next_button: paginator.next_button,
@@ -1588,6 +1641,19 @@ impl SimpleComponent for BrowseTab {
                 if let Some(cv) = self.current_column_view.as_ref() {
                     cv.grab_focus();
                 }
+            }
+            BrowseTabInput::ClearSelection => {
+                let Some(sel) = self.current_selection.as_ref() else {
+                    return;
+                };
+                // Only clear when we have a true multi-row selection.
+                // Without this guard, every Esc on a single-focus row
+                // would re-trigger the "0 selected" path through GTK's
+                // re-focus logic and strand the focus indicator.
+                if sel.selection().size() < 2 {
+                    return;
+                }
+                sel.unselect_all();
             }
             BrowseTabInput::FirstPage => {
                 if self.current_offset > 0 {
@@ -2224,6 +2290,25 @@ fn normalize_single_line_input(text: &str) -> String {
     replaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Update the selection-count badge + Delete button tooltip in
+/// response to a `MultiSelection` change. Hidden when 0–1 rows are
+/// selected (single-row state has no scaling text need); shows
+/// "{n} selected" + tweaks the Delete tooltip to "Delete {n}
+/// selected rows (Delete)" once the user multi-selects.
+fn update_selection_chrome(label: &gtk::Label, delete_button: &gtk::Button, n: u32) {
+    if n <= 1 {
+        label.set_visible(false);
+        delete_button.set_tooltip_text(Some(&crate::tr!("Delete selected row (Delete)")));
+        return;
+    }
+    let count = n.to_string();
+    label.set_label(&crate::tr!("{n} selected").replace("{n}", &count));
+    label.set_visible(true);
+    delete_button.set_tooltip_text(Some(
+        &crate::tr!("Delete {n} selected rows (Delete)").replace("{n}", &count),
+    ));
+}
+
 fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
     let bitset = selection.selection();
     let mut out = Vec::with_capacity(bitset.size() as usize);
@@ -2460,6 +2545,7 @@ struct Paginator {
     next_button: gtk::Button,
     last_button: gtk::Button,
     paginator_label: gtk::Label,
+    selection_label: gtk::Label,
 }
 
 /// Bundle of widgets returned by `build_mutation_bar`.
