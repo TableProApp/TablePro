@@ -58,14 +58,19 @@ impl SimpleComponent for WelcomeView {
                 ConnectionRowOutput::Delete(id) => WelcomeViewInput::Delete(id),
             });
 
-        // Empty page — no saved connections yet.
+        // Empty page — no saved connections yet. GNOME convention is
+        // state / instruction / action — title states the situation,
+        // description tells the user what to do, the button restates
+        // the action with verb-first phrasing (matches Settings's
+        // "No printers found" / "Add a printer to begin." / "Add
+        // Printer" pattern).
         let empty_page = adw::StatusPage::builder()
             .icon_name("network-server-symbolic")
-            .title(crate::tr!("Connect to a database"))
-            .description(crate::tr!("Add a connection to get started."))
+            .title(crate::tr!("No connections yet"))
+            .description(crate::tr!("Add a database connection to get started."))
             .build();
         let empty_btn = gtk::Button::builder()
-            .label(crate::tr!("New connection"))
+            .label(crate::tr!("Add Connection"))
             .halign(gtk::Align::Center)
             .build();
         empty_btn.add_css_class("suggested-action");
@@ -105,7 +110,7 @@ impl SimpleComponent for WelcomeView {
             .build();
         let header_btn = gtk::Button::builder()
             .icon_name("list-add-symbolic")
-            .tooltip_text(crate::tr!("New connection"))
+            .tooltip_text(crate::tr!("Add Connection"))
             .valign(gtk::Align::Center)
             .build();
         header_btn.add_css_class("flat");
@@ -131,7 +136,17 @@ impl SimpleComponent for WelcomeView {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             WelcomeViewInput::SetConnections(connections) => {
+                // Sort by name (case-insensitive). Storage returns the
+                // raw insertion order, which becomes random-feeling
+                // once the user has more than three entries. Most DB
+                // clients sort alphabetically by default so power
+                // users with 20+ saved connections can find one
+                // without scanning the entire list. Last-used-first
+                // would be ideal but needs a `last_opened_at` field
+                // on `SavedConnection`; alphabetical is free.
                 self.connections = connections;
+                self.connections
+                    .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
                 let mut guard = self.factory.guard();
                 guard.clear();
                 for saved in &self.connections {
