@@ -27,6 +27,11 @@ final class SortableHeaderView: NSTableHeaderView {
             guard let identifier = schema.identifier(for: sortCol.columnIndex) else { continue }
             let view = indicatorViews[identifier.rawValue] ?? makeIndicatorView()
             view.image = sortCol.direction == .ascending ? Self.ascendingImage : Self.descendingImage
+            view.setAccessibilityLabel(
+                sortCol.direction == .ascending
+                    ? String(localized: "Sort ascending")
+                    : String(localized: "Sort descending")
+            )
             if view.superview == nil {
                 addSubview(view)
             }
