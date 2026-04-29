@@ -54,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Date picker popover font follows the data grid font setting
 - Data grid undo/redo uses the window's UndoManager instead of a private instance, unifying Cmd+Z across editor and grid
 - Right-click during cell editing shows the native text context menu instead of the row menu
+- Multiline cell overlay editor discards the in-progress edit when a column resize fires, instead of silently committing partial text
+- Data grid cell change highlights (deleted, inserted, modified) re-resolve under the active appearance when the user toggles Light or Dark mode mid-session
 
 ### Fixed
 
