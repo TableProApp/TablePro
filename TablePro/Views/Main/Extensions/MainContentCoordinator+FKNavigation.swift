@@ -46,8 +46,7 @@ extension MainContentCoordinator {
            current.tableContext.databaseName == currentDatabase,
            current.tableContext.schemaName == targetSchema {
             applyFKFilter(filter, for: referencedTable)
-            // Persist so tab switch restore picks it up
-            if let idx = tabManager.selectedTabIndex {
+            if let (_, idx) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[idx].filterState = filterStateManager.saveToTabState()
             }
             return
@@ -82,24 +81,19 @@ extension MainContentCoordinator {
             schemaName: targetSchema
         )
 
-        if needsQuery, let tabIndex = tabManager.selectedTabIndex {
-            let tabId = tabManager.tabs[tabIndex].id
-            setActiveTableRows(TableRows(), for: tabId)
+        if needsQuery, let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+            setActiveTableRows(TableRows(), for: tab.id)
             tabManager.tabs[tabIndex].pagination.reset()
         }
 
-        // Update editable state for menu items
-        if let tabIndex = tabManager.selectedTabIndex {
-            let tab = tabManager.tabs[tabIndex]
+        if let (tab, _) = tabManager.selectedTabAndIndex {
             toolbarState.isTableTab = tab.tabType == .table
         }
 
         if needsQuery {
             NSApp.keyWindow?.title = referencedTable
 
-            // New tab — build filtered query directly, run once
-            guard let tabIndex = tabManager.selectedTabIndex else { return }
-            let tab = tabManager.tabs[tabIndex]
+            guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
             let tableRows = tableRowsStore.tableRows(for: tab.id)
             let filteredQuery = queryBuilder.buildFilteredQuery(
                 tableName: referencedTable,
@@ -118,11 +112,8 @@ extension MainContentCoordinator {
 
             runQuery()
         } else {
-            // Reused tab already has data — apply filter (rebuilds query + re-runs)
             applyFKFilter(filter, for: referencedTable)
-
-            // Persist FK filter to reused tab
-            if let tabIndex = tabManager.selectedTabIndex {
+            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
             }
         }

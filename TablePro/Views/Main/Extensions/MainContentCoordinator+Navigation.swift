@@ -41,7 +41,7 @@ extension MainContentCoordinator {
            current.tabType == .table,
            current.tableContext.tableName == tableName,
            current.tableContext.databaseName == currentDatabase {
-            if showStructure, let idx = tabManager.selectedTabIndex {
+            if showStructure, let (_, idx) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[idx].display.resultsViewMode = .structure
             }
             return
@@ -91,7 +91,7 @@ extension MainContentCoordinator {
                     databaseName: currentDatabase
                 )
             }
-            if let tabIndex = tabManager.selectedTabIndex {
+            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[tabIndex].tableContext.isView = isView
                 tabManager.tabs[tabIndex].tableContext.isEditable = !isView
                 tabManager.tabs[tabIndex].tableContext.schemaName = currentSchema
@@ -123,9 +123,8 @@ extension MainContentCoordinator {
                 schemaName: currentSchema
             ) {
                 filterStateManager.clearAll()
-                if let tabIndex = tabManager.selectedTabIndex {
-                    let tabId = tabManager.tabs[tabIndex].id
-                    setActiveTableRows(TableRows(), for: tabId)
+                if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+                    setActiveTableRows(TableRows(), for: tab.id)
                     tabManager.tabs[tabIndex].pagination.reset()
                     toolbarState.isTableTab = true
                 }
@@ -277,9 +276,8 @@ extension MainContentCoordinator {
                 isPreview: true
             )
             filterStateManager.clearAll()
-            if let tabIndex = tabManager.selectedTabIndex {
-                let tabId = tabManager.tabs[tabIndex].id
-                setActiveTableRows(TableRows(), for: tabId)
+            if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+                setActiveTableRows(TableRows(), for: tab.id)
                 tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                 tabManager.tabs[tabIndex].pagination.reset()
                 toolbarState.isTableTab = true
@@ -305,8 +303,8 @@ extension MainContentCoordinator {
     }
 
     func promotePreviewTab() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabManager.tabs[tabIndex].isPreview else { return }
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.isPreview else { return }
         tabManager.tabs[tabIndex].isPreview = false
 
         if let wid = windowId {

@@ -722,13 +722,13 @@ final class MainContentCoordinator {
     // MARK: - Query Execution
 
     func runQuery() {
-        guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].execution.isExecuting else { return }
+        guard let (tab, index) = tabManager.selectedTabAndIndex,
+              !tab.execution.isExecuting else { return }
 
-        let fullQuery = tabManager.tabs[index].content.query
+        let fullQuery = tab.content.query
 
         let sql: String
-        if tabManager.tabs[index].tabType == .table {
+        if tab.tabType == .table {
             sql = fullQuery
         } else if let firstCursor = cursorPositions.first,
                   firstCursor.range.length > 0 {
@@ -790,15 +790,15 @@ final class MainContentCoordinator {
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
     func executeTableTabQueryDirectly() {
-        guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].execution.isExecuting else { return }
+        guard let (tab, index) = tabManager.selectedTabAndIndex,
+              !tab.execution.isExecuting else { return }
 
-        let sql = tabManager.tabs[index].content.query
+        let sql = tab.content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let level = safeModeLevel
         if level.appliesToAllQueries && level.requiresConfirmation,
-           tabManager.tabs[index].execution.lastExecutedAt == nil
+           tab.execution.lastExecutedAt == nil
         {
             guard !isShowingSafeModePrompt else { return }
             isShowingSafeModePrompt = true
@@ -830,9 +830,8 @@ final class MainContentCoordinator {
     // MARK: - Editor Query Loading
 
     func loadQueryIntoEditor(_ query: String) {
-        if let tabIndex = tabManager.selectedTabIndex,
-           tabIndex < tabManager.tabs.count,
-           tabManager.tabs[tabIndex].tabType == .query {
+        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+           tab.tabType == .query {
             tabManager.tabs[tabIndex].content.query = query
             tabManager.tabs[tabIndex].hasUserInteraction = true
         } else {
@@ -846,10 +845,9 @@ final class MainContentCoordinator {
     }
 
     func insertQueryFromAI(_ query: String) {
-        if let tabIndex = tabManager.selectedTabIndex,
-           tabIndex < tabManager.tabs.count,
-           tabManager.tabs[tabIndex].tabType == .query {
-            let existingQuery = tabManager.tabs[tabIndex].content.query
+        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+           tab.tabType == .query {
+            let existingQuery = tab.content.query
             if existingQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 tabManager.tabs[tabIndex].content.query = query
             } else {
@@ -870,13 +868,13 @@ final class MainContentCoordinator {
 
     /// Run EXPLAIN on the current query (database-type-aware prefix)
     func runExplainQuery() {
-        guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].execution.isExecuting else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex,
+              !tab.execution.isExecuting else { return }
 
-        let fullQuery = tabManager.tabs[index].content.query
+        let fullQuery = tab.content.query
 
         let sql: String
-        if tabManager.tabs[index].tabType == .table {
+        if tab.tabType == .table {
             sql = fullQuery
         } else if let firstCursor = cursorPositions.first,
                   firstCursor.range.length > 0 {
@@ -933,7 +931,7 @@ final class MainContentCoordinator {
 
         guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter,
               let explainSQL = adapter.buildExplainQuery(stmt) else {
-            if let index = tabManager.selectedTabIndex {
+            if let (_, index) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[index].execution.errorMessage = String(localized: "EXPLAIN is not supported for this database type.")
             }
             return
@@ -965,8 +963,8 @@ final class MainContentCoordinator {
     internal func executeQueryInternal(
         _ sql: String
     ) {
-        guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].execution.isExecuting else { return }
+        guard let (selectedTab, index) = tabManager.selectedTabAndIndex,
+              !selectedTab.execution.isExecuting else { return }
 
         if currentQueryTask != nil {
             currentQueryTask?.cancel()
@@ -1302,10 +1300,8 @@ final class MainContentCoordinator {
     // MARK: - Sorting
 
     func handleSort(columnIndex: Int, ascending: Bool, isMultiSort: Bool = false) {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
 
-        let tab = tabManager.tabs[tabIndex]
         let tableRows = tableRowsStore.tableRows(for: tab.id)
         guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
 

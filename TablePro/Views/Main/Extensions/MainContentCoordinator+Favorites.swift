@@ -14,10 +14,9 @@ extension MainContentCoordinator {
             return
         }
 
-        if let tabIndex = tabManager.selectedTabIndex,
-           tabManager.tabs[tabIndex].tabType == .query {
-            let existing = tabManager.tabs[tabIndex].content.query
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+           tab.tabType == .query {
+            let existing = tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines)
             if existing.isEmpty {
                 tabManager.tabs[tabIndex].content.query = favorite.query
             } else {
@@ -47,9 +46,9 @@ extension MainContentCoordinator {
             return
         }
 
-        if let tabIndex = tabManager.selectedTabIndex,
-           tabManager.tabs[tabIndex].tabType == .query,
-           tabManager.tabs[tabIndex].content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+           tab.tabType == .query,
+           tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             tabManager.tabs[tabIndex].content.query = favorite.query
             return
         }

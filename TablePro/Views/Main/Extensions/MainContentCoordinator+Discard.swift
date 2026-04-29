@@ -72,8 +72,8 @@ extension MainContentCoordinator {
     ) {
         let originalValues = changeManager.getOriginalValues()
         var deltas: [Delta] = []
-        if let index = tabManager.selectedTabIndex {
-            let tabId = tabManager.tabs[index].id
+        if let (tab, _) = tabManager.selectedTabAndIndex {
+            let tabId = tab.id
             let insertedIDs = collectInsertedRowIDs(
                 tabId: tabId,
                 indices: changeManager.insertedRowIndices
@@ -109,7 +109,7 @@ extension MainContentCoordinator {
         pendingDeletes.removeAll()
         changeManager.clearChangesAndUndoHistory()
 
-        if let index = tabManager.selectedTabIndex {
+        if let (_, index) = tabManager.selectedTabAndIndex {
             tabManager.tabs[index].pendingChanges = TabChangeSnapshot()
         }
 

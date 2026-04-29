@@ -23,7 +23,7 @@ extension MainContentCoordinator {
     }
 
     func executeQueryWithParameters(_ sql: String, parameters: [QueryParameter]) {
-        guard let index = tabManager.selectedTabIndex else { return }
+        guard let (_, index) = tabManager.selectedTabAndIndex else { return }
 
         let missing = parameters.filter {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -59,8 +59,8 @@ extension MainContentCoordinator {
         parameters: [Any?],
         originalParameters: [QueryParameter]
     ) {
-        guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].execution.isExecuting else { return }
+        guard let (selectedTab, index) = tabManager.selectedTabAndIndex,
+              !selectedTab.execution.isExecuting else { return }
 
         if currentQueryTask != nil {
             currentQueryTask?.cancel()
@@ -224,8 +224,8 @@ extension MainContentCoordinator {
     }
 
     func executeMultipleStatementsWithParameters(_ statements: [String], parameters: [QueryParameter]) {
-        guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].execution.isExecuting else { return }
+        guard let (selectedTab, index) = tabManager.selectedTabAndIndex,
+              !selectedTab.execution.isExecuting else { return }
 
         let missing = parameters.filter {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

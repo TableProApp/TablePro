@@ -8,7 +8,7 @@ import Foundation
 extension MainContentCoordinator {
     /// Save current hidden columns to the active tab's column layout
     func saveColumnVisibilityToTab() {
-        guard let index = tabManager.selectedTabIndex else { return }
+        guard let (_, index) = tabManager.selectedTabAndIndex else { return }
         tabManager.tabs[index].columnLayout.hiddenColumns = columnVisibilityManager.saveToColumnLayout()
     }
 

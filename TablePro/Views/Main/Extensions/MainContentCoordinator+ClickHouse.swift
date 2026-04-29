@@ -25,13 +25,13 @@ extension MainContentCoordinator {
     /// Run EXPLAIN with a specific variant (e.g. ClickHouse Plan/Pipeline/AST).
     /// Accepts the plugin-kit `ExplainVariant` type for generic dispatch.
     func runVariantExplain(_ variant: ExplainVariant) {
-        guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].execution.isExecuting else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex,
+              !tab.execution.isExecuting else { return }
 
-        let fullQuery = tabManager.tabs[index].content.query
+        let fullQuery = tab.content.query
 
         let sql: String
-        if tabManager.tabs[index].tabType == .table {
+        if tab.tabType == .table {
             sql = fullQuery
         } else if let firstCursor = cursorPositions.first,
                   firstCursor.range.length > 0 {
@@ -56,7 +56,7 @@ extension MainContentCoordinator {
         guard let stmt = statements.first else { return }
 
         let explainSQL = "\(variant.sqlPrefix) \(stmt)"
-        let tabId = tabManager.tabs[index].id
+        let tabId = tab.id
 
         Task {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }

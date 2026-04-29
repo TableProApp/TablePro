@@ -632,8 +632,7 @@ final class MainContentCommandActions {
 
     func formatQuery() {
         guard let coordinator,
-              let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
-        let tab = coordinator.tabManager.tabs[tabIndex]
+              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
         let dbType = connection.type
         let formatter = SQLFormatterService()
         let options = SQLFormatterOptions.default
@@ -662,14 +661,15 @@ final class MainContentCommandActions {
     }
 
     func toggleResults() {
-        guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
+        guard let coordinator,
+              let (_, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
         coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed.toggle()
         coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed
     }
 
     func previousResultTab() {
-        guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
-        let tab = coordinator.tabManager.tabs[tabIndex]
+        guard let coordinator,
+              let (tab, _) = coordinator.tabManager.selectedTabAndIndex else { return }
         guard tab.display.resultSets.count > 1,
               let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
               let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
@@ -678,8 +678,8 @@ final class MainContentCommandActions {
     }
 
     func nextResultTab() {
-        guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
-        let tab = coordinator.tabManager.tabs[tabIndex]
+        guard let coordinator,
+              let (tab, _) = coordinator.tabManager.selectedTabAndIndex else { return }
         guard tab.display.resultSets.count > 1,
               let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
               let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
