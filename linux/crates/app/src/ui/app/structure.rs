@@ -194,7 +194,10 @@ impl App {
         // (or _failed) drains `close_after_save` for `tab_id`, so the
         // close-with-pending flow still resolves through that path.
         if self.structure_saves_in_flight.borrow().contains(&tab_id) {
-            tracing::debug!(?tab_id, "save_structure_tab_by_id: save already in flight; deferring to first dispatch");
+            tracing::debug!(
+                ?tab_id,
+                "save_structure_tab_by_id: save already in flight; deferring to first dispatch"
+            );
             return;
         }
         let driver_id = self.driver_id().to_string();
@@ -645,5 +648,4 @@ impl App {
         page.set_needs_attention(combined_dirty && !is_selected);
         self.refresh_window_title();
     }
-
 }

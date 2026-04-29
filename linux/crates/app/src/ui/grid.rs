@@ -890,15 +890,7 @@ fn setup_readonly_cell(
         .build();
     item.set_child(Some(&label));
     if let Some(menus) = menus {
-        attach_cell_gesture(
-            label.upcast_ref(),
-            column_view,
-            idx,
-            column_name,
-            false,
-            false,
-            menus,
-        );
+        attach_cell_gesture(label.upcast_ref(), column_view, idx, column_name, false, false, menus);
     }
 }
 
@@ -1226,7 +1218,11 @@ fn install_popover_close_cleanup(label: &super::cell_editor::CellEditor, popover
 /// the IME popover. The preedit-changed handler clears the gate
 /// when composition completes; the next `editing-notify(false)`
 /// after that fires the real commit.
-fn install_edit_commit_handler(label: &super::cell_editor::CellEditor, col_index: usize, sender: relm4::Sender<GridMsg>) {
+fn install_edit_commit_handler(
+    label: &super::cell_editor::CellEditor,
+    col_index: usize,
+    sender: relm4::Sender<GridMsg>,
+) {
     // The cell's edit-mode child is a `gtk::Text`; that child owns
     // the IME context and emits preedit-changed.
     {
@@ -1332,10 +1328,7 @@ pub(super) struct GridMenus {
 /// menu, GNOME Files's row context menu, etc. — and replaces the
 /// old "one popover + one action group per cell widget" approach
 /// which carried ~70 popover instances on a typical 7-column grid.
-fn install_grid_context_menus(
-    column_view: &gtk::ColumnView,
-    sender: relm4::Sender<GridMsg>,
-) -> GridMenus {
+fn install_grid_context_menus(column_view: &gtk::ColumnView, sender: relm4::Sender<GridMsg>) -> GridMenus {
     let context: Rc<RefCell<Option<CellContext>>> = Rc::new(RefCell::new(None));
 
     // Editable-cell menu model. The Edit-cell item is marked
@@ -1530,9 +1523,7 @@ fn install_grid_context_menus(
             return;
         }
         g.set_state(gtk::EventSequenceState::Claimed);
-        empty_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-            x as i32, y as i32, 1, 1,
-        )));
+        empty_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
         empty_for_gesture.popup();
     });
     column_view.add_controller(empty_gesture);

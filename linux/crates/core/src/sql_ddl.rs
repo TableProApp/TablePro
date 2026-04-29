@@ -838,12 +838,9 @@ pub fn diff_to_ops(
     // Drop columns: original entries with no matching draft (matched
     // by original.name).
     for orig in original_columns {
-        let still_present = current_columns.iter().any(|c| {
-            c.original
-                .as_ref()
-                .map(|o| o.name == orig.name)
-                .unwrap_or(false)
-        });
+        let still_present = current_columns
+            .iter()
+            .any(|c| c.original.as_ref().map(|o| o.name == orig.name).unwrap_or(false));
         if !still_present {
             ops.push(StructureOp::DropColumn {
                 schema: schema_owned.clone(),

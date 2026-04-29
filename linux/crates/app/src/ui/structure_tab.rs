@@ -513,10 +513,7 @@ fn append_add_button(list: &gtk::ListBox, label: &str, on_activate: impl Fn() + 
 /// indexes list to show UNIQUE / PRIMARY tags. `accent_class` is the
 /// CSS class controlling the colour (`dim-label`, `accent`, etc.).
 fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
-    let badge = gtk::Label::builder()
-        .label(label)
-        .valign(gtk::Align::Center)
-        .build();
+    let badge = gtk::Label::builder().label(label).valign(gtk::Align::Center).build();
     badge.add_css_class("caption");
     badge.add_css_class(accent_class);
     badge
@@ -633,8 +630,7 @@ fn build_column_expander_row(
             field: ColumnField::Type(e.text().to_string()),
         });
     });
-    let (suggestions_button, suggestions_popover) =
-        build_type_suggestions_button(driver_id, &type_row);
+    let (suggestions_button, suggestions_popover) = build_type_suggestions_button(driver_id, &type_row);
     type_row.add_suffix(&suggestions_button);
     popover_registry.borrow_mut().push(suggestions_popover);
     row.add_row(&type_row);
@@ -829,7 +825,6 @@ fn build_fk_row(
 
     row
 }
-
 
 /// Validate the model against driver constraints before Save. Returns
 /// the first user-visible error string, or None if all checks pass.
@@ -1443,17 +1438,11 @@ impl SimpleComponent for StructureTab {
 /// can register it for popdown on rebuild — otherwise an open menu
 /// would keep its captured target alive and dispatch a click into a
 /// detached AdwEntryRow.
-fn build_type_suggestions_button(
-    driver_id: &str,
-    target: &adw::EntryRow,
-) -> (gtk::MenuButton, gtk::Popover) {
+fn build_type_suggestions_button(driver_id: &str, target: &adw::EntryRow) -> (gtk::MenuButton, gtk::Popover) {
     // Per-button action group: one action `apply` keyed by `String`
     // parameter. Each menu item activates `types.apply::<typename>`.
     let action_group = gio::SimpleActionGroup::new();
-    let apply_action = gio::SimpleAction::new(
-        "apply",
-        Some(&String::static_variant_type()),
-    );
+    let apply_action = gio::SimpleAction::new("apply", Some(&String::static_variant_type()));
     let target_for_action = target.clone();
     apply_action.connect_activate(move |_, param| {
         if let Some(s) = param.and_then(|v| v.get::<String>()) {
@@ -1469,10 +1458,7 @@ fn build_type_suggestions_button(
     let menu = gio::Menu::new();
     for ty in driver_types(driver_id) {
         let item = gio::MenuItem::new(Some(ty), None);
-        item.set_action_and_target_value(
-            Some("types.apply"),
-            Some(&ty.to_variant()),
-        );
+        item.set_action_and_target_value(Some("types.apply"), Some(&ty.to_variant()));
         menu.append_item(&item);
     }
 

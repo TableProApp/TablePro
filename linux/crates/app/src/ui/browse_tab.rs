@@ -1251,7 +1251,10 @@ impl SimpleComponent for BrowseTab {
                     return glib::Propagation::Proceed;
                 };
                 grid_sender_for_null
-                    .send(GridMsg::SetCellNull { row_position, col_index })
+                    .send(GridMsg::SetCellNull {
+                        row_position,
+                        col_index,
+                    })
                     .ok();
                 glib::Propagation::Stop
             }))
@@ -1368,9 +1371,13 @@ impl SimpleComponent for BrowseTab {
             },
             GridMsg::CopyToClipboard(text) => BrowseTabInput::GridCopyToClipboard(text),
             GridMsg::CopyRowAsInsert { row_position } => BrowseTabInput::GridCopyRowAsInsert { row_position },
-            GridMsg::SetCellNull { row_position, col_index } => {
-                BrowseTabInput::GridSetCellNull { row_position, col_index }
-            }
+            GridMsg::SetCellNull {
+                row_position,
+                col_index,
+            } => BrowseTabInput::GridSetCellNull {
+                row_position,
+                col_index,
+            },
             GridMsg::DeleteRowAt { row_position } => BrowseTabInput::GridDeleteRowAt { row_position },
             GridMsg::InsertRow => BrowseTabInput::InsertRow,
             GridMsg::DuplicateRow { row_position } => BrowseTabInput::DuplicateRow { row_position },

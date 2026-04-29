@@ -34,10 +34,7 @@ use crate::services::database_service::ConnectionHealth;
 /// Used by both browse `SaveCompletedForTab` and structure
 /// `on_structure_save_completed` so a Table tab with both kinds of
 /// pending changes only closes after BOTH saves succeed.
-pub(super) fn dec_close_after_save(
-    map: &mut std::collections::HashMap<Uuid, u32>,
-    tab_id: &Uuid,
-) -> bool {
+pub(super) fn dec_close_after_save(map: &mut std::collections::HashMap<Uuid, u32>, tab_id: &Uuid) -> bool {
     if let Some(count) = map.get_mut(tab_id) {
         *count = count.saturating_sub(1);
         if *count == 0 {
@@ -1017,7 +1014,9 @@ impl SimpleComponent for App {
         let sidebar_placeholder = adw::StatusPage::builder()
             .icon_name("view-list-symbolic")
             .title(crate::tr!("No tables"))
-            .description(crate::tr!("Nothing matches the current search, or this connection has no tables yet."))
+            .description(crate::tr!(
+                "Nothing matches the current search, or this connection has no tables yet."
+            ))
             .build();
         sidebar_placeholder.add_css_class("compact");
         sidebar_listbox.set_placeholder(Some(&sidebar_placeholder));

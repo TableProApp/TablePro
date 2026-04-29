@@ -85,9 +85,7 @@ fn build_form_dialog(title: &str, submit_label: &str) -> (adw::Dialog, gtk::Box,
 /// shared `Rc` of name/check pairs so the submit handler can extract
 /// which columns the user ticked.
 fn build_column_checklist(columns: &[DraftColumn]) -> (gtk::ListBox, ColumnChecks) {
-    let list = gtk::ListBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .build();
+    let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
     list.add_css_class("boxed-list");
     let checks: ColumnChecks = Rc::new(RefCell::new(Vec::new()));
     for col in columns {
@@ -141,9 +139,7 @@ pub(super) fn present_index_dialog(
             .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
             .collect();
         if cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!(
-                "Select at least one column."
-            )));
+            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!("Select at least one column.")));
             return;
         }
         sender_for_resp.input(StructureTabInput::AddIndex(IndexInfo {
@@ -158,11 +154,7 @@ pub(super) fn present_index_dialog(
     dialog.present(Some(parent));
 }
 
-pub(super) fn present_fk_dialog(
-    parent: &gtk::Widget,
-    columns: &[DraftColumn],
-    sender: ComponentSender<StructureTab>,
-) {
+pub(super) fn present_fk_dialog(parent: &gtk::Widget, columns: &[DraftColumn], sender: ComponentSender<StructureTab>) {
     let (dialog, body, submit_btn) = build_form_dialog(&crate::tr!("Add Foreign Key"), &crate::tr!("Add"));
 
     let name_entry = gtk::Entry::builder().placeholder_text(crate::tr!("fk_name")).build();
