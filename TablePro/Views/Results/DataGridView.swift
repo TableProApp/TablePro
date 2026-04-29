@@ -531,6 +531,16 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Sort Indicator Helpers
 
+    private static let ascendingSortIndicator: NSImage? = sortIndicatorSymbol("chevron.up")
+    private static let descendingSortIndicator: NSImage? = sortIndicatorSymbol("chevron.down")
+
+    private static func sortIndicatorSymbol(_ name: String) -> NSImage? {
+        let size = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        let palette = NSImage.SymbolConfiguration(paletteColors: [.secondaryLabelColor])
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(size.applying(palette))
+    }
+
     private static func updateSortIndicators(
         tableView: NSTableView,
         sortState: SortState,
@@ -542,7 +552,7 @@ struct DataGridView: NSViewRepresentable {
             guard let colIndex = schema.dataIndex(from: column.identifier) else { continue }
             columnByDataIndex[colIndex] = column
             if let cell = column.headerCell as? MultiSortHeaderCell {
-                cell.sortAscending = nil
+                cell.sortIndicatorImage = nil
                 cell.sortPriority = 0
             }
         }
@@ -550,7 +560,9 @@ struct DataGridView: NSViewRepresentable {
         for (priority, sortCol) in sortState.columns.enumerated() {
             guard let column = columnByDataIndex[sortCol.columnIndex],
                   let cell = column.headerCell as? MultiSortHeaderCell else { continue }
-            cell.sortAscending = sortCol.direction == .ascending
+            cell.sortIndicatorImage = sortCol.direction == .ascending
+                ? ascendingSortIndicator
+                : descendingSortIndicator
             cell.sortPriority = priority + 1
         }
 
