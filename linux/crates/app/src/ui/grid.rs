@@ -1396,9 +1396,15 @@ fn present_cell_popover(anchor: &gtk::Widget, menu: &gio::Menu, pointing_to: Opt
 }
 
 /// Attach a "right-click on empty area below the last row → Insert
-/// row" context menu to the `ColumnView`. The per-cell gestures claim
-/// their event sequence, so the bubble-phase gesture here only fires
-/// when the click missed every cell.
+/// row" context menu to the `ColumnView`. Per-cell controllers and the
+/// ColumnView controller live in independent gesture groups, so the
+/// cell's `set_state(Claimed)` does NOT prevent this controller from
+/// firing on the same press. The gate is in the handler instead:
+/// `pick(x, y)` returns the deepest widget under the cursor; anything
+/// other than the ColumnView itself means the click landed on a row /
+/// cell descendant and should be left to its own context-menu
+/// handler. Without this gate, every right-click on a cell would
+/// produce two competing popovers and the cell menu would lose.
 fn attach_empty_space_menu(column_view: &gtk::ColumnView, sender: relm4::Sender<GridMsg>) {
     let menu_model = gio::Menu::new();
     menu_model.append(Some(&crate::tr!("Insert row")), Some("grid.insert-row"));
@@ -1415,9 +1421,15 @@ fn attach_empty_space_menu(column_view: &gtk::ColumnView, sender: relm4::Sender<
     let gesture = gtk::GestureClick::builder().button(3).build();
     let column_view_for_gesture = column_view.clone();
     gesture.connect_pressed(move |g, _, x, y| {
+        let cv_widget: gtk::Widget = column_view_for_gesture.clone().upcast();
+        if let Some(picked) = column_view_for_gesture.pick(x, y, gtk::PickFlags::DEFAULT)
+            && picked != cv_widget
+        {
+            return;
+        }
         g.set_state(gtk::EventSequenceState::Claimed);
         present_cell_popover(
-            column_view_for_gesture.upcast_ref(),
+            &cv_widget,
             &menu_model,
             Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)),
         );
