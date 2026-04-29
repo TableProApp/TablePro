@@ -10,17 +10,6 @@ import AppKit
 import CodeEditSourceEditor
 import SwiftUI
 
-/// Cache for sorted query result rows to avoid re-sorting on every SwiftUI body evaluation.
-/// Stores a permutation of `RowID` so the grid keeps the same display order even after
-/// inserts and deletes mutate the underlying TableRows storage.
-private struct SortedRowsCache {
-    let sortedIDs: [RowID]
-    let columnIndex: Int
-    let direction: SortDirection
-    let schemaVersion: Int
-}
-
-/// Main editor content with tab bar and content switching
 struct MainEditorContentView: View {
     // MARK: - Dependencies
 
@@ -57,10 +46,6 @@ struct MainEditorContentView: View {
     let onLimitChange: (Int) -> Void
     let onOffsetChange: (Int) -> Void
     let onPaginationGo: () -> Void
-
-    // MARK: - Sort Cache
-
-    @State private var sortCache: [UUID: SortedRowsCache] = [:]
 
     @State private var cachedChangeManager: AnyChangeManager?
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
@@ -118,14 +103,7 @@ struct MainEditorContentView: View {
             favoriteDialogQuery = FavoriteDialogQuery(query: query)
         }
         .onChange(of: tabManager.tabStructureVersion) { _, _ in
-            let newIds = tabManager.tabIds
-            guard !sortCache.isEmpty || !erDiagramViewModels.isEmpty
-                || !serverDashboardViewModels.isEmpty else {
-                coordinator.cleanupSortCache(openTabIds: Set(newIds))
-                return
-            }
-            let openTabIds = Set(newIds)
-            sortCache = sortCache.filter { openTabIds.contains($0.key) }
+            let openTabIds = Set(tabManager.tabIds)
             coordinator.cleanupSortCache(openTabIds: openTabIds)
             erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
@@ -140,7 +118,6 @@ struct MainEditorContentView: View {
             refreshDataTabDelegateMutableRefs()
             coordinator.dataTabDelegate = dataTabDelegate
             coordinator.onTeardown = { [self] in
-                sortCache.removeAll()
                 cachedChangeManager = nil
                 coordinator.dataTabDelegate = nil
             }
@@ -636,14 +613,6 @@ struct MainEditorContentView: View {
             return nil
         }
 
-        if let cached = sortCache[tab.id],
-            cached.columnIndex == (tab.sortState.columnIndex ?? -1),
-            cached.direction == tab.sortState.direction,
-            cached.schemaVersion == tab.schemaVersion
-        {
-            return cached.sortedIDs
-        }
-
         let sortColumns = tab.sortState.columns
         let storageRows = resolvedRows.rows
         let sortedIndices = Array(storageRows.indices).sorted { idx1, idx2 in
@@ -666,7 +635,7 @@ struct MainEditorContentView: View {
         }
         let sortedIDs = sortedIndices.map { storageRows[$0].id }
 
-        sortCache[tab.id] = SortedRowsCache(
+        coordinator.querySortCache[tab.id] = QuerySortCacheEntry(
             sortedIDs: sortedIDs,
             columnIndex: tab.sortState.columnIndex ?? -1,
             direction: tab.sortState.direction,
