@@ -439,6 +439,8 @@ struct DataGridView: NSViewRepresentable {
             tableView.sortDescriptors = desired
         }
 
+        tableView.highlightedTableColumn = nil
+
         if let header = tableView.headerView as? SortableHeaderView {
             header.updateSortIndicators(state: sortState, schema: coordinator.identitySchema)
         }
