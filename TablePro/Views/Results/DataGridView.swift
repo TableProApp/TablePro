@@ -535,7 +535,7 @@ struct DataGridView: NSViewRepresentable {
     private static let descendingSortIndicator: NSImage? = sortIndicatorSymbol("chevron.down")
 
     private static func sortIndicatorSymbol(_ name: String) -> NSImage? {
-        let size = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        let size = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
         let palette = NSImage.SymbolConfiguration(paletteColors: [.secondaryLabelColor])
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(size.applying(palette))
