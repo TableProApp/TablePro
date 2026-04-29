@@ -1248,22 +1248,23 @@ fn attach_context_menu(
         menu.append_section(None, &mutate);
     }
 
-    // PopoverMenu requires manual unparenting on dispose per GTK4 docs;
-    // cell widgets are recycled and finalized by the column-view, and an
-    // eagerly-parented popover would leak with the warning
-    // "Finalizing widget, but it still has children left: GtkPopoverMenu".
-    // Build the menu *model* once, but construct + parent + unparent the
-    // popover lazily inside the right-click and Menu-key handlers.
+    // PopoverMenu's action-muxer scope is snapshotted at `set_parent`
+    // time. Lazy parenting inside the gesture handler creates the
+    // popover in a standalone scope where the cell's `cell.*` action
+    // group isn't visible — the menu still renders, but every item
+    // click is silently dropped (see `sidebar_row.rs` for the same
+    // bug we fixed there). So we parent eagerly here and reuse the
+    // same popover instance for every press, popping it down + setting
+    // a fresh `pointing_to` rect each time. `connect_destroy` on the
+    // cell widget unparents the popover before the cell is finalised
+    // so we don't trip "Finalizing widget, but it still has children".
     let menu_model: gio::Menu = menu;
 
     let group = gio::SimpleActionGroup::new();
     let widget_for_edit = widget.clone();
     let edit = gio::ActionEntry::builder("edit")
         .activate(move |_, _, _| {
-            // Mirrors the F2 / double-click trigger. No-op for non-
-            // CellEditor cells (the menu item is only shown for
-            // text-editable cells anyway).
-            if let Ok(label) = widget_for_edit.clone().downcast::<super::cell_editor::CellEditor>() {
+if let Ok(label) = widget_for_edit.clone().downcast::<super::cell_editor::CellEditor>() {
                 enter_edit_mode(&label);
             }
         })
@@ -1351,48 +1352,53 @@ fn attach_context_menu(
     ]);
     widget.insert_action_group("cell", Some(&group));
 
+    // Eagerly parent the popover NOW (after the action group is
+    // installed on `widget`) so PopoverMenu's internal action muxer
+    // observes the `cell.*` group. Reuse this single instance for
+    // every right-click instead of constructing a fresh popover each
+    // time — the latter pattern fails because the muxer snapshot is
+    // empty when the popover is set_parent'd lazily.
+    let popover = gtk::PopoverMenu::from_model(Some(&menu_model));
+    popover.set_has_arrow(true);
+    popover.set_parent(widget);
+
+    // Cell widgets are owned by ColumnView's factory; when the view
+    // tears down, each cell is finalised. Without this manual
+    // unparent the runtime prints "Finalizing widget, but it still
+    // has children left: GtkPopoverMenu". Mirrors the cleanup pattern
+    // in `sidebar_row.rs`.
+    let popover_for_destroy = popover.clone();
+    widget.connect_destroy(move |_| {
+        popover_for_destroy.unparent();
+    });
+
     let gesture = gtk::GestureClick::new();
     gesture.set_button(3);
-    let widget_for_gesture = widget.clone();
-    let menu_for_gesture = menu_model.clone();
+    let popover_for_gesture = popover.clone();
     gesture.connect_pressed(move |g, _, x, y| {
         g.set_state(gtk::EventSequenceState::Claimed);
-        present_cell_popover(
-            &widget_for_gesture,
-            &menu_for_gesture,
-            Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)),
-        );
+        popover_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
+            x as i32, y as i32, 1, 1,
+        )));
+        popover_for_gesture.popup();
     });
     widget.add_controller(gesture);
 
-    let widget_for_menu_key = widget.clone();
-    let menu_for_menu_key = menu_model;
+    let popover_for_menu_key = popover.clone();
     let menu_shortcut = gtk::Shortcut::builder()
         .trigger(&gtk::ShortcutTrigger::parse_string("Menu").expect("valid trigger"))
         .action(&gtk::CallbackAction::new(move |_, _| {
-            present_cell_popover(&widget_for_menu_key, &menu_for_menu_key, None);
+            // Menu-key path: no pointing_to rect — popover anchors to
+            // the centre of its parent widget, which is fine for a
+            // keyboard-driven invocation.
+            popover_for_menu_key.set_pointing_to(None);
+            popover_for_menu_key.popup();
             glib::Propagation::Stop
         }))
         .build();
     let shortcut_controller = gtk::ShortcutController::new();
     shortcut_controller.add_shortcut(menu_shortcut);
     widget.add_controller(shortcut_controller);
-}
-
-/// Build a fresh `GtkPopoverMenu`, parent it to `anchor`, popup, and
-/// arrange to unparent + drop on close. Lazy creation sidesteps the
-/// "finalizing widget still has children" warning that
-/// `set_parent`-then-leak triggers when the column-view recycles cell
-/// widgets without the popover being unparented first.
-fn present_cell_popover(anchor: &gtk::Widget, menu: &gio::Menu, pointing_to: Option<&gtk::gdk::Rectangle>) {
-    let popover = gtk::PopoverMenu::from_model(Some(menu));
-    popover.set_has_arrow(true);
-    popover.set_parent(anchor);
-    if let Some(rect) = pointing_to {
-        popover.set_pointing_to(Some(rect));
-    }
-    popover.connect_closed(|p| p.unparent());
-    popover.popup();
 }
 
 /// Attach a "right-click on empty area below the last row → Insert
@@ -1418,9 +1424,26 @@ fn attach_empty_space_menu(column_view: &gtk::ColumnView, sender: relm4::Sender<
     group.add_action_entries([insert_row]);
     column_view.insert_action_group("grid", Some(&group));
 
+    // Eagerly parent so PopoverMenu's action-muxer observes the
+    // `grid.insert-row` action — same root-cause as the cell-level
+    // popover above. Reuse the popover across right-clicks; a fresh
+    // pointing_to rect is set each time.
+    let popover = gtk::PopoverMenu::from_model(Some(&menu_model));
+    popover.set_has_arrow(true);
+    popover.set_parent(column_view);
+    let popover_for_destroy = popover.clone();
+    column_view.connect_destroy(move |_| {
+        popover_for_destroy.unparent();
+    });
+
     let gesture = gtk::GestureClick::builder().button(3).build();
     let column_view_for_gesture = column_view.clone();
+    let popover_for_gesture = popover;
     gesture.connect_pressed(move |g, _, x, y| {
+        // pick(x, y) returns the deepest widget at the click point.
+        // Anything other than the ColumnView itself means the click
+        // landed on a row / cell descendant — let the cell's own
+        // context-menu gesture handle that case.
         let cv_widget: gtk::Widget = column_view_for_gesture.clone().upcast();
         if let Some(picked) = column_view_for_gesture.pick(x, y, gtk::PickFlags::DEFAULT)
             && picked != cv_widget
@@ -1428,11 +1451,10 @@ fn attach_empty_space_menu(column_view: &gtk::ColumnView, sender: relm4::Sender<
             return;
         }
         g.set_state(gtk::EventSequenceState::Claimed);
-        present_cell_popover(
-            &cv_widget,
-            &menu_model,
-            Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)),
-        );
+        popover_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
+            x as i32, y as i32, 1, 1,
+        )));
+        popover_for_gesture.popup();
     });
     column_view.add_controller(gesture);
 }
