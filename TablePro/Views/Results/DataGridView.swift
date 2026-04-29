@@ -85,7 +85,10 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in initialRows.columns.enumerated() {
             guard let identifier = identitySchema.identifier(for: index) else { continue }
             let column = NSTableColumn(identifier: identifier)
-            column.title = columnName
+            let headerCell = MultiSortHeaderCell(textCell: columnName)
+            headerCell.font = column.headerCell.font
+            headerCell.alignment = column.headerCell.alignment
+            column.headerCell = headerCell
             if index < initialRows.columnTypes.count {
                 let typeName = initialRows.columnTypes[index].rawType ?? initialRows.columnTypes[index].displayName
                 column.headerToolTip = "\(columnName) (\(typeName))"
@@ -334,7 +337,10 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in tableRows.columns.enumerated() {
             guard let identifier = schema.identifier(for: index) else { continue }
             let column = NSTableColumn(identifier: identifier)
-            column.title = columnName
+            let headerCell = MultiSortHeaderCell(textCell: columnName)
+            headerCell.font = column.headerCell.font
+            headerCell.alignment = column.headerCell.alignment
+            column.headerCell = headerCell
             if index < tableRows.columnTypes.count {
                 let typeName = tableRows.columnTypes[index].rawType
                     ?? tableRows.columnTypes[index].displayName
@@ -544,12 +550,19 @@ struct DataGridView: NSViewRepresentable {
             guard let colIndex = schema.dataIndex(from: column.identifier) else { continue }
             columnByDataIndex[colIndex] = column
             tableView.setIndicatorImage(nil, in: column)
+            if let cell = column.headerCell as? MultiSortHeaderCell {
+                cell.sortIndicatorImage = nil
+                cell.sortPriority = 0
+            }
         }
 
-        for sortCol in sortState.columns {
+        for (priority, sortCol) in sortState.columns.enumerated() {
             guard let column = columnByDataIndex[sortCol.columnIndex] else { continue }
             let image = sortCol.direction == .ascending ? ascendingSortIndicator : descendingSortIndicator
-            tableView.setIndicatorImage(image, in: column)
+            if let cell = column.headerCell as? MultiSortHeaderCell {
+                cell.sortIndicatorImage = image
+                cell.sortPriority = priority + 1
+            }
         }
 
         if let primary = sortState.columns.first,
@@ -558,6 +571,8 @@ struct DataGridView: NSViewRepresentable {
         } else {
             tableView.highlightedTableColumn = nil
         }
+
+        tableView.headerView?.needsDisplay = true
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
