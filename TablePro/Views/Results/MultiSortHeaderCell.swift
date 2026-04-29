@@ -35,4 +35,11 @@ final class MultiSortHeaderCell: NSTableHeaderCell {
             hints: nil
         )
     }
+
+    override func drawSortIndicator(
+        withFrame cellFrame: NSRect,
+        in controlView: NSView,
+        ascending: Bool,
+        priority: Int
+    ) {}
 }
