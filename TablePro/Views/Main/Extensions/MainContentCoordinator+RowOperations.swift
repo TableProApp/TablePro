@@ -105,7 +105,8 @@ extension MainContentCoordinator {
     }
 
     func undoInsertRow(at rowIndex: Int) {
-        guard let tabId = tabManager.selectedTab?.id else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
+        let tabId = tab.id
 
         var undoResult = RowOperationsManager.UndoInsertRowResult(
             adjustedSelection: selectionState.indices,
@@ -149,7 +150,7 @@ extension MainContentCoordinator {
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
-        guard let tab = tabManager.selectedTab, !indices.isEmpty else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
         let tableRows = tableRowsStore.tableRows(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
@@ -158,7 +159,7 @@ extension MainContentCoordinator {
     }
 
     func copySelectedRowsWithHeaders(indices: Set<Int>) {
-        guard let tab = tabManager.selectedTab, !indices.isEmpty else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
         let tableRows = tableRowsStore.tableRows(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
@@ -168,7 +169,7 @@ extension MainContentCoordinator {
     }
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
-        guard let tab = tabManager.selectedTab, !indices.isEmpty else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
         let tableRows = tableRowsStore.tableRows(for: tab.id)
         let rows = indices.sorted().compactMap { idx -> [String?]? in
             guard idx >= 0, idx < tableRows.count else { return nil }
