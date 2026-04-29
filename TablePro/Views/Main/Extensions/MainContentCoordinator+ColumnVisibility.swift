@@ -22,7 +22,6 @@ extension MainContentCoordinator {
         columnVisibilityManager.restoreLastHiddenColumns(for: tableName, connectionId: connectionId)
     }
 
-    /// Save current hidden columns for the active table tab (visibility lives outside the layout persister).
     func saveColumnVisibilityForActiveTable() {
         guard let tab = tabManager.selectedTab,
               tab.tabType == .table,
