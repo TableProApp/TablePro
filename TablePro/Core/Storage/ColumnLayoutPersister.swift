@@ -8,8 +8,6 @@ import os
 
 @MainActor
 final class FileColumnLayoutPersister: ColumnLayoutPersisting {
-    static let shared = FileColumnLayoutPersister()
-
     private static let logger = Logger(subsystem: "com.TablePro", category: "ColumnLayoutPersister")
     private static let legacyKeyPrefix = "com.TablePro.columns.layout."
     private static let migrationCompleteKey = "com.TablePro.columnLayoutMigrationComplete"

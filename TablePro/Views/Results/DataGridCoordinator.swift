@@ -25,7 +25,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var primaryKeyColumns: [String] = []
     var primaryKeyColumn: String? { primaryKeyColumns.first }
     var tabType: TabType?
-    var layoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister.shared
+    var layoutPersister: any ColumnLayoutPersisting
     var onColumnLayoutDidChange: ((ColumnLayoutState) -> Void)?
     private(set) var identitySchema: ColumnIdentitySchema = .empty
     var currentSortState = SortState()
@@ -120,12 +120,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         changeManager: AnyChangeManager,
         isEditable: Bool,
         selectedRowIndices: Binding<Set<Int>>,
-        delegate: (any DataGridViewDelegate)?
+        delegate: (any DataGridViewDelegate)?,
+        layoutPersister: any ColumnLayoutPersisting
     ) {
         self.changeManager = changeManager
         self.isEditable = isEditable
         self._selectedRowIndices = selectedRowIndices
         self.delegate = delegate
+        self.layoutPersister = layoutPersister
         self.lastDataGridSettings = AppSettingsManager.shared.dataGrid
         super.init()
         updateCache()

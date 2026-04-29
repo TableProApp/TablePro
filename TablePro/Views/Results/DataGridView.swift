@@ -31,6 +31,7 @@ struct DataGridView: NSViewRepresentable {
     var sortedIDs: [RowID]?
     var displayFormats: [ValueDisplayFormat?] = []
     var delegate: (any DataGridViewDelegate)?
+    var layoutPersister: (any ColumnLayoutPersisting)?
 
     @Binding var selectedRowIndices: Set<Int>
     @Binding var sortState: SortState
@@ -228,12 +229,6 @@ struct DataGridView: NSViewRepresentable {
         coordinator.sortedIDs = sortedIDs
         coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
-        let columnLayoutBinding = $columnLayout
-        coordinator.onColumnLayoutDidChange = { layout in
-            if columnLayoutBinding.wrappedValue != layout {
-                columnLayoutBinding.wrappedValue = layout
-            }
-        }
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.dropdownColumns = configuration.dropdownColumns
         coordinator.typePickerColumns = configuration.typePickerColumns
@@ -430,11 +425,14 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.currentSortState = sortState
 
+        let primaryIdentifier: NSUserInterfaceItemIdentifier?
         let primary: NSSortDescriptor?
         if let firstSort = sortState.columns.first,
            let identifier = coordinator.identitySchema.identifier(for: firstSort.columnIndex) {
+            primaryIdentifier = identifier
             primary = NSSortDescriptor(key: identifier.rawValue, ascending: firstSort.direction == .ascending)
         } else {
+            primaryIdentifier = nil
             primary = nil
         }
 
@@ -445,7 +443,12 @@ struct DataGridView: NSViewRepresentable {
             tableView.sortDescriptors = desired
         }
 
-        tableView.highlightedTableColumn = nil
+        if let primaryIdentifier {
+            let columnIndex = tableView.column(withIdentifier: primaryIdentifier)
+            tableView.highlightedTableColumn = columnIndex >= 0 ? tableView.tableColumns[columnIndex] : nil
+        } else {
+            tableView.highlightedTableColumn = nil
+        }
 
         if let header = tableView.headerView as? SortableHeaderView {
             header.updateSortIndicators(state: sortState, schema: coordinator.identitySchema)
@@ -527,9 +530,6 @@ struct DataGridView: NSViewRepresentable {
         }
     }
 
-    // MARK: - Sort Indicator Helpers
-
-
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: false)
         coordinator.persistColumnLayoutToStorage()
@@ -545,12 +545,20 @@ struct DataGridView: NSViewRepresentable {
     }
 
     func makeCoordinator() -> TableViewCoordinator {
-        TableViewCoordinator(
+        let coordinator = TableViewCoordinator(
             changeManager: changeManager,
             isEditable: isEditable,
             selectedRowIndices: $selectedRowIndices,
-            delegate: delegate
+            delegate: delegate,
+            layoutPersister: layoutPersister ?? FileColumnLayoutPersister()
         )
+        let columnLayoutBinding = $columnLayout
+        coordinator.onColumnLayoutDidChange = { layout in
+            if columnLayoutBinding.wrappedValue != layout {
+                columnLayoutBinding.wrappedValue = layout
+            }
+        }
+        return coordinator
     }
 }
 

@@ -39,12 +39,12 @@ struct TableViewCoordinatorLayoutTests {
             changeManager: AnyChangeManager(DataChangeManager()),
             isEditable: true,
             selectedRowIndices: .constant([]),
-            delegate: nil
+            delegate: nil,
+            layoutPersister: persister
         )
         coordinator.tabType = tabType
         coordinator.connectionId = connectionId
         coordinator.tableName = tableName
-        coordinator.layoutPersister = persister
         return coordinator
     }
 

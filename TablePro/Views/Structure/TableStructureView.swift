@@ -49,6 +49,7 @@ struct TableStructureView: View {
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
     @State var structureColumnLayout = ColumnLayoutState()
+    @State var columnLayoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister()
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
 
@@ -245,7 +246,7 @@ struct TableStructureView: View {
                         await loadColumns()
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
-                        FileColumnLayoutPersister.shared.clear(for: tableName, connectionId: connection.id)
+                        columnLayoutPersister.clear(for: tableName, connectionId: connection.id)
                         NotificationCenter.default.post(name: .refreshData, object: nil)
                     } catch {
                         AlertHelper.showErrorSheet(
@@ -280,6 +281,7 @@ struct TableStructureView: View {
                 databaseType: connection.type
             ),
             delegate: gridDelegate,
+            layoutPersister: columnLayoutPersister,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             columnLayout: $structureColumnLayout

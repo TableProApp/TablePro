@@ -15,6 +15,13 @@ import Testing
 @testable import TablePro
 
 @MainActor
+private final class NoopColumnLayoutPersister: ColumnLayoutPersisting {
+    func load(for tableName: String, connectionId: UUID) -> ColumnLayoutState? { nil }
+    func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID) {}
+    func clear(for tableName: String, connectionId: UUID) {}
+}
+
+@MainActor
 private final class StubClipboard: ClipboardProvider {
     var text: String?
     var hasGridRowsValue = false
@@ -34,7 +41,8 @@ struct CellPasteRoutingTests {
             changeManager: AnyChangeManager(DataChangeManager()),
             isEditable: true,
             selectedRowIndices: .constant([]),
-            delegate: nil
+            delegate: nil,
+            layoutPersister: NoopColumnLayoutPersister()
         )
         let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
         let rows = (0..<rowCount).map { i in (0..<columns.count).map { c in "r\(i)c\(c)" } }
@@ -93,7 +101,8 @@ struct CellPasteRoutingTests {
             changeManager: AnyChangeManager(DataChangeManager()),
             isEditable: false,
             selectedRowIndices: .constant([]),
-            delegate: nil
+            delegate: nil,
+            layoutPersister: NoopColumnLayoutPersister()
         )
 
         let result = coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: 0)
