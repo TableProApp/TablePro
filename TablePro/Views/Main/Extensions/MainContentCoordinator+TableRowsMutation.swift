@@ -45,8 +45,7 @@ extension MainContentCoordinator {
               idx < tabManager.tabs.count,
               tabManager.tabs[idx].id == tabId else { return }
         dataTabDelegate?.tableViewCoordinator?.applyFullReplace()
-        if pendingScrollToTopAfterReplace {
-            pendingScrollToTopAfterReplace = false
+        if pendingScrollToTopAfterReplace.remove(tabId) != nil {
             dataTabDelegate?.tableViewCoordinator?.scrollToTop()
         }
     }

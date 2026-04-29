@@ -111,6 +111,45 @@ struct TableRowsMutationTests {
         #expect(f.fake.fullReplaceCount == 2)
     }
 
+    @Test("setActiveTableRows dispatches scrollToTop when pendingScrollToTopAfterReplace contains tabId")
+    func scrollToTopFiresOnPendingFlag() {
+        let f = makeFixture()
+        f.tabManager.addTableTab(tableName: "users")
+        let activeTabId = f.tabManager.tabs[0].id
+
+        f.coordinator.pendingScrollToTopAfterReplace.insert(activeTabId)
+        f.coordinator.setActiveTableRows(makeTableRows(rowCount: 3), for: activeTabId)
+
+        #expect(f.fake.scrollToTopCount == 1)
+        #expect(f.coordinator.pendingScrollToTopAfterReplace.contains(activeTabId) == false)
+    }
+
+    @Test("scrollToTop pending flag for tab A does not fire when tab B is replaced")
+    func scrollToTopFlagIsScopedPerTab() {
+        let f = makeFixture()
+        f.tabManager.addTableTab(tableName: "users")
+        let firstTabId = f.tabManager.tabs[0].id
+        f.tabManager.addTableTab(tableName: "orders")
+        let secondTabId = f.tabManager.tabs[1].id
+
+        f.coordinator.pendingScrollToTopAfterReplace.insert(firstTabId)
+        f.coordinator.setActiveTableRows(makeTableRows(rowCount: 3), for: secondTabId)
+
+        #expect(f.fake.scrollToTopCount == 0)
+        #expect(f.coordinator.pendingScrollToTopAfterReplace.contains(firstTabId) == true)
+    }
+
+    @Test("setActiveTableRows without pending flag does not scroll to top")
+    func scrollToTopSkippedWhenFlagAbsent() {
+        let f = makeFixture()
+        f.tabManager.addTableTab(tableName: "users")
+        let activeTabId = f.tabManager.tabs[0].id
+
+        f.coordinator.setActiveTableRows(makeTableRows(rowCount: 3), for: activeTabId)
+
+        #expect(f.fake.scrollToTopCount == 0)
+    }
+
     @Test("setActiveTableRows is a no-op when delegate is unwired")
     func unwiredDelegateIsNoOp() {
         let tabManager = QueryTabManager()
