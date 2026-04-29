@@ -24,7 +24,7 @@ extension MainContentCoordinator {
             switchActiveResultSet(to: newActiveId, in: tabId)
         }
         if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
-            tableRowsStore.setTableRows(TableRows(), for: tabId)
+            setActiveTableRows(TableRows(), for: tabId)
             tabManager.tabs[tabIdx].execution.errorMessage = nil
             tabManager.tabs[tabIdx].execution.rowsAffected = 0
             tabManager.tabs[tabIdx].execution.executionTime = nil

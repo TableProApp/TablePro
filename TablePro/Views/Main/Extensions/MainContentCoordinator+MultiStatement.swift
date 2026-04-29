@@ -233,14 +233,14 @@ extension MainContentCoordinator {
                 tableName = lastSelectSQL.flatMap { extractTableName(from: $0) }
             }
 
-            tableRowsStore.setTableRows(
+            setActiveTableRows(
                 TableRows.from(queryRows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
                 for: updatedTab.id
             )
             updatedTab.tableContext.tableName = tableName
             updatedTab.tableContext.isEditable = tableName != nil && updatedTab.tableContext.isEditable
         } else {
-            tableRowsStore.setTableRows(TableRows(), for: updatedTab.id)
+            setActiveTableRows(TableRows(), for: updatedTab.id)
             if updatedTab.tabType != .table {
                 updatedTab.tableContext.tableName = nil
             }

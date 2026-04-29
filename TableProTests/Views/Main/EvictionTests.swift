@@ -41,7 +41,7 @@ struct EvictionTests {
         let columns = ["id", "name", "email"]
         let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
         let tableRows = TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
-        coordinator.tableRowsStore.setTableRows(tableRows, for: tabId)
+        coordinator.setActiveTableRows(tableRows, for: tabId)
         tabManager.tabs[index].execution.lastExecutedAt = Date()
     }
 

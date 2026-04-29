@@ -25,6 +25,7 @@ extension MainContentCoordinator {
 
     func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID) {
         tableRowsStore.setTableRows(tableRows, for: tabId)
+        notifyFullReplaceIfActive(tabId: tabId)
     }
 
     func switchActiveResultSet(to resultSetId: UUID?, in tabId: UUID) {
@@ -35,6 +36,14 @@ extension MainContentCoordinator {
         tabManager.tabs[tabIdx].display.activeResultSetId = resultSetId
         if let incoming = tabManager.tabs[tabIdx].display.activeResultSet {
             tableRowsStore.setTableRows(incoming.tableRows, for: tabId)
+            notifyFullReplaceIfActive(tabId: tabId)
         }
+    }
+
+    private func notifyFullReplaceIfActive(tabId: UUID) {
+        guard let idx = tabManager.selectedTabIndex,
+              idx < tabManager.tabs.count,
+              tabManager.tabs[idx].id == tabId else { return }
+        dataTabDelegate?.tableViewCoordinator?.applyFullReplace()
     }
 }

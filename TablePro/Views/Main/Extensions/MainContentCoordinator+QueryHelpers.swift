@@ -299,7 +299,7 @@ extension MainContentCoordinator {
             columnEnumValues: columnEnumValues,
             columnNullable: columnNullable
         )
-        tableRowsStore.setTableRows(newTableRows, for: updatedTab.id)
+        setActiveTableRows(newTableRows, for: updatedTab.id)
 
         let rs = ResultSet(label: tableName ?? "Result", tableRows: newTableRows)
         rs.executionTime = updatedTab.execution.executionTime

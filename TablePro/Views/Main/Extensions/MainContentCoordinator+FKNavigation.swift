@@ -84,7 +84,7 @@ extension MainContentCoordinator {
 
         if needsQuery, let tabIndex = tabManager.selectedTabIndex {
             let tabId = tabManager.tabs[tabIndex].id
-            tableRowsStore.setTableRows(TableRows(), for: tabId)
+            setActiveTableRows(TableRows(), for: tabId)
             tabManager.tabs[tabIndex].pagination.reset()
         }
 
