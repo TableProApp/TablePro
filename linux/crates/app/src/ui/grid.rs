@@ -115,14 +115,14 @@ pub fn build_column_view(
         .show_column_separators(true)
         .build();
 
-    // Right-click in the empty area below the last row → "Insert row"
-    // popover. Per-cell gestures claim their event sequence
-    // (set_state(Claimed)), so this only fires when the click missed
-    // every cell — the natural bubble-phase behaviour. Editable grids
-    // only; a read-only result grid has no insert path.
-    if let Some(s) = edit_sender.as_ref() {
-        attach_empty_space_menu(&column_view, s.clone());
-    }
+    // Install the shared cell + empty-space context menus on the
+    // ColumnView. One PopoverMenu per menu shape (editable / readonly
+    // / empty-space) is parented here; cell gestures fill the shared
+    // CellContext slot then popup the appropriate popover. See
+    // `install_grid_context_menus` for the architecture.
+    let grid_menus: Option<GridMenus> = edit_sender
+        .as_ref()
+        .map(|s| install_grid_context_menus(&column_view, s.clone()));
 
     // For wide tables (~9+ columns) the default `expand: true` per
     // column shares the viewport fractionally and produces 20-30px
@@ -156,6 +156,8 @@ pub fn build_column_view(
             connection_id,
             tab_ctx.clone(),
             default_min_width,
+            column_view.clone(),
+            grid_menus.clone(),
         );
         column_view.append_column(&col);
         columns.push(col);
@@ -232,6 +234,8 @@ fn build_column(
     connection_id: Option<uuid::Uuid>,
     tab_ctx: TabGridContext,
     default_min_width: Option<i32>,
+    column_view: gtk::ColumnView,
+    grid_menus: Option<GridMenus>,
 ) -> gtk::ColumnViewColumn {
     let factory = gtk::SignalListItemFactory::new();
     // Editable cells require a sender to dispatch CellEdited / SetCellNull /
@@ -243,6 +247,8 @@ fn build_column(
 
     let column_data_type = info.data_type.clone();
     let column_name = info.name.clone();
+    let column_view_for_setup = column_view.clone();
+    let grid_menus_for_setup = grid_menus.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -257,13 +263,35 @@ fn build_column(
             //   commit (parse_input_for_column on the receiving side
             //   coerces to the right native Value variant).
             if is_bool_type(&column_data_type) {
-                setup_bool_cell(item, idx, column_name.clone(), edit_sender);
+                setup_bool_cell(
+                    item,
+                    idx,
+                    column_name.clone(),
+                    edit_sender,
+                    &column_view_for_setup,
+                    grid_menus_for_setup.as_ref(),
+                );
             } else {
                 let editor_kind = classify_editor_kind(&column_data_type);
-                setup_editable_cell(item, idx, column_name.clone(), edit_sender, editor_kind);
+                setup_editable_cell(
+                    item,
+                    idx,
+                    column_name.clone(),
+                    edit_sender,
+                    editor_kind,
+                    &column_view_for_setup,
+                    grid_menus_for_setup.as_ref(),
+                );
             }
         } else {
-            setup_readonly_cell(item, idx, column_name.clone(), readonly_sender.clone());
+            setup_readonly_cell(
+                item,
+                idx,
+                column_name.clone(),
+                readonly_sender.clone(),
+                &column_view_for_setup,
+                grid_menus_for_setup.as_ref(),
+            );
         }
     });
 
@@ -546,12 +574,15 @@ fn build_column(
 /// (focus-then-click) because clicks in a data grid are routinely
 /// row-selection clicks — a single-click trigger would silently drop
 /// the user into edit mode on the cell they happened to land on.
+#[allow(clippy::too_many_arguments)]
 fn setup_editable_cell(
     item: &gtk::ListItem,
     idx: usize,
     column_name: String,
     sender: relm4::Sender<GridMsg>,
     editor_kind: CellEditorKind,
+    column_view: &gtk::ColumnView,
+    menus: Option<&GridMenus>,
 ) {
     let label = super::cell_editor::CellEditor::new();
     label.set_hexpand(true);
@@ -564,7 +595,17 @@ fn setup_editable_cell(
     COLUMN_SLOT.set(&label, idx);
     item.set_child(Some(&label));
 
-    attach_context_menu(label.upcast_ref(), idx, column_name, sender.clone(), true);
+    if let Some(menus) = menus {
+        attach_cell_gesture(
+            label.upcast_ref(),
+            column_view,
+            idx,
+            column_name,
+            true,
+            true, // CellEditor → text-editable, "Edit cell" applies
+            menus,
+        );
+    }
     install_edit_commit_handler(&label, idx, sender.clone());
     install_edit_triggers(&label, idx, sender, editor_kind);
 }
@@ -576,7 +617,14 @@ fn setup_editable_cell(
 /// side. CheckButton's native focus ring already distinguishes it from
 /// the row selection, so this path doesn't need the cell focus-ring CSS
 /// added in C1.
-fn setup_bool_cell(item: &gtk::ListItem, idx: usize, column_name: String, sender: relm4::Sender<GridMsg>) {
+fn setup_bool_cell(
+    item: &gtk::ListItem,
+    idx: usize,
+    column_name: String,
+    sender: relm4::Sender<GridMsg>,
+    column_view: &gtk::ColumnView,
+    menus: Option<&GridMenus>,
+) {
     let checkbox = gtk::CheckButton::builder()
         .halign(gtk::Align::Start)
         .valign(gtk::Align::Center)
@@ -586,7 +634,17 @@ fn setup_bool_cell(item: &gtk::ListItem, idx: usize, column_name: String, sender
     COLUMN_SLOT.set(&checkbox, idx);
     item.set_child(Some(&checkbox));
 
-    attach_context_menu(checkbox.upcast_ref(), idx, column_name, sender.clone(), true);
+    if let Some(menus) = menus {
+        attach_cell_gesture(
+            checkbox.upcast_ref(),
+            column_view,
+            idx,
+            column_name,
+            true,
+            false, // CheckButton: editable but not text-editable
+            menus,
+        );
+    }
     checkbox.connect_toggled(move |cb| {
         // Suppress the echo while the bind callback is driving the
         // checkbox programmatically.
@@ -818,7 +876,9 @@ fn setup_readonly_cell(
     item: &gtk::ListItem,
     idx: usize,
     column_name: String,
-    sender: Option<relm4::Sender<GridMsg>>,
+    _sender: Option<relm4::Sender<GridMsg>>,
+    column_view: &gtk::ColumnView,
+    menus: Option<&GridMenus>,
 ) {
     let label = gtk::Label::builder()
         .xalign(0.0)
@@ -829,8 +889,16 @@ fn setup_readonly_cell(
         .margin_end(8)
         .build();
     item.set_child(Some(&label));
-    if let Some(sender) = sender {
-        attach_context_menu(label.upcast_ref(), idx, column_name, sender, false);
+    if let Some(menus) = menus {
+        attach_cell_gesture(
+            label.upcast_ref(),
+            column_view,
+            idx,
+            column_name,
+            false,
+            false,
+            menus,
+        );
     }
 }
 
@@ -1215,248 +1283,356 @@ fn commit_cell_edit(label: &super::cell_editor::CellEditor, col_index: usize, se
         .ok();
 }
 
-fn attach_context_menu(
-    widget: &gtk::Widget,
-    idx: usize,
+/// What was right-clicked. Filled by `attach_cell_gesture` immediately
+/// before the popover is shown; read by every action handler in the
+/// shared `cell` action group. The Edit-cell affordance is governed
+/// by `GridMenus::edit_action`'s enabled state (toggled per-press),
+/// not a field here — the action group is the source of truth, the
+/// popover renders the menu item only when the action is enabled.
+#[derive(Clone)]
+struct CellContext {
+    widget: gtk::Widget,
+    col_index: usize,
     column_name: String,
+}
+
+/// Per-grid context-menu surface. Built once in
+/// `install_grid_context_menus` and threaded into each cell's
+/// `attach_cell_gesture` so every cell shares the same popover +
+/// action group rather than constructing its own.
+#[derive(Clone)]
+pub(super) struct GridMenus {
+    context: Rc<RefCell<Option<CellContext>>>,
+    /// Popover rendered when the user right-clicks an editable cell
+    /// (CellEditor / CheckButton). Holds the full Edit / Copy /
+    /// Mutate menu. The Edit-cell action's `enabled` state is toggled
+    /// per-press; menu items with `hidden-when="action-disabled"`
+    /// disappear from the popover when their action is disabled, so
+    /// bool cells never see a useless "Edit cell" entry.
+    editable_popover: gtk::PopoverMenu,
+    /// Popover rendered for read-only cells (auto-PK, generated
+    /// columns). Just the copy actions.
+    readonly_popover: gtk::PopoverMenu,
+    /// `cell.edit` action exposed so cell gestures can toggle its
+    /// enabled state per right-click without a fresh action-group
+    /// lookup. Only enabled when the right-clicked cell is text-
+    /// editable (CellEditor); disabled for CheckButton (bool) cells.
+    edit_action: gio::SimpleAction,
+}
+
+/// Install the shared cell + empty-space context menus on the
+/// ColumnView. Called once from `build_column_view` for editable
+/// grids; read-only result grids skip this.
+///
+/// One PopoverMenu per menu shape (editable / readonly / empty),
+/// parented to the ColumnView. Cell gestures fill the shared
+/// `CellContext` slot then popup the appropriate popover; action
+/// handlers read from the slot, dispatch the right `GridMsg`. This
+/// is the GTK4 idiomatic pattern — same as GtkTabBar's tab context
+/// menu, GNOME Files's row context menu, etc. — and replaces the
+/// old "one popover + one action group per cell widget" approach
+/// which carried ~70 popover instances on a typical 7-column grid.
+fn install_grid_context_menus(
+    column_view: &gtk::ColumnView,
     sender: relm4::Sender<GridMsg>,
-    editable: bool,
-) {
-    // Build the menu in three sections per HIG: edit (cell-scope) →
-    // copy (read-only conveniences) → mutate (destructive). Sections
-    // render with separators automatically. "Edit cell" is only shown
-    // when the cell widget is actually a text-editable widget;
-    // CheckButton bool cells do their own editing via click/Space.
-    let is_text_editable = editable && widget.is::<super::cell_editor::CellEditor>();
-    let menu = gio::Menu::new();
-    if is_text_editable {
-        let edit = gio::Menu::new();
-        edit.append(Some(&crate::tr!("Edit cell")), Some("cell.edit"));
-        menu.append_section(None, &edit);
-    }
-    let copy = gio::Menu::new();
-    copy.append(Some(&crate::tr!("Copy value")), Some("cell.copy-value"));
-    copy.append(Some(&crate::tr!("Copy column name")), Some("cell.copy-column-name"));
-    copy.append(Some(&crate::tr!("Copy row as INSERT")), Some("cell.copy-row-insert"));
-    menu.append_section(None, &copy);
-    if editable {
-        let mutate = gio::Menu::new();
-        mutate.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
-        mutate.append(Some(&crate::tr!("Duplicate row")), Some("cell.duplicate-row"));
-        mutate.append(Some(&crate::tr!("Set to NULL")), Some("cell.set-null"));
-        mutate.append(Some(&crate::tr!("Delete row")), Some("cell.delete-row"));
-        menu.append_section(None, &mutate);
-    }
+) -> GridMenus {
+    let context: Rc<RefCell<Option<CellContext>>> = Rc::new(RefCell::new(None));
 
-    // PopoverMenu's action-muxer scope is snapshotted at `set_parent`
-    // time. Lazy parenting inside the gesture handler creates the
-    // popover in a standalone scope where the cell's `cell.*` action
-    // group isn't visible — the menu still renders, but every item
-    // click is silently dropped (see `sidebar_row.rs` for the same
-    // bug we fixed there). So we parent eagerly here and reuse the
-    // same popover instance for every press, popping it down + setting
-    // a fresh `pointing_to` rect each time. `connect_destroy` on the
-    // cell widget unparents the popover before the cell is finalised
-    // so we don't trip "Finalizing widget, but it still has children".
-    let menu_model: gio::Menu = menu;
+    // Editable-cell menu model. The Edit-cell item is marked
+    // hidden-when="action-disabled" so when the cell is a CheckButton
+    // (no text edit mode) the item disappears entirely instead of
+    // rendering greyed out.
+    let editable_menu = gio::Menu::new();
+    let edit_section = gio::Menu::new();
+    let edit_item = gio::MenuItem::new(Some(&crate::tr!("Edit cell")), Some("cell.edit"));
+    edit_item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
+    edit_section.append_item(&edit_item);
+    editable_menu.append_section(None, &edit_section);
+    let copy_section = gio::Menu::new();
+    copy_section.append(Some(&crate::tr!("Copy value")), Some("cell.copy-value"));
+    copy_section.append(Some(&crate::tr!("Copy column name")), Some("cell.copy-column-name"));
+    copy_section.append(Some(&crate::tr!("Copy row as INSERT")), Some("cell.copy-row-insert"));
+    editable_menu.append_section(None, &copy_section);
+    let mutate_section = gio::Menu::new();
+    mutate_section.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
+    mutate_section.append(Some(&crate::tr!("Duplicate row")), Some("cell.duplicate-row"));
+    mutate_section.append(Some(&crate::tr!("Set to NULL")), Some("cell.set-null"));
+    mutate_section.append(Some(&crate::tr!("Delete row")), Some("cell.delete-row"));
+    editable_menu.append_section(None, &mutate_section);
 
+    // Read-only cell menu — copy actions only. Auto-PK / generated
+    // cells aren't user-editable so Edit / Set NULL / mutate items
+    // would all be inert; per HIG don't show inert items.
+    let readonly_menu = gio::Menu::new();
+    let copy_section_ro = gio::Menu::new();
+    copy_section_ro.append(Some(&crate::tr!("Copy value")), Some("cell.copy-value"));
+    copy_section_ro.append(Some(&crate::tr!("Copy column name")), Some("cell.copy-column-name"));
+    copy_section_ro.append(Some(&crate::tr!("Copy row as INSERT")), Some("cell.copy-row-insert"));
+    readonly_menu.append_section(None, &copy_section_ro);
+
+    // Empty-area-below-last-row menu — single Insert row entry.
+    let empty_menu = gio::Menu::new();
+    empty_menu.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
+
+    // Single action group on the ColumnView. Every popover (editable,
+    // readonly, empty) resolves `cell.*` actions through this one
+    // group via the muxer chain, so menu-item activations always
+    // reach a live handler.
     let group = gio::SimpleActionGroup::new();
-    let widget_for_edit = widget.clone();
-    let edit = gio::ActionEntry::builder("edit")
-        .activate(move |_, _, _| {
-if let Ok(label) = widget_for_edit.clone().downcast::<super::cell_editor::CellEditor>() {
-                enter_edit_mode(&label);
-            }
-        })
-        .build();
-    let widget_for_copy = widget.clone();
-    let copy_value = gio::ActionEntry::builder("copy-value")
-        .activate({
-            let s = sender.clone();
-            move |_, _, _| {
-                s.send(GridMsg::CopyToClipboard(cell_text(&widget_for_copy))).ok();
-            }
-        })
-        .build();
-    let column_name_for_copy = column_name;
-    let copy_column_name = gio::ActionEntry::builder("copy-column-name")
-        .activate({
-            let s = sender.clone();
-            move |_, _, _| {
-                s.send(GridMsg::CopyToClipboard(column_name_for_copy.clone())).ok();
-            }
-        })
-        .build();
-    let widget_for_row = widget.clone();
-    let copy_row = gio::ActionEntry::builder("copy-row-insert")
-        .activate({
-            let s = sender.clone();
-            move |_, _, _| {
-                let position = POSITION_SLOT.get(&widget_for_row).unwrap_or(0);
-                s.send(GridMsg::CopyRowAsInsert { row_position: position }).ok();
-            }
-        })
-        .build();
-    let insert_row = gio::ActionEntry::builder("insert-row")
-        .activate({
-            let s = sender.clone();
-            move |_, _, _| {
+    let edit_action = {
+        let ctx = context.clone();
+        gio::ActionEntry::builder("edit")
+            .activate(move |_, _, _| {
+                if let Some(slot) = ctx.borrow().as_ref()
+                    && let Ok(label) = slot.widget.clone().downcast::<super::cell_editor::CellEditor>()
+                {
+                    enter_edit_mode(&label);
+                }
+            })
+            .build()
+    };
+    let copy_value_action = {
+        let ctx = context.clone();
+        let s = sender.clone();
+        gio::ActionEntry::builder("copy-value")
+            .activate(move |_, _, _| {
+                if let Some(slot) = ctx.borrow().as_ref() {
+                    s.send(GridMsg::CopyToClipboard(cell_text(&slot.widget))).ok();
+                }
+            })
+            .build()
+    };
+    let copy_column_name_action = {
+        let ctx = context.clone();
+        let s = sender.clone();
+        gio::ActionEntry::builder("copy-column-name")
+            .activate(move |_, _, _| {
+                if let Some(slot) = ctx.borrow().as_ref() {
+                    s.send(GridMsg::CopyToClipboard(slot.column_name.clone())).ok();
+                }
+            })
+            .build()
+    };
+    let copy_row_action = {
+        let ctx = context.clone();
+        let s = sender.clone();
+        gio::ActionEntry::builder("copy-row-insert")
+            .activate(move |_, _, _| {
+                if let Some(slot) = ctx.borrow().as_ref() {
+                    let position = POSITION_SLOT.get(&slot.widget).unwrap_or(0);
+                    s.send(GridMsg::CopyRowAsInsert { row_position: position }).ok();
+                }
+            })
+            .build()
+    };
+    let insert_row_action = {
+        let s = sender.clone();
+        gio::ActionEntry::builder("insert-row")
+            .activate(move |_, _, _| {
                 s.send(GridMsg::InsertRow).ok();
-            }
-        })
-        .build();
-    let widget_for_null = widget.clone();
-    let set_null = gio::ActionEntry::builder("set-null")
-        .activate({
-            let s = sender.clone();
-            move |_, _, _| {
-                let position = POSITION_SLOT.get(&widget_for_null).unwrap_or(0);
-                s.send(GridMsg::SetCellNull {
-                    row_position: position,
-                    col_index: idx,
-                })
-                .ok();
-            }
-        })
-        .build();
-    let widget_for_delete = widget.clone();
-    let delete_row = gio::ActionEntry::builder("delete-row")
-        .activate({
-            let s = sender.clone();
-            move |_, _, _| {
-                let position = POSITION_SLOT.get(&widget_for_delete).unwrap_or(0);
-                s.send(GridMsg::DeleteRowAt { row_position: position })
+            })
+            .build()
+    };
+    let set_null_action = {
+        let ctx = context.clone();
+        let s = sender.clone();
+        gio::ActionEntry::builder("set-null")
+            .activate(move |_, _, _| {
+                if let Some(slot) = ctx.borrow().as_ref() {
+                    let position = POSITION_SLOT.get(&slot.widget).unwrap_or(0);
+                    s.send(GridMsg::SetCellNull {
+                        row_position: position,
+                        col_index: slot.col_index,
+                    })
                     .ok();
-            }
-        })
-        .build();
-    let widget_for_dup = widget.clone();
-    let duplicate_row = gio::ActionEntry::builder("duplicate-row")
-        .activate({
-            let s = sender;
-            move |_, _, _| {
-                let position = POSITION_SLOT.get(&widget_for_dup).unwrap_or(0);
-                s.send(GridMsg::DuplicateRow { row_position: position }).ok();
-            }
-        })
-        .build();
+                }
+            })
+            .build()
+    };
+    let delete_row_action = {
+        let ctx = context.clone();
+        let s = sender.clone();
+        gio::ActionEntry::builder("delete-row")
+            .activate(move |_, _, _| {
+                if let Some(slot) = ctx.borrow().as_ref() {
+                    let position = POSITION_SLOT.get(&slot.widget).unwrap_or(0);
+                    s.send(GridMsg::DeleteRowAt { row_position: position }).ok();
+                }
+            })
+            .build()
+    };
+    let duplicate_row_action = {
+        let ctx = context.clone();
+        let s = sender;
+        gio::ActionEntry::builder("duplicate-row")
+            .activate(move |_, _, _| {
+                if let Some(slot) = ctx.borrow().as_ref() {
+                    let position = POSITION_SLOT.get(&slot.widget).unwrap_or(0);
+                    s.send(GridMsg::DuplicateRow { row_position: position }).ok();
+                }
+            })
+            .build()
+    };
     group.add_action_entries([
-        edit,
-        copy_value,
-        copy_column_name,
-        copy_row,
-        insert_row,
-        set_null,
-        delete_row,
-        duplicate_row,
+        edit_action,
+        copy_value_action,
+        copy_column_name_action,
+        copy_row_action,
+        insert_row_action,
+        set_null_action,
+        delete_row_action,
+        duplicate_row_action,
     ]);
-    widget.insert_action_group("cell", Some(&group));
+    column_view.insert_action_group("cell", Some(&group));
 
-    // Eagerly parent the popover NOW (after the action group is
-    // installed on `widget`) so PopoverMenu's internal action muxer
-    // observes the `cell.*` group. Reuse this single instance for
-    // every right-click instead of constructing a fresh popover each
-    // time — the latter pattern fails because the muxer snapshot is
-    // empty when the popover is set_parent'd lazily.
-    let popover = gtk::PopoverMenu::from_model(Some(&menu_model));
-    popover.set_has_arrow(true);
-    popover.set_parent(widget);
+    let edit_action_obj = group
+        .lookup_action("edit")
+        .expect("just registered")
+        .downcast::<gio::SimpleAction>()
+        .expect("ActionEntry registers SimpleAction");
 
-    // Cell widgets are owned by ColumnView's factory; when the view
-    // tears down, each cell is finalised. Without this manual
-    // unparent the runtime prints "Finalizing widget, but it still
-    // has children left: GtkPopoverMenu". Mirrors the cleanup pattern
-    // in `sidebar_row.rs`.
-    let popover_for_destroy = popover.clone();
-    widget.connect_destroy(move |_| {
-        popover_for_destroy.unparent();
+    // Build the popovers and parent eagerly so each PopoverMenu's
+    // action muxer snapshots the ColumnView's `cell` group at
+    // set_parent() time. (Lazy parenting in the gesture handler
+    // creates the popover in a standalone muxer scope where the
+    // group isn't visible and every menu-item click is silently
+    // dropped — see sidebar_row.rs:146 for the same root-cause.)
+    let editable_popover = gtk::PopoverMenu::from_model(Some(&editable_menu));
+    editable_popover.set_has_arrow(true);
+    editable_popover.set_parent(column_view);
+    let readonly_popover = gtk::PopoverMenu::from_model(Some(&readonly_menu));
+    readonly_popover.set_has_arrow(true);
+    readonly_popover.set_parent(column_view);
+    let empty_popover = gtk::PopoverMenu::from_model(Some(&empty_menu));
+    empty_popover.set_has_arrow(true);
+    empty_popover.set_parent(column_view);
+
+    let editable_for_destroy = editable_popover.clone();
+    let readonly_for_destroy = readonly_popover.clone();
+    let empty_for_destroy = empty_popover.clone();
+    column_view.connect_destroy(move |_| {
+        editable_for_destroy.unparent();
+        readonly_for_destroy.unparent();
+        empty_for_destroy.unparent();
     });
 
-    let gesture = gtk::GestureClick::new();
-    gesture.set_button(3);
-    let popover_for_gesture = popover.clone();
-    gesture.connect_pressed(move |g, _, x, y| {
+    // Empty-space gesture on the ColumnView itself. Per-cell gestures
+    // claim their own sequences; only true empty-area clicks reach
+    // here (gated by `pick(x, y) == column_view`).
+    let cv_for_empty = column_view.clone();
+    let empty_for_gesture = empty_popover;
+    let empty_gesture = gtk::GestureClick::builder().button(3).build();
+    empty_gesture.connect_pressed(move |g, _, x, y| {
+        let cv_widget: gtk::Widget = cv_for_empty.clone().upcast();
+        if let Some(picked) = cv_for_empty.pick(x, y, gtk::PickFlags::DEFAULT)
+            && picked != cv_widget
+        {
+            return;
+        }
         g.set_state(gtk::EventSequenceState::Claimed);
-        popover_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
+        empty_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
             x as i32, y as i32, 1, 1,
         )));
+        empty_for_gesture.popup();
+    });
+    column_view.add_controller(empty_gesture);
+
+    GridMenus {
+        context,
+        editable_popover,
+        readonly_popover,
+        edit_action: edit_action_obj,
+    }
+}
+
+/// Wire the right-click + Menu-key gestures on a single cell widget
+/// against the shared `GridMenus`. The cell stores its identity
+/// (widget, idx, column_name, is_text_editable) into the shared
+/// context slot at press time, then pops up the appropriate popover.
+/// No popover or action group is constructed per cell — those live
+/// once at the ColumnView level.
+fn attach_cell_gesture(
+    widget: &gtk::Widget,
+    column_view: &gtk::ColumnView,
+    idx: usize,
+    column_name: String,
+    is_editable: bool,
+    is_text_editable: bool,
+    menus: &GridMenus,
+) {
+    let popover = if is_editable {
+        menus.editable_popover.clone()
+    } else {
+        menus.readonly_popover.clone()
+    };
+
+    let widget_for_gesture = widget.clone();
+    let cv_for_gesture = column_view.clone();
+    let context_for_gesture = menus.context.clone();
+    let edit_action_for_gesture = menus.edit_action.clone();
+    let popover_for_gesture = popover.clone();
+    let column_name_for_gesture = column_name.clone();
+    let gesture = gtk::GestureClick::new();
+    gesture.set_button(3);
+    gesture.connect_pressed(move |g, _, x, y| {
+        g.set_state(gtk::EventSequenceState::Claimed);
+        *context_for_gesture.borrow_mut() = Some(CellContext {
+            widget: widget_for_gesture.clone(),
+            col_index: idx,
+            column_name: column_name_for_gesture.clone(),
+        });
+        edit_action_for_gesture.set_enabled(is_text_editable);
+        // Translate the click point into the ColumnView's coordinate
+        // space — the popover is parented to the ColumnView so
+        // pointing_to is interpreted there, not in cell-local coords.
+        // `compute_point` is the GTK 4.12+ replacement for the
+        // deprecated `translate_coordinates`.
+        let local = gtk::graphene::Point::new(x as f32, y as f32);
+        let (cv_x, cv_y) = widget_for_gesture
+            .compute_point(&cv_for_gesture, &local)
+            .map(|p| (p.x() as i32, p.y() as i32))
+            .unwrap_or((x as i32, y as i32));
+        popover_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(cv_x, cv_y, 1, 1)));
         popover_for_gesture.popup();
     });
     widget.add_controller(gesture);
 
-    let popover_for_menu_key = popover.clone();
+    let widget_for_key = widget.clone();
+    let cv_for_key = column_view.clone();
+    let context_for_key = menus.context.clone();
+    let edit_action_for_key = menus.edit_action.clone();
+    let popover_for_key = popover;
+    let column_name_for_key = column_name;
     let menu_shortcut = gtk::Shortcut::builder()
         .trigger(&gtk::ShortcutTrigger::parse_string("Menu").expect("valid trigger"))
         .action(&gtk::CallbackAction::new(move |_, _| {
-            // Menu-key path: no pointing_to rect — popover anchors to
-            // the centre of its parent widget, which is fine for a
-            // keyboard-driven invocation.
-            popover_for_menu_key.set_pointing_to(None);
-            popover_for_menu_key.popup();
+            *context_for_key.borrow_mut() = Some(CellContext {
+                widget: widget_for_key.clone(),
+                col_index: idx,
+                column_name: column_name_for_key.clone(),
+            });
+            edit_action_for_key.set_enabled(is_text_editable);
+            // Anchor on the cell's full bounds so the popover lands
+            // visually under the cell rather than at an arbitrary
+            // mouse-position-of-last-click.
+            if let Some(bounds) = widget_for_key.compute_bounds(&cv_for_key) {
+                let rect = gtk::gdk::Rectangle::new(
+                    bounds.x() as i32,
+                    bounds.y() as i32,
+                    bounds.width() as i32,
+                    bounds.height() as i32,
+                );
+                popover_for_key.set_pointing_to(Some(&rect));
+            } else {
+                popover_for_key.set_pointing_to(None);
+            }
+            popover_for_key.popup();
             glib::Propagation::Stop
         }))
         .build();
     let shortcut_controller = gtk::ShortcutController::new();
     shortcut_controller.add_shortcut(menu_shortcut);
     widget.add_controller(shortcut_controller);
-}
-
-/// Attach a "right-click on empty area below the last row → Insert
-/// row" context menu to the `ColumnView`. Per-cell controllers and the
-/// ColumnView controller live in independent gesture groups, so the
-/// cell's `set_state(Claimed)` does NOT prevent this controller from
-/// firing on the same press. The gate is in the handler instead:
-/// `pick(x, y)` returns the deepest widget under the cursor; anything
-/// other than the ColumnView itself means the click landed on a row /
-/// cell descendant and should be left to its own context-menu
-/// handler. Without this gate, every right-click on a cell would
-/// produce two competing popovers and the cell menu would lose.
-fn attach_empty_space_menu(column_view: &gtk::ColumnView, sender: relm4::Sender<GridMsg>) {
-    let menu_model = gio::Menu::new();
-    menu_model.append(Some(&crate::tr!("Insert row")), Some("grid.insert-row"));
-
-    let group = gio::SimpleActionGroup::new();
-    let insert_row = gio::ActionEntry::builder("insert-row")
-        .activate(move |_, _, _| {
-            sender.send(GridMsg::InsertRow).ok();
-        })
-        .build();
-    group.add_action_entries([insert_row]);
-    column_view.insert_action_group("grid", Some(&group));
-
-    // Eagerly parent so PopoverMenu's action-muxer observes the
-    // `grid.insert-row` action — same root-cause as the cell-level
-    // popover above. Reuse the popover across right-clicks; a fresh
-    // pointing_to rect is set each time.
-    let popover = gtk::PopoverMenu::from_model(Some(&menu_model));
-    popover.set_has_arrow(true);
-    popover.set_parent(column_view);
-    let popover_for_destroy = popover.clone();
-    column_view.connect_destroy(move |_| {
-        popover_for_destroy.unparent();
-    });
-
-    let gesture = gtk::GestureClick::builder().button(3).build();
-    let column_view_for_gesture = column_view.clone();
-    let popover_for_gesture = popover;
-    gesture.connect_pressed(move |g, _, x, y| {
-        // pick(x, y) returns the deepest widget at the click point.
-        // Anything other than the ColumnView itself means the click
-        // landed on a row / cell descendant — let the cell's own
-        // context-menu gesture handle that case.
-        let cv_widget: gtk::Widget = column_view_for_gesture.clone().upcast();
-        if let Some(picked) = column_view_for_gesture.pick(x, y, gtk::PickFlags::DEFAULT)
-            && picked != cv_widget
-        {
-            return;
-        }
-        g.set_state(gtk::EventSequenceState::Claimed);
-        popover_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-            x as i32, y as i32, 1, 1,
-        )));
-        popover_for_gesture.popup();
-    });
-    column_view.add_controller(gesture);
 }
 
 fn cell_text(widget: &gtk::Widget) -> String {
