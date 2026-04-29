@@ -79,12 +79,11 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     private static func indicatorImage(for direction: SortDirection) -> NSImage? {
-        switch direction {
-        case .ascending:
-            return NSImage(named: NSImage.Name("NSAscendingSortIndicator"))
-        case .descending:
-            return NSImage(named: NSImage.Name("NSDescendingSortIndicator"))
-        }
+        let symbolName = direction == .ascending ? "chevron.up" : "chevron.down"
+        let config = NSImage.SymbolConfiguration(pointSize: priorityFontSize, weight: .semibold)
+            .applying(.init(paletteColors: [.secondaryLabelColor]))
+        return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
     }
 
     private static func drawTintedIndicator(image: NSImage?, in rect: NSRect) {
