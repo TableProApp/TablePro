@@ -518,7 +518,7 @@ struct MainEditorContentView: View {
         let tabId = tab.id
         DataGridView(
             tableRowsProvider: { [coordinator] in
-                resolvedTableRowsForTab(coordinator: coordinator, tabId: tabId)
+                coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
             },
             tableRowsMutator: { [coordinator] mutate in
                 coordinator.mutateActiveTableRows(for: tabId) { rows in
@@ -555,11 +555,6 @@ struct MainEditorContentView: View {
 
     private func resolvedTableRows(for tab: QueryTab) -> TableRows {
         coordinator.tableRowsStore.existingTableRows(for: tab.id) ?? TableRows()
-    }
-
-    @MainActor
-    private func resolvedTableRowsForTab(coordinator: MainContentCoordinator, tabId: UUID) -> TableRows {
-        coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
     }
 
     private func displayFormats(for tab: QueryTab) -> [ValueDisplayFormat?] {
