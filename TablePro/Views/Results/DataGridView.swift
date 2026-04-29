@@ -108,7 +108,6 @@ struct DataGridView: NSViewRepresentable {
         rowNumberColumn.isHidden = !configuration.showRowNumbers
 
         let initialRows = tableRowsProvider()
-        context.coordinator.cachedTableRows = initialRows
 
         context.coordinator.isRebuildingColumns = true
         for (index, columnName) in initialRows.columns.enumerated() {
@@ -226,7 +225,6 @@ struct DataGridView: NSViewRepresentable {
         }
 
         let latestRows = tableRowsProvider()
-        coordinator.cachedTableRows = latestRows
         let rowDisplayCount = sortedIDs?.count ?? latestRows.count
         let columnCount = latestRows.columns.count
 
@@ -627,7 +625,6 @@ struct DataGridView: NSViewRepresentable {
             coordinator.themeObserver = nil
         }
         coordinator.tableRowsController.detach()
-        coordinator.cachedTableRows = TableRows()
     }
 
     func makeCoordinator() -> TableViewCoordinator {

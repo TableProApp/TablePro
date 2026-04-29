@@ -15,7 +15,7 @@ extension TableViewCoordinator {
         guard let sortDescriptor = tableView.sortDescriptors.first,
               let key = sortDescriptor.key,
               let columnIndex = DataGridView.dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)),
-              columnIndex >= 0 && columnIndex < cachedTableRows.columns.count else {
+              columnIndex >= 0 && columnIndex < tableRowsProvider().columns.count else {
             return
         }
 
@@ -62,11 +62,11 @@ extension TableViewCoordinator {
         let column = tableView.tableColumns[columnIndex]
         if column.identifier.rawValue == "__rowNumber__" { return }
 
-        // Derive base column name from stable identifier (avoids sort indicator in title)
+        let tableRows = tableRowsProvider()
         let baseName: String = {
             if let idx = DataGridView.dataColumnIndex(from: column.identifier),
-               idx < cachedTableRows.columns.count {
-                return cachedTableRows.columns[idx]
+               idx < tableRows.columns.count {
+                return tableRows.columns[idx]
             }
             return column.title
         }()
@@ -103,9 +103,8 @@ extension TableViewCoordinator {
         filterItem.target = self
         menu.addItem(filterItem)
 
-        // "Display As" submenu for value display format overrides
         if let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) {
-            let columnType = dataColumnIndex < cachedTableRows.columnTypes.count ? cachedTableRows.columnTypes[dataColumnIndex] : nil
+            let columnType = dataColumnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[dataColumnIndex] : nil
             let applicableFormats = ValueDisplayFormat.applicableFormats(for: columnType)
             if applicableFormats.count > 1 {
                 let displaySubmenu = NSMenu()

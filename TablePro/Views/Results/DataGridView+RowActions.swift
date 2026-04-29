@@ -29,7 +29,6 @@ extension TableViewCoordinator {
         tableRowsMutator { rows in
             _ = rows.remove(at: IndexSet(integer: index))
         }
-        cachedTableRows = tableRowsProvider()
         updateCache()
         tableView?.reloadData()
     }

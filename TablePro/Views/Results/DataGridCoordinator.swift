@@ -9,7 +9,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
-    var cachedTableRows: TableRows = TableRows()
     var changeManager: AnyChangeManager
     var isEditable: Bool
     var sortedIDs: [RowID]?
@@ -30,14 +29,15 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func persistColumnLayoutToStorage() {
         guard tabType == .table else { return }
         guard let tableView, let connectionId, let tableName, !tableName.isEmpty else { return }
-        guard !cachedTableRows.columns.isEmpty else { return }
+        let tableRows = tableRowsProvider()
+        guard !tableRows.columns.isEmpty else { return }
 
         var widths: [String: CGFloat] = [:]
         var order: [String] = []
         for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
             guard let colIndex = DataGridView.dataColumnIndex(from: column.identifier),
-                  colIndex < cachedTableRows.columns.count else { continue }
-            let name = cachedTableRows.columns[colIndex]
+                  colIndex < tableRows.columns.count else { continue }
+            let name = tableRows.columns[colIndex]
             widths[name] = column.width
             order.append(name)
         }
@@ -170,7 +170,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     private func releaseData() {
         overlayEditor?.dismiss(commit: false)
-        cachedTableRows = TableRows()
         rowVisualStateCache.removeAll()
         displayCache.removeAll()
         columnDisplayFormats = []
@@ -204,9 +203,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func updateCache() {
-        cachedTableRows = tableRowsProvider()
-        cachedRowCount = sortedIDs?.count ?? cachedTableRows.count
-        cachedColumnCount = cachedTableRows.columns.count
+        let tableRows = tableRowsProvider()
+        cachedRowCount = sortedIDs?.count ?? tableRows.count
+        cachedColumnCount = tableRows.columns.count
     }
 
     func applyInsertedRows(_ indices: IndexSet) {
