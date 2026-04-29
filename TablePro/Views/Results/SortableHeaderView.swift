@@ -184,6 +184,8 @@ final class SortableHeaderView: NSTableHeaderView {
             isMultiSort: isMultiSort
         )
 
+        coordinator.currentSortState = transition.newState
+        updateSortIndicators(state: transition.newState, schema: coordinator.identitySchema)
         dispatch(transition: transition, on: coordinator)
     }
 
