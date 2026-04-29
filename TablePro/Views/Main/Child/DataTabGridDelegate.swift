@@ -17,6 +17,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
 
     var onCellEdit: ((Int, Int, String?) -> Void)?
     var onSort: ((Int, Bool, Bool) -> Void)?
+    var onClearSort: (() -> Void)?
     var onAddRow: (() -> Void)?
     var onUndoInsert: ((Int) -> Void)?
     var onFilterColumn: ((String) -> Void)?
@@ -30,6 +31,10 @@ final class DataTabGridDelegate: DataGridViewDelegate {
 
     func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool) {
         onSort?(column, ascending, isMultiSort)
+    }
+
+    func dataGridClearSort() {
+        onClearSort?()
     }
 
     func dataGridAddRow() {

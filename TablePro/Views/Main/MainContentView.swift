@@ -410,6 +410,9 @@ struct MainContentView: View {
                     columnIndex: columnIndex, ascending: ascending,
                     isMultiSort: isMultiSort)
             },
+            onClearSort: {
+                coordinator.clearSort()
+            },
             onAddRow: {
                 coordinator.addNewRow()
             },

@@ -90,6 +90,16 @@ extension TableViewCoordinator {
             sortDescItem.target = self
             menu.addItem(sortDescItem)
 
+            if currentSortState.isSorting {
+                let clearSortItem = NSMenuItem(
+                    title: String(localized: "Don't Sort"),
+                    action: #selector(clearSortAction),
+                    keyEquivalent: ""
+                )
+                clearSortItem.target = self
+                menu.addItem(clearSortItem)
+            }
+
             menu.addItem(NSMenuItem.separator())
         }
 
@@ -176,6 +186,10 @@ extension TableViewCoordinator {
 
     @objc func showAllColumns() {
         delegate?.dataGridShowAllColumns()
+    }
+
+    @objc func clearSortAction() {
+        delegate?.dataGridClearSort()
     }
 
     @objc func copyColumnName(_ sender: NSMenuItem) {

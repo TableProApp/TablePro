@@ -19,6 +19,7 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridUndoInsert(at index: Int)
     func dataGridMoveRow(from source: Int, to destination: Int)
     func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool)
+    func dataGridClearSort()
     func dataGridFilterColumn(_ columnName: String)
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo)
     func dataGridDuplicateRow()
@@ -46,6 +47,7 @@ extension DataGridViewDelegate {
     func dataGridUndoInsert(at index: Int) {}
     func dataGridMoveRow(from source: Int, to destination: Int) {}
     func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool) {}
+    func dataGridClearSort() {}
     func dataGridFilterColumn(_ columnName: String) {}
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {}
     func dataGridDuplicateRow() {}

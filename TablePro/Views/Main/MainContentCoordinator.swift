@@ -1422,6 +1422,33 @@ final class MainContentCoordinator {
         }
     }
 
+    func clearSort() {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        guard tab.sortState.isSorting else { return }
+
+        let emptySort = SortState()
+
+        if tab.tabType == .query {
+            tabManager.tabs[tabIndex].sortState = emptySort
+            tabManager.tabs[tabIndex].hasUserInteraction = true
+            querySortCache.removeValue(forKey: tab.id)
+            dataTabDelegate?.dataGridDidReplaceAllRows()
+            return
+        }
+
+        let tabId = tab.id
+        let capturedQuery = tab.content.query
+        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+            guard let self, confirmed,
+                  let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+            self.tabManager.tabs[idx].sortState = emptySort
+            self.tabManager.tabs[idx].hasUserInteraction = true
+            self.tabManager.tabs[idx].pagination.reset()
+            self.tabManager.tabs[idx].content.query = Self.stripTrailingOrderBy(from: capturedQuery)
+            self.runQuery()
+        }
+    }
+
     /// Multi-column sort returning a permutation of `RowID` (nonisolated for background thread).
     nonisolated private static func multiColumnSortedIDs(
         rows: [(id: RowID, values: [String?])],

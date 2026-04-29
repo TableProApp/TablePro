@@ -30,6 +30,7 @@ struct MainEditorContentView: View {
 
     let onCellEdit: (Int, Int, String?) -> Void
     let onSort: (Int, Bool, Bool) -> Void
+    let onClearSort: () -> Void
     let onAddRow: () -> Void
     let onUndoInsert: (Int) -> Void
     let onSelectionChange: (Set<Int>) -> Void
@@ -145,6 +146,7 @@ struct MainEditorContentView: View {
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
         dataTabDelegate.onSort = onSort
+        dataTabDelegate.onClearSort = onClearSort
         dataTabDelegate.onUndoInsert = onUndoInsert
         dataTabDelegate.onFilterColumn = onFilterColumn
         dataTabDelegate.onRefresh = onRefresh
