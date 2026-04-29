@@ -34,6 +34,10 @@ final class MultiSortHeaderCell: NSTableHeaderCell {
             respectFlipped: true,
             hints: nil
         )
+        if image.isTemplate {
+            NSColor.secondaryLabelColor.set()
+            imageRect.fill(using: .sourceAtop)
+        }
     }
 
     override func drawSortIndicator(
