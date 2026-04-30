@@ -408,7 +408,7 @@ struct DataChangeManagerTests {
         )
         #expect(manager.changes.count == 1)
 
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
 
         #expect(manager.changes.isEmpty)
         #expect(!manager.hasChanges)
@@ -431,7 +431,7 @@ struct DataChangeManagerTests {
             newValue: "Bob"
         )
 
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
 
         #expect(manager.canRedo)
     }
@@ -453,7 +453,7 @@ struct DataChangeManagerTests {
             newValue: "Bob"
         )
 
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(manager.canRedo)
 
         manager.recordCellChange(

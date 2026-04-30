@@ -13,13 +13,20 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
     private static let priorityFontSize: CGFloat = 9
+    private static let titleHorizontalPadding: CGFloat = 4
 
     override init(textCell string: String) {
         super.init(textCell: string)
+        lineBreakMode = .byTruncatingTail
+        truncatesLastVisibleLine = true
+        wraps = false
     }
 
     required init(coder: NSCoder) {
         super.init(coder: coder)
+        lineBreakMode = .byTruncatingTail
+        truncatesLastVisibleLine = true
+        wraps = false
     }
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
@@ -42,7 +49,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
             width: max(0, cellFrame.width - reservedWidth),
             height: cellFrame.height
         )
-        super.drawInterior(withFrame: titleFrame, in: controlView)
+        drawSortedTitle(in: titleFrame)
 
         let indicatorOriginX = cellFrame.maxX - Self.indicatorPadding - indicatorSize.width
         let indicatorOriginY = cellFrame.midY - indicatorSize.height / 2
@@ -64,6 +71,31 @@ final class SortableHeaderCell: NSTableHeaderCell {
             )
             Self.drawPriorityText(priorityText, in: textRect)
         }
+    }
+
+    private func drawSortedTitle(in rect: NSRect) {
+        let baseFont = font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: boldFont,
+            .foregroundColor: NSColor.headerTextColor,
+            .paragraphStyle: paragraph
+        ]
+
+        let title = NSAttributedString(string: stringValue, attributes: attributes)
+        let textHeight = title.size().height
+        let drawRect = NSRect(
+            x: rect.minX + Self.titleHorizontalPadding,
+            y: rect.midY - textHeight / 2,
+            width: max(0, rect.width - Self.titleHorizontalPadding),
+            height: textHeight
+        )
+        title.draw(in: drawRect)
     }
 
     override func drawSortIndicator(

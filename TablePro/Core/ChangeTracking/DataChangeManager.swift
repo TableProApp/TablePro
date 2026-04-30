@@ -369,22 +369,6 @@ final class DataChangeManager: ChangeManaging {
         }
     }
 
-    // MARK: - Undo/Redo Public API
-
-    func undoLastChange() -> UndoResult? {
-        guard let um = undoManagerProvider?(), um.canUndo else { return nil }
-        lastUndoResult = nil
-        um.undo()
-        return lastUndoResult
-    }
-
-    func redoLastChange() -> UndoResult? {
-        guard let um = undoManagerProvider?(), um.canRedo else { return nil }
-        lastUndoResult = nil
-        um.redo()
-        return lastUndoResult
-    }
-
     // MARK: - SQL Generation
 
     func generateSQL() throws -> [ParameterizedStatement] {

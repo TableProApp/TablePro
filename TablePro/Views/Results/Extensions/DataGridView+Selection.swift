@@ -30,19 +30,60 @@ extension TableViewCoordinator {
         guard !isSyncingSelection else { return }
         guard let tableView = notification.object as? NSTableView else { return }
 
+        let previousSelection = selectedRowIndices
         let newSelection = Set(tableView.selectedRowIndexes.map { $0 })
-        if newSelection != selectedRowIndices {
+        if newSelection != previousSelection {
             selectedRowIndices = newSelection
         }
 
-        if let keyTableView = tableView as? KeyHandlingTableView {
-            if newSelection.isEmpty {
-                keyTableView.focusedRow = -1
-                keyTableView.focusedColumn = -1
-            } else if keyTableView.focusedRow < 0, let firstRow = newSelection.min() {
-                keyTableView.focusedRow = firstRow
-                keyTableView.focusedColumn = 1
-            }
+        guard let keyTableView = tableView as? KeyHandlingTableView else { return }
+
+        let newFocus = resolvedFocus(
+            previous: previousSelection,
+            current: newSelection,
+            existingFocusedRow: keyTableView.focusedRow,
+            existingFocusedColumn: keyTableView.focusedColumn,
+            tableView: tableView
+        )
+
+        if keyTableView.focusedRow != newFocus.row {
+            keyTableView.focusedRow = newFocus.row
         }
+        if keyTableView.focusedColumn != newFocus.column {
+            keyTableView.focusedColumn = newFocus.column
+        }
+    }
+
+    private func resolvedFocus(
+        previous: Set<Int>,
+        current: Set<Int>,
+        existingFocusedRow: Int,
+        existingFocusedColumn: Int,
+        tableView: NSTableView
+    ) -> (row: Int, column: Int) {
+        if current.isEmpty {
+            return (-1, -1)
+        }
+
+        let column = existingFocusedColumn >= 1 ? existingFocusedColumn : 1
+        let added = current.subtracting(previous)
+
+        if let tip = added.max() {
+            return (tip, column)
+        }
+
+        let removed = previous.subtracting(current)
+        if let lostTip = removed.max(),
+           let currentMax = current.max(),
+           let currentMin = current.min() {
+            let row = lostTip > currentMax ? currentMax : currentMin
+            return (row, column)
+        }
+
+        if existingFocusedRow >= 0, current.contains(existingFocusedRow) {
+            return (existingFocusedRow, column)
+        }
+
+        return (current.min() ?? -1, column)
     }
 }

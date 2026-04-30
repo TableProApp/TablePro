@@ -14,8 +14,6 @@ struct TableSelectionTests {
         let selection = TableSelection()
         #expect(selection.focusedRow == -1)
         #expect(selection.focusedColumn == -1)
-        #expect(selection.anchor == -1)
-        #expect(selection.pivot == -1)
         #expect(selection.hasFocus == false)
     }
 
@@ -30,16 +28,13 @@ struct TableSelectionTests {
         #expect(selection.hasFocus == false)
     }
 
-    @Test("clearFocus resets focus only")
-    func clearFocusKeepsAnchor() {
+    @Test("clearFocus resets focus")
+    func clearFocus() {
         var selection = TableSelection()
         selection.setFocus(row: 5, column: 2)
-        selection.resetAnchor(at: 5)
         selection.clearFocus()
         #expect(selection.focusedRow == -1)
         #expect(selection.focusedColumn == -1)
-        #expect(selection.anchor == 5)
-        #expect(selection.pivot == 5)
     }
 
     @Test("setFocus assigns row and column")
@@ -50,28 +45,10 @@ struct TableSelectionTests {
         #expect(selection.focusedColumn == 3)
     }
 
-    @Test("resetAnchor sets both anchor and pivot")
-    func resetAnchor() {
-        var selection = TableSelection()
-        selection.resetAnchor(at: 4)
-        #expect(selection.anchor == 4)
-        #expect(selection.pivot == 4)
-    }
-
-    @Test("clearAnchor resets anchor and pivot")
-    func clearAnchor() {
-        var selection = TableSelection()
-        selection.resetAnchor(at: 4)
-        selection.clearAnchor()
-        #expect(selection.anchor == -1)
-        #expect(selection.pivot == -1)
-    }
-
-    @Test("Equatable compares all four fields")
+    @Test("Equatable compares focus fields")
     func equatable() {
         var a = TableSelection()
         a.setFocus(row: 1, column: 2)
-        a.resetAnchor(at: 1)
         var b = a
         #expect(a == b)
         b.focusedRow = 2
@@ -87,15 +64,6 @@ struct TableSelectionReloadIndexesTests {
         selection.setFocus(row: 5, column: 2)
         let same = selection
         #expect(selection.reloadIndexes(from: same) == nil)
-    }
-
-    @Test("Anchor change without focus change returns nil")
-    func anchorOnlyChange() {
-        var previous = TableSelection()
-        previous.setFocus(row: 5, column: 2)
-        var current = previous
-        current.resetAnchor(at: 8)
-        #expect(current.reloadIndexes(from: previous) == nil)
     }
 
     @Test("Initial focus from empty includes new cell only")
