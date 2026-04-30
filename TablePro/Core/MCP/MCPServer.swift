@@ -351,6 +351,7 @@ actor MCPServer {
         guard let session = sessions.removeValue(forKey: sessionId) else { return }
         await session.cancelAllTasks()
         await session.cancelSSEConnection()
+        try? await session.transition(to: .terminated(reason: "removed"))
 
         if let cleanupHandler = sessionCleanupHandler {
             await cleanupHandler(sessionId)
@@ -380,6 +381,7 @@ actor MCPServer {
             if idle > .seconds(Self.idleTimeout) {
                 await session.cancelAllTasks()
                 await session.cancelSSEConnection()
+                try? await session.transition(to: .terminated(reason: "idle timeout"))
                 sessions.removeValue(forKey: id)
 
                 if let cleanupHandler = sessionCleanupHandler {

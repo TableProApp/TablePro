@@ -188,10 +188,11 @@ struct MCPSection: View {
     private func handleGenerate(name: String, permissions: TokenPermissions, connectionIds: Set<UUID>?, expiresAt: Date?) {
         Task {
             guard let store = manager.tokenStore else { return }
+            let access: ConnectionAccess = connectionIds.map { .limited($0) } ?? .all
             let result = await store.generate(
                 name: name,
                 permissions: permissions,
-                allowedConnectionIds: connectionIds,
+                connectionAccess: access,
                 expiresAt: expiresAt
             )
             revealedToken = result.token
