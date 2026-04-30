@@ -10,11 +10,35 @@ final class KeyHandlingTableView: NSTableView {
     var selection = TableSelection() {
         didSet {
             guard let (rows, columns) = selection.reloadIndexes(from: oldValue) else { return }
-            let validRows = rows.filteredIndexSet { $0 < numberOfRows }
-            let validColumns = columns.filteredIndexSet { $0 < numberOfColumns }
-            guard !validRows.isEmpty, !validColumns.isEmpty else { return }
-            reloadData(forRowIndexes: validRows, columnIndexes: validColumns)
+            scheduleFocusReload(rows: rows, columns: columns)
         }
+    }
+
+    private var pendingFocusReloadRows: IndexSet?
+    private var pendingFocusReloadColumns: IndexSet?
+
+    private func scheduleFocusReload(rows: IndexSet, columns: IndexSet) {
+        if pendingFocusReloadRows != nil {
+            pendingFocusReloadRows?.formUnion(rows)
+            pendingFocusReloadColumns?.formUnion(columns)
+            return
+        }
+        pendingFocusReloadRows = rows
+        pendingFocusReloadColumns = columns
+        DispatchQueue.main.async { [weak self] in
+            self?.flushPendingFocusReload()
+        }
+    }
+
+    private func flushPendingFocusReload() {
+        guard let pendingRows = pendingFocusReloadRows,
+              let pendingColumns = pendingFocusReloadColumns else { return }
+        pendingFocusReloadRows = nil
+        pendingFocusReloadColumns = nil
+        let validRows = pendingRows.filteredIndexSet { $0 < numberOfRows }
+        let validColumns = pendingColumns.filteredIndexSet { $0 < numberOfColumns }
+        guard !validRows.isEmpty, !validColumns.isEmpty else { return }
+        reloadData(forRowIndexes: validRows, columnIndexes: validColumns)
     }
 
     var focusedRow: Int {
