@@ -196,12 +196,11 @@ extension AppDelegate {
             } else {
                 preview = sql
             }
-            let confirmed = await AlertHelper.confirmDestructive(
+            let confirmed = await AlertHelper.runApprovalModal(
                 title: String(localized: "Open Query from Link"),
                 message: String(format: String(localized: "An external link wants to open a query on connection \"%@\":\n\n%@"), connection.name, preview),
-                confirmButton: String(localized: "Open Query"),
-                cancelButton: String(localized: "Cancel"),
-                window: NSApp.keyWindow
+                confirm: String(localized: "Open Query"),
+                cancel: String(localized: "Cancel")
             )
             guard confirmed else { return }
             connectViaDeeplink(connectionId: connectionId) { resolvedId in

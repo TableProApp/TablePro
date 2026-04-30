@@ -223,28 +223,21 @@ actor MCPAuthGuard {
     // MARK: - User Approval (askEachTime)
 
     private func promptUserApproval(connectionName: String, databaseType: String) async throws -> Bool {
-        let approvalTask = Task { @MainActor in
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.messageText = String(localized: "MCP Access Request")
-            alert.informativeText = String(
-                format: String(localized: "An MCP client wants to access '%@' (%@). Allow?"),
-                connectionName,
-                databaseType
-            )
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: String(localized: "Allow"))
-            alert.addButton(withTitle: String(localized: "Deny"))
-            return alert.runModal() == .alertFirstButtonReturn
-        }
-
         let approved = try await withThrowingTaskGroup(of: Bool.self) { group in
             group.addTask {
-                await approvalTask.value
+                await AlertHelper.runApprovalModal(
+                    title: String(localized: "MCP Access Request"),
+                    message: String(
+                        format: String(localized: "An MCP client wants to access '%@' (%@). Allow?"),
+                        connectionName,
+                        databaseType
+                    ),
+                    confirm: String(localized: "Allow"),
+                    cancel: String(localized: "Deny")
+                )
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(30))
-                approvalTask.cancel()
                 throw MCPError.timeout(
                     String(localized: "User approval timed out after 30 seconds")
                 )
@@ -252,17 +245,16 @@ actor MCPAuthGuard {
             guard let result = try await group.next() else {
                 throw MCPError.internalError("No result from approval prompt")
             }
-            approvalTask.cancel()
             group.cancelAll()
             return result
         }
 
-        if approved {
-            return true
+        guard approved else {
+            throw MCPError.forbidden(
+                String(localized: "User denied MCP access to this connection")
+            )
         }
-        throw MCPError.forbidden(
-            String(localized: "User denied MCP access to this connection")
-        )
+        return true
     }
 
     // MARK: - Session Cleanup
