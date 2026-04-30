@@ -853,10 +853,11 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 PluginCreateDatabaseFormSpec.Option(value: "libc", label: "libc"),
                 PluginCreateDatabaseFormSpec.Option(value: "icu", label: "icu")
             ]
+            let defaultProvider = templateDefaults?.provider == "i" ? "icu" : "libc"
             fields.append(PluginCreateDatabaseFormSpec.Field(
                 id: "provider",
                 label: String(localized: "Locale Provider"),
-                kind: .picker(options: providerOptions, defaultValue: "libc")
+                kind: .picker(options: providerOptions, defaultValue: defaultProvider)
             ))
         }
 
@@ -1010,18 +1011,26 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return value
     }
 
-    private func fetchTemplate1Defaults() async -> (collate: String, ctype: String)? {
+    private struct Template1Defaults {
+        let collate: String
+        let ctype: String
+        let provider: String?
+    }
+
+    private func fetchTemplate1Defaults() async -> Template1Defaults? {
+        let majorVersion = parsedServerMajorVersion() ?? 0
+        let providerColumn = majorVersion >= 15 ? ", datlocprovider" : ", NULL"
         do {
             let result = try await execute(
-                query: "SELECT datcollate, datctype FROM pg_database WHERE datname = 'template1'"
+                query: "SELECT datcollate, datctype\(providerColumn) FROM pg_database WHERE datname = 'template1'"
             )
             guard let row = result.rows.first,
-                  row.count >= 2,
+                  row.count >= 3,
                   let collate = row[0],
                   let ctype = row[1] else {
                 return nil
             }
-            return (collate: collate, ctype: ctype)
+            return Template1Defaults(collate: collate, ctype: ctype, provider: row[2])
         } catch {
             Self.logger.error(
                 "Failed to read template1 defaults: \(error.localizedDescription, privacy: .public)"

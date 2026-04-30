@@ -192,7 +192,12 @@ struct CreateDatabaseSheet: View {
 
     private func resetGroupedFields(after sourceId: String, in spec: CreateDatabaseFormSpec) {
         for field in spec.fields where field.groupedBy == sourceId {
-            values[field.id] = defaultValue(from: field.kind) ?? ""
+            let visible = filteredOptions(for: field).map(\.value)
+            if let preferred = defaultValue(from: field.kind), visible.contains(preferred) {
+                values[field.id] = preferred
+            } else {
+                values[field.id] = visible.first ?? ""
+            }
         }
     }
 
@@ -234,8 +239,11 @@ struct CreateDatabaseSheet: View {
         var initial: [String: String] = [:]
         var sources: Set<String> = []
         for field in spec.fields {
-            if let defaultValue = defaultValue(from: field.kind) {
-                initial[field.id] = defaultValue
+            let optionValues = options(from: field.kind).map(\.value)
+            if let preferred = defaultValue(from: field.kind), optionValues.contains(preferred) {
+                initial[field.id] = preferred
+            } else if let first = optionValues.first {
+                initial[field.id] = first
             }
             if let sourceId = field.groupedBy {
                 sources.insert(sourceId)
