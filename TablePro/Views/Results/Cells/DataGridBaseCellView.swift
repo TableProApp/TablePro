@@ -65,7 +65,7 @@ class DataGridBaseCellView: NSTableCellView {
         return view
     }()
 
-    required override init(frame frameRect: NSRect) {
+    override required init(frame frameRect: NSRect) {
         cellTextField = Self.makeTextField()
         super.init(frame: frameRect)
         commonInit()

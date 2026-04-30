@@ -243,7 +243,7 @@ final class MainContentCoordinator {
 
     /// Registry of active coordinators for aggregated quit-time persistence.
     /// Keyed by ObjectIdentifier of each coordinator instance.
-    private static var activeCoordinators: [ObjectIdentifier: MainContentCoordinator] = [:]
+    static var activeCoordinators: [ObjectIdentifier: MainContentCoordinator] = [:]
 
     /// Register this coordinator so quit-time persistence can aggregate tabs.
     private func registerForPersistence() {
@@ -253,50 +253,6 @@ final class MainContentCoordinator {
     /// Unregister this coordinator from quit-time aggregation.
     private func unregisterFromPersistence() {
         Self.activeCoordinators.removeValue(forKey: ObjectIdentifier(self))
-    }
-
-    /// Find a coordinator by its window identifier.
-    static func coordinator(for windowId: UUID) -> MainContentCoordinator? {
-        activeCoordinators.values.first { $0.windowId == windowId }
-    }
-
-    /// Find the coordinator whose `contentWindow` matches the given NSWindow.
-    /// Used by `TabWindowController` to dispatch NSWindowDelegate callbacks
-    /// to the correct coordinator without needing a shared registry key.
-    static func coordinator(forWindow window: NSWindow) -> MainContentCoordinator? {
-        activeCoordinators.values.first { $0.contentWindow === window }
-    }
-
-    /// Check whether any active coordinator has unsaved edits.
-    static func hasAnyUnsavedChanges() -> Bool {
-        activeCoordinators.values.contains { coordinator in
-            coordinator.changeManager.hasChanges
-                || coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges }
-        }
-    }
-
-    /// Collect all tabs from all active coordinators for a given connectionId.
-    static func allTabs(for connectionId: UUID) -> [QueryTab] {
-        activeCoordinators.values
-            .filter { $0.connectionId == connectionId }
-            .flatMap { $0.tabManager.tabs }
-    }
-
-    /// All currently active coordinators across windows.
-    static func allActiveCoordinators() -> [MainContentCoordinator] {
-        Array(activeCoordinators.values)
-    }
-
-    /// Find the first coordinator for `connectionId` that owns a tab matching `predicate`.
-    /// Used to dedup cross-window tabs (Server Dashboard singleton, ER Diagram reuse).
-    static func coordinator(
-        forConnection connectionId: UUID,
-        tabMatching predicate: (QueryTab) -> Bool
-    ) -> MainContentCoordinator? {
-        activeCoordinators.values.first { coordinator in
-            coordinator.connectionId == connectionId
-                && coordinator.tabManager.tabs.contains(where: predicate)
-        }
     }
 
     /// Collect non-preview tabs for persistence.
