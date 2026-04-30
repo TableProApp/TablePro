@@ -7,31 +7,33 @@ import AppKit
 
 struct ColumnIdentitySchema: Equatable {
     static let rowNumberIdentifier = NSUserInterfaceItemIdentifier("__rowNumber__")
+    static let dataColumnPrefix = "dataColumn-"
 
     let identifiers: [NSUserInterfaceItemIdentifier]
-    let isNameBased: Bool
+    let columnNames: [String]
+
     private let indexByRawIdentifier: [String: Int]
+    private let slotByColumnName: [String: Int]
 
     init(columns: [String]) {
-        let canUseNames = Set(columns).count == columns.count
-            && !columns.contains(Self.rowNumberIdentifier.rawValue)
-
-        if canUseNames {
-            self.identifiers = columns.map { NSUserInterfaceItemIdentifier($0) }
-            self.isNameBased = true
-        } else {
-            self.identifiers = columns.indices.map {
-                NSUserInterfaceItemIdentifier("col_\($0)")
-            }
-            self.isNameBased = false
+        self.columnNames = columns
+        self.identifiers = columns.indices.map {
+            NSUserInterfaceItemIdentifier("\(Self.dataColumnPrefix)\($0)")
         }
 
-        var map: [String: Int] = [:]
-        map.reserveCapacity(self.identifiers.count)
+        var rawMap: [String: Int] = [:]
+        rawMap.reserveCapacity(self.identifiers.count)
         for (index, identifier) in self.identifiers.enumerated() {
-            map[identifier.rawValue] = index
+            rawMap[identifier.rawValue] = index
         }
-        self.indexByRawIdentifier = map
+        self.indexByRawIdentifier = rawMap
+
+        var nameMap: [String: Int] = [:]
+        nameMap.reserveCapacity(columns.count)
+        for (index, name) in columns.enumerated() {
+            nameMap[name] = index
+        }
+        self.slotByColumnName = nameMap
     }
 
     static let empty = ColumnIdentitySchema(columns: [])
@@ -43,5 +45,18 @@ struct ColumnIdentitySchema: Equatable {
 
     func dataIndex(from identifier: NSUserInterfaceItemIdentifier) -> Int? {
         indexByRawIdentifier[identifier.rawValue]
+    }
+
+    func columnName(for dataIndex: Int) -> String? {
+        guard dataIndex >= 0, dataIndex < columnNames.count else { return nil }
+        return columnNames[dataIndex]
+    }
+
+    func dataIndex(forColumnName name: String) -> Int? {
+        slotByColumnName[name]
+    }
+
+    static func slotIdentifier(_ slot: Int) -> NSUserInterfaceItemIdentifier {
+        NSUserInterfaceItemIdentifier("\(dataColumnPrefix)\(slot)")
     }
 }
