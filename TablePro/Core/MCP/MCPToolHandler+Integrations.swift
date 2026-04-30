@@ -184,35 +184,44 @@ extension MCPToolHandler {
     func handleFocusQueryTab(_ args: JSONValue?, token: MCPAuthToken?) async throws -> MCPToolResult {
         let tabId = try requireUUID(args, key: "tab_id")
 
-        let outcome = await MainActor.run { () -> (Bool, UUID?, UUID?) in
+        let resolved = await MainActor.run { () -> (hasWindow: Bool, windowId: UUID?, connectionId: UUID?)? in
             for snapshot in Self.collectTabSnapshots() where snapshot.tabId == tabId {
-                if let window = snapshot.window {
-                    NSApp.activate(ignoringOtherApps: true)
-                    window.makeKeyAndOrderFront(nil)
-                    return (true, snapshot.windowId, snapshot.connectionId)
-                }
-                return (false, snapshot.windowId, snapshot.connectionId)
+                return (snapshot.window != nil, snapshot.windowId, snapshot.connectionId)
             }
-            return (false, nil, nil)
+            return nil
         }
 
-        guard outcome.0 else {
+        guard let resolved, resolved.hasWindow else {
             throw MCPError.notFound("tab")
         }
 
-        if let connectionId = outcome.2 {
+        if let connectionId = resolved.connectionId {
             if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
             try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
+        }
+
+        let raised = await MainActor.run { () -> Bool in
+            for snapshot in Self.collectTabSnapshots() where snapshot.tabId == tabId {
+                guard let window = snapshot.window else { return false }
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+                return true
+            }
+            return false
+        }
+
+        guard raised else {
+            throw MCPError.notFound("tab")
         }
 
         var dict: [String: JSONValue] = [
             "status": "focused",
             "tab_id": .string(tabId.uuidString)
         ]
-        if let windowId = outcome.1 {
+        if let windowId = resolved.windowId {
             dict["window_id"] = .string(windowId.uuidString)
         }
-        if let connectionId = outcome.2 {
+        if let connectionId = resolved.connectionId {
             dict["connection_id"] = .string(connectionId.uuidString)
         }
 
