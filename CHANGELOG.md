@@ -25,8 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Storage and manager classes (GroupStorage, AppSettingsStorage, ConnectionStorage, SyncMetadataStorage, QueryHistoryStorage, DatabaseManager, PluginManager) accept dependencies via init for test isolation, matching Apple's URLSession and UserDefaults convention. Production callers using `.shared` are unchanged. Tests now construct isolated instances with per-test temp paths and UserDefaults suites, so the test scheme runs in parallel again.
-- SQLFavoriteStorage and SyncChangeTracker now accept their dependencies via init (database URL for the favorites store, SyncMetadataStorage and NotificationCenter for the change tracker). Tests injecting a SyncChangeTracker into ConnectionStorage or GroupStorage can now also pass an isolated SyncMetadataStorage so dirty-set writes stop leaking through `.shared`. Replaces the `init(isolatedForTesting:)` and `init(isolatedStorage:)` ad hoc constructors that the rest of the storage classes had already moved past.
+- Storage and sync singletons accept dependencies via init for test isolation, matching Apple's URLSession and UserDefaults convention. Production callers using `.shared` are unchanged.
 - Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
 - Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
 - DataGrid columns and cells refactored to use a persistent column pool and typed cell view hierarchy. CPU usage on table switch reduced significantly through proper NSTableView reuse pool retention.
@@ -76,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redshift Create Database emitted PostgreSQL `LC_COLLATE` syntax which is invalid Redshift grammar. Now emits `COLLATE { CASE_SENSITIVE | CASE_INSENSITIVE }`.
 - Expand tilde in SSH agent socket and `IdentityAgent` paths so 1Password and similar agents work when configured with `~/...` paths.
 - Persist group deletions before firing the sync notification, fixing a race that could re-upload deleted groups via iCloud.
+- Persist connection deletions before firing the sync notification, fixing the same race for deleted connections.
 - Refuse to generate SQL when the database dialect cannot be resolved, instead of silently emitting unquoted identifiers.
 
 ## [0.36.0] - 2026-04-27
