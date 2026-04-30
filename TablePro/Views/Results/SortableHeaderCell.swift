@@ -16,10 +16,21 @@ final class SortableHeaderCell: NSTableHeaderCell {
 
     override init(textCell string: String) {
         super.init(textCell: string)
+        lineBreakMode = .byTruncatingTail
+        truncatesLastVisibleLine = true
+        wraps = false
     }
 
     required init(coder: NSCoder) {
         super.init(coder: coder)
+        lineBreakMode = .byTruncatingTail
+        truncatesLastVisibleLine = true
+        wraps = false
+    }
+
+    override var state: NSControl.StateValue {
+        get { .off }
+        set { _ = newValue }
     }
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {

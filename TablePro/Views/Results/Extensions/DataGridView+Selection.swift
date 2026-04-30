@@ -84,6 +84,6 @@ extension TableViewCoordinator {
             return (existingFocusedRow, column)
         }
 
-        return (tableView.selectedRow, column)
+        return (current.min() ?? -1, column)
     }
 }

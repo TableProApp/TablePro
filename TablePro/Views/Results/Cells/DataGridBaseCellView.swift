@@ -200,7 +200,7 @@ class DataGridBaseCellView: NSTableCellView {
 
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
-            backgroundView.isHidden = (changeBackgroundColor == nil)
+            backgroundView.isHidden = (backgroundStyle == .emphasized) || (changeBackgroundColor == nil)
             updateFocusPresentation()
         }
     }

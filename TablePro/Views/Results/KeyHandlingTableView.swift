@@ -148,6 +148,7 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         let row = selectedRow
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
         switch key {
         case .leftArrow:
@@ -161,6 +162,12 @@ final class KeyHandlingTableView: NSTableView {
         case .upArrow, .downArrow, .home, .end, .pageUp, .pageDown:
             super.keyDown(with: event)
             return
+
+        case .delete, .forwardDelete:
+            if modifiers.isEmpty || modifiers == .command {
+                deleteSelectedRowsIfPossible()
+                return
+            }
 
         default:
             break
@@ -195,33 +202,67 @@ final class KeyHandlingTableView: NSTableView {
         editColumn(focusedColumn, row: row, with: nil, select: true)
     }
 
-    @objc override func deleteBackward(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        guard !selectedRowIndexes.isEmpty else { return }
-        delete(sender)
-    }
-
     @objc override func cancelOperation(_ sender: Any?) {
     }
 
+    private func deleteSelectedRowsIfPossible() {
+        guard coordinator?.isEditable == true else { return }
+        guard !selectedRowIndexes.isEmpty else { return }
+        delete(nil)
+    }
+
     private func handleLeftArrow(currentRow: Int) {
-        if focusedColumn > 1 {
-            focusedColumn -= 1
-            if currentRow >= 0 { scrollColumnToVisible(focusedColumn) }
-        } else if focusedColumn == -1 && numberOfColumns > 1 {
-            focusedColumn = numberOfColumns - 1
-            if currentRow >= 0 { scrollColumnToVisible(focusedColumn) }
-        }
+        let target = focusedColumn < 0
+            ? lastVisibleDataColumn()
+            : previousVisibleDataColumn(before: focusedColumn)
+        guard target >= 1 else { return }
+        focusedColumn = target
+        if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 
     private func handleRightArrow(currentRow: Int) {
-        if focusedColumn >= 1 && focusedColumn < numberOfColumns - 1 {
-            focusedColumn += 1
-            if currentRow >= 0 { scrollColumnToVisible(focusedColumn) }
-        } else if focusedColumn == -1 && numberOfColumns > 1 {
-            focusedColumn = 1
-            if currentRow >= 0 { scrollColumnToVisible(focusedColumn) }
+        let target = focusedColumn < 1
+            ? firstVisibleDataColumn()
+            : nextVisibleDataColumn(after: focusedColumn)
+        guard target >= 1 else { return }
+        focusedColumn = target
+        if currentRow >= 0 { scrollColumnToVisible(target) }
+    }
+
+    private func firstVisibleDataColumn() -> Int {
+        for index in 1..<numberOfColumns where isVisibleDataColumn(at: index) {
+            return index
         }
+        return -1
+    }
+
+    private func lastVisibleDataColumn() -> Int {
+        for index in stride(from: numberOfColumns - 1, through: 1, by: -1) where isVisibleDataColumn(at: index) {
+            return index
+        }
+        return -1
+    }
+
+    private func nextVisibleDataColumn(after current: Int) -> Int {
+        guard current + 1 < numberOfColumns else { return -1 }
+        for index in (current + 1)..<numberOfColumns where isVisibleDataColumn(at: index) {
+            return index
+        }
+        return -1
+    }
+
+    private func previousVisibleDataColumn(before current: Int) -> Int {
+        guard current > 1 else { return -1 }
+        for index in stride(from: current - 1, through: 1, by: -1) where isVisibleDataColumn(at: index) {
+            return index
+        }
+        return -1
+    }
+
+    private func isVisibleDataColumn(at index: Int) -> Bool {
+        guard index >= 0, index < numberOfColumns else { return false }
+        let column = tableColumns[index]
+        return !column.isHidden && column.identifier != ColumnIdentitySchema.rowNumberIdentifier
     }
 
     private func handleTabKey() {
