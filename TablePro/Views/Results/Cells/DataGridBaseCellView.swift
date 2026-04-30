@@ -34,9 +34,21 @@ class DataGridBaseCellView: NSTableCellView {
     var isFocusedCell: Bool = false {
         didSet {
             guard oldValue != isFocusedCell else { return }
-            updateFocusRing()
+            updateFocusPresentation()
         }
     }
+
+    private lazy var focusOverlay: CellFocusOverlay = {
+        let overlay = CellFocusOverlay()
+        addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        return overlay
+    }()
 
     private(set) lazy var backgroundView: NSView = {
         let view = NSView()
@@ -189,7 +201,7 @@ class DataGridBaseCellView: NSTableCellView {
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
             backgroundView.isHidden = (changeBackgroundColor == nil)
-            if isFocusedCell { needsDisplay = true }
+            updateFocusPresentation()
         }
     }
 
@@ -202,38 +214,10 @@ class DataGridBaseCellView: NSTableCellView {
         NSBezierPath(rect: bounds).fill()
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        guard isFocusedCell else { return }
-        if backgroundStyle == .emphasized {
-            drawEmphasizedFocusBorder()
-        } else {
-            NSGraphicsContext.saveGraphicsState()
-            NSFocusRingPlacement.only.set()
-            drawFocusRingMask()
-            NSGraphicsContext.restoreGraphicsState()
-        }
-    }
-
-    private func drawEmphasizedFocusBorder() {
-        let inset: CGFloat = 1
-        let rect = bounds.insetBy(dx: inset, dy: inset)
-        let path = NSBezierPath(rect: rect)
-        path.lineWidth = 2
-        NSColor.alternateSelectedControlTextColor.setStroke()
-        path.stroke()
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        if isFocusedCell {
-            needsDisplay = true
-        }
-    }
-
-    private func updateFocusRing() {
-        focusRingType = (isFocusedCell && backgroundStyle != .emphasized) ? .exterior : .none
+    private func updateFocusPresentation() {
+        let onEmphasized = backgroundStyle == .emphasized
+        focusOverlay.style = (isFocusedCell && onEmphasized) ? .contrastingBorder : .hidden
+        focusRingType = (isFocusedCell && !onEmphasized) ? .exterior : .none
         noteFocusRingMaskChanged()
-        needsDisplay = true
     }
 }
