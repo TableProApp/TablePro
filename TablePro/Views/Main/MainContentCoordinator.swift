@@ -672,7 +672,18 @@ final class MainContentCoordinator {
 
     func loadSchema() async {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        sidebarLoadingState = .loading
         await schemaProvider.loadSchema(using: driver, connection: connection)
+        let fetchedTables = await schemaProvider.getTables()
+        if !fetchedTables.isEmpty {
+            let sessionTables = DatabaseManager.shared.session(for: connectionId)?.tables ?? []
+            if sessionTables != fetchedTables {
+                DatabaseManager.shared.updateSession(connectionId) { $0.tables = fetchedTables }
+            }
+            sidebarLoadingState = .loaded
+        } else {
+            sidebarLoadingState = .idle
+        }
     }
 
     func loadTableMetadata(tableName: String) async {
