@@ -153,7 +153,6 @@ extension TableViewCoordinator {
         )
 
         let cell = cellRegistry.dequeueCell(of: kind, in: tableView)
-        cell.cellTextField.delegate = self
         cell.configure(content: content, state: cellState)
 
         ViewForStats.record((CFAbsoluteTimeGetCurrent() - __tCell) * 1000)

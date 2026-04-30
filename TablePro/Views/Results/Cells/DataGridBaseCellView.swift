@@ -53,7 +53,7 @@ class DataGridBaseCellView: NSTableCellView {
         return view
     }()
 
-    override init(frame frameRect: NSRect) {
+    required override init(frame frameRect: NSRect) {
         cellTextField = Self.makeTextField()
         super.init(frame: frameRect)
         commonInit()
@@ -103,9 +103,11 @@ class DataGridBaseCellView: NSTableCellView {
         applyVisualState(state)
 
         cellTextField.isEditable = state.isEditable && !state.visualState.isDeleted
-        cellTextField.identifier = Self.reuseIdentifier
 
-        textFieldTrailingConstraint.constant = textFieldTrailingInset(for: content, state: state)
+        let newInset = textFieldTrailingInset(for: content, state: state)
+        if textFieldTrailingConstraint.constant != newInset {
+            textFieldTrailingConstraint.constant = newInset
+        }
 
         updateAccessoryVisibility(content: content, state: state)
 

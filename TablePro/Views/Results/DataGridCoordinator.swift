@@ -136,6 +136,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         self.cellRegistry = DataGridCellRegistry()
         super.init()
         cellRegistry.accessoryDelegate = self
+        cellRegistry.textFieldDelegate = self
         updateCache()
 
         observeThemeChanges()

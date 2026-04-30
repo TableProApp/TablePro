@@ -9,6 +9,7 @@ import Foundation
 @MainActor
 final class DataGridCellRegistry {
     weak var accessoryDelegate: DataGridCellAccessoryDelegate?
+    weak var textFieldDelegate: NSTextFieldDelegate?
 
     private(set) var nullDisplayString: String
     private var settingsObserver: NSObjectProtocol?
@@ -80,7 +81,6 @@ final class DataGridCellRegistry {
         }
 
         if let reused = tableView.makeView(withIdentifier: identifier, owner: nil) as? DataGridBaseCellView {
-            reused.accessoryDelegate = accessoryDelegate
             reused.nullDisplayString = nullDisplayString
             return reused
         }
@@ -88,6 +88,7 @@ final class DataGridCellRegistry {
         let cell = cellType.init(frame: .zero)
         cell.identifier = identifier
         cell.accessoryDelegate = accessoryDelegate
+        cell.cellTextField.delegate = textFieldDelegate
         cell.nullDisplayString = nullDisplayString
         return cell
     }
