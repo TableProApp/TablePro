@@ -1055,16 +1055,7 @@ impl BrowseTab {
             .filter(|(_, c)| c.primary_key)
             .map(|(i, _)| i)
             .collect();
-        if pk_indices.is_empty() {
-            return None;
-        }
-        let cells = row_obj.cells_clone();
-        let pk_values: Vec<Value> = pk_indices
-            .iter()
-            .map(|&i| cells.get(i).cloned())
-            .collect::<Option<_>>()?;
-        let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
-        Some((key, cells))
+        build_persisted_row_key(row_obj.cells_clone(), &pk_indices)
     }
 
     /// Returns true when the loaded columns include at least one PK.
@@ -1874,13 +1865,8 @@ impl SimpleComponent for BrowseTab {
                     }
                     had_persisted_row = true;
                     let cells = row_obj.cells_clone();
-                    if let Some(pk_values) = pk_indices
-                        .iter()
-                        .map(|&i| cells.get(i).cloned())
-                        .collect::<Option<Vec<Value>>>()
-                        && let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)
-                    {
-                        snapshot.push((key, cells));
+                    if let Some(pair) = build_persisted_row_key(cells, &pk_indices) {
+                        snapshot.push(pair);
                     }
                 }
                 // PK gate only fires when persisted rows are involved.
@@ -2339,6 +2325,27 @@ fn normalize_single_line_input(text: &str) -> String {
     replaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Build a `(RowKey, cells)` pair for a persisted row given its full
+/// cell slice and the table's PK column indices. Returns `None` when
+/// pk_indices is empty (no PK), any index is out of range, or
+/// `RowKey::from_pk_values` rejects the values.
+///
+/// Pure function so it stays unit-testable without spinning up GTK
+/// / RowObject. Callers feed it a clone of the row's cells (already
+/// pulled from the model in filter-model space, see the
+/// row-position-vs-result-rows note in `DeleteSelectedRow`).
+fn build_persisted_row_key(
+    cells: Vec<Value>,
+    pk_indices: &[usize],
+) -> Option<(crate::services::change_tracker::RowKey, Vec<Value>)> {
+    let pk_values: Vec<Value> = pk_indices
+        .iter()
+        .map(|&i| cells.get(i).cloned())
+        .collect::<Option<_>>()?;
+    let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
+    Some((key, cells))
+}
+
 /// Update the selection-count badge + Delete button tooltip in
 /// response to a `MultiSelection` change. Hidden when 0–1 rows are
 /// selected (single-row state has no scaling text need); shows
@@ -2609,7 +2616,8 @@ struct Mutations {
 
 #[cfg(test)]
 mod tests {
-    use super::{TypeKind, classify_type, format_thousands, parse_input_for_column};
+    use super::{TypeKind, build_persisted_row_key, classify_type, format_thousands, parse_input_for_column};
+    use crate::services::change_tracker::RowKey;
     use tablepro_core::{ColumnInfo, Value};
 
     fn col(data_type: &str, nullable: bool) -> ColumnInfo {
@@ -2772,5 +2780,78 @@ mod tests {
             Value::Text(s) => assert_eq!(s, "<NULL>"),
             other => panic!("expected Text(\"<NULL>\") got {other:?}"),
         }
+    }
+
+    // build_persisted_row_key — pure helper used by row_key_at and
+    // the bulk-delete snapshot loop. Locks down the contract that
+    // backed the position-space bug fix: cells come straight from
+    // the row, pk_indices select which positions form the PK.
+
+    #[test]
+    fn build_pk_single_column() {
+        let cells = vec![Value::Int(42), Value::Text("alice".into())];
+        let (key, returned) = build_persisted_row_key(cells.clone(), &[0]).expect("valid PK");
+        assert!(matches!(key, RowKey::Persisted(_)));
+        assert_eq!(returned, cells);
+    }
+
+    #[test]
+    fn build_pk_multi_column_preserves_index_order() {
+        // Composite PK formed from columns 2 and 0, in that order.
+        // The helper must preserve `pk_indices` ordering so two
+        // tables with the same columns in different orders never
+        // produce key-collisions on rows that aren't actually equal.
+        let cells = vec![
+            Value::Text("eu-west".into()),
+            Value::Text("ignored".into()),
+            Value::Int(7),
+        ];
+        let (key, _) = build_persisted_row_key(cells, &[2, 0]).expect("composite PK");
+        let RowKey::Persisted(kv) = key else {
+            panic!("expected Persisted")
+        };
+        // First component is column-2 (Int 7), second is column-0
+        // (Text "eu-west"). Reversed order would be the bug.
+        assert_eq!(kv.len(), 2);
+    }
+
+    #[test]
+    fn build_pk_empty_indices_returns_none() {
+        // Tables with no PK can't have stable row identity. The
+        // caller is expected to short-circuit before reaching the
+        // helper, but defending here means the helper is safe to
+        // call from any context.
+        let cells = vec![Value::Int(1)];
+        assert!(build_persisted_row_key(cells, &[]).is_none());
+    }
+
+    #[test]
+    fn build_pk_index_out_of_range_returns_none() {
+        // PK index 5 against a 2-cell row was the actual bug class
+        // we just fixed — the previous code would index past the
+        // end of `result.rows[pos]` when drafts shifted positions.
+        // The helper now returns None instead of panicking.
+        let cells = vec![Value::Int(1), Value::Text("x".into())];
+        assert!(build_persisted_row_key(cells, &[5]).is_none());
+    }
+
+    #[test]
+    fn build_pk_partial_out_of_range_returns_none() {
+        // Composite PK where one index is valid and one isn't —
+        // any out-of-range component invalidates the whole key.
+        let cells = vec![Value::Int(1)];
+        assert!(build_persisted_row_key(cells, &[0, 1]).is_none());
+    }
+
+    #[test]
+    fn build_pk_with_null_components_is_allowed() {
+        // SQL allows NULL in primary keys for some drivers (rare
+        // but legal in SQLite, MySQL with NULL columns, etc.).
+        // The tracker's KeyValue::Null mirror handles equality, so
+        // the helper must not reject Null PK components — only
+        // out-of-range or empty pk_indices fail.
+        let cells = vec![Value::Null, Value::Text("x".into())];
+        let (key, _) = build_persisted_row_key(cells, &[0]).expect("Null PK is valid");
+        assert!(matches!(key, RowKey::Persisted(_)));
     }
 }
