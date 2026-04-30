@@ -85,7 +85,7 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 0, columnIndex: 1, columnName: "name",
             oldValue: "A", newValue: "B"
         )
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(manager.canRedo)
         manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
         #expect(!manager.canRedo)
@@ -335,7 +335,7 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 0, columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        _ = manager1.undoLastChange()
+        manager1.undoManagerProvider?()?.undo()
         #expect(manager1.canRedo)
         manager1.discardChanges()
         #expect(manager1.canRedo)
@@ -346,7 +346,7 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 0, columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        _ = manager2.undoLastChange()
+        manager2.undoManagerProvider?()?.undo()
         #expect(manager2.canRedo)
         manager2.clearChanges()
         #expect(!manager2.canUndo)
@@ -395,8 +395,8 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 1, columnIndex: 1, columnName: "name",
             oldValue: "Charlie", newValue: "Dave"
         )
-        _ = manager.undoLastChange()
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
+        manager.undoManagerProvider?()?.undo()
         #expect(manager.changes.isEmpty)
         #expect(!manager.hasChanges)
     }
@@ -408,9 +408,9 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 0, columnIndex: 1, columnName: "name",
             oldValue: "A", newValue: "B"
         )
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(manager.changes.isEmpty)
-        _ = manager.redoLastChange()
+        manager.undoManagerProvider?()?.redo()
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].cellChanges[0].newValue == "B")
     }
@@ -419,7 +419,7 @@ struct DataChangeManagerExtendedTests {
     func undoRowInsertionRemovesFromIndices() {
         let manager = makeManager()
         manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(!manager.isRowInserted(5))
     }
 
@@ -427,7 +427,7 @@ struct DataChangeManagerExtendedTests {
     func undoRowDeletionRemovesFromIndices() {
         let manager = makeManager()
         manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(!manager.isRowDeleted(2))
     }
 
@@ -435,9 +435,9 @@ struct DataChangeManagerExtendedTests {
     func undoRowInsertionThenRedoReInserts() {
         let manager = makeManager()
         manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(!manager.isRowInserted(5))
-        _ = manager.redoLastChange()
+        manager.undoManagerProvider?()?.redo()
         #expect(manager.isRowInserted(5))
     }
 
@@ -445,9 +445,9 @@ struct DataChangeManagerExtendedTests {
     func undoRowDeletionThenRedoReDeletes() {
         let manager = makeManager()
         manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(!manager.isRowDeleted(2))
-        _ = manager.redoLastChange()
+        manager.undoManagerProvider?()?.redo()
         #expect(manager.isRowDeleted(2))
     }
 
@@ -464,63 +464,77 @@ struct DataChangeManagerExtendedTests {
         )
         #expect(manager.changes.count == 2)
 
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(manager.changes.count == 1)
 
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(manager.changes.count == 0)
 
-        _ = manager.redoLastChange()
+        manager.undoManagerProvider?()?.redo()
         #expect(manager.changes.count == 1)
 
-        _ = manager.redoLastChange()
+        manager.undoManagerProvider?()?.redo()
         #expect(manager.changes.count == 2)
     }
 
     @Test("Undo returns cell edit action details with correct flags")
     func undoReturnsCellEditActionDetails() {
         let manager = makeManager()
+        var captured: UndoResult?
+        manager.onUndoApplied = { captured = $0 }
         manager.recordCellChange(
             rowIndex: 0, columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        let result = manager.undoLastChange()
-        #expect(result != nil)
-        #expect(result?.needsRowRemoval == false)
-        #expect(result?.needsRowRestore == false)
+        manager.undoManagerProvider?()?.undo()
+        #expect(captured != nil)
+        #expect(captured?.needsRowRemoval == false)
+        #expect(captured?.needsRowRestore == false)
     }
 
     @Test("Undo returns row insertion action details with needsRowRemoval")
     func undoReturnsRowInsertionActionDetails() {
         let manager = makeManager()
+        var captured: UndoResult?
+        manager.onUndoApplied = { captured = $0 }
         manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
-        let result = manager.undoLastChange()
-        #expect(result != nil)
-        #expect(result?.needsRowRemoval == true)
+        manager.undoManagerProvider?()?.undo()
+        #expect(captured != nil)
+        #expect(captured?.needsRowRemoval == true)
     }
 
     @Test("Undo returns row deletion action details with needsRowRestore and restoreRow")
     func undoReturnsRowDeletionActionDetails() {
         let manager = makeManager()
+        var captured: UndoResult?
+        manager.onUndoApplied = { captured = $0 }
         manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice"])
-        let result = manager.undoLastChange()
-        #expect(result != nil)
-        #expect(result?.needsRowRestore == true)
-        #expect(result?.restoreRow == ["1", "Alice"])
+        manager.undoManagerProvider?()?.undo()
+        #expect(captured != nil)
+        #expect(captured?.needsRowRestore == true)
+        #expect(captured?.restoreRow == ["1", "Alice"])
     }
 
-    @Test("Undo returns nil when undo stack is empty")
-    func undoReturnsNilWhenStackEmpty() {
+    @Test("Undo does nothing when undo stack is empty")
+    func undoNoopWhenStackEmpty() {
         let manager = makeManager()
-        let result = manager.undoLastChange()
-        #expect(result == nil)
+        var captured: UndoResult?
+        manager.onUndoApplied = { captured = $0 }
+        let undoManager = manager.undoManagerProvider?()
+        #expect(undoManager?.canUndo == false)
+        undoManager?.undo()
+        #expect(captured == nil)
     }
 
-    @Test("Redo returns nil when redo stack is empty")
-    func redoReturnsNilWhenStackEmpty() {
+    @Test("Redo does nothing when redo stack is empty")
+    func redoNoopWhenStackEmpty() {
         let manager = makeManager()
-        let result = manager.redoLastChange()
-        #expect(result == nil)
+        var captured: UndoResult?
+        manager.onUndoApplied = { captured = $0 }
+        let undoManager = manager.undoManagerProvider?()
+        #expect(undoManager?.canRedo == false)
+        undoManager?.redo()
+        #expect(captured == nil)
     }
 
     // MARK: - Interaction Between Operations
@@ -560,7 +574,7 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 0, columnIndex: 1, columnName: "name",
             oldValue: nil, newValue: "hello"
         )
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         let state = manager.saveState()
         #expect(state.insertedRowData[0]?[1] == nil)
     }
@@ -633,7 +647,7 @@ struct DataChangeManagerExtendedTests {
             (rowIndex: 1, originalRow: ["2", "Bob", "b@test.com"]),
             (rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
         ])
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(!manager.isRowDeleted(0))
         #expect(!manager.isRowDeleted(1))
         #expect(!manager.isRowDeleted(2))
@@ -755,7 +769,7 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 0, columnIndex: 2, columnName: "email",
             oldValue: "a@test.com", newValue: "b@test.com"
         )
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 2))
         #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
     }
@@ -767,8 +781,8 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 0, columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        _ = manager.undoLastChange()
-        _ = manager.redoLastChange()
+        manager.undoManagerProvider?()?.undo()
+        manager.undoManagerProvider?()?.redo()
         #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
         #expect(!manager.changes.isEmpty)
     }
@@ -780,11 +794,11 @@ struct DataChangeManagerExtendedTests {
             rowIndex: 0, columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        _ = manager.undoLastChange()
-        _ = manager.redoLastChange()
+        manager.undoManagerProvider?()?.undo()
+        manager.undoManagerProvider?()?.redo()
         #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
 
-        _ = manager.undoLastChange()
+        manager.undoManagerProvider?()?.undo()
         #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
         #expect(manager.changes.isEmpty)
         #expect(!manager.hasChanges)

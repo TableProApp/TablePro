@@ -42,6 +42,11 @@ extension TableViewCoordinator {
             } else if keyTableView.focusedRow < 0, let firstRow = newSelection.min() {
                 keyTableView.focusedRow = firstRow
                 keyTableView.focusedColumn = 1
+            } else if tableView.numberOfSelectedRows == 1 {
+                let newRow = tableView.selectedRow
+                if keyTableView.focusedRow != newRow {
+                    keyTableView.focusedRow = newRow
+                }
             }
         }
     }

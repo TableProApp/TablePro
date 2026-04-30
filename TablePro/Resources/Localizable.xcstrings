@@ -7741,6 +7741,9 @@
     "Choose a certificate or key file" : {
 
     },
+    "Choose a fetched model" : {
+
+    },
     "Choose a folder to watch for .tablepro connection files" : {
       "localizations" : {
         "tr" : {
@@ -24880,6 +24883,9 @@
         }
       }
     },
+    "Model name" : {
+
+    },
     "Model not found: %@" : {
       "localizations" : {
         "tr" : {
@@ -31138,6 +31144,9 @@
         }
       }
     },
+    "Priority %d" : {
+
+    },
     "Privacy" : {
       "localizations" : {
         "tr" : {
@@ -35646,9 +35655,6 @@
         }
       }
     },
-    "Select a model" : {
-
-    },
     "Select a Plugin" : {
       "localizations" : {
         "tr" : {
@@ -37490,6 +37496,12 @@
           }
         }
       }
+    },
+    "Sorted ascending" : {
+
+    },
+    "Sorted descending" : {
+
     },
     "Sorting will reload data and discard all unsaved changes." : {
       "localizations" : {

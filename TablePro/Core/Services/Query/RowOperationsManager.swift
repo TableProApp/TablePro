@@ -150,16 +150,6 @@ final class RowOperationsManager {
         )
     }
 
-    func undoLastChange(tableRows: inout TableRows) -> UndoApplicationResult? {
-        guard let result = changeManager.undoLastChange() else { return nil }
-        return applyUndoResult(result, tableRows: &tableRows)
-    }
-
-    func redoLastChange(tableRows: inout TableRows) -> UndoApplicationResult? {
-        guard let result = changeManager.redoLastChange() else { return nil }
-        return applyUndoResult(result, tableRows: &tableRows)
-    }
-
     func applyUndoResult(_ result: UndoResult, tableRows: inout TableRows) -> UndoApplicationResult {
         switch result.action {
         case .cellEdit(let rowIndex, let columnIndex, _, let previousValue, _, _):

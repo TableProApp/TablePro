@@ -1,15 +1,8 @@
-//
-//  TableSelection.swift
-//  TablePro
-//
-
 import Foundation
 
 struct TableSelection: Equatable {
     var focusedRow: Int = -1
     var focusedColumn: Int = -1
-    var anchor: Int = -1
-    var pivot: Int = -1
 
     var hasFocus: Bool { focusedRow >= 0 && focusedColumn >= 0 }
 
@@ -23,16 +16,6 @@ struct TableSelection: Equatable {
     mutating func setFocus(row: Int, column: Int) {
         focusedRow = row
         focusedColumn = column
-    }
-
-    mutating func resetAnchor(at row: Int) {
-        anchor = row
-        pivot = row
-    }
-
-    mutating func clearAnchor() {
-        anchor = -1
-        pivot = -1
     }
 
     func reloadIndexes(from previous: TableSelection) -> (rows: IndexSet, columns: IndexSet)? {
