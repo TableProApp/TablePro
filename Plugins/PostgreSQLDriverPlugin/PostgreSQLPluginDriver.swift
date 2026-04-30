@@ -837,7 +837,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 throw LibPQPluginError(message: "Invalid collation", sqlState: nil, detail: nil)
             }
             let escapedCollation = collation.replacingOccurrences(of: "'", with: "''")
-            query += " LC_COLLATE '\(escapedCollation)'"
+            query += "  TEMPLATE 'template0' LC_COLLATE '\(escapedCollation)'"
         }
         _ = try await execute(query: query)
     }

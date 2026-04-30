@@ -66,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection form: `usePrivateKey=true` from URL no longer disables Test/Create buttons
 - Transient connections from URL clean up keychain entries on connection failure
 - Native Search Field focus regression when clearing text
+- Using the template0 database to resolve database creation failures in PostgreSQL
 
 ## [0.36.0] - 2026-04-27
 
