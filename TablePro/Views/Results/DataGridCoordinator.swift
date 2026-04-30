@@ -187,7 +187,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task {
+            Task { @MainActor [weak self] in
                 guard let self, let tableView = self.tableView else { return }
                 Self.updateVisibleCellFonts(tableView: tableView)
             }

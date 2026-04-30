@@ -13,12 +13,10 @@ final class DataGridCellFactory {
     private static let sampleRowCount = 30
     private static let maxMeasureChars = 50
 
-    private var headerFont: NSFont {
-        NSFont.systemFont(ofSize: 13, weight: .semibold)
-    }
+    private static let headerFont: NSFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
 
     func calculateColumnWidth(for columnName: String) -> CGFloat {
-        let attributes: [NSAttributedString.Key: Any] = [.font: headerFont]
+        let attributes: [NSAttributedString.Key: Any] = [.font: Self.headerFont]
         let size = (columnName as NSString).size(withAttributes: attributes)
         let width = size.width + 48
         return min(max(width, Self.minColumnWidth), Self.maxColumnWidth)
@@ -105,18 +103,28 @@ internal extension String {
         let nsString = self as NSString
         let length = nsString.length
         guard length > 0 else { return self }
-        guard containsLineBreak else { return self }
 
-        let mutable = NSMutableString(capacity: length)
+        var mutable: NSMutableString?
+        var copiedUpTo = 0
         for i in 0..<length {
             let ch = nsString.character(at: i)
-            if ch == 0x0A || ch == 0x0D || ch == 0x0B || ch == 0x0C ||
-               ch == 0x85 || ch == 0x2028 || ch == 0x2029 {
-                mutable.append(" ")
-            } else {
-                mutable.append(String(utf16CodeUnits: [ch], count: 1))
+            guard ch == 0x0A || ch == 0x0D || ch == 0x0B || ch == 0x0C ||
+                  ch == 0x85 || ch == 0x2028 || ch == 0x2029 else { continue }
+
+            if mutable == nil {
+                mutable = NSMutableString(capacity: length)
             }
+            if i > copiedUpTo {
+                mutable?.append(nsString.substring(with: NSRange(location: copiedUpTo, length: i - copiedUpTo)))
+            }
+            mutable?.append(" ")
+            copiedUpTo = i + 1
         }
-        return mutable as String
+
+        guard let result = mutable else { return self }
+        if copiedUpTo < length {
+            result.append(nsString.substring(with: NSRange(location: copiedUpTo, length: length - copiedUpTo)))
+        }
+        return result as String
     }
 }
