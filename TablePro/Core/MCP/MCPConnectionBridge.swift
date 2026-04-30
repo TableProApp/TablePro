@@ -11,7 +11,7 @@ import os
 actor MCPConnectionBridge {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
 
-    private var inFlightConnects: [UUID: Task<Void, Error>] = [:]
+    private let connectDedup = OnceTask<UUID, Void>()
 
     // MARK: - Connection Management
 
@@ -504,16 +504,9 @@ actor MCPConnectionBridge {
     }
 
     private func connectIfNeeded(_ connection: DatabaseConnection) async throws {
-        if let existing = inFlightConnects[connection.id] {
-            try await existing.value
-            return
-        }
-        let task = Task<Void, Error> { [connection] in
+        try await connectDedup.execute(key: connection.id) {
             try await DatabaseManager.shared.connectToSession(connection)
         }
-        inFlightConnects[connection.id] = task
-        defer { inFlightConnects.removeValue(forKey: connection.id) }
-        try await task.value
     }
 
     private func resolveSession(_ connectionId: UUID) async throws -> ConnectionSession {
