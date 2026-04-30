@@ -638,9 +638,13 @@ final class MainContentCoordinator {
     /// Load schema only if the shared provider hasn't loaded yet
     func loadSchemaIfNeeded() async {
         let alreadyLoaded = await schemaProvider.isSchemaLoaded()
-        if !alreadyLoaded {
-            await loadSchema()
+        if alreadyLoaded {
+            if sidebarLoadingState == .idle {
+                sidebarLoadingState = .loaded
+            }
+            return
         }
+        await loadSchema()
     }
 
     /// Initialize view with connection info and load schema (legacy — used by first window)
