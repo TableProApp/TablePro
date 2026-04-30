@@ -212,7 +212,7 @@ struct CreateDatabaseSheet: View {
 
     private func displayLabel(for option: CreateDatabaseFormSpec.Option) -> String {
         guard let subtitle = option.subtitle, !subtitle.isEmpty else { return option.label }
-        return "\(option.label) (\(subtitle))"
+        return "\(option.label) \(subtitle)"
     }
 
     private func load() async {

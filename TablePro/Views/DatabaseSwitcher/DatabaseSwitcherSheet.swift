@@ -401,7 +401,6 @@ struct DatabaseSwitcherSheet: View {
     // MARK: - Actions
 
     private func refreshCreateSupport() async {
-        guard !isSchemaMode else { return }
         do {
             let spec = try await viewModel.loadCreateDatabaseForm()
             supportsCreateDatabase = spec != nil

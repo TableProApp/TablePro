@@ -17630,6 +17630,9 @@
         }
       }
     },
+    "Failed to load options" : {
+
+    },
     "Failed to load plugin registry" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -23801,6 +23804,9 @@
           }
         }
       }
+    },
+    "Loading options..." : {
+
     },
     "Loading plugins..." : {
       "extractionState" : "stale",
@@ -40810,6 +40816,9 @@
           }
         }
       }
+    },
+    "This engine does not support creating databases." : {
+
     },
     "This file is encrypted" : {
       "localizations" : {
