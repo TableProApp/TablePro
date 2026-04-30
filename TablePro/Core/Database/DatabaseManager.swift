@@ -60,6 +60,8 @@ final class DatabaseManager {
     /// and the wake-from-sleep handler fire for the same connection.
     @ObservationIgnored internal var recoveringConnectionIds = Set<UUID>()
 
+    @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()
+
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
         guard let sessionId = currentSessionId else { return nil }

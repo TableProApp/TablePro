@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data grid cell focus ring redraws when the user toggles Light or Dark mode mid-session, picking up the system's appearance-aware focus indicator color
 - Data grid keeps sortedIDs and cachedRowCount paired by calling updateCache() immediately after the SwiftUI bridge writes new sortedIDs to the coordinator, removing a window where the cached count and the sort permutation could disagree
 - Display formats memoized per tab on MainContentCoordinator keyed by schema version, smart-detection setting, and format-overrides version, so ValueDisplayDetector.detect runs once per result schema instead of on every SwiftUI body evaluation
+- `MCPAuthGuard` and `MCPConnectionBridge` route concurrent dedup through a shared `OnceTask` actor (`Core/Concurrency/OnceTask.swift`). Cleanup of in-flight slots happens in `defer` inside the actor, so a cancelled or thrown caller no longer leaves a stale entry behind.
 
 ### Removed (BREAKING)
 
