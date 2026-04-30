@@ -410,6 +410,16 @@ final class MCPToolHandler: Sendable {
             throw MCPError.invalidParams("Either 'query' or 'tables' must be provided")
         }
 
+        if let tables {
+            for table in tables {
+                try Self.validateExportTableName(table)
+            }
+        }
+
+        if let outputPath {
+            _ = try Self.sandboxedDownloadsURL(for: outputPath)
+        }
+
         if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
         try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
@@ -428,7 +438,6 @@ final class MCPToolHandler: Sendable {
         } else if let tables {
             let quoteIdentifier = Self.identifierQuoter(for: databaseType)
             for table in tables {
-                try Self.validateExportTableName(table)
                 let quoted = Self.quoteQualifiedIdentifier(table, quoter: quoteIdentifier)
                 let sql = "SELECT * FROM \(quoted) LIMIT \(maxRows)"
                 try await authGuard.checkQueryPermission(
