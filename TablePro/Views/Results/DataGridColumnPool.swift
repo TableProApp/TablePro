@@ -21,15 +21,16 @@ final class DataGridColumnPool {
         schema: ColumnIdentitySchema,
         columnTypes: [ColumnType],
         savedLayout: ColumnLayoutState?,
-        widthCalculator: (String, Int) -> CGFloat,
-        sortKeyForColumnName: (String) -> String
+        isEditable: Bool,
+        hiddenColumnNames: Set<String>,
+        widthCalculator: (String, Int) -> CGFloat
     ) {
         attach(to: tableView)
         let visibleCount = schema.columnNames.count
         growPoolIfNeeded(to: visibleCount, in: tableView)
 
         let willRestoreWidths = !(savedLayout?.columnWidths.isEmpty ?? true)
-        let hidden = savedLayout?.hiddenColumns ?? []
+        let hiddenFromLayout = savedLayout?.hiddenColumns ?? []
 
         for slot in 0..<pooledColumns.count {
             let column = pooledColumns[slot]
@@ -43,9 +44,9 @@ final class DataGridColumnPool {
                     name: columnName,
                     columnType: slot < columnTypes.count ? columnTypes[slot] : nil,
                     width: resolvedWidth,
-                    sortKey: sortKeyForColumnName(columnName)
+                    isEditable: isEditable
                 )
-                column.isHidden = hidden.contains(columnName)
+                column.isHidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
             } else {
                 column.isHidden = true
             }
@@ -77,7 +78,7 @@ final class DataGridColumnPool {
         name: String,
         columnType: ColumnType?,
         width: CGFloat,
-        sortKey: String
+        isEditable: Bool
     ) {
         let cell = SortableHeaderCell(textCell: name)
         cell.font = column.headerCell.font
@@ -93,7 +94,8 @@ final class DataGridColumnPool {
             String(format: String(localized: "Column: %@"), name)
         )
         column.width = width
-        column.sortDescriptorPrototype = NSSortDescriptor(key: sortKey, ascending: true)
+        column.isEditable = isEditable
+        column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: true)
     }
 
     private func applyColumnOrder(

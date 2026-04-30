@@ -70,29 +70,14 @@ extension TableViewCoordinator {
 
     // MARK: - Chevron Click
 
-    @objc func handleChevronClick(_ sender: NSButton) {
-        guard let button = sender as? CellChevronButton,
-              isEditable else { return }
-
-        let row = button.cellRow
-        let columnIndex = button.cellColumnIndex
+    func handleChevronAction(row: Int, columnIndex: Int) {
+        guard isEditable else { return }
         guard row >= 0, columnIndex >= 0 else { return }
         guard !changeManager.isRowDeleted(row) else { return }
-
-        // Walk up the view hierarchy to find the NSTableView
-        var current: NSView? = button.superview
-        var tableView: NSTableView?
-        while let view = current {
-            if let tv = view as? NSTableView {
-                tableView = tv
-                break
-            }
-            current = view.superview
-        }
         guard let tableView else { return }
+
         let column = DataGridView.tableColumnIndex(for: columnIndex)
 
-        // Structure view: dropdown and type picker columns take priority
         if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
             return
@@ -126,11 +111,7 @@ extension TableViewCoordinator {
 
     // MARK: - FK Navigation
 
-    @objc func handleFKArrowClick(_ sender: NSButton) {
-        guard let button = sender as? FKArrowButton else { return }
-        let row = button.fkRow
-        let columnIndex = button.fkColumnIndex
-
+    func handleFKArrowAction(row: Int, columnIndex: Int) {
         let tableRows = tableRowsProvider()
         guard row >= 0 && row < cachedRowCount,
               columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
