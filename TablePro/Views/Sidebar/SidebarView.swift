@@ -121,15 +121,22 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var tablesContent: some View {
-        switch coordinator?.sidebarLoadingState ?? (tables.isEmpty ? .idle : .loaded) {
+        let rawState = coordinator?.sidebarLoadingState ?? .idle
+        let effectiveState: SidebarLoadingState = {
+            if case .error = rawState { return rawState }
+            if !tables.isEmpty { return .loaded }
+            if case .loading = rawState { return .loading }
+            return rawState
+        }()
+        switch effectiveState {
         case .loading:
             loadingState
         case .error(let message):
             errorState(message: message)
-        case .loaded where tables.isEmpty:
-            emptyState
         case .loaded where !viewModel.searchText.isEmpty && filteredTables.isEmpty:
             noMatchState
+        case .loaded where tables.isEmpty:
+            emptyState
         case .loaded:
             tableList
         case .idle:
