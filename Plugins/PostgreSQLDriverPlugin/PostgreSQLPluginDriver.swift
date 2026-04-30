@@ -829,10 +829,12 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let majorVersion = parsedServerMajorVersion()
         let supportsProvider = (majorVersion ?? 0) >= 15
 
-        let templateDefaults = await fetchTemplate1Defaults()
+        async let templateDefaultsTask = fetchTemplate1Defaults()
+        async let collationsTask = fetchCollations()
+        let templateDefaults = await templateDefaultsTask
+        let collations = await collationsTask
         let serverCollate = templateDefaults?.collate
-
-        let collations = await fetchCollations()
+        let serverIcuLocale = templateDefaults?.iculocale
         let libcCollations = collations.libc
         let icuCollations = collations.icu
 
@@ -880,13 +882,17 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         ))
 
         if supportsProvider {
-            let icuOptions = icuCollations.map {
-                PluginCreateDatabaseFormSpec.Option(value: $0, label: $0)
+            let icuOptions: [PluginCreateDatabaseFormSpec.Option] = icuCollations.map { name in
+                PluginCreateDatabaseFormSpec.Option(
+                    value: name,
+                    label: name,
+                    subtitle: name == serverIcuLocale ? serverDefaultSubtitle : nil
+                )
             }
             fields.append(PluginCreateDatabaseFormSpec.Field(
                 id: "icu_locale",
                 label: String(localized: "ICU Locale"),
-                kind: .searchable(options: icuOptions, defaultValue: nil),
+                kind: .searchable(options: icuOptions, defaultValue: serverIcuLocale),
                 visibleWhen: PluginCreateDatabaseFormSpec.Visibility(fieldId: "provider", equals: "icu")
             ))
         }
@@ -927,7 +933,9 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     detail: nil
                 )
             }
-            let allowedCollations = await fetchCollations().libc
+            async let allowedCollationsTask = fetchCollations().libc
+            async let templateDefaultsTask = fetchTemplate1Defaults()
+            let allowedCollations = await allowedCollationsTask
             guard allowedCollations.contains(collation) else {
                 throw LibPQPluginError(
                     message: String(format: String(localized: "Invalid collation: %@"), collation),
@@ -938,7 +946,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let escapedCollation = escapeLiteral(collation)
             sql += " LC_COLLATE '\(escapedCollation)' LC_CTYPE '\(escapedCollation)'"
 
-            guard let templateDefaults = await fetchTemplate1Defaults() else {
+            guard let templateDefaults = await templateDefaultsTask else {
                 throw LibPQPluginError(
                     message: String(localized: "Failed to read template1 collation defaults"),
                     sqlState: nil,
@@ -1015,22 +1023,35 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let collate: String
         let ctype: String
         let provider: String?
+        let iculocale: String?
     }
 
     private func fetchTemplate1Defaults() async -> Template1Defaults? {
         let majorVersion = parsedServerMajorVersion() ?? 0
-        let providerColumn = majorVersion >= 15 ? ", datlocprovider" : ", NULL"
+        let selectColumns: String
+        if majorVersion >= 17 {
+            selectColumns = "datcollate, datctype, datlocprovider, datlocale"
+        } else if majorVersion >= 15 {
+            selectColumns = "datcollate, datctype, datlocprovider, daticulocale"
+        } else {
+            selectColumns = "datcollate, datctype, NULL, NULL"
+        }
         do {
             let result = try await execute(
-                query: "SELECT datcollate, datctype\(providerColumn) FROM pg_database WHERE datname = 'template1'"
+                query: "SELECT \(selectColumns) FROM pg_database WHERE datname = 'template1'"
             )
             guard let row = result.rows.first,
-                  row.count >= 3,
+                  row.count >= 4,
                   let collate = row[0],
                   let ctype = row[1] else {
                 return nil
             }
-            return Template1Defaults(collate: collate, ctype: ctype, provider: row[2])
+            return Template1Defaults(
+                collate: collate,
+                ctype: ctype,
+                provider: row[2],
+                iculocale: row[3]
+            )
         } catch {
             Self.logger.error(
                 "Failed to read template1 defaults: \(error.localizedDescription, privacy: .public)"
