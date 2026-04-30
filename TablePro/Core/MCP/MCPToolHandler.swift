@@ -54,7 +54,7 @@ final class MCPToolHandler: Sendable {
     ) async throws -> MCPToolResult {
         switch name {
         case "list_connections":
-            return try await handleListConnections()
+            return try await handleListConnections(token: token)
         case "connect":
             return try await handleConnect(arguments, sessionId: sessionId, token: token)
         case "disconnect":
@@ -142,9 +142,29 @@ final class MCPToolHandler: Sendable {
         }
     }
 
-    private func handleListConnections() async throws -> MCPToolResult {
+    private func handleListConnections(token: MCPAuthToken?) async throws -> MCPToolResult {
         let result = await bridge.listConnections()
-        return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
+        let filtered = filterConnectionsByToken(result, token: token)
+        return MCPToolResult(content: [.text(encodeJSON(filtered))], isError: nil)
+    }
+
+    private func filterConnectionsByToken(_ value: JSONValue, token: MCPAuthToken?) -> JSONValue {
+        guard let allowed = token?.allowedConnectionIds, !allowed.isEmpty else { return value }
+        guard case .object(var dict) = value,
+              let entries = dict["connections"]?.arrayValue
+        else {
+            return value
+        }
+        let filtered = entries.filter { entry in
+            guard let idString = entry["id"]?.stringValue,
+                  let id = UUID(uuidString: idString)
+            else {
+                return false
+            }
+            return allowed.contains(id)
+        }
+        dict["connections"] = .array(filtered)
+        return .object(dict)
     }
 
     private func handleConnect(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
