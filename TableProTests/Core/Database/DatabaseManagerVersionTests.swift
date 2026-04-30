@@ -9,7 +9,7 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("DatabaseManager Version Counters")
+@Suite("DatabaseManager Version Counters", .serialized)
 @MainActor
 struct DatabaseManagerVersionTests {
     private func makeSession(id: UUID = UUID()) -> (UUID, ConnectionSession) {
