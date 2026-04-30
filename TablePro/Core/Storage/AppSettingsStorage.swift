@@ -14,7 +14,7 @@ final class AppSettingsStorage {
     static let shared = AppSettingsStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsStorage")
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
@@ -37,7 +37,9 @@ final class AppSettingsStorage {
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
     }
 
-    private init() {}
+    init(userDefaults: UserDefaults = .standard) {
+        self.defaults = userDefaults
+    }
 
     // MARK: - General Settings
 
