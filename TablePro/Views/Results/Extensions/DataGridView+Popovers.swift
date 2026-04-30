@@ -233,9 +233,7 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex)
-        pendingDropdownRow = row
-        pendingDropdownColumn = columnIndex
-        pendingDropdownTableView = tableView
+        let context = DropdownMenuContext(row: row, columnIndex: columnIndex)
 
         let options: [String]
         if let custom = customDropdownOptions?[columnIndex] {
@@ -250,6 +248,7 @@ extension TableViewCoordinator {
         for option in options {
             let item = NSMenuItem(title: option, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
             item.target = self
+            item.representedObject = context
             if option == currentValue {
                 item.state = .on
             }
@@ -266,6 +265,7 @@ extension TableViewCoordinator {
                 keyEquivalent: ""
             )
             nullItem.target = self
+            nullItem.representedObject = context
             if currentValue == nil {
                 nullItem.state = .on
             }
@@ -277,22 +277,26 @@ extension TableViewCoordinator {
     }
 
     @objc func dropdownMenuItemSelected(_ sender: NSMenuItem) {
-        commitPopoverEdit(
-            row: pendingDropdownRow,
-            columnIndex: pendingDropdownColumn,
-            newValue: sender.title
-        )
+        guard let context = sender.representedObject as? DropdownMenuContext else { return }
+        commitPopoverEdit(row: context.row, columnIndex: context.columnIndex, newValue: sender.title)
     }
 
     @objc func dropdownMenuNullSelected(_ sender: NSMenuItem) {
-        commitPopoverEdit(
-            row: pendingDropdownRow,
-            columnIndex: pendingDropdownColumn,
-            newValue: nil
-        )
+        guard let context = sender.representedObject as? DropdownMenuContext else { return }
+        commitPopoverEdit(row: context.row, columnIndex: context.columnIndex, newValue: nil)
     }
 
     func commitPopoverEdit(row: Int, columnIndex: Int, newValue: String?) {
         commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+    }
+}
+
+private final class DropdownMenuContext {
+    let row: Int
+    let columnIndex: Int
+
+    init(row: Int, columnIndex: Int) {
+        self.row = row
+        self.columnIndex = columnIndex
     }
 }
