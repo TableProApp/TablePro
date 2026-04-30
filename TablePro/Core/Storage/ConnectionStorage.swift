@@ -157,12 +157,12 @@ final class ConnectionStorage {
 
     /// Delete a connection
     func deleteConnection(_ connection: DatabaseConnection) {
-        if !connection.localOnly {
-            syncTracker.markDeleted(.connection, id: connection.id.uuidString)
-        }
         var connections = loadConnections()
         connections.removeAll { $0.id == connection.id }
         saveConnections(connections)
+        if !connection.localOnly {
+            syncTracker.markDeleted(.connection, id: connection.id.uuidString)
+        }
         deletePassword(for: connection.id)
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
@@ -178,13 +178,13 @@ final class ConnectionStorage {
 
     /// Batch-delete multiple connections and clean up their Keychain entries
     func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) {
-        for conn in connectionsToDelete where !conn.localOnly {
-            syncTracker.markDeleted(.connection, id: conn.id.uuidString)
-        }
         let idsToDelete = Set(connectionsToDelete.map(\.id))
         var all = loadConnections()
         all.removeAll { idsToDelete.contains($0.id) }
         saveConnections(all)
+        for conn in connectionsToDelete where !conn.localOnly {
+            syncTracker.markDeleted(.connection, id: conn.id.uuidString)
+        }
         for conn in connectionsToDelete {
             deletePassword(for: conn.id)
             deleteSSHPassword(for: conn.id)
