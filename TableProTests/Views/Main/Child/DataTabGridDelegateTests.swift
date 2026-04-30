@@ -9,10 +9,13 @@ import Testing
 @testable import TablePro
 
 @MainActor
-private final class FakeRowDeltaApplier: RowDeltaApplying {
+private final class FakeTableViewCoordinator: TableViewCoordinating {
     var insertedCalls: [IndexSet] = []
     var removedCalls: [IndexSet] = []
     var fullReplaceCount: Int = 0
+    var invalidateCount: Int = 0
+    var deltaCalls: [Delta] = []
+    var commitEditCount: Int = 0
 
     func applyInsertedRows(_ indices: IndexSet) {
         insertedCalls.append(indices)
@@ -25,6 +28,30 @@ private final class FakeRowDeltaApplier: RowDeltaApplying {
     func applyFullReplace() {
         fullReplaceCount += 1
     }
+
+    func invalidateCachesForUndoRedo() {
+        invalidateCount += 1
+    }
+
+    func applyDelta(_ delta: Delta) {
+        deltaCalls.append(delta)
+    }
+
+    func commitActiveCellEdit() {
+        commitEditCount += 1
+    }
+
+    var beginEditingCalls: [(row: Int, column: Int)] = []
+
+    func beginEditing(displayRow: Int, column: Int) {
+        beginEditingCalls.append((row: displayRow, column: column))
+    }
+
+    var refreshFKCount: Int = 0
+    var scrollToTopCount: Int = 0
+
+    func refreshForeignKeyColumns() { refreshFKCount += 1 }
+    func scrollToTop() { scrollToTopCount += 1 }
 }
 
 @Suite("DataTabGridDelegate row-delta forwarding")
@@ -34,7 +61,7 @@ struct DataTabGridDelegateTests {
     @Test("dataGridDidInsertRows(at:) forwards the IndexSet to applyInsertedRows")
     func insertForwardsIndices() {
         let delegate = DataTabGridDelegate()
-        let applier = FakeRowDeltaApplier()
+        let applier = FakeTableViewCoordinator()
         delegate.tableViewCoordinator = applier
 
         let indices = IndexSet([1, 3, 5])
@@ -49,7 +76,7 @@ struct DataTabGridDelegateTests {
     @Test("dataGridDidRemoveRows(at:) forwards the IndexSet to applyRemovedRows")
     func removeForwardsIndices() {
         let delegate = DataTabGridDelegate()
-        let applier = FakeRowDeltaApplier()
+        let applier = FakeTableViewCoordinator()
         delegate.tableViewCoordinator = applier
 
         let indices = IndexSet(integersIn: 4..<7)
@@ -64,7 +91,7 @@ struct DataTabGridDelegateTests {
     @Test("dataGridDidReplaceAllRows() forwards to applyFullReplace")
     func fullReplaceForwards() {
         let delegate = DataTabGridDelegate()
-        let applier = FakeRowDeltaApplier()
+        let applier = FakeTableViewCoordinator()
         delegate.tableViewCoordinator = applier
 
         delegate.dataGridDidReplaceAllRows()

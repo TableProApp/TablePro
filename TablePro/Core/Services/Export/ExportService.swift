@@ -181,7 +181,7 @@ final class ExportService {
     // MARK: - Query Results Export
 
     func exportQueryResults(
-        rowBuffer: RowBuffer,
+        tableRows: TableRows,
         config: ExportConfiguration,
         to url: URL
     ) async throws {
@@ -189,7 +189,7 @@ final class ExportService {
             throw ExportError.formatNotFound(config.formatId)
         }
 
-        let totalRows = rowBuffer.rows.count
+        let totalRows = tableRows.count
         state = ExportState(isExporting: true, totalTables: 1, totalRows: totalRows)
         isCancelled = false
 
@@ -201,7 +201,7 @@ final class ExportService {
         }
 
         let dataSource = QueryResultExportDataSource(
-            rowBuffer: rowBuffer,
+            tableRows: tableRows,
             databaseType: databaseType,
             driver: driver
         )

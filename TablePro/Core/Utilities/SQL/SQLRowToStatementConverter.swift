@@ -21,21 +21,27 @@ internal struct SQLRowToStatementConverter {
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil,
         escapeStringLiteral: ((String) -> String)? = nil
-    ) {
+    ) throws {
         self.tableName = tableName
         self.columns = columns
         self.primaryKeyColumn = primaryKeyColumn
         self.databaseType = databaseType
-        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
-        self.escapeStringFn = escapeStringLiteral ?? Self.defaultEscapeFunction(dialect: dialect)
+
+        if let quoteIdentifier, let escapeStringLiteral {
+            self.quoteIdentifierFn = quoteIdentifier
+            self.escapeStringFn = escapeStringLiteral
+            return
+        }
+
+        let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
+        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
+        self.escapeStringFn = escapeStringLiteral ?? Self.defaultEscapeFunction(dialect: resolvedDialect)
     }
 
     private static let maxRows = 50_000
 
-    /// Fallback escape function when no plugin driver is available.
-    /// Dialects with `requiresBackslashEscaping` get backslash escaping; others use ANSI SQL.
-    private static func defaultEscapeFunction(dialect: SQLDialectDescriptor?) -> (String) -> String {
-        if dialect?.requiresBackslashEscaping == true {
+    private static func defaultEscapeFunction(dialect: SQLDialectDescriptor) -> (String) -> String {
+        if dialect.requiresBackslashEscaping {
             return { value in
                 var result = value
                 result = result.replacingOccurrences(of: "\\", with: "\\\\")

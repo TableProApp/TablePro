@@ -7,39 +7,23 @@ import AppKit
 import SwiftUI
 
 extension TableViewCoordinator {
-    // MARK: - Native Sorting
-
-    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard !isSyncingSortDescriptors else { return }
-
-        guard let sortDescriptor = tableView.sortDescriptors.first,
-              let key = sortDescriptor.key,
-              let columnIndex = DataGridView.dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)),
-              columnIndex >= 0 && columnIndex < rowProvider.columns.count else {
-            return
-        }
-
-        let isMultiSort = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
-        delegate?.dataGridSort(column: columnIndex, ascending: sortDescriptor.ascending, isMultiSort: isMultiSort)
-    }
-
     // MARK: - Double-Click Column Divider Auto-Fit
 
     func tableView(_ tableView: NSTableView, sizeToFitWidthOfColumn columnIndex: Int) -> CGFloat {
         let column = tableView.tableColumns[columnIndex]
-        guard column.identifier.rawValue != "__rowNumber__" else {
+        guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier else {
             return column.width
         }
-        guard let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) else {
+        guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else {
             return column.width
         }
 
+        let tableRows = tableRowsProvider()
         let width = cellFactory.calculateFitToContentWidth(
-            for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+            for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
-            rowProvider: rowProvider
+            tableRows: tableRows
         )
-        hasUserResizedColumns = true
         return width
     }
 
@@ -59,18 +43,18 @@ extension TableViewCoordinator {
         guard columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
 
         let column = tableView.tableColumns[columnIndex]
-        if column.identifier.rawValue == "__rowNumber__" { return }
+        if column.identifier == ColumnIdentitySchema.rowNumberIdentifier { return }
 
-        // Derive base column name from stable identifier (avoids sort indicator in title)
+        let tableRows = tableRowsProvider()
         let baseName: String = {
-            if let idx = DataGridView.dataColumnIndex(from: column.identifier),
-               idx < rowProvider.columns.count {
-                return rowProvider.columns[idx]
+            if let idx = dataColumnIndex(from: column.identifier),
+               idx < tableRows.columns.count {
+                return tableRows.columns[idx]
             }
             return column.title
         }()
 
-        if let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) {
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             let sortAscItem = NSMenuItem(
                 title: String(localized: "Sort Ascending"),
                 action: #selector(sortAscending(_:)),
@@ -89,6 +73,16 @@ extension TableViewCoordinator {
             sortDescItem.target = self
             menu.addItem(sortDescItem)
 
+            if currentSortState.isSorting {
+                let clearSortItem = NSMenuItem(
+                    title: String(localized: "Don't Sort"),
+                    action: #selector(clearSortAction),
+                    keyEquivalent: ""
+                )
+                clearSortItem.target = self
+                menu.addItem(clearSortItem)
+            }
+
             menu.addItem(NSMenuItem.separator())
         }
 
@@ -102,9 +96,8 @@ extension TableViewCoordinator {
         filterItem.target = self
         menu.addItem(filterItem)
 
-        // "Display As" submenu for value display format overrides
-        if let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) {
-            let columnType = dataColumnIndex < rowProvider.columnTypes.count ? rowProvider.columnTypes[dataColumnIndex] : nil
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+            let columnType = dataColumnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[dataColumnIndex] : nil
             let applicableFormats = ValueDisplayFormat.applicableFormats(for: columnType)
             if applicableFormats.count > 1 {
                 let displaySubmenu = NSMenu()
@@ -153,7 +146,7 @@ extension TableViewCoordinator {
         menu.addItem(hideItem)
 
         if delegate != nil,
-           tableView.tableColumns.contains(where: { $0.isHidden && $0.identifier.rawValue != "__rowNumber__" }) {
+           tableView.tableColumns.contains(where: { $0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }) {
             let showAllItem = NSMenuItem(
                 title: String(localized: "Show All Columns"),
                 action: #selector(showAllColumns),
@@ -178,6 +171,10 @@ extension TableViewCoordinator {
         delegate?.dataGridShowAllColumns()
     }
 
+    @objc func clearSortAction() {
+        delegate?.dataGridClearSort()
+    }
+
     @objc func copyColumnName(_ sender: NSMenuItem) {
         guard let columnName = sender.representedObject as? String else { return }
         ClipboardService.shared.writeText(columnName)
@@ -199,32 +196,32 @@ extension TableViewCoordinator {
               columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
 
         let column = tableView.tableColumns[columnIndex]
-        guard let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { return }
+        guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else { return }
 
+        let tableRows = tableRowsProvider()
         let width = cellFactory.calculateFitToContentWidth(
-            for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+            for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
-            rowProvider: rowProvider
+            tableRows: tableRows
         )
         column.width = width
-        hasUserResizedColumns = true
     }
 
     @objc func sizeAllColumnsToFit(_ sender: NSMenuItem) {
         guard let tableView else { return }
 
+        let tableRows = tableRowsProvider()
         for column in tableView.tableColumns {
-            guard column.identifier.rawValue != "__rowNumber__",
-                  let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { continue }
+            guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
+                  let dataColumnIndex = dataColumnIndex(from: column.identifier) else { continue }
 
             let width = cellFactory.calculateFitToContentWidth(
-                for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+                for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
                 columnIndex: dataColumnIndex,
-                rowProvider: rowProvider
+                tableRows: tableRows
             )
             column.width = width
         }
-        hasUserResizedColumns = true
     }
 
     @objc func setDisplayFormat(_ sender: NSMenuItem) {
@@ -241,13 +238,12 @@ extension TableViewCoordinator {
             )
         }
 
-        // Update the provider's format array and refresh
-        var formats = rowProvider.columnDisplayFormats
+        var formats = columnDisplayFormats
         while formats.count <= info.columnIndex {
             formats.append(nil)
         }
         formats[info.columnIndex] = (info.format == .raw) ? nil : info.format
-        rowProvider.updateDisplayFormats(formats)
+        updateDisplayFormats(formats)
 
         guard let tableView else { return }
         let visibleRect = tableView.visibleRect

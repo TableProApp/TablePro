@@ -84,12 +84,12 @@ extension MainContentCoordinator {
                     }
 
                     let stmtTableName = await MainActor.run { extractTableName(from: sql) }
-                    let rs = ResultSet(label: stmtTableName ?? "Result \(stmtIndex + 1)")
-                    rs.rowBuffer = RowBuffer(
-                        rows: result.rows.map { row in row.map { $0.map { String($0) } } },
+                    let stmtRows = TableRows.from(
+                        queryRows: result.rows.map { row in row.map { $0.map { String($0) } } },
                         columns: result.columns.map { String($0) },
                         columnTypes: result.columnTypes
                     )
+                    let rs = ResultSet(label: stmtTableName ?? "Result \(stmtIndex + 1)", tableRows: stmtRows)
                     rs.executionTime = result.executionTime
                     rs.rowsAffected = result.rowsAffected
                     rs.statusMessage = result.statusMessage
@@ -233,14 +233,14 @@ extension MainContentCoordinator {
                 tableName = lastSelectSQL.flatMap { extractTableName(from: $0) }
             }
 
-            rowDataStore.setBuffer(
-                RowBuffer(rows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
+            setActiveTableRows(
+                TableRows.from(queryRows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
                 for: updatedTab.id
             )
             updatedTab.tableContext.tableName = tableName
             updatedTab.tableContext.isEditable = tableName != nil && updatedTab.tableContext.isEditable
         } else {
-            rowDataStore.setBuffer(RowBuffer(), for: updatedTab.id)
+            setActiveTableRows(TableRows(), for: updatedTab.id)
             if updatedTab.tabType != .table {
                 updatedTab.tableContext.tableName = nil
             }

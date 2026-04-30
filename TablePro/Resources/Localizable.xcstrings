@@ -7741,6 +7741,9 @@
     "Choose a certificate or key file" : {
 
     },
+    "Choose a fetched model" : {
+
+    },
     "Choose a folder to watch for .tablepro connection files" : {
       "localizations" : {
         "tr" : {
@@ -14086,6 +14089,9 @@
         }
       }
     },
+    "Don't Sort" : {
+
+    },
     "Done" : {
 
     },
@@ -17623,6 +17629,9 @@
           }
         }
       }
+    },
+    "Failed to load options" : {
+
     },
     "Failed to load plugin registry" : {
       "extractionState" : "stale",
@@ -23796,6 +23805,9 @@
         }
       }
     },
+    "Loading options..." : {
+
+    },
     "Loading plugins..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -24876,6 +24888,9 @@
           }
         }
       }
+    },
+    "Model name" : {
+
     },
     "Model not found: %@" : {
       "localizations" : {
@@ -29537,6 +29552,9 @@
         }
       }
     },
+    "Paste Cells" : {
+
+    },
     "Paste your CREATE TABLE statement below:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -31131,6 +31149,9 @@
           }
         }
       }
+    },
+    "Priority %d" : {
+
     },
     "Privacy" : {
       "localizations" : {
@@ -35640,9 +35661,6 @@
         }
       }
     },
-    "Select a model" : {
-
-    },
     "Select a Plugin" : {
       "localizations" : {
         "tr" : {
@@ -37484,6 +37502,12 @@
           }
         }
       }
+    },
+    "Sorted ascending" : {
+
+    },
+    "Sorted descending" : {
+
     },
     "Sorting will reload data and discard all unsaved changes." : {
       "localizations" : {
@@ -40792,6 +40816,9 @@
           }
         }
       }
+    },
+    "This engine does not support creating databases." : {
+
     },
     "This file is encrypted" : {
       "localizations" : {

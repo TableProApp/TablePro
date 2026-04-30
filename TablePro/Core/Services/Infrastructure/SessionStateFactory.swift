@@ -7,6 +7,9 @@
 //
 
 import Foundation
+import os
+
+private let sessionStateLogger = Logger(subsystem: "com.TablePro", category: "SessionStateFactory")
 
 @MainActor
 enum SessionStateFactory {
@@ -75,18 +78,22 @@ enum SessionStateFactory {
                 case .table:
                     toolbarSt.isTableTab = true
                     if let tableName = payload.tableName {
-                        if payload.isPreview {
-                            tabMgr.addPreviewTableTab(
-                                tableName: tableName,
-                                databaseType: connection.type,
-                                databaseName: payload.databaseName ?? connection.database
-                            )
-                        } else {
-                            tabMgr.addTableTab(
-                                tableName: tableName,
-                                databaseType: connection.type,
-                                databaseName: payload.databaseName ?? connection.database
-                            )
+                        do {
+                            if payload.isPreview {
+                                try tabMgr.addPreviewTableTab(
+                                    tableName: tableName,
+                                    databaseType: connection.type,
+                                    databaseName: payload.databaseName ?? connection.database
+                                )
+                            } else {
+                                try tabMgr.addTableTab(
+                                    tableName: tableName,
+                                    databaseType: connection.type,
+                                    databaseName: payload.databaseName ?? connection.database
+                                )
+                            }
+                        } catch {
+                            sessionStateLogger.error("create tab for table failed: \(error.localizedDescription, privacy: .public)")
                         }
                         if let index = tabMgr.selectedTabIndex {
                             tabMgr.tabs[index].tableContext.isView = payload.isView

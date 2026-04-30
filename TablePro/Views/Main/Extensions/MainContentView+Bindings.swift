@@ -16,19 +16,19 @@ extension MainContentView {
         guard let tab = coordinator.tabManager.selectedTab,
               !coordinator.selectionState.indices.isEmpty,
               let firstIndex = coordinator.selectionState.indices.min() else { return nil }
-        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
-        guard firstIndex < buffer.rows.count else { return nil }
+        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
+        guard firstIndex < tableRows.rows.count else { return nil }
 
-        let row = buffer.rows[firstIndex]
+        let row = tableRows.rows[firstIndex].values
         var data: [(column: String, value: String?, type: String)] = []
 
         let service = ValueDisplayFormatService.shared
         let connId = coordinator.connection.id
         let tblName = tab.tableContext.tableName
 
-        for (i, col) in buffer.columns.enumerated() {
+        for (i, col) in tableRows.columns.enumerated() {
             var value = i < row.count ? row[i] : nil
-            let type = i < buffer.columnTypes.count ? buffer.columnTypes[i].displayName : "string"
+            let type = i < tableRows.columnTypes.count ? tableRows.columnTypes[i].displayName : "string"
 
             // Apply display format if active
             if let rawValue = value {

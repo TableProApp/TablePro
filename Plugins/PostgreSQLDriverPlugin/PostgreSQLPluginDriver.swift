@@ -820,31 +820,271 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        let validCharsets = ["UTF8", "LATIN1", "SQL_ASCII", "WIN1252", "EUC_JP",
-                              "EUC_KR", "ISO_8859_5", "KOI8R", "SJIS", "BIG5", "GBK"]
-        let normalizedCharset = charset.uppercased()
-        guard validCharsets.contains(normalizedCharset) else {
-            throw LibPQPluginError(message: "Invalid encoding: \(charset)", sqlState: nil, detail: nil)
+    private static let supportedEncodings: [String] = [
+        "UTF8", "LATIN1", "SQL_ASCII", "WIN1252", "EUC_JP",
+        "EUC_KR", "ISO_8859_5", "KOI8R", "SJIS", "BIG5", "GBK"
+    ]
+
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        let majorVersion = parsedServerMajorVersion()
+        let supportsProvider = (majorVersion ?? 0) >= 15
+
+        async let templateDefaultsTask = fetchTemplate1Defaults()
+        async let collationsTask = fetchCollations()
+        let templateDefaults = await templateDefaultsTask
+        let collations = await collationsTask
+        let serverCollate = templateDefaults?.collate
+        let serverIcuLocale = templateDefaults?.iculocale
+        let libcCollations = collations.libc
+        let icuCollations = collations.icu
+
+        let encodingOptions = Self.supportedEncodings.map {
+            PluginCreateDatabaseFormSpec.Option(value: $0, label: $0)
         }
 
-        var query = "CREATE DATABASE \"\(escapedName)\" ENCODING '\(normalizedCharset)'"
-        if let collation = collation {
-            let allowedCollationChars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
-            let isValidCollation = collation.unicodeScalars.allSatisfy { allowedCollationChars.contains($0) }
-            guard isValidCollation else {
-                throw LibPQPluginError(message: "Invalid collation", sqlState: nil, detail: nil)
-            }
-            let escapedCollation = collation.replacingOccurrences(of: "'", with: "''")
-            query += " LC_COLLATE '\(escapedCollation)'"
+        var fields: [PluginCreateDatabaseFormSpec.Field] = [
+            PluginCreateDatabaseFormSpec.Field(
+                id: "encoding",
+                label: String(localized: "Encoding"),
+                kind: .picker(options: encodingOptions, defaultValue: "UTF8")
+            )
+        ]
+
+        if supportsProvider {
+            let providerOptions: [PluginCreateDatabaseFormSpec.Option] = [
+                PluginCreateDatabaseFormSpec.Option(value: "libc", label: "libc"),
+                PluginCreateDatabaseFormSpec.Option(value: "icu", label: "icu")
+            ]
+            let defaultProvider = templateDefaults?.provider == "i" ? "icu" : "libc"
+            fields.append(PluginCreateDatabaseFormSpec.Field(
+                id: "provider",
+                label: String(localized: "Locale Provider"),
+                kind: .picker(options: providerOptions, defaultValue: defaultProvider)
+            ))
         }
-        _ = try await execute(query: query)
+
+        let serverDefaultSubtitle = String(localized: "(server default)")
+        let libcOptions: [PluginCreateDatabaseFormSpec.Option] = libcCollations.map { name in
+            PluginCreateDatabaseFormSpec.Option(
+                value: name,
+                label: name,
+                subtitle: name == serverCollate ? serverDefaultSubtitle : nil
+            )
+        }
+
+        fields.append(PluginCreateDatabaseFormSpec.Field(
+            id: "collation",
+            label: String(localized: "Collation"),
+            kind: .searchable(options: libcOptions, defaultValue: serverCollate),
+            visibleWhen: supportsProvider
+                ? PluginCreateDatabaseFormSpec.Visibility(fieldId: "provider", equals: "libc")
+                : nil
+        ))
+
+        if supportsProvider {
+            let icuOptions: [PluginCreateDatabaseFormSpec.Option] = icuCollations.map { name in
+                PluginCreateDatabaseFormSpec.Option(
+                    value: name,
+                    label: name,
+                    subtitle: name == serverIcuLocale ? serverDefaultSubtitle : nil
+                )
+            }
+            fields.append(PluginCreateDatabaseFormSpec.Field(
+                id: "icu_locale",
+                label: String(localized: "ICU Locale"),
+                kind: .searchable(options: icuOptions, defaultValue: serverIcuLocale),
+                visibleWhen: PluginCreateDatabaseFormSpec.Visibility(fieldId: "provider", equals: "icu")
+            ))
+        }
+
+        return PluginCreateDatabaseFormSpec(fields: fields)
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
+        let quotedName = request.name.replacingOccurrences(of: "\"", with: "\"\"")
+
+        guard let encoding = request.values["encoding"] else {
+            throw LibPQPluginError(
+                message: String(localized: "Encoding is required"),
+                sqlState: nil,
+                detail: nil
+            )
+        }
+        guard Self.supportedEncodings.contains(encoding) else {
+            throw LibPQPluginError(
+                message: String(format: String(localized: "Invalid encoding: %@"), encoding),
+                sqlState: nil,
+                detail: nil
+            )
+        }
+
+        var sql = "CREATE DATABASE \"\(quotedName)\" ENCODING '\(encoding)'"
+
+        let majorVersion = parsedServerMajorVersion()
+        let supportsProvider = (majorVersion ?? 0) >= 15
+        let provider = supportsProvider ? (request.values["provider"] ?? "libc") : "libc"
+
+        switch provider {
+        case "libc":
+            guard let collation = request.values["collation"], !collation.isEmpty else {
+                throw LibPQPluginError(
+                    message: String(localized: "Collation is required"),
+                    sqlState: nil,
+                    detail: nil
+                )
+            }
+            async let allowedCollationsTask = fetchCollations().libc
+            async let templateDefaultsTask = fetchTemplate1Defaults()
+            let allowedCollations = await allowedCollationsTask
+            guard allowedCollations.contains(collation) else {
+                throw LibPQPluginError(
+                    message: String(format: String(localized: "Invalid collation: %@"), collation),
+                    sqlState: nil,
+                    detail: nil
+                )
+            }
+            let escapedCollation = escapeLiteral(collation)
+            sql += " LC_COLLATE '\(escapedCollation)' LC_CTYPE '\(escapedCollation)'"
+
+            guard let templateDefaults = await templateDefaultsTask else {
+                throw LibPQPluginError(
+                    message: String(localized: "Failed to read template1 collation defaults"),
+                    sqlState: nil,
+                    detail: nil
+                )
+            }
+            if templateDefaults.collate != collation {
+                sql += " TEMPLATE template0"
+            }
+
+        case "icu":
+            guard supportsProvider else {
+                throw LibPQPluginError(
+                    message: String(localized: "ICU provider requires PostgreSQL 15 or newer"),
+                    sqlState: nil,
+                    detail: nil
+                )
+            }
+            guard let icuLocale = request.values["icu_locale"], !icuLocale.isEmpty else {
+                throw LibPQPluginError(
+                    message: String(localized: "ICU locale is required"),
+                    sqlState: nil,
+                    detail: nil
+                )
+            }
+            let allowedIcu = await fetchCollations().icu
+            guard allowedIcu.contains(icuLocale) else {
+                throw LibPQPluginError(
+                    message: String(format: String(localized: "Invalid ICU locale: %@"), icuLocale),
+                    sqlState: nil,
+                    detail: nil
+                )
+            }
+            let escapedIcu = escapeLiteral(icuLocale)
+            if let major = majorVersion, major >= 16 {
+                sql += " LOCALE_PROVIDER 'icu' LOCALE '\(escapedIcu)' TEMPLATE template0"
+            } else {
+                sql += " LOCALE_PROVIDER 'icu' ICU_LOCALE '\(escapedIcu)' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0"
+            }
+
+        default:
+            throw LibPQPluginError(
+                message: String(format: String(localized: "Invalid locale provider: %@"), provider),
+                sqlState: nil,
+                detail: nil
+            )
+        }
+
+        _ = try await execute(query: sql)
     }
 
     func dropDatabase(name: String) async throws {
         let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
         _ = try await execute(query: "DROP DATABASE \"\(escapedName)\"")
+    }
+
+    private func parsedServerMajorVersion() -> Int? {
+        guard let raw = serverVersion else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scanner = Scanner(string: trimmed)
+        scanner.charactersToBeSkipped = nil
+        _ = scanner.scanCharacters(from: CharacterSet.decimalDigits.inverted)
+        guard let digitRun = scanner.scanCharacters(from: .decimalDigits),
+              let value = Int(digitRun) else {
+            return nil
+        }
+        if value > 999 {
+            return value / 10000
+        }
+        return value
+    }
+
+    private struct Template1Defaults {
+        let collate: String
+        let ctype: String
+        let provider: String?
+        let iculocale: String?
+    }
+
+    private func fetchTemplate1Defaults() async -> Template1Defaults? {
+        let majorVersion = parsedServerMajorVersion() ?? 0
+        let selectColumns: String
+        if majorVersion >= 17 {
+            selectColumns = "datcollate, datctype, datlocprovider, datlocale"
+        } else if majorVersion >= 15 {
+            selectColumns = "datcollate, datctype, datlocprovider, daticulocale"
+        } else {
+            selectColumns = "datcollate, datctype, NULL, NULL"
+        }
+        do {
+            let result = try await execute(
+                query: "SELECT \(selectColumns) FROM pg_database WHERE datname = 'template1'"
+            )
+            guard let row = result.rows.first,
+                  row.count >= 4,
+                  let collate = row[0],
+                  let ctype = row[1] else {
+                return nil
+            }
+            return Template1Defaults(
+                collate: collate,
+                ctype: ctype,
+                provider: row[2],
+                iculocale: row[3]
+            )
+        } catch {
+            Self.logger.error(
+                "Failed to read template1 defaults: \(error.localizedDescription, privacy: .public)"
+            )
+            return nil
+        }
+    }
+
+    private func fetchCollations() async -> (libc: [String], icu: [String]) {
+        do {
+            let result = try await execute(
+                query: "SELECT collname, collprovider FROM pg_collation WHERE collprovider IN ('b', 'c', 'i') ORDER BY collname"
+            )
+            var libc: [String] = []
+            var icu: [String] = []
+            for row in result.rows {
+                guard row.count >= 2, let name = row[0], let provider = row[1] else { continue }
+                switch provider {
+                case "b", "c":
+                    libc.append(name)
+                case "i":
+                    icu.append(name)
+                default:
+                    continue
+                }
+            }
+            return (libc: libc, icu: icu)
+        } catch {
+            Self.logger.error(
+                "Failed to read pg_collation: \(error.localizedDescription, privacy: .public)"
+            )
+            return (libc: [], icu: [])
+        }
     }
 
     // MARK: - All Tables Metadata

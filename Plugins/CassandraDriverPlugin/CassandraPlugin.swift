@@ -1237,8 +1237,12 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         return databases.map { PluginDatabaseMetadata(name: $0) }
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        let safeKs = escapeIdentifier(name)
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
+        let safeKs = escapeIdentifier(request.name)
         let query = """
             CREATE KEYSPACE "\(safeKs)"
             WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}

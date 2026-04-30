@@ -55,7 +55,7 @@ struct SwitchDatabaseTests {
 
     @Test("openTableTab skips new window when sidebar is loading with existing tabs")
     @MainActor
-    func openTableTabSkipsNewWindowDuringSwitch() {
+    func openTableTabSkipsNewWindowDuringSwitch() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
@@ -72,7 +72,7 @@ struct SwitchDatabaseTests {
         )
         defer { coordinator.teardown() }
 
-        tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
         let tabCountBefore = tabManager.tabs.count
 
         coordinator.sidebarLoadingState = .loading
@@ -115,7 +115,7 @@ struct SwitchDatabaseTests {
 
     @Test("openTableTab skips when table is already active tab in same database")
     @MainActor
-    func openTableTabSkipsForSameTableSameDatabase() {
+    func openTableTabSkipsForSameTableSameDatabase() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
@@ -133,7 +133,7 @@ struct SwitchDatabaseTests {
         defer { coordinator.teardown() }
 
         // Add a tab for "users" in "db_a"
-        tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
         let tabCountBefore = tabManager.tabs.count
 
         // Opening "users" again in same database should be a no-op (fast path)
@@ -146,9 +146,9 @@ struct SwitchDatabaseTests {
 
     @Test("switchDatabase clears all table tabs")
     @MainActor
-    func switchDatabaseClearsTableTabs() {
+    func switchDatabaseClearsTableTabs() throws {
         let tabManager = QueryTabManager()
-        tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
 
         simulateDatabaseSwitch(tabManager: tabManager)
 
@@ -170,11 +170,11 @@ struct SwitchDatabaseTests {
 
     @Test("switchDatabase clears mixed table and query tabs")
     @MainActor
-    func switchDatabaseClearsMixedTabs() {
+    func switchDatabaseClearsMixedTabs() throws {
         let tabManager = QueryTabManager()
-        tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
         tabManager.addTab(initialQuery: "SELECT NOW()", databaseName: "db_a")
-        tabManager.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "db_a")
         #expect(tabManager.tabs.count == 3)
 
         simulateDatabaseSwitch(tabManager: tabManager)

@@ -209,9 +209,10 @@ enum TestFixtures {
         }
     }
 
-    static func makeInMemoryRowProvider(rowCount: Int = 3, columns: [String] = ["id", "name", "email"]) -> InMemoryRowProvider {
+    static func makeTableRows(rowCount: Int = 3, columns: [String] = ["id", "name", "email"]) -> TableRows {
         let rows = makeRows(count: rowCount, columns: columns)
-        return InMemoryRowProvider(rows: rows, columns: columns)
+        let columnTypes = Array(repeating: ColumnType.text(rawType: nil), count: columns.count)
+        return TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
     }
 
     static func makeForeignKeyInfo(

@@ -8,11 +8,11 @@ import Foundation
 
 extension MainContentCoordinator {
     func runAllStatements() {
-        guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].execution.isExecuting else { return }
-        guard tabManager.tabs[index].tabType == .query else { return }
+        guard let (tab, index) = tabManager.selectedTabAndIndex,
+              !tab.execution.isExecuting,
+              tab.tabType == .query else { return }
 
-        let fullQuery = tabManager.tabs[index].content.query
+        let fullQuery = tab.content.query
         guard !fullQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let statements = SQLStatementScanner.allStatements(in: fullQuery)

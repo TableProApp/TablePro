@@ -6,6 +6,9 @@
 //
 
 import AppKit
+import os
+
+private let rowActionsLogger = Logger(subsystem: "com.TablePro", category: "DataGridView+RowActions")
 
 // MARK: - Row Actions
 
@@ -26,42 +29,50 @@ extension TableViewCoordinator {
     func undoInsertRow(at index: Int) {
         delegate?.dataGridUndoInsert(at: index)
         changeManager.undoRowInsertion(rowIndex: index)
-        rowProvider.removeRow(at: index)
+        tableRowsMutator { rows in
+            _ = rows.remove(at: IndexSet(integer: index))
+        }
         updateCache()
         tableView?.reloadData()
     }
 
     func copyRows(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
-        let columnTypes = rowProvider.columnTypes
-        var lines: [String] = []
+        let tableRows = tableRowsProvider()
+        let columnTypes = tableRows.columnTypes
+        var tsvRows: [String] = []
+        var htmlRows: [[String]] = []
 
         for index in sortedIndices {
-            guard let values = rowProvider.rowValues(at: index) else { continue }
-            let line = formatRowForCopy(values: values, columnTypes: columnTypes)
-            lines.append(line)
+            guard let values = displayRow(at: index)?.values else { continue }
+            let formatted = formatRowValues(values: values, columnTypes: columnTypes)
+            tsvRows.append(formatted.joined(separator: "\t"))
+            htmlRows.append(formatted)
         }
 
-        let text = lines.joined(separator: "\n")
-        ClipboardService.shared.writeText(text)
+        let tsv = tsvRows.joined(separator: "\n")
+        let html = HtmlTableEncoder.encode(rows: htmlRows)
+        ClipboardService.shared.writeRows(tsv: tsv, html: html)
     }
 
     func copyRowsWithHeaders(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
-        let columnTypes = rowProvider.columnTypes
-        var lines: [String] = []
-
-        // Add header row
-        lines.append(rowProvider.columns.joined(separator: "\t"))
+        let tableRows = tableRowsProvider()
+        let columnTypes = tableRows.columnTypes
+        let columns = tableRows.columns
+        var tsvRows: [String] = [columns.joined(separator: "\t")]
+        var htmlRows: [[String]] = []
 
         for index in sortedIndices {
-            guard let values = rowProvider.rowValues(at: index) else { continue }
-            let line = formatRowForCopy(values: values, columnTypes: columnTypes)
-            lines.append(line)
+            guard let values = displayRow(at: index)?.values else { continue }
+            let formatted = formatRowValues(values: values, columnTypes: columnTypes)
+            tsvRows.append(formatted.joined(separator: "\t"))
+            htmlRows.append(formatted)
         }
 
-        let text = lines.joined(separator: "\n")
-        ClipboardService.shared.writeText(text)
+        let tsv = tsvRows.joined(separator: "\n")
+        let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
+        ClipboardService.shared.writeRows(tsv: tsv, html: html)
     }
 
     @MainActor
@@ -78,15 +89,15 @@ extension TableViewCoordinator {
     }
 
     func copyCellValue(at rowIndex: Int, columnIndex: Int) {
-        guard columnIndex >= 0 && columnIndex < rowProvider.columns.count else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
+        guard let row = displayRow(at: rowIndex), columnIndex < row.values.count else { return }
 
-        let value = rowProvider.value(atRow: rowIndex, column: columnIndex) ?? "NULL"
-        let columnTypes = rowProvider.columnTypes
+        let value = row.values[columnIndex] ?? "NULL"
+        let columnTypes = tableRows.columnTypes
         let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
 
-        // Use formatted value when a display format is active
-        let formats = rowProvider.columnDisplayFormats
-        if columnIndex < formats.count, let format = formats[columnIndex], format != .raw {
+        if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw {
             let formatted = ValueDisplayFormatService.applyFormat(value, format: format)
             ClipboardService.shared.writeText(formatted)
             return
@@ -98,50 +109,61 @@ extension TableViewCoordinator {
 
     func copyRowsAsInsert(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
+        let tableRows = tableRowsProvider()
         let driver = resolveDriver()
-        let converter = SQLRowToStatementConverter(
-            tableName: tableName,
-            columns: rowProvider.columns,
-            primaryKeyColumn: primaryKeyColumn,
-            databaseType: databaseType,
-            quoteIdentifier: driver?.quoteIdentifier,
-            escapeStringLiteral: driver?.escapeStringLiteral
-        )
-        let rows = indices.sorted().compactMap { rowProvider.rowValues(at: $0) }
-        guard !rows.isEmpty else { return }
-        ClipboardService.shared.writeText(converter.generateInserts(rows: rows))
+        do {
+            let converter = try SQLRowToStatementConverter(
+                tableName: tableName,
+                columns: tableRows.columns,
+                primaryKeyColumn: primaryKeyColumn,
+                databaseType: databaseType,
+                quoteIdentifier: driver?.quoteIdentifier,
+                escapeStringLiteral: driver?.escapeStringLiteral
+            )
+            let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
+            guard !rows.isEmpty else { return }
+            ClipboardService.shared.writeText(converter.generateInserts(rows: rows))
+        } catch {
+            rowActionsLogger.error("copyRowsAsInsert failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func copyRowsAsUpdate(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
+        let tableRows = tableRowsProvider()
         let driver = resolveDriver()
-        let converter = SQLRowToStatementConverter(
-            tableName: tableName,
-            columns: rowProvider.columns,
-            primaryKeyColumn: primaryKeyColumn,
-            databaseType: databaseType,
-            quoteIdentifier: driver?.quoteIdentifier,
-            escapeStringLiteral: driver?.escapeStringLiteral
-        )
-        let rows = indices.sorted().compactMap { rowProvider.rowValues(at: $0) }
-        guard !rows.isEmpty else { return }
-        ClipboardService.shared.writeText(converter.generateUpdates(rows: rows))
+        do {
+            let converter = try SQLRowToStatementConverter(
+                tableName: tableName,
+                columns: tableRows.columns,
+                primaryKeyColumn: primaryKeyColumn,
+                databaseType: databaseType,
+                quoteIdentifier: driver?.quoteIdentifier,
+                escapeStringLiteral: driver?.escapeStringLiteral
+            )
+            let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
+            guard !rows.isEmpty else { return }
+            ClipboardService.shared.writeText(converter.generateUpdates(rows: rows))
+        } catch {
+            rowActionsLogger.error("copyRowsAsUpdate failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let rows = indices.sorted().compactMap { rowProvider.rowValues(at: $0) }
+        let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
         guard !rows.isEmpty else { return }
-        let columnTypes = rowProvider.columnTypes
-        let converter = JsonRowConverter(columns: rowProvider.columns, columnTypes: columnTypes)
+        let tableRows = tableRowsProvider()
+        let columnTypes = tableRows.columnTypes
+        let converter = JsonRowConverter(columns: tableRows.columns, columnTypes: columnTypes)
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
 
-    private func formatRowForCopy(values: [String?], columnTypes: [ColumnType]?) -> String {
+    private func formatRowValues(values: [String?], columnTypes: [ColumnType]?) -> [String] {
         values.enumerated().map { index, value in
             guard let value else { return "NULL" }
             let columnType = columnTypes.flatMap { $0.indices.contains(index) ? $0[index] : nil }
             return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
-        }.joined(separator: "\t")
+        }
     }
 
     private func resolveDriver() -> (any DatabaseDriver)? {
@@ -157,6 +179,17 @@ extension TableViewCoordinator {
         guard delegate != nil else { return nil }
         let item = NSPasteboardItem()
         item.setString(String(row), forType: Self.rowDragType)
+
+        if let values = displayRow(at: row)?.values {
+            let tableRows = tableRowsProvider()
+            let formatted = formatRowValues(values: values, columnTypes: tableRows.columnTypes)
+            item.setString(formatted.joined(separator: "\t"), forType: .string)
+            item.setString(
+                HtmlTableEncoder.encode(rows: [formatted], headers: tableRows.columns),
+                forType: .html
+            )
+        }
+
         return item
     }
 

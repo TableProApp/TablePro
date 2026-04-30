@@ -9,10 +9,22 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryHistoryManager", .serialized)
+@Suite("QueryHistoryManager")
 struct QueryHistoryManagerTests {
-    private let manager = QueryHistoryManager.shared
-    private let storage = QueryHistoryStorage.shared
+    private let manager: QueryHistoryManager
+    private let storage: QueryHistoryStorage
+
+    init() {
+        self.storage = Self.makeIsolatedStorage()
+        self.manager = QueryHistoryManager(storage: self.storage)
+    }
+
+    static func makeIsolatedStorage() -> QueryHistoryStorage {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("query_history_\(UUID().uuidString).db")
+        return QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+    }
 
     private func makeAndInsertEntry(
         query: String = "SELECT 1",
@@ -78,8 +90,8 @@ struct QueryHistoryManagerTests {
 
     @Test("clearAllHistory clears and returns true")
     func clearAllHistoryReturnsTrue() async {
-        let isolatedStorage = QueryHistoryStorage(isolatedForTesting: true)
-        let isolatedManager = QueryHistoryManager(isolatedStorage: isolatedStorage)
+        let isolatedStorage = QueryHistoryManagerTests.makeIsolatedStorage()
+        let isolatedManager = QueryHistoryManager(storage: isolatedStorage)
         _ = await isolatedStorage.addHistory(QueryHistoryEntry(
             query: "SELECT clear_test",
             connectionId: UUID(),
@@ -114,8 +126,8 @@ struct QueryHistoryManagerTests {
 
     @Test("clearAllHistory posts queryHistoryDidUpdate notification")
     func clearAllHistoryPostsNotification() async {
-        let isolatedStorage = QueryHistoryStorage(isolatedForTesting: true)
-        let isolatedManager = QueryHistoryManager(isolatedStorage: isolatedStorage)
+        let isolatedStorage = QueryHistoryManagerTests.makeIsolatedStorage()
+        let isolatedManager = QueryHistoryManager(storage: isolatedStorage)
         _ = await isolatedStorage.addHistory(QueryHistoryEntry(
             query: "SELECT notify_test",
             connectionId: UUID(),

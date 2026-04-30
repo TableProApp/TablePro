@@ -9,23 +9,18 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// Protocol for clipboard operations
-/// Abstraction allows for mocking in tests
 protocol ClipboardProvider {
-    /// Read text content from clipboard
-    /// - Returns: Text string if available, nil otherwise
     func readText() -> String?
-
-    /// Write text content to clipboard
-    /// - Parameter text: Text to write
     func writeText(_ text: String)
-
-    /// Check if clipboard contains text data
+    func writeRows(tsv: String, html: String?)
     var hasText: Bool { get }
+    var hasGridRows: Bool { get }
 }
 
-/// Concrete implementation using NSPasteboard
 struct NSPasteboardClipboardProvider: ClipboardProvider {
+    private static let tsvType = NSPasteboard.PasteboardType("public.utf8-tab-separated-values-text")
+    private static let gridRowsType = NSPasteboard.PasteboardType("com.TablePro.gridRows")
+
     func readText() -> String? {
         NSPasteboard.general.string(forType: .string)
     }
@@ -37,12 +32,26 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         pb.setString(text, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
     }
 
+    func writeRows(tsv: String, html: String?) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(tsv, forType: .string)
+        pb.setString(tsv, forType: Self.tsvType)
+        if let html {
+            pb.setString(html, forType: .html)
+        }
+        pb.setString("1", forType: Self.gridRowsType)
+    }
+
     var hasText: Bool {
         NSPasteboard.general.string(forType: .string) != nil
     }
+
+    var hasGridRows: Bool {
+        NSPasteboard.general.types?.contains(Self.gridRowsType) == true
+    }
 }
 
-/// Shared clipboard service instance
 @MainActor
 enum ClipboardService {
     static var shared: ClipboardProvider = NSPasteboardClipboardProvider()

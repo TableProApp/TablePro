@@ -5,12 +5,8 @@ final class QueryHistoryManager {
 
     private let storage: QueryHistoryStorage
 
-    init(isolatedStorage: QueryHistoryStorage) {
-        self.storage = isolatedStorage
-    }
-
-    private init() {
-        self.storage = QueryHistoryStorage.shared
+    init(storage: QueryHistoryStorage = .shared) {
+        self.storage = storage
     }
 
     @MainActor

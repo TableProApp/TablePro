@@ -17,7 +17,7 @@ extension TableViewCoordinator {
     ) {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
-        let currentValue = rowProvider.value(atRow: row, column: columnIndex) ?? ""
+        let currentValue = cellValue(at: row, column: columnIndex) ?? ""
         let dbType = databaseType ?? .mysql
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))

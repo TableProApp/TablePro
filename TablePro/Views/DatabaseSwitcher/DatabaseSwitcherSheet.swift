@@ -25,6 +25,7 @@ struct DatabaseSwitcherSheet: View {
     @State private var showCreateDialog = false
     @State private var showDropDialog = false
     @State private var databaseToDrop: String?
+    @State private var supportsCreateDatabase = false
 
     private enum FocusField {
         case databaseList
@@ -112,6 +113,7 @@ struct DatabaseSwitcherSheet: View {
             : String(localized: "Open Database"))
         .background(Color(nsColor: .windowBackgroundColor))
         .task { await viewModel.fetchDatabases() }
+        .task { await refreshCreateSupport() }
         .sheet(isPresented: $showCreateDialog) {
             CreateDatabaseSheet(databaseType: databaseType, viewModel: viewModel)
         }
@@ -171,10 +173,7 @@ struct DatabaseSwitcherSheet: View {
             .buttonStyle(.borderless)
             .help(String(localized: "Refresh database list"))
 
-            // Create (only for non-SQLite)
-            if databaseType != .sqlite && databaseType != .redis
-                && databaseType != .etcd && !isSchemaMode
-            {
+            if !isSchemaMode && supportsCreateDatabase {
                 Button(action: { showCreateDialog = true }) {
                     Image(systemName: "plus")
                         .frame(width: 24, height: 24)
@@ -400,6 +399,15 @@ struct DatabaseSwitcherSheet: View {
     }
 
     // MARK: - Actions
+
+    private func refreshCreateSupport() async {
+        do {
+            let spec = try await viewModel.loadCreateDatabaseForm()
+            supportsCreateDatabase = spec != nil
+        } catch {
+            supportsCreateDatabase = false
+        }
+    }
 
     private func openSelectedDatabase() {
         guard let database = viewModel.selectedDatabase else { return }

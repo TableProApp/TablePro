@@ -2,9 +2,6 @@
 //  ValueDisplayFormatStorage.swift
 //  TablePro
 //
-//  Persists per-column display format overrides to UserDefaults.
-//  Follows the same pattern as ColumnLayoutStorage.
-//
 
 import Foundation
 

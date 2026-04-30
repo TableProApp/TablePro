@@ -69,7 +69,7 @@ extension DatabaseManager {
             if let cached = activeSessions[connection.id]?.cachedPassword {
                 passwordOverride = cached
             } else {
-                let isApiOnly = PluginManager.shared.connectionMode(for: connection.type) == .apiOnly
+                let isApiOnly = pluginManager.connectionMode(for: connection.type) == .apiOnly
                 guard let prompted = await PasswordPromptHelper.prompt(
                     connectionName: connection.name,
                     isAPIToken: isApiOnly,
@@ -150,7 +150,7 @@ extension DatabaseManager {
             }
 
             // Save as last connection for "Reopen Last Session" feature
-            AppSettingsStorage.shared.saveLastConnectionId(connection.id)
+            appSettingsStorage.saveLastConnectionId(connection.id)
 
             // Post notification for reliable delivery
             NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
@@ -206,7 +206,7 @@ extension DatabaseManager {
             case .selectDatabaseFromLastSession:
                 if resolvedConnection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                    let adapter = driver as? PluginDriverAdapter,
-                   let savedDb = AppSettingsStorage.shared.loadLastDatabase(for: connection.id) {
+                   let savedDb = appSettingsStorage.loadLastDatabase(for: connection.id) {
                     do {
                         try await adapter.switchDatabase(to: savedDb)
                         activeSessions[connection.id]?.currentDatabase = savedDb
@@ -237,7 +237,7 @@ extension DatabaseManager {
                 }
             case .selectSchemaFromLastSession:
                 if let schemaDriver = driver as? SchemaSwitchable,
-                   let savedSchema = AppSettingsStorage.shared.loadLastSchema(for: connection.id),
+                   let savedSchema = appSettingsStorage.loadLastSchema(for: connection.id),
                    savedSchema != schemaDriver.currentSchema {
                     do {
                         try await schemaDriver.switchSchema(to: savedSchema)
@@ -267,7 +267,7 @@ extension DatabaseManager {
                 session.currentDatabase = database
                 session.currentSchema = nil
             }
-            AppSettingsStorage.shared.saveLastSchema(nil, for: connectionId)
+            appSettingsStorage.saveLastSchema(nil, for: connectionId)
             await reconnectSession(connectionId)
         } else if pm?.capabilities.supportsSchemaSwitching == true,
                   let schemaDriver = driver as? SchemaSwitchable {
@@ -275,7 +275,7 @@ extension DatabaseManager {
             updateSession(connectionId) { session in
                 session.currentSchema = database
             }
-            AppSettingsStorage.shared.saveLastSchema(database, for: connectionId)
+            appSettingsStorage.saveLastSchema(database, for: connectionId)
             return
         } else if let adapter = driver as? PluginDriverAdapter {
             try await adapter.switchDatabase(to: database)
@@ -288,7 +288,7 @@ extension DatabaseManager {
             }
         }
 
-        AppSettingsStorage.shared.saveLastDatabase(database, for: connectionId)
+        appSettingsStorage.saveLastDatabase(database, for: connectionId)
     }
 
     func switchSchema(to schema: String, for connectionId: UUID) async throws {
@@ -301,7 +301,7 @@ extension DatabaseManager {
         updateSession(connectionId) { session in
             session.currentSchema = schema
         }
-        AppSettingsStorage.shared.saveLastSchema(schema, for: connectionId)
+        appSettingsStorage.saveLastSchema(schema, for: connectionId)
     }
 
     /// Switch to an existing session
@@ -367,7 +367,7 @@ extension DatabaseManager {
             } else {
                 // No more sessions - clear current session and last connection ID
                 currentSessionId = nil
-                AppSettingsStorage.shared.saveLastConnectionId(nil)
+                appSettingsStorage.saveLastConnectionId(nil)
             }
         }
         lifecycleLogger.info(

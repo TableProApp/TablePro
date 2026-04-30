@@ -35,8 +35,7 @@ struct PersistedTab: Codable {
     var queryParameters: [QueryParameter]?
 }
 
-/// Stores pending changes for a tab (used to preserve state when switching tabs)
-struct TabPendingChanges: Equatable {
+struct TabChangeSnapshot: Equatable {
     var changes: [RowChange]
     var deletedRowIndices: Set<Int>
     var insertedRowIndices: Set<Int>
@@ -60,17 +59,9 @@ struct TabPendingChanges: Equatable {
     }
 }
 
-/// Sort direction for column sorting
 enum SortDirection: Equatable {
     case ascending
     case descending
-
-    var indicator: String {
-        switch self {
-        case .ascending: return "▲"
-        case .descending: return "▼"
-        }
-    }
 
     mutating func toggle() {
         self = self == .ascending ? .descending : .ascending

@@ -60,7 +60,6 @@ struct NativeSearchField: NSViewRepresentable {
 
         func searchFieldDidEndSearching(_ sender: NSSearchField) {
             text.wrappedValue = ""
-            sender.window?.makeFirstResponder(nil)
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {

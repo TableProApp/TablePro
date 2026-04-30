@@ -48,11 +48,6 @@ struct SortDirectionTests {
         #expect(dir == .ascending)
     }
 
-    @Test("Indicator strings are correct")
-    func indicatorStrings() {
-        #expect(SortDirection.ascending.indicator == "▲")
-        #expect(SortDirection.descending.indicator == "▼")
-    }
 }
 
 @Suite("SortColumn")
@@ -167,5 +162,53 @@ struct SortStateTests {
         var b = SortState()
         b.columns = [SortColumn(columnIndex: 1, direction: .ascending)]
         #expect(a == b)
+    }
+
+    @Test("isSorting flips true after adding a column")
+    func isSortingFlipsTrue() {
+        var state = SortState()
+        #expect(state.isSorting == false)
+        state.columns = [SortColumn(columnIndex: 0, direction: .ascending)]
+        #expect(state.isSorting == true)
+    }
+
+    @Test("isSorting flips false after clearing columns")
+    func isSortingFlipsFalse() {
+        var state = SortState()
+        state.columns = [SortColumn(columnIndex: 0, direction: .ascending)]
+        state.columns = []
+        #expect(state.isSorting == false)
+    }
+
+    @Test("Single-column toggle from ascending to descending preserves the column")
+    func singleColumnToggleDirection() {
+        var state = SortState()
+        state.columns = [SortColumn(columnIndex: 2, direction: .ascending)]
+        state.columns[0].direction.toggle()
+        #expect(state.columns.count == 1)
+        #expect(state.columns[0].columnIndex == 2)
+        #expect(state.columns[0].direction == .descending)
+    }
+
+    @Test("Multi-column sort retains primary when adding a secondary")
+    func multiColumnAddSecondary() {
+        var state = SortState()
+        state.columns = [SortColumn(columnIndex: 1, direction: .ascending)]
+        state.columns.append(SortColumn(columnIndex: 3, direction: .descending))
+
+        #expect(state.columns.count == 2)
+        #expect(state.columns[0].columnIndex == 1)
+        #expect(state.columns[0].direction == .ascending)
+        #expect(state.columns[1].columnIndex == 3)
+        #expect(state.columns[1].direction == .descending)
+    }
+
+    @Test("Removing the only sort column clears the state")
+    func removeOnlySortColumn() {
+        var state = SortState()
+        state.columns = [SortColumn(columnIndex: 0, direction: .descending)]
+        state.columns.removeAll()
+        #expect(state.isSorting == false)
+        #expect(state.columnIndex == nil)
     }
 }

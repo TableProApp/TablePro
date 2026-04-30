@@ -28,14 +28,14 @@ struct TabStructureVersionTests {
     }
 
     @Test("addTableTab(...) for a new table bumps once; activating an existing table does NOT bump")
-    func addTableTabBumpsOnceAndIdempotent() {
+    func addTableTabBumpsOnceAndIdempotent() throws {
         let manager = QueryTabManager()
 
-        manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "users")
         let afterFirstAdd = manager.tabStructureVersion
         #expect(afterFirstAdd == 1)
 
-        manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "users")
 
         #expect(manager.tabStructureVersion == afterFirstAdd)
     }
@@ -67,21 +67,21 @@ struct TabStructureVersionTests {
     }
 
     @Test("replaceTabContent(...) bumps the version (in-place mutation, same id)")
-    func replaceTabContentBumps() {
+    func replaceTabContentBumps() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "users")
         let beforeReplace = manager.tabStructureVersion
 
-        let didReplace = manager.replaceTabContent(tableName: "orders")
+        let didReplace = try manager.replaceTabContent(tableName: "orders")
 
         #expect(didReplace)
         #expect(manager.tabStructureVersion == beforeReplace + 1)
     }
 
     @Test("markTabRenamed bumps when the tab id exists; no-op when it does not")
-    func markTabRenamedBumpsOnlyForKnownIds() {
+    func markTabRenamedBumpsOnlyForKnownIds() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "users")
         let knownId = manager.tabs[0].id
         let before = manager.tabStructureVersion
 
@@ -94,9 +94,9 @@ struct TabStructureVersionTests {
     }
 
     @Test("updateTab(...) does NOT bump the version (content-only update)")
-    func updateTabDoesNotBump() {
+    func updateTabDoesNotBump() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "users")
         var tab = manager.tabs[0]
         let before = manager.tabStructureVersion
 
@@ -107,9 +107,9 @@ struct TabStructureVersionTests {
     }
 
     @Test("Mutating a tab's content directly via tabs[i] does NOT bump (id array unchanged)")
-    func directContentMutationDoesNotBump() {
+    func directContentMutationDoesNotBump() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "users")
         let before = manager.tabStructureVersion
 
         manager.tabs[0].content.query = "SELECT * FROM users WHERE id = 1"
@@ -118,10 +118,10 @@ struct TabStructureVersionTests {
     }
 
     @Test("Removing a tab via tabs.remove(at:) bumps via the didSet")
-    func tabsRemovalBumps() {
+    func tabsRemovalBumps() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
-        manager.addTableTab(tableName: "orders")
+        try manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "orders")
         let before = manager.tabStructureVersion
 
         manager.tabs.remove(at: 0)
@@ -130,11 +130,11 @@ struct TabStructureVersionTests {
     }
 
     @Test("Drag-reordering tabs (id array reordered) bumps via the didSet")
-    func tabsReorderBumps() {
+    func tabsReorderBumps() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
-        manager.addTableTab(tableName: "orders")
-        manager.addTableTab(tableName: "products")
+        try manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "orders")
+        try manager.addTableTab(tableName: "products")
         let before = manager.tabStructureVersion
 
         manager.tabs.swapAt(0, 2)

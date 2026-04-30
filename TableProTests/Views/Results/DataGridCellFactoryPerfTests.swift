@@ -2,17 +2,10 @@
 //  DataGridCellFactoryPerfTests.swift
 //  TableProTests
 //
-//  Regression tests for DataGrid performance optimizations:
-//  - P2-4: VoiceOver caching (verified via build — static cache replaces per-cell system calls)
-//  - P1-5: Column width optimization
-//  - P2-7: Change reapplication version tracking
-//
 
 import Foundation
 @testable import TablePro
 import Testing
-
-// MARK: - Column Width Optimization (P1-5)
 
 @Suite("Column Width Optimization")
 @MainActor
@@ -20,13 +13,13 @@ struct ColumnWidthOptimizationTests {
     @Test("Column width is within min/max bounds")
     func columnWidthWithinBounds() {
         let factory = DataGridCellFactory()
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 10)
+        let tableRows = TestFixtures.makeTableRows(rowCount: 10)
 
-        for (index, column) in provider.columns.enumerated() {
+        for (index, column) in tableRows.columns.enumerated() {
             let width = factory.calculateOptimalColumnWidth(
                 for: column,
                 columnIndex: index,
-                rowProvider: provider
+                tableRows: tableRows
             )
             #expect(width >= 60, "Width should be at least 60 (min)")
             #expect(width <= 800, "Width should be at most 800 (max)")
@@ -36,12 +29,16 @@ struct ColumnWidthOptimizationTests {
     @Test("Header-only column returns reasonable width")
     func headerOnlyColumnWidth() {
         let factory = DataGridCellFactory()
-        let provider = InMemoryRowProvider(rows: [], columns: ["username"])
+        let tableRows = TableRows.from(
+            queryRows: [],
+            columns: ["username"],
+            columnTypes: [.text(rawType: nil)]
+        )
 
         let width = factory.calculateOptimalColumnWidth(
             for: "username",
             columnIndex: 0,
-            rowProvider: provider
+            tableRows: tableRows
         )
         #expect(width >= 60)
         #expect(width <= 800)
@@ -50,12 +47,16 @@ struct ColumnWidthOptimizationTests {
     @Test("Empty header with no rows returns minimum width")
     func emptyHeaderNoRowsReturnsMinWidth() {
         let factory = DataGridCellFactory()
-        let provider = InMemoryRowProvider(rows: [], columns: [""])
+        let tableRows = TableRows.from(
+            queryRows: [],
+            columns: [""],
+            columnTypes: [.text(rawType: nil)]
+        )
 
         let width = factory.calculateOptimalColumnWidth(
             for: "",
             columnIndex: 0,
-            rowProvider: provider
+            tableRows: tableRows
         )
         #expect(width >= 60, "Should return at least minimum width")
     }
@@ -65,12 +66,16 @@ struct ColumnWidthOptimizationTests {
         let factory = DataGridCellFactory()
         let longValue = String(repeating: "X", count: 5_000)
         let rows: [[String?]] = [[longValue]]
-        let provider = InMemoryRowProvider(rows: rows, columns: ["data"])
+        let tableRows = TableRows.from(
+            queryRows: rows,
+            columns: ["data"],
+            columnTypes: [.text(rawType: nil)]
+        )
 
         let width = factory.calculateOptimalColumnWidth(
             for: "data",
             columnIndex: 0,
-            rowProvider: provider
+            tableRows: tableRows
         )
         #expect(width <= 800, "Width should be capped at max (800)")
     }
@@ -80,16 +85,17 @@ struct ColumnWidthOptimizationTests {
         let factory = DataGridCellFactory()
         let columnCount = 60
         let columns = (0..<columnCount).map { "col_\($0)" }
+        let columnTypes = Array(repeating: ColumnType.text(rawType: nil), count: columnCount)
         let rows: [[String?]] = (0..<100).map { rowIdx in
             columns.map { "\($0)_val_\(rowIdx)" }
         }
-        let provider = InMemoryRowProvider(rows: rows, columns: columns)
+        let tableRows = TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
 
         for (index, column) in columns.enumerated() {
             let width = factory.calculateOptimalColumnWidth(
                 for: column,
                 columnIndex: index,
-                rowProvider: provider
+                tableRows: tableRows
             )
             #expect(width >= 60)
             #expect(width <= 800)
@@ -116,19 +122,21 @@ struct ColumnWidthOptimizationTests {
             ["hello"],
             [nil],
         ]
-        let provider = InMemoryRowProvider(rows: rows, columns: ["name"])
+        let tableRows = TableRows.from(
+            queryRows: rows,
+            columns: ["name"],
+            columnTypes: [.text(rawType: nil)]
+        )
 
         let width = factory.calculateOptimalColumnWidth(
             for: "name",
             columnIndex: 0,
-            rowProvider: provider
+            tableRows: tableRows
         )
         #expect(width >= 60)
         #expect(width <= 800)
     }
 }
-
-// MARK: - Change Reapplication Version Tracking (P2-7)
 
 @Suite("Change Reapplication Version Tracking")
 struct ChangeReapplyVersionTests {

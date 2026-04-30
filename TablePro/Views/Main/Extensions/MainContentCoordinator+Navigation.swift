@@ -41,8 +41,8 @@ extension MainContentCoordinator {
            current.tabType == .table,
            current.tableContext.tableName == tableName,
            current.tableContext.databaseName == currentDatabase {
-            if showStructure, let idx = tabManager.selectedTabIndex {
-                tabManager.tabs[idx].display.resultsViewMode = .structure
+            if showStructure, let (_, tabIndex) = tabManager.selectedTabAndIndex {
+                tabManager.tabs[tabIndex].display.resultsViewMode = .structure
             }
             return
         }
@@ -51,11 +51,15 @@ extension MainContentCoordinator {
         // opening a new native window tab.
         if sidebarLoadingState == .loading {
             if tabManager.tabs.isEmpty {
-                tabManager.addTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase
-                )
+                do {
+                    try tabManager.addTableTab(
+                        tableName: tableName,
+                        databaseType: connection.type,
+                        databaseName: currentDatabase
+                    )
+                } catch {
+                    navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
+                }
             }
             return
         }
@@ -74,24 +78,29 @@ extension MainContentCoordinator {
         // If no tabs exist (empty state), add a table tab directly.
         // In preview mode, mark it as preview so subsequent clicks replace it.
         if tabManager.tabs.isEmpty {
-            if AppSettingsManager.shared.tabs.enablePreviewTabs {
-                tabManager.addPreviewTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase
-                )
-                if let wid = windowId {
-                    WindowLifecycleMonitor.shared.setPreview(true, for: wid)
-                    WindowLifecycleMonitor.shared.window(for: wid)?.subtitle = "\(connection.name) — Preview"
+            do {
+                if AppSettingsManager.shared.tabs.enablePreviewTabs {
+                    try tabManager.addPreviewTableTab(
+                        tableName: tableName,
+                        databaseType: connection.type,
+                        databaseName: currentDatabase
+                    )
+                    if let wid = windowId {
+                        WindowLifecycleMonitor.shared.setPreview(true, for: wid)
+                        WindowLifecycleMonitor.shared.window(for: wid)?.subtitle = "\(connection.name) — Preview"
+                    }
+                } else {
+                    try tabManager.addTableTab(
+                        tableName: tableName,
+                        databaseType: connection.type,
+                        databaseName: currentDatabase
+                    )
                 }
-            } else {
-                tabManager.addTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase
-                )
+            } catch {
+                navigationLogger.error("openTableTab tab creation failed: \(error.localizedDescription, privacy: .public)")
+                return
             }
-            if let tabIndex = tabManager.selectedTabIndex {
+            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[tabIndex].tableContext.isView = isView
                 tabManager.tabs[tabIndex].tableContext.isEditable = !isView
                 tabManager.tabs[tabIndex].tableContext.schemaName = currentSchema
@@ -100,7 +109,7 @@ extension MainContentCoordinator {
             }
             // In-place navigation needs selectRedisDatabaseAndQuery to ensure the correct
             // database is SELECTed and session state is updated before querying.
-            restoreColumnLayoutForTable(tableName)
+            restoreLastHiddenColumnsForTable(tableName)
             restoreFiltersForTable(tableName)
             if navigationModel == .inPlace, let dbIndex = Int(currentDatabase) {
                 selectRedisDatabaseAndQuery(dbIndex)
@@ -116,24 +125,28 @@ extension MainContentCoordinator {
             if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableContext.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
-            if tabManager.replaceTabContent(
-                tableName: tableName,
-                databaseType: connection.type,
-                databaseName: currentDatabase,
-                schemaName: currentSchema
-            ) {
-                filterStateManager.clearAll()
-                if let tabIndex = tabManager.selectedTabIndex {
-                    let tabId = tabManager.tabs[tabIndex].id
-                    rowDataStore.setBuffer(RowBuffer(), for: tabId)
-                    tabManager.tabs[tabIndex].pagination.reset()
-                    toolbarState.isTableTab = true
+            do {
+                let replaced = try tabManager.replaceTabContent(
+                    tableName: tableName,
+                    databaseType: connection.type,
+                    databaseName: currentDatabase,
+                    schemaName: currentSchema
+                )
+                if replaced {
+                    filterStateManager.clearAll()
+                    if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+                        setActiveTableRows(TableRows(), for: tab.id)
+                        tabManager.tabs[tabIndex].pagination.reset()
+                        toolbarState.isTableTab = true
+                    }
+                    restoreLastHiddenColumnsForTable(tableName)
+                    restoreFiltersForTable(tableName)
+                    if let dbIndex = Int(currentDatabase) {
+                        selectRedisDatabaseAndQuery(dbIndex)
+                    }
                 }
-                restoreColumnLayoutForTable(tableName)
-                restoreFiltersForTable(tableName)
-                if let dbIndex = Int(currentDatabase) {
-                    selectRedisDatabaseAndQuery(dbIndex)
-                }
+            } catch {
+                navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
             }
             return
         }
@@ -196,24 +209,29 @@ extension MainContentCoordinator {
                    let oldTableName = oldTab.tableContext.tableName {
                     previewCoordinator.filterStateManager.saveLastFilters(for: oldTableName)
                 }
-                previewCoordinator.tabManager.replaceTabContent(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    isView: isView,
-                    databaseName: databaseName,
-                    schemaName: schemaName,
-                    isPreview: true
-                )
+                do {
+                    try previewCoordinator.tabManager.replaceTabContent(
+                        tableName: tableName,
+                        databaseType: connection.type,
+                        isView: isView,
+                        databaseName: databaseName,
+                        schemaName: schemaName,
+                        isPreview: true
+                    )
+                } catch {
+                    navigationLogger.error("openPreviewTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
                 previewCoordinator.filterStateManager.clearAll()
                 if let tabIndex = previewCoordinator.tabManager.selectedTabIndex {
                     let tabId = previewCoordinator.tabManager.tabs[tabIndex].id
-                    previewCoordinator.rowDataStore.setBuffer(RowBuffer(), for: tabId)
+                    previewCoordinator.setActiveTableRows(TableRows(), for: tabId)
                     previewCoordinator.tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                     previewCoordinator.tabManager.tabs[tabIndex].pagination.reset()
                     previewCoordinator.toolbarState.isTableTab = true
                 }
                 preview.window.makeKeyAndOrderFront(nil)
-                previewCoordinator.restoreColumnLayoutForTable(tableName)
+                previewCoordinator.restoreLastHiddenColumnsForTable(tableName)
                 previewCoordinator.restoreFiltersForTable(tableName)
                 previewCoordinator.runQuery()
                 return
@@ -268,23 +286,27 @@ extension MainContentCoordinator {
             if let oldTableName = selectedTab.tableContext.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
-            tabManager.replaceTabContent(
-                tableName: tableName,
-                databaseType: connection.type,
-                isView: isView,
-                databaseName: databaseName,
-                schemaName: schemaName,
-                isPreview: true
-            )
+            do {
+                try tabManager.replaceTabContent(
+                    tableName: tableName,
+                    databaseType: connection.type,
+                    isView: isView,
+                    databaseName: databaseName,
+                    schemaName: schemaName,
+                    isPreview: true
+                )
+            } catch {
+                navigationLogger.error("openPreviewTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+                return
+            }
             filterStateManager.clearAll()
-            if let tabIndex = tabManager.selectedTabIndex {
-                let tabId = tabManager.tabs[tabIndex].id
-                rowDataStore.setBuffer(RowBuffer(), for: tabId)
+            if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+                setActiveTableRows(TableRows(), for: tab.id)
                 tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                 tabManager.tabs[tabIndex].pagination.reset()
                 toolbarState.isTableTab = true
             }
-            restoreColumnLayoutForTable(tableName)
+            restoreLastHiddenColumnsForTable(tableName)
             restoreFiltersForTable(tableName)
             runQuery()
             return
@@ -305,8 +327,8 @@ extension MainContentCoordinator {
     }
 
     func promotePreviewTab() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabManager.tabs[tabIndex].isPreview else { return }
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.isPreview else { return }
         tabManager.tabs[tabIndex].isPreview = false
 
         if let wid = windowId {
@@ -389,7 +411,7 @@ extension MainContentCoordinator {
 
             closeSiblingNativeWindows()
             persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            rowDataStore.tearDown()
+            tableRowsStore.tearDown()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
             DatabaseManager.shared.updateSession(connectionId) { session in
@@ -424,7 +446,7 @@ extension MainContentCoordinator {
 
             closeSiblingNativeWindows()
             persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            rowDataStore.tearDown()
+            tableRowsStore.tearDown()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
             DatabaseManager.shared.updateSession(connectionId) { session in

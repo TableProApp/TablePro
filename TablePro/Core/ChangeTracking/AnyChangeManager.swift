@@ -7,6 +7,7 @@ protocol ChangeManaging: AnyObject {
     var reloadVersion: Int { get }
     var canRedo: Bool { get }
     var rowChanges: [RowChange] { get }
+    var insertedRowIndices: Set<Int> { get }
     func isRowDeleted(_ rowIndex: Int) -> Bool
     func recordCellChange(
         rowIndex: Int,
@@ -18,7 +19,6 @@ protocol ChangeManaging: AnyObject {
     )
     func undoRowDeletion(rowIndex: Int)
     func undoRowInsertion(rowIndex: Int)
-    func consumeChangedRowIndices() -> Set<Int>
 }
 
 @Observable
@@ -30,6 +30,7 @@ final class AnyChangeManager {
     var reloadVersion: Int { wrapped.reloadVersion }
     var canRedo: Bool { wrapped.canRedo }
     var rowChanges: [RowChange] { wrapped.rowChanges }
+    var insertedRowIndices: Set<Int> { wrapped.insertedRowIndices }
 
     func isRowDeleted(_ rowIndex: Int) -> Bool {
         wrapped.isRowDeleted(rowIndex)
@@ -59,10 +60,6 @@ final class AnyChangeManager {
 
     func undoRowInsertion(rowIndex: Int) {
         wrapped.undoRowInsertion(rowIndex: rowIndex)
-    }
-
-    func consumeChangedRowIndices() -> Set<Int> {
-        wrapped.consumeChangedRowIndices()
     }
 
     init(_ manager: any ChangeManaging) {

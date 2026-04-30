@@ -22,8 +22,9 @@ final class TableRowViewWithMenu: NSTableRowView {
         let locationInTable = tableView.convert(locationInRow, from: self)
         let clickedColumn = tableView.column(at: locationInTable)
 
-        // Adjust for row number column (index 0)
-        let dataColumnIndex = clickedColumn > 0 ? DataGridView.dataColumnIndex(for: clickedColumn) : -1
+        let dataColumnIndex: Int = clickedColumn > 0
+            ? DataGridView.dataColumnIndex(for: clickedColumn, in: tableView, schema: coordinator.identitySchema) ?? -1
+            : -1
 
         let menu = NSMenu()
 
@@ -98,11 +99,11 @@ final class TableRowViewWithMenu: NSTableRowView {
                 menu.addItem(pasteItem)
             }
 
-            // FK actions (only for FK columns with non-empty values)
-            if dataColumnIndex >= 0, dataColumnIndex < coordinator.rowProvider.columns.count {
-                let columnName = coordinator.rowProvider.columns[dataColumnIndex]
-                if let fkInfo = coordinator.rowProvider.columnForeignKeys[columnName],
-                   let cellValue = coordinator.rowProvider.value(atRow: rowIndex, column: dataColumnIndex),
+            let tableRows = coordinator.tableRowsProvider()
+            if dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count {
+                let columnName = tableRows.columns[dataColumnIndex]
+                if let fkInfo = tableRows.columnForeignKeys[columnName],
+                   let cellValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex),
                    !cellValue.isEmpty {
                     menu.addItem(NSMenuItem.separator())
 
@@ -130,7 +131,6 @@ final class TableRowViewWithMenu: NSTableRowView {
                 menu.addItem(NSMenuItem.separator())
             }
 
-            // Set Value (editable + column clicked)
             if coordinator.isEditable && dataColumnIndex >= 0 {
                 let setValueMenu = NSMenu()
 
@@ -140,17 +140,27 @@ final class TableRowViewWithMenu: NSTableRowView {
                 emptyItem.target = self
                 setValueMenu.addItem(emptyItem)
 
-                let nullItem = NSMenuItem(
-                    title: String(localized: "NULL"), action: #selector(setNullValue(_:)), keyEquivalent: "")
-                nullItem.representedObject = dataColumnIndex
-                nullItem.target = self
-                setValueMenu.addItem(nullItem)
+                let columnName = dataColumnIndex < tableRows.columns.count
+                    ? tableRows.columns[dataColumnIndex]
+                    : nil
 
-                let defaultItem = NSMenuItem(
-                    title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
-                defaultItem.representedObject = dataColumnIndex
-                defaultItem.target = self
-                setValueMenu.addItem(defaultItem)
+                let isNullable = columnName.flatMap { tableRows.columnNullable[$0] } ?? true
+                if isNullable {
+                    let nullItem = NSMenuItem(
+                        title: String(localized: "NULL"), action: #selector(setNullValue(_:)), keyEquivalent: "")
+                    nullItem.representedObject = dataColumnIndex
+                    nullItem.target = self
+                    setValueMenu.addItem(nullItem)
+                }
+
+                let hasDefault = columnName.flatMap({ tableRows.columnDefaults[$0] ?? nil }) != nil
+                if hasDefault {
+                    let defaultItem = NSMenuItem(
+                        title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
+                    defaultItem.representedObject = dataColumnIndex
+                    defaultItem.target = self
+                    setValueMenu.addItem(defaultItem)
+                }
 
                 let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
                 setValueItem.submenu = setValueMenu
@@ -279,18 +289,25 @@ final class TableRowViewWithMenu: NSTableRowView {
 
     @objc private func previewForeignKey(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int,
-              let coordinator, let tableView = coordinator.tableView else { return }
+              let coordinator, let tableView = coordinator.tableView,
+              let column = DataGridView.tableColumnIndex(
+                for: columnIndex,
+                in: tableView,
+                schema: coordinator.identitySchema
+              ) else { return }
         coordinator.showForeignKeyPreview(
-            tableView: tableView, row: rowIndex, column: DataGridView.tableColumnIndex(for: columnIndex), columnIndex: columnIndex
+            tableView: tableView, row: rowIndex, column: column, columnIndex: columnIndex
         )
     }
 
     @objc private func navigateToForeignKey(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator else { return }
-        let columnName = coordinator.rowProvider.columns[columnIndex]
-        guard let fkInfo = coordinator.rowProvider.columnForeignKeys[columnName],
-              let value = coordinator.rowProvider.value(atRow: rowIndex, column: columnIndex) else { return }
+        let tableRows = coordinator.tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+        guard let fkInfo = tableRows.columnForeignKeys[columnName],
+              let value = coordinator.cellValue(at: rowIndex, column: columnIndex) else { return }
         coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
     }
 }

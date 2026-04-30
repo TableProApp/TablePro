@@ -131,13 +131,19 @@ final class DatabaseSwitcherViewModel {
         await fetchDatabases()
     }
 
-    /// Create a new database
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
+    func loadCreateDatabaseForm() async throws -> CreateDatabaseFormSpec? {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
+        return try await driver.createDatabaseFormSpec()
+    }
 
-        try await driver.createDatabase(name: name, charset: charset, collation: collation)
+    func createDatabase(name: String, values: [String: String]) async throws {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            throw DatabaseError.notConnected
+        }
+        let request = CreateDatabaseRequest(name: name, values: values)
+        try await driver.createDatabase(request)
     }
 
     /// Drop a database

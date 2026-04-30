@@ -92,15 +92,6 @@ struct AnyChangeManagerTests {
         #expect(wrapper.isRowDeleted(100) == false)
     }
 
-    @Test("StructureChangeManager wrapper: consumeChangedRowIndices returns empty set")
-    func structureManagerConsumeChangedRowIndicesEmpty() {
-        let structureManager = StructureChangeManager()
-        let wrapper = AnyChangeManager(structureManager)
-
-        let indices = wrapper.consumeChangedRowIndices()
-        #expect(indices.isEmpty)
-    }
-
     @Test("StructureChangeManager wrapper: hasChanges forwards correctly when false")
     func structureManagerHasChangesForwardsFalse() {
         let structureManager = StructureChangeManager()

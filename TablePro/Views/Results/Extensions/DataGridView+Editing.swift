@@ -7,57 +7,70 @@ import AppKit
 import SwiftUI
 
 extension TableViewCoordinator {
-    func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
-        guard isEditable,
-              let tableColumn = tableColumn else { return false }
+    enum InlineEditEligibility {
+        case eligible
+        case needsOverlayEditor(value: String)
+        case blocked
+    }
 
-        let columnId = tableColumn.identifier.rawValue
-        guard columnId != "__rowNumber__",
-              !changeManager.isRowDeleted(row) else { return false }
+    func inlineEditEligibility(row: Int, columnIndex: Int) -> InlineEditEligibility {
+        guard isEditable else { return .blocked }
+        let tableRows = tableRowsProvider()
+        guard row >= 0, columnIndex >= 0, columnIndex < tableRows.columns.count else { return .blocked }
+        guard !changeManager.isRowDeleted(row) else { return .blocked }
 
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        if !immutable.isEmpty,
-           let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier),
-           columnIndex < rowProvider.columns.count,
-           immutable.contains(rowProvider.columns[columnIndex]) {
+        if immutable.contains(tableRows.columns[columnIndex]) {
+            return .blocked
+        }
+
+        let columnName = tableRows.columns[columnIndex]
+        if tableRows.columnForeignKeys[columnName] != nil { return .blocked }
+
+        if columnIndex < tableRows.columnTypes.count {
+            let ct = tableRows.columnTypes[columnIndex]
+            if ct.isBooleanType || ct.isDateType || ct.isJsonType
+                || ct.isBlobType || ct.isEnumType || ct.isSetType {
+                return .blocked
+            }
+        }
+
+        if dropdownColumns?.contains(columnIndex) == true { return .blocked }
+        if typePickerColumns?.contains(columnIndex) == true { return .blocked }
+
+        if let displayRow = displayRow(at: row),
+           columnIndex < displayRow.values.count,
+           let value = displayRow.values[columnIndex] {
+            if value.containsLineBreak { return .needsOverlayEditor(value: value) }
+            if value.looksLikeJson { return .blocked }
+        }
+
+        return .eligible
+    }
+
+    func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {
+        if case .eligible = inlineEditEligibility(row: row, columnIndex: columnIndex) {
+            return true
+        }
+        return false
+    }
+
+    func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
+        guard let tableColumn else { return false }
+        guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return false }
+        guard let columnIndex = dataColumnIndex(from: tableColumn.identifier) else { return false }
+
+        switch inlineEditEligibility(row: row, columnIndex: columnIndex) {
+        case .eligible:
+            return true
+        case .needsOverlayEditor(let value):
+            let tableColumnIdx = tableView.column(withIdentifier: tableColumn.identifier)
+            guard tableColumnIdx >= 0 else { return false }
+            showOverlayEditor(tableView: tableView, row: row, column: tableColumnIdx, columnIndex: columnIndex, value: value)
+            return false
+        case .blocked:
             return false
         }
-
-        // Popover-editor columns (date/FK/JSON) are only editable via
-        // double-click (handleDoubleClick). Block inline editing for them.
-        if let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier) {
-            if columnIndex < rowProvider.columns.count {
-                let columnName = rowProvider.columns[columnIndex]
-                if rowProvider.columnForeignKeys[columnName] != nil { return false }
-            }
-            if columnIndex < rowProvider.columnTypes.count {
-                let ct = rowProvider.columnTypes[columnIndex]
-                if ct.isDateType || ct.isJsonType || ct.isEnumType || ct.isSetType || ct.isBlobType || ct.isBooleanType { return false }
-            }
-            if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
-                return false
-            }
-            if let typePickerCols = typePickerColumns, typePickerCols.contains(columnIndex) {
-                return false
-            }
-
-            // Text columns containing JSON use JSON editor popover
-            if let value = rowProvider.value(atRow: row, column: columnIndex),
-               value.looksLikeJson {
-                return false
-            }
-
-            // Multiline values use overlay editor — block inline field editor
-            if let value = rowProvider.value(atRow: row, column: columnIndex),
-               value.containsLineBreak {
-                let tableColumnIdx = tableView.column(withIdentifier: tableColumn.identifier)
-                guard tableColumnIdx >= 0 else { return false }
-                showOverlayEditor(tableView: tableView, row: row, column: tableColumnIdx, columnIndex: columnIndex, value: value)
-                return false
-            }
-        }
-
-        return true
     }
 
     // MARK: - Overlay Editor (Multiline)
@@ -89,7 +102,7 @@ extension TableViewCoordinator {
 
         if forward {
             if nextColumn >= tableView.numberOfColumns {
-                nextColumn = 1
+                nextColumn = DataGridView.firstDataTableColumnIndex
                 nextRow += 1
             }
             if nextRow >= tableView.numberOfRows {
@@ -97,22 +110,27 @@ extension TableViewCoordinator {
                 nextColumn = tableView.numberOfColumns - 1
             }
         } else {
-            if nextColumn < 1 {
+            if !DataGridView.isDataTableColumn(nextColumn) {
                 nextColumn = tableView.numberOfColumns - 1
                 nextRow -= 1
             }
             if nextRow < 0 {
                 nextRow = 0
-                nextColumn = 1
+                nextColumn = DataGridView.firstDataTableColumnIndex
             }
         }
 
         tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
 
-        // Check if next cell is also multiline → open overlay there
-        let nextColumnIndex = nextColumn - 1
-        if nextColumnIndex >= 0, nextColumnIndex < rowProvider.columns.count,
-           let value = rowProvider.value(atRow: nextRow, column: nextColumnIndex),
+        if let nextColumnIndex = DataGridView.dataColumnIndex(
+            for: nextColumn,
+            in: tableView,
+            schema: identitySchema
+        ),
+           nextColumnIndex >= 0,
+           let nextDisplayRow = displayRow(at: nextRow),
+           nextColumnIndex < nextDisplayRow.values.count,
+           let value = nextDisplayRow.values[nextColumnIndex],
            value.containsLineBreak {
             showOverlayEditor(tableView: tableView, row: nextRow, column: nextColumn, columnIndex: nextColumnIndex, value: value)
         } else {
@@ -126,20 +144,29 @@ extension TableViewCoordinator {
         let row = tableView.row(for: textField)
         let column = tableView.column(for: textField)
 
-        guard row >= 0, column > 0 else { return true }
-
-        let columnIndex = DataGridView.dataColumnIndex(for: column)
+        guard row >= 0, column > 0,
+              let columnIndex = DataGridView.dataColumnIndex(
+                for: column,
+                in: tableView,
+                schema: identitySchema
+              ) else { return true }
 
         if isEscapeCancelling {
             isEscapeCancelling = false
-            let originalValue = rowProvider.value(atRow: row, column: columnIndex)
+            let originalValue: String? = {
+                guard let displayRow = displayRow(at: row), columnIndex < displayRow.values.count else { return nil }
+                return displayRow.values[columnIndex]
+            }()
             textField.stringValue = originalValue ?? ""
             (control as? CellTextField)?.restoreTruncatedDisplay()
             return true
         }
 
         let rawInput = textField.stringValue
-        let oldValue = rowProvider.value(atRow: row, column: columnIndex)
+        let oldValue: String? = {
+            guard let displayRow = displayRow(at: row), columnIndex < displayRow.values.count else { return nil }
+            return displayRow.values[columnIndex]
+        }()
         let newValue: String? = rawInput.isEmpty && oldValue == nil ? nil : rawInput
 
         commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)

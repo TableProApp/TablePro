@@ -8,7 +8,7 @@ import Foundation
 extension MainContentCoordinator {
     /// Save current hidden columns to the active tab's column layout
     func saveColumnVisibilityToTab() {
-        guard let index = tabManager.selectedTabIndex else { return }
+        guard let (_, index) = tabManager.selectedTabAndIndex else { return }
         tabManager.tabs[index].columnLayout.hiddenColumns = columnVisibilityManager.saveToColumnLayout()
     }
 
@@ -20,6 +20,14 @@ extension MainContentCoordinator {
     /// Load per-table hidden columns from UserDefaults when opening a table tab
     func restoreLastHiddenColumnsForTable(_ tableName: String) {
         columnVisibilityManager.restoreLastHiddenColumns(for: tableName, connectionId: connectionId)
+    }
+
+    func saveColumnVisibilityForActiveTable() {
+        guard let tab = tabManager.selectedTab,
+              tab.tabType == .table,
+              let tableName = tab.tableContext.tableName,
+              !tableName.isEmpty else { return }
+        columnVisibilityManager.saveLastHiddenColumns(for: tableName, connectionId: connectionId)
     }
 
     /// Prune hidden columns that no longer exist in the current result set

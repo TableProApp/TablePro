@@ -832,10 +832,6 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         PluginDatabaseMetadata(name: database)
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        throw SQLitePluginError.unsupportedOperation
-    }
-
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {

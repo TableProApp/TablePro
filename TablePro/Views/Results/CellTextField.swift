@@ -80,21 +80,4 @@ final class DataGridFieldEditor: NSTextView {
         }
         return super.performKeyEquivalent(with: event)
     }
-
-    override func rightMouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(nil)
-
-        var view: NSView? = self
-        while let parent = view?.superview {
-            if let cellTextField = parent as? CellTextField {
-                cellTextField.rightMouseDown(with: event)
-                return
-            }
-            view = parent
-        }
-    }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        nil
-    }
 }

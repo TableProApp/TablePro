@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import SwiftUI
 
 @MainActor
 final class DataTabGridDelegate: DataGridViewDelegate {
@@ -15,10 +14,11 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     var columnVisibilityManager: ColumnVisibilityManager?
 
     var selectionState: GridSelectionState?
-    var editingCell: Binding<CellPosition?>?
 
     var onCellEdit: ((Int, Int, String?) -> Void)?
     var onSort: ((Int, Bool, Bool) -> Void)?
+    var onClearSort: (() -> Void)?
+    var onRemoveSortColumn: ((Int) -> Void)?
     var onAddRow: (() -> Void)?
     var onUndoInsert: ((Int) -> Void)?
     var onFilterColumn: ((String) -> Void)?
@@ -32,6 +32,14 @@ final class DataTabGridDelegate: DataGridViewDelegate {
 
     func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool) {
         onSort?(column, ascending, isMultiSort)
+    }
+
+    func dataGridClearSort() {
+        onClearSort?()
+    }
+
+    func dataGridRemoveSortColumn(_ columnIndex: Int) {
+        onRemoveSortColumn?(columnIndex)
     }
 
     func dataGridAddRow() {
@@ -59,29 +67,21 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridPasteRows() {
-        var cell = editingCell?.wrappedValue
-        coordinator?.pasteRows(editingCell: &cell)
-        editingCell?.wrappedValue = cell
+        coordinator?.pasteRows()
     }
 
     func dataGridDuplicateRow() {
         guard let selectionState, let firstIndex = selectionState.indices.first else { return }
-        var cell = editingCell?.wrappedValue
-        coordinator?.duplicateSelectedRow(index: firstIndex, editingCell: &cell)
-        editingCell?.wrappedValue = cell
+        coordinator?.duplicateSelectedRow(index: firstIndex)
     }
 
     func dataGridExportResults() {
         NotificationCenter.default.post(name: .exportQueryResults, object: nil)
     }
 
-    func dataGridUndo() {
-        coordinator?.undoLastChange()
-    }
+    func dataGridUndo() {}
 
-    func dataGridRedo() {
-        coordinator?.redoLastChange()
-    }
+    func dataGridRedo() {}
 
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {
         coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo)
@@ -111,7 +111,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         return menu
     }
 
-    weak var tableViewCoordinator: (any RowDeltaApplying)?
+    weak var tableViewCoordinator: (any TableViewCoordinating)?
 
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
         self.tableViewCoordinator = tableViewCoordinator

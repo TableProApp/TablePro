@@ -34,33 +34,37 @@ actor QueryHistoryStorage {
     private var cachedMaxHistoryDays: Int = 90
     private var insertsSinceCleanup: Int = 0
 
-    private static var isRunningTests: Bool {
-        NSClassFromString("XCTestCase") != nil
-    }
+    private let databaseURL: URL
+    private let removeDatabaseOnDeinit: Bool
 
-    private init() {
+    init(
+        databaseURL: URL = QueryHistoryStorage.defaultDatabaseURL(),
+        removeDatabaseOnDeinit: Bool = false
+    ) {
+        self.databaseURL = databaseURL
+        self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
         setupDatabase()
     }
 
-    #if DEBUG
-    init(isolatedForTesting: Bool) {
-        testDatabaseSuffix = isolatedForTesting ? "_\(UUID().uuidString)" : nil
-        setupDatabase()
+    static func defaultDatabaseURL() -> URL {
+        let fileManager = FileManager.default
+        let appSupport = fileManager.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        ).first ?? fileManager.temporaryDirectory
+        let dir = appSupport.appendingPathComponent("TablePro")
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("query_history.db")
     }
-    #endif
-
-    private var testDatabaseSuffix: String?
-
-    private var dbPath: String?
 
     deinit {
         if let db = db {
             sqlite3_close(db)
         }
-        if Self.isRunningTests, let dbPath = dbPath {
-            try? FileManager.default.removeItem(atPath: dbPath)
+        if removeDatabaseOnDeinit {
+            let path = databaseURL.path(percentEncoded: false)
+            try? FileManager.default.removeItem(atPath: path)
             for suffix in ["-wal", "-shm"] {
-                try? FileManager.default.removeItem(atPath: dbPath + suffix)
+                try? FileManager.default.removeItem(atPath: path + suffix)
             }
         }
     }
@@ -68,26 +72,10 @@ actor QueryHistoryStorage {
     // MARK: - Database Setup
 
     private func setupDatabase() {
-        let fileManager = FileManager.default
-        guard
-            let appSupport = fileManager.urls(
-                for: .applicationSupportDirectory, in: .userDomainMask
-            ).first
-        else {
-            Self.logger.error("Unable to access application support directory")
-            return
-        }
-        let TableProDir = appSupport.appendingPathComponent("TablePro")
+        let dir = databaseURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        try? fileManager.createDirectory(at: TableProDir, withIntermediateDirectories: true)
-
-        let suffix = testDatabaseSuffix ?? ""
-        let dbFileName = Self.isRunningTests
-            ? "query_history_test_\(ProcessInfo.processInfo.processIdentifier)\(suffix).db"
-            : "query_history.db"
-        let dbPath = TableProDir.appendingPathComponent(dbFileName).path(percentEncoded: false)
-
-        self.dbPath = dbPath
+        let dbPath = databaseURL.path(percentEncoded: false)
 
         if sqlite3_open(dbPath, &db) != SQLITE_OK {
             Self.logger.error("Error opening database")

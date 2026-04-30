@@ -34,7 +34,6 @@ final class MainContentCommandActions {
     @ObservationIgnored private let pendingDeletes: Binding<Set<String>>
     @ObservationIgnored private let tableOperationOptions: Binding<[String: TableOperationOptions]>
     @ObservationIgnored private let rightPanelState: RightPanelState
-    @ObservationIgnored private let editingCell: Binding<CellPosition?>
 
     /// The window this instance belongs to — used for key-window guards.
     @ObservationIgnored weak var window: NSWindow?
@@ -55,8 +54,7 @@ final class MainContentCommandActions {
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
         tableOperationOptions: Binding<[String: TableOperationOptions]>,
-        rightPanelState: RightPanelState,
-        editingCell: Binding<CellPosition?>
+        rightPanelState: RightPanelState
     ) {
         self.coordinator = coordinator
         self.filterStateManager = filterStateManager
@@ -67,7 +65,6 @@ final class MainContentCommandActions {
         self.pendingDeletes = pendingDeletes
         self.tableOperationOptions = tableOperationOptions
         self.rightPanelState = rightPanelState
-        self.editingCell = editingCell
 
         setupSaveAction()
         setupObservers()
@@ -170,19 +167,14 @@ final class MainContentCommandActions {
         }
 
         observeKeyWindowOnly(.pasteRows) { [weak self] _ in
-            guard let self else { return }
-            var cell = self.editingCell.wrappedValue
-            self.coordinator?.pasteRows(editingCell: &cell)
-            self.editingCell.wrappedValue = cell
+            self?.coordinator?.pasteRows()
         }
     }
 
     // MARK: - Row Operations (Group A — Called Directly)
 
     func addNewRow() {
-        var cell = editingCell.wrappedValue
-        coordinator?.addNewRow(editingCell: &cell)
-        editingCell.wrappedValue = cell
+        coordinator?.addNewRow()
     }
 
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
@@ -214,10 +206,7 @@ final class MainContentCommandActions {
     func duplicateRow() {
         let indices = selectionState.indices
         guard let selectedIndex = indices.first, indices.count == 1 else { return }
-
-        var cell = editingCell.wrappedValue
-        coordinator?.duplicateSelectedRow(index: selectedIndex, editingCell: &cell)
-        editingCell.wrappedValue = cell
+        coordinator?.duplicateSelectedRow(index: selectedIndex)
     }
 
     func copySelectedRows() {
@@ -243,9 +232,7 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.pasteRows?()
         } else {
-            var cell = editingCell.wrappedValue
-            coordinator?.pasteRows(editingCell: &cell)
-            editingCell.wrappedValue = cell
+            coordinator?.pasteRows()
         }
     }
 
@@ -380,10 +367,14 @@ final class MainContentCommandActions {
         } else if coordinator?.tabManager.tabs.isEmpty == true {
             window.close()
         } else {
-            coordinator?.rowDataStore.evictAll(except: nil)
-            coordinator?.tabManager.tabs.removeAll()
-            coordinator?.tabManager.selectedTabId = nil
-            coordinator?.toolbarState.isTableTab = false
+            if let coordinator {
+                for tab in coordinator.tabManager.tabs {
+                    coordinator.tableRowsStore.removeTableRows(for: tab.id)
+                }
+                coordinator.tabManager.tabs.removeAll()
+                coordinator.tabManager.selectedTabId = nil
+                coordinator.toolbarState.isTableTab = false
+            }
         }
         Self.logger.info("[close] performClose done ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
@@ -641,8 +632,7 @@ final class MainContentCommandActions {
 
     func formatQuery() {
         guard let coordinator,
-              let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
-        let tab = coordinator.tabManager.tabs[tabIndex]
+              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
         let dbType = connection.type
         let formatter = SQLFormatterService()
         let options = SQLFormatterOptions.default
@@ -671,29 +661,30 @@ final class MainContentCommandActions {
     }
 
     func toggleResults() {
-        guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
+        guard let coordinator,
+              let (_, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
         coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed.toggle()
         coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed
     }
 
     func previousResultTab() {
-        guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
-        let tab = coordinator.tabManager.tabs[tabIndex]
+        guard let coordinator,
+              let (tab, _) = coordinator.tabManager.selectedTabAndIndex else { return }
         guard tab.display.resultSets.count > 1,
               let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
               let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
               currentIndex > 0 else { return }
-        coordinator.tabManager.tabs[tabIndex].display.activeResultSetId = tab.display.resultSets[currentIndex - 1].id
+        coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex - 1].id, in: tab.id)
     }
 
     func nextResultTab() {
-        guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
-        let tab = coordinator.tabManager.tabs[tabIndex]
+        guard let coordinator,
+              let (tab, _) = coordinator.tabManager.selectedTabAndIndex else { return }
         guard tab.display.resultSets.count > 1,
               let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
               let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
               currentIndex < tab.display.resultSets.count - 1 else { return }
-        coordinator.tabManager.tabs[tabIndex].display.activeResultSetId = tab.display.resultSets[currentIndex + 1].id
+        coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex + 1].id, in: tab.id)
     }
 
     func closeResultTab() {
@@ -719,7 +710,7 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
         } else {
-            coordinator?.undoLastChange()
+            coordinator?.contentWindow?.undoManager?.undo()
         }
     }
 
@@ -727,7 +718,7 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
         } else {
-            coordinator?.redoLastChange()
+            coordinator?.contentWindow?.undoManager?.redo()
         }
     }
 

@@ -48,8 +48,8 @@ struct TableStructureView: View {
     @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
-    @State var editingCell: CellPosition?
     @State var structureColumnLayout = ColumnLayoutState()
+    @State var columnLayoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister()
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
 
@@ -246,7 +246,7 @@ struct TableStructureView: View {
                         await loadColumns()
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
-                        ColumnLayoutStorage.shared.clear(for: tableName, connectionId: connection.id)
+                        columnLayoutPersister.clear(for: tableName, connectionId: connection.id)
                         NotificationCenter.default.post(name: .refreshData, object: nil)
                     } catch {
                         AlertHelper.showErrorSheet(
@@ -268,10 +268,10 @@ struct TableStructureView: View {
         let customOptions = provider.customDropdownOptions
         let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
 
+        let tableRows = provider.asTableRows()
         return DataGridView(
-            rowProvider: provider.asInMemoryProvider(),
+            tableRowsProvider: { tableRows },
             changeManager: wrappedChangeManager,
-            schemaVersion: displayVersion,
             isEditable: canEdit,
             configuration: DataGridConfiguration(
                 dropdownColumns: allDropdownColumns,
@@ -281,9 +281,9 @@ struct TableStructureView: View {
                 databaseType: connection.type
             ),
             delegate: gridDelegate,
+            layoutPersister: columnLayoutPersister,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
-            editingCell: $editingCell,
             columnLayout: $structureColumnLayout
         )
         .safeAreaInset(edge: .top, spacing: 0) {

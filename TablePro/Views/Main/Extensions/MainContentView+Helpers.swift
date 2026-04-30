@@ -101,11 +101,11 @@ extension MainContentView {
 
     private func buildQueryResultsSummary() -> String? {
         guard let tab = currentTab else { return nil }
-        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
-        guard !buffer.columns.isEmpty, !buffer.rows.isEmpty else { return nil }
+        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
+        guard !tableRows.columns.isEmpty, !tableRows.rows.isEmpty else { return nil }
 
-        let columns = buffer.columns
-        let rows = buffer.rows
+        let columns = tableRows.columns
+        let rows = tableRows.rows
         let maxRows = 10
         let displayRows = Array(rows.prefix(maxRows))
 
@@ -114,7 +114,7 @@ extension MainContentView {
 
         for row in displayRows {
             let values = columns.indices.map { i in
-                let raw = i < row.count ? (row[i] ?? "NULL") : "NULL"
+                let raw = i < row.values.count ? (row.values[i] ?? "NULL") : "NULL"
                 return (raw as NSString).length > 200 ? String(raw.prefix(200)) + "..." : raw
             }
             lines.append(values.joined(separator: " | "))

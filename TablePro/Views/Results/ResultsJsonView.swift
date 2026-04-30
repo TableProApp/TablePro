@@ -6,9 +6,7 @@
 import SwiftUI
 
 internal struct ResultsJsonView: View {
-    let columns: [String]
-    let columnTypes: [ColumnType]
-    let rows: [[String?]]
+    let tableRows: TableRows
     let selectedRowIndices: Set<Int>
 
     @State private var viewMode: JSONViewMode
@@ -20,19 +18,20 @@ internal struct ResultsJsonView: View {
     @State private var copied = false
 
     init(
-        columns: [String],
-        columnTypes: [ColumnType],
-        rows: [[String?]],
+        tableRows: TableRows,
         selectedRowIndices: Set<Int>
     ) {
-        self.columns = columns
-        self.columnTypes = columnTypes
-        self.rows = rows
+        self.tableRows = tableRows
         self.selectedRowIndices = selectedRowIndices
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
     }
 
+    private var allRows: [[String?]] {
+        tableRows.rows.map(\.values)
+    }
+
     private var displayRows: [[String?]] {
+        let rows = allRows
         if selectedRowIndices.isEmpty {
             return rows
         }
@@ -43,7 +42,7 @@ internal struct ResultsJsonView: View {
 
     private var rowCountText: String {
         let displaying = displayRows.count
-        let total = rows.count
+        let total = tableRows.count
         if selectedRowIndices.isEmpty || displaying == total {
             return String(format: String(localized: "%d rows"), total)
         }
@@ -59,7 +58,7 @@ internal struct ResultsJsonView: View {
         }
         .onAppear { rebuildJson() }
         .onChange(of: selectedRowIndices) { rebuildJson() }
-        .onChange(of: rows.count) { rebuildJson() }
+        .onChange(of: tableRows.count) { rebuildJson() }
         .onChange(of: viewMode) {
             AppSettingsManager.shared.editor.jsonViewerPreferredMode = viewMode
         }
@@ -107,7 +106,7 @@ internal struct ResultsJsonView: View {
 
     @ViewBuilder
     private var content: some View {
-        if rows.isEmpty {
+        if tableRows.rows.isEmpty {
             ContentUnavailableView(
                 String(localized: "No Data"),
                 systemImage: "curlybraces",
@@ -153,7 +152,7 @@ internal struct ResultsJsonView: View {
     // MARK: - JSON Generation
 
     private func rebuildJson() {
-        let converter = JsonRowConverter(columns: columns, columnTypes: columnTypes)
+        let converter = JsonRowConverter(columns: tableRows.columns, columnTypes: tableRows.columnTypes)
         let json = converter.generateJson(rows: displayRows)
         cachedJson = json
         prettyText = json.prettyPrintedAsJson() ?? json

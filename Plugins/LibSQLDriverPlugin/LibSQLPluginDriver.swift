@@ -463,10 +463,6 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         PluginDatabaseMetadata(name: database)
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        throw LibSQLError(message: String(localized: "Creating databases is not supported"))
-    }
-
     func dropDatabase(name: String) async throws {
         throw LibSQLError(message: String(localized: "Dropping databases is not supported"))
     }

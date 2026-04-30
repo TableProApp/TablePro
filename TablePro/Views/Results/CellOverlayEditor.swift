@@ -109,7 +109,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         newPanel.contentView = scrollView
         newPanel.contentView?.wantsLayer = true
         newPanel.contentView?.layer?.borderWidth = 2
-        newPanel.contentView?.layer?.borderColor = NSColor.selectedControlColor.safeCGColor
+        newPanel.contentView?.layer?.borderColor = NSColor.keyboardFocusIndicatorColor.safeCGColor
         newPanel.contentView?.layer?.cornerRadius = 2
         newPanel.contentView?.layer?.masksToBounds = true
 
@@ -140,7 +140,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.dismiss(commit: true)
+                self?.dismiss(commit: false)
             }
         }
     }

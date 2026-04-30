@@ -3,7 +3,7 @@
 //  TablePro
 //
 //  Pure formatter that transforms raw cell values into display-ready strings.
-//  Used by InMemoryRowProvider's display cache to compute values once per cell.
+//  Used by the data grid coordinator's display cache to compute values once per cell.
 //
 
 import Foundation

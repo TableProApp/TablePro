@@ -23,10 +23,10 @@ extension MainContentCoordinator {
         let editedFields = editState.getEditedFields()
         guard !editedFields.isEmpty else { return }
 
-        let buffer = rowDataStore.buffer(for: tab.id)
+        let tableRows = tableRowsStore.tableRows(for: tab.id)
         let changes: [RowChange] = selectionState.indices.sorted().compactMap { rowIndex in
-            guard rowIndex < buffer.rows.count else { return nil }
-            let originalRow = buffer.rows[rowIndex]
+            guard rowIndex < tableRows.rows.count else { return nil }
+            let originalRow = tableRows.rows[rowIndex].values
             return RowChange(
                 rowIndex: rowIndex,
                 type: .update,
@@ -35,7 +35,7 @@ extension MainContentCoordinator {
                         rowIndex: rowIndex,
                         columnIndex: field.columnIndex,
                         columnName: field.columnName,
-                        oldValue: originalRow[field.columnIndex],
+                        oldValue: field.columnIndex < originalRow.count ? originalRow[field.columnIndex] : nil,
                         newValue: field.newValue
                     )
                 },

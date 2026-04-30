@@ -1,217 +1,225 @@
-//
-//  MainContentCoordinator+RowOperations.swift
-//  TablePro
-//
-//  Row manipulation operations for MainContentCoordinator
-//
-
 import Foundation
 
 extension MainContentCoordinator {
-    // MARK: - Row Operations
-
-    func addNewRow(editingCell: inout CellPosition?) {
+    func addNewRow() {
         guard !safeModeLevel.blocksAllWrites,
-              let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+              let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tableContext.isEditable,
+              tab.tableContext.tableName != nil else { return }
 
-        let tab = tabManager.tabs[tabIndex]
-        guard tab.tableContext.isEditable, tab.tableContext.tableName != nil else { return }
+        let tabId = tab.id
+        let columnDefaults = tableRowsStore.tableRows(for: tabId).columnDefaults
+        let columns = tableRowsStore.tableRows(for: tabId).columns
 
-        let buffer = rowDataStore.buffer(for: tab.id)
-        guard let result = rowOperationsManager.addNewRow(
-            columns: buffer.columns,
-            columnDefaults: buffer.columnDefaults,
-            resultRows: &buffer.rows
-        ) else { return }
+        dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
+
+        var addResult: RowOperationsManager.AddNewRowResult?
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.addNewRow(
+                columns: columns,
+                columnDefaults: columnDefaults,
+                tableRows: &rows
+            )
+            addResult = result
+            return result?.delta ?? .none
+        }
+
+        guard let result = addResult else { return }
 
         selectionState.indices = [result.rowIndex]
-        editingCell = CellPosition(row: result.rowIndex, column: 0)
         tabManager.tabs[tabIndex].hasUserInteraction = true
-        querySortCache.removeValue(forKey: tab.id)
-        dataTabDelegate?.dataGridDidInsertRows(at: IndexSet(integer: result.rowIndex))
+        querySortCache.removeValue(forKey: tabId)
+        dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
+        dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
     }
 
     func deleteSelectedRows(indices: Set<Int>) {
         guard !safeModeLevel.blocksAllWrites,
-              let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count,
-              tabManager.tabs[tabIndex].tableContext.isEditable,
+              let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tableContext.isEditable,
               !indices.isEmpty else { return }
 
-        let tabId = tabManager.tabs[tabIndex].id
-        let buffer = rowDataStore.buffer(for: tabId)
-        let result = rowOperationsManager.deleteSelectedRows(
-            selectedIndices: indices,
-            resultRows: &buffer.rows
-        )
+        let tabId = tab.id
 
-        if result.nextRowToSelect >= 0
-            && result.nextRowToSelect < buffer.rows.count {
-            selectionState.indices = [result.nextRowToSelect]
+        var deleteResult = RowOperationsManager.DeleteRowsResult(
+            nextRowToSelect: -1,
+            physicallyRemovedIndices: [],
+            delta: .none
+        )
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.deleteSelectedRows(
+                selectedIndices: indices,
+                tableRows: &rows
+            )
+            deleteResult = result
+            return result.delta
+        }
+
+        let totalRows = tableRowsStore.tableRows(for: tabId).count
+        if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < totalRows {
+            selectionState.indices = [deleteResult.nextRowToSelect]
         } else {
             selectionState.indices.removeAll()
         }
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
 
-        if !result.physicallyRemovedIndices.isEmpty {
+        if !deleteResult.physicallyRemovedIndices.isEmpty {
             querySortCache.removeValue(forKey: tabId)
-            dataTabDelegate?.dataGridDidRemoveRows(
-                at: IndexSet(result.physicallyRemovedIndices)
-            )
+            dataTabDelegate?.tableViewCoordinator?.applyDelta(deleteResult.delta)
+        } else {
+            dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
         }
     }
 
-    func duplicateSelectedRow(index: Int, editingCell: inout CellPosition?) {
+    func duplicateSelectedRow(index: Int) {
         guard !safeModeLevel.blocksAllWrites,
-              let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+              let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tableContext.isEditable,
+              tab.tableContext.tableName != nil else { return }
 
-        let tab = tabManager.tabs[tabIndex]
-        guard tab.tableContext.isEditable, tab.tableContext.tableName != nil else { return }
-        let buffer = rowDataStore.buffer(for: tab.id)
-        guard index < buffer.rows.count else { return }
+        let tabId = tab.id
+        let columns = tableRowsStore.tableRows(for: tabId).columns
+        guard index >= 0, index < tableRowsStore.tableRows(for: tabId).count else { return }
 
-        guard let result = rowOperationsManager.duplicateRow(
-            sourceRowIndex: index,
-            columns: buffer.columns,
-            resultRows: &buffer.rows
-        ) else { return }
+        dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
+
+        var dupResult: RowOperationsManager.AddNewRowResult?
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.duplicateRow(
+                sourceRowIndex: index,
+                columns: columns,
+                tableRows: &rows
+            )
+            dupResult = result
+            return result?.delta ?? .none
+        }
+
+        guard let result = dupResult else { return }
 
         selectionState.indices = [result.rowIndex]
-        editingCell = CellPosition(row: result.rowIndex, column: 0)
         tabManager.tabs[tabIndex].hasUserInteraction = true
-        querySortCache.removeValue(forKey: tab.id)
-        dataTabDelegate?.dataGridDidInsertRows(at: IndexSet(integer: result.rowIndex))
+        querySortCache.removeValue(forKey: tabId)
+        dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
+        dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
     }
 
     func undoInsertRow(at rowIndex: Int) {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+        guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
+        let tabId = tab.id
 
-        let tabId = tabManager.tabs[tabIndex].id
-        let buffer = rowDataStore.buffer(for: tabId)
-        selectionState.indices = rowOperationsManager.undoInsertRow(
-            at: rowIndex,
-            resultRows: &buffer.rows,
-            selectedIndices: selectionState.indices
+        var undoResult = RowOperationsManager.UndoInsertRowResult(
+            adjustedSelection: selectionState.indices,
+            delta: .none
         )
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.undoInsertRow(
+                at: rowIndex,
+                tableRows: &rows,
+                selectedIndices: selectionState.indices
+            )
+            undoResult = result
+            return result.delta
+        }
+
+        selectionState.indices = undoResult.adjustedSelection
         querySortCache.removeValue(forKey: tabId)
-        dataTabDelegate?.dataGridDidRemoveRows(at: IndexSet(integer: rowIndex))
+        dataTabDelegate?.tableViewCoordinator?.applyDelta(undoResult.delta)
     }
 
-    func undoLastChange() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+    func handleUndoResult(_ result: UndoResult) {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
 
-        let tabId = tabManager.tabs[tabIndex].id
-        let buffer = rowDataStore.buffer(for: tabId)
-        if let adjustedSelection = rowOperationsManager.undoLastChange(
-            resultRows: &buffer.rows
-        ) {
+        let tabId = tab.id
+
+        var application = RowOperationsManager.UndoApplicationResult(adjustedSelection: nil, delta: .none)
+        mutateActiveTableRows(for: tabId) { rows in
+            let applied = rowOperationsManager.applyUndoResult(result, tableRows: &rows)
+            application = applied
+            return applied.delta
+        }
+
+        if let adjustedSelection = application.adjustedSelection {
             selectionState.indices = adjustedSelection
         }
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
         querySortCache.removeValue(forKey: tabId)
-        dataTabDelegate?.dataGridDidReplaceAllRows()
-    }
-
-    func redoLastChange() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
-
-        let tab = tabManager.tabs[tabIndex]
-        let buffer = rowDataStore.buffer(for: tab.id)
-        _ = rowOperationsManager.redoLastChange(
-            resultRows: &buffer.rows,
-            columns: buffer.columns
-        )
-
-        tabManager.tabs[tabIndex].hasUserInteraction = true
-        querySortCache.removeValue(forKey: tab.id)
-        dataTabDelegate?.dataGridDidReplaceAllRows()
+        dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
+        dataTabDelegate?.tableViewCoordinator?.applyDelta(application.delta)
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
-        guard let index = tabManager.selectedTabIndex,
-              !indices.isEmpty else { return }
-
-        let tab = tabManager.tabs[index]
-        let buffer = rowDataStore.buffer(for: tab.id)
+        guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
+        let tableRows = tableRowsStore.tableRows(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
-            resultRows: buffer.rows
+            tableRows: tableRows
         )
     }
 
     func copySelectedRowsWithHeaders(indices: Set<Int>) {
-        guard let index = tabManager.selectedTabIndex,
-              !indices.isEmpty else { return }
-
-        let tab = tabManager.tabs[index]
-        let buffer = rowDataStore.buffer(for: tab.id)
+        guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
+        let tableRows = tableRowsStore.tableRows(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
-            resultRows: buffer.rows,
-            columns: buffer.columns,
+            tableRows: tableRows,
             includeHeaders: true
         )
     }
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
-        guard let index = tabManager.selectedTabIndex,
-              !indices.isEmpty else { return }
-        let tab = tabManager.tabs[index]
-        let buffer = rowDataStore.buffer(for: tab.id)
+        guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
+        let tableRows = tableRowsStore.tableRows(for: tab.id)
         let rows = indices.sorted().compactMap { idx -> [String?]? in
-            guard idx < buffer.rows.count else { return nil }
-            return buffer.rows[idx]
+            guard idx >= 0, idx < tableRows.count else { return nil }
+            return tableRows.rows[idx].values
         }
         guard !rows.isEmpty else { return }
         let converter = JsonRowConverter(
-            columns: buffer.columns,
-            columnTypes: buffer.columnTypes
+            columns: tableRows.columns,
+            columnTypes: tableRows.columnTypes
         )
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
 
-    func pasteRows(editingCell: inout CellPosition?) {
+    func pasteRows() {
         guard !safeModeLevel.blocksAllWrites,
-              let index = tabManager.selectedTabIndex else { return }
+              let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tabType == .table else { return }
 
-        let tab = tabManager.tabs[index]
+        let tabId = tab.id
+        let columns = tableRowsStore.tableRows(for: tabId).columns
 
-        guard tab.tabType == .table else { return }
-
-        let buffer = rowDataStore.buffer(for: tab.id)
-        let pastedRows = rowOperationsManager.pasteRowsFromClipboard(
-            columns: buffer.columns,
-            primaryKeyColumns: changeManager.primaryKeyColumns,
-            resultRows: &buffer.rows
-        )
-
-        if !pastedRows.isEmpty {
-            let newIndices = Set(pastedRows.map { $0.rowIndex })
-            selectionState.indices = newIndices
-
-            tabManager.tabs[index].selectedRowIndices = newIndices
-            tabManager.tabs[index].hasUserInteraction = true
-            querySortCache.removeValue(forKey: tab.id)
-            dataTabDelegate?.dataGridDidInsertRows(at: IndexSet(newIndices))
+        var pasteResult = RowOperationsManager.PasteRowsResult(pastedRows: [], delta: .none)
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.pasteRowsFromClipboard(
+                columns: columns,
+                primaryKeyColumns: changeManager.primaryKeyColumns,
+                tableRows: &rows
+            )
+            pasteResult = result
+            return result.delta
         }
+
+        guard !pasteResult.pastedRows.isEmpty else { return }
+
+        let newIndices = Set(pasteResult.pastedRows.map { $0.rowIndex })
+        selectionState.indices = newIndices
+
+        tabManager.tabs[tabIndex].selectedRowIndices = newIndices
+        tabManager.tabs[tabIndex].hasUserInteraction = true
+        querySortCache.removeValue(forKey: tabId)
+        dataTabDelegate?.tableViewCoordinator?.applyDelta(pasteResult.delta)
     }
 
-    // MARK: - Cell Operations
-
     func updateCellInTab(rowIndex: Int, columnIndex: Int, value: String?) {
-        guard let index = tabManager.selectedTabIndex else { return }
-        let tabId = tabManager.tabs[index].id
-        let buffer = rowDataStore.buffer(for: tabId)
-        guard rowIndex < buffer.rows.count else { return }
-
-        buffer.rows[rowIndex][columnIndex] = value
-        tabManager.tabs[index].hasUserInteraction = true
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        let tabId = tab.id
+        let delta = mutateActiveTableRows(for: tabId) { rows in
+            rows.edit(row: rowIndex, column: columnIndex, value: value)
+        }
+        tabManager.tabs[tabIndex].hasUserInteraction = true
+        dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
     }
 }

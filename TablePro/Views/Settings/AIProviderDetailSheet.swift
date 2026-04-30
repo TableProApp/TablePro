@@ -72,7 +72,7 @@ struct AIProviderDetailSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "Save")) {
                         cancelTasks()
-                        onSave(draft, apiKey)
+                        onSave(normalizedDraft, apiKey)
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isSaveEnabled)
@@ -105,6 +105,12 @@ struct AIProviderDetailSheet: View {
         case .oauth, .none:
             return true
         }
+    }
+
+    private var normalizedDraft: AIProviderConfig {
+        var provider = draft
+        provider.model = draft.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        return provider
     }
 
     // MARK: - Auth
@@ -307,33 +313,34 @@ struct AIProviderDetailSheet: View {
 
     @ViewBuilder
     private var modelControl: some View {
-        if isFetchingModels {
-            ProgressView().controlSize(.small)
-        } else if fetchedModels.isEmpty {
-            HStack(spacing: 6) {
-                if !draft.model.isEmpty {
-                    Text(draft.model)
-                        .foregroundStyle(.secondary)
-                }
+        HStack(spacing: 8) {
+            TextField(String(localized: "Model name"), text: $draft.model)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 260)
+
+            if isFetchingModels {
+                ProgressView().controlSize(.small)
+            } else if fetchedModels.isEmpty {
                 Button(String(localized: "Reload")) {
                     fetchModels()
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-            }
-        } else {
-            Picker("", selection: $draft.model) {
-                if draft.model.isEmpty {
-                    Text(String(localized: "Select a model")).tag("")
+            } else {
+                Menu {
+                    ForEach(fetchedModels, id: \.self) { model in
+                        Button(model) {
+                            draft.model = model
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down.circle")
                 }
-                ForEach(fetchedModels, id: \.self) { model in
-                    Text(model).tag(model)
-                }
+                .menuStyle(.borderlessButton)
+                .help(String(localized: "Choose a fetched model"))
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .fixedSize()
         }
+        .fixedSize()
     }
 
     // MARK: - Advanced
@@ -436,7 +443,7 @@ struct AIProviderDetailSheet: View {
             return
         }
 
-        let provider = AIProviderFactory.createProvider(for: draft, apiKey: apiKey)
+        let provider = AIProviderFactory.createProvider(for: normalizedDraft, apiKey: apiKey)
         isFetchingModels = true
         modelFetchError = nil
 
@@ -465,7 +472,7 @@ struct AIProviderDetailSheet: View {
             return
         }
 
-        let provider = AIProviderFactory.createProvider(for: draft, apiKey: apiKey)
+        let provider = AIProviderFactory.createProvider(for: normalizedDraft, apiKey: apiKey)
         isTesting = true
         testResult = nil
 

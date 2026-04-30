@@ -1,10 +1,3 @@
-//
-//  CreateDatabaseSheet.swift
-//  TablePro
-//
-//  Sheet for creating a new database with charset and collation options.
-//
-
 import SwiftUI
 
 struct CreateDatabaseSheet: View {
@@ -13,106 +6,27 @@ struct CreateDatabaseSheet: View {
     let databaseType: DatabaseType
     let viewModel: DatabaseSwitcherViewModel
 
+    @State private var loadState: LoadState = .loading
     @State private var databaseName = ""
-    @State private var charset: String
-    @State private var collation: String
+    @State private var values: [String: String] = [:]
+    @State private var groupSourceFieldIds: Set<String> = []
     @State private var isCreating = false
     @State private var errorMessage: String?
 
-    private let config: CreateDatabaseOptions.Config
-
-    init(databaseType: DatabaseType, viewModel: DatabaseSwitcherViewModel) {
-        self.databaseType = databaseType
-        self.viewModel = viewModel
-        let cfg = CreateDatabaseOptions.config(for: databaseType)
-        self.config = cfg
-        self._charset = State(initialValue: cfg.defaultCharset)
-        self._collation = State(initialValue: cfg.defaultCollation)
+    private enum LoadState {
+        case loading
+        case ready(CreateDatabaseFormSpec)
+        case unsupported
+        case failed(String)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            Text("Create Database")
-                .font(.body.weight(.semibold))
-                .padding(.vertical, 12)
-
+            header
             Divider()
-
-            // Form
-            VStack(alignment: .leading, spacing: 16) {
-                // Database name
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Database Name")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    TextField("Enter database name", text: $databaseName)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.body)
-                }
-
-                if config.showOptions {
-                    // Charset / Encoding
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(config.charsetLabel)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-
-                        Picker("", selection: $charset) {
-                            ForEach(config.charsets, id: \.self) { cs in
-                                Text(cs).tag(cs)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .font(.body)
-                    }
-
-                    // Collation / LC_COLLATE
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(config.collationLabel)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-
-                        Picker("", selection: $collation) {
-                            ForEach(config.collations[charset] ?? [], id: \.self) { col in
-                                Text(col).tag(col)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .font(.body)
-                    }
-                }
-
-                // Error message
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundStyle(Color(nsColor: .systemRed))
-                }
-            }
-            .padding(20)
-
+            formBody
             Divider()
-
-            // Footer
-            HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-
-                Spacer()
-
-                Button(isCreating ? String(localized: "Creating...") : String(localized: "Create")) {
-                    createDatabase()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(databaseName.isEmpty || isCreating)
-                .keyboardShortcut(.return, modifiers: [])
-            }
-            .padding(12)
+            footer
         }
         .frame(width: 380)
         .onExitCommand {
@@ -120,26 +34,241 @@ struct CreateDatabaseSheet: View {
                 dismiss()
             }
         }
-        .onChange(of: charset) { _, newCharset in
-            if let firstCollation = config.collations[newCharset]?.first {
-                collation = firstCollation
+        .task { await load() }
+    }
+
+    private var header: some View {
+        Text(String(localized: "Create Database"))
+            .font(.body.weight(.semibold))
+            .padding(.vertical, 12)
+    }
+
+    private var formBody: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            nameField
+
+            switch loadState {
+            case .loading:
+                loadingView
+            case .ready(let spec):
+                fieldsList(spec: spec)
+                if let footnote = spec.footnote {
+                    Text(footnote)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            case .unsupported:
+                Text(String(localized: "This engine does not support creating databases."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            case .failed(let message):
+                failureView(message: message)
+            }
+
+            if let error = errorMessage {
+                Text(error)
+                    .font(.subheadline)
+                    .foregroundStyle(Color(nsColor: .systemRed))
+            }
+        }
+        .padding(20)
+    }
+
+    private var nameField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(String(localized: "Database Name"))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            TextField(String(localized: "Enter database name"), text: $databaseName)
+                .textFieldStyle(.roundedBorder)
+                .font(.body)
+        }
+    }
+
+    private var loadingView: some View {
+        HStack(spacing: 8) {
+            ProgressView().scaleEffect(0.7)
+            Text(String(localized: "Loading options..."))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func failureView(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(String(localized: "Failed to load options"))
+                .font(.subheadline.weight(.medium))
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Button(String(localized: "Retry")) {
+                Task { await load() }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    private func fieldsList(spec: CreateDatabaseFormSpec) -> some View {
+        ForEach(visibleFields(in: spec)) { field in
+            fieldView(field: field, spec: spec)
+        }
+    }
+
+    private func fieldView(field: CreateDatabaseFormSpec.Field, spec: CreateDatabaseFormSpec) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(field.label)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            picker(for: field, spec: spec)
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .font(.body)
+        }
+    }
+
+    private func picker(for field: CreateDatabaseFormSpec.Field, spec: CreateDatabaseFormSpec) -> some View {
+        let binding = Binding<String>(
+            get: { values[field.id] ?? "" },
+            set: { newValue in
+                values[field.id] = newValue
+                if groupSourceFieldIds.contains(field.id) {
+                    resetGroupedFields(after: field.id, in: spec)
+                }
+            }
+        )
+        let options = filteredOptions(for: field)
+        return Picker("", selection: binding) {
+            ForEach(options, id: \.value) { option in
+                Text(displayLabel(for: option)).tag(option.value)
             }
         }
     }
 
-    private func createDatabase() {
-        guard !databaseName.isEmpty else { return }
+    private var footer: some View {
+        HStack {
+            Button(String(localized: "Cancel")) {
+                dismiss()
+            }
+
+            Spacer()
+
+            Button(isCreating ? String(localized: "Creating...") : String(localized: "Create")) {
+                submit()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canSubmit)
+            .keyboardShortcut(.return, modifiers: [])
+        }
+        .padding(12)
+    }
+
+    private var canSubmit: Bool {
+        guard !databaseName.isEmpty, !isCreating else { return false }
+        if case .ready = loadState { return true }
+        return false
+    }
+
+    private func visibleFields(in spec: CreateDatabaseFormSpec) -> [CreateDatabaseFormSpec.Field] {
+        spec.fields.filter(isVisible(_:))
+    }
+
+    private func isVisible(_ field: CreateDatabaseFormSpec.Field) -> Bool {
+        guard let visibility = field.visibleWhen else { return true }
+        return values[visibility.fieldId] == visibility.equals
+    }
+
+    private func filteredOptions(for field: CreateDatabaseFormSpec.Field) -> [CreateDatabaseFormSpec.Option] {
+        let allOptions = options(from: field.kind)
+        guard allOptions.contains(where: { $0.group != nil }) else { return allOptions }
+        guard let sourceId = field.groupedBy,
+              let groupValue = values[sourceId] else {
+            return allOptions
+        }
+        return allOptions.filter { $0.group == groupValue }
+    }
+
+    private func resetGroupedFields(after sourceId: String, in spec: CreateDatabaseFormSpec) {
+        for field in spec.fields where field.groupedBy == sourceId {
+            let visible = filteredOptions(for: field).map(\.value)
+            if let preferred = defaultValue(from: field.kind), visible.contains(preferred) {
+                values[field.id] = preferred
+            } else {
+                values[field.id] = visible.first ?? ""
+            }
+        }
+    }
+
+    private func options(from kind: CreateDatabaseFormSpec.FieldKind) -> [CreateDatabaseFormSpec.Option] {
+        switch kind {
+        case .picker(let options, _), .searchable(let options, _):
+            return options
+        }
+    }
+
+    private func defaultValue(from kind: CreateDatabaseFormSpec.FieldKind) -> String? {
+        switch kind {
+        case .picker(_, let defaultValue), .searchable(_, let defaultValue):
+            return defaultValue
+        }
+    }
+
+    private func displayLabel(for option: CreateDatabaseFormSpec.Option) -> String {
+        guard let subtitle = option.subtitle, !subtitle.isEmpty else { return option.label }
+        return "\(option.label) \(subtitle)"
+    }
+
+    private func load() async {
+        loadState = .loading
+        errorMessage = nil
+        do {
+            guard let spec = try await viewModel.loadCreateDatabaseForm() else {
+                loadState = .unsupported
+                return
+            }
+            initializeValues(from: spec)
+            loadState = .ready(spec)
+        } catch {
+            loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func initializeValues(from spec: CreateDatabaseFormSpec) {
+        var initial: [String: String] = [:]
+        var sources: Set<String> = []
+        for field in spec.fields {
+            let optionValues = options(from: field.kind).map(\.value)
+            if let preferred = defaultValue(from: field.kind), optionValues.contains(preferred) {
+                initial[field.id] = preferred
+            } else if let first = optionValues.first {
+                initial[field.id] = first
+            }
+            if let sourceId = field.groupedBy {
+                sources.insert(sourceId)
+            }
+        }
+        values = initial
+        groupSourceFieldIds = sources
+    }
+
+    private func submit() {
+        guard canSubmit else { return }
+        guard case .ready(let spec) = loadState else { return }
 
         isCreating = true
         errorMessage = nil
 
         let name = databaseName
-        let cs = config.showOptions ? charset : ""
-        let col: String? = config.showOptions ? collation : nil
+        let submissionValues = values.filter { entry in
+            spec.fields.first { $0.id == entry.key }
+                .map { isVisible($0) } ?? false
+        }
 
         Task {
             do {
-                try await viewModel.createDatabase(name: name, charset: cs, collation: col)
+                try await viewModel.createDatabase(name: name, values: submissionValues)
                 await viewModel.refreshDatabases()
                 dismiss()
             } catch {

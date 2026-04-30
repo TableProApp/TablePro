@@ -116,9 +116,9 @@ struct DataChangeModelsTests {
         #expect(rowChange.type == .insert)
     }
 
-    @Test("TabPendingChanges initializes as empty")
+    @Test("TabChangeSnapshot initializes as empty")
     func tabPendingChangesInit() {
-        let pending = TabPendingChanges()
+        let pending = TabChangeSnapshot()
 
         #expect(pending.changes.isEmpty)
         #expect(pending.deletedRowIndices.isEmpty)
@@ -129,37 +129,37 @@ struct DataChangeModelsTests {
         #expect(pending.columns.isEmpty)
     }
 
-    @Test("TabPendingChanges hasChanges is false when empty")
+    @Test("TabChangeSnapshot hasChanges is false when empty")
     func tabPendingChangesHasChangesEmpty() {
-        let pending = TabPendingChanges()
+        let pending = TabChangeSnapshot()
 
         #expect(!pending.hasChanges)
     }
 
-    @Test("TabPendingChanges hasChanges is true with changes")
+    @Test("TabChangeSnapshot hasChanges is true with changes")
     func tabPendingChangesHasChangesWithChanges() {
         let rowChange = RowChange(
             rowIndex: 0,
             type: .update
         )
 
-        var pending = TabPendingChanges()
+        var pending = TabChangeSnapshot()
         pending.changes = [rowChange]
 
         #expect(pending.hasChanges)
     }
 
-    @Test("TabPendingChanges hasChanges is true with deletedRowIndices")
+    @Test("TabChangeSnapshot hasChanges is true with deletedRowIndices")
     func tabPendingChangesHasChangesWithDeleted() {
-        var pending = TabPendingChanges()
+        var pending = TabChangeSnapshot()
         pending.deletedRowIndices = [1, 2, 3]
 
         #expect(pending.hasChanges)
     }
 
-    @Test("TabPendingChanges hasChanges is true with insertedRowIndices")
+    @Test("TabChangeSnapshot hasChanges is true with insertedRowIndices")
     func tabPendingChangesHasChangesWithInserted() {
-        var pending = TabPendingChanges()
+        var pending = TabChangeSnapshot()
         pending.insertedRowIndices = [0, 1]
 
         #expect(pending.hasChanges)

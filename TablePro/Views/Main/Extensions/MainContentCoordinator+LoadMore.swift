@@ -35,9 +35,8 @@ extension MainContentCoordinator {
     // MARK: - Load More Rows
 
     func loadMoreRows() {
-        guard let idx = tabManager.selectedTabIndex else { return }
-        let tab = tabManager.tabs[idx]
-        guard !tab.pagination.isLoadingMore,
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              !tab.pagination.isLoadingMore,
               !tab.execution.isExecuting,
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
@@ -48,7 +47,7 @@ extension MainContentCoordinator {
         let capturedGeneration = queryGeneration
         let storedParamValues = tab.pagination.baseQueryParameterValues
 
-        tabManager.tabs[idx].pagination.isLoadingMore = true
+        tabManager.tabs[tabIndex].pagination.isLoadingMore = true
         toolbarState.setExecuting(true)
 
         currentQueryTask = Task { [weak self] in
@@ -96,8 +95,12 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    let buffer = rowDataStore.buffer(for: tab.id)
-                    buffer.rows.append(contentsOf: pagedResult.rows)
+                    var pageOffset = 0
+                    let appendDelta = mutateActiveTableRows(for: tab.id) { rows in
+                        pageOffset = rows.count
+                        return rows.appendPage(pagedResult.rows, startingAt: rows.count)
+                    }
+                    let newCount = pageOffset + pagedResult.rows.count
                     tab.schemaVersion += 1
                     tab.pagination.loadMoreOffset = pagedResult.nextOffset
                     tab.pagination.hasMoreRows = pagedResult.hasMore
@@ -106,11 +109,12 @@ extension MainContentCoordinator {
                         tab.pagination.baseQueryForMore = nil
                     }
                     tabManager.tabs[idx] = tab
+                    dataTabDelegate?.tableViewCoordinator?.applyDelta(appendDelta)
                     toolbarState.setExecuting(false)
                     if capturedGeneration == queryGeneration {
                         currentQueryTask = nil
                     }
-                    progressLog.info("[loadMore] applied totalRows=\(buffer.rows.count)")
+                    progressLog.info("[loadMore] applied totalRows=\(newCount)")
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -129,14 +133,13 @@ extension MainContentCoordinator {
     // MARK: - Fetch All Rows
 
     func fetchAllRows() {
-        guard let idx = tabManager.selectedTabIndex else { return }
-        let tab = tabManager.tabs[idx]
-        guard !tab.pagination.isLoadingMore,
+        guard let (tab, _) = tabManager.selectedTabAndIndex,
+              !tab.pagination.isLoadingMore,
               !tab.execution.isExecuting,
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
-        let loadedCount = rowDataStore.buffer(for: tab.id).rows.count
+        let loadedCount = tableRowsStore.tableRows(for: tab.id).rows.count
         let totalEstimate = tab.pagination.totalRowCount
 
         let message: String
@@ -217,12 +220,14 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    let buffer = rowDataStore.buffer(for: tab.id)
-                    buffer.rows = result.rows
+                    let replaceDelta = mutateActiveTableRows(for: tab.id) { rows in
+                        rows.replace(rows: result.rows)
+                    }
                     tab.execution.executionTime = result.executionTime
                     tab.schemaVersion += 1
                     tab.pagination.resetLoadMore()
                     tabManager.tabs[idx] = tab
+                    dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
                     toolbarState.setExecuting(false)
                     toolbarState.lastQueryDuration = result.executionTime
                     currentQueryTask = nil

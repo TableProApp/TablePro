@@ -46,9 +46,8 @@ extension MainContentCoordinator {
            current.tableContext.databaseName == currentDatabase,
            current.tableContext.schemaName == targetSchema {
             applyFKFilter(filter, for: referencedTable)
-            // Persist so tab switch restore picks it up
-            if let idx = tabManager.selectedTabIndex {
-                tabManager.tabs[idx].filterState = filterStateManager.saveToTabState()
+            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
+                tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
             }
             return
         }
@@ -74,38 +73,39 @@ extension MainContentCoordinator {
             return
         }
 
-        let needsQuery = tabManager.replaceTabContent(
-            tableName: referencedTable,
-            databaseType: connection.type,
-            isView: false,
-            databaseName: currentDatabase,
-            schemaName: targetSchema
-        )
+        let needsQuery: Bool
+        do {
+            needsQuery = try tabManager.replaceTabContent(
+                tableName: referencedTable,
+                databaseType: connection.type,
+                isView: false,
+                databaseName: currentDatabase,
+                schemaName: targetSchema
+            )
+        } catch {
+            fkNavigationLogger.error("navigateToFKReference replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
 
-        if needsQuery, let tabIndex = tabManager.selectedTabIndex {
-            let tabId = tabManager.tabs[tabIndex].id
-            rowDataStore.setBuffer(RowBuffer(), for: tabId)
+        if needsQuery, let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+            setActiveTableRows(TableRows(), for: tab.id)
             tabManager.tabs[tabIndex].pagination.reset()
         }
 
-        // Update editable state for menu items
-        if let tabIndex = tabManager.selectedTabIndex {
-            let tab = tabManager.tabs[tabIndex]
+        if let (tab, _) = tabManager.selectedTabAndIndex {
             toolbarState.isTableTab = tab.tabType == .table
         }
 
         if needsQuery {
             NSApp.keyWindow?.title = referencedTable
 
-            // New tab — build filtered query directly, run once
-            guard let tabIndex = tabManager.selectedTabIndex else { return }
-            let tab = tabManager.tabs[tabIndex]
-            let buffer = rowDataStore.buffer(for: tab.id)
+            guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+            let tableRows = tableRowsStore.tableRows(for: tab.id)
             let filteredQuery = queryBuilder.buildFilteredQuery(
                 tableName: referencedTable,
                 schemaName: fkInfo.referencedSchema,
                 filters: [filter],
-                columns: buffer.columns,
+                columns: tableRows.columns,
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
@@ -118,11 +118,8 @@ extension MainContentCoordinator {
 
             runQuery()
         } else {
-            // Reused tab already has data — apply filter (rebuilds query + re-runs)
             applyFKFilter(filter, for: referencedTable)
-
-            // Persist FK filter to reused tab
-            if let tabIndex = tabManager.selectedTabIndex {
+            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
             }
         }

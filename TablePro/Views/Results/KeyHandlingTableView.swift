@@ -1,65 +1,57 @@
-//
-//  KeyHandlingTableView.swift
-//  TablePro
-//
-//  NSTableView subclass that handles keyboard shortcuts and TablePlus-style cell focus.
-//  Uses Apple's responder chain pattern with interpretKeyEvents for standard shortcuts.
-//
-//  Architecture:
-//  - Keyboard events → interpretKeyEvents → Standard selectors (@objc moveUp, delete, etc.)
-//  - Uses KeyCode enum for readability (no magic numbers)
-//  - Responder chain validation via validateUserInterfaceItem
-//
-
 import AppKit
 
-/// NSTableView subclass that handles keyboard shortcuts and TablePlus-style cell focus on click
 final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
-
-    // MARK: - First Responder
 
     override var acceptsFirstResponder: Bool {
         true
     }
 
-    /// Currently focused row index (-1 = no focus)
-    var focusedRow: Int = -1 {
+    var selection = TableSelection() {
         didSet {
-            if oldValue != focusedRow && oldValue >= 0 {
-                if focusedColumn >= 0 && focusedColumn < numberOfColumns && oldValue < numberOfRows {
-                    reloadData(forRowIndexes: IndexSet(integer: oldValue),
-                               columnIndexes: IndexSet(integer: focusedColumn))
-                }
-            }
+            guard let (rows, columns) = selection.reloadIndexes(from: oldValue) else { return }
+            scheduleFocusReload(rows: rows, columns: columns)
         }
     }
 
-    /// Currently focused column index (-1 = no focus, 0 = row number column)
-    var focusedColumn: Int = -1 {
-        didSet {
-            guard oldValue != focusedColumn else { return }
-            let row = focusedRow
-            guard row >= 0 && row < numberOfRows else { return }
-            var cols = IndexSet()
-            if oldValue >= 0 && oldValue < numberOfColumns { cols.insert(oldValue) }
-            if focusedColumn >= 0 && focusedColumn < numberOfColumns { cols.insert(focusedColumn) }
-            if !cols.isEmpty {
-                reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: cols)
-            }
+    private var pendingFocusReloadRows: IndexSet?
+    private var pendingFocusReloadColumns: IndexSet?
+
+    private func scheduleFocusReload(rows: IndexSet, columns: IndexSet) {
+        if pendingFocusReloadRows != nil {
+            pendingFocusReloadRows?.formUnion(rows)
+            pendingFocusReloadColumns?.formUnion(columns)
+            return
+        }
+        pendingFocusReloadRows = rows
+        pendingFocusReloadColumns = columns
+        DispatchQueue.main.async { [weak self] in
+            self?.flushPendingFocusReload()
         }
     }
 
-    /// Anchor row for Shift+Arrow range selection (-1 = no anchor)
-    var selectionAnchor: Int = -1
+    private func flushPendingFocusReload() {
+        guard let pendingRows = pendingFocusReloadRows,
+              let pendingColumns = pendingFocusReloadColumns else { return }
+        pendingFocusReloadRows = nil
+        pendingFocusReloadColumns = nil
+        let validRows = pendingRows.filteredIndexSet { $0 < numberOfRows }
+        let validColumns = pendingColumns.filteredIndexSet { $0 < numberOfColumns }
+        guard !validRows.isEmpty, !validColumns.isEmpty else { return }
+        reloadData(forRowIndexes: validRows, columnIndexes: validColumns)
+    }
 
-    /// Current pivot row for Shift+Arrow navigation
-    var selectionPivot: Int = -1
+    var focusedRow: Int {
+        get { selection.focusedRow }
+        set { selection.focusedRow = newValue }
+    }
 
-    // MARK: - TablePlus-Style Cell Focus
+    var focusedColumn: Int {
+        get { selection.focusedColumn }
+        set { selection.focusedColumn = newValue }
+    }
 
     override func mouseDown(with event: NSEvent) {
-        // Become first responder to capture keyboard events (especially Delete key)
         window?.makeFirstResponder(self)
 
         let point = convert(event.locationInWindow, from: nil)
@@ -71,35 +63,37 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        // Reset anchor/pivot when clicking without Shift
-        if clickedRow >= 0 && !event.modifierFlags.contains(.shift) {
-            selectionAnchor = clickedRow
-            selectionPivot = clickedRow
-        }
+        let alreadyFocusedHere = clickedRow >= 0
+            && clickedColumn >= 0
+            && clickedRow == focusedRow
+            && clickedColumn == focusedColumn
 
         super.mouseDown(with: event)
 
-        // Only handle editing for valid clicks on data cells (not row number column)
         guard clickedRow >= 0,
               clickedColumn >= 0,
               clickedColumn < numberOfColumns else {
             return
         }
 
-        // Skip row number column
         let column = tableColumns[clickedColumn]
-        if column.identifier.rawValue == "__rowNumber__" {
+        if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
             focusedRow = -1
             focusedColumn = -1
             return
         }
 
-        // Update focus (edit mode is triggered by double-click, not single click)
         focusedRow = clickedRow
         focusedColumn = clickedColumn
-    }
 
-    // MARK: - Standard Edit Menu Actions
+        if alreadyFocusedHere && event.clickCount == 1 && selectedRowIndexes.count == 1 {
+            if let schema = coordinator?.identitySchema,
+               let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
+               coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
+                editColumn(clickedColumn, row: clickedRow, with: nil, select: true)
+            }
+        }
+    }
 
     @objc func delete(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
@@ -111,25 +105,18 @@ final class KeyHandlingTableView: NSTableView {
         coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
     }
 
-    /// Paste rows from clipboard
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
+        if focusedRow >= 0,
+           DataGridView.isDataTableColumn(focusedColumn),
+           let schema = coordinator?.identitySchema,
+           let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
+           coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
+            return
+        }
         coordinator?.delegate?.dataGridPasteRows()
     }
 
-    /// Undo last change
-    @objc func undo(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        coordinator?.delegate?.dataGridUndo()
-    }
-
-    /// Redo last undone change
-    @objc func redo(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        coordinator?.delegate?.dataGridRedo()
-    }
-
-    /// Validate menu items and shortcuts
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         switch item.action {
         case #selector(delete(_:)), #selector(deleteBackward(_:)):
@@ -138,69 +125,34 @@ final class KeyHandlingTableView: NSTableView {
             return !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil
-        case #selector(undo(_:)):
-            return coordinator?.isEditable == true && (coordinator?.canUndo() ?? false)
-        case #selector(redo(_:)):
-            return coordinator?.isEditable == true && (coordinator?.canRedo() ?? false)
         case #selector(insertNewline(_:)):
-            return selectedRow >= 0 && focusedColumn >= 1 && coordinator?.isEditable == true
+            return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn) && coordinator?.isEditable == true
         case #selector(cancelOperation(_:)):
-            return focusedRow >= 0 || focusedColumn >= 0
+            return false
         default:
             return super.validateUserInterfaceItem(item)
         }
     }
 
-    // MARK: - Keyboard Handling
-
-    /// Convert key events to standard selectors using interpretKeyEvents
-    /// This enables proper responder chain behavior and accessibility support
     override func keyDown(with event: NSEvent) {
         guard let key = KeyCode(rawValue: event.keyCode) else {
             super.keyDown(with: event)
             return
         }
 
-        // Handle Tab manually (NSTableView cell navigation requires custom logic)
         if key == .tab {
-            handleTabKey()
+            if event.modifierFlags.contains(.shift) {
+                handleShiftTabKey()
+            } else {
+                handleTabKey()
+            }
             return
         }
 
-        // Handle arrow keys (custom Shift+selection logic)
         let row = selectedRow
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isShiftHeld = modifiers.contains(.shift)
-
-        // Ctrl+HJKL navigation (arrow key alternatives for keyboards without dedicated arrows)
-        if modifiers.contains(.control) {
-            switch key {
-            case .h:
-                handleLeftArrow(currentRow: row)
-                return
-            case .j:
-                handleDownArrow(currentRow: row, isShiftHeld: isShiftHeld)
-                return
-            case .k:
-                handleUpArrow(currentRow: row, isShiftHeld: isShiftHeld)
-                return
-            case .l:
-                handleRightArrow(currentRow: row)
-                return
-            default:
-                break
-            }
-        }
 
         switch key {
-        case .upArrow:
-            handleUpArrow(currentRow: row, isShiftHeld: isShiftHeld)
-            return
-
-        case .downArrow:
-            handleDownArrow(currentRow: row, isShiftHeld: isShiftHeld)
-            return
-
         case .leftArrow:
             handleLeftArrow(currentRow: row)
             return
@@ -209,54 +161,50 @@ final class KeyHandlingTableView: NSTableView {
             handleRightArrow(currentRow: row)
             return
 
-        case .home:
-            handleHome(isShiftHeld: isShiftHeld)
+        case .upArrow, .downArrow, .home, .end, .pageUp, .pageDown:
+            super.keyDown(with: event)
             return
 
-        case .end:
-            handleEnd(isShiftHeld: isShiftHeld)
-            return
-
-        case .pageUp:
-            handlePageUp(isShiftHeld: isShiftHeld)
-            return
-
-        case .pageDown:
-            handlePageDown(isShiftHeld: isShiftHeld)
-            return
+        case .delete, .forwardDelete:
+            if modifiers.isEmpty || modifiers == .command {
+                deleteSelectedRowsIfPossible()
+                return
+            }
 
         default:
             break
         }
 
-        // FK preview: dispatch from user-configurable shortcut (default: Space)
         if let fkCombo = AppSettingsManager.shared.keyboard.shortcut(for: .previewFKReference),
            !fkCombo.isCleared,
            fkCombo.matches(event),
-           selectedRow >= 0, focusedColumn >= 1 {
+           selectedRow >= 0,
+           DataGridView.isDataTableColumn(focusedColumn),
+           let schema = coordinator?.identitySchema,
+           let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) {
             coordinator?.toggleForeignKeyPreview(
-                tableView: self, row: selectedRow, column: focusedColumn, columnIndex: focusedColumn - 1
+                tableView: self,
+                row: selectedRow,
+                column: focusedColumn,
+                columnIndex: columnIndex
             )
             return
         }
 
-        // For all other keys, use interpretKeyEvents to map to standard selectors
-        // This handles Return → insertNewline(_:), Delete → deleteBackward(_:), ESC → cancelOperation(_:)
         interpretKeyEvents([event])
     }
 
-    // MARK: - Standard Responder Selectors
-
-    /// Handle Return/Enter key - start editing current cell
     @objc override func insertNewline(_ sender: Any?) {
         let row = selectedRow
-        guard row >= 0, focusedColumn >= 1, coordinator?.isEditable == true else {
+        guard row >= 0,
+              DataGridView.isDataTableColumn(focusedColumn),
+              coordinator?.isEditable == true,
+              let schema = coordinator?.identitySchema,
+              let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
             return
         }
 
-        // Multiline values use overlay editor instead of field editor
-        let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn)
-        if let value = coordinator?.rowProvider.value(atRow: row, column: columnIndex),
+        if let value = coordinator?.cellValue(at: row, column: columnIndex),
            value.containsLineBreak {
             coordinator?.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
             return
@@ -265,52 +213,86 @@ final class KeyHandlingTableView: NSTableView {
         editColumn(focusedColumn, row: row, with: nil, select: true)
     }
 
-    /// Handle Delete/Backspace key - delete selected rows
-    @objc override func deleteBackward(_ sender: Any?) {
+    @objc override func cancelOperation(_ sender: Any?) {
+    }
+
+    private func deleteSelectedRowsIfPossible() {
         guard coordinator?.isEditable == true else { return }
         guard !selectedRowIndexes.isEmpty else { return }
-        delete(sender)
+        delete(nil)
     }
 
-    @objc override func cancelOperation(_ sender: Any?) {
-        focusedRow = -1
-        focusedColumn = -1
-    }
-
-    // MARK: - Arrow Key and Tab Helpers
-
-    /// Handle left arrow key - move focus to previous column
     private func handleLeftArrow(currentRow: Int) {
-        if focusedColumn > 1 {
-            focusedColumn -= 1
-            if currentRow >= 0 { scrollColumnToVisible(focusedColumn) }
-        } else if focusedColumn == -1 && numberOfColumns > 1 {
-            focusedColumn = numberOfColumns - 1
-            if currentRow >= 0 { scrollColumnToVisible(focusedColumn) }
-        }
+        let target = focusedColumn < 0
+            ? lastVisibleDataColumn()
+            : previousVisibleDataColumn(before: focusedColumn)
+        guard DataGridView.isDataTableColumn(target) else { return }
+        focusedColumn = target
+        if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 
-    /// Handle right arrow key - move focus to next column
     private func handleRightArrow(currentRow: Int) {
-        if focusedColumn >= 1 && focusedColumn < numberOfColumns - 1 {
-            focusedColumn += 1
-            if currentRow >= 0 { scrollColumnToVisible(focusedColumn) }
-        } else if focusedColumn == -1 && numberOfColumns > 1 {
-            focusedColumn = 1
-            if currentRow >= 0 { scrollColumnToVisible(focusedColumn) }
-        }
+        let target = DataGridView.isDataTableColumn(focusedColumn)
+            ? nextVisibleDataColumn(after: focusedColumn)
+            : firstVisibleDataColumn()
+        guard DataGridView.isDataTableColumn(target) else { return }
+        focusedColumn = target
+        if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 
-    /// Handle Tab key - navigate to next cell (manual implementation required for NSTableView)
+    private func firstVisibleDataColumn() -> Int {
+        for index in DataGridView.firstDataTableColumnIndex..<numberOfColumns where isVisibleDataColumn(at: index) {
+            return index
+        }
+        return -1
+    }
+
+    private func lastVisibleDataColumn() -> Int {
+        for index in stride(
+            from: numberOfColumns - 1,
+            through: DataGridView.firstDataTableColumnIndex,
+            by: -1
+        ) where isVisibleDataColumn(at: index) {
+            return index
+        }
+        return -1
+    }
+
+    private func nextVisibleDataColumn(after current: Int) -> Int {
+        guard current + 1 < numberOfColumns else { return -1 }
+        for index in (current + 1)..<numberOfColumns where isVisibleDataColumn(at: index) {
+            return index
+        }
+        return -1
+    }
+
+    private func previousVisibleDataColumn(before current: Int) -> Int {
+        guard current > DataGridView.firstDataTableColumnIndex else { return -1 }
+        for index in stride(
+            from: current - 1,
+            through: DataGridView.firstDataTableColumnIndex,
+            by: -1
+        ) where isVisibleDataColumn(at: index) {
+            return index
+        }
+        return -1
+    }
+
+    private func isVisibleDataColumn(at index: Int) -> Bool {
+        guard index >= 0, index < numberOfColumns else { return false }
+        let column = tableColumns[index]
+        return !column.isHidden && column.identifier != ColumnIdentitySchema.rowNumberIdentifier
+    }
+
     private func handleTabKey() {
         let row = selectedRow
-        guard row >= 0, focusedColumn >= 1 else { return }
+        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
 
         var nextColumn = focusedColumn + 1
         var nextRow = row
 
         if nextColumn >= numberOfColumns {
-            nextColumn = 1
+            nextColumn = DataGridView.firstDataTableColumnIndex
             nextRow += 1
         }
         if nextRow >= numberOfRows {
@@ -325,169 +307,27 @@ final class KeyHandlingTableView: NSTableView {
         scrollColumnToVisible(nextColumn)
     }
 
-    // MARK: - Arrow Key Selection Helpers
+    private func handleShiftTabKey() {
+        let row = selectedRow
+        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
 
-    private func handleUpArrow(currentRow: Int, isShiftHeld: Bool) {
-        guard numberOfRows > 0 else { return }
+        var prevColumn = focusedColumn - 1
+        var prevRow = row
 
-        if currentRow == -1 {
-            let targetRow = numberOfRows - 1
-            selectionAnchor = targetRow
-            selectionPivot = targetRow
-            focusedRow = targetRow
-            selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)
-            scrollRowToVisible(targetRow)
-            return
+        if !DataGridView.isDataTableColumn(prevColumn) {
+            prevColumn = numberOfColumns - 1
+            prevRow -= 1
+        }
+        if prevRow < 0 {
+            prevRow = 0
+            prevColumn = DataGridView.firstDataTableColumnIndex
         }
 
-        if isShiftHeld {
-            if selectionAnchor == -1 {
-                selectionAnchor = currentRow
-                selectionPivot = currentRow
-            }
-
-            let currentPivot = selectionPivot >= 0 ? selectionPivot : currentRow
-            let targetRow = max(0, currentPivot - 1)
-            selectionPivot = targetRow
-
-            let startRow = min(selectionAnchor, selectionPivot)
-            let endRow = max(selectionAnchor, selectionPivot)
-            let range = IndexSet(integersIn: startRow...endRow)
-            selectRowIndexes(range, byExtendingSelection: false)
-            scrollRowToVisible(targetRow)
-        } else {
-            let targetRow = max(0, currentRow - 1)
-            selectionAnchor = targetRow
-            selectionPivot = targetRow
-            focusedRow = targetRow
-            selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)
-            scrollRowToVisible(targetRow)
-        }
-    }
-
-    private func handleDownArrow(currentRow: Int, isShiftHeld: Bool) {
-        guard numberOfRows > 0 else { return }
-
-        if currentRow == -1 {
-            selectionAnchor = 0
-            selectionPivot = 0
-            focusedRow = 0
-            selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-            scrollRowToVisible(0)
-            return
-        }
-
-        if isShiftHeld {
-            if selectionAnchor == -1 {
-                selectionAnchor = currentRow
-                selectionPivot = currentRow
-            }
-
-            let currentPivot = selectionPivot >= 0 ? selectionPivot : currentRow
-            let targetRow = min(numberOfRows - 1, currentPivot + 1)
-            selectionPivot = targetRow
-
-            let startRow = min(selectionAnchor, selectionPivot)
-            let endRow = max(selectionAnchor, selectionPivot)
-            let range = IndexSet(integersIn: startRow...endRow)
-            selectRowIndexes(range, byExtendingSelection: false)
-            scrollRowToVisible(targetRow)
-        } else {
-            let targetRow = min(numberOfRows - 1, currentRow + 1)
-            selectionAnchor = targetRow
-            selectionPivot = targetRow
-            focusedRow = targetRow
-            selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)
-            scrollRowToVisible(targetRow)
-        }
-    }
-
-    private func handleHome(isShiftHeld: Bool) {
-        guard numberOfRows > 0 else { return }
-        if isShiftHeld {
-            if selectionAnchor == -1 {
-                selectionAnchor = selectedRow >= 0 ? selectedRow : 0
-                selectionPivot = selectionAnchor
-            }
-            selectionPivot = 0
-            let range = IndexSet(integersIn: 0...selectionAnchor)
-            selectRowIndexes(range, byExtendingSelection: false)
-        } else {
-            selectionAnchor = 0
-            selectionPivot = 0
-            focusedRow = 0
-            selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        }
-        scrollRowToVisible(0)
-    }
-
-    private func handleEnd(isShiftHeld: Bool) {
-        guard numberOfRows > 0 else { return }
-        let lastRow = numberOfRows - 1
-        if isShiftHeld {
-            if selectionAnchor == -1 {
-                selectionAnchor = selectedRow >= 0 ? selectedRow : lastRow
-                selectionPivot = selectionAnchor
-            }
-            selectionPivot = lastRow
-            let range = IndexSet(integersIn: selectionAnchor...lastRow)
-            selectRowIndexes(range, byExtendingSelection: false)
-        } else {
-            selectionAnchor = lastRow
-            selectionPivot = lastRow
-            focusedRow = lastRow
-            selectRowIndexes(IndexSet(integer: lastRow), byExtendingSelection: false)
-        }
-        scrollRowToVisible(lastRow)
-    }
-
-    private func handlePageUp(isShiftHeld: Bool) {
-        guard numberOfRows > 0 else { return }
-        let visibleRows = max(1, Int(visibleRect.height / rowHeight) - 1)
-        let currentRow = selectedRow >= 0 ? selectedRow : 0
-        let targetRow = max(0, currentRow - visibleRows)
-
-        if isShiftHeld {
-            if selectionAnchor == -1 {
-                selectionAnchor = currentRow
-                selectionPivot = currentRow
-            }
-            selectionPivot = targetRow
-            let startRow = min(selectionAnchor, selectionPivot)
-            let endRow = max(selectionAnchor, selectionPivot)
-            selectRowIndexes(IndexSet(integersIn: startRow...endRow), byExtendingSelection: false)
-        } else {
-            selectionAnchor = targetRow
-            selectionPivot = targetRow
-            focusedRow = targetRow
-            selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)
-        }
-        scrollRowToVisible(targetRow)
-    }
-
-    private func handlePageDown(isShiftHeld: Bool) {
-        guard numberOfRows > 0 else { return }
-        let visibleRows = max(1, Int(visibleRect.height / rowHeight) - 1)
-        let currentRow = selectedRow >= 0 ? selectedRow : 0
-        let lastRow = numberOfRows - 1
-        let targetRow = min(lastRow, currentRow + visibleRows)
-
-        if isShiftHeld {
-            if selectionAnchor == -1 {
-                selectionAnchor = currentRow
-                selectionPivot = currentRow
-            }
-            selectionPivot = targetRow
-            let startRow = min(selectionAnchor, selectionPivot)
-            let endRow = max(selectionAnchor, selectionPivot)
-            selectRowIndexes(IndexSet(integersIn: startRow...endRow), byExtendingSelection: false)
-        } else {
-            selectionAnchor = targetRow
-            selectionPivot = targetRow
-            focusedRow = targetRow
-            selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)
-        }
-        scrollRowToVisible(targetRow)
+        selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
+        focusedRow = prevRow
+        focusedColumn = prevColumn
+        scrollRowToVisible(prevRow)
+        scrollColumnToVisible(prevColumn)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -502,7 +342,6 @@ final class KeyHandlingTableView: NSTableView {
             return rowView.menu(for: event)
         }
 
-        // Empty space: ask delegate for a fallback menu (e.g., Structure tab "Add" actions)
         if let menu = coordinator?.delegate?.dataGridEmptySpaceMenu() {
             return menu
         }

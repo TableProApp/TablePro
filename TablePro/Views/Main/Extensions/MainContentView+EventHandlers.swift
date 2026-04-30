@@ -176,19 +176,18 @@ extension MainContentView {
             rightPanelState.editState.onFieldChanged = nil
             return
         }
-        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
 
         var allRows: [[String?]] = []
         for index in selectedIndices.sorted() {
-            if index < buffer.rows.count {
-                allRows.append(buffer.rows[index])
+            if index < tableRows.rows.count {
+                allRows.append(tableRows.rows[index].values)
             }
         }
 
-        // Enrich column types with loaded enum values from Phase 2b
-        var columnTypes = buffer.columnTypes
-        for (i, col) in buffer.columns.enumerated() where i < columnTypes.count {
-            if let values = buffer.columnEnumValues[col], !values.isEmpty {
+        var columnTypes = tableRows.columnTypes
+        for (i, col) in tableRows.columns.enumerated() where i < columnTypes.count {
+            if let values = tableRows.columnEnumValues[col], !values.isEmpty {
                 let ct = columnTypes[i]
                 if ct.isEnumType {
                     columnTypes[i] = .enumType(rawType: ct.rawType, values: values)
@@ -198,12 +197,10 @@ extension MainContentView {
             }
         }
 
-        // Clear stale sidebar edits after refresh/discard
         if !changeManager.hasChanges {
             rightPanelState.editState.clearEdits()
         }
 
-        // Collect columns modified in data grid so sidebar shows green dots
         var modifiedColumns = Set<Int>()
         for rowIndex in selectedIndices {
             modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(rowIndex))
@@ -217,12 +214,12 @@ extension MainContentView {
         }
 
         let pkColumns = Set(tab.tableContext.primaryKeyColumns)
-        let fkColumns = Set(buffer.columnForeignKeys.keys)
+        let fkColumns = Set(tableRows.columnForeignKeys.keys)
 
         rightPanelState.editState.configure(
             selectedRowIndices: selectedIndices,
             allRows: allRows,
-            columns: buffer.columns,
+            columns: tableRows.columns,
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
             excludedColumnNames: excludedNames,
@@ -239,15 +236,14 @@ extension MainContentView {
         let capturedEditState = rightPanelState.editState
         rightPanelState.editState.onFieldChanged = { columnIndex, newValue in
             guard let tab = capturedCoordinator.tabManager.selectedTab else { return }
-            let buffer = capturedCoordinator.rowDataStore.buffer(for: tab.id)
+            let tableRows = capturedCoordinator.tableRowsStore.tableRows(for: tab.id)
             let columnName =
-                columnIndex < buffer.columns.count ? buffer.columns[columnIndex] : ""
+                columnIndex < tableRows.columns.count ? tableRows.columns[columnIndex] : ""
 
             for rowIndex in capturedEditState.selectedRowIndices {
-                guard rowIndex < buffer.rows.count else { continue }
-                let originalRow = buffer.rows[rowIndex]
+                guard rowIndex < tableRows.rows.count else { continue }
+                let originalRow = tableRows.rows[rowIndex].values
 
-                // Use full (lazy-loaded) original value if available, not truncated row data
                 let oldValue: String?
                 if columnIndex < capturedEditState.fields.count,
                     !capturedEditState.fields[columnIndex].isTruncated
@@ -283,16 +279,16 @@ extension MainContentView {
         let capturedCoordinator = coordinator
         let capturedEditState = rightPanelState.editState
 
-        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
         if !excludedNames.isEmpty,
             selectedIndices.count == 1,
             let tableName = tab.tableContext.tableName,
             let pkColumn = tab.tableContext.primaryKeyColumn,
             let rowIndex = selectedIndices.first,
-            rowIndex < buffer.rows.count
+            rowIndex < tableRows.rows.count
         {
-            let row = buffer.rows[rowIndex]
-            if let pkColIndex = buffer.columns.firstIndex(of: pkColumn),
+            let row = tableRows.rows[rowIndex].values
+            if let pkColIndex = tableRows.columns.firstIndex(of: pkColumn),
                 pkColIndex < row.count,
                 let pkValue = row[pkColIndex]
             {

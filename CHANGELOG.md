@@ -9,12 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PostgreSQL ICU collation provider in Create Database (PG 15+). Provider picker is added when the server reports PG 15 or newer. ICU locale list comes from `pg_collation`. SQL emission is version-aware: PG 16+ uses unified `LOCALE`, PG 15 uses `ICU_LOCALE` with `LC_COLLATE 'C' LC_CTYPE 'C'`.
 - Connection URL parsing: SSH `user:password@host` split, `safeModeLevel` from TablePlus URLs, case-insensitive query params
 - Connection URL export: SSH password, Redis database index, MongoDB auth params (`authSource`, `authMechanism`, `replicaSet`), and multi-host
 - SSH Private Key auth resolves keys from `~/.ssh/config` and default locations (`id_ed25519`, `id_rsa`, `id_ecdsa`) when no explicit key path is set
+- Click a focused cell to start editing without a second click
+- Data grid focus ring follows the system accent color and contrast settings
+- Data grid cells expose accessibility row and column index ranges to VoiceOver on all dataset sizes
+- Data grid column headers announce sort direction and multi-sort priority to VoiceOver
+- Multi-cell paste: paste TSV data from the clipboard into the grid starting from the focused cell, grouped as a single undo action
+- Shift+Tab navigates to the previous cell in the data grid
+- Copy rows writes TSV, HTML table, and plain text to the clipboard for richer paste in spreadsheet apps
+- Row drag adds TSV and HTML representations alongside the internal drag type
+- AI provider settings allow manually entering a model name when the provider does not return one
 
 ### Changed
 
+- Storage and sync singletons accept dependencies via init for test isolation, matching Apple's URLSession and UserDefaults convention. Production callers using `.shared` are unchanged. `SQLFavoriteStorage` is now an actor so its first access no longer blocks the main thread on SQLite setup.
+- Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
+- Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
+- DataGrid columns and cells refactored to use a persistent column pool and typed cell view hierarchy. CPU usage on table switch reduced significantly through proper NSTableView reuse pool retention.
+- Data grid column identifiers are now the column name (with positional fallback for duplicate names), so saved widths follow the column across schema changes that shift its position. Identifier resolution moved from static `DataGridView` helpers to a `ColumnIdentitySchema` value type owned by the coordinator.
+- `ColumnLayoutStorage` singleton replaced by a `ColumnLayoutPersisting` protocol with an injectable `FileColumnLayoutPersister` default. The coordinator depends on the protocol, not the concrete class, so tests can substitute a fake.
+- Column layout save/restore on table-switch (`saveColumnLayoutForTable` / `restoreColumnLayoutForTable`) folded into the data grid coordinator's lifecycle (load on column build, persist on resize/move/dismantle). The standalone `MainContentCoordinator+ColumnLayout` extension is gone; only the visibility orchestration remains. Removes the redundant `hasUserResizedColumns` flag and the external save trigger from the binding setter.
+- Data grid header sort indicators are drawn inside a custom `NSTableHeaderCell` instead of overlay `NSImageView` subviews, replacing Unicode arrows that were embedded in the column title string. The cell renders ascending/descending chevrons via SF Symbols (`chevron.up`/`chevron.down`) with a hierarchical tint, so they pick up the correct color in light and dark mode. Removing the overlay subviews lets `NSTableHeaderView`'s native cursor management run unimpeded, so the column resize cursor on hover works without any custom cursor handling. The primary sorted column gets the system header tint via `highlightedTableColumn`, and secondary sort columns show a small priority number to the left of the chevron.
+- Data grid header divider taps trigger a column resize instead of sorting the adjacent column. `SortableHeaderView` checks if the click landed within 4 pt of a column edge and forwards the event to `NSTableHeaderView`'s native resize handling.
+- Data grid column layout persistence routes through a coordinator callback fired from outside SwiftUI's update cycle, removing the `Task`-based `@Binding` mutation inside `updateNSView` and the `isWritingColumnLayout` re-entry guard.
+- Data grid cell reuse resets foreign-key arrow and dropdown chevron button context (target, action, row, column) when the button hides, preventing a stale handler from firing the wrong row if the column toggles between FK-eligible and not.
+- `applyColumnOrder` scans only the unsettled tail of the column array per move, halving the constant cost on reorders with many columns.
+- Replaced RowBuffer / InMemoryRowProvider / RowDataStore with TableRows / TableRowsStore / TableRowsController. Mutations emit Delta events; the controller drives NSTableView via insertRows / removeRows / reloadData(forRowIndexes:). Sort and the display cache moved off the row provider into the data grid coordinator, keyed by Row.id.
+- Routed every TableRows mutation through `mutateActiveTableRows` on MainContentCoordinator so the active ResultSet's snapshot stays in sync with the store. The snapshot now refreshes only when the user switches result sets (saving the outgoing tab, loading the incoming one), so each insert / undo / paste no longer triggers an `@Observable` re-render of the whole editor. Fixes empty cells on Load More and CPU spikes when adding or undoing rows.
+- Undo of a cell edit clears the modified-cell highlight: `DataChangeManager.applyDataUndo` now bumps `reloadVersion` so the data grid rebuilds its visual state cache.
+- Reloading a table tab keeps cached column metadata (defaults, foreign keys, nullability, enum values) when no fresh schema fetch was needed, so the FK arrow and dropdown chevron stay visible across reloads instead of toggling.
+- DataChangeManager extracted a PendingChanges value type that owns cross-collection invariants for cell edits, row insertions, and deletions. DataChangeManager kept undo/redo registration, plugin SQL generation, and the `@Observable` boundary, dropping from ~960 to ~190 lines. The serialization DTO `TabPendingChanges` is renamed to `TabChangeSnapshot` to distinguish it from the live tracker.
 - AnyChangeManager uses ChangeManaging protocol instead of closure-based type erasure, removing all runtime `[Any]` downcasts
 - Row selection state moved from MainContentView @State to GridSelectionState @Observable class, preventing full view tree invalidation on every row click
 - QueryTab decomposed into focused sub-types: TabExecutionState, TabTableContext, TabQueryContent, TabDisplayState
@@ -30,12 +57,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QueryTab.resultVersion split: schemaVersion (column shape) on QueryTab, row mutations through delegate deltas, sort completion through a single delegate replace call. Pin toggle, sort completion, and applyMultiStatementResults no longer fan out a redundant reload signal.
 - Row data lives in a per-coordinator RowDataStore keyed by tab.id rather than on QueryTab itself, so SwiftUI's @Observable tracking on tabManager.tabs no longer fires for row writes.
 - DataGridConfiguration is Equatable; DataGridIdentity covers tabType, tableName, and primaryKeyColumns so updateNSView short-circuits when nothing structural changed. DataTabGridDelegate properties are wired in onAppear / onChange instead of in the body.
+- Date picker popover font follows the data grid font setting
+- Data grid undo/redo uses the window's UndoManager instead of a private instance, unifying Cmd+Z across editor and grid
+- Right-click during cell editing shows the native text context menu instead of the row menu
+- Multiline cell overlay editor discards the in-progress edit when a column resize fires, instead of silently committing partial text
+- Data grid cell focus ring redraws when the user toggles Light or Dark mode mid-session, picking up the system's appearance-aware focus indicator color
+- Data grid keeps sortedIDs and cachedRowCount paired by calling updateCache() immediately after the SwiftUI bridge writes new sortedIDs to the coordinator, removing a window where the cached count and the sort permutation could disagree
+- Display formats memoized per tab on MainContentCoordinator keyed by schema version, smart-detection setting, and format-overrides version, so ValueDisplayDetector.detect runs once per result schema instead of on every SwiftUI body evaluation
 
 ### Fixed
 
 - Crash on macOS 26 when opening SQL Preview (NSColor.cgColor calls deprecated colorSpaceName)
 - Connection form: `usePrivateKey=true` from URL no longer disables Test/Create buttons
 - Transient connections from URL clean up keychain entries on connection failure
+- Native Search Field focus regression when clearing text
+- PostgreSQL Create Database failed with `new collation incompatible with template database` on glibc-initialized servers (#927). Encodings, collations, and the `template1` defaults are now read from the server. `LC_CTYPE` mirrors `LC_COLLATE`, and `TEMPLATE template0` is added automatically when the chosen collation differs from `template1.datcollate`.
+- Redshift Create Database emitted PostgreSQL `LC_COLLATE` syntax which is invalid Redshift grammar. Now emits `COLLATE { CASE_SENSITIVE | CASE_INSENSITIVE }`.
+- Expand tilde in SSH agent socket and `IdentityAgent` paths so 1Password and similar agents work when configured with `~/...` paths.
+- Persist group deletions before firing the sync notification, fixing a race that could re-upload deleted groups via iCloud.
+- Persist connection deletions before firing the sync notification, fixing the same race for deleted connections.
+- Refuse to generate SQL when the database dialect cannot be resolved, instead of silently emitting unquoted identifiers.
 
 ## [0.36.0] - 2026-04-27
 

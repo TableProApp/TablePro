@@ -35,13 +35,18 @@ struct SQLStatementGenerator {
         parameterStyle: ParameterStyle? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil
-    ) {
+    ) throws {
         self.tableName = tableName
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
         self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
-        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
+        if let quoteIdentifier {
+            self.quoteIdentifierFn = quoteIdentifier
+        } else {
+            let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
+            self.quoteIdentifierFn = quoteIdentifierFromDialect(resolvedDialect)
+        }
     }
 
     private static func defaultParameterStyle(for databaseType: DatabaseType) -> ParameterStyle {

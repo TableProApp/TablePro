@@ -47,7 +47,6 @@ struct MainContentView: View {
 
     // MARK: - Local State
 
-    @State var editingCell: CellPosition?
     @State var commandActions: MainContentCommandActions?
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
@@ -180,7 +179,7 @@ struct MainContentView: View {
                         isPresented: dismissBinding,
                         mode: .queryResults(
                             connection: connectionWithCurrentDatabase,
-                            rowBuffer: coordinator.rowDataStore.buffer(for: tab.id),
+                            tableRows: coordinator.tableRowsStore.tableRows(for: tab.id),
                             suggestedFileName: fileName
                         )
                     )
@@ -351,7 +350,7 @@ struct MainContentView: View {
                 handleStructureChange()
             }
             .onChange(of: currentTab?.schemaVersion) { _, _ in
-                let columns = currentTab.map { coordinator.rowDataStore.buffer(for: $0.id).columns }
+                let columns = currentTab.map { coordinator.tableRowsStore.tableRows(for: $0.id).columns }
                 handleColumnsChange(newColumns: columns)
             }
             .task { handleConnectionStatusChange() }
@@ -401,7 +400,6 @@ struct MainContentView: View {
             windowId: windowId,
             connectionId: connection.id,
             selectionState: coordinator.selectionState,
-            editingCell: $editingCell,
             onCellEdit: { rowIndex, colIndex, value in
                 coordinator.updateCellInTab(
                     rowIndex: rowIndex, columnIndex: colIndex, value: value)
@@ -412,8 +410,14 @@ struct MainContentView: View {
                     columnIndex: columnIndex, ascending: ascending,
                     isMultiSort: isMultiSort)
             },
+            onClearSort: {
+                coordinator.clearSort()
+            },
+            onRemoveSortColumn: { columnIndex in
+                coordinator.removeMultiSortColumn(columnIndex: columnIndex)
+            },
             onAddRow: {
-                coordinator.addNewRow(editingCell: &editingCell)
+                coordinator.addNewRow()
             },
             onUndoInsert: { rowIndex in
                 coordinator.undoInsertRow(at: rowIndex)

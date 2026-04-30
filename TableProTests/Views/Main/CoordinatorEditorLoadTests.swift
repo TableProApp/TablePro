@@ -66,11 +66,11 @@ struct CoordinatorEditorLoadTests {
 
     @Test("loadQueryIntoEditor does not modify table tab")
     @MainActor
-    func loadQuerySkipsTableTab() {
+    func loadQuerySkipsTableTab() throws {
         let (coordinator, tabManager) = makeCoordinator()
         defer { coordinator.teardown() }
 
-        tabManager.addTableTab(tableName: "users")
+        try tabManager.addTableTab(tableName: "users")
         let originalQuery = tabManager.tabs[0].content.query
 
         // Falls through to WindowOpener path; table tab unchanged
@@ -153,11 +153,11 @@ struct CoordinatorEditorLoadTests {
 
     @Test("insertQueryFromAI does not modify table tab")
     @MainActor
-    func insertAiSkipsTableTab() {
+    func insertAiSkipsTableTab() throws {
         let (coordinator, tabManager) = makeCoordinator()
         defer { coordinator.teardown() }
 
-        tabManager.addTableTab(tableName: "orders")
+        try tabManager.addTableTab(tableName: "orders")
         let originalQuery = tabManager.tabs[0].content.query
 
         coordinator.insertQueryFromAI("SELECT * FROM orders")

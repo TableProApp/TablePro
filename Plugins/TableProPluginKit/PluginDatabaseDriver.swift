@@ -77,7 +77,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])]
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)]
-    func createDatabase(name: String, charset: String, collation: String?) async throws
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec?
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws
     func dropDatabase(name: String) async throws
     func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult
 
@@ -222,8 +223,14 @@ public extension PluginDatabaseDriver {
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])] { [] }
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)] { [] }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        throw NSError(domain: "PluginDatabaseDriver", code: -1, userInfo: [NSLocalizedDescriptionKey: "createDatabase not supported"])
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? { nil }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
+        throw NSError(
+            domain: "PluginDatabaseDriver",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Create database is not supported by this driver"]
+        )
     }
 
     func dropDatabase(name: String) async throws {

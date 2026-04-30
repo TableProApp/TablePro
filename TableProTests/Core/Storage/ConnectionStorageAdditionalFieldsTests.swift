@@ -7,10 +7,33 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("ConnectionStorage Additional Fields", .serialized)
+@Suite("ConnectionStorage Additional Fields")
 @MainActor
 struct ConnectionStorageAdditionalFieldsTests {
-    private let storage = ConnectionStorage.shared
+    private let storage: ConnectionStorage
+    private let suiteName: String
+    private let defaults: UserDefaults
+
+    init() {
+        let unique = UUID().uuidString
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("connections_\(unique).json")
+        try? FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        self.suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
+        self.defaults = UserDefaults(suiteName: suiteName)!
+        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")!
+        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        self.storage = ConnectionStorage(
+            fileURL: fileURL,
+            userDefaults: defaults,
+            syncTracker: tracker
+        )
+    }
 
     @Test("round-trip preserves MongoDB-specific fields")
     func roundTripMongoFields() {
@@ -138,9 +161,6 @@ struct ConnectionStorageAdditionalFieldsTests {
 
     @Test("save and reload clears cache and round-trips correctly")
     func saveAndReloadClearsCache() {
-        let original = storage.loadConnections()
-        defer { storage.saveConnections(original) }
-
         let id = UUID()
         let connection = DatabaseConnection(
             id: id,
@@ -152,10 +172,6 @@ struct ConnectionStorageAdditionalFieldsTests {
         )
 
         storage.saveConnections([connection])
-
-        // Force cache invalidation by saving again with the same data
-        let data = UserDefaults.standard.data(forKey: "com.TablePro.connections")
-        #expect(data != nil)
 
         let loaded = storage.loadConnections()
         #expect(loaded.count == 1)

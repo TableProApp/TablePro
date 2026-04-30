@@ -663,28 +663,39 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        let validCharsets = ["UTF8", "LATIN1", "SQL_ASCII", "WIN1252", "EUC_JP",
-                              "EUC_KR", "ISO_8859_5", "KOI8R", "SJIS", "BIG5", "GBK"]
-        let normalizedCharset = charset.uppercased()
-        guard validCharsets.contains(normalizedCharset) else {
-            throw LibPQPluginError(message: "Invalid encoding: \(charset)", sqlState: nil, detail: nil)
+    private static let supportedCollations: [String] = ["CASE_SENSITIVE", "CASE_INSENSITIVE"]
+
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        let options = Self.supportedCollations.map {
+            PluginCreateDatabaseFormSpec.Option(value: $0, label: $0)
+        }
+        let field = PluginCreateDatabaseFormSpec.Field(
+            id: "collate",
+            label: String(localized: "Collation"),
+            kind: .picker(options: options, defaultValue: "CASE_SENSITIVE")
+        )
+        return PluginCreateDatabaseFormSpec(fields: [field])
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
+        guard let collate = request.values["collate"] else {
+            throw LibPQPluginError(
+                message: String(localized: "Collation is required"),
+                sqlState: nil,
+                detail: nil
+            )
+        }
+        guard Self.supportedCollations.contains(collate) else {
+            throw LibPQPluginError(
+                message: String(format: String(localized: "Invalid collation: %@"), collate),
+                sqlState: nil,
+                detail: nil
+            )
         }
 
-        var query = "CREATE DATABASE \"\(escapedName)\" ENCODING '\(normalizedCharset)'"
-        if let collation = collation {
-            let allowedCollationChars = CharacterSet(
-                charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
-            )
-            let isValidCollation = collation.unicodeScalars.allSatisfy { allowedCollationChars.contains($0) }
-            guard isValidCollation else {
-                throw LibPQPluginError(message: "Invalid collation", sqlState: nil, detail: nil)
-            }
-            let escapedCollation = collation.replacingOccurrences(of: "'", with: "''")
-            query += " LC_COLLATE '\(escapedCollation)'"
-        }
-        _ = try await execute(query: query)
+        let quotedName = request.name.replacingOccurrences(of: "\"", with: "\"\"")
+        let sql = "CREATE DATABASE \"\(quotedName)\" COLLATE \(collate)"
+        _ = try await execute(query: sql)
     }
 
     func dropDatabase(name: String) async throws {

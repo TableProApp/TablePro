@@ -11,9 +11,8 @@ extension MainContentCoordinator {
     // MARK: - Filtering
 
     func applyFilters(_ filters: [TableFilter]) {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count,
-              let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              let tableName = tab.tableContext.tableName else { return }
 
         let capturedTabIndex = tabIndex
         let capturedTableName = tableName
@@ -26,7 +25,7 @@ extension MainContentCoordinator {
             self.tabManager.tabs[capturedTabIndex].pagination.reset()
 
             let tab = self.tabManager.tabs[capturedTabIndex]
-            let buffer = self.rowDataStore.buffer(for: tab.id)
+            let buffer = self.tableRowsStore.tableRows(for: tab.id)
             let exclusions = self.columnExclusions(for: capturedTableName)
             let newQuery = self.queryBuilder.buildFilteredQuery(
                 tableName: capturedTableName,
@@ -53,9 +52,8 @@ extension MainContentCoordinator {
     }
 
     func clearFiltersAndReload() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count,
-              let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              let tableName = tab.tableContext.tableName else { return }
 
         let capturedTabIndex = tabIndex
         let capturedTableName = tableName
@@ -64,7 +62,7 @@ extension MainContentCoordinator {
             guard capturedTabIndex < self.tabManager.tabs.count else { return }
 
             let tab = self.tabManager.tabs[capturedTabIndex]
-            let buffer = self.rowDataStore.buffer(for: tab.id)
+            let buffer = self.tableRowsStore.tableRows(for: tab.id)
             let exclusions = self.columnExclusions(for: capturedTableName)
             let newQuery = self.queryBuilder.buildBaseQuery(
                 tableName: capturedTableName,
@@ -83,10 +81,10 @@ extension MainContentCoordinator {
 
     func restoreFiltersForTable(_ tableName: String) {
         filterStateManager.restoreLastFilters(for: tableName)
-        guard let idx = tabManager.selectedTabIndex else { return }
-        tabManager.tabs[idx].filterState = filterStateManager.saveToTabState()
+        guard let (_, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
         if filterStateManager.hasAppliedFilters {
-            rebuildTableQuery(at: idx)
+            rebuildTableQuery(at: tabIndex)
         }
     }
 
@@ -95,7 +93,7 @@ extension MainContentCoordinator {
               let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        let buffer = rowDataStore.buffer(for: tab.id)
+        let buffer = tableRowsStore.tableRows(for: tab.id)
         let hasFilters = filterStateManager.hasAppliedFilters
         let exclusions = columnExclusions(for: tableName)
 

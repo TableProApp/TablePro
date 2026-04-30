@@ -71,22 +71,34 @@ extension MainContentCoordinator {
         pendingDeletes: inout Set<String>
     ) {
         let originalValues = changeManager.getOriginalValues()
-        if let index = tabManager.selectedTabIndex {
-            let tabId = tabManager.tabs[index].id
-            let buffer = rowDataStore.buffer(for: tabId)
-            for (rowIndex, columnIndex, originalValue) in originalValues {
-                if rowIndex < buffer.rows.count,
-                   columnIndex < buffer.rows[rowIndex].count {
-                    buffer.rows[rowIndex][columnIndex] = originalValue
+        var deltas: [Delta] = []
+        if let (tab, _) = tabManager.selectedTabAndIndex {
+            let tabId = tab.id
+            let insertedIDs = collectInsertedRowIDs(
+                tabId: tabId,
+                indices: changeManager.insertedRowIndices
+            )
+            let edits = originalValues.map { (row: $0.0, column: $0.1, value: $0.2) }
+            if !edits.isEmpty {
+                let editDelta = mutateActiveTableRows(for: tabId) { rows in
+                    rows.editMany(edits)
+                }
+                if editDelta != .none {
+                    deltas.append(editDelta)
                 }
             }
+            if !insertedIDs.isEmpty {
+                let removeDelta = mutateActiveTableRows(for: tabId) { rows in
+                    rows.remove(rowIDs: insertedIDs)
+                }
+                if removeDelta != .none {
+                    deltas.append(removeDelta)
+                }
+            }
+        }
 
-            let insertedIndices = changeManager.insertedRowIndices.sorted(by: >)
-            for rowIndex in insertedIndices {
-                if rowIndex < buffer.rows.count {
-                    buffer.rows.remove(at: rowIndex)
-                }
-            }
+        for delta in deltas {
+            dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
         }
 
         if let tableName = tabManager.selectedTab?.tableContext.tableName {
@@ -97,10 +109,23 @@ extension MainContentCoordinator {
         pendingDeletes.removeAll()
         changeManager.clearChangesAndUndoHistory()
 
-        if let index = tabManager.selectedTabIndex {
-            tabManager.tabs[index].pendingChanges = TabPendingChanges()
+        if let (_, index) = tabManager.selectedTabAndIndex {
+            tabManager.tabs[index].pendingChanges = TabChangeSnapshot()
         }
 
         Task { await refreshTables() }
+    }
+
+    private func collectInsertedRowIDs(tabId: UUID, indices: Set<Int>) -> Set<RowID> {
+        guard !indices.isEmpty else { return [] }
+        guard let tableRows = tableRowsStore.existingTableRows(for: tabId) else { return [] }
+        var ids = Set<RowID>()
+        for index in indices where index >= 0 && index < tableRows.rows.count {
+            let id = tableRows.rows[index].id
+            if id.isInserted {
+                ids.insert(id)
+            }
+        }
+        return ids
     }
 }

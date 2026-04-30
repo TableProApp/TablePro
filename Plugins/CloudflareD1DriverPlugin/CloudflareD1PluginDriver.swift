@@ -500,12 +500,16 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         PluginDatabaseMetadata(name: database)
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
         guard let client = getClient() else {
             throw CloudflareD1Error.notConnected
         }
 
-        let newDb = try await client.createDatabase(name: name)
+        let newDb = try await client.createDatabase(name: request.name)
 
         lock.lock()
         databaseNameToUuid[newDb.name] = newDb.uuid

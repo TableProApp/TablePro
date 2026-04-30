@@ -21,8 +21,8 @@ struct SQLStatementGeneratorParameterStyleTests {
         primaryKeyColumns: [String] = ["id"],
         databaseType: DatabaseType = .mysql,
         parameterStyle: ParameterStyle? = nil
-    ) -> SQLStatementGenerator {
-        SQLStatementGenerator(
+    ) throws -> SQLStatementGenerator {
+        try SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
@@ -35,8 +35,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     // MARK: - Default Parameter Style Tests
 
     @Test("PostgreSQL defaults to dollar style")
-    func testPostgreSQLDefaultsDollar() {
-        let generator = makeGenerator(databaseType: .postgresql)
+    func testPostgreSQLDefaultsDollar() throws {
+        let generator = try makeGenerator(databaseType: .postgresql)
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
@@ -55,8 +55,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     }
 
     @Test("Redshift defaults to dollar style")
-    func testRedshiftDefaultsDollar() {
-        let generator = makeGenerator(databaseType: .redshift)
+    func testRedshiftDefaultsDollar() throws {
+        let generator = try makeGenerator(databaseType: .redshift)
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
@@ -72,8 +72,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     }
 
     @Test("DuckDB defaults to dollar style")
-    func testDuckDBDefaultsDollar() {
-        let generator = makeGenerator(databaseType: .duckdb)
+    func testDuckDBDefaultsDollar() throws {
+        let generator = try makeGenerator(databaseType: .duckdb)
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
@@ -89,8 +89,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     }
 
     @Test("MySQL defaults to questionMark style")
-    func testMySQLDefaultsQuestionMark() {
-        let generator = makeGenerator(databaseType: .mysql)
+    func testMySQLDefaultsQuestionMark() throws {
+        let generator = try makeGenerator(databaseType: .mysql)
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
@@ -107,8 +107,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     }
 
     @Test("SQLite defaults to questionMark style")
-    func testSQLiteDefaultsQuestionMark() {
-        let generator = makeGenerator(databaseType: .sqlite)
+    func testSQLiteDefaultsQuestionMark() throws {
+        let generator = try makeGenerator(databaseType: .sqlite)
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
@@ -125,8 +125,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     }
 
     @Test("MSSQL defaults to questionMark style")
-    func testMSSQLDefaultsQuestionMark() {
-        let generator = makeGenerator(databaseType: .mssql)
+    func testMSSQLDefaultsQuestionMark() throws {
+        let generator = try makeGenerator(databaseType: .mssql)
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
@@ -145,8 +145,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     // MARK: - Explicit Parameter Style Override
 
     @Test("Dollar style generates $1, $2 placeholders for INSERT")
-    func testDollarStyleInsert() {
-        let generator = makeGenerator(parameterStyle: .dollar)
+    func testDollarStyleInsert() throws {
+        let generator = try makeGenerator(parameterStyle: .dollar)
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
@@ -165,8 +165,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     }
 
     @Test("QuestionMark style generates ? placeholders for INSERT")
-    func testQuestionMarkStyleInsert() {
-        let generator = makeGenerator(parameterStyle: .questionMark)
+    func testQuestionMarkStyleInsert() throws {
+        let generator = try makeGenerator(parameterStyle: .questionMark)
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
@@ -184,8 +184,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     }
 
     @Test("Dollar style generates $N placeholders for UPDATE with PK")
-    func testDollarStyleUpdate() {
-        let generator = makeGenerator(databaseType: .postgresql, parameterStyle: .dollar)
+    func testDollarStyleUpdate() throws {
+        let generator = try makeGenerator(databaseType: .postgresql, parameterStyle: .dollar)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -209,8 +209,8 @@ struct SQLStatementGeneratorParameterStyleTests {
     }
 
     @Test("Dollar style generates $N placeholders for DELETE with PK")
-    func testDollarStyleDelete() {
-        let generator = makeGenerator(databaseType: .postgresql, parameterStyle: .dollar)
+    func testDollarStyleDelete() throws {
+        let generator = try makeGenerator(databaseType: .postgresql, parameterStyle: .dollar)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
