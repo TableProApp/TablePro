@@ -172,10 +172,10 @@ extension AppDelegate {
         case .connect(let connectionId):
             connectViaDeeplink(connectionId: connectionId)
 
-        case .openTable(let connectionId, let table, let database):
+        case .openTable(let connectionId, let table, let database, let schema):
             connectViaDeeplink(connectionId: connectionId) { resolvedId in
                 EditorTabPayload(connectionId: resolvedId, tabType: .table,
-                                 tableName: table, databaseName: database)
+                                 tableName: table, databaseName: database, schemaName: schema)
             }
 
         case .openQuery(let connectionId, let sql):

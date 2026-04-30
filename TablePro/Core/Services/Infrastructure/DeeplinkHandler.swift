@@ -21,7 +21,7 @@ struct PairingExchange: Sendable, Equatable {
 
 enum DeeplinkAction {
     case connect(connectionId: UUID)
-    case openTable(connectionId: UUID, tableName: String, databaseName: String?)
+    case openTable(connectionId: UUID, tableName: String, databaseName: String?, schemaName: String?)
     case openQuery(connectionId: UUID, sql: String)
     case importConnection(ExportableConnection)
     case pairIntegration(PairingRequest)
@@ -69,17 +69,27 @@ enum DeeplinkHandler {
             return .openQuery(connectionId: connectionId, sql: sql)
         }
 
+        if components.count == 7,
+           components[1] == "database",
+           components[3] == "schema",
+           components[5] == "table",
+           let dbName = components[2].removingPercentEncoding,
+           let schemaName = components[4].removingPercentEncoding,
+           let tableName = components[6].removingPercentEncoding {
+            return .openTable(connectionId: connectionId, tableName: tableName, databaseName: dbName, schemaName: schemaName)
+        }
+
         if components.count == 5,
            components[1] == "database",
            components[3] == "table",
            let dbName = components[2].removingPercentEncoding,
            let tableName = components[4].removingPercentEncoding {
-            return .openTable(connectionId: connectionId, tableName: tableName, databaseName: dbName)
+            return .openTable(connectionId: connectionId, tableName: tableName, databaseName: dbName, schemaName: nil)
         }
 
         if components.count >= 3, components[1] == "table",
            let tableName = components[2].removingPercentEncoding {
-            return .openTable(connectionId: connectionId, tableName: tableName, databaseName: nil)
+            return .openTable(connectionId: connectionId, tableName: tableName, databaseName: nil, schemaName: nil)
         }
 
         if components.count == 1 {
