@@ -28,11 +28,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var layoutPersister: any ColumnLayoutPersisting
     var onColumnLayoutDidChange: ((ColumnLayoutState) -> Void)?
     private(set) var identitySchema: ColumnIdentitySchema = .empty
-    private(set) var lastReconciledColumnNames: [String] = []
-
-    func markColumnsReconciled(names: [String]) {
-        lastReconciledColumnNames = names
-    }
     var currentSortState = SortState()
 
     func columnIdentifier(for dataIndex: Int) -> NSUserInterfaceItemIdentifier? {

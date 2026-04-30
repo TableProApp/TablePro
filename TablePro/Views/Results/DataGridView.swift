@@ -211,20 +211,21 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.rebuildVisualStateCache()
 
-        let columnsChanged = !latestRows.columns.isEmpty
-            && coordinator.lastReconciledColumnNames != latestRows.columns
+        if !latestRows.columns.isEmpty {
+            coordinator.isRebuildingColumns = true
+            let savedLayout = coordinator.savedColumnLayout(binding: columnLayout)
+            reconcileColumnPool(
+                tableView: tableView,
+                coordinator: coordinator,
+                tableRows: latestRows,
+                savedLayout: savedLayout
+            )
+            coordinator.isRebuildingColumns = false
 
-        let isInitialDataLoad = structureChanged && oldRowCount == 0 && !latestRows.columns.isEmpty
-        let shouldRebuildColumns = columnsChanged || isInitialDataLoad
-
-        updateColumns(
-            tableView: tableView,
-            coordinator: coordinator,
-            tableRows: latestRows,
-            columnsChanged: columnsChanged,
-            shouldRebuild: shouldRebuildColumns,
-            structureChanged: structureChanged
-        )
+            if savedLayout == nil {
+                coordinator.scheduleLayoutPersist()
+            }
+        }
 
         syncSortDescriptors(tableView: tableView, coordinator: coordinator, columns: latestRows.columns)
 
@@ -233,39 +234,6 @@ struct DataGridView: NSViewRepresentable {
             coordinator: coordinator,
             needsFullReload: needsFullReload
         )
-    }
-
-    // MARK: - updateNSView Helpers
-
-    private func updateColumns(
-        tableView: NSTableView,
-        coordinator: TableViewCoordinator,
-        tableRows: TableRows,
-        columnsChanged: Bool,
-        shouldRebuild: Bool,
-        structureChanged: Bool
-    ) {
-        if shouldRebuild {
-            coordinator.isRebuildingColumns = true
-            defer { coordinator.isRebuildingColumns = false }
-
-            let savedLayout = coordinator.savedColumnLayout(binding: columnLayout)
-            reconcileColumnPool(
-                tableView: tableView,
-                coordinator: coordinator,
-                tableRows: tableRows,
-                savedLayout: savedLayout
-            )
-
-            if savedLayout == nil {
-                coordinator.scheduleLayoutPersist()
-            }
-        } else {
-            for column in tableView.tableColumns
-            where column.identifier != ColumnIdentitySchema.rowNumberIdentifier {
-                column.isEditable = isEditable
-            }
-        }
     }
 
     private func reconcileColumnPool(
@@ -289,7 +257,6 @@ struct DataGridView: NSViewRepresentable {
                 )
             }
         )
-        coordinator.markColumnsReconciled(names: tableRows.columns)
     }
 
     private func syncSortDescriptors(tableView: NSTableView, coordinator: TableViewCoordinator, columns: [String]) {
