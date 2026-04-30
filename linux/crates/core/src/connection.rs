@@ -39,6 +39,20 @@ pub trait Connection: Send + Sync {
         limit: u64,
     ) -> Result<QueryResult, DriverError>;
     async fn query(&self, sql: &str) -> Result<QueryResult, DriverError>;
+    /// Parameterised SELECT. Bound `Value`s are passed through to the
+    /// driver's prepare/bind path (sqlx::query::bind for the built-in
+    /// drivers). Default impl delegates to `query` when params is
+    /// empty, so legacy callers compile unchanged; drivers that
+    /// support real parameter binding override.
+    async fn query_params(&self, sql: &str, params: &[Value]) -> Result<QueryResult, DriverError> {
+        if params.is_empty() {
+            self.query(sql).await
+        } else {
+            Err(DriverError::Internal(
+                "query_params is not implemented for this driver".into(),
+            ))
+        }
+    }
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError>;
     async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError>;
     /// Run a sequence of parameterised statements inside a single

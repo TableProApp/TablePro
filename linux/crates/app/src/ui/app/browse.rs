@@ -23,9 +23,11 @@ impl App {
     }
 
     /// Fire the SELECT * query for a specific browse tab. Result goes to
-    /// the same tab via `AppMsg::RowsLoaded(tab_id, ...)`.
+    /// the same tab via `AppMsg::RowsLoaded(tab_id, ...)`. Composes the
+    /// SELECT from the tab's current sort + filter + pagination state.
+    /// Filter and sort are server-side; pagination uses LIMIT/OFFSET.
     pub(super) fn fetch_browse_page(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        let (schema, table, offset, limit, sort, driver_id) = {
+        let (schema, table, offset, limit, sort, filter, columns, driver_id) = {
             let tabs = self.workspace_tabs.borrow();
             let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
                 return;
@@ -37,6 +39,8 @@ impl App {
                 model.current_offset(),
                 model.page_size(),
                 model.current_sort(),
+                model.current_filter().clone(),
+                model.columns().to_vec(),
                 model.driver_id().to_string(),
             )
         };
@@ -46,37 +50,56 @@ impl App {
             return;
         };
         let order_by = sort.and_then(|(idx, asc)| {
-            let tabs = self.workspace_tabs.borrow();
-            let cols = tabs
-                .get(&tab_id)
-                .and_then(|t| t.browse_controller())
-                .map(|c| c.model().columns().to_vec())
-                .unwrap_or_default();
-            cols.get(idx).map(|c| {
+            columns.get(idx).map(|c| {
                 let name = tablepro_core::sql_dialect::quote_ident(&driver_id, &c.name);
                 let dir = if asc { "ASC" } else { "DESC" };
                 format!("{name} {dir}")
             })
         });
+
+        // Build WHERE up front so a filter validation error short-
+        // circuits to a toast without spawning the async command.
+        // Build returns None when the filter is empty; that path
+        // matches today's no-filter behaviour exactly.
+        let where_result = tablepro_core::build_filter_where(&driver_id, &columns, &filter);
+        let (where_sql, params) = match where_result {
+            Ok(Some((sql, p))) => (Some(sql), p),
+            Ok(None) => (None, Vec::new()),
+            Err(e) => {
+                sender.input(AppMsg::ShowToast(format!("{e}")));
+                return;
+            }
+        };
+
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    let result = match &order_by {
-                        Some(order) => {
-                            let qualified = match &schema {
-                                Some(s) => format!(
-                                    "{}.{}",
-                                    tablepro_core::sql_dialect::quote_ident(&driver_id, s),
-                                    tablepro_core::sql_dialect::quote_ident(&driver_id, &table)
-                                ),
-                                None => tablepro_core::sql_dialect::quote_ident(&driver_id, &table),
-                            };
-                            let sql =
-                                format!("SELECT * FROM {qualified} ORDER BY {order} LIMIT {limit} OFFSET {offset}");
-                            conn.query(&sql).await
+                    // No WHERE + no ORDER BY: keep the existing
+                    // fetch_rows fast-path so unchanged callers don't
+                    // pay the parametric overhead.
+                    let result = if where_sql.is_none() && order_by.is_none() {
+                        conn.fetch_rows(schema.as_deref(), &table, offset, limit).await
+                    } else {
+                        let qualified = match &schema {
+                            Some(s) => format!(
+                                "{}.{}",
+                                tablepro_core::sql_dialect::quote_ident(&driver_id, s),
+                                tablepro_core::sql_dialect::quote_ident(&driver_id, &table)
+                            ),
+                            None => tablepro_core::sql_dialect::quote_ident(&driver_id, &table),
+                        };
+                        let mut sql = format!("SELECT * FROM {qualified}");
+                        if let Some(w) = &where_sql {
+                            sql.push_str(" WHERE ");
+                            sql.push_str(w);
                         }
-                        None => conn.fetch_rows(schema.as_deref(), &table, offset, limit).await,
+                        if let Some(order) = &order_by {
+                            sql.push_str(" ORDER BY ");
+                            sql.push_str(order);
+                        }
+                        sql.push_str(&format!(" LIMIT {limit} OFFSET {offset}"));
+                        conn.query_params(&sql, &params).await
                     };
                     match result {
                         Ok(query_result) => sender_clone.input(AppMsg::RowsLoaded(tab_id, offset, query_result)),
@@ -116,7 +139,7 @@ impl App {
     }
 
     pub(super) fn fetch_browse_row_count(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        let (schema, table, driver_id) = {
+        let (schema, table, filter, columns, driver_id) = {
             let tabs = self.workspace_tabs.borrow();
             let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
                 return;
@@ -125,6 +148,8 @@ impl App {
             (
                 model.schema().map(str::to_owned),
                 model.table().to_string(),
+                model.current_filter().clone(),
+                model.columns().to_vec(),
                 model.driver_id().to_string(),
             )
         };
@@ -132,6 +157,16 @@ impl App {
         let Some(conn) = database_service::instance().active() else {
             return;
         };
+
+        // Same WHERE the page fetch uses, so the "of N" total matches
+        // the filtered result set. Validation errors are silently
+        // suppressed here — fetch_browse_page surfaces the toast for
+        // the same filter on the same tick, no need to double-toast.
+        let (where_sql, params) = match tablepro_core::build_filter_where(&driver_id, &columns, &filter) {
+            Ok(Some((sql, p))) => (Some(sql), p),
+            _ => (None, Vec::new()),
+        };
+
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
@@ -144,8 +179,17 @@ impl App {
                         ),
                         None => tablepro_core::sql_dialect::quote_ident(&driver_id, &table),
                     };
-                    let sql = format!("SELECT COUNT(*) FROM {qualified}");
-                    if let Ok(qr) = conn.query(&sql).await
+                    let mut sql = format!("SELECT COUNT(*) FROM {qualified}");
+                    if let Some(w) = &where_sql {
+                        sql.push_str(" WHERE ");
+                        sql.push_str(w);
+                    }
+                    let qr_result = if where_sql.is_some() {
+                        conn.query_params(&sql, &params).await
+                    } else {
+                        conn.query(&sql).await
+                    };
+                    if let Ok(qr) = qr_result
                         && let Some(row) = qr.rows.first()
                         && let Some(value) = row.first()
                     {
@@ -281,6 +325,41 @@ impl App {
         if let Some(id) = self.selected_browse_tab_id() {
             self.dispatch_to_tab(id, BrowseTabInput::FindInResults);
         }
+    }
+
+    /// Ctrl+R / Filter button — present the filter editor for the
+    /// active Browse tab. Hands the dialog the tab's columns +
+    /// current FilterSet; the dialog calls back via `on_apply` with
+    /// either the new set or `FilterSet::default()` for "Clear all".
+    /// Either way it routes through `BrowseTabInput::FilterApplied`
+    /// so persistence + chrome update + refetch all run in one place.
+    pub(super) fn on_show_filter_dialog(&self) {
+        let Some(id) = self.selected_browse_tab_id() else {
+            self.show_toast(&crate::tr!("Open a table to filter rows."));
+            return;
+        };
+        let (columns, current_filter) = {
+            let tabs = self.workspace_tabs.borrow();
+            let Some(controller) = tabs.get(&id).and_then(|t| t.browse_controller()) else {
+                return;
+            };
+            let model = controller.model();
+            (model.columns().to_vec(), model.current_filter().clone())
+        };
+        if columns.is_empty() {
+            // ColumnsLoaded hasn't fired yet — opening the dialog with
+            // no columns would just show an empty Add Rule list.
+            self.show_toast(&crate::tr!("Loading columns… try again in a moment."));
+            return;
+        }
+        let tab_id = id;
+        let workspace_tabs = self.workspace_tabs.clone();
+        let on_apply: std::rc::Rc<dyn Fn(tablepro_core::FilterSet)> = std::rc::Rc::new(move |set| {
+            if let Some(controller) = workspace_tabs.borrow().get(&tab_id).and_then(|t| t.browse_controller()) {
+                let _ = controller.sender().send(BrowseTabInput::FilterApplied(set));
+            }
+        });
+        crate::ui::filter_dialog::present(&self.window, columns, current_filter, on_apply);
     }
 
     pub(super) fn on_refresh_active_tab(&self) {

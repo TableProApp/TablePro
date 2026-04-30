@@ -38,6 +38,11 @@ impl Connection for ReadOnlyConnection {
         self.inner.query(sql).await
     }
 
+    async fn query_params(&self, sql: &str, params: &[Value]) -> Result<QueryResult, DriverError> {
+        // Read-only: filter SELECTs are still safe; pass through.
+        self.inner.query_params(sql, params).await
+    }
+
     async fn execute(&self, _sql: &str) -> Result<ExecResult, DriverError> {
         Err(DriverError::ReadOnly)
     }

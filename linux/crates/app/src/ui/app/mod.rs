@@ -539,6 +539,9 @@ pub enum AppMsg {
     /// buffer; Table tabs come back with their schema/table/mode and
     /// last-known pagination, sort, page size.
     ReopenClosedTab,
+    /// Ctrl+R → open the filter dialog for the active Browse tab.
+    /// No-op when the active tab isn't a Browse / Table tab.
+    ShowFilterDialog,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1490,6 +1493,7 @@ impl SimpleComponent for App {
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
             AppMsg::OpenSaved(saved) => self.on_open_saved(saved, sender),
             AppMsg::ReopenClosedTab => self.on_reopen_closed_tab(sender),
+            AppMsg::ShowFilterDialog => self.on_show_filter_dialog(),
         }
     }
 }
@@ -1618,6 +1622,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("undo-change", AppMsg::UndoActiveBrowseTab),
         input_action!("redo-change", AppMsg::RedoActiveBrowseTab),
         input_action!("reopen-closed-tab", AppMsg::ReopenClosedTab),
+        input_action!("open-filter", AppMsg::ShowFilterDialog),
     ]);
     window.insert_action_group("win", Some(&group));
     let disconnect_action: gio::SimpleAction = group
@@ -1646,6 +1651,7 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut("<Primary>y", "win.redo-change"));
     controller.add_shortcut(make_shortcut("<Primary><Shift>z", "win.redo-change"));
     controller.add_shortcut(make_shortcut("<Primary><Shift>t", "win.reopen-closed-tab"));
+    controller.add_shortcut(make_shortcut("<Primary>r", "win.open-filter"));
     window.add_controller(controller);
 }
 
@@ -1703,6 +1709,7 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
         "<Primary><Shift>n",
         &crate::tr!("Set focused cell to NULL"),
     ));
+    browse.append(&shortcut_entry("<Primary>r", &crate::tr!("Filter rows")));
     browse.append(&shortcut_entry("<Primary>a", &crate::tr!("Select all rows")));
     browse.append(&shortcut_entry(
         "<Shift>Pointer_Button1",

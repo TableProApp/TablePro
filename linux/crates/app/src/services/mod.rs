@@ -4,6 +4,7 @@ pub mod config_io;
 pub mod connection_monitor;
 pub mod connection_service;
 pub mod database_service;
+pub mod filter_settings;
 pub mod preferences;
 pub mod single_instance;
 pub mod structure_tracker;

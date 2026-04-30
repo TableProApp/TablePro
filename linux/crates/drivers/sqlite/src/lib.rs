@@ -161,6 +161,50 @@ impl Connection for SqliteConnection {
         stream_into_result(&self.pool, sql, MAX_QUERY_ROWS).await
     }
 
+    async fn query_params(&self, sql: &str, params: &[Value]) -> Result<QueryResult, DriverError> {
+        let q = bind_sqlite_params(sqlx::query(sql), params);
+        let mut stream = q.fetch(&self.pool);
+        let mut collected: Vec<SqliteRow> = Vec::new();
+        let mut truncated = false;
+        while let Some(row_result) = stream.next().await {
+            let row = row_result.map_err(map_sqlx_error)?;
+            if collected.len() >= MAX_QUERY_ROWS {
+                truncated = true;
+                break;
+            }
+            collected.push(row);
+        }
+        if collected.is_empty() {
+            return Ok(QueryResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                truncated,
+            });
+        }
+        let columns: Vec<ColumnInfo> = collected[0]
+            .columns()
+            .iter()
+            .map(|c| ColumnInfo {
+                name: c.name().to_string(),
+                data_type: c.type_info().name().to_string(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            })
+            .collect();
+        let data: Vec<Vec<Value>> = collected
+            .iter()
+            .map(|r| (0..columns.len()).map(|i| extract_value(r, i)).collect())
+            .collect();
+        Ok(QueryResult {
+            columns,
+            rows: data,
+            truncated,
+        })
+    }
+
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError> {
         let res = sqlx::query(sql).execute(&self.pool).await.map_err(map_sqlx_error)?;
         Ok(ExecResult {

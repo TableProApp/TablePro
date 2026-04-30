@@ -43,6 +43,11 @@ pub struct BrowseTab {
     current_offset: u64,
     page_size: u64,
     current_sort: Option<(usize, bool)>,
+    /// Server-side WHERE filter applied to every fetch. Persisted per
+    /// `(connection_id, schema, table)` via `services::filter_settings`.
+    /// Empty FilterSet means no WHERE clause; updates restart pagination
+    /// at offset 0 since filtered counts shift.
+    current_filter: tablepro_core::FilterSet,
     current_columns: Vec<ColumnInfo>,
     current_result: Option<QueryResult>,
     current_selection: Option<gtk::MultiSelection>,
@@ -93,6 +98,11 @@ pub struct BrowseTab {
     prev_button: gtk::Button,
     next_button: gtk::Button,
     last_button: gtk::Button,
+    /// Toolbar button that opens the filter dialog. Carries an
+    /// `.accent` CSS class + tooltip suffix when the current filter
+    /// has any rules; visually flat otherwise so the user spots an
+    /// active filter at a glance.
+    filter_button: gtk::Button,
     insert_button: gtk::Button,
     delete_button: gtk::Button,
     save_button: gtk::Button,
@@ -132,6 +142,11 @@ pub enum BrowseTabInput {
     /// selections are intentionally preserved — unselecting the
     /// only-row would strand the keyboard focus indicator.
     ClearSelection,
+    /// User confirmed a new filter set in the filter dialog (or
+    /// hit "Clear all" — that's an empty FilterSet). BrowseTab
+    /// persists, resets pagination to offset 0, refreshes chrome,
+    /// and re-fetches.
+    FilterApplied(tablepro_core::FilterSet),
     /// User clicked First page (offset → 0).
     FirstPage,
     /// User clicked Prev page.
@@ -320,6 +335,10 @@ impl BrowseTab {
         self.current_sort
     }
 
+    pub fn current_filter(&self) -> &tablepro_core::FilterSet {
+        &self.current_filter
+    }
+
     pub fn driver_id(&self) -> &str {
         &self.driver_id
     }
@@ -429,6 +448,17 @@ impl BrowseTab {
             .build();
         export_button.add_css_class("flat");
 
+        // Filter button — opens the rule editor for server-side WHERE.
+        // Action `win.open-filter` is registered in app/mod.rs and
+        // reads the active tab's controller, so the button implicitly
+        // targets this tab when this tab is active.
+        let filter_button = gtk::Button::builder()
+            .icon_name("funnel-symbolic")
+            .tooltip_text(crate::tr!("Filter rows (Ctrl+R)"))
+            .action_name("win.open-filter")
+            .build();
+        filter_button.add_css_class("flat");
+
         // First / Prev / Next / Last sit in a `linked` group so they
         // read as one navigation control — same pattern GNOME Files
         // uses on its back/forward toolbar buttons.
@@ -443,6 +473,7 @@ impl BrowseTab {
         paginator_bar.pack_start(&paginator_label);
         paginator_bar.pack_start(&selection_label);
         paginator_bar.pack_end(&export_button);
+        paginator_bar.pack_end(&filter_button);
         paginator_bar.pack_end(&page_size_combo);
         paginator_bar.pack_end(&page_size_label);
 
@@ -452,6 +483,7 @@ impl BrowseTab {
             prev_button,
             next_button,
             last_button,
+            filter_button,
             paginator_label,
             selection_label,
         }
@@ -1094,6 +1126,25 @@ impl BrowseTab {
         self.refresh_banner_visibility();
     }
 
+    /// Update the Filter button's CSS class + tooltip based on the
+    /// current FilterSet. Active filters get an accent tint and the
+    /// rule-count in the tooltip; empty falls back to flat + the
+    /// generic shortcut hint. Called from FilterApplied + once on
+    /// init so a restored filter shows immediately.
+    fn refresh_filter_chrome(&self) {
+        let n = self.current_filter.len();
+        if n == 0 {
+            self.filter_button.remove_css_class("accent");
+            self.filter_button
+                .set_tooltip_text(Some(&crate::tr!("Filter rows (Ctrl+R)")));
+        } else {
+            self.filter_button.add_css_class("accent");
+            self.filter_button.set_tooltip_text(Some(
+                &crate::tr!("{n} filter rule(s) active — click to edit").replace("{n}", &n.to_string()),
+            ));
+        }
+    }
+
     fn update_paginator_label(&self) {
         let Some(result) = self.current_result.as_ref() else {
             self.paginator_label.set_label("");
@@ -1507,6 +1558,15 @@ impl SimpleComponent for BrowseTab {
             GridMsg::DuplicateRow { row_position } => BrowseTabInput::DuplicateRow { row_position },
         }));
 
+        // Restore the saved filter for this (connection, schema,
+        // table) before moving init.schema / init.table into the
+        // struct. If none was saved, FilterSet::default() means
+        // "no WHERE clause" which is the same as today's path.
+        let initial_filter = init
+            .connection_id
+            .map(|id| crate::services::filter_settings::load(id, init.schema.as_deref(), &init.table))
+            .unwrap_or_default();
+
         let model = BrowseTab {
             tab_id: init.tab_id,
             schema: init.schema,
@@ -1517,6 +1577,7 @@ impl SimpleComponent for BrowseTab {
             current_offset: init.initial_offset,
             page_size: init.page_size,
             current_sort: init.initial_sort,
+            current_filter: initial_filter,
             current_columns: Vec::new(),
             current_result: None,
             current_selection: None,
@@ -1538,6 +1599,7 @@ impl SimpleComponent for BrowseTab {
             prev_button: paginator.prev_button,
             next_button: paginator.next_button,
             last_button: paginator.last_button,
+            filter_button: paginator.filter_button,
             insert_button: mutations.insert_button,
             delete_button: mutations.delete_button,
             save_button: mutations.save_button,
@@ -1548,6 +1610,11 @@ impl SimpleComponent for BrowseTab {
         };
         model.refresh_crud_buttons();
         model.refresh_pending_bar(0);
+        // If the user has a saved filter on this (connection, schema,
+        // table), the button picks up the .accent badge before the
+        // first fetch returns so the filter state is visible from
+        // the moment the tab opens.
+        model.refresh_filter_chrome();
 
         // Subscribe to the tracker so we can refresh the pending UI
         // any time the user adds / undoes / commits a change. The
@@ -1661,6 +1728,27 @@ impl SimpleComponent for BrowseTab {
                     return;
                 }
                 sel.unselect_all();
+            }
+            BrowseTabInput::FilterApplied(set) => {
+                // No change to the rule list → don't churn the disk
+                // or refetch. Re-fetch on identical filter would just
+                // duplicate the F5 path, which the user can take
+                // explicitly.
+                if set == self.current_filter {
+                    return;
+                }
+                self.current_filter = set.clone();
+                if let Some(conn_id) = self.connection_id {
+                    crate::services::filter_settings::save(conn_id, self.schema.as_deref(), &self.table, set);
+                }
+                // Filtered counts shift; jump back to page 1 so the
+                // user isn't stranded on offset N where N might be
+                // beyond the new filtered total.
+                self.current_offset = 0;
+                self.refresh_filter_chrome();
+                let _ = sender.output(BrowseTabOutput::FetchPage);
+                let _ = sender.output(BrowseTabOutput::FetchRowCount);
+                let _ = sender.output(BrowseTabOutput::StateChanged);
             }
             BrowseTabInput::FirstPage => {
                 if self.current_offset > 0 {
@@ -2600,6 +2688,7 @@ struct Paginator {
     prev_button: gtk::Button,
     next_button: gtk::Button,
     last_button: gtk::Button,
+    filter_button: gtk::Button,
     paginator_label: gtk::Label,
     selection_label: gtk::Label,
 }
