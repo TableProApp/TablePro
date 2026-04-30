@@ -123,7 +123,7 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 
 These have caused real bugs when violated:
 
-**Sync delete ordering**: In `ConnectionStorage` (and all storage classes), `SyncChangeTracker.markDeleted()` must be called BEFORE `saveConnections()`. The `markDeleted` call fires `postChangeNotification` which can trigger a sync — if `saveConnections` hasn't run yet, the file still has the deleted item and sync may re-add it.
+**Sync delete ordering**: In `ConnectionStorage` (and all storage classes), `SyncChangeTracker.markDeleted()` must be called AFTER `saveConnections()`. The `markDeleted` call fires `postChangeNotification` which can trigger a sync. If the file on disk still contains the deleted item when sync runs, it may re-upload the deleted record. Persist first, then notify.
 
 **WelcomeViewModel tree rebuild**: The welcome screen renders `treeItems` (grouped/filtered), not `connections` directly. Every mutation to `connections` must call `rebuildTree()` afterward, or the UI won't update.
 
