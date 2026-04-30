@@ -260,8 +260,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyFullReplace() {
         guard let tableView else { return }
-        displayCache.removeAll()
-        rebuildVisualStateCache()
+        invalidateAllDisplayCaches()
         updateCache()
         tableView.reloadData()
     }
@@ -307,6 +306,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func invalidateDisplayCache() {
         displayCache.removeAll()
+    }
+
+    func invalidateAllDisplayCaches() {
+        displayCache.removeAll()
+        rebuildVisualStateCache()
     }
 
     func updateDisplayFormats(_ formats: [ValueDisplayFormat?]) {
@@ -403,7 +407,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
             sortedIDs = nil
-            displayCache.removeAll()
             applyFullReplace()
         }
     }
@@ -428,8 +431,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func invalidateCachesForUndoRedo() {
-        displayCache.removeAll()
-        rebuildVisualStateCache()
+        invalidateAllDisplayCaches()
         updateCache()
         guard let tableView else { return }
         let visibleRange = tableView.rows(in: tableView.visibleRect)
