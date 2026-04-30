@@ -224,19 +224,18 @@ actor MCPAuthGuard {
 
     private func promptUserApproval(connectionName: String, databaseType: String) async throws -> Bool {
         let approvalTask = Task { @MainActor in
-            NSApp.requestUserAttention(.criticalRequest)
             NSApp.activate(ignoringOtherApps: true)
-            return await AlertHelper.confirmDestructive(
-                title: String(localized: "MCP Access Request"),
-                message: String(
-                    format: String(localized: "An MCP client wants to access '%@' (%@). Allow?"),
-                    connectionName,
-                    databaseType
-                ),
-                confirmButton: String(localized: "Allow"),
-                cancelButton: String(localized: "Deny"),
-                window: nil
+            let alert = NSAlert()
+            alert.messageText = String(localized: "MCP Access Request")
+            alert.informativeText = String(
+                format: String(localized: "An MCP client wants to access '%@' (%@). Allow?"),
+                connectionName,
+                databaseType
             )
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: String(localized: "Allow"))
+            alert.addButton(withTitle: String(localized: "Deny"))
+            return alert.runModal() == .alertFirstButtonReturn
         }
 
         let approved = try await withThrowingTaskGroup(of: Bool.self) { group in

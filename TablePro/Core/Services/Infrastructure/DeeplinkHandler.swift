@@ -64,8 +64,9 @@ enum DeeplinkHandler {
 
         if components.count >= 2, components[1] == "query" {
             let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
-            guard let sql = queryItems?.first(where: { $0.name == "sql" })?.value,
-                  !sql.isEmpty else { return nil }
+            guard let rawSQL = queryItems?.first(where: { $0.name == "sql" })?.value,
+                  !rawSQL.isEmpty else { return nil }
+            let sql = rawSQL.replacingOccurrences(of: "+", with: " ")
             return .openQuery(connectionId: connectionId, sql: sql)
         }
 

@@ -173,8 +173,9 @@ actor MCPConnectionBridge {
         timeoutSeconds: Int
     ) async throws -> JSONValue {
         let (driver, databaseType) = try await resolveDriver(connectionId)
-        let isWrite = QueryClassifier.isWriteQuery(query, databaseType: databaseType)
-        let hasReturning = query.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        let normalizedQuery = Self.stripTrailingSemicolons(query)
+        let isWrite = QueryClassifier.isWriteQuery(normalizedQuery, databaseType: databaseType)
+        let hasReturning = normalizedQuery.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         let shouldUseFetchRows = !isWrite || hasReturning
         let effectiveLimit = maxRows + 1
 
@@ -186,9 +187,9 @@ actor MCPConnectionBridge {
             try await withThrowingTaskGroup(of: QueryResult.self) { group in
                 group.addTask {
                     if shouldUseFetchRows {
-                        try await driver.fetchRows(query: query, offset: 0, limit: effectiveLimit)
+                        try await driver.fetchRows(query: normalizedQuery, offset: 0, limit: effectiveLimit)
                     } else {
-                        try await driver.execute(query: query)
+                        try await driver.execute(query: normalizedQuery)
                     }
                 }
                 group.addTask {
@@ -532,5 +533,14 @@ actor MCPConnectionBridge {
             }
             return connection
         }
+    }
+
+    static func stripTrailingSemicolons(_ query: String) -> String {
+        var result = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while result.hasSuffix(";") {
+            result = String(result.dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return result
     }
 }
