@@ -134,6 +134,10 @@ final class KeyHandlingTableView: NSTableView {
             handleRightArrow(currentRow: row)
             return
 
+        case .upArrow, .downArrow, .home, .end, .pageUp, .pageDown:
+            super.keyDown(with: event)
+            return
+
         default:
             break
         }
@@ -148,7 +152,7 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        super.keyDown(with: event)
+        interpretKeyEvents([event])
     }
 
     @objc override func insertNewline(_ sender: Any?) {
