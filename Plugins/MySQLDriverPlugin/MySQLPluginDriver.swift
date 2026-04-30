@@ -18,7 +18,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Detected server type from version string after connecting
     private var isMariaDB = false
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
+    internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
     var currentSchema: String? { nil }
     var serverVersion: String? { _serverVersion }
