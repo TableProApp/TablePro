@@ -193,19 +193,35 @@ class DataGridBaseCellView: NSTableCellView {
         }
     }
 
-    override var focusRingMaskBounds: NSRect { bounds }
+    override var focusRingMaskBounds: NSRect {
+        backgroundStyle == .emphasized ? .zero : bounds
+    }
 
     override func drawFocusRingMask() {
+        guard backgroundStyle != .emphasized else { return }
         NSBezierPath(rect: bounds).fill()
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard isFocusedCell else { return }
-        NSGraphicsContext.saveGraphicsState()
-        NSFocusRingPlacement.only.set()
-        drawFocusRingMask()
-        NSGraphicsContext.restoreGraphicsState()
+        if backgroundStyle == .emphasized {
+            drawEmphasizedFocusBorder()
+        } else {
+            NSGraphicsContext.saveGraphicsState()
+            NSFocusRingPlacement.only.set()
+            drawFocusRingMask()
+            NSGraphicsContext.restoreGraphicsState()
+        }
+    }
+
+    private func drawEmphasizedFocusBorder() {
+        let inset: CGFloat = 1
+        let rect = bounds.insetBy(dx: inset, dy: inset)
+        let path = NSBezierPath(rect: rect)
+        path.lineWidth = 2
+        NSColor.alternateSelectedControlTextColor.setStroke()
+        path.stroke()
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -216,7 +232,7 @@ class DataGridBaseCellView: NSTableCellView {
     }
 
     private func updateFocusRing() {
-        focusRingType = isFocusedCell ? .exterior : .none
+        focusRingType = (isFocusedCell && backgroundStyle != .emphasized) ? .exterior : .none
         noteFocusRingMaskChanged()
         needsDisplay = true
     }
