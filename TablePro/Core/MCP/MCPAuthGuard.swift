@@ -195,9 +195,6 @@ actor MCPAuthGuard {
     // MARK: - User Approval (askEachTime)
 
     private func promptUserApproval(connectionName: String, databaseType: String) async throws -> Bool {
-        // Use a task group so the actor suspends (freeing it for other requests)
-        // while the approval dialog is shown on the main thread.
-        // Race the dialog against a 30-second timeout.
         let approvalTask = Task { @MainActor in
             NSApp.requestUserAttention(.criticalRequest)
             NSApp.activate(ignoringOtherApps: true)
