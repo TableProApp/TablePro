@@ -86,8 +86,10 @@ extension AppDelegate {
     func handleOpenURLs(_ urls: [URL]) {
         let deeplinks = urls.filter { $0.scheme == "tablepro" }
         if !deeplinks.isEmpty {
+            suppressWelcomeWindow()
             Task {
                 for url in deeplinks { await self.handleDeeplink(url) }
+                self.endFileOpenSuppression()
             }
         }
 
