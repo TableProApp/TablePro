@@ -149,7 +149,7 @@ final class MCPToolHandler: Sendable {
     }
 
     private func filterConnectionsByToken(_ value: JSONValue, token: MCPAuthToken?) -> JSONValue {
-        guard let allowed = token?.allowedConnectionIds, !allowed.isEmpty else { return value }
+        guard let allowed = token?.allowedConnectionIds else { return value }
         guard case .object(var dict) = value,
               let entries = dict["connections"]?.arrayValue
         else {
