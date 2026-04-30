@@ -123,7 +123,7 @@ extension MCPToolHandler {
         let connectionId = try requireUUID(args, key: "connection_id")
         if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await ensureConnectionExists(connectionId)
-        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
+        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readOnly)
 
         let windowId = await MainActor.run { () -> UUID in
             let payload = EditorTabPayload(
@@ -154,7 +154,7 @@ extension MCPToolHandler {
 
         if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await ensureConnectionExists(connectionId)
-        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
+        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readOnly)
 
         let windowId = await MainActor.run { () -> UUID in
             let payload = EditorTabPayload(
@@ -197,7 +197,7 @@ extension MCPToolHandler {
 
         if let connectionId = resolved.connectionId {
             if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-            try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
+            try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readOnly)
         }
 
         let raised = await MainActor.run { () -> Bool in

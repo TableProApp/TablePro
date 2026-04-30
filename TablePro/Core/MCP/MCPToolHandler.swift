@@ -128,8 +128,7 @@ final class MCPToolHandler: Sendable {
         switch toolName {
         case "confirm_destructive_operation":
             return .fullAccess
-        case "switch_database", "switch_schema", "export_data",
-             "open_connection_window", "open_table_tab", "focus_query_tab":
+        case "switch_database", "switch_schema", "export_data":
             return .readWrite
         default:
             return .readOnly
