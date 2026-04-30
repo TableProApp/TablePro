@@ -5,7 +5,7 @@ mod connect_dialog;
 mod connection_row;
 mod editor;
 mod error_text;
-mod filter_dialog;
+mod filter_strip;
 mod grid;
 mod history_dialog;
 mod preferences;

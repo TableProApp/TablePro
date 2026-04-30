@@ -1,29 +1,32 @@
-//! Filter rules editor — server-side WHERE clause for the active
-//! Browse tab. Reachable via the "Filter" button on the paginator
-//! action bar or the Ctrl+R shortcut.
+//! Inline filter strip — server-side WHERE clause editor that slides
+//! in above the Browse-tab grid. Reachable via the Filter button on
+//! the paginator action bar or the Ctrl+R shortcut.
 //!
-//! Built as a plain `present()` function (no Relm4 component) because
-//! the dialog is fire-and-forget: caller hands in initial state +
-//! `on_apply` / `on_clear` callbacks, the dialog mutates a shared Rc
-//! while the user edits, and on Apply or Clear it invokes the
-//! callback and closes itself.
+//! Why inline (vs. a modal dialog)? The user is filtering data they
+//! can see; obscuring the grid with a dialog adds a round-trip every
+//! time they want to tune a rule. The strip stays open while the user
+//! edits, applies on demand, collapses with Esc / Close. Matches
+//! GtkSearchBar's slide-in pattern (the native GNOME idiom for
+//! "transient editor above content") rather than the heavier
+//! AdwDialog "form-with-validate-then-apply" flow.
 //!
 //! UI shape (single-level combinator, no nested groups):
 //!
 //! ```text
-//! ┌─ Filter rows ──────────────────── Cancel │ Clear all │ Apply ─┐
-//! │  Combine rules with: [ All  ▾ ]   <— AND or OR DropDown       │
-//! │  ┌─ boxed-list ListBox ─────────────────────────────────────┐ │
-//! │  │ [Column ▾] [Op ▾] [Value …]                  [✕]          │ │
-//! │  │ [Column ▾] [Op ▾] [Value …]                  [✕]          │ │
-//! │  │ [+ Add rule]                                              │ │
-//! │  └─────────────────────────────────────────────────────────┘ │
-//! └────────────────────────────────────────────────────────────────┘
+//! ┌─ Filter rows ──────────────────── Clear all │ Apply │ ✕ ─┐
+//! │  Combine rules with: [ All  ▾ ]   <— AND or OR DropDown   │
+//! │  ┌─ boxed-list ListBox ─────────────────────────────────┐ │
+//! │  │ [Column ▾] [Op ▾] [Value …]                  [✕]      │ │
+//! │  │ [Column ▾] [Op ▾] [Value …]                  [✕]      │ │
+//! │  │ [+ Add rule]                                          │ │
+//! │  └─────────────────────────────────────────────────────┘ │
+//! │  ▸ Advanced (raw SQL)   <— AdwExpanderRow                 │
+//! └────────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! Rule rebuilds: every column / operator / value mutation rebuilds
 //! the entire list from `state.rules`. Heavy-handed but predictable —
-//! the dialog is small (typical filter <5 rules) and the cost is
+//! the strip is small (typical filter <5 rules) and the cost is
 //! invisible vs. the round-trip query the user is about to fire.
 
 use std::cell::RefCell;
@@ -281,41 +284,112 @@ fn is_filterable(col: &ColumnInfo) -> bool {
     !(lower.contains("bytea") || lower.contains("blob"))
 }
 
-pub fn present(
-    parent: &impl IsA<gtk::Widget>,
-    columns: Vec<ColumnInfo>,
-    initial: FilterSet,
-    on_apply: Rc<dyn Fn(FilterSet)>,
-) {
+/// The inline filter editor. BrowseTab owns one of these per tab,
+/// adds `widget` as a top bar on its `AdwToolbarView`, and toggles
+/// reveal via the Filter button / Ctrl+R / Esc.
+pub struct FilterStrip {
+    pub widget: gtk::Revealer,
+    state: Rc<RefCell<FilterSet>>,
+    columns: Rc<RefCell<Vec<ColumnInfo>>>,
+    rebuild: RebuilderSlot,
+}
+
+impl FilterStrip {
+    pub fn is_revealed(&self) -> bool {
+        self.widget.reveals_child()
+    }
+
+    pub fn set_revealed(&self, revealed: bool) {
+        self.widget.set_reveal_child(revealed);
+    }
+
+    pub fn toggle(&self) {
+        self.set_revealed(!self.is_revealed());
+    }
+
+    /// Refresh column metadata after a `ColumnsLoaded`. Drops any
+    /// existing operator dropdowns whose column type changed and
+    /// rebuilds the rule list against the new schema.
+    pub fn update_columns(&self, columns: Vec<ColumnInfo>) {
+        *self.columns.borrow_mut() = columns.into_iter().filter(is_filterable).collect();
+        if let Some(f) = self.rebuild.borrow().as_ref() {
+            f();
+        }
+    }
+
+    /// Replace the strip's editing state with `set` and rebuild the
+    /// rule list. Called when a filter applies from outside the
+    /// strip (e.g. saved-filter restore on tab open) so the editor
+    /// reflects what's actually in effect.
+    pub fn update_filter(&self, set: FilterSet) {
+        *self.state.borrow_mut() = set;
+        if let Some(f) = self.rebuild.borrow().as_ref() {
+            f();
+        }
+    }
+}
+
+pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(FilterSet)>) -> FilterStrip {
     let state = Rc::new(RefCell::new(initial));
-    let columns: Rc<Vec<ColumnInfo>> = Rc::new(columns.into_iter().filter(is_filterable).collect());
+    let columns: Rc<RefCell<Vec<ColumnInfo>>> =
+        Rc::new(RefCell::new(columns.into_iter().filter(is_filterable).collect()));
 
-    let dialog = adw::Dialog::builder()
-        .title(crate::tr!("Filter rows"))
-        .content_width(580)
-        .content_height(640)
+    // Outer revealer — slides the strip into / out of view. Slide-down
+    // matches GtkSearchBar's reveal direction, so the strip reads as
+    // a transient editor descending from the toolbar.
+    let revealer = gtk::Revealer::builder()
+        .transition_type(gtk::RevealerTransitionType::SlideDown)
+        .reveal_child(false)
         .build();
 
-    let header = adw::HeaderBar::builder()
-        .show_start_title_buttons(false)
-        .show_end_title_buttons(false)
+    let outer = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(0)
         .build();
-    let cancel_btn = gtk::Button::with_label(&crate::tr!("Cancel"));
+    outer.add_css_class("toolbar");
+    outer.add_css_class("inline-toolbar");
+    revealer.set_child(Some(&outer));
+
+    // Top bar: title on the left, action buttons on the right. Inline
+    // (not an AdwHeaderBar) because the strip doesn't own a window
+    // chrome — it's a piece of toolbar inside the BrowseTab's
+    // ToolbarView.
+    let header = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
+        .margin_top(8)
+        .margin_bottom(0)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    let title = gtk::Label::builder()
+        .label(crate::tr!("Filter rows"))
+        .xalign(0.0)
+        .hexpand(true)
+        .build();
+    title.add_css_class("heading");
     let clear_btn = gtk::Button::with_label(&crate::tr!("Clear all"));
     clear_btn.add_css_class("flat");
     let apply_btn = gtk::Button::with_label(&crate::tr!("Apply"));
     apply_btn.add_css_class("suggested-action");
-    header.pack_start(&cancel_btn);
-    header.pack_end(&apply_btn);
-    header.pack_end(&clear_btn);
+    let close_btn = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text(crate::tr!("Close (Esc)"))
+        .build();
+    close_btn.add_css_class("flat");
+    header.append(&title);
+    header.append(&clear_btn);
+    header.append(&apply_btn);
+    header.append(&close_btn);
+    outer.append(&header);
 
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(18)
-        .margin_top(18)
-        .margin_bottom(18)
-        .margin_start(18)
-        .margin_end(18)
+        .spacing(12)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
         .build();
 
     // Match-combinator row. AdwActionRow in a tiny boxed-list with
@@ -398,7 +472,11 @@ pub fn present(
             let columns_for_add = columns.clone();
             let rebuild_for_add = rebuild_inner.clone();
             add_row.connect_activated(move |_| {
-                let default_col = columns_for_add.first().map(|c| c.name.clone()).unwrap_or_default();
+                let default_col = columns_for_add
+                    .borrow()
+                    .first()
+                    .map(|c| c.name.clone())
+                    .unwrap_or_default();
                 state_for_add.borrow_mut().rules.push(FilterRule {
                     column: default_col,
                     op: FilterOp::Eq,
@@ -418,57 +496,109 @@ pub fn present(
         f();
     }
 
+    // Advanced (raw SQL) — collapsible at the bottom of the strip.
+    // The user types arbitrary SQL appended to the structured rules
+    // with the chosen combinator. No quoting or parameterisation;
+    // identical security model to the SQL editor (the user already
+    // owns the connection — a raw filter is a power feature, not an
+    // injection vector). AdwExpanderRow keeps it out of the way for
+    // the common case where structured rules are enough.
+    let advanced_group = adw::PreferencesGroup::builder().build();
+    let advanced_row = adw::ExpanderRow::builder()
+        .title(crate::tr!("Advanced (raw SQL)"))
+        .subtitle(crate::tr!(
+            "Appended to the rules above with the chosen combinator. Use for expressions the rule editor can't model."
+        ))
+        .expanded(
+            state
+                .borrow()
+                .extra_sql
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty()),
+        )
+        .build();
+    let extra_entry = adw::EntryRow::builder().title(crate::tr!("Raw SQL")).build();
+    extra_entry.set_text(state.borrow().extra_sql.as_deref().unwrap_or(""));
+    let state_for_extra = state.clone();
+    extra_entry.connect_changed(move |e| {
+        let text = e.text().to_string();
+        let trimmed = text.trim();
+        state_for_extra.borrow_mut().extra_sql = if trimmed.is_empty() { None } else { Some(text) };
+    });
+    advanced_row.add_row(&extra_entry);
+    advanced_group.add(&advanced_row);
+    content.append(&advanced_group);
+
     let scroller = gtk::ScrolledWindow::builder()
         .child(&content)
         .hscrollbar_policy(gtk::PolicyType::Never)
-        .vexpand(true)
+        .vexpand(false)
+        .max_content_height(420)
+        .propagate_natural_height(true)
         .hexpand(true)
         .build();
+    outer.append(&scroller);
 
-    let toolbar_view = adw::ToolbarView::new();
-    toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&scroller));
-    dialog.set_child(Some(&toolbar_view));
-    dialog.set_default_widget(Some(&apply_btn));
-
-    let dialog_for_cancel = dialog.clone();
-    cancel_btn.connect_clicked(move |_| {
-        dialog_for_cancel.close();
+    let revealer_for_close = revealer.clone();
+    close_btn.connect_clicked(move |_| {
+        revealer_for_close.set_reveal_child(false);
     });
 
-    let dialog_for_clear = dialog.clone();
+    let revealer_for_clear = revealer.clone();
     let on_apply_for_clear = on_apply.clone();
     clear_btn.connect_clicked(move |_| {
         on_apply_for_clear(FilterSet::default());
-        dialog_for_clear.close();
+        revealer_for_clear.set_reveal_child(false);
     });
 
-    let dialog_for_apply = dialog.clone();
+    let revealer_for_apply = revealer.clone();
     let state_for_apply = state.clone();
     apply_btn.connect_clicked(move |_| {
         let snapshot = state_for_apply.borrow().clone();
         on_apply(snapshot);
-        dialog_for_apply.close();
+        revealer_for_apply.set_reveal_child(false);
     });
 
-    dialog.present(Some(parent));
+    // Esc inside the strip collapses it without applying. Local
+    // scope so it doesn't compete with cell-editor / search-bar Esc
+    // handlers elsewhere in the BrowseTab.
+    let revealer_for_esc = revealer.clone();
+    let esc_shortcut = gtk::Shortcut::builder()
+        .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
+        .action(&gtk::CallbackAction::new(move |_, _| {
+            revealer_for_esc.set_reveal_child(false);
+            relm4::gtk::glib::Propagation::Stop
+        }))
+        .build();
+    let esc_controller = gtk::ShortcutController::new();
+    esc_controller.set_scope(gtk::ShortcutScope::Local);
+    esc_controller.add_shortcut(esc_shortcut);
+    outer.add_controller(esc_controller);
+
+    FilterStrip {
+        widget: revealer,
+        state,
+        columns,
+        rebuild,
+    }
 }
 
 fn build_rule_row(
     index: usize,
     rule: &FilterRule,
-    columns: &Rc<Vec<ColumnInfo>>,
+    columns: &Rc<RefCell<Vec<ColumnInfo>>>,
     state: Rc<RefCell<FilterSet>>,
     rebuild: RebuilderSlot,
     suppress: Rc<std::cell::Cell<bool>>,
 ) -> adw::ActionRow {
+    let columns_snapshot = columns.borrow().clone();
     let row = adw::ActionRow::builder().build();
 
     // Column dropdown (prefix).
-    let names: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+    let names: Vec<&str> = columns_snapshot.iter().map(|c| c.name.as_str()).collect();
     let column_dd = gtk::DropDown::from_strings(&names);
     column_dd.set_valign(gtk::Align::Center);
-    let initial_col_idx = columns.iter().position(|c| c.name == rule.column).unwrap_or(0) as u32;
+    let initial_col_idx = columns_snapshot.iter().position(|c| c.name == rule.column).unwrap_or(0) as u32;
     column_dd.set_selected(initial_col_idx);
 
     let state_for_col = state.clone();
@@ -480,7 +610,8 @@ fn build_rule_row(
             return;
         }
         let idx = dd.selected() as usize;
-        let Some(new_col) = columns_for_col.get(idx) else {
+        let cols = columns_for_col.borrow();
+        let Some(new_col) = cols.get(idx) else {
             return;
         };
         if let Some(rule) = state_for_col.borrow_mut().rules.get_mut(index) {
@@ -497,6 +628,7 @@ fn build_rule_row(
                 ValueShape::List => Some(FilterValue::List(Vec::new())),
             };
         }
+        drop(cols);
         if let Some(f) = rebuild_for_col.borrow().as_ref() {
             f();
         }
@@ -504,7 +636,7 @@ fn build_rule_row(
     row.add_prefix(&column_dd);
 
     // Operator dropdown.
-    let col = columns
+    let col = columns_snapshot
         .get(initial_col_idx as usize)
         .cloned()
         .unwrap_or_else(|| ColumnInfo {
@@ -537,6 +669,7 @@ fn build_rule_row(
             return;
         };
         let col = columns_for_op
+            .borrow()
             .iter()
             .find(|c| c.name == rule.column)
             .cloned()

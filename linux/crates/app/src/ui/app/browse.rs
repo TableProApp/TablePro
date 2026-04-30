@@ -327,39 +327,15 @@ impl App {
         }
     }
 
-    /// Ctrl+R / Filter button — present the filter editor for the
-    /// active Browse tab. Hands the dialog the tab's columns +
-    /// current FilterSet; the dialog calls back via `on_apply` with
-    /// either the new set or `FilterSet::default()` for "Clear all".
-    /// Either way it routes through `BrowseTabInput::FilterApplied`
-    /// so persistence + chrome update + refetch all run in one place.
+    /// Ctrl+R / Filter button — toggle the inline filter strip on
+    /// the active Browse tab. Strip lives inside the tab (always
+    /// constructed at init), so this is just a reveal flip.
     pub(super) fn on_show_filter_dialog(&self) {
         let Some(id) = self.selected_browse_tab_id() else {
             self.show_toast(&crate::tr!("Open a table to filter rows."));
             return;
         };
-        let (columns, current_filter) = {
-            let tabs = self.workspace_tabs.borrow();
-            let Some(controller) = tabs.get(&id).and_then(|t| t.browse_controller()) else {
-                return;
-            };
-            let model = controller.model();
-            (model.columns().to_vec(), model.current_filter().clone())
-        };
-        if columns.is_empty() {
-            // ColumnsLoaded hasn't fired yet — opening the dialog with
-            // no columns would just show an empty Add Rule list.
-            self.show_toast(&crate::tr!("Loading columns… try again in a moment."));
-            return;
-        }
-        let tab_id = id;
-        let workspace_tabs = self.workspace_tabs.clone();
-        let on_apply: std::rc::Rc<dyn Fn(tablepro_core::FilterSet)> = std::rc::Rc::new(move |set| {
-            if let Some(controller) = workspace_tabs.borrow().get(&tab_id).and_then(|t| t.browse_controller()) {
-                let _ = controller.sender().send(BrowseTabInput::FilterApplied(set));
-            }
-        });
-        crate::ui::filter_dialog::present(&self.window, columns, current_filter, on_apply);
+        self.dispatch_to_tab(id, BrowseTabInput::ToggleFilterStrip);
     }
 
     pub(super) fn on_refresh_active_tab(&self) {

@@ -98,11 +98,15 @@ pub struct BrowseTab {
     prev_button: gtk::Button,
     next_button: gtk::Button,
     last_button: gtk::Button,
-    /// Toolbar button that opens the filter dialog. Carries an
+    /// Toolbar button that toggles the filter strip. Carries an
     /// `.accent` CSS class + tooltip suffix when the current filter
     /// has any rules; visually flat otherwise so the user spots an
     /// active filter at a glance.
     filter_button: gtk::Button,
+    /// Inline filter editor — slides in above the grid when
+    /// revealed. Owned per-tab so the rules editor doesn't lose
+    /// in-progress state if the user accidentally clicks outside it.
+    filter_strip: Option<crate::ui::filter_strip::FilterStrip>,
     insert_button: gtk::Button,
     delete_button: gtk::Button,
     save_button: gtk::Button,
@@ -142,10 +146,13 @@ pub enum BrowseTabInput {
     /// selections are intentionally preserved — unselecting the
     /// only-row would strand the keyboard focus indicator.
     ClearSelection,
-    /// User confirmed a new filter set in the filter dialog (or
-    /// hit "Clear all" — that's an empty FilterSet). BrowseTab
-    /// persists, resets pagination to offset 0, refreshes chrome,
-    /// and re-fetches.
+    /// Toggle the inline filter strip's reveal state. Wired to the
+    /// Filter button + Ctrl+R action.
+    ToggleFilterStrip,
+    /// User confirmed a new filter set in the filter strip (or hit
+    /// "Clear all" — that's an empty FilterSet). BrowseTab persists,
+    /// resets pagination to offset 0, refreshes chrome, and
+    /// re-fetches.
     FilterApplied(tablepro_core::FilterSet),
     /// User clicked First page (offset → 0).
     FirstPage,
@@ -1262,6 +1269,14 @@ impl SimpleComponent for BrowseTab {
         // removed. Idempotent — calling twice is a no-op.
         crate::services::change_tracker::open_tab(init.tab_id);
 
+        // Restore the saved filter for this (connection, schema,
+        // table) up front so both the model field and the inline
+        // strip start with the same FilterSet.
+        let initial_filter = init
+            .connection_id
+            .map(|id| crate::services::filter_settings::load(id, init.schema.as_deref(), &init.table))
+            .unwrap_or_default();
+
         let suppress_combo_emit = Rc::new(std::cell::Cell::new(true));
         let grid_holder = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -1327,6 +1342,17 @@ impl SimpleComponent for BrowseTab {
 
         root.add_top_bar(&read_only_banner);
         root.add_top_bar(&no_pk_banner);
+        // Filter strip — inline editor that slides down above the
+        // grid when revealed. Ownership stays inside this BrowseTab
+        // so the user's in-progress rule edits survive a click into
+        // a cell or the SQL editor.
+        let filter_set_for_strip = initial_filter.clone();
+        let sender_for_strip = sender.clone();
+        let on_apply_filter: std::rc::Rc<dyn Fn(tablepro_core::FilterSet)> = std::rc::Rc::new(move |set| {
+            sender_for_strip.input(BrowseTabInput::FilterApplied(set));
+        });
+        let filter_strip = crate::ui::filter_strip::build(Vec::new(), filter_set_for_strip, on_apply_filter);
+        root.add_top_bar(&filter_strip.widget);
         root.add_top_bar(&grid_search_bar);
         root.set_content(Some(&inner_stack));
         // Mutations bar sits below the paginator (call order = stack
@@ -1558,15 +1584,6 @@ impl SimpleComponent for BrowseTab {
             GridMsg::DuplicateRow { row_position } => BrowseTabInput::DuplicateRow { row_position },
         }));
 
-        // Restore the saved filter for this (connection, schema,
-        // table) before moving init.schema / init.table into the
-        // struct. If none was saved, FilterSet::default() means
-        // "no WHERE clause" which is the same as today's path.
-        let initial_filter = init
-            .connection_id
-            .map(|id| crate::services::filter_settings::load(id, init.schema.as_deref(), &init.table))
-            .unwrap_or_default();
-
         let model = BrowseTab {
             tab_id: init.tab_id,
             schema: init.schema,
@@ -1600,6 +1617,7 @@ impl SimpleComponent for BrowseTab {
             next_button: paginator.next_button,
             last_button: paginator.last_button,
             filter_button: paginator.filter_button,
+            filter_strip: Some(filter_strip),
             insert_button: mutations.insert_button,
             delete_button: mutations.delete_button,
             save_button: mutations.save_button,
@@ -1659,8 +1677,15 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::ColumnsLoaded(columns) => {
                 let words: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
-                self.current_columns = columns;
+                self.current_columns = columns.clone();
                 self.refresh_crud_buttons();
+                // Filter strip rebuilds against the new schema —
+                // operator allowlists narrow per type, so a column
+                // that switched from text to int needs its operator
+                // dropdown refreshed.
+                if let Some(strip) = self.filter_strip.as_ref() {
+                    strip.update_columns(columns);
+                }
                 let _ = sender.output(BrowseTabOutput::SchemaWordsChanged(words));
                 // If rows are already cached, render now with the proper
                 // editability map. Otherwise wait for RowsLoaded.
@@ -1729,6 +1754,11 @@ impl SimpleComponent for BrowseTab {
                 }
                 sel.unselect_all();
             }
+            BrowseTabInput::ToggleFilterStrip => {
+                if let Some(strip) = self.filter_strip.as_ref() {
+                    strip.toggle();
+                }
+            }
             BrowseTabInput::FilterApplied(set) => {
                 // No change to the rule list → don't churn the disk
                 // or refetch. Re-fetch on identical filter would just
@@ -1739,13 +1769,16 @@ impl SimpleComponent for BrowseTab {
                 }
                 self.current_filter = set.clone();
                 if let Some(conn_id) = self.connection_id {
-                    crate::services::filter_settings::save(conn_id, self.schema.as_deref(), &self.table, set);
+                    crate::services::filter_settings::save(conn_id, self.schema.as_deref(), &self.table, set.clone());
                 }
                 // Filtered counts shift; jump back to page 1 so the
                 // user isn't stranded on offset N where N might be
                 // beyond the new filtered total.
                 self.current_offset = 0;
                 self.refresh_filter_chrome();
+                if let Some(strip) = self.filter_strip.as_ref() {
+                    strip.update_filter(set);
+                }
                 let _ = sender.output(BrowseTabOutput::FetchPage);
                 let _ = sender.output(BrowseTabOutput::FetchRowCount);
                 let _ = sender.output(BrowseTabOutput::StateChanged);

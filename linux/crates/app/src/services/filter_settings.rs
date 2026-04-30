@@ -117,6 +117,7 @@ mod tests {
                 op: FilterOp::Eq,
                 value: Some(FilterValue::Single("alice".into())),
             }],
+            extra_sql: None,
         }
     }
 

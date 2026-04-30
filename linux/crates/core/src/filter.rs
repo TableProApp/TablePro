@@ -93,15 +93,31 @@ pub struct FilterSet {
     pub combinator: Combinator,
     #[serde(default)]
     pub rules: Vec<FilterRule>,
+    /// Raw SQL fragment appended after the structured rules with the
+    /// configured combinator. Lets the user reach for expressions the
+    /// rule editor doesn't model — `LENGTH(name) > 10`,
+    /// `created_at::date = CURRENT_DATE`, JSON `@>` containment, etc.
+    /// Emitted verbatim with no quoting / parameterisation. There is
+    /// no SQL-injection boundary here: the user already has the
+    /// connection (they can drop tables via the SQL editor); raw
+    /// filter is a power feature, not an untrusted-input vector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_sql: Option<String>,
 }
 
 impl FilterSet {
+    /// Empty when there are no rules AND no raw SQL fragment. The
+    /// caller (fetch_browse_page) skips WHERE entirely in this case.
     pub fn is_empty(&self) -> bool {
-        self.rules.is_empty()
+        self.rules.is_empty() && extra_is_blank(self.extra_sql.as_deref())
     }
     pub fn len(&self) -> usize {
-        self.rules.len()
+        self.rules.len() + usize::from(!extra_is_blank(self.extra_sql.as_deref()))
     }
+}
+
+fn extra_is_blank(extra: Option<&str>) -> bool {
+    extra.map(|s| s.trim().is_empty()).unwrap_or(true)
 }
 
 #[derive(Debug, Error)]
@@ -135,12 +151,13 @@ pub fn build_filter_where(
     columns: &[ColumnInfo],
     set: &FilterSet,
 ) -> Result<Option<(String, Vec<Value>)>, BuildFilterError> {
-    if set.rules.is_empty() {
+    let extra = set.extra_sql.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    if set.rules.is_empty() && extra.is_none() {
         return Ok(None);
     }
     let mut params: Vec<Value> = Vec::new();
     let mut placeholder_idx: usize = 0;
-    let mut clauses: Vec<String> = Vec::with_capacity(set.rules.len());
+    let mut clauses: Vec<String> = Vec::with_capacity(set.rules.len() + 1);
     for rule in &set.rules {
         let col = columns
             .iter()
@@ -148,6 +165,13 @@ pub fn build_filter_where(
             .ok_or_else(|| BuildFilterError::UnknownColumn(rule.column.clone()))?;
         let clause = build_rule_sql(driver_id, col, rule, &mut placeholder_idx, &mut params)?;
         clauses.push(clause);
+    }
+    if let Some(raw) = extra {
+        // Wrap in parens so the raw fragment can't accidentally
+        // re-bind operator precedence with the structured rules.
+        // The user types `a OR b`, we emit `(... AND (a OR b))` and
+        // the OR stays scoped to their fragment.
+        clauses.push(format!("({raw})"));
     }
     let joiner = match set.combinator {
         Combinator::And => " AND ",
@@ -476,6 +500,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("id", FilterOp::Eq, Some(FilterValue::Single("42".into())))],
+            extra_sql: None,
         };
         let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "\"id\" = $1");
@@ -491,6 +516,7 @@ mod tests {
                 rule("id", FilterOp::GtEq, Some(FilterValue::Single("10".into()))),
                 rule("name", FilterOp::Eq, Some(FilterValue::Single("alice".into()))),
             ],
+            extra_sql: None,
         };
         let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "(\"id\" >= $1 AND \"name\" = $2)");
@@ -506,6 +532,7 @@ mod tests {
                 rule("a", FilterOp::Eq, Some(FilterValue::Single("1".into()))),
                 rule("b", FilterOp::Eq, Some(FilterValue::Single("2".into()))),
             ],
+            extra_sql: None,
         };
         let (sql, _) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "(\"a\" = $1 OR \"b\" = $2)");
@@ -517,6 +544,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("id", FilterOp::Eq, Some(FilterValue::Single("7".into())))],
+            extra_sql: None,
         };
         let (sql, _) = build_filter_where("mysql", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "`id` = ?");
@@ -528,6 +556,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("id", FilterOp::Eq, Some(FilterValue::Single("7".into())))],
+            extra_sql: None,
         };
         let (sql, _) = build_filter_where("sqlite", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "\"id\" = ?");
@@ -543,6 +572,7 @@ mod tests {
                 FilterOp::Contains,
                 Some(FilterValue::Single("ali".into())),
             )],
+            extra_sql: None,
         };
         let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "\"name\" LIKE $1");
@@ -561,6 +591,7 @@ mod tests {
                 FilterOp::Contains,
                 Some(FilterValue::Single("50%".into())),
             )],
+            extra_sql: None,
         };
         let (_, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(params, vec![Value::Text("%50\\%%".into())]);
@@ -576,6 +607,7 @@ mod tests {
                 FilterOp::Ilike,
                 Some(FilterValue::Single("%alice%".into())),
             )],
+            extra_sql: None,
         };
         let (sql, _) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert!(sql.contains("ILIKE"));
@@ -591,6 +623,7 @@ mod tests {
                 FilterOp::Ilike,
                 Some(FilterValue::Single("%alice%".into())),
             )],
+            extra_sql: None,
         };
         let (sql, _) = build_filter_where("mysql", &cols, &set).unwrap().unwrap();
         assert!(sql.contains(" LIKE "));
@@ -603,6 +636,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("optional", FilterOp::IsNull, None)],
+            extra_sql: None,
         };
         let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "\"optional\" IS NULL");
@@ -619,6 +653,7 @@ mod tests {
                 FilterOp::Between,
                 Some(FilterValue::Pair("2026-01-01".into(), "2026-12-31".into())),
             )],
+            extra_sql: None,
         };
         let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "\"created\" BETWEEN $1 AND $2");
@@ -637,6 +672,7 @@ mod tests {
                 FilterOp::Between,
                 Some(FilterValue::Pair("1".into(), "".into())),
             )],
+            extra_sql: None,
         };
         let err = build_filter_where("postgres", &cols, &set).unwrap_err();
         assert!(matches!(err, BuildFilterError::BetweenMissingBound));
@@ -652,6 +688,7 @@ mod tests {
                 FilterOp::In,
                 Some(FilterValue::List(vec!["1".into(), "2".into(), "3".into()])),
             )],
+            extra_sql: None,
         };
         let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "\"id\" IN ($1, $2, $3)");
@@ -664,6 +701,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("id", FilterOp::In, Some(FilterValue::List(vec![])))],
+            extra_sql: None,
         };
         let err = build_filter_where("postgres", &cols, &set).unwrap_err();
         assert!(matches!(err, BuildFilterError::EmptyInList));
@@ -675,6 +713,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("nope", FilterOp::Eq, Some(FilterValue::Single("1".into())))],
+            extra_sql: None,
         };
         let err = build_filter_where("postgres", &cols, &set).unwrap_err();
         assert!(matches!(err, BuildFilterError::UnknownColumn(n) if n == "nope"));
@@ -686,6 +725,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("id", FilterOp::Eq, None)],
+            extra_sql: None,
         };
         let err = build_filter_where("postgres", &cols, &set).unwrap_err();
         assert!(matches!(err, BuildFilterError::MissingValue(FilterOp::Eq)));
@@ -697,6 +737,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("id", FilterOp::Eq, Some(FilterValue::Single("abc".into())))],
+            extra_sql: None,
         };
         let err = build_filter_where("postgres", &cols, &set).unwrap_err();
         assert!(matches!(err, BuildFilterError::InvalidValue { .. }));
@@ -708,6 +749,7 @@ mod tests {
         let set = FilterSet {
             combinator: Combinator::And,
             rules: vec![rule("active", FilterOp::Eq, Some(FilterValue::Single("yes".into())))],
+            extra_sql: None,
         };
         let (_, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(params, vec![Value::Bool(true)]);
@@ -723,6 +765,7 @@ mod tests {
                 FilterOp::Eq,
                 Some(FilterValue::Single("550e8400-e29b-41d4-a716-446655440000".into())),
             )],
+            extra_sql: None,
         };
         let (_, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert!(matches!(params[0], Value::Uuid(_)));
@@ -738,6 +781,7 @@ mod tests {
                 FilterOp::Gt,
                 Some(FilterValue::Single("2026-04-29T08:30:00Z".into())),
             )],
+            extra_sql: None,
         };
         let (_, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert!(matches!(params[0], Value::TimestampTz(_)));
@@ -755,6 +799,7 @@ mod tests {
                 FilterOp::Eq,
                 Some(FilterValue::Single("{\"a\":1}".into())),
             )],
+            extra_sql: None,
         };
         let (_, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(params, vec![Value::Text("{\"a\":1}".into())]);
@@ -770,6 +815,7 @@ mod tests {
                 FilterOp::Eq,
                 Some(FilterValue::Single("anything".into())),
             )],
+            extra_sql: None,
         };
         let err = build_filter_where("postgres", &cols, &set).unwrap_err();
         assert!(matches!(err, BuildFilterError::InvalidValue { .. }));
@@ -785,6 +831,7 @@ mod tests {
                 rule("b", FilterOp::Between, Some(FilterValue::Pair("2".into(), "3".into()))),
                 rule("c", FilterOp::In, Some(FilterValue::List(vec!["4".into(), "5".into()]))),
             ],
+            extra_sql: None,
         };
         let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert!(sql.contains("$1"));
@@ -805,6 +852,7 @@ mod tests {
                 rule("c", FilterOp::Between, Some(FilterValue::Pair("x".into(), "y".into()))),
                 rule("d", FilterOp::In, Some(FilterValue::List(vec!["p".into(), "q".into()]))),
             ],
+            extra_sql: None,
         };
         let json = serde_json::to_string(&original).unwrap();
         let parsed: FilterSet = serde_json::from_str(&json).unwrap();
@@ -832,6 +880,7 @@ mod tests {
                 FilterOp::NotIn,
                 Some(FilterValue::List(vec!["1".into(), "2".into()])),
             )],
+            extra_sql: None,
         };
         let (sql, _) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(sql, "\"id\" NOT IN ($1, $2)");
@@ -847,9 +896,75 @@ mod tests {
                 FilterOp::StartsWith,
                 Some(FilterValue::Single("ali".into())),
             )],
+            extra_sql: None,
         };
         let (_, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(params, vec![Value::Text("ali%".into())]);
+    }
+
+    #[test]
+    fn extra_sql_alone_emits_wrapped_fragment() {
+        let cols = vec![col("id", "integer")];
+        let set = FilterSet {
+            combinator: Combinator::And,
+            rules: vec![],
+            extra_sql: Some("LENGTH(name) > 10".into()),
+        };
+        let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
+        // No structured rules means the join doesn't run; the raw
+        // fragment is emitted bare (single-clause path skips parens).
+        assert_eq!(sql, "(LENGTH(name) > 10)");
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn extra_sql_combines_with_structured_rules() {
+        let cols = vec![col("id", "integer")];
+        let set = FilterSet {
+            combinator: Combinator::And,
+            rules: vec![rule("id", FilterOp::Gt, Some(FilterValue::Single("10".into())))],
+            extra_sql: Some("LENGTH(name) > 10".into()),
+        };
+        let (sql, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
+        assert_eq!(sql, "(\"id\" > $1 AND (LENGTH(name) > 10))");
+        assert_eq!(params, vec![Value::Int(10)]);
+    }
+
+    #[test]
+    fn extra_sql_or_combinator() {
+        let cols = vec![col("id", "integer")];
+        let set = FilterSet {
+            combinator: Combinator::Or,
+            rules: vec![rule("id", FilterOp::Eq, Some(FilterValue::Single("1".into())))],
+            extra_sql: Some("name LIKE 'admin%'".into()),
+        };
+        let (sql, _) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
+        assert_eq!(sql, "(\"id\" = $1 OR (name LIKE 'admin%'))");
+    }
+
+    #[test]
+    fn extra_sql_blank_is_treated_as_none() {
+        let cols = vec![col("id", "integer")];
+        let set = FilterSet {
+            combinator: Combinator::And,
+            rules: vec![],
+            extra_sql: Some("   \n  ".into()),
+        };
+        // Whitespace-only raw → no WHERE; same as empty filter.
+        assert!(build_filter_where("postgres", &cols, &set).unwrap().is_none());
+    }
+
+    #[test]
+    fn filter_set_is_empty_considers_extra_sql() {
+        let no_rules_no_extra = FilterSet::default();
+        assert!(no_rules_no_extra.is_empty());
+        let only_extra = FilterSet {
+            combinator: Combinator::And,
+            rules: vec![],
+            extra_sql: Some("a > 0".into()),
+        };
+        assert!(!only_extra.is_empty());
+        assert_eq!(only_extra.len(), 1);
     }
 
     #[test]
@@ -862,6 +977,7 @@ mod tests {
                 FilterOp::EndsWith,
                 Some(FilterValue::Single("son".into())),
             )],
+            extra_sql: None,
         };
         let (_, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
         assert_eq!(params, vec![Value::Text("%son".into())]);
