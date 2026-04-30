@@ -272,13 +272,14 @@ extension AppDelegate {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
 
-        let deeplinkPayload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
-        WindowManager.shared.openTab(payload: deeplinkPayload)
+        if makePayload == nil {
+            let deeplinkPayload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+            WindowManager.shared.openTab(payload: deeplinkPayload)
+        }
         NSWindow.allowsAutomaticWindowTabbing = savedTabbing
 
         Task {
             do {
-                // Confirm pre-connect script if present (deep links are external, so always confirm)
                 if let script = connection.preConnectScript,
                    !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 {
