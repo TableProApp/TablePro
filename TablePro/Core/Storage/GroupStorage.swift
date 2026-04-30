@@ -13,12 +13,22 @@ final class GroupStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "GroupStorage")
 
     private let groupsKey = "com.TablePro.groups"
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let syncTracker: SyncChangeTracker
+    private let connectionStorageProvider: () -> ConnectionStorage
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var cachedGroups: [ConnectionGroup]?
 
-    private init() {}
+    init(
+        userDefaults: UserDefaults = .standard,
+        syncTracker: SyncChangeTracker = .shared,
+        connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared
+    ) {
+        self.defaults = userDefaults
+        self.syncTracker = syncTracker
+        self.connectionStorageProvider = connectionStorage
+    }
 
     // MARK: - Group CRUD
 
@@ -48,7 +58,7 @@ final class GroupStorage {
             let data = try encoder.encode(groups)
             defaults.set(data, forKey: groupsKey)
             cachedGroups = nil
-            SyncChangeTracker.shared.markDirty(.group, ids: groups.map { $0.id.uuidString })
+            syncTracker.markDirty(.group, ids: groups.map { $0.id.uuidString })
         } catch {
             Self.logger.error("Failed to save groups: \(error)")
         }
@@ -89,10 +99,10 @@ final class GroupStorage {
         saveGroups(groups)
 
         for deletedId in allIdsToDelete {
-            SyncChangeTracker.shared.markDeleted(.group, id: deletedId.uuidString)
+            syncTracker.markDeleted(.group, id: deletedId.uuidString)
         }
 
-        let storage = ConnectionStorage.shared
+        let storage = connectionStorageProvider()
         var connections = storage.loadConnections()
         var changed = false
         for i in connections.indices {
