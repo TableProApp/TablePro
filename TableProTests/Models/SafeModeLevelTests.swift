@@ -122,7 +122,7 @@ struct SafeModeLevelTests {
 
     @Test("each case has the correct SF Symbol icon name")
     func iconNames() {
-        #expect(SafeModeLevel.silent.iconName == "lock.open")
+        #expect(SafeModeLevel.silent.iconName == "lock.open.fill")
         #expect(SafeModeLevel.alert.iconName == "exclamationmark.triangle")
         #expect(SafeModeLevel.alertFull.iconName == "exclamationmark.triangle.fill")
         #expect(SafeModeLevel.safeMode.iconName == "lock.shield")
