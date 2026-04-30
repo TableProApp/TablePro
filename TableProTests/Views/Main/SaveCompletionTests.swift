@@ -261,20 +261,16 @@ struct SaveCompletionTests {
             tabManager.tabs[index].tableContext.tableName = "users"
         }
 
-        var editingCell: CellPosition?
-
-        coordinator.addNewRow(editingCell: &editingCell)
+        coordinator.addNewRow()
         #expect(coordinator.selectionState.indices.isEmpty)
-        #expect(editingCell == nil)
 
         coordinator.selectionState.indices = [0]
         coordinator.deleteSelectedRows(indices: Set([0]))
         #expect(coordinator.selectionState.indices == [0])
 
         coordinator.selectionState.indices = []
-        coordinator.duplicateSelectedRow(index: 0, editingCell: &editingCell)
+        coordinator.duplicateSelectedRow(index: 0)
         #expect(coordinator.selectionState.indices.isEmpty)
-        #expect(editingCell == nil)
     }
 
     @Test("row operations allowed by alert level")
@@ -286,9 +282,7 @@ struct SaveCompletionTests {
             tabManager.tabs[index].tableContext.tableName = "users"
         }
 
-        var editingCell: CellPosition?
-
-        coordinator.addNewRow(editingCell: &editingCell)
+        coordinator.addNewRow()
         #expect(tabManager.tabs.first?.execution.errorMessage == nil)
     }
 }

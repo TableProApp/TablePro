@@ -15,19 +15,20 @@ extension TableViewCoordinator {
 
     func inlineEditEligibility(row: Int, columnIndex: Int) -> InlineEditEligibility {
         guard isEditable else { return .blocked }
-        guard row >= 0, columnIndex >= 0, columnIndex < rowProvider.columns.count else { return .blocked }
+        let tableRows = tableRowsProvider()
+        guard row >= 0, columnIndex >= 0, columnIndex < tableRows.columns.count else { return .blocked }
         guard !changeManager.isRowDeleted(row) else { return .blocked }
 
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        if immutable.contains(rowProvider.columns[columnIndex]) {
+        if immutable.contains(tableRows.columns[columnIndex]) {
             return .blocked
         }
 
-        let columnName = rowProvider.columns[columnIndex]
-        if rowProvider.columnForeignKeys[columnName] != nil { return .blocked }
+        let columnName = tableRows.columns[columnIndex]
+        if tableRows.columnForeignKeys[columnName] != nil { return .blocked }
 
-        if columnIndex < rowProvider.columnTypes.count {
-            let ct = rowProvider.columnTypes[columnIndex]
+        if columnIndex < tableRows.columnTypes.count {
+            let ct = tableRows.columnTypes[columnIndex]
             if ct.isBooleanType || ct.isDateType || ct.isJsonType
                 || ct.isBlobType || ct.isEnumType || ct.isSetType {
                 return .blocked
@@ -37,7 +38,9 @@ extension TableViewCoordinator {
         if dropdownColumns?.contains(columnIndex) == true { return .blocked }
         if typePickerColumns?.contains(columnIndex) == true { return .blocked }
 
-        if let value = rowProvider.value(atRow: row, column: columnIndex) {
+        if let displayRow = displayRow(at: row),
+           columnIndex < displayRow.values.count,
+           let value = displayRow.values[columnIndex] {
             if value.containsLineBreak { return .needsOverlayEditor(value: value) }
             if value.looksLikeJson { return .blocked }
         }
@@ -54,8 +57,8 @@ extension TableViewCoordinator {
 
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
         guard let tableColumn else { return false }
-        guard tableColumn.identifier.rawValue != "__rowNumber__" else { return false }
-        guard let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier) else { return false }
+        guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return false }
+        guard let columnIndex = dataColumnIndex(from: tableColumn.identifier) else { return false }
 
         switch inlineEditEligibility(row: row, columnIndex: columnIndex) {
         case .eligible:
@@ -119,10 +122,11 @@ extension TableViewCoordinator {
 
         tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
 
-        // Check if next cell is also multiline → open overlay there
         let nextColumnIndex = nextColumn - 1
-        if nextColumnIndex >= 0, nextColumnIndex < rowProvider.columns.count,
-           let value = rowProvider.value(atRow: nextRow, column: nextColumnIndex),
+        if nextColumnIndex >= 0,
+           let nextDisplayRow = displayRow(at: nextRow),
+           nextColumnIndex < nextDisplayRow.values.count,
+           let value = nextDisplayRow.values[nextColumnIndex],
            value.containsLineBreak {
             showOverlayEditor(tableView: tableView, row: nextRow, column: nextColumn, columnIndex: nextColumnIndex, value: value)
         } else {
@@ -142,14 +146,20 @@ extension TableViewCoordinator {
 
         if isEscapeCancelling {
             isEscapeCancelling = false
-            let originalValue = rowProvider.value(atRow: row, column: columnIndex)
+            let originalValue: String? = {
+                guard let displayRow = displayRow(at: row), columnIndex < displayRow.values.count else { return nil }
+                return displayRow.values[columnIndex]
+            }()
             textField.stringValue = originalValue ?? ""
             (control as? CellTextField)?.restoreTruncatedDisplay()
             return true
         }
 
         let rawInput = textField.stringValue
-        let oldValue = rowProvider.value(atRow: row, column: columnIndex)
+        let oldValue: String? = {
+            guard let displayRow = displayRow(at: row), columnIndex < displayRow.values.count else { return nil }
+            return displayRow.values[columnIndex]
+        }()
         let newValue: String? = rawInput.isEmpty && oldValue == nil ? nil : rawInput
 
         commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)

@@ -24,7 +24,6 @@ struct CommandActionsDispatchTests {
         var pendingTruncates: Set<String> = []
         var pendingDeletes: Set<String> = []
         var tableOperationOptions: [String: TableOperationOptions] = [:]
-        var editingCell: CellPosition? = nil
         let rightPanelState = RightPanelState()
 
         let actions = MainContentCommandActions(
@@ -39,8 +38,7 @@ struct CommandActionsDispatchTests {
                 get: { tableOperationOptions },
                 set: { tableOperationOptions = $0 }
             ),
-            rightPanelState: rightPanelState,
-            editingCell: Binding(get: { editingCell }, set: { editingCell = $0 })
+            rightPanelState: rightPanelState
         )
 
         return (actions, coordinator)

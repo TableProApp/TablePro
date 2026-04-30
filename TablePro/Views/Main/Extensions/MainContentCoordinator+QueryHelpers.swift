@@ -188,20 +188,19 @@ extension MainContentCoordinator {
             return false
         }
         let tab = tabManager.tabs[idx]
-        let buffer = rowDataStore.buffer(for: tab.id)
+        let tableRows = tableRowsStore.tableRows(for: tab.id)
         guard tab.tableContext.tableName == tableName,
-              !buffer.columnDefaults.isEmpty,
+              !tableRows.columnDefaults.isEmpty,
               !tab.tableContext.primaryKeyColumns.isEmpty else {
             return false
         }
-        // Ensure every ENUM/SET column has its allowed values loaded
-        let enumSetColumnNames: [String] = buffer.columns.enumerated().compactMap { i, name in
-            guard i < buffer.columnTypes.count,
-                  buffer.columnTypes[i].isEnumType || buffer.columnTypes[i].isSetType else { return nil }
+        let enumSetColumnNames: [String] = tableRows.columns.enumerated().compactMap { i, name in
+            guard i < tableRows.columnTypes.count,
+                  tableRows.columnTypes[i].isEnumType || tableRows.columnTypes[i].isSetType else { return nil }
             return name
         }
         if !enumSetColumnNames.isEmpty,
-           !enumSetColumnNames.allSatisfy({ buffer.columnEnumValues[$0] != nil }) {
+           !enumSetColumnNames.allSatisfy({ tableRows.columnEnumValues[$0] != nil }) {
             return false
         }
         return true
@@ -249,7 +248,10 @@ extension MainContentCoordinator {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
         var updatedTab = tabManager.tabs[idx]
-        let newBuffer = RowBuffer(rows: rows, columns: columns, columnTypes: columnTypes)
+        var columnEnumValues: [String: [String]] = [:]
+        var columnDefaults: [String: String?] = [:]
+        var columnForeignKeys: [String: ForeignKeyInfo] = [:]
+        var columnNullable: [String: Bool] = [:]
         updatedTab.schemaVersion += 1
         updatedTab.execution.executionTime = executionTime
         updatedTab.execution.rowsAffected = rowsAffected
@@ -258,35 +260,48 @@ extension MainContentCoordinator {
         updatedTab.execution.lastExecutedAt = Date()
         updatedTab.tableContext.tableName = tableName
         updatedTab.tableContext.isEditable = isEditable
-        // Populate enum values from column types for the enum popover
-        for (index, colType) in newBuffer.columnTypes.enumerated() {
-            if case .enumType(_, let values) = colType, let vals = values, index < newBuffer.columns.count {
-                newBuffer.columnEnumValues[newBuffer.columns[index]] = vals
+        for (index, colType) in columnTypes.enumerated() {
+            if case .enumType(_, let values) = colType, let vals = values, index < columns.count {
+                columnEnumValues[columns[index]] = vals
             }
         }
 
-        // Merge FK metadata into the same update if available
         if let metadata {
-            newBuffer.columnDefaults = metadata.columnDefaults
-            newBuffer.columnForeignKeys = metadata.columnForeignKeys
-            newBuffer.columnNullable = metadata.columnNullable
+            columnDefaults = metadata.columnDefaults
+            columnForeignKeys = metadata.columnForeignKeys
+            columnNullable = metadata.columnNullable
             for (col, vals) in metadata.columnEnumValues {
-                newBuffer.columnEnumValues[col] = vals
+                columnEnumValues[col] = vals
             }
             if let approxCount = metadata.approximateRowCount, approxCount > 0 {
                 updatedTab.pagination.totalRowCount = approxCount
                 updatedTab.pagination.isApproximateRowCount = true
+            }
+        } else {
+            let existing = tableRowsStore.tableRows(for: updatedTab.id)
+            columnDefaults = existing.columnDefaults
+            columnForeignKeys = existing.columnForeignKeys
+            columnNullable = existing.columnNullable
+            for (col, vals) in existing.columnEnumValues where columnEnumValues[col] == nil {
+                columnEnumValues[col] = vals
             }
         }
         if hasSchema {
             updatedTab.metadataVersion += 1
         }
 
-        rowDataStore.setBuffer(newBuffer, for: updatedTab.id)
+        let newTableRows = TableRows.from(
+            queryRows: rows,
+            columns: columns,
+            columnTypes: columnTypes,
+            columnDefaults: columnDefaults,
+            columnForeignKeys: columnForeignKeys,
+            columnEnumValues: columnEnumValues,
+            columnNullable: columnNullable
+        )
+        setActiveTableRows(newTableRows, for: updatedTab.id)
 
-        // Create a ResultSet for this single-statement execution
-        let rs = ResultSet(label: tableName ?? "Result")
-        rs.rowBuffer = newBuffer
+        let rs = ResultSet(label: tableName ?? "Result", tableRows: newTableRows)
         rs.executionTime = updatedTab.execution.executionTime
         rs.rowsAffected = updatedTab.execution.rowsAffected
         rs.statusMessage = updatedTab.execution.statusMessage
@@ -466,15 +481,23 @@ extension MainContentCoordinator {
                 guard capturedGeneration == queryGeneration else { return }
                 guard !Task.isCancelled else { return }
                 if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    let buffer = rowDataStore.buffer(for: tabId)
+                    let existing = tableRowsStore.tableRows(for: tabId)
                     let hasNewValues = columnEnumValues.contains { key, value in
-                        buffer.columnEnumValues[key] != value
+                        existing.columnEnumValues[key] != value
                     }
                     if hasNewValues {
-                        for (col, vals) in columnEnumValues {
-                            buffer.columnEnumValues[col] = vals
+                        mutateActiveTableRows(for: tabId) { rows in
+                            for (col, vals) in columnEnumValues {
+                                rows.columnEnumValues[col] = vals
+                            }
+                            return .columnsReplaced
                         }
                         tabManager.tabs[idx].metadataVersion += 1
+                        if let activeIdx = tabManager.selectedTabIndex,
+                           activeIdx < tabManager.tabs.count,
+                           tabManager.tabs[activeIdx].id == tabId {
+                            dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
+                        }
                     }
                 }
             }

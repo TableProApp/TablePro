@@ -17,12 +17,12 @@ struct StatusBarSnapshot: Equatable {
     let pagination: PaginationState
     let statusMessage: String?
 
-    init(tab: QueryTab?, buffer: RowBuffer?) {
+    init(tab: QueryTab?, tableRows: TableRows?) {
         self.tabId = tab?.id
         self.tabType = tab?.tabType
-        self.hasRows = !(buffer?.rows.isEmpty ?? true)
-        self.hasColumns = !(buffer?.columns.isEmpty ?? true)
-        self.rowCount = buffer?.rows.count ?? 0
+        self.hasRows = !(tableRows?.rows.isEmpty ?? true)
+        self.hasColumns = !(tableRows?.columns.isEmpty ?? true)
+        self.rowCount = tableRows?.rows.count ?? 0
         self.hasTableName = tab?.tableContext.tableName != nil
         self.pagination = tab?.pagination ?? PaginationState()
         self.statusMessage = tab?.execution.statusMessage

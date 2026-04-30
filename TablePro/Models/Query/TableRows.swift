@@ -39,6 +39,18 @@ struct TableRows: Sendable {
         return rows[row][column]
     }
 
+    func index(of id: RowID) -> Int? {
+        for (index, row) in rows.enumerated() where row.id == id {
+            return index
+        }
+        return nil
+    }
+
+    func row(withID id: RowID) -> Row? {
+        guard let index = index(of: id) else { return nil }
+        return rows[index]
+    }
+
     @discardableResult
     mutating func edit(row: Int, column: Int, value: String?) -> Delta {
         guard row >= 0, row < rows.count else { return .none }
@@ -70,6 +82,15 @@ struct TableRows: Sendable {
         let row = Row(id: .inserted(UUID()), values: normalized)
         rows.append(row)
         return .rowsInserted(IndexSet(integer: rows.count - 1))
+    }
+
+    @discardableResult
+    mutating func insertInsertedRow(at index: Int, values: [String?]) -> Delta {
+        guard index >= 0, index <= rows.count else { return .none }
+        let normalized = Self.normalize(values: values, toCount: columns.count)
+        let row = Row(id: .inserted(UUID()), values: normalized)
+        rows.insert(row, at: index)
+        return .rowsInserted(IndexSet(integer: index))
     }
 
     @discardableResult

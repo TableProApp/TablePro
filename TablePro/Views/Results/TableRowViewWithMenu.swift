@@ -98,11 +98,11 @@ final class TableRowViewWithMenu: NSTableRowView {
                 menu.addItem(pasteItem)
             }
 
-            // FK actions (only for FK columns with non-empty values)
-            if dataColumnIndex >= 0, dataColumnIndex < coordinator.rowProvider.columns.count {
-                let columnName = coordinator.rowProvider.columns[dataColumnIndex]
-                if let fkInfo = coordinator.rowProvider.columnForeignKeys[columnName],
-                   let cellValue = coordinator.rowProvider.value(atRow: rowIndex, column: dataColumnIndex),
+            let tableRows = coordinator.tableRowsProvider()
+            if dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count {
+                let columnName = tableRows.columns[dataColumnIndex]
+                if let fkInfo = tableRows.columnForeignKeys[columnName],
+                   let cellValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex),
                    !cellValue.isEmpty {
                     menu.addItem(NSMenuItem.separator())
 
@@ -139,11 +139,11 @@ final class TableRowViewWithMenu: NSTableRowView {
                 emptyItem.target = self
                 setValueMenu.addItem(emptyItem)
 
-                let columnName = dataColumnIndex < coordinator.rowProvider.columns.count
-                    ? coordinator.rowProvider.columns[dataColumnIndex]
+                let columnName = dataColumnIndex < tableRows.columns.count
+                    ? tableRows.columns[dataColumnIndex]
                     : nil
 
-                let isNullable = columnName.flatMap { coordinator.rowProvider.columnNullable[$0] } ?? true
+                let isNullable = columnName.flatMap { tableRows.columnNullable[$0] } ?? true
                 if isNullable {
                     let nullItem = NSMenuItem(
                         title: String(localized: "NULL"), action: #selector(setNullValue(_:)), keyEquivalent: "")
@@ -152,7 +152,7 @@ final class TableRowViewWithMenu: NSTableRowView {
                     setValueMenu.addItem(nullItem)
                 }
 
-                let hasDefault = columnName.flatMap({ coordinator.rowProvider.columnDefaults[$0] ?? nil }) != nil
+                let hasDefault = columnName.flatMap({ tableRows.columnDefaults[$0] ?? nil }) != nil
                 if hasDefault {
                     let defaultItem = NSMenuItem(
                         title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
@@ -297,9 +297,11 @@ final class TableRowViewWithMenu: NSTableRowView {
     @objc private func navigateToForeignKey(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator else { return }
-        let columnName = coordinator.rowProvider.columns[columnIndex]
-        guard let fkInfo = coordinator.rowProvider.columnForeignKeys[columnName],
-              let value = coordinator.rowProvider.value(atRow: rowIndex, column: columnIndex) else { return }
+        let tableRows = coordinator.tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+        guard let fkInfo = tableRows.columnForeignKeys[columnName],
+              let value = coordinator.cellValue(at: rowIndex, column: columnIndex) else { return }
         coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
     }
 }

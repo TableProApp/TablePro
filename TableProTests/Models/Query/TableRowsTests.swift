@@ -80,6 +80,103 @@ struct TableRowsReadTests {
     }
 }
 
+@Suite("TableRows - id lookup")
+struct TableRowsIDLookupTests {
+    @Test("index(of:) returns the storage index for an existing RowID")
+    func indexOfExistingRowID() {
+        let table = TableRows.from(
+            queryRows: [["a"], ["b"], ["c"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        #expect(table.index(of: .existing(0)) == 0)
+        #expect(table.index(of: .existing(1)) == 1)
+        #expect(table.index(of: .existing(2)) == 2)
+    }
+
+    @Test("index(of:) returns nil for an unknown RowID")
+    func indexOfUnknownRowID() {
+        let table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        #expect(table.index(of: .existing(99)) == nil)
+        #expect(table.index(of: .inserted(UUID())) == nil)
+    }
+
+    @Test("index(of:) tracks inserted rows by their UUID after appendInsertedRow")
+    func indexOfInsertedRow() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        _ = table.appendInsertedRow(values: ["new"])
+        let insertedID = table.rows[1].id
+        #expect(table.index(of: insertedID) == 1)
+    }
+
+    @Test("index(of:) reflects shifted positions after insertInsertedRow at the head")
+    func indexOfShiftsAfterHeadInsert() {
+        var table = TableRows.from(
+            queryRows: [["a"], ["b"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let originalID = table.rows[0].id
+        _ = table.insertInsertedRow(at: 0, values: ["z"])
+        #expect(table.index(of: originalID) == 1)
+    }
+
+    @Test("index(of:) reflects shifted positions after remove")
+    func indexOfShiftsAfterRemove() {
+        var table = TableRows.from(
+            queryRows: [["a"], ["b"], ["c"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        _ = table.remove(at: IndexSet(integer: 0))
+        #expect(table.index(of: .existing(0)) == nil)
+        #expect(table.index(of: .existing(1)) == 0)
+        #expect(table.index(of: .existing(2)) == 1)
+    }
+
+    @Test("row(withID:) returns the matching Row for an existing ID")
+    func rowWithIDReturnsMatch() {
+        let table = TableRows.from(
+            queryRows: [["a"], ["b"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let row = table.row(withID: .existing(1))
+        #expect(row?.values == ["b"])
+        #expect(row?.id == .existing(1))
+    }
+
+    @Test("row(withID:) returns nil for an unknown ID")
+    func rowWithIDReturnsNilForUnknown() {
+        let table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        #expect(table.row(withID: .existing(99)) == nil)
+    }
+
+    @Test("row(withID:) reads back an inserted row by its UUID")
+    func rowWithIDReturnsInsertedRow() {
+        var table = TableRows.from(
+            queryRows: [],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        _ = table.appendInsertedRow(values: ["v"])
+        let insertedID = table.rows[0].id
+        #expect(table.row(withID: insertedID)?.values == ["v"])
+    }
+}
+
 @Suite("TableRows - edit")
 struct TableRowsEditTests {
     private static func makeTable() -> TableRows {
@@ -206,6 +303,104 @@ struct TableRowsInsertTests {
         _ = table.appendInsertedRow(values: ["a", "b", "c", "d"])
         #expect(table.rows[0].values == ["only-one", nil, nil])
         #expect(table.rows[1].values == ["a", "b", "c"])
+    }
+
+    @Test("insertInsertedRow at the head shifts existing rows down")
+    func insertInsertedRowAtHead() {
+        var table = TableRows.from(
+            queryRows: [["a"], ["b"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: 0, values: ["z"])
+        #expect(delta == .rowsInserted(IndexSet(integer: 0)))
+        #expect(table.count == 3)
+        #expect(table.rows[0].values == ["z"])
+        #expect(table.rows[0].id.isInserted)
+        #expect(table.rows[1].values == ["a"])
+        #expect(table.rows[2].values == ["b"])
+    }
+
+    @Test("insertInsertedRow in the middle preserves surrounding rows")
+    func insertInsertedRowInMiddle() {
+        var table = TableRows.from(
+            queryRows: [["a"], ["b"], ["c"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: 1, values: ["z"])
+        #expect(delta == .rowsInserted(IndexSet(integer: 1)))
+        #expect(table.count == 4)
+        #expect(table.rows[0].values == ["a"])
+        #expect(table.rows[1].values == ["z"])
+        #expect(table.rows[1].id.isInserted)
+        #expect(table.rows[2].values == ["b"])
+        #expect(table.rows[3].values == ["c"])
+    }
+
+    @Test("insertInsertedRow at the tail (index == count) appends")
+    func insertInsertedRowAtTail() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: table.count, values: ["z"])
+        #expect(delta == .rowsInserted(IndexSet(integer: 1)))
+        #expect(table.count == 2)
+        #expect(table.rows[1].values == ["z"])
+        #expect(table.rows[1].id.isInserted)
+    }
+
+    @Test("insertInsertedRow pads short values and truncates long values")
+    func insertInsertedRowPadsAndTruncates() {
+        var table = TableRows.from(
+            queryRows: [],
+            columns: ["c1", "c2", "c3"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
+        )
+        _ = table.insertInsertedRow(at: 0, values: ["only-one"])
+        _ = table.insertInsertedRow(at: 1, values: ["a", "b", "c", "d"])
+        #expect(table.rows[0].values == ["only-one", nil, nil])
+        #expect(table.rows[1].values == ["a", "b", "c"])
+    }
+
+    @Test("insertInsertedRow with negative index returns Delta.none and does not mutate")
+    func insertInsertedRowNegativeIndexIsNoOp() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: -1, values: ["z"])
+        #expect(delta == .none)
+        #expect(table.count == 1)
+        #expect(table.rows[0].values == ["a"])
+    }
+
+    @Test("insertInsertedRow past the end returns Delta.none and does not mutate")
+    func insertInsertedRowPastEndIsNoOp() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: 2, values: ["z"])
+        #expect(delta == .none)
+        #expect(table.count == 1)
+        #expect(table.rows[0].values == ["a"])
+    }
+
+    @Test("Two insertInsertedRow calls produce different RowID UUIDs")
+    func insertInsertedRowProducesDistinctUUIDs() {
+        var table = TableRows.from(
+            queryRows: [],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        _ = table.insertInsertedRow(at: 0, values: ["x"])
+        _ = table.insertInsertedRow(at: 0, values: ["y"])
+        #expect(table.rows[0].id != table.rows[1].id)
     }
 }
 

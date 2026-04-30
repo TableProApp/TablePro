@@ -59,17 +59,9 @@ struct TabChangeSnapshot: Equatable {
     }
 }
 
-/// Sort direction for column sorting
 enum SortDirection: Equatable {
     case ascending
     case descending
-
-    var indicator: String {
-        switch self {
-        case .ascending: return "▲"
-        case .descending: return "▼"
-        }
-    }
 
     mutating func toggle() {
         self = self == .ascending ? .descending : .ascending

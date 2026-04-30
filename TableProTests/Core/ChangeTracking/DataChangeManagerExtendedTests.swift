@@ -671,21 +671,6 @@ struct DataChangeManagerExtendedTests {
         #expect(manager.changes.count == 1)
     }
 
-    @Test("changedRowIndices includes all operation types")
-    func changedRowIndicesIncludesAllOperationTypes() {
-        let manager = makeManager()
-        manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
-            oldValue: "Alice", newValue: "Bob"
-        )
-        manager.recordRowDeletion(rowIndex: 1, originalRow: ["2", "Charlie", "c@test.com"])
-        manager.recordRowInsertion(rowIndex: 2, values: ["x", "y", "z"])
-        let changed = manager.consumeChangedRowIndices()
-        #expect(changed.contains(0))
-        #expect(changed.contains(1))
-        #expect(changed.contains(2))
-    }
-
     @Test("configureForTable with triggerReload false does not increment reloadVersion")
     func configureForTableNoTriggerReload() {
         let manager = DataChangeManager()

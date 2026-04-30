@@ -41,8 +41,8 @@ extension MainContentCoordinator {
            current.tabType == .table,
            current.tableContext.tableName == tableName,
            current.tableContext.databaseName == currentDatabase {
-            if showStructure, let idx = tabManager.selectedTabIndex {
-                tabManager.tabs[idx].display.resultsViewMode = .structure
+            if showStructure, let (_, tabIndex) = tabManager.selectedTabAndIndex {
+                tabManager.tabs[tabIndex].display.resultsViewMode = .structure
             }
             return
         }
@@ -91,7 +91,7 @@ extension MainContentCoordinator {
                     databaseName: currentDatabase
                 )
             }
-            if let tabIndex = tabManager.selectedTabIndex {
+            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[tabIndex].tableContext.isView = isView
                 tabManager.tabs[tabIndex].tableContext.isEditable = !isView
                 tabManager.tabs[tabIndex].tableContext.schemaName = currentSchema
@@ -100,7 +100,7 @@ extension MainContentCoordinator {
             }
             // In-place navigation needs selectRedisDatabaseAndQuery to ensure the correct
             // database is SELECTed and session state is updated before querying.
-            restoreColumnLayoutForTable(tableName)
+            restoreLastHiddenColumnsForTable(tableName)
             restoreFiltersForTable(tableName)
             if navigationModel == .inPlace, let dbIndex = Int(currentDatabase) {
                 selectRedisDatabaseAndQuery(dbIndex)
@@ -123,13 +123,12 @@ extension MainContentCoordinator {
                 schemaName: currentSchema
             ) {
                 filterStateManager.clearAll()
-                if let tabIndex = tabManager.selectedTabIndex {
-                    let tabId = tabManager.tabs[tabIndex].id
-                    rowDataStore.setBuffer(RowBuffer(), for: tabId)
+                if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+                    setActiveTableRows(TableRows(), for: tab.id)
                     tabManager.tabs[tabIndex].pagination.reset()
                     toolbarState.isTableTab = true
                 }
-                restoreColumnLayoutForTable(tableName)
+                restoreLastHiddenColumnsForTable(tableName)
                 restoreFiltersForTable(tableName)
                 if let dbIndex = Int(currentDatabase) {
                     selectRedisDatabaseAndQuery(dbIndex)
@@ -207,13 +206,13 @@ extension MainContentCoordinator {
                 previewCoordinator.filterStateManager.clearAll()
                 if let tabIndex = previewCoordinator.tabManager.selectedTabIndex {
                     let tabId = previewCoordinator.tabManager.tabs[tabIndex].id
-                    previewCoordinator.rowDataStore.setBuffer(RowBuffer(), for: tabId)
+                    previewCoordinator.setActiveTableRows(TableRows(), for: tabId)
                     previewCoordinator.tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                     previewCoordinator.tabManager.tabs[tabIndex].pagination.reset()
                     previewCoordinator.toolbarState.isTableTab = true
                 }
                 preview.window.makeKeyAndOrderFront(nil)
-                previewCoordinator.restoreColumnLayoutForTable(tableName)
+                previewCoordinator.restoreLastHiddenColumnsForTable(tableName)
                 previewCoordinator.restoreFiltersForTable(tableName)
                 previewCoordinator.runQuery()
                 return
@@ -277,14 +276,13 @@ extension MainContentCoordinator {
                 isPreview: true
             )
             filterStateManager.clearAll()
-            if let tabIndex = tabManager.selectedTabIndex {
-                let tabId = tabManager.tabs[tabIndex].id
-                rowDataStore.setBuffer(RowBuffer(), for: tabId)
+            if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
+                setActiveTableRows(TableRows(), for: tab.id)
                 tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                 tabManager.tabs[tabIndex].pagination.reset()
                 toolbarState.isTableTab = true
             }
-            restoreColumnLayoutForTable(tableName)
+            restoreLastHiddenColumnsForTable(tableName)
             restoreFiltersForTable(tableName)
             runQuery()
             return
@@ -305,8 +303,8 @@ extension MainContentCoordinator {
     }
 
     func promotePreviewTab() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabManager.tabs[tabIndex].isPreview else { return }
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.isPreview else { return }
         tabManager.tabs[tabIndex].isPreview = false
 
         if let wid = windowId {
@@ -389,7 +387,7 @@ extension MainContentCoordinator {
 
             closeSiblingNativeWindows()
             persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            rowDataStore.tearDown()
+            tableRowsStore.tearDown()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
             DatabaseManager.shared.updateSession(connectionId) { session in
@@ -424,7 +422,7 @@ extension MainContentCoordinator {
 
             closeSiblingNativeWindows()
             persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            rowDataStore.tearDown()
+            tableRowsStore.tearDown()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
             DatabaseManager.shared.updateSession(connectionId) { session in

@@ -2,8 +2,7 @@
 //  StructureRowProvider.swift
 //  TablePro
 //
-//  Adapts structure entities (columns/indexes/FKs) to InMemoryRowProvider interface
-//  Converts entity-based data to row-based format for DataGridView
+//  Adapts structure entities (columns/indexes/FKs) to TableRows for DataGridView
 //
 
 import Foundation
@@ -149,7 +148,7 @@ final class StructureRowProvider {
         return canonicalFieldOrder.filter { fields.contains($0) }
     }
 
-    // MARK: - InMemoryRowProvider-compatible methods
+    // MARK: - Row Access
 
     func row(at index: Int) -> [String?]? {
         guard index >= 0, index < cachedRows.count else { return nil }
@@ -258,13 +257,13 @@ final class StructureRowProvider {
     }
 }
 
-// MARK: - Helper to create InMemoryRowProvider
+// MARK: - Helper to create TableRows
 
 extension StructureRowProvider {
-    /// Creates an InMemoryRowProvider from structure data
-    func asInMemoryProvider() -> InMemoryRowProvider {
-        InMemoryRowProvider(
-            rows: rows,
+    /// Creates a TableRows snapshot from structure data
+    func asTableRows() -> TableRows {
+        TableRows.from(
+            queryRows: rows,
             columns: columns,
             columnTypes: columnTypes
         )

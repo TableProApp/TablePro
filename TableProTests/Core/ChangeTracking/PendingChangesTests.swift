@@ -220,71 +220,6 @@ struct PendingChangesSnapshotTests {
     }
 }
 
-@Suite("PendingChanges - changedRowIndices tracking")
-struct PendingChangesChangedRowIndicesTests {
-    @Test("revertUpdateCell records the row as changed")
-    func revertUpdateCellMarksChanged() {
-        var pending = PendingChanges()
-        pending.recordCellChange(
-            rowIndex: 4, columnIndex: 1, columnName: "name",
-            oldValue: "A", newValue: "B"
-        )
-        _ = pending.consumeChangedRowIndices()
-
-        pending.revertUpdateCell(
-            rowIndex: 4, columnIndex: 1, columnName: "name", previousValue: "A"
-        )
-        #expect(pending.consumeChangedRowIndices().contains(4))
-    }
-
-    @Test("undoRowDeletion records the row as changed")
-    func undoRowDeletionMarksChanged() {
-        var pending = PendingChanges()
-        pending.recordRowDeletion(rowIndex: 7, originalRow: ["a"])
-        _ = pending.consumeChangedRowIndices()
-
-        _ = pending.undoRowDeletion(rowIndex: 7)
-        #expect(pending.consumeChangedRowIndices().contains(7))
-    }
-
-    @Test("undoRowInsertion records the row as changed")
-    func undoRowInsertionMarksChanged() {
-        var pending = PendingChanges()
-        pending.recordRowInsertion(rowIndex: 2, values: ["x"])
-        _ = pending.consumeChangedRowIndices()
-
-        _ = pending.undoRowInsertion(rowIndex: 2)
-        #expect(pending.consumeChangedRowIndices().contains(2))
-    }
-
-    @Test("reapplyRowDeletion records the row as changed")
-    func reapplyRowDeletionMarksChanged() {
-        var pending = PendingChanges()
-        _ = pending.consumeChangedRowIndices()
-        pending.reapplyRowDeletion(rowIndex: 3, originalRow: ["a"])
-        #expect(pending.consumeChangedRowIndices().contains(3))
-    }
-
-    @Test("reapplyCellChange records the row as changed")
-    func reapplyCellChangeMarksChanged() {
-        var pending = PendingChanges()
-        _ = pending.consumeChangedRowIndices()
-        pending.reapplyCellChange(
-            rowIndex: 5, columnIndex: 1, columnName: "name",
-            originalDBValue: nil, newValue: "X", originalRow: nil
-        )
-        #expect(pending.consumeChangedRowIndices().contains(5))
-    }
-
-    @Test("reinsertRow records the row as changed")
-    func reinsertRowMarksChanged() {
-        var pending = PendingChanges()
-        _ = pending.consumeChangedRowIndices()
-        pending.reinsertRow(rowIndex: 1, columns: ["a"], savedValues: ["v"])
-        #expect(pending.consumeChangedRowIndices().contains(1))
-    }
-}
-
 @Suite("PendingChanges - clear and consume")
 struct PendingChangesLifecycleTests {
     @Test("Clear empties all internal state")
@@ -303,16 +238,4 @@ struct PendingChangesLifecycleTests {
         #expect(!pending.isCellModified(rowIndex: 0, columnIndex: 1))
     }
 
-    @Test("Consuming changedRowIndices empties the set")
-    func consumeChangedRows() {
-        var pending = PendingChanges()
-        pending.recordCellChange(
-            rowIndex: 3, columnIndex: 1, columnName: "name",
-            oldValue: "a", newValue: "b"
-        )
-        let first = pending.consumeChangedRowIndices()
-        #expect(first == [3])
-        let second = pending.consumeChangedRowIndices()
-        #expect(second.isEmpty)
-    }
 }

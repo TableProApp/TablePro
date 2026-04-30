@@ -9,9 +9,18 @@ import SwiftUI
 // MARK: - Popover Editors
 
 extension TableViewCoordinator {
+    func cellValue(at row: Int, column columnIndex: Int) -> String? {
+        guard let displayRow = displayRow(at: row), columnIndex >= 0, columnIndex < displayRow.values.count else {
+            return nil
+        }
+        return displayRow.values[columnIndex]
+    }
+
     func showDatePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let currentValue = rowProvider.value(atRow: row, column: columnIndex)
-        let columnType = rowProvider.columnTypes[columnIndex]
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
+        let columnType = tableRows.columnTypes[columnIndex]
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
@@ -28,7 +37,7 @@ extension TableViewCoordinator {
     }
 
     func showForeignKeyPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, fkInfo: ForeignKeyInfo) {
-        let currentValue = rowProvider.value(atRow: row, column: columnIndex)
+        let currentValue = cellValue(at: row, column: columnIndex)
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
         guard let databaseType, let connectionId else { return }
@@ -62,10 +71,11 @@ extension TableViewCoordinator {
     }
 
     func showForeignKeyPreview(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        guard columnIndex >= 0, columnIndex < rowProvider.columns.count else { return }
-        let columnName = rowProvider.columns[columnIndex]
-        guard let fkInfo = rowProvider.columnForeignKeys[columnName] else { return }
-        let cellValue = rowProvider.value(atRow: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+        guard let fkInfo = tableRows.columnForeignKeys[columnName] else { return }
+        let cellValue = cellValue(at: row, column: columnIndex)
         guard let databaseType, let connectionId else { return }
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
@@ -92,8 +102,10 @@ extension TableViewCoordinator {
     }
 
     func showJSONEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let currentValue = rowProvider.value(atRow: row, column: columnIndex)
-        let columnName = rowProvider.columns[columnIndex]
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
@@ -126,7 +138,7 @@ extension TableViewCoordinator {
     }
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let currentValue = rowProvider.value(atRow: row, column: columnIndex)
+        let currentValue = cellValue(at: row, column: columnIndex)
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
@@ -148,11 +160,13 @@ extension TableViewCoordinator {
 
     func showEnumPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
-        let columnName = rowProvider.columns[columnIndex]
-        guard let allowedValues = rowProvider.columnEnumValues[columnName] else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+        guard let allowedValues = tableRows.columnEnumValues[columnName] else { return }
 
-        let currentValue = rowProvider.value(atRow: row, column: columnIndex)
-        let isNullable = rowProvider.columnNullable[columnName] ?? true
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let isNullable = tableRows.columnNullable[columnName] ?? true
 
         var values: [String] = []
         if isNullable {
@@ -179,10 +193,12 @@ extension TableViewCoordinator {
 
     func showSetPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
-        let columnName = rowProvider.columns[columnIndex]
-        guard let allowedValues = rowProvider.columnEnumValues[columnName] else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+        guard let allowedValues = tableRows.columnEnumValues[columnName] else { return }
 
-        let currentValue = rowProvider.value(atRow: row, column: columnIndex)
+        let currentValue = cellValue(at: row, column: columnIndex)
 
         let currentSet: Set<String>
         if let value = currentValue {
@@ -213,8 +229,10 @@ extension TableViewCoordinator {
 
     func showDropdownMenu(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
 
-        let currentValue = rowProvider.value(atRow: row, column: columnIndex)
+        let currentValue = cellValue(at: row, column: columnIndex)
         pendingDropdownRow = row
         pendingDropdownColumn = columnIndex
         pendingDropdownTableView = tableView
@@ -238,8 +256,8 @@ extension TableViewCoordinator {
             menu.addItem(item)
         }
 
-        let columnName = rowProvider.columns[columnIndex]
-        let isNullable = rowProvider.columnNullable[columnName] ?? true
+        let columnName = tableRows.columns[columnIndex]
+        let isNullable = tableRows.columnNullable[columnName] ?? true
         if isNullable && customDropdownOptions?[columnIndex] == nil {
             menu.addItem(.separator())
             let nullItem = NSMenuItem(

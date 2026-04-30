@@ -45,6 +45,11 @@ final class QueryTabManager {
         return _tabIndexMap[id]
     }
 
+    var selectedTabAndIndex: (tab: QueryTab, index: Int)? {
+        guard let index = selectedTabIndex, index < tabs.count else { return nil }
+        return (tabs[index], index)
+    }
+
     init() {
         tabs = []
         selectedTabId = nil

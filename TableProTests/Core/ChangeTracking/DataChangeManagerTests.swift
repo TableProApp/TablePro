@@ -237,26 +237,6 @@ struct DataChangeManagerTests {
         #expect(manager.changes[1].rowIndex == 1)
     }
 
-    @Test("changedRowIndices contains the changed row")
-    func changedRowIndicesTracksChanges() async {
-        let manager = DataChangeManager()
-        manager.configureForTable(
-            tableName: "users",
-            columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
-        )
-
-        manager.recordCellChange(
-            rowIndex: 5,
-            columnIndex: 1,
-            columnName: "name",
-            oldValue: "Alice",
-            newValue: "Bob"
-        )
-
-        #expect(manager.consumeChangedRowIndices().contains(5))
-    }
-
     // MARK: - Row Deletion Tests
 
     @Test("Record row deletion makes hasChanges true")
@@ -336,61 +316,6 @@ struct DataChangeManagerTests {
         #expect(manager.changes.count == 3)
         #expect(manager.changes.allSatisfy { $0.type == .delete })
         #expect(manager.hasChanges)
-    }
-
-    // MARK: - consumeChangedRowIndices Tests
-
-    @Test("consumeChangedRowIndices returns the set of changed indices")
-    func consumeReturnsChangedIndices() async {
-        let manager = DataChangeManager()
-        manager.configureForTable(
-            tableName: "users",
-            columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
-        )
-
-        manager.recordCellChange(
-            rowIndex: 0,
-            columnIndex: 1,
-            columnName: "name",
-            oldValue: "Alice",
-            newValue: "Bob"
-        )
-        manager.recordCellChange(
-            rowIndex: 2,
-            columnIndex: 1,
-            columnName: "name",
-            oldValue: "Charlie",
-            newValue: "Dave"
-        )
-
-        let consumed = manager.consumeChangedRowIndices()
-
-        #expect(consumed.contains(0))
-        #expect(consumed.contains(2))
-        #expect(consumed.count == 2)
-    }
-
-    @Test("consumeChangedRowIndices clears indices after consuming")
-    func consumeClearsIndices() async {
-        let manager = DataChangeManager()
-        manager.configureForTable(
-            tableName: "users",
-            columns: ["id", "name"],
-            primaryKeyColumns: ["id"]
-        )
-
-        manager.recordCellChange(
-            rowIndex: 0,
-            columnIndex: 1,
-            columnName: "name",
-            oldValue: "Alice",
-            newValue: "Bob"
-        )
-
-        _ = manager.consumeChangedRowIndices()
-
-        #expect(manager.consumeChangedRowIndices().isEmpty)
     }
 
     // MARK: - clearChanges Tests

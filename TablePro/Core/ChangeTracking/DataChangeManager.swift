@@ -17,6 +17,21 @@ struct UndoResult {
     let needsRowRemoval: Bool
     let needsRowRestore: Bool
     let restoreRow: [String?]?
+    let delta: Delta
+
+    init(
+        action: UndoAction,
+        needsRowRemoval: Bool,
+        needsRowRestore: Bool,
+        restoreRow: [String?]?,
+        delta: Delta = .none
+    ) {
+        self.action = action
+        self.needsRowRemoval = needsRowRemoval
+        self.needsRowRestore = needsRowRestore
+        self.restoreRow = restoreRow
+        self.delta = delta
+    }
 }
 
 /// Manager for tracking and applying data changes
@@ -61,12 +76,6 @@ final class DataChangeManager: ChangeManaging {
         guard let undoManager = undoManagerProvider?() else { return }
         undoManager.registerUndo(withTarget: self, handler: handler)
         undoManager.setActionName(actionName)
-    }
-
-    // MARK: - Helper Methods
-
-    func consumeChangedRowIndices() -> Set<Int> {
-        pending.consumeChangedRowIndices()
     }
 
     // MARK: - Configuration
@@ -259,7 +268,10 @@ final class DataChangeManager: ChangeManaging {
                 originalDBValue: newValue, newValue: previousValue, originalRow: originalRow
             )
         }
-        lastUndoResult = UndoResult(action: action, needsRowRemoval: false, needsRowRestore: false, restoreRow: nil)
+        lastUndoResult = UndoResult(
+            action: action, needsRowRemoval: false, needsRowRestore: false, restoreRow: nil,
+            delta: .cellChanged(row: rowIndex, column: columnIndex)
+        )
     }
 
     private func applyRowInsertionUndo(rowIndex: Int, action: UndoAction) {
@@ -274,12 +286,14 @@ final class DataChangeManager: ChangeManaging {
         if pending.isRowInserted(rowIndex) {
             _ = pending.undoRowInsertion(rowIndex: rowIndex)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil
+                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
+                delta: .rowsRemoved(IndexSet(integer: rowIndex))
             )
         } else {
             pending.reinsertRow(rowIndex: rowIndex, columns: columns, savedValues: savedValues)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: savedValues
+                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: savedValues,
+                delta: .rowsInserted(IndexSet(integer: rowIndex))
             )
         }
     }
@@ -292,12 +306,14 @@ final class DataChangeManager: ChangeManaging {
         if pending.isRowDeleted(rowIndex) {
             _ = pending.undoRowDeletion(rowIndex: rowIndex)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: originalRow
+                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: originalRow,
+                delta: .fullReplace
             )
         } else {
             pending.reapplyRowDeletion(rowIndex: rowIndex, originalRow: originalRow)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil
+                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
+                delta: .fullReplace
             )
         }
     }
@@ -315,14 +331,16 @@ final class DataChangeManager: ChangeManaging {
                 _ = pending.undoRowDeletion(rowIndex: rowIndex)
             }
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: nil
+                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: nil,
+                delta: .fullReplace
             )
         } else {
             for (rowIndex, originalRow) in rows {
                 pending.reapplyRowDeletion(rowIndex: rowIndex, originalRow: originalRow)
             }
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil
+                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
+                delta: .fullReplace
             )
         }
     }
@@ -335,15 +353,18 @@ final class DataChangeManager: ChangeManaging {
         }
 
         let firstInserted = rowIndices.first.map { pending.isRowInserted($0) } ?? false
+        let indices = IndexSet(rowIndices)
         if firstInserted {
             _ = pending.undoBatchRowInsertion(rowIndices: rowIndices, columnCount: columns.count)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil
+                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
+                delta: .rowsRemoved(indices)
             )
         } else {
             pending.reinsertBatch(rowIndices: rowIndices, rowValues: rowValues, columns: columns)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: nil
+                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: nil,
+                delta: .rowsInserted(indices)
             )
         }
     }

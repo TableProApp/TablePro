@@ -16,15 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Click a focused cell to start editing without a second click
 - Data grid focus ring follows the system accent color and contrast settings
 - Data grid cells expose accessibility row and column index ranges to VoiceOver on all dataset sizes
+- Data grid column headers announce sort direction and multi-sort priority to VoiceOver
 - Multi-cell paste: paste TSV data from the clipboard into the grid starting from the focused cell, grouped as a single undo action
 - Shift+Tab navigates to the previous cell in the data grid
 - Copy rows writes TSV, HTML table, and plain text to the clipboard for richer paste in spreadsheet apps
 - Row drag adds TSV and HTML representations alongside the internal drag type
+- AI provider settings allow manually entering a model name when the provider does not return one
 
 ### Changed
 
 - Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
 - Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
+- DataGrid columns and cells refactored to use a persistent column pool and typed cell view hierarchy. CPU usage on table switch reduced significantly through proper NSTableView reuse pool retention.
+- Data grid column identifiers are now the column name (with positional fallback for duplicate names), so saved widths follow the column across schema changes that shift its position. Identifier resolution moved from static `DataGridView` helpers to a `ColumnIdentitySchema` value type owned by the coordinator.
+- `ColumnLayoutStorage` singleton replaced by a `ColumnLayoutPersisting` protocol with an injectable `FileColumnLayoutPersister` default. The coordinator depends on the protocol, not the concrete class, so tests can substitute a fake.
+- Column layout save/restore on table-switch (`saveColumnLayoutForTable` / `restoreColumnLayoutForTable`) folded into the data grid coordinator's lifecycle (load on column build, persist on resize/move/dismantle). The standalone `MainContentCoordinator+ColumnLayout` extension is gone; only the visibility orchestration remains. Removes the redundant `hasUserResizedColumns` flag and the external save trigger from the binding setter.
+- Data grid header sort indicators are drawn inside a custom `NSTableHeaderCell` instead of overlay `NSImageView` subviews, replacing Unicode arrows that were embedded in the column title string. The cell renders ascending/descending chevrons via SF Symbols (`chevron.up`/`chevron.down`) with a hierarchical tint, so they pick up the correct color in light and dark mode. Removing the overlay subviews lets `NSTableHeaderView`'s native cursor management run unimpeded, so the column resize cursor on hover works without any custom cursor handling. The primary sorted column gets the system header tint via `highlightedTableColumn`, and secondary sort columns show a small priority number to the left of the chevron.
+- Data grid header divider taps trigger a column resize instead of sorting the adjacent column. `SortableHeaderView` checks if the click landed within 4 pt of a column edge and forwards the event to `NSTableHeaderView`'s native resize handling.
+- Data grid column layout persistence routes through a coordinator callback fired from outside SwiftUI's update cycle, removing the `Task`-based `@Binding` mutation inside `updateNSView` and the `isWritingColumnLayout` re-entry guard.
+- Data grid cell reuse resets foreign-key arrow and dropdown chevron button context (target, action, row, column) when the button hides, preventing a stale handler from firing the wrong row if the column toggles between FK-eligible and not.
+- `applyColumnOrder` scans only the unsettled tail of the column array per move, halving the constant cost on reorders with many columns.
+- Replaced RowBuffer / InMemoryRowProvider / RowDataStore with TableRows / TableRowsStore / TableRowsController. Mutations emit Delta events; the controller drives NSTableView via insertRows / removeRows / reloadData(forRowIndexes:). Sort and the display cache moved off the row provider into the data grid coordinator, keyed by Row.id.
+- Routed every TableRows mutation through `mutateActiveTableRows` on MainContentCoordinator so the active ResultSet's snapshot stays in sync with the store. The snapshot now refreshes only when the user switches result sets (saving the outgoing tab, loading the incoming one), so each insert / undo / paste no longer triggers an `@Observable` re-render of the whole editor. Fixes empty cells on Load More and CPU spikes when adding or undoing rows.
+- Undo of a cell edit clears the modified-cell highlight: `DataChangeManager.applyDataUndo` now bumps `reloadVersion` so the data grid rebuilds its visual state cache.
+- Reloading a table tab keeps cached column metadata (defaults, foreign keys, nullability, enum values) when no fresh schema fetch was needed, so the FK arrow and dropdown chevron stay visible across reloads instead of toggling.
 - DataChangeManager extracted a PendingChanges value type that owns cross-collection invariants for cell edits, row insertions, and deletions. DataChangeManager kept undo/redo registration, plugin SQL generation, and the `@Observable` boundary, dropping from ~960 to ~190 lines. The serialization DTO `TabPendingChanges` is renamed to `TabChangeSnapshot` to distinguish it from the live tracker.
 - AnyChangeManager uses ChangeManaging protocol instead of closure-based type erasure, removing all runtime `[Any]` downcasts
 - Row selection state moved from MainContentView @State to GridSelectionState @Observable class, preventing full view tree invalidation on every row click
@@ -44,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Date picker popover font follows the data grid font setting
 - Data grid undo/redo uses the window's UndoManager instead of a private instance, unifying Cmd+Z across editor and grid
 - Right-click during cell editing shows the native text context menu instead of the row menu
+- Multiline cell overlay editor discards the in-progress edit when a column resize fires, instead of silently committing partial text
+- Data grid cell focus ring redraws when the user toggles Light or Dark mode mid-session, picking up the system's appearance-aware focus indicator color
+- Data grid keeps sortedIDs and cachedRowCount paired by calling updateCache() immediately after the SwiftUI bridge writes new sortedIDs to the coordinator, removing a window where the cached count and the sort permutation could disagree
+- Display formats memoized per tab on MainContentCoordinator keyed by schema version, smart-detection setting, and format-overrides version, so ValueDisplayDetector.detect runs once per result schema instead of on every SwiftUI body evaluation
 
 ### Fixed
 

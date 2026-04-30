@@ -86,7 +86,7 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         let column = tableColumns[clickedColumn]
-        if column.identifier.rawValue == "__rowNumber__" {
+        if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
             focusedRow = -1
             focusedColumn = -1
             return
@@ -248,9 +248,8 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        // Multiline values use overlay editor instead of field editor
         let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn)
-        if let value = coordinator?.rowProvider.value(atRow: row, column: columnIndex),
+        if let value = coordinator?.cellValue(at: row, column: columnIndex),
            value.containsLineBreak {
             coordinator?.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
             return

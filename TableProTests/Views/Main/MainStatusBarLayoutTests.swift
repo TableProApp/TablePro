@@ -17,7 +17,7 @@ struct MainStatusBarLayoutTests {
         let filterManager = FilterStateManager()
         let colVisManager = ColumnVisibilityManager()
         let view = MainStatusBarView(
-            snapshot: StatusBarSnapshot(tab: nil, buffer: nil),
+            snapshot: StatusBarSnapshot(tab: nil, tableRows: nil),
             filterStateManager: filterManager,
             columnVisibilityManager: colVisManager,
             allColumns: [],

@@ -8,19 +8,16 @@ import SwiftUI
 
 extension TableViewCoordinator {
     func tableViewColumnDidResize(_ notification: Notification) {
-        // Only track user-initiated resizes, not programmatic ones during column rebuilds
         guard !isRebuildingColumns else { return }
-        hasUserResizedColumns = true
         scheduleLayoutPersist()
     }
 
     func tableViewColumnDidMove(_ notification: Notification) {
         guard !isRebuildingColumns else { return }
-        hasUserResizedColumns = true
         scheduleLayoutPersist()
     }
 
-    private func scheduleLayoutPersist() {
+    func scheduleLayoutPersist() {
         layoutPersistTask?.cancel()
         layoutPersistTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(500))

@@ -40,7 +40,7 @@ extension MainContentCoordinator {
                 filterStateManager.saveLastFilters(for: tableName)
             }
             saveColumnVisibilityToTab()
-            saveColumnLayoutForTable()
+            saveColumnVisibilityForActiveTable()
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
@@ -57,7 +57,7 @@ extension MainContentCoordinator {
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
             let newTab = tabManager.tabs[newIndex]
-            let newBuffer = rowDataStore.buffer(for: newId)
+            let newRows = tableRowsStore.tableRows(for: newId)
 
             // Restore filter state for new tab
             filterStateManager.restoreFromTabState(newTab.filterState)
@@ -75,9 +75,9 @@ extension MainContentCoordinator {
             } else {
                 changeManager.configureForTable(
                     tableName: newTab.tableContext.tableName ?? "",
-                    columns: newBuffer.columns,
+                    columns: newRows.columns,
                     primaryKeyColumns: newTab.tableContext.primaryKeyColumns.isEmpty
-                        ? newBuffer.columns.prefix(1).map { $0 }
+                        ? newRows.columns.prefix(1).map { $0 }
                         : newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
                     triggerReload: false
@@ -112,7 +112,7 @@ extension MainContentCoordinator {
             // If the tab shows isExecuting but has no results, the previous query was
             // likely cancelled when the user rapidly switched away. Force-clear the stale
             // flag so the lazy-load check below can re-execute the query.
-            if newTab.execution.isExecuting && newBuffer.rows.isEmpty && newTab.execution.lastExecutedAt == nil {
+            if newTab.execution.isExecuting && newRows.rows.isEmpty && newTab.execution.lastExecutedAt == nil {
                 let tabId = newId
                 Task { [weak self] in
                     guard let self,
@@ -122,9 +122,9 @@ extension MainContentCoordinator {
                 }
             }
 
-            let isEvicted = newBuffer.isEvicted
+            let isEvicted = tableRowsStore.isEvicted(newId)
             let needsLazyQuery = newTab.tabType == .table
-                && (newBuffer.rows.isEmpty || isEvicted)
+                && (newRows.rows.isEmpty || isEvicted)
                 && (newTab.execution.lastExecutedAt == nil || isEvicted)
                 && newTab.execution.errorMessage == nil
                 && !newTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -154,15 +154,15 @@ extension MainContentCoordinator {
 
     private func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
         let start = Date()
-        let candidates: [(tab: QueryTab, buffer: RowBuffer)] = tabManager.tabs.compactMap { tab in
+        let candidates: [(tab: QueryTab, rows: TableRows)] = tabManager.tabs.compactMap { tab in
             guard !activeTabIds.contains(tab.id),
                   tab.execution.lastExecutedAt != nil,
                   !tab.pendingChanges.hasChanges,
-                  let buffer = rowDataStore.existingBuffer(for: tab.id),
-                  !buffer.isEvicted,
-                  !buffer.rows.isEmpty
+                  let rows = tableRowsStore.existingTableRows(for: tab.id),
+                  !tableRowsStore.isEvicted(tab.id),
+                  !rows.rows.isEmpty
             else { return nil }
-            return (tab, buffer)
+            return (tab, rows)
         }
 
         let sorted = candidates.sorted {
@@ -170,12 +170,12 @@ extension MainContentCoordinator {
             let t1 = $1.tab.execution.lastExecutedAt ?? .distantFuture
             if t0 != t1 { return t0 < t1 }
             let size0 = MemoryPressureAdvisor.estimatedFootprint(
-                rowCount: $0.buffer.rows.count,
-                columnCount: $0.buffer.columns.count
+                rowCount: $0.rows.rows.count,
+                columnCount: $0.rows.columns.count
             )
             let size1 = MemoryPressureAdvisor.estimatedFootprint(
-                rowCount: $1.buffer.rows.count,
-                columnCount: $1.buffer.columns.count
+                rowCount: $1.rows.rows.count,
+                columnCount: $1.rows.columns.count
             )
             return size0 > size1
         }
@@ -190,7 +190,7 @@ extension MainContentCoordinator {
         let toEvict = sorted.dropLast(maxInactiveLoaded)
 
         for entry in toEvict {
-            entry.buffer.evict()
+            tableRowsStore.evict(for: entry.tab.id)
         }
         Self.lifecycleLogger.debug(
             "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"

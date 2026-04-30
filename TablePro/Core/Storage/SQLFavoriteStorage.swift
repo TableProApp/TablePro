@@ -504,6 +504,7 @@ internal final class SQLFavoriteStorage {
             var hasConnectionFilter = false
             var hasFolderFilter = false
 
+            let isJoined: Bool
             if let searchText = searchText, !searchText.isEmpty {
                 sql = """
                     SELECT f.id, f.name, f.query, f.keyword, f.folder_id, f.connection_id, f.sort_order, f.created_at, f.updated_at
@@ -511,6 +512,7 @@ internal final class SQLFavoriteStorage {
                     INNER JOIN favorites_fts ON f.rowid = favorites_fts.rowid
                     WHERE favorites_fts MATCH ?
                     """
+                isJoined = true
 
                 if connectionIdString != nil {
                     sql += " AND (f.connection_id IS NULL OR f.connection_id = ?)"
@@ -526,6 +528,7 @@ internal final class SQLFavoriteStorage {
                     SELECT id, name, query, keyword, folder_id, connection_id, sort_order, created_at, updated_at
                     FROM favorites
                     """
+                isJoined = false
 
                 var whereClauses: [String] = []
 
@@ -544,7 +547,7 @@ internal final class SQLFavoriteStorage {
                 }
             }
 
-            sql += " ORDER BY sort_order ASC, name ASC;"
+            sql += isJoined ? " ORDER BY f.sort_order ASC, f.name ASC;" : " ORDER BY sort_order ASC, name ASC;"
 
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else {

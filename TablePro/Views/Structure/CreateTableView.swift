@@ -47,7 +47,6 @@ struct CreateTableView: View {
     // DataGridView state
     @State private var selectedRows: Set<Int> = []
     @State private var sortState = SortState()
-    @State private var editingCell: CellPosition?
     @State private var columnLayout = ColumnLayoutState()
 
     init(connection: DatabaseConnection, coordinator: MainContentCoordinator?) {
@@ -235,8 +234,9 @@ struct CreateTableView: View {
             additionalFields: [.primaryKey]
         )
 
+        let tableRows = provider.asTableRows()
         return DataGridView(
-            rowProvider: provider.asInMemoryProvider(),
+            tableRowsProvider: { tableRows },
             changeManager: wrappedChangeManager,
             isEditable: true,
             configuration: DataGridConfiguration(
@@ -248,7 +248,6 @@ struct CreateTableView: View {
             delegate: gridDelegate,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
-            editingCell: $editingCell,
             columnLayout: $columnLayout
         )
     }
