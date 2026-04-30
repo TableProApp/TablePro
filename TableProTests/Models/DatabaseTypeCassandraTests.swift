@@ -68,9 +68,9 @@ struct DatabaseTypeCassandraTests {
         #expect(DatabaseType.cassandra.iconName == "cassandra-icon")
     }
 
-    @Test("ScyllaDB icon name is scylladb-icon")
+    @Test("ScyllaDB icon name is cassandra-icon")
     func scylladbIconName() {
-        #expect(DatabaseType.scylladb.iconName == "scylladb-icon")
+        #expect(DatabaseType.scylladb.iconName == "cassandra-icon")
     }
 
     @Test("Cassandra is a downloadable plugin")

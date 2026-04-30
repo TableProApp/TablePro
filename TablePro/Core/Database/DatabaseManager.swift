@@ -17,6 +17,10 @@ final class DatabaseManager {
     static let shared = DatabaseManager()
     internal static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
 
+    @ObservationIgnored internal let connectionStorage: ConnectionStorage
+    @ObservationIgnored internal let appSettingsStorage: AppSettingsStorage
+    @ObservationIgnored internal let pluginManager: PluginManager
+
     /// All active connection sessions
     internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {
         didSet {
@@ -82,12 +86,20 @@ final class DatabaseManager {
         currentSession?.status ?? .disconnected
     }
 
-    internal init() {}
+    internal init(
+        connectionStorage: ConnectionStorage = .shared,
+        appSettingsStorage: AppSettingsStorage = .shared,
+        pluginManager: PluginManager = .shared
+    ) {
+        self.connectionStorage = connectionStorage
+        self.appSettingsStorage = appSettingsStorage
+        self.pluginManager = pluginManager
+    }
 
     private func persistOpenConnectionIds() {
-        let connections = ConnectionStorage.shared.loadConnections()
+        let connections = connectionStorage.loadConnections()
         let activeKeys = Set(activeSessions.keys)
         let ids = connections.filter { activeKeys.contains($0.id) }.map(\.id)
-        AppSettingsStorage.shared.saveLastOpenConnectionIds(ids)
+        appSettingsStorage.saveLastOpenConnectionIds(ids)
     }
 }

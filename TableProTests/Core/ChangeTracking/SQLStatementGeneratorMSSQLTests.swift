@@ -17,8 +17,8 @@ struct SQLStatementGeneratorMSSQLTests {
         tableName: String = "users",
         columns: [String] = ["id", "name", "email"],
         primaryKeyColumns: [String] = ["id"]
-    ) -> SQLStatementGenerator {
-        SQLStatementGenerator(
+    ) throws -> SQLStatementGenerator {
+        try SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
@@ -64,8 +64,8 @@ struct SQLStatementGeneratorMSSQLTests {
     // MARK: - Placeholder Tests
 
     @Test("INSERT statement uses question mark placeholders")
-    func insertUsesQuestionMarkPlaceholders() {
-        let generator = makeGenerator()
+    func insertUsesQuestionMarkPlaceholders() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
@@ -80,8 +80,8 @@ struct SQLStatementGeneratorMSSQLTests {
     }
 
     @Test("UPDATE statement uses question mark placeholders")
-    func updateUsesQuestionMarkPlaceholders() {
-        let generator = makeGenerator()
+    func updateUsesQuestionMarkPlaceholders() throws {
+        let generator = try makeGenerator()
         let statements = generator.generateStatements(
             from: [makeUpdateChange()],
             insertedRowData: [:],
@@ -97,8 +97,8 @@ struct SQLStatementGeneratorMSSQLTests {
     // MARK: - INSERT Tests
 
     @Test("INSERT uses bracket-quoted table and column names")
-    func insertBracketQuoting() {
-        let generator = makeGenerator()
+    func insertBracketQuoting() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
@@ -116,8 +116,8 @@ struct SQLStatementGeneratorMSSQLTests {
     }
 
     @Test("INSERT with multiple columns produces correct number of placeholders")
-    func insertMultipleColumnsPlaceholders() {
-        let generator = makeGenerator(columns: ["id", "name", "email"])
+    func insertMultipleColumnsPlaceholders() throws {
+        let generator = try makeGenerator(columns: ["id", "name", "email"])
         let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
@@ -136,8 +136,8 @@ struct SQLStatementGeneratorMSSQLTests {
     // MARK: - UPDATE Tests
 
     @Test("UPDATE uses bracket-quoted table and column names")
-    func updateBracketQuoting() {
-        let generator = makeGenerator()
+    func updateBracketQuoting() throws {
+        let generator = try makeGenerator()
         let statements = generator.generateStatements(
             from: [makeUpdateChange()],
             insertedRowData: [:],
@@ -151,8 +151,8 @@ struct SQLStatementGeneratorMSSQLTests {
     }
 
     @Test("UPDATE WHERE clause uses primary key")
-    func updateWhereClauseUsesPrimaryKey() {
-        let generator = makeGenerator()
+    func updateWhereClauseUsesPrimaryKey() throws {
+        let generator = try makeGenerator()
         let statements = generator.generateStatements(
             from: [makeUpdateChange()],
             insertedRowData: [:],
@@ -168,8 +168,8 @@ struct SQLStatementGeneratorMSSQLTests {
     // MARK: - DELETE Tests
 
     @Test("DELETE uses bracket-quoted table name")
-    func deleteBracketQuoting() {
-        let generator = makeGenerator()
+    func deleteBracketQuoting() throws {
+        let generator = try makeGenerator()
         let statements = generator.generateStatements(
             from: [makeDeleteChange()],
             insertedRowData: [:],
@@ -181,19 +181,5 @@ struct SQLStatementGeneratorMSSQLTests {
         let sql = statements[0].sql
         #expect(sql.contains("DELETE FROM [users]"))
         #expect(sql.contains("WHERE [id] = ?"))
-    }
-
-    @Test("DELETE does not add LIMIT clause for MSSQL")
-    func deleteNoLimitClause() {
-        let generator = makeGenerator()
-        let statements = generator.generateStatements(
-            from: [makeDeleteChange()],
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
     }
 }

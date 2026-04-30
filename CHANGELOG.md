@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - MCP server lazy-starts on first external request. Manual enable in Settings is no longer required
 - Settings tab renamed from "MCP" to "Integrations" with new sections for connected clients, activity log, and pairing
+- Storage and sync singletons accept dependencies via init for test isolation, matching Apple's URLSession and UserDefaults convention. Production callers using `.shared` are unchanged. `SQLFavoriteStorage` is now an actor so its first access no longer blocks the main thread on SQLite setup.
 - Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
 - Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
 - DataGrid columns and cells refactored to use a persistent column pool and typed cell view hierarchy. CPU usage on table switch reduced significantly through proper NSTableView reuse pool retention.
@@ -86,6 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Native Search Field focus regression when clearing text
 - PostgreSQL Create Database failed with `new collation incompatible with template database` on glibc-initialized servers (#927). Encodings, collations, and the `template1` defaults are now read from the server. `LC_CTYPE` mirrors `LC_COLLATE`, and `TEMPLATE template0` is added automatically when the chosen collation differs from `template1.datcollate`.
 - Redshift Create Database emitted PostgreSQL `LC_COLLATE` syntax which is invalid Redshift grammar. Now emits `COLLATE { CASE_SENSITIVE | CASE_INSENSITIVE }`.
+- Expand tilde in SSH agent socket and `IdentityAgent` paths so 1Password and similar agents work when configured with `~/...` paths.
+- Persist group deletions before firing the sync notification, fixing a race that could re-upload deleted groups via iCloud.
+- Persist connection deletions before firing the sync notification, fixing the same race for deleted connections.
+- Refuse to generate SQL when the database dialect cannot be resolved, instead of silently emitting unquoted identifiers.
 
 ## [0.36.0] - 2026-04-27
 

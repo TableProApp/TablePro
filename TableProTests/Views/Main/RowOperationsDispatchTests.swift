@@ -64,7 +64,7 @@ struct RowOperationsDispatchTests {
         delegate.tableViewCoordinator = fake
         coordinator.dataTabDelegate = delegate
 
-        tabManager.addTableTab(tableName: "users")
+        try tabManager.addTableTab(tableName: "users")
         let tabIndex = tabManager.selectedTabIndex ?? 0
         tabManager.tabs[tabIndex].tableContext.isEditable = true
         let tabId = tabManager.tabs[tabIndex].id

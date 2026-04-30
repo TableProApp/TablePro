@@ -8,16 +8,32 @@ import XCTest
 
 @MainActor
 final class GroupStorageTests: XCTestCase {
-    private let storage = GroupStorage.shared
-    private let testKey = "com.TablePro.groups"
+    private var defaults: UserDefaults!
+    private var suiteName: String!
+    private var syncDefaults: UserDefaults!
+    private var syncSuiteName: String!
+    private var storage: GroupStorage!
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removeObject(forKey: testKey)
+        let unique = UUID().uuidString
+        suiteName = "com.TablePro.tests.GroupStorage.\(unique)"
+        defaults = UserDefaults(suiteName: suiteName)!
+        syncSuiteName = "com.TablePro.tests.Sync.\(unique)"
+        syncDefaults = UserDefaults(suiteName: syncSuiteName)!
+        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        storage = GroupStorage(userDefaults: defaults, syncTracker: tracker)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: testKey)
+        defaults.removePersistentDomain(forName: suiteName)
+        syncDefaults.removePersistentDomain(forName: syncSuiteName)
+        defaults = nil
+        suiteName = nil
+        syncDefaults = nil
+        syncSuiteName = nil
+        storage = nil
         super.tearDown()
     }
 

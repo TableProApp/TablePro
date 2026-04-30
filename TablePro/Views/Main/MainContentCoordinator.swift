@@ -351,7 +351,7 @@ final class MainContentCoordinator {
         self.queryBuilder = TableQueryBuilder(
             databaseType: connection.type,
             dialect: dialect,
-            dialectQuote: quoteIdentifierFromDialect(dialect)
+            dialectQuote: dialect.map { quoteIdentifierFromDialect($0) }
         )
         self.persistence = TabPersistenceCoordinator(connectionId: connection.id)
 

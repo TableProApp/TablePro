@@ -6,6 +6,9 @@
 //
 
 import AppKit
+import os
+
+private let rowActionsLogger = Logger(subsystem: "com.TablePro", category: "DataGridView+RowActions")
 
 // MARK: - Row Actions
 
@@ -108,34 +111,42 @@ extension TableViewCoordinator {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
         let driver = resolveDriver()
-        let converter = SQLRowToStatementConverter(
-            tableName: tableName,
-            columns: tableRows.columns,
-            primaryKeyColumn: primaryKeyColumn,
-            databaseType: databaseType,
-            quoteIdentifier: driver?.quoteIdentifier,
-            escapeStringLiteral: driver?.escapeStringLiteral
-        )
-        let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
-        guard !rows.isEmpty else { return }
-        ClipboardService.shared.writeText(converter.generateInserts(rows: rows))
+        do {
+            let converter = try SQLRowToStatementConverter(
+                tableName: tableName,
+                columns: tableRows.columns,
+                primaryKeyColumn: primaryKeyColumn,
+                databaseType: databaseType,
+                quoteIdentifier: driver?.quoteIdentifier,
+                escapeStringLiteral: driver?.escapeStringLiteral
+            )
+            let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
+            guard !rows.isEmpty else { return }
+            ClipboardService.shared.writeText(converter.generateInserts(rows: rows))
+        } catch {
+            rowActionsLogger.error("copyRowsAsInsert failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func copyRowsAsUpdate(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
         let driver = resolveDriver()
-        let converter = SQLRowToStatementConverter(
-            tableName: tableName,
-            columns: tableRows.columns,
-            primaryKeyColumn: primaryKeyColumn,
-            databaseType: databaseType,
-            quoteIdentifier: driver?.quoteIdentifier,
-            escapeStringLiteral: driver?.escapeStringLiteral
-        )
-        let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
-        guard !rows.isEmpty else { return }
-        ClipboardService.shared.writeText(converter.generateUpdates(rows: rows))
+        do {
+            let converter = try SQLRowToStatementConverter(
+                tableName: tableName,
+                columns: tableRows.columns,
+                primaryKeyColumn: primaryKeyColumn,
+                databaseType: databaseType,
+                quoteIdentifier: driver?.quoteIdentifier,
+                escapeStringLiteral: driver?.escapeStringLiteral
+            )
+            let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
+            guard !rows.isEmpty else { return }
+            ClipboardService.shared.writeText(converter.generateUpdates(rows: rows))
+        } catch {
+            rowActionsLogger.error("copyRowsAsUpdate failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {

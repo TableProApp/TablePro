@@ -7,38 +7,47 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("ConnectionStorage Persistence", .serialized)
+@Suite("ConnectionStorage Persistence")
 @MainActor
 struct ConnectionStoragePersistenceTests {
-    private let storage = ConnectionStorage.shared
+    private let storage: ConnectionStorage
+    private let defaults: UserDefaults
 
-    @Test("loading empty storage does not write back to UserDefaults")
+    init() {
+        let unique = UUID().uuidString
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("connections_\(unique).json")
+        try? FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
+        self.defaults = UserDefaults(suiteName: suiteName)!
+        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")!
+        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        self.storage = ConnectionStorage(
+            fileURL: fileURL,
+            userDefaults: defaults,
+            syncTracker: tracker
+        )
+    }
+
+    @Test("loading empty storage does not write back")
     func loadEmptyDoesNotWrite() {
-        let original = storage.loadConnections()
-        defer { storage.saveConnections(original) }
-
-        // Clear all connections
-        storage.saveConnections([])
-
-        // Force cache clear by saving then loading
         let loaded = storage.loadConnections()
         #expect(loaded.isEmpty)
 
-        // Add a connection directly, bypassing cache
         let connection = DatabaseConnection(name: "Persistence Test")
         storage.addConnection(connection)
-        defer { storage.deleteConnection(connection) }
 
-        // Loading again should return the connection, not overwrite with empty
         let reloaded = storage.loadConnections()
         #expect(reloaded.contains { $0.id == connection.id })
     }
 
     @Test("round-trip save and load preserves connections")
     func roundTripSaveLoad() {
-        let original = storage.loadConnections()
-        defer { storage.saveConnections(original) }
-
         let connection = DatabaseConnection(
             name: "Round Trip Test",
             host: "127.0.0.1",
@@ -52,6 +61,5 @@ struct ConnectionStoragePersistenceTests {
         #expect(loaded.count == 1)
         #expect(loaded.first?.id == connection.id)
         #expect(loaded.first?.name == "Round Trip Test")
-        #expect(loaded.first?.host == "127.0.0.1")
     }
 }

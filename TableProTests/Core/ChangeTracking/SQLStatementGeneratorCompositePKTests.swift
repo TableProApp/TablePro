@@ -17,8 +17,8 @@ struct SQLStatementGeneratorCompositePKTests {
         columns: [String] = ["order_id", "product_id", "quantity", "price"],
         primaryKeyColumns: [String] = ["order_id", "product_id"],
         databaseType: DatabaseType = .mysql
-    ) -> SQLStatementGenerator {
-        SQLStatementGenerator(
+    ) throws -> SQLStatementGenerator {
+        try SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
@@ -80,8 +80,8 @@ struct SQLStatementGeneratorCompositePKTests {
     // MARK: - UPDATE: Composite PK WHERE Clause
 
     @Test("UPDATE with 2-column composite PK produces AND in WHERE")
-    func updateCompositePKBasic() {
-        let gen = makeGenerator()
+    func updateCompositePKBasic() throws {
+        let gen = try makeGenerator()
         let stmts = generate([
             makeUpdateChange(
                 columnIndex: 2, columnName: "quantity",
@@ -98,8 +98,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("UPDATE with 3-column composite PK produces multiple ANDs")
-    func updateThreeColumnCompositePK() {
-        let gen = makeGenerator(
+    func updateThreeColumnCompositePK() throws {
+        let gen = try makeGenerator(
             columns: ["tenant_id", "user_id", "role_id", "active"],
             primaryKeyColumns: ["tenant_id", "user_id", "role_id"]
         )
@@ -120,8 +120,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("UPDATE preserves correct parameter order: SET values before WHERE values")
-    func updateParameterOrder() {
-        let gen = makeGenerator()
+    func updateParameterOrder() throws {
+        let gen = try makeGenerator()
         let stmts = generate([
             makeUpdateChange(
                 columnIndex: 2, columnName: "quantity",
@@ -138,8 +138,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("UPDATE multiple columns on same row with composite PK")
-    func updateMultipleColumnsCompositePK() {
-        let gen = makeGenerator()
+    func updateMultipleColumnsCompositePK() throws {
+        let gen = try makeGenerator()
         let stmts = generate([
             makeMultiCellUpdateChange(
                 cellChanges: [
@@ -160,8 +160,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("UPDATE where user edits a PK column uses original value in WHERE")
-    func updateEditsPKColumn() {
-        let gen = makeGenerator()
+    func updateEditsPKColumn() throws {
+        let gen = try makeGenerator()
         let stmts = generate([
             makeUpdateChange(
                 columnIndex: 1, columnName: "product_id",
@@ -179,8 +179,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("Multiple UPDATE changes generate separate statements")
-    func multipleUpdatesCompositePK() {
-        let gen = makeGenerator()
+    func multipleUpdatesCompositePK() throws {
+        let gen = try makeGenerator()
         let stmts = generate([
             makeUpdateChange(
                 rowIndex: 0, columnIndex: 2, columnName: "quantity",
@@ -206,8 +206,8 @@ struct SQLStatementGeneratorCompositePKTests {
     // MARK: - UPDATE: Database Dialects
 
     @Test("PostgreSQL UPDATE with composite PK uses $N placeholders")
-    func updateCompositePKPostgreSQL() {
-        let gen = makeGenerator(databaseType: .postgresql)
+    func updateCompositePKPostgreSQL() throws {
+        let gen = try makeGenerator(databaseType: .postgresql)
         let stmts = generate([
             makeUpdateChange(
                 columnIndex: 2, columnName: "quantity",
@@ -224,8 +224,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("MSSQL UPDATE with composite PK uses bracket quoting")
-    func updateCompositePKMSSQL() {
-        let gen = makeGenerator(databaseType: .mssql)
+    func updateCompositePKMSSQL() throws {
+        let gen = try makeGenerator(databaseType: .mssql)
         let stmts = generate([
             makeUpdateChange(
                 columnIndex: 2, columnName: "quantity",
@@ -243,8 +243,8 @@ struct SQLStatementGeneratorCompositePKTests {
     // MARK: - DELETE: Composite PK
 
     @Test("Single row DELETE with composite PK uses AND")
-    func deleteSingleRowCompositePK() {
-        let gen = makeGenerator()
+    func deleteSingleRowCompositePK() throws {
+        let gen = try makeGenerator()
         let stmts = generate(
             [makeDeleteChange(rowIndex: 0, originalRow: ["1", "42", "5", "9.99"])],
             generator: gen,
@@ -263,8 +263,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("Batch DELETE with composite PK: (AND) per row, OR between rows")
-    func batchDeleteCompositePK() {
-        let gen = makeGenerator()
+    func batchDeleteCompositePK() throws {
+        let gen = try makeGenerator()
         let stmts = generate(
             [
                 makeDeleteChange(rowIndex: 0, originalRow: ["1", "42", "5", "9.99"]),
@@ -284,8 +284,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("Batch DELETE with composite PK on PostgreSQL uses $N")
-    func batchDeleteCompositePKPostgreSQL() {
-        let gen = makeGenerator(databaseType: .postgresql)
+    func batchDeleteCompositePKPostgreSQL() throws {
+        let gen = try makeGenerator(databaseType: .postgresql)
         let stmts = generate(
             [
                 makeDeleteChange(rowIndex: 0, originalRow: ["1", "42", "5", "9.99"]),
@@ -306,8 +306,8 @@ struct SQLStatementGeneratorCompositePKTests {
     // MARK: - Single PK Regression
 
     @Test("Single PK UPDATE still works (regression)")
-    func singlePKUpdateRegression() {
-        let gen = makeGenerator(
+    func singlePKUpdateRegression() throws {
+        let gen = try makeGenerator(
             tableName: "users",
             columns: ["id", "name", "email"],
             primaryKeyColumns: ["id"]
@@ -327,8 +327,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("Single PK batch DELETE no parentheses (regression)")
-    func singlePKBatchDeleteRegression() {
-        let gen = makeGenerator(
+    func singlePKBatchDeleteRegression() throws {
+        let gen = try makeGenerator(
             tableName: "users",
             columns: ["id", "name", "email"],
             primaryKeyColumns: ["id"]
@@ -353,8 +353,8 @@ struct SQLStatementGeneratorCompositePKTests {
     // MARK: - No PK Fallback
 
     @Test("No PK UPDATE falls back to all-column WHERE")
-    func noPKUpdateFallback() {
-        let gen = makeGenerator(
+    func noPKUpdateFallback() throws {
+        let gen = try makeGenerator(
             tableName: "logs",
             columns: ["ts", "message", "level"],
             primaryKeyColumns: []
@@ -375,8 +375,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("No PK DELETE uses individual per-row statements with all columns")
-    func noPKDeleteFallback() {
-        let gen = makeGenerator(
+    func noPKDeleteFallback() throws {
+        let gen = try makeGenerator(
             tableName: "logs",
             columns: ["ts", "message", "level"],
             primaryKeyColumns: []
@@ -398,8 +398,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("No PK fallback handles NULL values with IS NULL")
-    func noPKFallbackNullHandling() {
-        let gen = makeGenerator(
+    func noPKFallbackNullHandling() throws {
+        let gen = try makeGenerator(
             tableName: "logs",
             columns: ["ts", "message", "level"],
             primaryKeyColumns: []
@@ -422,8 +422,8 @@ struct SQLStatementGeneratorCompositePKTests {
     // MARK: - Edge Cases
 
     @Test("Composite PK with NULL value in one PK column skips UPDATE")
-    func compositePKNullValueSkipsUpdate() {
-        let gen = makeGenerator()
+    func compositePKNullValueSkipsUpdate() throws {
+        let gen = try makeGenerator()
         let stmts = generate([
             makeUpdateChange(
                 columnIndex: 2, columnName: "quantity",
@@ -436,8 +436,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("Composite PK with NULL in one PK column skips batch DELETE for that row")
-    func compositePKNullValueInBatchDelete() {
-        let gen = makeGenerator()
+    func compositePKNullValueInBatchDelete() throws {
+        let gen = try makeGenerator()
         let stmts = generate(
             [
                 makeDeleteChange(rowIndex: 0, originalRow: ["1", nil, "5", "9.99"]),
@@ -453,8 +453,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("UPDATE without originalRow falls back to cellChanges for PK value")
-    func updateWithoutOriginalRowUsesCellChanges() {
-        let gen = makeGenerator()
+    func updateWithoutOriginalRowUsesCellChanges() throws {
+        let gen = try makeGenerator()
         let change = RowChange(
             rowIndex: 0,
             type: .update,
@@ -474,8 +474,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("UPDATE without originalRow and missing PK in cellChanges is skipped")
-    func updateWithoutOriginalRowMissingPKSkipped() {
-        let gen = makeGenerator()
+    func updateWithoutOriginalRowMissingPKSkipped() throws {
+        let gen = try makeGenerator()
         let change = RowChange(
             rowIndex: 0,
             type: .update,
@@ -491,8 +491,8 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     @Test("Mixed INSERT + UPDATE + DELETE with composite PK generates correct statements")
-    func mixedOperationsCompositePK() {
-        let gen = makeGenerator()
+    func mixedOperationsCompositePK() throws {
+        let gen = try makeGenerator()
 
         let insertChange = RowChange(rowIndex: 3, type: .insert, cellChanges: [])
         let updateChange = makeUpdateChange(

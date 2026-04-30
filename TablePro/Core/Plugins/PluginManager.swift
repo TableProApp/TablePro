@@ -16,6 +16,10 @@ final class PluginManager {
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let builtInPluginsURL: URL?
+    @ObservationIgnored internal let userPluginsDir: URL
+
     internal(set) var plugins: [PluginEntry] = []
 
     internal(set) var isInstalling = false
@@ -57,10 +61,8 @@ final class PluginManager {
 
     private static let needsRestartKey = "com.TablePro.needsRestart"
 
-    var needsRestartStorage: Bool = UserDefaults.standard.bool(
-        forKey: needsRestartKey
-    ) {
-        didSet { UserDefaults.standard.set(needsRestartStorage, forKey: Self.needsRestartKey) }
+    var needsRestartStorage: Bool {
+        didSet { defaults.set(needsRestartStorage, forKey: Self.needsRestartKey) }
     }
 
     var needsRestart: Bool { needsRestartStorage }
@@ -73,16 +75,9 @@ final class PluginManager {
 
     internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
 
-    private var builtInPluginsDir: URL? { Bundle.main.builtInPlugInsURL }
-
-    var userPluginsDir: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("TablePro/Plugins", isDirectory: true)
-    }
-
     var disabledPluginIds: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: Self.disabledPluginsKey) ?? []) }
-        set { UserDefaults.standard.set(Array(newValue), forKey: Self.disabledPluginsKey) }
+        get { Set(defaults.stringArray(forKey: Self.disabledPluginsKey) ?? []) }
+        set { defaults.set(Array(newValue), forKey: Self.disabledPluginsKey) }
     }
 
     static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
@@ -91,7 +86,21 @@ final class PluginManager {
 
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
-    private init() {}
+    init(
+        userDefaults: UserDefaults = .standard,
+        builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
+        userPluginsDir: URL = PluginManager.defaultUserPluginsDir()
+    ) {
+        self.defaults = userDefaults
+        self.builtInPluginsURL = builtInPluginsURL
+        self.userPluginsDir = userPluginsDir
+        self.needsRestartStorage = userDefaults.bool(forKey: Self.needsRestartKey)
+    }
+
+    nonisolated static func defaultUserPluginsDir() -> URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("TablePro/Plugins", isDirectory: true)
+    }
 
     // MARK: - Registry Metadata
 
@@ -134,7 +143,6 @@ final class PluginManager {
     }
 
     private func migrateDisabledPluginsKey() {
-        let defaults = UserDefaults.standard
         if let legacy = defaults.stringArray(forKey: Self.legacyDisabledPluginsKey) {
             if defaults.stringArray(forKey: Self.disabledPluginsKey) == nil {
                 defaults.set(legacy, forKey: Self.disabledPluginsKey)
@@ -317,7 +325,7 @@ final class PluginManager {
             }
         }
 
-        if let builtInDir = builtInPluginsDir {
+        if let builtInDir = builtInPluginsURL {
             discoverPlugins(from: builtInDir, source: .builtIn)
             removeUserInstalledDuplicates(builtInDir: builtInDir)
         }

@@ -17,7 +17,9 @@ final class ConnectionStorage {
 
     private let connectionsKey = "com.TablePro.connections"
     private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let syncTracker: SyncChangeTracker
+    private let appSettingsProvider: () -> AppSettingsStorage
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -26,16 +28,28 @@ final class ConnectionStorage {
 
     private let fileURL: URL
 
-    private init() {
+    init(
+        fileURL: URL = ConnectionStorage.defaultFileURL(),
+        userDefaults: UserDefaults = .standard,
+        syncTracker: SyncChangeTracker = .shared,
+        appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared
+    ) {
+        self.fileURL = fileURL
+        self.defaults = userDefaults
+        self.syncTracker = syncTracker
+        self.appSettingsProvider = appSettings
+
+        migrateFromUserDefaultsIfNeeded()
+    }
+
+    nonisolated static func defaultFileURL() -> URL {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? FileManager.default.temporaryDirectory
         let dir = appSupport.appendingPathComponent("TablePro", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("connections.json")
-
-        migrateFromUserDefaultsIfNeeded()
+        return dir.appendingPathComponent("connections.json")
     }
 
     /// One-time migration from UserDefaults to atomic file storage.
@@ -113,7 +127,7 @@ final class ConnectionStorage {
         connections.append(connection)
         saveConnections(connections)
         if !connection.localOnly {
-            SyncChangeTracker.shared.markDirty(.connection, id: connection.id.uuidString)
+            syncTracker.markDirty(.connection, id: connection.id.uuidString)
         }
 
         if let password = password, !password.isEmpty {
@@ -128,7 +142,7 @@ final class ConnectionStorage {
             connections[index] = connection
             saveConnections(connections)
             if !connection.localOnly {
-                SyncChangeTracker.shared.markDirty(.connection, id: connection.id.uuidString)
+                syncTracker.markDirty(.connection, id: connection.id.uuidString)
             }
 
             if let password = password {
@@ -143,12 +157,12 @@ final class ConnectionStorage {
 
     /// Delete a connection
     func deleteConnection(_ connection: DatabaseConnection) {
-        if !connection.localOnly {
-            SyncChangeTracker.shared.markDeleted(.connection, id: connection.id.uuidString)
-        }
         var connections = loadConnections()
         connections.removeAll { $0.id == connection.id }
         saveConnections(connections)
+        if !connection.localOnly {
+            syncTracker.markDeleted(.connection, id: connection.id.uuidString)
+        }
         deletePassword(for: connection.id)
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
@@ -157,19 +171,20 @@ final class ConnectionStorage {
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
 
-        AppSettingsStorage.shared.saveLastDatabase(nil, for: connection.id)
-        AppSettingsStorage.shared.saveLastSchema(nil, for: connection.id)
+        let appSettings = appSettingsProvider()
+        appSettings.saveLastDatabase(nil, for: connection.id)
+        appSettings.saveLastSchema(nil, for: connection.id)
     }
 
     /// Batch-delete multiple connections and clean up their Keychain entries
     func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) {
-        for conn in connectionsToDelete where !conn.localOnly {
-            SyncChangeTracker.shared.markDeleted(.connection, id: conn.id.uuidString)
-        }
         let idsToDelete = Set(connectionsToDelete.map(\.id))
         var all = loadConnections()
         all.removeAll { idsToDelete.contains($0.id) }
         saveConnections(all)
+        for conn in connectionsToDelete where !conn.localOnly {
+            syncTracker.markDeleted(.connection, id: conn.id.uuidString)
+        }
         for conn in connectionsToDelete {
             deletePassword(for: conn.id)
             deleteSSHPassword(for: conn.id)
@@ -177,8 +192,9 @@ final class ConnectionStorage {
             deleteTOTPSecret(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
-            AppSettingsStorage.shared.saveLastDatabase(nil, for: conn.id)
-            AppSettingsStorage.shared.saveLastSchema(nil, for: conn.id)
+            let appSettings = appSettingsProvider()
+            appSettings.saveLastDatabase(nil, for: conn.id)
+            appSettings.saveLastSchema(nil, for: conn.id)
         }
     }
 
@@ -217,7 +233,7 @@ final class ConnectionStorage {
         connections.append(duplicate)
         saveConnections(connections)
         if !duplicate.localOnly {
-            SyncChangeTracker.shared.markDirty(.connection, id: duplicate.id.uuidString)
+            syncTracker.markDirty(.connection, id: duplicate.id.uuidString)
         }
 
         // Copy all passwords from source to duplicate (skip DB password in prompt mode)
@@ -357,8 +373,8 @@ final class ConnectionStorage {
 
     func migratePluginSecureFieldsIfNeeded() {
         let migrationKey = "com.TablePro.pluginSecureFieldsMigrated"
-        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
-        defer { UserDefaults.standard.set(true, forKey: migrationKey) }
+        guard !defaults.bool(forKey: migrationKey) else { return }
+        defer { defaults.set(true, forKey: migrationKey) }
 
         var connections = loadConnections()
         var changed = false

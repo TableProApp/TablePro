@@ -7,9 +7,20 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLFavoriteStorage", .serialized)
+@Suite("SQLFavoriteStorage")
 struct SQLFavoriteStorageTests {
-    private let storage = SQLFavoriteStorage(isolatedForTesting: true)
+    private let storage: SQLFavoriteStorage
+
+    init() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("sql_favorites_\(UUID().uuidString).db")
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        self.storage = SQLFavoriteStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+    }
 
     // MARK: - Helpers
 

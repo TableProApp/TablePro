@@ -17,7 +17,8 @@ final class SyncChangeTracker {
     static let shared = SyncChangeTracker()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncChangeTracker")
 
-    private let metadataStorage = SyncMetadataStorage.shared
+    private let metadataStorage: SyncMetadataStorage
+    private let notificationCenter: NotificationCenter
 
     /// When true, changes are not tracked (used during remote apply to avoid sync loops)
     private let suppressionLock = OSAllocatedUnfairLock(initialState: false)
@@ -27,7 +28,13 @@ final class SyncChangeTracker {
         set { suppressionLock.withLock { $0 = newValue } }
     }
 
-    private init() {}
+    init(
+        metadataStorage: SyncMetadataStorage = .shared,
+        notificationCenter: NotificationCenter = .default
+    ) {
+        self.metadataStorage = metadataStorage
+        self.notificationCenter = notificationCenter
+    }
 
     // MARK: - Mark Dirty
 
@@ -76,6 +83,6 @@ final class SyncChangeTracker {
     // MARK: - Private
 
     private func postChangeNotification() {
-        NotificationCenter.default.post(name: .syncChangeTracked, object: self)
+        notificationCenter.post(name: .syncChangeTracked, object: self)
     }
 }

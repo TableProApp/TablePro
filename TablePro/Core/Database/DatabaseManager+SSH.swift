@@ -39,9 +39,9 @@ extension DatabaseManager {
             keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profileId)
             totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId)
         case .inline:
-            storedSshPassword = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
-            keyPassphrase = ConnectionStorage.shared.loadKeyPassphrase(for: connection.id)
-            totpSecret = ConnectionStorage.shared.loadTOTPSecret(for: connection.id)
+            storedSshPassword = connectionStorage.loadSSHPassword(for: connection.id)
+            keyPassphrase = connectionStorage.loadKeyPassphrase(for: connection.id)
+            totpSecret = connectionStorage.loadTOTPSecret(for: connection.id)
         }
 
         let sshPassword = sshPasswordOverride ?? storedSshPassword

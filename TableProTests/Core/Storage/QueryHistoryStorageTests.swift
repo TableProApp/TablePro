@@ -10,9 +10,20 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryHistoryStorage", .serialized)
+@Suite("QueryHistoryStorage")
 struct QueryHistoryStorageTests {
-    private let storage = QueryHistoryStorage.shared
+    private let storage: QueryHistoryStorage
+
+    init() {
+        self.storage = Self.makeIsolatedStorage()
+    }
+
+    static func makeIsolatedStorage() -> QueryHistoryStorage {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("query_history_\(UUID().uuidString).db")
+        return QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+    }
 
     private func makeEntry(
         id: UUID = UUID(),
@@ -38,7 +49,7 @@ struct QueryHistoryStorageTests {
 
     @Test("Isolated instance initializes without deadlock")
     func isolatedInitDoesNotDeadlock() async {
-        let isolated = QueryHistoryStorage(isolatedForTesting: true)
+        let isolated = Self.makeIsolatedStorage()
         let entries = await isolated.fetchHistory()
         #expect(entries.isEmpty)
     }
@@ -185,7 +196,7 @@ struct QueryHistoryStorageTests {
 
     @Test("clearAllHistory removes all entries")
     func clearAllHistoryRemovesAll() async {
-        let isolated = QueryHistoryStorage(isolatedForTesting: true)
+        let isolated = Self.makeIsolatedStorage()
         _ = await isolated.addHistory(makeEntry(query: "SELECT clear_test"))
         let result = await isolated.clearAllHistory()
         #expect(result == true)

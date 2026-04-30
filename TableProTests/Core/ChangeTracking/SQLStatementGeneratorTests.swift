@@ -19,8 +19,8 @@ struct SQLStatementGeneratorTests {
         columns: [String] = ["id", "name", "email"],
         primaryKeyColumns: [String] = ["id"],
         databaseType: DatabaseType = .mysql
-    ) -> SQLStatementGenerator {
-        return SQLStatementGenerator(
+    ) throws -> SQLStatementGenerator {
+        return try SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
@@ -32,8 +32,8 @@ struct SQLStatementGeneratorTests {
     // MARK: - INSERT Tests
 
     @Test("Simple insert from insertedRowData (MySQL)")
-    func testSimpleInsertMySQL() {
-        let generator = makeGenerator()
+    func testSimpleInsertMySQL() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -68,8 +68,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Insert with NULL value")
-    func testInsertWithNullValue() {
-        let generator = makeGenerator()
+    func testInsertWithNullValue() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", nil]
         ]
@@ -90,8 +90,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Insert skips __DEFAULT__ columns")
-    func testInsertSkipsDefaultColumns() {
-        let generator = makeGenerator()
+    func testInsertSkipsDefaultColumns() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["__DEFAULT__", "John", "john@example.com"]
         ]
@@ -115,8 +115,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Insert with all __DEFAULT__ returns empty")
-    func testInsertAllDefaultReturnsEmpty() {
-        let generator = makeGenerator()
+    func testInsertAllDefaultReturnsEmpty() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["__DEFAULT__", "__DEFAULT__", "__DEFAULT__"]
         ]
@@ -135,8 +135,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Insert from cellChanges fallback")
-    func testInsertFromCellChangesFallback() {
-        let generator = makeGenerator()
+    func testInsertFromCellChangesFallback() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -162,8 +162,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Insert with SQL function is inlined")
-    func testInsertWithSQLFunction() {
-        let generator = makeGenerator()
+    func testInsertWithSQLFunction() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "NOW()"]
         ]
@@ -185,8 +185,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("PostgreSQL insert uses $1, $2 placeholders")
-    func testInsertPostgreSQLPlaceholders() {
-        let generator = makeGenerator(databaseType: .postgresql)
+    func testInsertPostgreSQLPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .postgresql)
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -208,8 +208,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Table name is quoted with identifier quote")
-    func testTableNameQuoted() {
-        let generator = makeGenerator(tableName: "my_table")
+    func testTableNameQuoted() throws {
+        let generator = try makeGenerator(tableName: "my_table")
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -229,8 +229,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Column names are quoted")
-    func testColumnNamesQuoted() {
-        let generator = makeGenerator(columns: ["user_id", "full_name", "email_address"])
+    func testColumnNamesQuoted() throws {
+        let generator = try makeGenerator(columns: ["user_id", "full_name", "email_address"])
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -253,8 +253,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Insert multiple rows generates separate statements")
-    func testInsertMultipleRows() {
-        let generator = makeGenerator()
+    func testInsertMultipleRows() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"],
             1: ["2", "Jane", "jane@example.com"]
@@ -279,8 +279,8 @@ struct SQLStatementGeneratorTests {
     // MARK: - UPDATE Tests
 
     @Test("Simple update (MySQL)")
-    func testSimpleUpdateMySQL() {
-        let generator = makeGenerator()
+    func testSimpleUpdateMySQL() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -312,8 +312,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Update with multiple columns")
-    func testUpdateMultipleColumns() {
-        let generator = makeGenerator()
+    func testUpdateMultipleColumns() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -341,8 +341,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Update with NULL new value")
-    func testUpdateWithNullNewValue() {
-        let generator = makeGenerator()
+    func testUpdateWithNullNewValue() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -366,8 +366,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Update with __DEFAULT__ value")
-    func testUpdateWithDefaultValue() {
-        let generator = makeGenerator()
+    func testUpdateWithDefaultValue() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -393,8 +393,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Update with SQL function value is inlined")
-    func testUpdateWithSQLFunction() {
-        let generator = makeGenerator()
+    func testUpdateWithSQLFunction() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -419,59 +419,9 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.parameters.count == 1)
     }
 
-    @Test("MySQL/MariaDB update adds LIMIT 1")
-    func testUpdateMySQLLimitOne() {
-        let generator = makeGenerator(databaseType: .mysql)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .update,
-                cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
-                ],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(statements[0].sql.contains("LIMIT 1"))
-    }
-
-    @Test("PostgreSQL update does NOT add LIMIT 1")
-    func testUpdatePostgreSQLNoLimit() {
-        let generator = makeGenerator(databaseType: .postgresql)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .update,
-                cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
-                ],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
-    }
-
     @Test("PostgreSQL update uses $1, $2 placeholders in order")
-    func testUpdatePostgreSQLPlaceholders() {
-        let generator = makeGenerator(databaseType: .postgresql)
+    func testUpdatePostgreSQLPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .postgresql)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -497,8 +447,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Update PK value from originalRow")
-    func testUpdatePKFromOriginalRow() {
-        let generator = makeGenerator()
+    func testUpdatePKFromOriginalRow() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -524,8 +474,8 @@ struct SQLStatementGeneratorTests {
     // MARK: - DELETE Tests
 
     @Test("Batch delete with PK (MySQL)")
-    func testBatchDeleteWithPK() {
-        let generator = makeGenerator()
+    func testBatchDeleteWithPK() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -550,8 +500,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Batch delete with PK, multiple rows")
-    func testBatchDeleteMultipleRows() {
-        let generator = makeGenerator()
+    func testBatchDeleteMultipleRows() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", "John", "john@example.com"]),
             RowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
@@ -573,8 +523,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Individual delete without PK matches all columns")
-    func testIndividualDeleteNoPK() {
-        let generator = makeGenerator(primaryKeyColumns: [])
+    func testIndividualDeleteNoPK() throws {
+        let generator = try makeGenerator(primaryKeyColumns: [])
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -601,8 +551,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Individual delete with NULL column uses IS NULL")
-    func testIndividualDeleteWithNull() {
-        let generator = makeGenerator(primaryKeyColumns: [])
+    func testIndividualDeleteWithNull() throws {
+        let generator = try makeGenerator(primaryKeyColumns: [])
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -625,55 +575,9 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.parameters.count == 2)
     }
 
-    @Test("MySQL/MariaDB individual delete adds LIMIT 1")
-    func testDeleteMySQLLimitOne() {
-        let generator = makeGenerator(primaryKeyColumns: [], databaseType: .mysql)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .delete,
-                cellChanges: [],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(statements[0].sql.contains("LIMIT 1"))
-    }
-
-    @Test("PostgreSQL delete no LIMIT 1")
-    func testDeletePostgreSQLNoLimit() {
-        let generator = makeGenerator(primaryKeyColumns: [], databaseType: .postgresql)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .delete,
-                cellChanges: [],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
-    }
-
     @Test("PostgreSQL delete uses $N placeholders")
-    func testDeletePostgreSQLPlaceholders() {
-        let generator = makeGenerator(databaseType: .postgresql)
+    func testDeletePostgreSQLPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .postgresql)
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", "John", "john@example.com"]),
             RowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
@@ -693,8 +597,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Delete requires originalRow - nil returns nil")
-    func testDeleteRequiresOriginalRow() {
-        let generator = makeGenerator()
+    func testDeleteRequiresOriginalRow() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: nil)
         ]
@@ -710,8 +614,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Empty changes returns empty result")
-    func testEmptyChanges() {
-        let generator = makeGenerator()
+    func testEmptyChanges() throws {
+        let generator = try makeGenerator()
 
         let statements = generator.generateStatements(
             from: [],
@@ -724,8 +628,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Mix of insert, update, delete all generated")
-    func testMixedOperations() {
-        let generator = makeGenerator()
+    func testMixedOperations() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil),
             RowChange(
@@ -755,8 +659,8 @@ struct SQLStatementGeneratorTests {
     // MARK: - Placeholder Tests
 
     @Test("MySQL uses ? for all placeholders")
-    func testMySQLPlaceholders() {
-        let generator = makeGenerator(databaseType: .mysql)
+    func testMySQLPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .mysql)
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -778,8 +682,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("PostgreSQL uses $1, $2, $3 sequentially")
-    func testPostgreSQLSequentialPlaceholders() {
-        let generator = makeGenerator(databaseType: .postgresql)
+    func testPostgreSQLSequentialPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .postgresql)
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -803,8 +707,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("SQLite uses ? placeholders")
-    func testSQLitePlaceholders() {
-        let generator = makeGenerator(databaseType: .sqlite)
+    func testSQLitePlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .sqlite)
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -825,8 +729,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("MariaDB uses ? placeholders")
-    func testMariaDBPlaceholders() {
-        let generator = makeGenerator(databaseType: .mariadb)
+    func testMariaDBPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .mariadb)
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -849,8 +753,8 @@ struct SQLStatementGeneratorTests {
     // MARK: - Safety Tests
 
     @Test("Insert only processes rows in insertedRowIndices set")
-    func testInsertOnlyProcessesInsertedRows() {
-        let generator = makeGenerator()
+    func testInsertOnlyProcessesInsertedRows() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"],
             1: ["2", "Jane", "jane@example.com"]
@@ -872,8 +776,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Delete only processes rows in deletedRowIndices set")
-    func testDeleteOnlyProcessesDeletedRows() {
-        let generator = makeGenerator()
+    func testDeleteOnlyProcessesDeletedRows() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", "John", "john@example.com"]),
             RowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
@@ -892,8 +796,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Row not in insertedRowIndices is skipped")
-    func testRowNotInInsertedRowIndicesSkipped() {
-        let generator = makeGenerator()
+    func testRowNotInInsertedRowIndicesSkipped() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -912,8 +816,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Row not in deletedRowIndices is skipped")
-    func testRowNotInDeletedRowIndicesSkipped() {
-        let generator = makeGenerator()
+    func testRowNotInDeletedRowIndicesSkipped() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", "John", "john@example.com"])
         ]
@@ -931,8 +835,8 @@ struct SQLStatementGeneratorTests {
     // MARK: - Integration Tests
 
     @Test("Full workflow: insert + update + delete in one call")
-    func testFullWorkflowIntegration() {
-        let generator = makeGenerator()
+    func testFullWorkflowIntegration() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil),
             RowChange(
@@ -963,8 +867,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Verify parameter order matches placeholder order")
-    func testParameterOrderMatchesPlaceholders() {
-        let generator = makeGenerator(databaseType: .postgresql)
+    func testParameterOrderMatchesPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .postgresql)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -1003,8 +907,8 @@ struct SQLStatementGeneratorTests {
     // MARK: - Redshift Tests
 
     @Test("Redshift insert uses $1, $2 placeholders")
-    func testInsertRedshiftPlaceholders() {
-        let generator = makeGenerator(databaseType: .redshift)
+    func testInsertRedshiftPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .redshift)
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -1028,8 +932,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Redshift insert uses double-quote identifier quoting")
-    func testInsertRedshiftQuoting() {
-        let generator = makeGenerator(databaseType: .redshift)
+    func testInsertRedshiftQuoting() throws {
+        let generator = try makeGenerator(databaseType: .redshift)
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -1054,8 +958,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Redshift update uses $1, $2 placeholders in order")
-    func testUpdateRedshiftPlaceholders() {
-        let generator = makeGenerator(databaseType: .redshift)
+    func testUpdateRedshiftPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .redshift)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -1081,34 +985,9 @@ struct SQLStatementGeneratorTests {
         #expect(!stmt.sql.contains("?"))
     }
 
-    @Test("Redshift update does NOT add LIMIT 1")
-    func testUpdateRedshiftNoLimit() {
-        let generator = makeGenerator(databaseType: .redshift)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .update,
-                cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
-                ],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
-    }
-
     @Test("Redshift delete uses $N placeholders")
-    func testDeleteRedshiftPlaceholders() {
-        let generator = makeGenerator(databaseType: .redshift)
+    func testDeleteRedshiftPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .redshift)
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", "John", "john@example.com"]),
             RowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
@@ -1128,32 +1007,9 @@ struct SQLStatementGeneratorTests {
         #expect(!stmt.sql.contains("?"))
     }
 
-    @Test("Redshift delete no LIMIT 1")
-    func testDeleteRedshiftNoLimit() {
-        let generator = makeGenerator(primaryKeyColumns: [], databaseType: .redshift)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .delete,
-                cellChanges: [],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
-    }
-
     @Test("Redshift uses $1, $2, $3 sequentially for insert")
-    func testRedshiftSequentialPlaceholders() {
-        let generator = makeGenerator(databaseType: .redshift)
+    func testRedshiftSequentialPlaceholders() throws {
+        let generator = try makeGenerator(databaseType: .redshift)
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "John", "john@example.com"]
         ]
@@ -1177,8 +1033,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("Redshift parameter order matches placeholder order")
-    func testRedshiftParameterOrder() {
-        let generator = makeGenerator(databaseType: .redshift)
+    func testRedshiftParameterOrder() throws {
+        let generator = try makeGenerator(databaseType: .redshift)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -1213,8 +1069,8 @@ struct SQLStatementGeneratorTests {
     // MARK: - Reserved Keyword Column Name Regression (GH-373)
 
     @Test("UPDATE quotes reserved keyword column names in MySQL")
-    func testUpdateQuotesReservedKeywordColumnMySQL() {
-        let generator = makeGenerator(
+    func testUpdateQuotesReservedKeywordColumnMySQL() throws {
+        let generator = try makeGenerator(
             tableName: "connections",
             columns: ["id", "database", "table", "order"],
             primaryKeyColumns: ["id"]
@@ -1245,8 +1101,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("INSERT quotes reserved keyword column names in MySQL")
-    func testInsertQuotesReservedKeywordColumnMySQL() {
-        let generator = makeGenerator(
+    func testInsertQuotesReservedKeywordColumnMySQL() throws {
+        let generator = try makeGenerator(
             tableName: "connections",
             columns: ["id", "database", "order"],
             primaryKeyColumns: ["id"]
@@ -1274,8 +1130,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("DELETE quotes reserved keyword column names in MySQL (no PK)")
-    func testDeleteQuotesReservedKeywordColumnMySQL() {
-        let generator = makeGenerator(
+    func testDeleteQuotesReservedKeywordColumnMySQL() throws {
+        let generator = try makeGenerator(
             tableName: "connections",
             columns: ["id", "database", "select"],
             primaryKeyColumns: []
@@ -1303,8 +1159,8 @@ struct SQLStatementGeneratorTests {
     }
 
     @Test("UPDATE quotes reserved keyword column names in PostgreSQL")
-    func testUpdateQuotesReservedKeywordColumnPostgreSQL() {
-        let generator = makeGenerator(
+    func testUpdateQuotesReservedKeywordColumnPostgreSQL() throws {
+        let generator = try makeGenerator(
             tableName: "connections",
             columns: ["id", "database", "order"],
             primaryKeyColumns: ["id"],

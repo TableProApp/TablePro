@@ -9,7 +9,7 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Plugin Lazy Loading")
+@Suite("Plugin Lazy Loading", .serialized)
 @MainActor
 struct PluginLazyLoadingTests {
     @Test("loadPendingPlugins is idempotent when called multiple times")

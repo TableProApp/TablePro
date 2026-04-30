@@ -508,9 +508,9 @@ internal enum LibSSH2TunnelFactory {
             // Resolve agent socket: UI config > SSH config IdentityAgent > system default
             let socketPath: String?
             if !config.agentSocketPath.isEmpty {
-                socketPath = config.agentSocketPath
+                socketPath = SSHPathUtilities.expandTilde(config.agentSocketPath)
             } else if let agentPath = configEntry?.identityAgent, !agentPath.isEmpty {
-                socketPath = agentPath
+                socketPath = SSHPathUtilities.expandTilde(agentPath)
             } else {
                 socketPath = nil
             }
