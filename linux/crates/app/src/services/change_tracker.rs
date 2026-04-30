@@ -297,6 +297,34 @@ impl TabChangeTracker {
         self.emit_changed(vec![row_key]);
     }
 
+    /// Drop a draft row entirely. Mirrors what `undo` does for an
+    /// `UndoOp::Insert`, but reachable from the bulk-delete path
+    /// (Ctrl+A → Delete) so a mixed selection of drafts + persisted
+    /// rows behaves uniformly: persisted rows get strikethrough
+    /// pending-delete, drafts disappear.
+    ///
+    /// Returns `true` when a draft with `draft_id` was found and
+    /// removed; `false` otherwise (already discarded, or never
+    /// existed). Also clears any draft-cell edits and undo / redo
+    /// entries scoped to this draft so a subsequent Ctrl+Z doesn't
+    /// resurrect the draft into a half-edited state.
+    pub fn discard_draft(&mut self, draft_id: u64) -> bool {
+        let before = self.inserts.len();
+        self.inserts.retain(|d| d.draft_id != draft_id);
+        if self.inserts.len() == before {
+            return false;
+        }
+        let key = RowKey::Draft(draft_id);
+        self.updates
+            .retain(|(k, _), _| !matches!(k, RowKey::Draft(id) if *id == draft_id));
+        self.deletes
+            .retain(|k, _| !matches!(k, RowKey::Draft(id) if *id == draft_id));
+        self.undo.retain(|op| !undo_op_matches_draft(op, draft_id));
+        self.redo.retain(|op| !undo_op_matches_draft(op, draft_id));
+        self.emit_changed(vec![key]);
+        true
+    }
+
     /// Update a draft row's cell value (only valid for `RowKey::Draft`).
     pub fn track_draft_cell_edit(&mut self, draft_id: u64, col: usize, new: Value) -> bool {
         if let Some(draft) = self.inserts.iter_mut().find(|d| d.draft_id == draft_id)
@@ -673,6 +701,21 @@ impl TabChangeTracker {
     }
 }
 
+fn undo_op_matches_draft(op: &UndoOp, draft_id: u64) -> bool {
+    match op {
+        UndoOp::Insert { draft_id: id, .. } => *id == draft_id,
+        UndoOp::CellEdit {
+            row_key: RowKey::Draft(id),
+            ..
+        } => *id == draft_id,
+        UndoOp::Delete {
+            row_key: RowKey::Draft(id),
+            ..
+        } => *id == draft_id,
+        _ => false,
+    }
+}
+
 /// Lossy KeyValue → Value mapping. Used only by `materialize` to feed
 /// PK values back into SQL params; equality-correctness preserved.
 fn keyvalue_to_value(kv: &KeyValue) -> Value {
@@ -998,5 +1041,72 @@ mod tests {
             .track_cell_edit(key, 0, Value::Int(1), Value::Int(2));
         assert!(reg.any_pending());
         assert_eq!(reg.pending_tabs(), vec![id]);
+    }
+
+    #[test]
+    fn discard_draft_removes_insert_and_clears_undo() {
+        let mut t = TabChangeTracker::new();
+        let key = t.track_insert(vec![Value::Null, Value::Text("hi".into())]);
+        let RowKey::Draft(draft_id) = key else {
+            panic!("track_insert must return Draft key");
+        };
+        // Edit the draft so undo stack has a CellEdit on top of Insert.
+        t.track_draft_cell_edit(draft_id, 1, Value::Text("edited".into()));
+        assert_eq!(t.drafts().len(), 1);
+        assert!(t.can_undo());
+
+        let removed = t.discard_draft(draft_id);
+
+        assert!(removed, "discard_draft must report removal");
+        assert!(t.drafts().is_empty(), "draft must be gone");
+        assert!(!t.can_undo(), "undo entries scoped to the draft must be cleared");
+        assert!(!t.has_pending(), "no pending state after discard");
+    }
+
+    #[test]
+    fn discard_draft_no_op_for_unknown_id() {
+        let mut t = TabChangeTracker::new();
+        assert!(!t.discard_draft(99_999));
+        assert!(!t.has_pending());
+    }
+
+    #[test]
+    fn discard_draft_leaves_other_drafts_intact() {
+        let mut t = TabChangeTracker::new();
+        let RowKey::Draft(a) = t.track_insert(vec![Value::Int(1)]) else {
+            panic!()
+        };
+        let RowKey::Draft(b) = t.track_insert(vec![Value::Int(2)]) else {
+            panic!()
+        };
+        assert_eq!(t.drafts().len(), 2);
+        assert!(t.discard_draft(a));
+        assert_eq!(t.drafts().len(), 1);
+        assert_eq!(t.drafts()[0].draft_id, b);
+        // The remaining draft is still undoable on its own.
+        assert!(t.can_undo());
+    }
+
+    #[test]
+    fn bulk_delete_via_track_delete_is_per_row_undoable() {
+        // Multi-row delete sequence (what the UI does on Ctrl+A → Delete
+        // for persisted rows): track_delete N times. Each push is its
+        // own undoable op so Ctrl+Z restores rows one at a time —
+        // matches the per-op undo contract elsewhere.
+        let mut t = TabChangeTracker::new();
+        let k1 = rk(&[Value::Int(1)]);
+        let k2 = rk(&[Value::Int(2)]);
+        let k3 = rk(&[Value::Int(3)]);
+        t.track_delete(k1.clone(), vec![Value::Int(1)]);
+        t.track_delete(k2.clone(), vec![Value::Int(2)]);
+        t.track_delete(k3.clone(), vec![Value::Int(3)]);
+        assert_eq!(t.pending_count(), 3);
+
+        // First undo restores the most-recent delete (k3).
+        let _ = t.undo();
+        assert_eq!(t.pending_count(), 2);
+        assert!(matches!(t.row_state(&k3), RowState::Clean));
+        assert!(matches!(t.row_state(&k1), RowState::PendingDelete));
+        assert!(matches!(t.row_state(&k2), RowState::PendingDelete));
     }
 }

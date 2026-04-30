@@ -1849,55 +1849,63 @@ impl SimpleComponent for BrowseTab {
                     .filter(|(_, c)| c.primary_key)
                     .map(|(i, _)| i)
                     .collect();
-                if pk_indices.is_empty() {
+                // Partition the selection into persisted rows (need a
+                // PK to build a RowKey) and drafts (in-memory only,
+                // discarded by id). We resolve through the selection
+                // model rather than `result.rows[pos]` directly
+                // because `pos` is in filter-model space, which
+                // includes prepended drafts. A pure-draft selection
+                // is valid (the user can bulk-discard pending
+                // inserts before saving).
+                let Some(model) = selection.model() else {
+                    return;
+                };
+                let mut snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)> = Vec::new();
+                let mut draft_ids: Vec<u64> = Vec::new();
+                let mut had_persisted_row = false;
+                for pos in &positions {
+                    let Some(item) = model.item(*pos) else { continue };
+                    let Ok(row_obj) = item.downcast::<super::row_object::RowObject>() else {
+                        continue;
+                    };
+                    if let Some(draft_id) = row_obj.draft_id() {
+                        draft_ids.push(draft_id);
+                        continue;
+                    }
+                    had_persisted_row = true;
+                    let cells = row_obj.cells_clone();
+                    if let Some(pk_values) = pk_indices
+                        .iter()
+                        .map(|&i| cells.get(i).cloned())
+                        .collect::<Option<Vec<Value>>>()
+                        && let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)
+                    {
+                        snapshot.push((key, cells));
+                    }
+                }
+                // PK gate only fires when persisted rows are involved.
+                // Pure-draft selections sail through to discard.
+                if had_persisted_row && pk_indices.is_empty() {
                     let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
                         title: crate::tr!("Cannot delete"),
                         body: crate::tr!("This table has no primary key — editing is disabled."),
                     });
                     return;
                 }
-                // Snapshot (key, row) pairs by walking the selection's
-                // own model. Earlier we indexed `result.rows[pos]`
-                // directly, but `pos` is in filter-model space (which
-                // includes prepended drafts), not server-result space.
-                // With drafts present the off-by-N mismatch silently
-                // tracked the wrong PKs for deletion. Going through
-                // the model gives us the actual RowObject at that
-                // position, so drafts skip cleanly via draft_id and
-                // persisted rows resolve to their real cells.
-                let Some(model) = selection.model() else {
-                    return;
-                };
-                let snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)> = positions
-                    .iter()
-                    .filter_map(|pos| {
-                        let item = model.item(*pos)?;
-                        let row_obj = item.downcast::<super::row_object::RowObject>().ok()?;
-                        // Drafts are in-memory only; track_delete
-                        // expects a persisted row. Discarding a draft
-                        // is a separate flow (Ctrl+Z on the Insert).
-                        if row_obj.draft_id().is_some() {
-                            return None;
-                        }
-                        let cells = row_obj.cells_clone();
-                        let pk_values: Vec<Value> = pk_indices
-                            .iter()
-                            .map(|&i| cells.get(i).cloned())
-                            .collect::<Option<_>>()?;
-                        let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
-                        Some((key, cells))
-                    })
-                    .collect();
-                if snapshot.is_empty() {
+                if snapshot.is_empty() && draft_ids.is_empty() {
                     return;
                 }
-                let count = snapshot.len();
+                let count = snapshot.len() + draft_ids.len();
                 let tab_id = self.tab_id;
                 let selection_for_commit = selection.clone();
-                let commit_delete = move |snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)>| {
+                let commit_delete = move |snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)>,
+                                          draft_ids: Vec<u64>| {
                     crate::services::change_tracker::with_tab(tab_id, |t| {
                         for (key, row) in snapshot {
                             t.track_delete(key, row);
+                        }
+                        for id in draft_ids {
+                            t.discard_draft(id);
                         }
                     });
                     // Clear the multi-row selection so the
@@ -1924,18 +1932,18 @@ impl SimpleComponent for BrowseTab {
                     dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
                     dialog.set_default_response(Some("cancel"));
                     dialog.set_close_response("cancel");
-                    let snapshot_for_resp = std::cell::RefCell::new(Some(snapshot));
+                    let pending = std::cell::RefCell::new(Some((snapshot, draft_ids)));
                     dialog.connect_response(None, move |dlg, response| {
                         dlg.close();
                         if response == "delete"
-                            && let Some(s) = snapshot_for_resp.borrow_mut().take()
+                            && let Some((s, d)) = pending.borrow_mut().take()
                         {
-                            commit_delete(s);
+                            commit_delete(s, d);
                         }
                     });
                     dialog.present(Some(&self.inner_stack));
                 } else {
-                    commit_delete(snapshot);
+                    commit_delete(snapshot, draft_ids);
                 }
             }
             BrowseTabInput::GridCellEdited {
