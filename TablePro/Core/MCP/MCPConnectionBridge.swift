@@ -507,20 +507,12 @@ actor MCPConnectionBridge {
             try await existing.value
             return
         }
-        let task = Task {
-            await MainActor.run {
-                NSApp.activate(ignoringOtherApps: true)
-            }
+        let task = Task<Void, Error> { [connection] in
             try await DatabaseManager.shared.connectToSession(connection)
         }
         inFlightConnects[connection.id] = task
-        do {
-            try await task.value
-            inFlightConnects.removeValue(forKey: connection.id)
-        } catch {
-            inFlightConnects.removeValue(forKey: connection.id)
-            throw error
-        }
+        defer { inFlightConnects.removeValue(forKey: connection.id) }
+        try await task.value
     }
 
     private func resolveSession(_ connectionId: UUID) async throws -> ConnectionSession {
