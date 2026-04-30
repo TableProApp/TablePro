@@ -148,7 +148,7 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        interpretKeyEvents([event])
+        super.keyDown(with: event)
     }
 
     @objc override func insertNewline(_ sender: Any?) {
