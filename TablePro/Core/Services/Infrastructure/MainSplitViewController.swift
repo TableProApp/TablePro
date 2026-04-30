@@ -320,7 +320,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private func buildSidebarView() -> some View {
         if let currentSession, let sessionState {
             SidebarView(
-                tables: sessionTablesBinding,
                 sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
                 onDoubleClick: { [weak self] table in
                     guard let coordinator = self?.sessionState?.coordinator else { return }
@@ -358,7 +357,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 connection: currentSession.connection,
                 payload: payload,
                 windowTitle: windowTitleBinding,
-                tables: sessionTablesBinding,
                 sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
                 pendingTruncates: sessionPendingTruncatesBinding,
                 pendingDeletes: sessionPendingDeletesBinding,
@@ -417,10 +415,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 }
             }
         )
-    }
-
-    private var sessionTablesBinding: Binding<[TableInfo]> {
-        createSessionBinding(get: { $0.tables }, set: { $0.tables = $1 }, defaultValue: [])
     }
 
     private var sessionPendingTruncatesBinding: Binding<Set<String>> {

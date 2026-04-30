@@ -238,15 +238,8 @@ actor MCPConnectionBridge {
     // MARK: - Schema Operations
 
     func listTables(connectionId: UUID, includeRowCounts: Bool) async throws -> JSONValue {
-        let provider = await MainActor.run {
-            SchemaProviderRegistry.shared.provider(for: connectionId)
-        }
-        var cachedTables: [TableInfo] = []
-        if let provider {
-            let cached = await provider.getTables()
-            if !cached.isEmpty {
-                cachedTables = cached
-            }
+        let cachedTables = await MainActor.run {
+            SchemaService.shared.tables(for: connectionId)
         }
 
         let tables: [TableInfo]
@@ -386,16 +379,8 @@ actor MCPConnectionBridge {
     // MARK: - Schema Resource (for resources/read)
 
     func fetchSchemaResource(connectionId: UUID) async throws -> JSONValue {
-        // Check SchemaProviderRegistry cache first
-        let provider = await MainActor.run {
-            SchemaProviderRegistry.shared.provider(for: connectionId)
-        }
-        var cachedTables: [TableInfo] = []
-        if let provider {
-            let cached = await provider.getTables()
-            if !cached.isEmpty {
-                cachedTables = cached
-            }
+        let cachedTables = await MainActor.run {
+            SchemaService.shared.tables(for: connectionId)
         }
 
         let (driver, _) = try await resolveDriver(connectionId)
