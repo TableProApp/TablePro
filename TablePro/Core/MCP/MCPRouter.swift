@@ -822,7 +822,7 @@ extension MCPRouter {
                         ]),
                         "output_path": .object([
                             "type": "string",
-                            "description": "File path to save export (returns inline data if omitted)"
+                            "description": "File path inside the user's Downloads directory (returns inline data if omitted). Paths outside Downloads are rejected."
                         ]),
                         "max_rows": .object([
                             "type": "integer",

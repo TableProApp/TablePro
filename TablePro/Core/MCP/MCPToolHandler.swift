@@ -483,6 +483,8 @@ final class MCPToolHandler: Sendable {
         }
 
         if let outputPath {
+            let fileURL = try Self.sandboxedDownloadsURL(for: outputPath)
+
             let fullContent: String
             if exportResults.count == 1,
                let data = exportResults.first?["data"]?.stringValue
@@ -492,11 +494,10 @@ final class MCPToolHandler: Sendable {
                 fullContent = exportResults.compactMap { $0["data"]?.stringValue }.joined(separator: "\n\n")
             }
 
-            let fileURL = URL(fileURLWithPath: outputPath)
             try fullContent.write(to: fileURL, atomically: true, encoding: .utf8)
 
             let response: JSONValue = .object([
-                "path": .string(outputPath),
+                "path": .string(fileURL.path),
                 "rows_exported": .int(totalRowsExported)
             ])
             return MCPToolResult(content: [.text(encodeJSON(response))], isError: nil)
@@ -663,6 +664,22 @@ final class MCPToolHandler: Sendable {
         identifier.split(separator: ".", omittingEmptySubsequences: false)
             .map { quoter(String($0)) }
             .joined(separator: ".")
+    }
+
+    static func sandboxedDownloadsURL(for path: String) throws -> URL {
+        guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            throw MCPError.invalidParams("Downloads directory is not available")
+        }
+        let downloadsRoot = downloads.standardizedFileURL.resolvingSymlinksInPath().path
+        let candidate = path.hasPrefix("/") ? URL(fileURLWithPath: path) : downloads.appendingPathComponent(path)
+        let resolvedPath = candidate.standardizedFileURL.resolvingSymlinksInPath().path
+        let prefix = downloadsRoot.hasSuffix("/") ? downloadsRoot : downloadsRoot + "/"
+        guard resolvedPath == downloadsRoot || resolvedPath.hasPrefix(prefix) else {
+            throw MCPError.invalidParams(
+                "output_path must be inside the Downloads directory (\(downloadsRoot))"
+            )
+        }
+        return URL(fileURLWithPath: resolvedPath)
     }
 
     func encodeJSON(_ value: JSONValue) -> String {
