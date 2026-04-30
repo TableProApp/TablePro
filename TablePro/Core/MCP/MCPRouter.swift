@@ -983,6 +983,9 @@ extension MCPRouter {
     }
 
     func handleIntegrationsExchange(_ request: HTTPRequest) async -> RouteResult {
+        if request.method == .options {
+            return .noContent
+        }
         guard request.method == .post else {
             return .httpError(status: 405, message: "Method not allowed")
         }
