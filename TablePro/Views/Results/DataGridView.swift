@@ -316,16 +316,28 @@ struct DataGridView: NSViewRepresentable {
 
     static let firstDataTableColumnIndex: Int = 1
 
-    static func tableColumnIndex(for dataIndex: Int) -> Int {
-        dataIndex + firstDataTableColumnIndex
-    }
-
-    static func dataColumnIndex(for tableColumnIndex: Int) -> Int {
-        tableColumnIndex - firstDataTableColumnIndex
-    }
-
     static func isDataTableColumn(_ tableColumnIndex: Int) -> Bool {
         tableColumnIndex >= firstDataTableColumnIndex
+    }
+
+    static func tableColumnIndex(
+        for dataIndex: Int,
+        in tableView: NSTableView,
+        schema: ColumnIdentitySchema
+    ) -> Int? {
+        guard let identifier = schema.identifier(for: dataIndex) else { return nil }
+        let index = tableView.column(withIdentifier: identifier)
+        return index >= 0 ? index : nil
+    }
+
+    static func dataColumnIndex(
+        for tableColumnIndex: Int,
+        in tableView: NSTableView,
+        schema: ColumnIdentitySchema
+    ) -> Int? {
+        guard tableColumnIndex >= 0, tableColumnIndex < tableView.tableColumns.count else { return nil }
+        let identifier = tableView.tableColumns[tableColumnIndex].identifier
+        return schema.dataIndex(from: identifier)
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {

@@ -87,8 +87,9 @@ final class KeyHandlingTableView: NSTableView {
         focusedColumn = clickedColumn
 
         if alreadyFocusedHere && event.clickCount == 1 && selectedRowIndexes.count == 1 {
-            let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn)
-            if coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
+            if let schema = coordinator?.identitySchema,
+               let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
+               coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
                 editColumn(clickedColumn, row: clickedRow, with: nil, select: true)
             }
         }
@@ -106,11 +107,12 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
-        if focusedRow >= 0, DataGridView.isDataTableColumn(focusedColumn) {
-            let dataCol = DataGridView.dataColumnIndex(for: focusedColumn)
-            if coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
-                return
-            }
+        if focusedRow >= 0,
+           DataGridView.isDataTableColumn(focusedColumn),
+           let schema = coordinator?.identitySchema,
+           let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
+           coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
+            return
         }
         coordinator?.delegate?.dataGridPasteRows()
     }
@@ -176,12 +178,15 @@ final class KeyHandlingTableView: NSTableView {
         if let fkCombo = AppSettingsManager.shared.keyboard.shortcut(for: .previewFKReference),
            !fkCombo.isCleared,
            fkCombo.matches(event),
-           selectedRow >= 0, DataGridView.isDataTableColumn(focusedColumn) {
+           selectedRow >= 0,
+           DataGridView.isDataTableColumn(focusedColumn),
+           let schema = coordinator?.identitySchema,
+           let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) {
             coordinator?.toggleForeignKeyPreview(
                 tableView: self,
                 row: selectedRow,
                 column: focusedColumn,
-                columnIndex: DataGridView.dataColumnIndex(for: focusedColumn)
+                columnIndex: columnIndex
             )
             return
         }
@@ -191,11 +196,14 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc override func insertNewline(_ sender: Any?) {
         let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn), coordinator?.isEditable == true else {
+        guard row >= 0,
+              DataGridView.isDataTableColumn(focusedColumn),
+              coordinator?.isEditable == true,
+              let schema = coordinator?.identitySchema,
+              let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
             return
         }
 
-        let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn)
         if let value = coordinator?.cellValue(at: row, column: columnIndex),
            value.containsLineBreak {
             coordinator?.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)

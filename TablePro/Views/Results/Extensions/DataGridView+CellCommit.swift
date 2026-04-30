@@ -41,7 +41,11 @@ extension TableViewCoordinator {
         invalidateDisplayCache()
         rebuildVisualStateCache()
 
-        let tableColumnIndex = DataGridView.tableColumnIndex(for: columnIndex)
+        guard let tableColumnIndex = DataGridView.tableColumnIndex(
+            for: columnIndex,
+            in: tableView,
+            schema: identitySchema
+        ) else { return }
         if storageRow != nil, case .cellChanged = delta {
             tableRowsController.apply(.cellChanged(row: row, column: tableColumnIndex))
         } else {
