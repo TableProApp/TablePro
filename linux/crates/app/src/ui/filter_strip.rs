@@ -296,6 +296,7 @@ pub struct FilterStrip {
     state: Rc<RefCell<FilterSet>>,
     columns: Rc<RefCell<Vec<ColumnInfo>>>,
     rebuild: RebuilderSlot,
+    raw_entry: gtk::Entry,
 }
 
 impl FilterStrip {
@@ -309,32 +310,13 @@ impl FilterStrip {
 
     pub fn toggle(&self) {
         let opening = !self.is_revealed();
-        if opening {
-            // Re-seed an empty editor on every open so the user faces
-            // a ready row instead of a blank list. Idempotent: if any
-            // rule or raw SQL already exists, leave the state alone.
-            self.seed_if_empty();
-        }
         self.set_revealed(opening);
-    }
-
-    fn seed_if_empty(&self) {
-        let columns = self.columns.borrow();
-        let mut state = self.state.borrow_mut();
-        if state.rules.is_empty()
-            && extra_is_blank(state.extra_sql.as_deref())
-            && let Some(first) = columns.first()
-        {
-            state.rules.push(FilterRule {
-                column: first.name.clone(),
-                op: FilterOp::Eq,
-                value: Some(FilterValue::Single(String::new())),
-            });
-            drop(state);
-            drop(columns);
-            if let Some(f) = self.rebuild.borrow().as_ref() {
-                f();
-            }
+        if opening {
+            // Drop the cursor in the raw SQL field so the user can
+            // start typing immediately. Raw is the primary path; the
+            // rule editor is one expander click away for the click-
+            // driven case.
+            self.raw_entry.grab_focus();
         }
     }
 
@@ -353,7 +335,12 @@ impl FilterStrip {
     /// strip (e.g. saved-filter restore on tab open) so the editor
     /// reflects what's actually in effect.
     pub fn update_filter(&self, set: FilterSet) {
+        let extra = set.extra_sql.clone().unwrap_or_default();
         *self.state.borrow_mut() = set;
+        // Raw entry mirrors state too — without this the entry's
+        // text still shows the previous raw fragment after a
+        // FilterApplied that cleared it.
+        self.raw_entry.set_text(&extra);
         if let Some(f) = self.rebuild.borrow().as_ref() {
             f();
         }
@@ -455,34 +442,81 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         };
     });
 
-    // Rule list — boxed-list of rule rows, no section header.
-    // Implicit title (the strip itself reads as "Filter") + the
-    // header's Match dropdown is enough context. An empty list
-    // gets one auto-seeded rule below so the user always faces a
-    // ready-to-fill row instead of a blank Add Rule banner.
+    // Rebuild closure — captured by every input-changed callback.
+    // Drains the rules list, walks `state.rules`, builds a row per
+    // rule. Re-entrancy guard: a CHANGED signal fired while we're
+    // rebuilding (programmatic set_text on an EntryRow) would
+    // re-enter and double-update state. The suppress flag
+    // short-circuits during rebuild.
+    let suppress: Rc<std::cell::Cell<bool>> = Rc::new(std::cell::Cell::new(false));
+    let rebuild: RebuilderSlot = Rc::new(RefCell::new(None));
+
+    // Raw SQL input — primary, always-visible. The strip is aimed
+    // at developers who already think in WHERE clauses; making them
+    // expand a section to type SQL would be backwards. Structured
+    // rules become the secondary affordance below.
+    let raw_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .build();
+    let where_label = gtk::Label::builder().label("WHERE").build();
+    where_label.add_css_class("monospace");
+    where_label.add_css_class("dim-label");
+    let raw_entry = gtk::Entry::builder()
+        .placeholder_text(crate::tr!("e.g. created_at > now() - interval '1 day'"))
+        .hexpand(true)
+        .build();
+    raw_entry.add_css_class("monospace");
+    raw_entry.set_text(state.borrow().extra_sql.as_deref().unwrap_or(""));
+    let state_for_raw = state.clone();
+    let rebuild_for_raw = rebuild.clone();
+    raw_entry.connect_changed(move |e| {
+        let text = e.text().to_string();
+        let trimmed = text.trim();
+        state_for_raw.borrow_mut().extra_sql = if trimmed.is_empty() { None } else { Some(text) };
+        // Re-evaluate the Match revealer — combinator visibility
+        // depends on whether raw + ≥1 rule are both present.
+        if let Some(f) = rebuild_for_raw.borrow().as_ref() {
+            f();
+        }
+    });
+    let apply_btn_for_enter = apply_btn.clone();
+    raw_entry.connect_activate(move |_| {
+        apply_btn_for_enter.activate();
+    });
+    raw_row.append(&where_label);
+    raw_row.append(&raw_entry);
+    content.append(&raw_row);
+
+    // Structured rules — secondary, collapsed by default. Power
+    // users who think in raw SQL never need to expand this; users
+    // building filters by clicking get a dropdown-driven editor
+    // when they reach for it. Pre-expanded only when the saved
+    // FilterSet already has rules from a previous session.
+    let rules_expander = gtk::Expander::builder()
+        .label(crate::tr!("Or use the rule editor"))
+        .expanded(!state.borrow().rules.is_empty())
+        .build();
+    let rules_body = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .margin_top(8)
+        .build();
+    rules_expander.set_child(Some(&rules_body));
+    content.append(&rules_expander);
+
     let rules_list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
     rules_list.add_css_class("boxed-list");
-    content.append(&rules_list);
+    rules_body.append(&rules_list);
 
-    // Inline "Add rule" — small, left-aligned, flat. Replaces the
-    // earlier full-width AdwButtonRow banner that read like a
-    // signpost rather than an action.
+    // Inline "Add rule" button — small, left-aligned, flat.
     let add_rule_btn = gtk::Button::builder()
         .icon_name("list-add-symbolic")
         .label(crate::tr!("Add rule"))
         .halign(gtk::Align::Start)
         .build();
     add_rule_btn.add_css_class("flat");
-    content.append(&add_rule_btn);
-
-    // Rebuild closure — captured by every input-changed callback.
-    // Drains the list, walks `state.rules`, builds a row per rule,
-    // appends "Add rule" at the end. Re-entrancy guard: a CHANGED
-    // signal fired while we're rebuilding (programmatic set_text on
-    // an EntryRow) would re-enter and double-update state. The
-    // suppress flag short-circuits during rebuild.
-    let suppress: Rc<std::cell::Cell<bool>> = Rc::new(std::cell::Cell::new(false));
-    let rebuild: RebuilderSlot = Rc::new(RefCell::new(None));
+    rules_body.append(&add_rule_btn);
 
     {
         let rules_list = rules_list.clone();
@@ -508,9 +542,14 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
                 );
                 rules_list.append(&row);
             }
-            // Match dropdown is meaningless until there are at least
-            // two rules to combine; reveal it then, hide it otherwise.
-            match_revealer.set_reveal_child(rules_snapshot.len() >= 2);
+            // Match dropdown is meaningful when at least two clauses
+            // need a combinator — that's ≥2 structured rules, or 1
+            // structured rule combined with raw SQL. Hide it
+            // otherwise so the user doesn't see a control that has
+            // no effect on the resulting WHERE.
+            let raw_present = !extra_is_blank(state.borrow().extra_sql.as_deref());
+            let needs_combinator = rules_snapshot.len() >= 2 || (!rules_snapshot.is_empty() && raw_present);
+            match_revealer.set_reveal_child(needs_combinator);
             // Visually mute the entire rules list when empty so the
             // strip reads as ready-for-input rather than already-
             // populated.
@@ -518,27 +557,6 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
             suppress.set(false);
         });
         *rebuild.borrow_mut() = Some(closure);
-    }
-
-    // Auto-seed one rule when the user opens the strip on a new
-    // empty filter — saves a click, makes the strip self-explanatory
-    // (column ▾ op ▾ value entry visible from the moment it slides
-    // in). Skipped when columns aren't loaded yet (the rule would
-    // have nothing to bind to) or when the user already has rules
-    // saved from a previous session.
-    {
-        let columns_borrow = columns.borrow();
-        let mut state_mut = state.borrow_mut();
-        if state_mut.rules.is_empty()
-            && extra_is_blank(state_mut.extra_sql.as_deref())
-            && let Some(first) = columns_borrow.first()
-        {
-            state_mut.rules.push(FilterRule {
-                column: first.name.clone(),
-                op: FilterOp::Eq,
-                value: Some(FilterValue::Single(String::new())),
-            });
-        }
     }
     if let Some(f) = rebuild.borrow().as_ref() {
         f();
@@ -562,43 +580,6 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
             f();
         }
     });
-
-    // Advanced (raw SQL) — collapsible at the bottom of the strip.
-    // The user types arbitrary SQL appended to the structured rules
-    // with the chosen combinator. No quoting or parameterisation;
-    // identical security model to the SQL editor (the user already
-    // owns the connection — a raw filter is a power feature, not an
-    // injection vector). AdwExpanderRow keeps it out of the way for
-    // the common case where structured rules are enough.
-    // Advanced expander — collapsed by default unless the user has
-    // a saved raw fragment. Dropping the long subtitle in favour of
-    // a tooltip — the title alone is enough hint for the few users
-    // who reach for raw SQL.
-    let advanced_group = adw::PreferencesGroup::builder().build();
-    let advanced_row = adw::ExpanderRow::builder()
-        .title(crate::tr!("Advanced (raw SQL)"))
-        .expanded(
-            state
-                .borrow()
-                .extra_sql
-                .as_deref()
-                .is_some_and(|s| !s.trim().is_empty()),
-        )
-        .build();
-    advanced_row.set_tooltip_text(Some(&crate::tr!(
-        "Raw SQL fragment appended to the rules with the combinator above."
-    )));
-    let extra_entry = adw::EntryRow::builder().title(crate::tr!("Raw SQL")).build();
-    extra_entry.set_text(state.borrow().extra_sql.as_deref().unwrap_or(""));
-    let state_for_extra = state.clone();
-    extra_entry.connect_changed(move |e| {
-        let text = e.text().to_string();
-        let trimmed = text.trim();
-        state_for_extra.borrow_mut().extra_sql = if trimmed.is_empty() { None } else { Some(text) };
-    });
-    advanced_row.add_row(&extra_entry);
-    advanced_group.add(&advanced_row);
-    content.append(&advanced_group);
 
     let scroller = gtk::ScrolledWindow::builder()
         .child(&content)
@@ -651,6 +632,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         state,
         columns,
         rebuild,
+        raw_entry,
     }
 }
 
