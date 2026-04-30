@@ -12,6 +12,7 @@ import os
 import TableProPluginKit
 
 private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
+private let gridPerfLog = Logger(subsystem: "com.TablePro", category: "GridPerf")
 
 /// Context for progressive query result loading
 internal struct QueryPageContext {
@@ -246,6 +247,7 @@ extension MainContentCoordinator {
         queryParameterValues: [QueryParameter]? = nil
     ) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        let __t0Total = CFAbsoluteTimeGetCurrent()
 
         var updatedTab = tabManager.tabs[idx]
         var columnEnumValues: [String: [String]] = [:]
@@ -290,6 +292,7 @@ extension MainContentCoordinator {
             updatedTab.metadataVersion += 1
         }
 
+        let __tFrom = CFAbsoluteTimeGetCurrent()
         let newTableRows = TableRows.from(
             queryRows: rows,
             columns: columns,
@@ -299,6 +302,7 @@ extension MainContentCoordinator {
             columnEnumValues: columnEnumValues,
             columnNullable: columnNullable
         )
+        gridPerfLog.notice("[grid-perf] TableRows.from took \(((CFAbsoluteTimeGetCurrent() - __tFrom) * 1000), format: .fixed(precision: 2)) ms (rows=\(rows.count) cols=\(columns.count))")
         setActiveTableRows(newTableRows, for: updatedTab.id)
 
         let rs = ResultSet(label: tableName ?? "Result", tableRows: newTableRows)
@@ -380,6 +384,7 @@ extension MainContentCoordinator {
         if tabManager.selectedTabId == tabId, isEditable, !changeManager.hasChanges {
             changeManager.clearChangesAndUndoHistory()
         }
+        gridPerfLog.notice("[grid-perf] applyPhase1Result total took \(((CFAbsoluteTimeGetCurrent() - __t0Total) * 1000), format: .fixed(precision: 2)) ms (table=\(tableName ?? "nil"))")
     }
 
     /// Launch Phase 2 background work: exact COUNT(*) and enum value fetching

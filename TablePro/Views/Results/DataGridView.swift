@@ -7,7 +7,10 @@
 //
 
 import AppKit
+import os
 import SwiftUI
+
+private let gridPerfLog = Logger(subsystem: "com.TablePro", category: "GridPerf")
 
 struct CellPosition: Hashable {
     let row: Int
@@ -169,6 +172,8 @@ struct DataGridView: NSViewRepresentable {
         if tableView.editedRow >= 0 { return }
         if let editor = context.coordinator.overlayEditor, editor.isActive { return }
 
+        let __t0Update = CFAbsoluteTimeGetCurrent()
+
         if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier == ColumnIdentitySchema.rowNumberIdentifier }) {
             let shouldHide = !configuration.showRowNumbers
             if rowNumCol.isHidden != shouldHide {
@@ -269,6 +274,8 @@ struct DataGridView: NSViewRepresentable {
             coordinator: coordinator,
             needsFullReload: needsFullReload
         )
+
+        gridPerfLog.notice("[grid-perf] DataGridView.updateNSView took \(((CFAbsoluteTimeGetCurrent() - __t0Update) * 1000), format: .fixed(precision: 2)) ms (rows=\(rowDisplayCount) cols=\(columnCount) reload=\(needsFullReload))")
     }
 
     // MARK: - updateNSView Helpers
@@ -322,6 +329,7 @@ struct DataGridView: NSViewRepresentable {
         tableRows: TableRows,
         savedLayout: ColumnLayoutState?
     ) {
+        let __tRebuild = CFAbsoluteTimeGetCurrent()
         let columnsToRemove = tableView.tableColumns.filter {
             $0.identifier != ColumnIdentitySchema.rowNumberIdentifier
         }
@@ -364,6 +372,7 @@ struct DataGridView: NSViewRepresentable {
             )
             tableView.addTableColumn(column)
         }
+        gridPerfLog.notice("[grid-perf] rebuildColumns took \(((CFAbsoluteTimeGetCurrent() - __tRebuild) * 1000), format: .fixed(precision: 2)) ms (cols=\(tableRows.columns.count) restoredWidths=\(willRestoreWidths))")
     }
 
     private func refreshColumnTitles(

@@ -8,6 +8,7 @@
 
 import AppKit
 import QuartzCore
+import os
 
 @MainActor
 final class FKArrowButton: NSButton {
@@ -122,6 +123,7 @@ final class DataGridCellFactory {
         let gridCellView: DataGridCellView
         let cell: NSTextField
 
+        let __tA = CFAbsoluteTimeGetCurrent()
         if let reused = tableView.makeView(withIdentifier: cellIdentifier, owner: nil) as? DataGridCellView,
            let textField = reused.textField {
             gridCellView = reused
@@ -172,7 +174,9 @@ final class DataGridCellFactory {
                 chevron.heightAnchor.constraint(equalToConstant: 12),
             ])
         }
+        let __aMs = (CFAbsoluteTimeGetCurrent() - __tA) * 1000
 
+        let __tB = CFAbsoluteTimeGetCurrent()
         cell.lineBreakMode = .byTruncatingTail
         cell.maximumNumberOfLines = 1
         cell.cell?.truncatesLastVisibleLine = true
@@ -228,9 +232,13 @@ final class DataGridCellFactory {
         let isDeleted = visualState.isDeleted
         let isInserted = visualState.isInserted
         let isModified = visualState.modifiedColumns.contains(columnIndex)
+        let __bMs = (CFAbsoluteTimeGetCurrent() - __tB) * 1000
 
+        let __tC = CFAbsoluteTimeGetCurrent()
         configureTextContent(cell: cell, displayValue: displayValue, rawValue: rawValue, isLargeDataset: isLargeDataset)
+        let __cMs = (CFAbsoluteTimeGetCurrent() - __tC) * 1000
 
+        let __tD = CFAbsoluteTimeGetCurrent()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
 
@@ -247,13 +255,18 @@ final class DataGridCellFactory {
         gridCellView.isFocusedCell = isFocused
 
         CATransaction.commit()
+        let __dMs = (CFAbsoluteTimeGetCurrent() - __tD) * 1000
 
+        let __tE = CFAbsoluteTimeGetCurrent()
         let accessibilityValue = rawValue ?? String(localized: "NULL")
         cell.setAccessibilityLabel(
             String(format: String(localized: "Row %d, column %d: %@"), row + 1, columnIndex + 1, accessibilityValue)
         )
         gridCellView.setAccessibilityRowIndexRange(NSRange(location: row, length: 1))
         gridCellView.setAccessibilityColumnIndexRange(NSRange(location: columnIndex, length: 1))
+        let __eMs = (CFAbsoluteTimeGetCurrent() - __tE) * 1000
+
+        ViewForStats.recordSection(a: __aMs, b: __bMs, c: __cMs, d: __dMs, e: __eMs)
 
         return gridCellView
     }

@@ -1,5 +1,8 @@
 import AppKit
+import os
 import SwiftUI
+
+private let gridPerfLog = Logger(subsystem: "com.TablePro", category: "GridPerf")
 
 // MARK: - Coordinator
 
@@ -257,10 +260,27 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyFullReplace() {
         guard let tableView else { return }
+        let __t0 = CFAbsoluteTimeGetCurrent()
+
+        let __tCache = CFAbsoluteTimeGetCurrent()
         displayCache.removeAll()
+        gridPerfLog.notice("[grid-perf] displayCache.removeAll took \(((CFAbsoluteTimeGetCurrent() - __tCache) * 1000), format: .fixed(precision: 2)) ms")
+
+        let __tVisual = CFAbsoluteTimeGetCurrent()
         rebuildVisualStateCache()
+        gridPerfLog.notice("[grid-perf] rebuildVisualStateCache took \(((CFAbsoluteTimeGetCurrent() - __tVisual) * 1000), format: .fixed(precision: 2)) ms")
+
         updateCache()
+
+        let __tReload = CFAbsoluteTimeGetCurrent()
         tableView.reloadData()
+        gridPerfLog.notice("[grid-perf] tableView.reloadData took \(((CFAbsoluteTimeGetCurrent() - __tReload) * 1000), format: .fixed(precision: 2)) ms (rows=\(tableView.numberOfRows))")
+
+        gridPerfLog.notice("[grid-perf] applyFullReplace total took \(((CFAbsoluteTimeGetCurrent() - __t0) * 1000), format: .fixed(precision: 2)) ms")
+
+        DispatchQueue.main.async {
+            ViewForStats.flushIfQuiet()
+        }
     }
 
     func displayRow(at displayIndex: Int) -> Row? {
