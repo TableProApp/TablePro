@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- DataGrid columns and cells refactored to use a persistent column pool and typed cell view hierarchy. CPU usage on table switch reduced significantly through proper NSTableView reuse pool retention.
 - Data grid column identifiers are now the column name (with positional fallback for duplicate names), so saved widths follow the column across schema changes that shift its position. Identifier resolution moved from static `DataGridView` helpers to a `ColumnIdentitySchema` value type owned by the coordinator.
 - `ColumnLayoutStorage` singleton replaced by a `ColumnLayoutPersisting` protocol with an injectable `FileColumnLayoutPersister` default. The coordinator depends on the protocol, not the concrete class, so tests can substitute a fake.
 - Column layout save/restore on table-switch (`saveColumnLayoutForTable` / `restoreColumnLayoutForTable`) folded into the data grid coordinator's lifecycle (load on column build, persist on resize/move/dismantle). The standalone `MainContentCoordinator+ColumnLayout` extension is gone; only the visibility orchestration remains. Removes the redundant `hasUserResizedColumns` flag and the external save trigger from the binding setter.
