@@ -256,7 +256,25 @@ extension AppDelegate {
 
         if DatabaseManager.shared.activeSessions[connection.id]?.driver != nil {
             if let payload = makePayload?(connection.id) {
-                WindowManager.shared.openTab(payload: payload)
+                if payload.tabType == .table,
+                   let tableName = payload.tableName,
+                   let coordinator = MainContentCoordinator.allActiveCoordinators()
+                    .first(where: { $0.connectionId == connection.id }) {
+                    if let window = coordinator.contentWindow {
+                        window.makeKeyAndOrderFront(nil)
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                    Task { @MainActor in
+                        if let dbName = payload.databaseName, !dbName.isEmpty,
+                           let session = DatabaseManager.shared.session(for: connection.id),
+                           dbName != session.activeDatabase {
+                            await coordinator.switchDatabase(to: dbName)
+                        }
+                        coordinator.openTableTab(tableName)
+                    }
+                } else {
+                    WindowManager.shared.openTab(payload: payload)
+                }
             } else {
                 for window in NSApp.windows where isMainWindow(window) {
                     window.makeKeyAndOrderFront(nil)
