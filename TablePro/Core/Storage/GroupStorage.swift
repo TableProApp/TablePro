@@ -85,12 +85,12 @@ final class GroupStorage {
         let descendantIds = collectAllDescendantGroupIds(groupId: group.id, groups: groups)
         let allIdsToDelete = descendantIds.union([group.id])
 
+        groups.removeAll { allIdsToDelete.contains($0.id) }
+        saveGroups(groups)
+
         for deletedId in allIdsToDelete {
             SyncChangeTracker.shared.markDeleted(.group, id: deletedId.uuidString)
         }
-
-        groups.removeAll { allIdsToDelete.contains($0.id) }
-        saveGroups(groups)
 
         let storage = ConnectionStorage.shared
         var connections = storage.loadConnections()
