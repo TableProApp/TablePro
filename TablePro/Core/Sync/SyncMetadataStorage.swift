@@ -14,7 +14,7 @@ final class SyncMetadataStorage {
     static let shared = SyncMetadataStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncMetadataStorage")
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
 
     private enum Keys {
         static let syncToken = "com.TablePro.sync.serverChangeToken"
@@ -24,7 +24,9 @@ final class SyncMetadataStorage {
         static let lastAccountId = "com.TablePro.sync.lastAccountId"
     }
 
-    private init() {}
+    init(userDefaults: UserDefaults = .standard) {
+        self.defaults = userDefaults
+    }
 
     // MARK: - Server Change Token
 
