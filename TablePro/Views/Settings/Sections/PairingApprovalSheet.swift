@@ -16,12 +16,11 @@ struct PairingApproval: Sendable {
 enum PairingApprovalPresenter {
     static func present(request: PairingRequest) async throws -> PairingApproval {
         try await withCheckedThrowingContinuation { continuation in
+            var deliver: ((Result<PairingApproval, Error>) -> Void)?
             let host = NSHostingController(
                 rootView: PairingApprovalSheet(
                     request: request,
-                    onComplete: { result in
-                        continuation.resume(with: result)
-                    }
+                    onComplete: { result in deliver?(result) }
                 )
             )
             host.view.frame = NSRect(x: 0, y: 0, width: 520, height: 560)
@@ -32,17 +31,17 @@ enum PairingApprovalPresenter {
             sheetWindow.title = String(localized: "Approve Integration")
             sheetWindow.isReleasedWhenClosed = false
 
-            host.rootView = PairingApprovalSheet(
-                request: request,
-                onComplete: { result in
-                    if let parent {
-                        parent.endSheet(sheetWindow)
-                    } else {
-                        sheetWindow.close()
-                    }
-                    continuation.resume(with: result)
+            var resolved = false
+            deliver = { result in
+                guard !resolved else { return }
+                resolved = true
+                if let parent {
+                    parent.endSheet(sheetWindow)
+                } else {
+                    sheetWindow.close()
                 }
-            )
+                continuation.resume(with: result)
+            }
 
             if let parent {
                 parent.beginSheet(sheetWindow, completionHandler: nil)
