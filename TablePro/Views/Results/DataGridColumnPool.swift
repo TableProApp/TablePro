@@ -105,14 +105,16 @@ final class DataGridColumnPool {
     ) {
         let rowNumberIsPresent = tableView.tableColumns.first?.identifier == ColumnIdentitySchema.rowNumberIdentifier
         let baseOffset = rowNumberIsPresent ? 1 : 0
+        let validOrder = order.filter { schema.dataIndex(forColumnName: $0) != nil }
 
-        for (targetPosition, columnName) in order.enumerated() {
+        for (targetPosition, columnName) in validOrder.enumerated() {
             guard let slot = schema.dataIndex(forColumnName: columnName) else { continue }
             let identifier = ColumnIdentitySchema.slotIdentifier(slot)
             guard let currentIndex = tableView.tableColumns.firstIndex(where: { $0.identifier == identifier }) else {
                 continue
             }
             let desiredIndex = baseOffset + targetPosition
+            guard desiredIndex < tableView.tableColumns.count else { continue }
             if currentIndex != desiredIndex {
                 tableView.moveColumn(currentIndex, toColumn: desiredIndex)
             }
