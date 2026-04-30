@@ -639,6 +639,11 @@ final class MainContentCoordinator {
     func loadSchemaIfNeeded() async {
         let alreadyLoaded = await schemaProvider.isSchemaLoaded()
         if alreadyLoaded {
+            let cachedTables = await schemaProvider.getTables()
+            let sessionTables = DatabaseManager.shared.session(for: connectionId)?.tables ?? []
+            if sessionTables.isEmpty && !cachedTables.isEmpty {
+                DatabaseManager.shared.updateSession(connectionId) { $0.tables = cachedTables }
+            }
             if sidebarLoadingState == .idle {
                 sidebarLoadingState = .loaded
             }
