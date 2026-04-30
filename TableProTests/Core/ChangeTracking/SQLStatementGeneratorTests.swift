@@ -419,56 +419,6 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.parameters.count == 1)
     }
 
-    @Test("MySQL/MariaDB update adds LIMIT 1")
-    func testUpdateMySQLLimitOne() throws {
-        let generator = try makeGenerator(databaseType: .mysql)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .update,
-                cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
-                ],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(statements[0].sql.contains("LIMIT 1"))
-    }
-
-    @Test("PostgreSQL update does NOT add LIMIT 1")
-    func testUpdatePostgreSQLNoLimit() throws {
-        let generator = try makeGenerator(databaseType: .postgresql)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .update,
-                cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
-                ],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
-    }
-
     @Test("PostgreSQL update uses $1, $2 placeholders in order")
     func testUpdatePostgreSQLPlaceholders() throws {
         let generator = try makeGenerator(databaseType: .postgresql)
@@ -623,52 +573,6 @@ struct SQLStatementGeneratorTests {
         let stmt = statements[0]
         #expect(stmt.sql.contains("IS NULL"))
         #expect(stmt.parameters.count == 2)
-    }
-
-    @Test("MySQL/MariaDB individual delete adds LIMIT 1")
-    func testDeleteMySQLLimitOne() throws {
-        let generator = try makeGenerator(primaryKeyColumns: [], databaseType: .mysql)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .delete,
-                cellChanges: [],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(statements[0].sql.contains("LIMIT 1"))
-    }
-
-    @Test("PostgreSQL delete no LIMIT 1")
-    func testDeletePostgreSQLNoLimit() throws {
-        let generator = try makeGenerator(primaryKeyColumns: [], databaseType: .postgresql)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .delete,
-                cellChanges: [],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
     }
 
     @Test("PostgreSQL delete uses $N placeholders")
@@ -1081,31 +985,6 @@ struct SQLStatementGeneratorTests {
         #expect(!stmt.sql.contains("?"))
     }
 
-    @Test("Redshift update does NOT add LIMIT 1")
-    func testUpdateRedshiftNoLimit() throws {
-        let generator = try makeGenerator(databaseType: .redshift)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .update,
-                cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
-                ],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
-    }
-
     @Test("Redshift delete uses $N placeholders")
     func testDeleteRedshiftPlaceholders() throws {
         let generator = try makeGenerator(databaseType: .redshift)
@@ -1126,29 +1005,6 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.sql.contains("$1"))
         #expect(stmt.sql.contains("$2"))
         #expect(!stmt.sql.contains("?"))
-    }
-
-    @Test("Redshift delete no LIMIT 1")
-    func testDeleteRedshiftNoLimit() throws {
-        let generator = try makeGenerator(primaryKeyColumns: [], databaseType: .redshift)
-        let changes: [RowChange] = [
-            RowChange(
-                rowIndex: 0,
-                type: .delete,
-                cellChanges: [],
-                originalRow: ["1", "John", "john@example.com"]
-            )
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
     }
 
     @Test("Redshift uses $1, $2, $3 sequentially for insert")

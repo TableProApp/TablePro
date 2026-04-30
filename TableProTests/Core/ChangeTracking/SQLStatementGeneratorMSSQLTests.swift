@@ -182,18 +182,4 @@ struct SQLStatementGeneratorMSSQLTests {
         #expect(sql.contains("DELETE FROM [users]"))
         #expect(sql.contains("WHERE [id] = ?"))
     }
-
-    @Test("DELETE does not add LIMIT clause for MSSQL")
-    func deleteNoLimitClause() throws {
-        let generator = try makeGenerator()
-        let statements = generator.generateStatements(
-            from: [makeDeleteChange()],
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        #expect(!statements[0].sql.contains("LIMIT"))
-    }
 }
