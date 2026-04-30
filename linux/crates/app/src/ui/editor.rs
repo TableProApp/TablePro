@@ -78,6 +78,9 @@ pub enum SqlEditorInput {
     /// cursor. Falls back to a status hint when the cursor is in
     /// whitespace or a leading comment with no statement around it.
     RunAtCursor,
+    /// Ctrl+/ → toggle SQL line-comment for the selected lines (or
+    /// the cursor's line). Standard IDE shortcut.
+    ToggleLineComment,
 }
 
 #[derive(Debug)]
@@ -298,11 +301,28 @@ impl SimpleComponent for SqlEditor {
                 }
             }))
             .build();
+        // Ctrl+/ — toggle SQL line-comment for the selected lines.
+        // Standard IDE shortcut (VS Code, IntelliJ, Sublime, etc.)
+        // so users don't have to relearn it. Walks the selection,
+        // commenting all lines if any are uncommented, otherwise
+        // uncommenting all. Wrapped in begin/end_user_action so it's
+        // a single undo step regardless of how many lines toggle.
+        let toggle_comment_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>slash").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new({
+                let sender = sender.clone();
+                move |_, _| {
+                    sender.input(SqlEditorInput::ToggleLineComment);
+                    glib::Propagation::Stop
+                }
+            }))
+            .build();
         let controller = gtk::ShortcutController::new();
         controller.add_shortcut(run_shortcut);
         controller.add_shortcut(cancel_shortcut);
         controller.add_shortcut(format_shortcut);
         controller.add_shortcut(run_at_cursor_shortcut);
+        controller.add_shortcut(toggle_comment_shortcut);
         widgets.source_view.add_controller(controller);
 
         let drop_target = gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
@@ -360,6 +380,10 @@ impl SimpleComponent for SqlEditor {
                     return;
                 }
                 self.execute_sql(trimmed, sender);
+            }
+
+            SqlEditorInput::ToggleLineComment => {
+                toggle_line_comment(&self.source_view.buffer());
             }
 
             SqlEditorInput::RunAtCursor => {
@@ -829,6 +853,85 @@ fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome]) {
     {
         stack.set_visible_child_name(&format!("r{err_idx}"));
     }
+}
+
+/// Toggle SQL line-comment (`-- `) for the lines in the buffer's
+/// current selection (or the cursor's line when nothing is selected).
+/// If every non-blank line in the range is already commented, strip
+/// the prefix; otherwise prepend `-- ` after each line's leading
+/// whitespace. Blank lines are skipped in both directions so the
+/// transform is reversible — toggling twice returns the original
+/// text. The whole edit is wrapped in begin/end_user_action so a
+/// single Ctrl+Z reverts it regardless of line count.
+fn toggle_line_comment(buffer: &gtk::TextBuffer) {
+    let (sel_start, sel_end) = buffer.selection_bounds().unwrap_or_else(|| {
+        let i = buffer.iter_at_mark(&buffer.get_insert());
+        (i, i)
+    });
+    let start_line = sel_start.line();
+    let mut end_line = sel_end.line();
+    // Selection that ends at column 0 of the next line shouldn't
+    // include that empty trailing row — matches the behaviour of
+    // VS Code / Sublime where dragging-and-releasing at the line
+    // start doesn't comment the line you released on.
+    if sel_end.line_offset() == 0 && end_line > start_line {
+        end_line -= 1;
+    }
+
+    let lines: Vec<String> = (start_line..=end_line)
+        .map(|l| {
+            let Some(s) = buffer.iter_at_line(l) else {
+                return String::new();
+            };
+            let mut e = s;
+            e.forward_to_line_end();
+            buffer.text(&s, &e, false).to_string()
+        })
+        .collect();
+
+    // Comment vs uncomment decision: if every non-blank line is
+    // already commented, this is an uncomment toggle; otherwise
+    // it's a comment toggle. Mixed selections (some commented, some
+    // not) all become commented — matches IDE convention.
+    let all_commented = lines
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .all(|l| l.trim_start().starts_with("--"));
+
+    buffer.begin_user_action();
+    for (offset, original) in lines.iter().enumerate() {
+        if original.trim().is_empty() {
+            continue;
+        }
+        let line_n = start_line + offset as i32;
+        let leading_chars: i32 = original.chars().take_while(|c| c.is_whitespace()).count() as i32;
+        let Some(mut iter) = buffer.iter_at_line(line_n) else {
+            continue;
+        };
+        iter.forward_chars(leading_chars);
+
+        if all_commented {
+            // Strip "-- " or "--" depending on what's there. The
+            // space is part of the canonical form we insert, so
+            // peel it off too when present.
+            let trimmed = original.trim_start();
+            let strip_chars: i32 = if trimmed.starts_with("-- ") {
+                3
+            } else if trimmed.starts_with("--") {
+                2
+            } else {
+                0
+            };
+            if strip_chars > 0 {
+                let mut end = iter;
+                end.forward_chars(strip_chars);
+                buffer.delete(&mut iter, &mut end);
+            }
+        } else {
+            buffer.insert(&mut iter, "-- ");
+        }
+    }
+    buffer.end_user_action();
 }
 
 /// Find the SQL statement that contains the cursor at `cursor_byte`.

@@ -1733,6 +1733,7 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
         &crate::tr!("Run statement at cursor"),
     ));
     editor.append(&shortcut_entry("Escape", &crate::tr!("Cancel running query")));
+    editor.append(&shortcut_entry("<Primary>slash", &crate::tr!("Toggle line comment")));
     editor.append(&shortcut_entry("<Primary>t", &crate::tr!("New editor tab")));
     editor.append(&shortcut_entry(
         "<Primary>w",
