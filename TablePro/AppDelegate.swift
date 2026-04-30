@@ -90,32 +90,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = QueryHistoryStorage.shared
         }
 
-        let settings = AppSettingsStorage.shared.loadGeneral()
-        if settings.startupBehavior == .reopenLast {
-            let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
-            if !connectionIds.isEmpty {
-                closeWelcomeWindowEagerly()
-                attemptAutoReconnectAll(connectionIds: connectionIds)
-            } else if let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
-                // Backward compat: fall back to single lastConnectionId for upgrades
-                closeWelcomeWindowEagerly()
-                attemptAutoReconnect(connectionId: lastConnectionId)
-            } else {
-                // Crash recovery: if the app crashed before applicationWillTerminate
-                // could save the list, scan the TabState directory for connections
-                // that still have saved tab state on disk.
-                Task { @MainActor [weak self] in
-                    let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
-                    if !diskIds.isEmpty {
-                        self?.closeWelcomeWindowEagerly()
-                        self?.attemptAutoReconnectAll(connectionIds: diskIds)
-                    } else {
-                        self?.closeRestoredMainWindows()
+        if isHandlingFileOpen {
+            closeRestoredMainWindows()
+        } else {
+            let settings = AppSettingsStorage.shared.loadGeneral()
+            if settings.startupBehavior == .reopenLast {
+                let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
+                if !connectionIds.isEmpty {
+                    closeWelcomeWindowEagerly()
+                    attemptAutoReconnectAll(connectionIds: connectionIds)
+                } else if let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
+                    closeWelcomeWindowEagerly()
+                    attemptAutoReconnect(connectionId: lastConnectionId)
+                } else {
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.isHandlingFileOpen else { return }
+                        let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
+                        guard !self.isHandlingFileOpen else { return }
+                        if !diskIds.isEmpty {
+                            self.closeWelcomeWindowEagerly()
+                            self.attemptAutoReconnectAll(connectionIds: diskIds)
+                        } else {
+                            self.closeRestoredMainWindows()
+                        }
                     }
                 }
+            } else {
+                closeRestoredMainWindows()
             }
-        } else {
-            closeRestoredMainWindows()
         }
 
         // NOTE: These observers are not explicitly removed because AppDelegate
