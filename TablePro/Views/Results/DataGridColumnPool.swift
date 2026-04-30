@@ -52,6 +52,8 @@ final class DataGridColumnPool {
             }
         }
 
+        resetToNaturalOrder(in: tableView, visibleSlotCount: visibleCount)
+
         if let order = savedLayout?.columnOrder, !order.isEmpty {
             applyColumnOrder(order, in: tableView, schema: schema)
         }
@@ -80,22 +82,54 @@ final class DataGridColumnPool {
         width: CGFloat,
         isEditable: Bool
     ) {
-        let cell = SortableHeaderCell(textCell: name)
-        cell.font = column.headerCell.font
-        cell.alignment = column.headerCell.alignment
-        column.headerCell = cell
-
-        if let typeName = columnType?.rawType ?? columnType?.displayName {
-            column.headerToolTip = "\(name) (\(typeName))"
-        } else {
-            column.headerToolTip = name
+        if !(column.headerCell is SortableHeaderCell) || column.headerCell.stringValue != name {
+            let cell = SortableHeaderCell(textCell: name)
+            cell.font = column.headerCell.font
+            cell.alignment = column.headerCell.alignment
+            column.headerCell = cell
         }
-        column.headerCell.setAccessibilityLabel(
-            String(format: String(localized: "Column: %@"), name)
-        )
-        column.width = width
-        column.isEditable = isEditable
-        column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: true)
+
+        let tooltip: String
+        if let typeName = columnType?.rawType ?? columnType?.displayName {
+            tooltip = "\(name) (\(typeName))"
+        } else {
+            tooltip = name
+        }
+        if column.headerToolTip != tooltip {
+            column.headerToolTip = tooltip
+        }
+
+        let label = String(format: String(localized: "Column: %@"), name)
+        if column.headerCell.accessibilityLabel() != label {
+            column.headerCell.setAccessibilityLabel(label)
+        }
+
+        if column.width != width {
+            column.width = width
+        }
+        if column.isEditable != isEditable {
+            column.isEditable = isEditable
+        }
+        if column.sortDescriptorPrototype?.key != name {
+            column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: true)
+        }
+    }
+
+    private func resetToNaturalOrder(in tableView: NSTableView, visibleSlotCount: Int) {
+        let rowNumberIsPresent = tableView.tableColumns.first?.identifier == ColumnIdentitySchema.rowNumberIdentifier
+        let baseOffset = rowNumberIsPresent ? 1 : 0
+
+        for slot in 0..<visibleSlotCount {
+            let identifier = ColumnIdentitySchema.slotIdentifier(slot)
+            guard let currentIndex = tableView.tableColumns.firstIndex(where: { $0.identifier == identifier }) else {
+                continue
+            }
+            let desiredIndex = baseOffset + slot
+            guard desiredIndex < tableView.tableColumns.count else { continue }
+            if currentIndex != desiredIndex {
+                tableView.moveColumn(currentIndex, toColumn: desiredIndex)
+            }
+        }
     }
 
     private func applyColumnOrder(
