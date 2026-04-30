@@ -90,9 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = QueryHistoryStorage.shared
         }
 
-        if isHandlingFileOpen {
-            closeRestoredMainWindows()
-        } else {
+        if !isHandlingFileOpen {
             let settings = AppSettingsStorage.shared.loadGeneral()
             if settings.startupBehavior == .reopenLast {
                 let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
