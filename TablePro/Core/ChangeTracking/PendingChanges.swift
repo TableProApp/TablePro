@@ -364,11 +364,14 @@ struct PendingChanges: Equatable {
     private mutating func removeChangeAt(_ arrayIndex: Int) {
         let removed = changes[arrayIndex]
         changeIndex.removeValue(forKey: RowChangeKey(rowIndex: removed.rowIndex, type: removed.type))
-        changes.remove(at: arrayIndex)
 
-        for (key, idx) in changeIndex where idx > arrayIndex {
-            changeIndex[key] = idx - 1
+        let lastIndex = changes.count - 1
+        if arrayIndex != lastIndex {
+            let moved = changes[lastIndex]
+            changes.swapAt(arrayIndex, lastIndex)
+            changeIndex[RowChangeKey(rowIndex: moved.rowIndex, type: moved.type)] = arrayIndex
         }
+        changes.removeLast()
     }
 
     private mutating func rebuildChangeIndex() {
