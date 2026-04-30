@@ -115,11 +115,17 @@ extension MainContentView {
             var restoredTabs = result.tabs
             for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
                 if let tableName = restoredTabs[i].tableContext.tableName {
-                    restoredTabs[i].content.query = QueryTab.buildBaseTableQuery(
-                        tableName: tableName,
-                        databaseType: connection.type,
-                        schemaName: restoredTabs[i].tableContext.schemaName
-                    )
+                    do {
+                        restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
+                            tableName: tableName,
+                            databaseType: connection.type,
+                            schemaName: restoredTabs[i].tableContext.schemaName
+                        )
+                    } catch {
+                        MainContentView.lifecycleLogger.error(
+                            "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
                 }
             }
 

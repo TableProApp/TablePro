@@ -126,9 +126,9 @@ struct EditorTabPayloadTests {
 
     @Test("Init from QueryTab maps fields correctly")
     @MainActor
-    func initFromQueryTab() {
+    func initFromQueryTab() throws {
         let tabManager = QueryTabManager()
-        tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
+        try tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let tab = tabManager.tabs.first!
         let connectionId = UUID()
         let payload = EditorTabPayload(from: tab, connectionId: connectionId)

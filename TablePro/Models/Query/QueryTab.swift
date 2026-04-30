@@ -94,8 +94,7 @@ struct QueryTab: Identifiable, Equatable {
         databaseType: DatabaseType,
         schemaName: String? = nil,
         quoteIdentifier: ((String) -> String)? = nil
-    ) -> String {
-        let quote = quoteIdentifier ?? quoteIdentifierFromDialect(PluginManager.shared.sqlDialect(for: databaseType))
+    ) throws -> String {
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
 
         if let pluginDriver = PluginManager.shared.queryBuildingDriver(for: databaseType),
@@ -112,6 +111,8 @@ struct QueryTab: Identifiable, Equatable {
         case .bash:
             return "SCAN 0 MATCH * COUNT \(pageSize)"
         default:
+            let dialect = try resolveSQLDialect(for: databaseType)
+            let quote = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
             let qualifiedName: String
             if let schema = schemaName, !schema.isEmpty {
                 qualifiedName = "\(quote(schema)).\(quote(tableName))"

@@ -23,9 +23,9 @@ struct QueryTabManagerSelectedTabAndIndexTests {
     }
 
     @Test("returns the selected tab and its index after addTableTab")
-    func returnsSelectedTabAfterAdd() {
+    func returnsSelectedTabAfterAdd() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "users")
 
         let result = manager.selectedTabAndIndex
         #expect(result?.index == 0)
@@ -33,9 +33,9 @@ struct QueryTabManagerSelectedTabAndIndexTests {
     }
 
     @Test("returns nil when selectedTabId points to a removed tab")
-    func nilWhenSelectionIsStale() {
+    func nilWhenSelectionIsStale() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "users")
         let staleId = manager.tabs[0].id
 
         manager.tabs.removeAll()
@@ -45,10 +45,10 @@ struct QueryTabManagerSelectedTabAndIndexTests {
     }
 
     @Test("returns the correct (tab, index) pair after switching tabs")
-    func returnsCorrectPairAfterSwitch() {
+    func returnsCorrectPairAfterSwitch() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users")
-        manager.addTableTab(tableName: "orders")
+        try manager.addTableTab(tableName: "users")
+        try manager.addTableTab(tableName: "orders")
         let firstId = manager.tabs[0].id
 
         manager.selectedTabId = firstId

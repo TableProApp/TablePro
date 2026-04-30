@@ -103,7 +103,7 @@ final class QueryTabManager {
         databaseType: DatabaseType = .mysql,
         databaseName: String = "",
         quoteIdentifier: ((String) -> String)? = nil
-    ) {
+    ) throws {
         if let existingTab = tabs.first(where: {
             $0.tabType == .table && $0.tableContext.tableName == tableName && $0.tableContext.databaseName == databaseName
         }) {
@@ -112,7 +112,7 @@ final class QueryTabManager {
         }
 
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
-        let query = QueryTab.buildBaseTableQuery(
+        let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName, databaseType: databaseType, quoteIdentifier: quoteIdentifier
         )
         var newTab = QueryTab(
@@ -180,9 +180,9 @@ final class QueryTabManager {
         databaseType: DatabaseType = .mysql,
         databaseName: String = "",
         quoteIdentifier: ((String) -> String)? = nil
-    ) {
+    ) throws {
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
-        let query = QueryTab.buildBaseTableQuery(
+        let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName, databaseType: databaseType, quoteIdentifier: quoteIdentifier
         )
         var newTab = QueryTab(
@@ -207,14 +207,14 @@ final class QueryTabManager {
         isView: Bool = false, databaseName: String = "",
         schemaName: String? = nil, isPreview: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
-    ) -> Bool {
+    ) throws -> Bool {
         guard let selectedId = selectedTabId,
               let selectedIndex = tabs.firstIndex(where: { $0.id == selectedId })
         else {
             return false
         }
 
-        let query = QueryTab.buildBaseTableQuery(
+        let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName,
             databaseType: databaseType,
             schemaName: schemaName,

@@ -169,9 +169,9 @@ struct SidebarNavigationResultTests {
 
     @Test("Resolves to skip when clicking the active table in QueryTabManager")
     @MainActor
-    func resolveSkipWithActiveTableInTabManager() {
+    func resolveSkipWithActiveTableInTabManager() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
@@ -182,9 +182,9 @@ struct SidebarNavigationResultTests {
 
     @Test("Resolves to revertAndOpenNewWindow when clicking a different table in non-empty window")
     @MainActor
-    func resolveNewWindowWhenClickingDifferentTable() {
+    func resolveNewWindowWhenClickingDifferentTable() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
@@ -245,9 +245,9 @@ struct SidebarNavigationResultTests {
 
     @Test("Sync should set selection to active table name")
     @MainActor
-    func syncSetsSelectionForTableTab() {
+    func syncSetsSelectionForTableTab() throws {
         let manager = QueryTabManager()
-        manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let currentTableName = manager.selectedTab?.tableContext.tableName
         #expect(currentTableName == "users")
         // syncSidebarToCurrentTab will find "users" in tables and set selectedTables = [users]

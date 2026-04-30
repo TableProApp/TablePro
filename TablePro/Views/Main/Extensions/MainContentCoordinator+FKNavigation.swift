@@ -73,13 +73,19 @@ extension MainContentCoordinator {
             return
         }
 
-        let needsQuery = tabManager.replaceTabContent(
-            tableName: referencedTable,
-            databaseType: connection.type,
-            isView: false,
-            databaseName: currentDatabase,
-            schemaName: targetSchema
-        )
+        let needsQuery: Bool
+        do {
+            needsQuery = try tabManager.replaceTabContent(
+                tableName: referencedTable,
+                databaseType: connection.type,
+                isView: false,
+                databaseName: currentDatabase,
+                schemaName: targetSchema
+            )
+        } catch {
+            fkNavigationLogger.error("navigateToFKReference replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
 
         if needsQuery, let (tab, tabIndex) = tabManager.selectedTabAndIndex {
             setActiveTableRows(TableRows(), for: tab.id)

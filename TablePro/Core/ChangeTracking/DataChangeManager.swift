@@ -421,7 +421,7 @@ final class DataChangeManager: ChangeManaging {
             )
         }
 
-        let generator = SQLStatementGenerator(
+        let generator = try SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,

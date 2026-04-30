@@ -18,8 +18,8 @@ struct SQLStatementGeneratorNoPKTests {
         columns: [String] = ["id", "name", "email"],
         primaryKeyColumns: [String] = [],
         databaseType: DatabaseType = .mysql
-    ) -> SQLStatementGenerator {
-        SQLStatementGenerator(
+    ) throws -> SQLStatementGenerator {
+        try SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
@@ -31,8 +31,8 @@ struct SQLStatementGeneratorNoPKTests {
     // MARK: - UPDATE without PK
 
     @Test("Update without primary key uses all columns in WHERE")
-    func testUpdateNoPrimaryKey() {
-        let generator = makeGenerator()
+    func testUpdateNoPrimaryKey() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -64,8 +64,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Update without PK — MySQL uses LIMIT 1")
-    func testUpdateNoPKMySQLLimit() {
-        let generator = makeGenerator(databaseType: .mysql)
+    func testUpdateNoPKMySQLLimit() throws {
+        let generator = try makeGenerator(databaseType: .mysql)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -97,8 +97,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Update without PK — PostgreSQL uses $N placeholders, no LIMIT")
-    func testUpdateNoPKPostgreSQLNoLimit() {
-        let generator = makeGenerator(databaseType: .postgresql)
+    func testUpdateNoPKPostgreSQLNoLimit() throws {
+        let generator = try makeGenerator(databaseType: .postgresql)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -129,8 +129,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Update without PK — SQLite uses LIMIT 1")
-    func testUpdateNoPKSQLiteLimit() {
-        let generator = makeGenerator(databaseType: .sqlite)
+    func testUpdateNoPKSQLiteLimit() throws {
+        let generator = try makeGenerator(databaseType: .sqlite)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -156,8 +156,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Update without PK — MSSQL uses UPDATE TOP (1)")
-    func testUpdateNoPKMSSQLTop() {
-        let generator = makeGenerator(databaseType: .mssql)
+    func testUpdateNoPKMSSQLTop() throws {
+        let generator = try makeGenerator(databaseType: .mssql)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -184,8 +184,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Update without PK — NULL in originalRow uses IS NULL")
-    func testUpdateNoPKWithNull() {
-        let generator = makeGenerator()
+    func testUpdateNoPKWithNull() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -211,8 +211,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Update without PK — missing originalRow returns empty")
-    func testUpdateNoPKMissingOriginalRow() {
-        let generator = makeGenerator()
+    func testUpdateNoPKMissingOriginalRow() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -235,8 +235,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Update without PK — multiple columns changed")
-    func testUpdateNoPKMultipleColumnsChanged() {
-        let generator = makeGenerator()
+    func testUpdateNoPKMultipleColumnsChanged() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -266,8 +266,8 @@ struct SQLStatementGeneratorNoPKTests {
     // MARK: - DELETE without PK
 
     @Test("Delete without PK — MSSQL uses DELETE TOP (1)")
-    func testDeleteNoPKMSSQLTop() {
-        let generator = makeGenerator(databaseType: .mssql)
+    func testDeleteNoPKMSSQLTop() throws {
+        let generator = try makeGenerator(databaseType: .mssql)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -291,8 +291,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Delete without PK — SQLite uses LIMIT 1")
-    func testDeleteNoPKSQLiteLimit() {
-        let generator = makeGenerator(databaseType: .sqlite)
+    func testDeleteNoPKSQLiteLimit() throws {
+        let generator = try makeGenerator(databaseType: .sqlite)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -316,8 +316,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Delete without PK — multiple rows generate individual DELETEs")
-    func testDeleteNoPKMultipleRows() {
-        let generator = makeGenerator()
+    func testDeleteNoPKMultipleRows() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", "John", "john@example.com"]),
             RowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
@@ -338,8 +338,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Delete without PK — all NULL originalRow uses IS NULL")
-    func testDeleteNoPKAllNull() {
-        let generator = makeGenerator()
+    func testDeleteNoPKAllNull() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -365,8 +365,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("Delete without PK — missing originalRow returns empty")
-    func testDeleteNoPKMissingOriginalRow() {
-        let generator = makeGenerator()
+    func testDeleteNoPKMissingOriginalRow() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -389,8 +389,8 @@ struct SQLStatementGeneratorNoPKTests {
     // MARK: - Mixed Operations without PK
 
     @Test("Mixed UPDATE + DELETE without PK generates both")
-    func testMixedUpdateDeleteNoPK() {
-        let generator = makeGenerator()
+    func testMixedUpdateDeleteNoPK() throws {
+        let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -421,8 +421,8 @@ struct SQLStatementGeneratorNoPKTests {
     }
 
     @Test("INSERT + DELETE without PK — INSERT unaffected")
-    func testInsertDeleteNoPK() {
-        let generator = makeGenerator()
+    func testInsertDeleteNoPK() throws {
+        let generator = try makeGenerator()
         let insertedRowData: [Int: [String?]] = [
             0: ["3", "Bob", "bob@example.com"]
         ]

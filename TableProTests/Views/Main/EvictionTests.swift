@@ -34,7 +34,7 @@ struct EvictionTests {
         tabManager: QueryTabManager,
         tableName: String = "users"
     ) {
-        tabManager.addTableTab(tableName: tableName)
+        try tabManager.addTableTab(tableName: tableName)
         guard let index = tabManager.selectedTabIndex else { return }
         let rows = TestFixtures.makeRows(count: 10)
         let tabId = tabManager.tabs[index].id
