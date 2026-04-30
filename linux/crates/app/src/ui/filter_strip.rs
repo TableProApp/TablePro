@@ -43,6 +43,10 @@ use tablepro_core::{ColumnInfo, Combinator, FilterOp, FilterRule, FilterSet, Fil
 type Rebuilder = Rc<dyn Fn()>;
 type RebuilderSlot = Rc<RefCell<Option<Rebuilder>>>;
 
+fn extra_is_blank(extra: Option<&str>) -> bool {
+    extra.map(|s| s.trim().is_empty()).unwrap_or(true)
+}
+
 /// Operator rendered in the Op dropdown — label, FilterOp, and
 /// whether the rule needs a value.
 struct OpEntry {
@@ -304,7 +308,34 @@ impl FilterStrip {
     }
 
     pub fn toggle(&self) {
-        self.set_revealed(!self.is_revealed());
+        let opening = !self.is_revealed();
+        if opening {
+            // Re-seed an empty editor on every open so the user faces
+            // a ready row instead of a blank list. Idempotent: if any
+            // rule or raw SQL already exists, leave the state alone.
+            self.seed_if_empty();
+        }
+        self.set_revealed(opening);
+    }
+
+    fn seed_if_empty(&self) {
+        let columns = self.columns.borrow();
+        let mut state = self.state.borrow_mut();
+        if state.rules.is_empty()
+            && extra_is_blank(state.extra_sql.as_deref())
+            && let Some(first) = columns.first()
+        {
+            state.rules.push(FilterRule {
+                column: first.name.clone(),
+                op: FilterOp::Eq,
+                value: Some(FilterValue::Single(String::new())),
+            });
+            drop(state);
+            drop(columns);
+            if let Some(f) = self.rebuild.borrow().as_ref() {
+                f();
+            }
+        }
     }
 
     /// Refresh column metadata after a `ColumnsLoaded`. Drops any
@@ -362,12 +393,35 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         .margin_start(12)
         .margin_end(12)
         .build();
-    let title = gtk::Label::builder()
-        .label(crate::tr!("Filter rows"))
-        .xalign(0.0)
-        .hexpand(true)
+    // Header reads as a single concise row: small "Match … of these
+    // rules:" label on the left with the combinator dropdown inline
+    // (only revealed once 2+ rules exist, since AND/OR is meaningless
+    // with 0–1 rules), spacer, action buttons on the right. Drops the
+    // earlier "Filter rows" title — Apply / Clear / × already mark
+    // this as the filter editor.
+    let match_label = gtk::Label::builder().label(crate::tr!("Match")).build();
+    match_label.add_css_class("dim-label");
+    let combinator_dropdown = gtk::DropDown::from_strings(&[&crate::tr!("all"), &crate::tr!("any")]);
+    combinator_dropdown.set_valign(gtk::Align::Center);
+    combinator_dropdown.set_selected(match state.borrow().combinator {
+        Combinator::And => 0,
+        Combinator::Or => 1,
+    });
+    let match_suffix = gtk::Label::builder().label(crate::tr!("of these rules")).build();
+    match_suffix.add_css_class("dim-label");
+    let match_row_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
         .build();
-    title.add_css_class("heading");
+    match_row_box.append(&match_label);
+    match_row_box.append(&combinator_dropdown);
+    match_row_box.append(&match_suffix);
+    let match_revealer = gtk::Revealer::builder()
+        .transition_type(gtk::RevealerTransitionType::None)
+        .reveal_child(state.borrow().rules.len() >= 2)
+        .child(&match_row_box)
+        .build();
+    let spacer = gtk::Box::builder().hexpand(true).build();
     let clear_btn = gtk::Button::with_label(&crate::tr!("Clear all"));
     clear_btn.add_css_class("flat");
     let apply_btn = gtk::Button::with_label(&crate::tr!("Apply"));
@@ -377,7 +431,8 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         .tooltip_text(crate::tr!("Close (Esc)"))
         .build();
     close_btn.add_css_class("flat");
-    header.append(&title);
+    header.append(&match_revealer);
+    header.append(&spacer);
     header.append(&clear_btn);
     header.append(&apply_btn);
     header.append(&close_btn);
@@ -385,30 +440,12 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
 
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(12)
-        .margin_top(12)
-        .margin_bottom(12)
+        .spacing(8)
+        .margin_top(6)
+        .margin_bottom(8)
         .margin_start(12)
         .margin_end(12)
         .build();
-
-    // Match-combinator row. AdwActionRow in a tiny boxed-list with
-    // a trailing DropDown — visually parallel to the rules list
-    // below it, so the user reads "Combine with: All / Any" as a
-    // sibling of "Rules".
-    let match_group = adw::PreferencesGroup::builder().title(crate::tr!("Match")).build();
-    let match_row = adw::ActionRow::builder()
-        .title(crate::tr!("Combine rules with"))
-        .build();
-    let combinator_dropdown = gtk::DropDown::from_strings(&[&crate::tr!("All (AND)"), &crate::tr!("Any (OR)")]);
-    combinator_dropdown.set_valign(gtk::Align::Center);
-    combinator_dropdown.set_selected(match state.borrow().combinator {
-        Combinator::And => 0,
-        Combinator::Or => 1,
-    });
-    match_row.add_suffix(&combinator_dropdown);
-    match_group.add(&match_row);
-    content.append(&match_group);
 
     let state_for_combinator = state.clone();
     combinator_dropdown.connect_selected_notify(move |dd| {
@@ -418,17 +455,25 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         };
     });
 
-    // Rules section header + boxed-list. The list is rebuilt on every
-    // mutation; building inside an outer Box rather than directly
-    // appending to a PreferencesGroup avoids fighting AdwPreferencesGroup's
-    // child-management API.
-    let rules_header = gtk::Label::builder().label(crate::tr!("Rules")).xalign(0.0).build();
-    rules_header.add_css_class("heading");
-    content.append(&rules_header);
-
+    // Rule list — boxed-list of rule rows, no section header.
+    // Implicit title (the strip itself reads as "Filter") + the
+    // header's Match dropdown is enough context. An empty list
+    // gets one auto-seeded rule below so the user always faces a
+    // ready-to-fill row instead of a blank Add Rule banner.
     let rules_list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
     rules_list.add_css_class("boxed-list");
     content.append(&rules_list);
+
+    // Inline "Add rule" — small, left-aligned, flat. Replaces the
+    // earlier full-width AdwButtonRow banner that read like a
+    // signpost rather than an action.
+    let add_rule_btn = gtk::Button::builder()
+        .icon_name("list-add-symbolic")
+        .label(crate::tr!("Add rule"))
+        .halign(gtk::Align::Start)
+        .build();
+    add_rule_btn.add_css_class("flat");
+    content.append(&add_rule_btn);
 
     // Rebuild closure — captured by every input-changed callback.
     // Drains the list, walks `state.rules`, builds a row per rule,
@@ -445,6 +490,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         let columns = columns.clone();
         let suppress = suppress.clone();
         let rebuild_inner = rebuild.clone();
+        let match_revealer = match_revealer.clone();
         let closure: Rebuilder = Rc::new(move || {
             suppress.set(true);
             while let Some(child) = rules_list.first_child() {
@@ -462,39 +508,60 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
                 );
                 rules_list.append(&row);
             }
-            // Trailing "Add rule" row matching the structure-tab
-            // boxed-list pattern.
-            let add_row = adw::ButtonRow::builder()
-                .title(crate::tr!("Add rule"))
-                .start_icon_name("list-add-symbolic")
-                .build();
-            let state_for_add = state.clone();
-            let columns_for_add = columns.clone();
-            let rebuild_for_add = rebuild_inner.clone();
-            add_row.connect_activated(move |_| {
-                let default_col = columns_for_add
-                    .borrow()
-                    .first()
-                    .map(|c| c.name.clone())
-                    .unwrap_or_default();
-                state_for_add.borrow_mut().rules.push(FilterRule {
-                    column: default_col,
-                    op: FilterOp::Eq,
-                    value: Some(FilterValue::Single(String::new())),
-                });
-                if let Some(f) = rebuild_for_add.borrow().as_ref() {
-                    f();
-                }
-            });
-            rules_list.append(&add_row);
+            // Match dropdown is meaningless until there are at least
+            // two rules to combine; reveal it then, hide it otherwise.
+            match_revealer.set_reveal_child(rules_snapshot.len() >= 2);
+            // Visually mute the entire rules list when empty so the
+            // strip reads as ready-for-input rather than already-
+            // populated.
+            rules_list.set_visible(!rules_snapshot.is_empty());
             suppress.set(false);
         });
         *rebuild.borrow_mut() = Some(closure);
     }
 
+    // Auto-seed one rule when the user opens the strip on a new
+    // empty filter — saves a click, makes the strip self-explanatory
+    // (column ▾ op ▾ value entry visible from the moment it slides
+    // in). Skipped when columns aren't loaded yet (the rule would
+    // have nothing to bind to) or when the user already has rules
+    // saved from a previous session.
+    {
+        let columns_borrow = columns.borrow();
+        let mut state_mut = state.borrow_mut();
+        if state_mut.rules.is_empty()
+            && extra_is_blank(state_mut.extra_sql.as_deref())
+            && let Some(first) = columns_borrow.first()
+        {
+            state_mut.rules.push(FilterRule {
+                column: first.name.clone(),
+                op: FilterOp::Eq,
+                value: Some(FilterValue::Single(String::new())),
+            });
+        }
+    }
     if let Some(f) = rebuild.borrow().as_ref() {
         f();
     }
+
+    let state_for_add = state.clone();
+    let columns_for_add = columns.clone();
+    let rebuild_for_add = rebuild.clone();
+    add_rule_btn.connect_clicked(move |_| {
+        let default_col = columns_for_add
+            .borrow()
+            .first()
+            .map(|c| c.name.clone())
+            .unwrap_or_default();
+        state_for_add.borrow_mut().rules.push(FilterRule {
+            column: default_col,
+            op: FilterOp::Eq,
+            value: Some(FilterValue::Single(String::new())),
+        });
+        if let Some(f) = rebuild_for_add.borrow().as_ref() {
+            f();
+        }
+    });
 
     // Advanced (raw SQL) — collapsible at the bottom of the strip.
     // The user types arbitrary SQL appended to the structured rules
@@ -503,12 +570,13 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     // owns the connection — a raw filter is a power feature, not an
     // injection vector). AdwExpanderRow keeps it out of the way for
     // the common case where structured rules are enough.
+    // Advanced expander — collapsed by default unless the user has
+    // a saved raw fragment. Dropping the long subtitle in favour of
+    // a tooltip — the title alone is enough hint for the few users
+    // who reach for raw SQL.
     let advanced_group = adw::PreferencesGroup::builder().build();
     let advanced_row = adw::ExpanderRow::builder()
         .title(crate::tr!("Advanced (raw SQL)"))
-        .subtitle(crate::tr!(
-            "Appended to the rules above with the chosen combinator. Use for expressions the rule editor can't model."
-        ))
         .expanded(
             state
                 .borrow()
@@ -517,6 +585,9 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
                 .is_some_and(|s| !s.trim().is_empty()),
         )
         .build();
+    advanced_row.set_tooltip_text(Some(&crate::tr!(
+        "Raw SQL fragment appended to the rules with the combinator above."
+    )));
     let extra_entry = adw::EntryRow::builder().title(crate::tr!("Raw SQL")).build();
     extra_entry.set_text(state.borrow().extra_sql.as_deref().unwrap_or(""));
     let state_for_extra = state.clone();
