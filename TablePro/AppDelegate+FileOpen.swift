@@ -270,7 +270,7 @@ extension AppDelegate {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
 
-        let deeplinkPayload = EditorTabPayload(connectionId: connection.id)
+        let deeplinkPayload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         WindowManager.shared.openTab(payload: deeplinkPayload)
         NSWindow.allowsAutomaticWindowTabbing = savedTabbing
 
