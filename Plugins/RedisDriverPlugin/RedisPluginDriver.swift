@@ -347,10 +347,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return PluginDatabaseMetadata(name: dbName, tableCount: keyCount)
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        throw NSError(domain: "RedisDriver", code: -1, userInfo: [NSLocalizedDescriptionKey: "Redis databases are pre-allocated"])
-    }
-
     // MARK: - Schema Support
 
     var supportsSchemas: Bool { false }

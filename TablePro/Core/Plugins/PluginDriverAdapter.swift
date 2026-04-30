@@ -301,8 +301,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         )
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        try await pluginDriver.createDatabase(name: name, charset: charset, collation: collation)
+    func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? {
+        guard let pluginSpec = try await pluginDriver.createDatabaseFormSpec() else { return nil }
+        return mapFormSpec(pluginSpec)
+    }
+
+    func createDatabase(_ request: CreateDatabaseRequest) async throws {
+        let pluginRequest = PluginCreateDatabaseRequest(name: request.name, values: request.values)
+        try await pluginDriver.createDatabase(pluginRequest)
     }
 
     func dropDatabase(name: String) async throws {
@@ -558,5 +564,46 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         let result = classifier.classify(rawTypeName: rawTypeName)
         columnTypeCache[rawTypeName] = result
         return result
+    }
+}
+
+private extension PluginDriverAdapter {
+    func mapFormSpec(_ spec: PluginCreateDatabaseFormSpec) -> CreateDatabaseFormSpec {
+        CreateDatabaseFormSpec(
+            fields: spec.fields.map(mapFormField),
+            footnote: spec.footnote
+        )
+    }
+
+    func mapFormField(_ field: PluginCreateDatabaseFormSpec.Field) -> CreateDatabaseFormSpec.Field {
+        CreateDatabaseFormSpec.Field(
+            id: field.id,
+            label: field.label,
+            kind: mapFieldKind(field.kind),
+            visibleWhen: field.visibleWhen.map(mapVisibility),
+            groupedBy: field.groupedBy
+        )
+    }
+
+    func mapFieldKind(_ kind: PluginCreateDatabaseFormSpec.FieldKind) -> CreateDatabaseFormSpec.FieldKind {
+        switch kind {
+        case .picker(let options, let defaultValue):
+            return .picker(options: options.map(mapOption), defaultValue: defaultValue)
+        case .searchable(let options, let defaultValue):
+            return .searchable(options: options.map(mapOption), defaultValue: defaultValue)
+        }
+    }
+
+    func mapOption(_ option: PluginCreateDatabaseFormSpec.Option) -> CreateDatabaseFormSpec.Option {
+        CreateDatabaseFormSpec.Option(
+            value: option.value,
+            label: option.label,
+            subtitle: option.subtitle,
+            group: option.group
+        )
+    }
+
+    func mapVisibility(_ visibility: PluginCreateDatabaseFormSpec.Visibility) -> CreateDatabaseFormSpec.Visibility {
+        CreateDatabaseFormSpec.Visibility(fieldId: visibility.fieldId, equals: visibility.equals)
     }
 }

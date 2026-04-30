@@ -1359,8 +1359,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return PluginDatabaseMetadata(name: database)
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
+        let quotedName = "[\(request.name.replacingOccurrences(of: "]", with: "]]"))]"
         _ = try await execute(query: "CREATE DATABASE \(quotedName)")
     }
 

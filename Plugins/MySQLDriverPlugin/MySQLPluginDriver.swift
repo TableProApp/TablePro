@@ -624,32 +624,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        let escapedName = name.replacingOccurrences(of: "`", with: "``")
-
-        let validCharsets = [
-            "utf8mb4", "utf8mb3", "utf8", "latin1", "ascii",
-            "binary", "utf16", "utf32", "cp1251", "big5",
-            "euckr", "gb2312", "gbk", "sjis"
-        ]
-        guard validCharsets.contains(charset) else {
-            throw MariaDBPluginError(code: 0, message: "Invalid character set: \(charset)", sqlState: nil)
-        }
-
-        var query = "CREATE DATABASE `\(escapedName)` CHARACTER SET \(charset)"
-
-        if let collation = collation {
-            let allowedChars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
-            let isSafe = collation.unicodeScalars.allSatisfy { allowedChars.contains($0) }
-            guard collation.hasPrefix(charset), isSafe else {
-                throw MariaDBPluginError(code: 0, message: "Invalid collation for charset", sqlState: nil)
-            }
-            query += " COLLATE \(collation)"
-        }
-
-        _ = try await execute(query: query)
-    }
-
     func dropDatabase(name: String) async throws {
         let escapedName = name.replacingOccurrences(of: "`", with: "``")
         _ = try await execute(query: "DROP DATABASE `\(escapedName)`")

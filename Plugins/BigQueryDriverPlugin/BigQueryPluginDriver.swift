@@ -805,9 +805,13 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         "CREATE OR REPLACE VIEW \(quoteIdentifier(viewName)) AS\nSELECT * FROM table_name;"
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
         guard let conn = connection else { throw BigQueryError.notConnected }
-        let escaped = name.replacingOccurrences(of: "`", with: "\\`")
+        let escaped = request.name.replacingOccurrences(of: "`", with: "\\`")
         _ = try await conn.executeQuery("CREATE SCHEMA `\(escaped)`")
     }
 

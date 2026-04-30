@@ -451,13 +451,17 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
         )
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
         }
 
-        _ = try await conn.insertOne(database: name, collection: "__tablepro_init", document: "{\"_init\": true}")
-        _ = try await conn.runCommand("{\"drop\": \"__tablepro_init\"}", database: name)
+        _ = try await conn.insertOne(database: request.name, collection: "__tablepro_init", document: "{\"_init\": true}")
+        _ = try await conn.runCommand("{\"drop\": \"__tablepro_init\"}", database: request.name)
     }
 
     func dropDatabase(name: String) async throws {

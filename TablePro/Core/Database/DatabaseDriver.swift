@@ -130,10 +130,10 @@ protocol DatabaseDriver: AnyObject {
     /// Default implementation falls back to per-database calls.
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata]
 
-    /// Create a new database
-    func createDatabase(name: String, charset: String, collation: String?) async throws
+    func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec?
 
-    /// Drop a database
+    func createDatabase(_ request: CreateDatabaseRequest) async throws
+
     func dropDatabase(name: String) async throws
 
     // MARK: - Maintenance

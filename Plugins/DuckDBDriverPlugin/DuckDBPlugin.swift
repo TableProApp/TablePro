@@ -1061,10 +1061,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         PluginDatabaseMetadata(name: database)
     }
 
-    func createDatabase(name: String, charset: String, collation: String?) async throws {
-        throw DuckDBPluginError.unsupportedOperation
-    }
-
     // MARK: - EXPLAIN
 
     func buildExplainQuery(_ sql: String) -> String? {
