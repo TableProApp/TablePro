@@ -15,20 +15,15 @@ internal final class SQLFavoriteStorage {
     private let queue = DispatchQueue(label: "com.TablePro.sqlfavorites", qos: .utility)
     private var db: OpaquePointer?
 
-    private static var isRunningTests: Bool {
-        NSClassFromString("XCTestCase") != nil
-    }
+    private let databaseURL: URL
+    private let removeDatabaseOnDeinit: Bool
 
-    private init() {
-        queue.async { [weak self] in
-            self?.setupDatabase()
-        }
-    }
-
-    #if DEBUG
-    /// Creates an isolated instance with a unique database file. For testing only.
-    init(isolatedForTesting: Bool) {
-        testDatabaseSuffix = isolatedForTesting ? "_\(UUID().uuidString)" : nil
+    init(
+        databaseURL: URL = SQLFavoriteStorage.defaultDatabaseURL(),
+        removeDatabaseOnDeinit: Bool = false
+    ) {
+        self.databaseURL = databaseURL
+        self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
         let semaphore = DispatchSemaphore(value: 0)
         queue.async { [self] in
             setupDatabase()
@@ -36,20 +31,26 @@ internal final class SQLFavoriteStorage {
         }
         semaphore.wait()
     }
-    #endif
 
-    private var testDatabaseSuffix: String?
-
-    private var dbPath: String?
+    static func defaultDatabaseURL() -> URL {
+        let fileManager = FileManager.default
+        let appSupport = fileManager.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        ).first ?? fileManager.temporaryDirectory
+        let dir = appSupport.appendingPathComponent("TablePro")
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("sql_favorites.db")
+    }
 
     deinit {
         if let db = db {
             sqlite3_close_v2(db)
         }
-        if Self.isRunningTests, let dbPath = dbPath {
-            try? FileManager.default.removeItem(atPath: dbPath)
+        if removeDatabaseOnDeinit {
+            let path = databaseURL.path(percentEncoded: false)
+            try? FileManager.default.removeItem(atPath: path)
             for suffix in ["-wal", "-shm"] {
-                try? FileManager.default.removeItem(atPath: dbPath + suffix)
+                try? FileManager.default.removeItem(atPath: path + suffix)
             }
         }
     }
@@ -81,26 +82,10 @@ internal final class SQLFavoriteStorage {
     // MARK: - Database Setup
 
     private func setupDatabase() {
-        let fileManager = FileManager.default
-        guard
-            let appSupport = fileManager.urls(
-                for: .applicationSupportDirectory, in: .userDomainMask
-            ).first
-        else {
-            Self.logger.error("Unable to access application support directory")
-            return
-        }
-        let tableProDir = appSupport.appendingPathComponent("TablePro")
+        let dir = databaseURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        try? fileManager.createDirectory(at: tableProDir, withIntermediateDirectories: true)
-
-        let suffix = testDatabaseSuffix ?? ""
-        let dbFileName = Self.isRunningTests
-            ? "sql_favorites_test_\(ProcessInfo.processInfo.processIdentifier)\(suffix).db"
-            : "sql_favorites.db"
-        let dbPath = tableProDir.appendingPathComponent(dbFileName).path(percentEncoded: false)
-
-        self.dbPath = dbPath
+        let dbPath = databaseURL.path(percentEncoded: false)
 
         if sqlite3_open(dbPath, &db) != SQLITE_OK {
             Self.logger.error("Error opening database")

@@ -13,13 +13,8 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     private let storage: SQLFavoriteStorage
 
-    /// Creates an isolated manager with its own storage. For testing only.
-    init(isolatedStorage: SQLFavoriteStorage) {
-        self.storage = isolatedStorage
-    }
-
-    private init() {
-        self.storage = SQLFavoriteStorage.shared
+    init(storage: SQLFavoriteStorage = .shared) {
+        self.storage = storage
     }
 
     // MARK: - Favorites
