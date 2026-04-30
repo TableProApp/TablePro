@@ -27,7 +27,8 @@ final class DataGridColumnPool {
     ) {
         attach(to: tableView)
         let visibleCount = schema.columnNames.count
-        growPoolIfNeeded(to: visibleCount, in: tableView)
+
+        growBackingPoolIfNeeded(to: visibleCount)
 
         let willRestoreWidths = !(savedLayout?.columnWidths.isEmpty ?? true)
         let hiddenFromLayout = savedLayout?.hiddenColumns ?? []
@@ -46,32 +47,90 @@ final class DataGridColumnPool {
                     width: resolvedWidth,
                     isEditable: isEditable
                 )
-                column.isHidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
-            } else {
+                let hidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
+                if column.isHidden != hidden {
+                    column.isHidden = hidden
+                }
+            } else if !column.isHidden {
                 column.isHidden = true
             }
         }
 
-        resetToNaturalOrder(in: tableView, visibleSlotCount: visibleCount)
+        let targetOrder = computeTargetOrder(
+            visibleCount: visibleCount,
+            savedOrder: savedLayout?.columnOrder,
+            schema: schema
+        )
 
-        if let order = savedLayout?.columnOrder, !order.isEmpty {
-            applyColumnOrder(order, in: tableView, schema: schema)
-        }
+        attachAndOrderColumns(
+            in: tableView,
+            visibleCount: visibleCount,
+            targetOrder: targetOrder
+        )
     }
 
-    func currentSlotForColumnName(_ name: String, in schema: ColumnIdentitySchema) -> Int? {
-        schema.dataIndex(forColumnName: name)
-    }
-
-    private func growPoolIfNeeded(to count: Int, in tableView: NSTableView) {
+    private func growBackingPoolIfNeeded(to count: Int) {
         while pooledColumns.count < count {
             let slot = pooledColumns.count
             let column = NSTableColumn(identifier: ColumnIdentitySchema.slotIdentifier(slot))
             column.minWidth = 30
             column.resizingMask = .userResizingMask
             column.isEditable = true
+            column.isHidden = true
             pooledColumns.append(column)
-            tableView.addTableColumn(column)
+        }
+    }
+
+    private func computeTargetOrder(
+        visibleCount: Int,
+        savedOrder: [String]?,
+        schema: ColumnIdentitySchema
+    ) -> [Int] {
+        var slots: [Int] = []
+        var seen = Set<Int>()
+
+        if let savedOrder {
+            for name in savedOrder {
+                guard let slot = schema.dataIndex(forColumnName: name),
+                      slot < visibleCount,
+                      !seen.contains(slot) else { continue }
+                slots.append(slot)
+                seen.insert(slot)
+            }
+        }
+
+        for slot in 0..<visibleCount where !seen.contains(slot) {
+            slots.append(slot)
+        }
+        return slots
+    }
+
+    private func attachAndOrderColumns(
+        in tableView: NSTableView,
+        visibleCount: Int,
+        targetOrder: [Int]
+    ) {
+        let attachedIdentifiers = Set(tableView.tableColumns.map(\.identifier))
+        let baseOffset = tableView.tableColumns.first?.identifier == ColumnIdentitySchema.rowNumberIdentifier ? 1 : 0
+
+        for slot in targetOrder where !attachedIdentifiers.contains(pooledColumns[slot].identifier) {
+            tableView.addTableColumn(pooledColumns[slot])
+        }
+
+        for slot in 0..<pooledColumns.count where slot >= visibleCount && !attachedIdentifiers.contains(pooledColumns[slot].identifier) {
+            tableView.addTableColumn(pooledColumns[slot])
+        }
+
+        for (targetPosition, slot) in targetOrder.enumerated() {
+            let identifier = ColumnIdentitySchema.slotIdentifier(slot)
+            guard let currentIndex = tableView.tableColumns.firstIndex(where: { $0.identifier == identifier }) else {
+                continue
+            }
+            let desiredIndex = baseOffset + targetPosition
+            guard desiredIndex < tableView.tableColumns.count else { continue }
+            if currentIndex != desiredIndex {
+                tableView.moveColumn(currentIndex, toColumn: desiredIndex)
+            }
         }
     }
 
@@ -112,46 +171,6 @@ final class DataGridColumnPool {
         }
         if column.sortDescriptorPrototype?.key != name {
             column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: true)
-        }
-    }
-
-    private func resetToNaturalOrder(in tableView: NSTableView, visibleSlotCount: Int) {
-        let rowNumberIsPresent = tableView.tableColumns.first?.identifier == ColumnIdentitySchema.rowNumberIdentifier
-        let baseOffset = rowNumberIsPresent ? 1 : 0
-
-        for slot in 0..<visibleSlotCount {
-            let identifier = ColumnIdentitySchema.slotIdentifier(slot)
-            guard let currentIndex = tableView.tableColumns.firstIndex(where: { $0.identifier == identifier }) else {
-                continue
-            }
-            let desiredIndex = baseOffset + slot
-            guard desiredIndex < tableView.tableColumns.count else { continue }
-            if currentIndex != desiredIndex {
-                tableView.moveColumn(currentIndex, toColumn: desiredIndex)
-            }
-        }
-    }
-
-    private func applyColumnOrder(
-        _ order: [String],
-        in tableView: NSTableView,
-        schema: ColumnIdentitySchema
-    ) {
-        let rowNumberIsPresent = tableView.tableColumns.first?.identifier == ColumnIdentitySchema.rowNumberIdentifier
-        let baseOffset = rowNumberIsPresent ? 1 : 0
-        let validOrder = order.filter { schema.dataIndex(forColumnName: $0) != nil }
-
-        for (targetPosition, columnName) in validOrder.enumerated() {
-            guard let slot = schema.dataIndex(forColumnName: columnName) else { continue }
-            let identifier = ColumnIdentitySchema.slotIdentifier(slot)
-            guard let currentIndex = tableView.tableColumns.firstIndex(where: { $0.identifier == identifier }) else {
-                continue
-            }
-            let desiredIndex = baseOffset + targetPosition
-            guard desiredIndex < tableView.tableColumns.count else { continue }
-            if currentIndex != desiredIndex {
-                tableView.moveColumn(currentIndex, toColumn: desiredIndex)
-            }
         }
     }
 }
