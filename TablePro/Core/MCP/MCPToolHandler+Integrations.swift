@@ -80,7 +80,7 @@ extension MCPToolHandler {
             connectionId = nil
         }
 
-        let allowedConnectionIds = await resolveHistoryAllowlist(
+        let tokenScopedAllowlist = await resolveHistoryAllowlist(
             token: token,
             scopedConnectionId: connectionId,
             blockedConnectionIds: blockedConnectionIds
@@ -94,7 +94,7 @@ extension MCPToolHandler {
             dateFilter: .all,
             since: since,
             until: until,
-            allowedConnectionIds: allowedConnectionIds
+            allowedConnectionIds: tokenScopedAllowlist
         )
 
         let payload = entries.map { entry -> JSONValue in
