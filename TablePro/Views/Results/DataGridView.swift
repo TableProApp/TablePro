@@ -314,12 +314,18 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Column Layout Helpers
 
+    static let firstDataTableColumnIndex: Int = 1
+
     static func tableColumnIndex(for dataIndex: Int) -> Int {
-        dataIndex + 1
+        dataIndex + firstDataTableColumnIndex
     }
 
     static func dataColumnIndex(for tableColumnIndex: Int) -> Int {
-        tableColumnIndex - 1
+        tableColumnIndex - firstDataTableColumnIndex
+    }
+
+    static func isDataTableColumn(_ tableColumnIndex: Int) -> Bool {
+        tableColumnIndex >= firstDataTableColumnIndex
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {

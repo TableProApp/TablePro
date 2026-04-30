@@ -102,7 +102,7 @@ extension TableViewCoordinator {
 
         if forward {
             if nextColumn >= tableView.numberOfColumns {
-                nextColumn = 1
+                nextColumn = DataGridView.firstDataTableColumnIndex
                 nextRow += 1
             }
             if nextRow >= tableView.numberOfRows {
@@ -110,19 +110,19 @@ extension TableViewCoordinator {
                 nextColumn = tableView.numberOfColumns - 1
             }
         } else {
-            if nextColumn < 1 {
+            if !DataGridView.isDataTableColumn(nextColumn) {
                 nextColumn = tableView.numberOfColumns - 1
                 nextRow -= 1
             }
             if nextRow < 0 {
                 nextRow = 0
-                nextColumn = 1
+                nextColumn = DataGridView.firstDataTableColumnIndex
             }
         }
 
         tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
 
-        let nextColumnIndex = nextColumn - 1
+        let nextColumnIndex = DataGridView.dataColumnIndex(for: nextColumn)
         if nextColumnIndex >= 0,
            let nextDisplayRow = displayRow(at: nextRow),
            nextColumnIndex < nextDisplayRow.values.count,
