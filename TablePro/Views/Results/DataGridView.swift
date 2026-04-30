@@ -216,10 +216,8 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.rebuildVisualStateCache()
 
-        let currentDataColumns = tableView.tableColumns.dropFirst()
-        let currentColumnIds = Set(currentDataColumns.map { $0.identifier.rawValue })
-        let expectedColumnIds = Set(coordinator.identitySchema.identifiers.map { $0.rawValue })
-        let columnsChanged = !latestRows.columns.isEmpty && (currentColumnIds != expectedColumnIds)
+        let columnsChanged = !latestRows.columns.isEmpty
+            && coordinator.lastReconciledColumnNames != latestRows.columns
 
         let isInitialDataLoad = structureChanged && oldRowCount == 0 && !latestRows.columns.isEmpty
         let shouldRebuildColumns = columnsChanged || isInitialDataLoad
@@ -299,6 +297,7 @@ struct DataGridView: NSViewRepresentable {
                 )
             }
         )
+        coordinator.markColumnsReconciled(names: tableRows.columns)
         gridPerfLog.notice("[grid-perf] columnPool.reconcile took \(((CFAbsoluteTimeGetCurrent() - __tReconcile) * 1000), format: .fixed(precision: 2)) ms (cols=\(tableRows.columns.count))")
     }
 
