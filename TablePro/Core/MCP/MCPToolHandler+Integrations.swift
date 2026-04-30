@@ -195,10 +195,11 @@ extension MCPToolHandler {
             throw MCPError.notFound("tab")
         }
 
-        if let connectionId = resolved.connectionId {
-            if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-            try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readOnly)
+        guard let connectionId = resolved.connectionId else {
+            throw MCPError.notFound("connection")
         }
+        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
+        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readOnly)
 
         let raised = await MainActor.run { () -> Bool in
             for snapshot in Self.collectTabSnapshots() where snapshot.tabId == tabId {
@@ -216,13 +217,11 @@ extension MCPToolHandler {
 
         var dict: [String: JSONValue] = [
             "status": "focused",
-            "tab_id": .string(tabId.uuidString)
+            "tab_id": .string(tabId.uuidString),
+            "connection_id": .string(connectionId.uuidString)
         ]
         if let windowId = resolved.windowId {
             dict["window_id"] = .string(windowId.uuidString)
-        }
-        if let connectionId = resolved.connectionId {
-            dict["connection_id"] = .string(connectionId.uuidString)
         }
 
         return MCPToolResult(content: [.text(encodeJSON(.object(dict)))], isError: nil)
