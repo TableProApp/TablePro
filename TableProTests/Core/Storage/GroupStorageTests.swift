@@ -10,19 +10,29 @@ import XCTest
 final class GroupStorageTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suiteName: String!
+    private var syncDefaults: UserDefaults!
+    private var syncSuiteName: String!
     private var storage: GroupStorage!
 
     override func setUp() {
         super.setUp()
-        suiteName = "com.TablePro.tests.GroupStorage.\(UUID().uuidString)"
+        let unique = UUID().uuidString
+        suiteName = "com.TablePro.tests.GroupStorage.\(unique)"
         defaults = UserDefaults(suiteName: suiteName)!
-        storage = GroupStorage(userDefaults: defaults)
+        syncSuiteName = "com.TablePro.tests.Sync.\(unique)"
+        syncDefaults = UserDefaults(suiteName: syncSuiteName)!
+        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        storage = GroupStorage(userDefaults: defaults, syncTracker: tracker)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
+        syncDefaults.removePersistentDomain(forName: syncSuiteName)
         defaults = nil
         suiteName = nil
+        syncDefaults = nil
+        syncSuiteName = nil
         storage = nil
         super.tearDown()
     }

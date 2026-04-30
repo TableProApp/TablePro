@@ -25,7 +25,14 @@ struct ConnectionStorageAdditionalFieldsTests {
         )
         self.suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
         self.defaults = UserDefaults(suiteName: suiteName)!
-        self.storage = ConnectionStorage(fileURL: fileURL, userDefaults: defaults)
+        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")!
+        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        self.storage = ConnectionStorage(
+            fileURL: fileURL,
+            userDefaults: defaults,
+            syncTracker: tracker
+        )
     }
 
     @Test("round-trip preserves MongoDB-specific fields")
