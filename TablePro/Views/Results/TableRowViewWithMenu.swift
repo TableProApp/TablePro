@@ -22,13 +22,9 @@ final class TableRowViewWithMenu: NSTableRowView {
         let locationInTable = tableView.convert(locationInRow, from: self)
         let clickedColumn = tableView.column(at: locationInTable)
 
-        let dataColumnIndex: Int = {
-            guard clickedColumn > 0,
-                  let coord = coordinator,
-                  let index = DataGridView.dataColumnIndex(for: clickedColumn, in: tableView, schema: coord.identitySchema)
-            else { return -1 }
-            return index
-        }()
+        let dataColumnIndex: Int = clickedColumn > 0
+            ? DataGridView.dataColumnIndex(for: clickedColumn, in: tableView, schema: coordinator.identitySchema) ?? -1
+            : -1
 
         let menu = NSMenu()
 
