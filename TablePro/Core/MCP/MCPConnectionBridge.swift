@@ -484,11 +484,14 @@ actor MCPConnectionBridge {
     // MARK: - Private Helpers
 
     private func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
-        let needsConnect = await MainActor.run {
-            DatabaseManager.shared.activeSessions[connectionId]?.driver == nil
+        let needsConnect: DatabaseConnection? = await MainActor.run {
+            if DatabaseManager.shared.activeSessions[connectionId]?.driver != nil { return nil }
+            return ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
         }
-        if needsConnect {
-            let connection = try await resolveConnection(connectionId)
+        if let connection = needsConnect {
+            await MainActor.run {
+                NSApp.activate(ignoringOtherApps: true)
+            }
             try await DatabaseManager.shared.connectToSession(connection)
         }
         return try await MainActor.run {
