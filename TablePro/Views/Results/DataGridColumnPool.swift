@@ -137,15 +137,38 @@ final class DataGridColumnPool {
         NSAnimationContext.current.allowsImplicitAnimation = false
         defer { NSAnimationContext.endGrouping() }
 
+        var indexByIdentifier: [NSUserInterfaceItemIdentifier: Int] = [:]
+        indexByIdentifier.reserveCapacity(tableView.tableColumns.count)
+        for (index, column) in tableView.tableColumns.enumerated() {
+            indexByIdentifier[column.identifier] = index
+        }
+
         for (targetPosition, slot) in targetOrder.enumerated() {
             let identifier = ColumnIdentitySchema.slotIdentifier(slot)
-            guard let currentIndex = tableView.tableColumns.firstIndex(where: { $0.identifier == identifier }) else {
-                continue
-            }
+            guard let currentIndex = indexByIdentifier[identifier] else { continue }
             let desiredIndex = baseOffset + targetPosition
             guard desiredIndex < tableView.tableColumns.count else { continue }
-            if currentIndex != desiredIndex {
-                tableView.moveColumn(currentIndex, toColumn: desiredIndex)
+            if currentIndex == desiredIndex { continue }
+
+            tableView.moveColumn(currentIndex, toColumn: desiredIndex)
+            updateIndexMap(&indexByIdentifier, movedFrom: currentIndex, to: desiredIndex)
+        }
+    }
+
+    private func updateIndexMap(
+        _ map: inout [NSUserInterfaceItemIdentifier: Int],
+        movedFrom source: Int,
+        to destination: Int
+    ) {
+        guard source != destination else { return }
+        let lower = min(source, destination)
+        let upper = max(source, destination)
+        let delta = source < destination ? -1 : 1
+        for (key, value) in map where value >= lower && value <= upper {
+            if value == source {
+                map[key] = destination
+            } else {
+                map[key] = value + delta
             }
         }
     }

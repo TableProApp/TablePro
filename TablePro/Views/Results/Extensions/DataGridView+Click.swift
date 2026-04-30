@@ -15,11 +15,8 @@ extension TableViewCoordinator {
         let row = sender.clickedRow
         let column = sender.clickedColumn
         guard row >= 0, column > 0 else { return }
-
-        let columnIndex = DataGridView.dataColumnIndex(for: column)
+        guard DataGridView.dataColumnIndex(for: column, in: sender, schema: identitySchema) != nil else { return }
         guard !changeManager.isRowDeleted(row) else { return }
-
-        // Single click only selects the row. Chevron buttons handle dropdown/picker actions.
     }
 
     @objc func handleDoubleClick(_ sender: NSTableView) {
@@ -29,7 +26,7 @@ extension TableViewCoordinator {
         let column = sender.clickedColumn
         guard row >= 0, column > 0 else { return }
 
-        let columnIndex = DataGridView.dataColumnIndex(for: column)
+        guard let columnIndex = DataGridView.dataColumnIndex(for: column, in: sender, schema: identitySchema) else { return }
         guard !changeManager.isRowDeleted(row) else { return }
 
         let tableRows = tableRowsProvider()
@@ -75,8 +72,11 @@ extension TableViewCoordinator {
         guard row >= 0, columnIndex >= 0 else { return }
         guard !changeManager.isRowDeleted(row) else { return }
         guard let tableView else { return }
-
-        let column = DataGridView.tableColumnIndex(for: columnIndex)
+        guard let column = DataGridView.tableColumnIndex(
+            for: columnIndex,
+            in: tableView,
+            schema: identitySchema
+        ) else { return }
 
         if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)

@@ -102,7 +102,7 @@ extension TableViewCoordinator {
 
         if forward {
             if nextColumn >= tableView.numberOfColumns {
-                nextColumn = 1
+                nextColumn = DataGridView.firstDataTableColumnIndex
                 nextRow += 1
             }
             if nextRow >= tableView.numberOfRows {
@@ -110,20 +110,24 @@ extension TableViewCoordinator {
                 nextColumn = tableView.numberOfColumns - 1
             }
         } else {
-            if nextColumn < 1 {
+            if !DataGridView.isDataTableColumn(nextColumn) {
                 nextColumn = tableView.numberOfColumns - 1
                 nextRow -= 1
             }
             if nextRow < 0 {
                 nextRow = 0
-                nextColumn = 1
+                nextColumn = DataGridView.firstDataTableColumnIndex
             }
         }
 
         tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
 
-        let nextColumnIndex = nextColumn - 1
-        if nextColumnIndex >= 0,
+        if let nextColumnIndex = DataGridView.dataColumnIndex(
+            for: nextColumn,
+            in: tableView,
+            schema: identitySchema
+        ),
+           nextColumnIndex >= 0,
            let nextDisplayRow = displayRow(at: nextRow),
            nextColumnIndex < nextDisplayRow.values.count,
            let value = nextDisplayRow.values[nextColumnIndex],
@@ -140,9 +144,12 @@ extension TableViewCoordinator {
         let row = tableView.row(for: textField)
         let column = tableView.column(for: textField)
 
-        guard row >= 0, column > 0 else { return true }
-
-        let columnIndex = DataGridView.dataColumnIndex(for: column)
+        guard row >= 0, column > 0,
+              let columnIndex = DataGridView.dataColumnIndex(
+                for: column,
+                in: tableView,
+                schema: identitySchema
+              ) else { return true }
 
         if isEscapeCancelling {
             isEscapeCancelling = false

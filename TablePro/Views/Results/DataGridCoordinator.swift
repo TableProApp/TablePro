@@ -108,9 +108,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var layoutPersistTask: Task<Void, Never>?
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
-    internal var pendingDropdownRow: Int = 0
-    internal var pendingDropdownColumn: Int = 0
-    internal weak var pendingDropdownTableView: NSTableView?
     private var rowVisualStateCache: [Int: RowVisualState] = [:]
     private var lastVisualStateCacheVersion: Int = 0
     private let largeDatasetThreshold = 5_000
@@ -187,7 +184,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task {
+            Task { @MainActor [weak self] in
                 guard let self, let tableView = self.tableView else { return }
                 Self.updateVisibleCellFonts(tableView: tableView)
             }
@@ -263,8 +260,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyFullReplace() {
         guard let tableView else { return }
-        displayCache.removeAll()
-        rebuildVisualStateCache()
+        invalidateAllDisplayCaches()
         updateCache()
         tableView.reloadData()
     }
@@ -310,6 +306,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func invalidateDisplayCache() {
         displayCache.removeAll()
+    }
+
+    func invalidateAllDisplayCaches() {
+        displayCache.removeAll()
+        rebuildVisualStateCache()
     }
 
     func updateDisplayFormats(_ formats: [ValueDisplayFormat?]) {
@@ -368,10 +369,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func applyDelta(_ delta: Delta) {
         switch delta {
         case .cellChanged(let row, let column):
-            guard let tableView else { return }
-            let tableColumn = DataGridView.tableColumnIndex(for: column)
+            guard let tableView,
+                  let tableColumn = DataGridView.tableColumnIndex(for: column, in: tableView, schema: identitySchema)
+            else { return }
             guard row >= 0, row < tableView.numberOfRows else { return }
-            guard tableColumn >= 0, tableColumn < tableView.numberOfColumns else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
             rebuildVisualStateCache()
             tableView.reloadData(
@@ -386,8 +387,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 if position.row >= 0, position.row < tableView.numberOfRows {
                     rowSet.insert(position.row)
                 }
-                let tableColumn = DataGridView.tableColumnIndex(for: position.column)
-                if tableColumn >= 0, tableColumn < tableView.numberOfColumns {
+                if let tableColumn = DataGridView.tableColumnIndex(
+                    for: position.column,
+                    in: tableView,
+                    schema: identitySchema
+                ) {
                     colSet.insert(tableColumn)
                 }
                 invalidateDisplayCache(forDisplayRow: position.row, column: position.column)
@@ -406,7 +410,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
             sortedIDs = nil
-            displayCache.removeAll()
             applyFullReplace()
         }
     }
@@ -431,8 +434,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func invalidateCachesForUndoRedo() {
-        displayCache.removeAll()
-        rebuildVisualStateCache()
+        invalidateAllDisplayCaches()
         updateCache()
         guard let tableView else { return }
         let visibleRange = tableView.rows(in: tableView.visibleRect)
@@ -456,10 +458,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func beginEditing(displayRow: Int, column: Int) {
-        guard let tableView else { return }
-        let displayCol = DataGridView.tableColumnIndex(for: column)
-        guard displayRow >= 0, displayRow < tableView.numberOfRows,
-              displayCol >= 0, displayCol < tableView.numberOfColumns else { return }
+        guard let tableView,
+              let displayCol = DataGridView.tableColumnIndex(for: column, in: tableView, schema: identitySchema)
+        else { return }
+        guard displayRow >= 0, displayRow < tableView.numberOfRows else { return }
         tableView.scrollRowToVisible(displayRow)
         tableView.selectRowIndexes(IndexSet(integer: displayRow), byExtendingSelection: false)
         tableView.editColumn(displayCol, row: displayRow, with: nil, select: true)

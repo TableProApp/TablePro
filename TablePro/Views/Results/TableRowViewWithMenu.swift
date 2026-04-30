@@ -22,8 +22,9 @@ final class TableRowViewWithMenu: NSTableRowView {
         let locationInTable = tableView.convert(locationInRow, from: self)
         let clickedColumn = tableView.column(at: locationInTable)
 
-        // Adjust for row number column (index 0)
-        let dataColumnIndex = clickedColumn > 0 ? DataGridView.dataColumnIndex(for: clickedColumn) : -1
+        let dataColumnIndex: Int = clickedColumn > 0
+            ? DataGridView.dataColumnIndex(for: clickedColumn, in: tableView, schema: coordinator.identitySchema) ?? -1
+            : -1
 
         let menu = NSMenu()
 
@@ -288,9 +289,14 @@ final class TableRowViewWithMenu: NSTableRowView {
 
     @objc private func previewForeignKey(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int,
-              let coordinator, let tableView = coordinator.tableView else { return }
+              let coordinator, let tableView = coordinator.tableView,
+              let column = DataGridView.tableColumnIndex(
+                for: columnIndex,
+                in: tableView,
+                schema: coordinator.identitySchema
+              ) else { return }
         coordinator.showForeignKeyPreview(
-            tableView: tableView, row: rowIndex, column: DataGridView.tableColumnIndex(for: columnIndex), columnIndex: columnIndex
+            tableView: tableView, row: rowIndex, column: column, columnIndex: columnIndex
         )
     }
 

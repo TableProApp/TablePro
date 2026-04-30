@@ -87,8 +87,9 @@ final class KeyHandlingTableView: NSTableView {
         focusedColumn = clickedColumn
 
         if alreadyFocusedHere && event.clickCount == 1 && selectedRowIndexes.count == 1 {
-            let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn)
-            if coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
+            if let schema = coordinator?.identitySchema,
+               let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
+               coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
                 editColumn(clickedColumn, row: clickedRow, with: nil, select: true)
             }
         }
@@ -106,11 +107,12 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
-        if focusedRow >= 0, focusedColumn >= 1 {
-            let dataCol = DataGridView.dataColumnIndex(for: focusedColumn)
-            if coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
-                return
-            }
+        if focusedRow >= 0,
+           DataGridView.isDataTableColumn(focusedColumn),
+           let schema = coordinator?.identitySchema,
+           let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
+           coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
+            return
         }
         coordinator?.delegate?.dataGridPasteRows()
     }
@@ -124,7 +126,7 @@ final class KeyHandlingTableView: NSTableView {
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil
         case #selector(insertNewline(_:)):
-            return selectedRow >= 0 && focusedColumn >= 1 && coordinator?.isEditable == true
+            return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn) && coordinator?.isEditable == true
         case #selector(cancelOperation(_:)):
             return false
         default:
@@ -176,9 +178,15 @@ final class KeyHandlingTableView: NSTableView {
         if let fkCombo = AppSettingsManager.shared.keyboard.shortcut(for: .previewFKReference),
            !fkCombo.isCleared,
            fkCombo.matches(event),
-           selectedRow >= 0, focusedColumn >= 1 {
+           selectedRow >= 0,
+           DataGridView.isDataTableColumn(focusedColumn),
+           let schema = coordinator?.identitySchema,
+           let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) {
             coordinator?.toggleForeignKeyPreview(
-                tableView: self, row: selectedRow, column: focusedColumn, columnIndex: focusedColumn - 1
+                tableView: self,
+                row: selectedRow,
+                column: focusedColumn,
+                columnIndex: columnIndex
             )
             return
         }
@@ -188,11 +196,14 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc override func insertNewline(_ sender: Any?) {
         let row = selectedRow
-        guard row >= 0, focusedColumn >= 1, coordinator?.isEditable == true else {
+        guard row >= 0,
+              DataGridView.isDataTableColumn(focusedColumn),
+              coordinator?.isEditable == true,
+              let schema = coordinator?.identitySchema,
+              let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
             return
         }
 
-        let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn)
         if let value = coordinator?.cellValue(at: row, column: columnIndex),
            value.containsLineBreak {
             coordinator?.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
@@ -215,29 +226,33 @@ final class KeyHandlingTableView: NSTableView {
         let target = focusedColumn < 0
             ? lastVisibleDataColumn()
             : previousVisibleDataColumn(before: focusedColumn)
-        guard target >= 1 else { return }
+        guard DataGridView.isDataTableColumn(target) else { return }
         focusedColumn = target
         if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 
     private func handleRightArrow(currentRow: Int) {
-        let target = focusedColumn < 1
-            ? firstVisibleDataColumn()
-            : nextVisibleDataColumn(after: focusedColumn)
-        guard target >= 1 else { return }
+        let target = DataGridView.isDataTableColumn(focusedColumn)
+            ? nextVisibleDataColumn(after: focusedColumn)
+            : firstVisibleDataColumn()
+        guard DataGridView.isDataTableColumn(target) else { return }
         focusedColumn = target
         if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 
     private func firstVisibleDataColumn() -> Int {
-        for index in 1..<numberOfColumns where isVisibleDataColumn(at: index) {
+        for index in DataGridView.firstDataTableColumnIndex..<numberOfColumns where isVisibleDataColumn(at: index) {
             return index
         }
         return -1
     }
 
     private func lastVisibleDataColumn() -> Int {
-        for index in stride(from: numberOfColumns - 1, through: 1, by: -1) where isVisibleDataColumn(at: index) {
+        for index in stride(
+            from: numberOfColumns - 1,
+            through: DataGridView.firstDataTableColumnIndex,
+            by: -1
+        ) where isVisibleDataColumn(at: index) {
             return index
         }
         return -1
@@ -252,8 +267,12 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     private func previousVisibleDataColumn(before current: Int) -> Int {
-        guard current > 1 else { return -1 }
-        for index in stride(from: current - 1, through: 1, by: -1) where isVisibleDataColumn(at: index) {
+        guard current > DataGridView.firstDataTableColumnIndex else { return -1 }
+        for index in stride(
+            from: current - 1,
+            through: DataGridView.firstDataTableColumnIndex,
+            by: -1
+        ) where isVisibleDataColumn(at: index) {
             return index
         }
         return -1
@@ -267,13 +286,13 @@ final class KeyHandlingTableView: NSTableView {
 
     private func handleTabKey() {
         let row = selectedRow
-        guard row >= 0, focusedColumn >= 1 else { return }
+        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
 
         var nextColumn = focusedColumn + 1
         var nextRow = row
 
         if nextColumn >= numberOfColumns {
-            nextColumn = 1
+            nextColumn = DataGridView.firstDataTableColumnIndex
             nextRow += 1
         }
         if nextRow >= numberOfRows {
@@ -290,18 +309,18 @@ final class KeyHandlingTableView: NSTableView {
 
     private func handleShiftTabKey() {
         let row = selectedRow
-        guard row >= 0, focusedColumn >= 1 else { return }
+        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
 
         var prevColumn = focusedColumn - 1
         var prevRow = row
 
-        if prevColumn < 1 {
+        if !DataGridView.isDataTableColumn(prevColumn) {
             prevColumn = numberOfColumns - 1
             prevRow -= 1
         }
         if prevRow < 0 {
             prevRow = 0
-            prevColumn = 1
+            prevColumn = DataGridView.firstDataTableColumnIndex
         }
 
         selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
