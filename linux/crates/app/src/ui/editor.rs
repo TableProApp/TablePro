@@ -74,6 +74,10 @@ pub enum SqlEditorInput {
     ReplaceQuery(String),
     /// Ctrl+Shift+F → reformat the buffer in place via sqlformat.
     Format,
+    /// Ctrl+Shift+Return → run only the SQL statement under the
+    /// cursor. Falls back to a status hint when the cursor is in
+    /// whitespace or a leading comment with no statement around it.
+    RunAtCursor,
 }
 
 #[derive(Debug)]
@@ -280,10 +284,25 @@ impl SimpleComponent for SqlEditor {
                 }
             }))
             .build();
+        // Ctrl+Shift+Return — run only the statement under the
+        // cursor. Standard DataGrip / DBeaver behaviour for
+        // multi-statement scripts: the user keeps several queries in
+        // one buffer, parks the cursor on one, runs just that.
+        let run_at_cursor_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary><Shift>Return").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new({
+                let sender = sender.clone();
+                move |_, _| {
+                    sender.input(SqlEditorInput::RunAtCursor);
+                    glib::Propagation::Stop
+                }
+            }))
+            .build();
         let controller = gtk::ShortcutController::new();
         controller.add_shortcut(run_shortcut);
         controller.add_shortcut(cancel_shortcut);
         controller.add_shortcut(format_shortcut);
+        controller.add_shortcut(run_at_cursor_shortcut);
         widgets.source_view.add_controller(controller);
 
         let drop_target = gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
@@ -340,91 +359,30 @@ impl SimpleComponent for SqlEditor {
                     self.status.set_label(&crate::tr!("empty query"));
                     return;
                 }
+                self.execute_sql(trimmed, sender);
+            }
 
-                let conn = match database_service::instance().active() {
-                    Some(c) => c,
-                    None => {
-                        self.status.set_label(&crate::tr!("no active connection"));
-                        return;
-                    }
+            SqlEditorInput::RunAtCursor => {
+                // Walk the buffer's SQL state machine and pick the
+                // statement segment containing the cursor. The user
+                // keeps several queries in one buffer and parks the
+                // cursor on one to run just that — standard DataGrip
+                // / DBeaver behaviour.
+                let buffer = self.source_view.buffer();
+                let (start, end) = buffer.bounds();
+                let sql = buffer.text(&start, &end, false).to_string();
+                let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
+                // GtkTextBuffer offsets are in *chars*, not bytes —
+                // translate so the cursor index lines up with
+                // `statement_at_cursor`'s char_indices walk. Without
+                // this, multi-byte identifiers (Vietnamese, emoji,
+                // German umlauts) would land mid-character.
+                let cursor_byte: usize = sql.chars().take(cursor_chars).map(char::len_utf8).sum();
+                let Some(statement) = statement_at_cursor(&sql, cursor_byte) else {
+                    self.status.set_label(&crate::tr!("No statement at cursor"));
+                    return;
                 };
-
-                if let Some(prev) = self.cancel_token.take() {
-                    prev.cancel();
-                }
-                let token = CancellationToken::new();
-                self.cancel_token = Some(token.clone());
-
-                self.run_button.set_sensitive(false);
-                self.cancel_button.set_visible(true);
-                self.running_spinner.set_visible(true);
-                self.status.set_label(&crate::tr!("Running…"));
-                clear_box(&self.results_holder);
-                let _ = sender.output(SqlEditorOutput::RunStateChanged(true));
-
-                self.executing_sql = Some(trimmed.clone());
-                self.executing_metadata = database_service::instance().active_metadata();
-                self.executing_started_at = Some(SystemTime::now());
-
-                let timeout_secs = crate::services::preferences::load().query_timeout_secs;
-                let sender_clone = sender.clone();
-                sender.command(move |_, shutdown| {
-                    shutdown
-                        .register(async move {
-                            let statements = split_sql_statements(&trimmed);
-                            // A `query_timeout_secs == 0` user opt-out
-                            // turns the timeout branch off by holding a
-                            // future that never resolves. Otherwise the
-                            // tokio sleep races against `cancelled()`
-                            // and `run_statements()`; first to finish
-                            // wins.
-                            let timeout: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
-                                if timeout_secs > 0 {
-                                    Box::pin(tokio::time::sleep(std::time::Duration::from_secs(timeout_secs as u64)))
-                                } else {
-                                    Box::pin(std::future::pending::<()>())
-                                };
-                            // The cancel token is the editor's own
-                            // signal channel — the driver does not
-                            // subscribe to it (sqlx has no future-
-                            // drop cancellation hook for Postgres /
-                            // MySQL). When the timeout wins, we
-                            // *also* fire `token.cancel()` so any
-                            // outer logic (pool shutdown, connection
-                            // monitor) sees the same "this query is
-                            // abandoned" signal as a manual Cancel,
-                            // and the future drops on the next poll.
-                            // Even with this, the underlying driver
-                            // call may keep running on the server
-                            // until the network layer notices the
-                            // dropped read; users on long timeouts
-                            // should restart the connection.
-                            let token_for_timeout = token.clone();
-                            let msg = tokio::select! {
-                                biased;
-                                _ = token.cancelled() => SqlEditorInput::ShowCancelled,
-                                _ = timeout => {
-                                    token_for_timeout.cancel();
-                                    SqlEditorInput::ShowTimedOut(timeout_secs)
-                                }
-                                outcomes = run_statements(conn, statements) => {
-                                    let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
-                                    let n_ok = outcomes
-                                        .iter()
-                                        .filter(|o| matches!(o.kind, StatementOutcomeKind::Rows(_)))
-                                        .count();
-                                    let n_err = outcomes
-                                        .iter()
-                                        .filter(|o| matches!(o.kind, StatementOutcomeKind::Error(_)))
-                                        .count();
-                                    tracing::info!(n_ok, n_err, total_ms, "script run complete");
-                                    SqlEditorInput::ShowOutcomes(outcomes)
-                                }
-                            };
-                            sender_clone.input(msg);
-                        })
-                        .drop_on_shutdown()
-                });
+                self.execute_sql(statement, sender);
             }
 
             SqlEditorInput::Cancel => {
@@ -558,6 +516,89 @@ impl SimpleComponent for SqlEditor {
 }
 
 impl SqlEditor {
+    /// Dispatch a pre-trimmed non-empty SQL string into the run path.
+    /// Both `Run` (whole buffer) and `RunAtCursor` (single statement
+    /// under cursor) funnel through here so the UI-state setup
+    /// (cancel token, spinner, status, history-recording context)
+    /// stays in one place and can't drift between the two callers.
+    fn execute_sql(&mut self, trimmed: String, sender: ComponentSender<Self>) {
+        let conn = match database_service::instance().active() {
+            Some(c) => c,
+            None => {
+                self.status.set_label(&crate::tr!("no active connection"));
+                return;
+            }
+        };
+
+        if let Some(prev) = self.cancel_token.take() {
+            prev.cancel();
+        }
+        let token = CancellationToken::new();
+        self.cancel_token = Some(token.clone());
+
+        self.run_button.set_sensitive(false);
+        self.cancel_button.set_visible(true);
+        self.running_spinner.set_visible(true);
+        self.status.set_label(&crate::tr!("Running…"));
+        clear_box(&self.results_holder);
+        let _ = sender.output(SqlEditorOutput::RunStateChanged(true));
+
+        self.executing_sql = Some(trimmed.clone());
+        self.executing_metadata = database_service::instance().active_metadata();
+        self.executing_started_at = Some(SystemTime::now());
+
+        let timeout_secs = crate::services::preferences::load().query_timeout_secs;
+        let sender_clone = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let statements = split_sql_statements(&trimmed);
+                    // A `query_timeout_secs == 0` user opt-out turns
+                    // the timeout branch off by holding a future that
+                    // never resolves. Otherwise the tokio sleep races
+                    // against `cancelled()` and `run_statements()`;
+                    // first to finish wins.
+                    let timeout: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> = if timeout_secs > 0 {
+                        Box::pin(tokio::time::sleep(std::time::Duration::from_secs(timeout_secs as u64)))
+                    } else {
+                        Box::pin(std::future::pending::<()>())
+                    };
+                    // The cancel token is the editor's own signal
+                    // channel — the driver does not subscribe to it
+                    // (sqlx has no future-drop cancellation hook for
+                    // Postgres / MySQL). When the timeout wins, we
+                    // *also* fire `token.cancel()` so any outer logic
+                    // (pool shutdown, connection monitor) sees the
+                    // same "abandoned" signal as a manual Cancel,
+                    // and the future drops on the next poll.
+                    let token_for_timeout = token.clone();
+                    let msg = tokio::select! {
+                        biased;
+                        _ = token.cancelled() => SqlEditorInput::ShowCancelled,
+                        _ = timeout => {
+                            token_for_timeout.cancel();
+                            SqlEditorInput::ShowTimedOut(timeout_secs)
+                        }
+                        outcomes = run_statements(conn, statements) => {
+                            let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
+                            let n_ok = outcomes
+                                .iter()
+                                .filter(|o| matches!(o.kind, StatementOutcomeKind::Rows(_)))
+                                .count();
+                            let n_err = outcomes
+                                .iter()
+                                .filter(|o| matches!(o.kind, StatementOutcomeKind::Error(_)))
+                                .count();
+                            tracing::info!(n_ok, n_err, total_ms, "script run complete");
+                            SqlEditorInput::ShowOutcomes(outcomes)
+                        }
+                    };
+                    sender_clone.input(msg);
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     fn record_history(&mut self, duration_ms: i64, rows_affected: Option<i64>, outcome: Outcome) {
         let (Some(query), Some(metadata), Some(started_at)) = (
             self.executing_sql.take(),
@@ -790,6 +831,80 @@ fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome]) {
     }
 }
 
+/// Find the SQL statement that contains the cursor at `cursor_byte`.
+/// Walks the same SQL state machine as `split_sql_statements`,
+/// tracking byte ranges per statement. The segment whose
+/// `[start, end]` brackets the cursor (or the trailing unterminated
+/// segment when the cursor sits past the last semicolon) is returned
+/// trimmed.
+///
+/// Returns `None` for empty / whitespace-only segments — the caller
+/// (Ctrl+Shift+Return path) shows a status hint in that case.
+fn statement_at_cursor(sql: &str, cursor_byte: usize) -> Option<String> {
+    let mut segments: Vec<(usize, usize)> = Vec::new();
+    let mut seg_start = 0usize;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
+    let mut chars = sql.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if in_line_comment {
+            if c == '\n' {
+                in_line_comment = false;
+            }
+            continue;
+        }
+        if in_block_comment {
+            if c == '*'
+                && let Some(&(_, '/')) = chars.peek()
+            {
+                chars.next();
+                in_block_comment = false;
+            }
+            continue;
+        }
+        if !in_single && !in_double {
+            if c == '-'
+                && let Some(&(_, '-')) = chars.peek()
+            {
+                chars.next();
+                in_line_comment = true;
+                continue;
+            }
+            if c == '/'
+                && let Some(&(_, '*')) = chars.peek()
+            {
+                chars.next();
+                in_block_comment = true;
+                continue;
+            }
+        }
+        match c {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            ';' if !in_single && !in_double => {
+                segments.push((seg_start, i));
+                seg_start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    segments.push((seg_start, sql.len()));
+    let cursor = cursor_byte.min(sql.len());
+    let pick = segments
+        .iter()
+        .find(|(start, end)| cursor >= *start && cursor <= *end)
+        .copied()
+        .or_else(|| segments.last().copied())?;
+    let trimmed = sql.get(pick.0..pick.1)?.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 fn split_sql_statements(sql: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
@@ -935,7 +1050,7 @@ fn apply_editor_font_size(_view: &sourceview5::View, font_size: u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{split_sql_statements, sql_preview, summary_label};
+    use super::{split_sql_statements, sql_preview, statement_at_cursor, summary_label};
 
     #[test]
     fn splits_on_top_level_semicolons() {
@@ -1006,5 +1121,79 @@ mod tests {
         let s = summary_label(3, 2, 100, true);
         assert!(s.contains("2/3"));
         assert!(s.contains("100"));
+    }
+
+    // statement_at_cursor — Ctrl+Shift+Return path.
+
+    #[test]
+    fn cursor_in_first_statement() {
+        let sql = "SELECT 1; SELECT 2";
+        // Cursor mid-"SELECT 1".
+        let r = statement_at_cursor(sql, 4).unwrap();
+        assert_eq!(r, "SELECT 1");
+    }
+
+    #[test]
+    fn cursor_in_second_statement() {
+        let sql = "SELECT 1; SELECT 2";
+        // Cursor on "2" — byte offset 17.
+        let r = statement_at_cursor(sql, 17).unwrap();
+        assert_eq!(r, "SELECT 2");
+    }
+
+    #[test]
+    fn cursor_past_end_picks_last_statement() {
+        let sql = "SELECT 1; SELECT 2";
+        // Far past end — clamp to the last segment.
+        let r = statement_at_cursor(sql, 9999).unwrap();
+        assert_eq!(r, "SELECT 2");
+    }
+
+    #[test]
+    fn cursor_on_semicolon_takes_preceding_statement() {
+        // Cursor exactly on ';' (byte 8) — find returns the segment
+        // ending at that byte (start..end inclusive on cursor==end).
+        let sql = "SELECT 1; SELECT 2";
+        let r = statement_at_cursor(sql, 8).unwrap();
+        assert_eq!(r, "SELECT 1");
+    }
+
+    #[test]
+    fn cursor_in_string_literal_with_semicolon_inside() {
+        // The state machine must NOT treat a semicolon inside a
+        // single-quoted string as a statement boundary, otherwise
+        // INSERT INTO t VALUES ('a;b') would split into two
+        // ill-formed segments.
+        let sql = "INSERT INTO t VALUES ('a;b'); SELECT 2";
+        // Cursor at byte 24, inside 'a;b'.
+        let r = statement_at_cursor(sql, 24).unwrap();
+        assert!(r.starts_with("INSERT INTO t VALUES"));
+        assert!(r.contains("'a;b'"));
+    }
+
+    #[test]
+    fn cursor_in_block_comment_with_semicolon_inside() {
+        // Block-comment semicolons must be ignored too.
+        let sql = "SELECT 1 /* hi ; bye */; SELECT 2";
+        // Cursor inside the block comment.
+        let r = statement_at_cursor(sql, 16).unwrap();
+        assert!(r.starts_with("SELECT 1"));
+        assert!(r.contains("/* hi ; bye */"));
+    }
+
+    #[test]
+    fn empty_buffer_returns_none() {
+        assert!(statement_at_cursor("", 0).is_none());
+        assert!(statement_at_cursor("   \n\t  ", 3).is_none());
+    }
+
+    #[test]
+    fn multibyte_identifier_does_not_split_mid_char() {
+        // Unicode column / table identifier — ensure byte offset
+        // arithmetic doesn't land mid-codepoint and panic.
+        let sql = "SELECT \"chú_ý\" FROM t; SELECT 2";
+        let r = statement_at_cursor(sql, 0).unwrap();
+        assert!(r.starts_with("SELECT"));
+        assert!(r.contains("chú_ý"));
     }
 }

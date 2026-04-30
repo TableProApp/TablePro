@@ -482,6 +482,84 @@ impl App {
         }
     }
 
+    /// Sidebar "Show CREATE TABLE" — synthesise the canonical
+    /// CREATE statement for an existing table by fetching columns,
+    /// indexes, and FKs and feeding them through
+    /// `sql_ddl::materialize_ops`. Result lands in a fresh editor
+    /// tab. No Structure tab is touched; the user just sees the SQL.
+    pub(super) fn on_show_create_table(&self, schema: Option<String>, table: String, sender: ComponentSender<Self>) {
+        let driver_id = self.driver_id().to_string();
+        let sender_for_cmd = sender.clone();
+        let table_for_cmd = table.clone();
+        let schema_for_cmd = schema.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let Some(conn) = database_service::instance().active() else {
+                        sender_for_cmd.input(AppMsg::ShowToast(crate::tr!("No active connection.")));
+                        return;
+                    };
+                    let columns = match conn.fetch_columns(schema_for_cmd.as_deref(), &table_for_cmd).await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            sender_for_cmd.input(AppMsg::ShowToast(
+                                crate::tr!("Couldn't read columns: {error}").replace("{error}", &format!("{e}")),
+                            ));
+                            return;
+                        }
+                    };
+                    if columns.is_empty() {
+                        sender_for_cmd.input(AppMsg::ShowToast(
+                            crate::tr!("Table {table} has no columns.").replace("{table}", &table_for_cmd),
+                        ));
+                        return;
+                    }
+                    let indexes = conn
+                        .fetch_indexes(schema_for_cmd.as_deref(), &table_for_cmd)
+                        .await
+                        .unwrap_or_default();
+                    let fks = conn
+                        .fetch_foreign_keys(schema_for_cmd.as_deref(), &table_for_cmd)
+                        .await
+                        .unwrap_or_default();
+                    // Synthesise the CreateTable op directly from the
+                    // fetched schema. DraftColumn::from_info preserves
+                    // the original ColumnInfo so materialise emits the
+                    // right type / nullability / default per driver
+                    // dialect.
+                    let op = tablepro_core::sql_ddl::StructureOp::CreateTable {
+                        schema: schema_for_cmd.clone(),
+                        table: table_for_cmd.clone(),
+                        columns: columns
+                            .into_iter()
+                            .map(tablepro_core::sql_ddl::DraftColumn::from_info)
+                            .collect(),
+                        indexes,
+                        fks,
+                    };
+                    match tablepro_core::sql_ddl::materialize_ops(&[op], &driver_id) {
+                        Ok(stmts) if !stmts.is_empty() => {
+                            // Multi-statement output (CreateTable + N
+                            // CREATE INDEX + N ALTER ... ADD FK) joins
+                            // with semicolons + blank lines so the
+                            // editor renders each statement on its own.
+                            let sql = stmts.join(";\n\n") + ";";
+                            sender_for_cmd.input(AppMsg::ShowCreateTableLoaded { sql });
+                        }
+                        Ok(_) => {
+                            sender_for_cmd.input(AppMsg::ShowToast(crate::tr!("Nothing to show.")));
+                        }
+                        Err(e) => {
+                            sender_for_cmd.input(AppMsg::ShowToast(
+                                crate::tr!("Couldn't build SQL: {error}").replace("{error}", &format!("{e}")),
+                            ));
+                        }
+                    }
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     /// Edit-mode init asks for introspection. Fetch columns / indexes /
     /// FKs in one async block and dispatch a single StructureLoaded
     /// carrying all three so the tab only rebuilds its UI once. The

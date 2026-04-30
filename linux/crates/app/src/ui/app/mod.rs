@@ -447,6 +447,19 @@ pub enum AppMsg {
         schema: Option<String>,
         table: String,
     },
+    /// Sidebar right-click → "Show CREATE TABLE". App fetches
+    /// columns, indexes, and FKs, synthesises a CreateTable op,
+    /// materialises through `sql_ddl::materialize_ops`, and opens
+    /// the resulting SQL in a fresh editor tab.
+    ShowCreateTableForExisting {
+        schema: Option<String>,
+        table: String,
+    },
+    /// Async result of `ShowCreateTableForExisting` — the synthesised
+    /// CREATE statement is ready, open it in a new editor tab.
+    ShowCreateTableLoaded {
+        sql: String,
+    },
     /// Sidebar right-click → "Drop Table…", or in-tab Drop button.
     /// App shows the AdwAlertDialog confirmation; on confirm dispatches
     /// `DropTableConfirmed`.
@@ -981,6 +994,9 @@ impl SimpleComponent for App {
                     open_mode: OpenMode::NewTab,
                 },
                 SidebarRowOutput::EditStructure { schema, name } => AppMsg::EditStructureTab { schema, table: name },
+                SidebarRowOutput::ShowCreateTable { schema, name } => {
+                    AppMsg::ShowCreateTableForExisting { schema, table: name }
+                }
                 SidebarRowOutput::DropTable { schema, name } => AppMsg::DropTablePrompt { schema, table: name },
             });
 
@@ -1413,6 +1429,8 @@ impl SimpleComponent for App {
             AppMsg::BrowseTabDirtyChanged(tab_id, dirty) => self.refresh_browse_tab_dirty(tab_id, dirty),
             AppMsg::NewTableTab { schema } => self.on_new_table_tab(schema, sender),
             AppMsg::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table, sender),
+            AppMsg::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table, sender),
+            AppMsg::ShowCreateTableLoaded { sql } => self.append_editor_tab(Some(sql), sender),
             AppMsg::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table, sender),
             AppMsg::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table, sender),
             AppMsg::DropTableSucceeded { schema, table } => self.on_drop_table_succeeded(schema, table, sender),
@@ -1710,6 +1728,10 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
 
     let editor = gtk::ShortcutsGroup::builder().title(crate::tr!("SQL editor")).build();
     editor.append(&shortcut_entry("<Primary>Return", &crate::tr!("Run query")));
+    editor.append(&shortcut_entry(
+        "<Primary><Shift>Return",
+        &crate::tr!("Run statement at cursor"),
+    ));
     editor.append(&shortcut_entry("Escape", &crate::tr!("Cancel running query")));
     editor.append(&shortcut_entry("<Primary>t", &crate::tr!("New editor tab")));
     editor.append(&shortcut_entry(

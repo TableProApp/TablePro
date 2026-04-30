@@ -22,6 +22,7 @@ pub struct SidebarRow {
 pub enum SidebarRowMsg {
     OpenInNewTab,
     EditStructure,
+    ShowCreateTable,
     DropTable,
 }
 
@@ -36,6 +37,11 @@ pub enum SidebarRowOutput {
     /// Right-click "Edit Structure" → opens an Edit-mode Structure tab
     /// for this table.
     EditStructure { schema: Option<String>, name: String },
+    /// Right-click "Show CREATE TABLE" → App synthesises the full
+    /// CREATE statement (columns + indexes + foreign keys) and opens
+    /// it in a fresh editor tab. Useful for schema export, sharing,
+    /// or just reading the canonical DDL without going through pg_dump.
+    ShowCreateTable { schema: Option<String>, name: String },
     /// Right-click "Drop Table…" → App presents the AdwAlertDialog
     /// confirmation; on confirm runs DROP TABLE and closes any open
     /// tabs for the dropped table.
@@ -171,6 +177,10 @@ impl FactoryComponent for SidebarRow {
         menu.append_section(None, &open_section);
         let structure_section = gtk::gio::Menu::new();
         structure_section.append(Some(&crate::tr!("Edit Structure")), Some("sidebar-row.edit-structure"));
+        structure_section.append(
+            Some(&crate::tr!("Show CREATE TABLE")),
+            Some("sidebar-row.show-create-table"),
+        );
         menu.append_section(None, &structure_section);
         let mutate_section = gtk::gio::Menu::new();
         mutate_section.append(Some(&crate::tr!("Drop Table\u{2026}")), Some("sidebar-row.drop-table"));
@@ -196,11 +206,15 @@ impl FactoryComponent for SidebarRow {
         let edit_action = gtk::gio::ActionEntry::builder("edit-structure")
             .activate(move |_, _, _| sender_edit.input(SidebarRowMsg::EditStructure))
             .build();
+        let sender_show = sender.clone();
+        let show_create_action = gtk::gio::ActionEntry::builder("show-create-table")
+            .activate(move |_, _, _| sender_show.input(SidebarRowMsg::ShowCreateTable))
+            .build();
         let sender_drop = sender.clone();
         let drop_action = gtk::gio::ActionEntry::builder("drop-table")
             .activate(move |_, _, _| sender_drop.input(SidebarRowMsg::DropTable))
             .build();
-        group.add_action_entries([open_action, edit_action, drop_action]);
+        group.add_action_entries([open_action, edit_action, show_create_action, drop_action]);
         root.insert_action_group("sidebar-row", Some(&group));
 
         // Defence against the factory-clears-row-while-menu-is-open
@@ -254,6 +268,12 @@ impl FactoryComponent for SidebarRow {
             }
             SidebarRowMsg::EditStructure => {
                 let _ = sender.output(SidebarRowOutput::EditStructure {
+                    schema: self.info.schema.clone(),
+                    name: self.info.name.clone(),
+                });
+            }
+            SidebarRowMsg::ShowCreateTable => {
+                let _ = sender.output(SidebarRowOutput::ShowCreateTable {
                     schema: self.info.schema.clone(),
                     name: self.info.name.clone(),
                 });
