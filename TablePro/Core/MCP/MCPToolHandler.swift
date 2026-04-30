@@ -646,10 +646,13 @@ final class MCPToolHandler: Sendable {
 
     private func resolveConnectionMeta(_ connectionId: UUID) async throws -> (DatabaseType, SafeModeLevel, String) {
         try await MainActor.run {
-            guard let session = DatabaseManager.shared.activeSessions[connectionId] else {
-                throw MCPError.notConnected(connectionId)
+            if let session = DatabaseManager.shared.activeSessions[connectionId] {
+                return (session.connection.type, session.connection.safeModeLevel, session.activeDatabase)
             }
-            return (session.connection.type, session.connection.safeModeLevel, session.activeDatabase)
+            if let conn = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId }) {
+                return (conn.type, conn.safeModeLevel, conn.database)
+            }
+            throw MCPError.notConnected(connectionId)
         }
     }
 
