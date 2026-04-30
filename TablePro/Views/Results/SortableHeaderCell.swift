@@ -29,7 +29,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     override var state: NSControl.StateValue {
-        get { .off }
+        get { sortDirection != nil ? .on : .off }
         set { _ = newValue }
     }
 
