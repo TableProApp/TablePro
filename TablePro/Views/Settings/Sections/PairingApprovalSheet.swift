@@ -3,55 +3,12 @@
 //  TablePro
 //
 
-import AppKit
 import SwiftUI
 
 struct PairingApproval: Sendable {
     let grantedPermissions: TokenPermissions
     let allowedConnectionIds: Set<UUID>?
     let expiresAt: Date?
-}
-
-@MainActor
-enum PairingApprovalPresenter {
-    static func present(request: PairingRequest) async throws -> PairingApproval {
-        try await withCheckedThrowingContinuation { continuation in
-            var deliver: ((Result<PairingApproval, Error>) -> Void)?
-            let host = NSHostingController(
-                rootView: PairingApprovalSheet(
-                    request: request,
-                    onComplete: { result in deliver?(result) }
-                )
-            )
-            host.view.frame = NSRect(x: 0, y: 0, width: 520, height: 560)
-
-            let parent = AlertHelper.resolveWindow(nil)
-            let sheetWindow = NSWindow(contentViewController: host)
-            sheetWindow.styleMask = [.titled]
-            sheetWindow.title = String(localized: "Approve Integration")
-            sheetWindow.isReleasedWhenClosed = false
-
-            var resolved = false
-            deliver = { result in
-                guard !resolved else { return }
-                resolved = true
-                if let parent {
-                    parent.endSheet(sheetWindow)
-                } else {
-                    sheetWindow.close()
-                }
-                continuation.resume(with: result)
-            }
-
-            if let parent {
-                parent.beginSheet(sheetWindow, completionHandler: nil)
-            } else {
-                NSApp.activate(ignoringOtherApps: true)
-                sheetWindow.center()
-                sheetWindow.makeKeyAndOrderFront(nil)
-            }
-        }
-    }
 }
 
 struct PairingApprovalSheet: View {

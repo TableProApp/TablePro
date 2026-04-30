@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import SwiftUI
 
 /// Centralized helper for creating and displaying NSAlert dialogs
 /// Provides consistent styling and behavior across the application
@@ -92,6 +93,69 @@ final class AlertHelper {
             // Fallback to modal when no window available
             let response = alert.runModal()
             return response == .alertFirstButtonReturn
+        }
+    }
+
+    // MARK: - Cross-Process Approval
+
+    /// Shows an app-modal approval dialog for prompts originating from another process
+    /// (Raycast, MCP clients, deeplink handlers). `runModal()` self-activates and blocks
+    /// until the user responds, which is the correct pattern when no parent window exists.
+    static func runApprovalModal(
+        title: String,
+        message: String,
+        confirm: String,
+        cancel: String
+    ) async -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: confirm)
+        alert.addButton(withTitle: cancel)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Presents the pairing approval sheet for an external integration request.
+    /// Hosts `PairingApprovalSheet` in an `NSHostingController`. When a parent window
+    /// exists the sheet attaches to it, otherwise it opens as a standalone window.
+    static func runPairingApproval(request: PairingRequest) async throws -> PairingApproval {
+        try await withCheckedThrowingContinuation { continuation in
+            var deliver: ((Result<PairingApproval, Error>) -> Void)?
+            let host = NSHostingController(
+                rootView: PairingApprovalSheet(
+                    request: request,
+                    onComplete: { result in deliver?(result) }
+                )
+            )
+            host.view.frame = NSRect(x: 0, y: 0, width: 520, height: 560)
+
+            let parent = resolveWindow(nil)
+            let sheetWindow = NSWindow(contentViewController: host)
+            sheetWindow.styleMask = [.titled]
+            sheetWindow.title = String(localized: "Approve Integration")
+            sheetWindow.isReleasedWhenClosed = false
+
+            var resolved = false
+            deliver = { result in
+                guard !resolved else { return }
+                resolved = true
+                if let parent {
+                    parent.endSheet(sheetWindow)
+                } else {
+                    sheetWindow.close()
+                }
+                continuation.resume(with: result)
+            }
+
+            if let parent {
+                parent.beginSheet(sheetWindow, completionHandler: nil)
+            } else {
+                NSApp.activate(ignoringOtherApps: true)
+                sheetWindow.center()
+                sheetWindow.makeKeyAndOrderFront(nil)
+            }
         }
     }
 

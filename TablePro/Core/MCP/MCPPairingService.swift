@@ -120,7 +120,7 @@ final class MCPPairingService {
             throw MCPError.internalError("Token store unavailable")
         }
 
-        let approval = try await PairingApprovalPresenter.present(request: request)
+        let approval = try await AlertHelper.runPairingApproval(request: request)
 
         let result = await tokenStore.generate(
             name: request.clientName,
