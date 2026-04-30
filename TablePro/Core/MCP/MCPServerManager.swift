@@ -78,6 +78,15 @@ final class MCPServerManager {
             await authGuard.clearSession(sessionId)
         }
 
+        let protocolHandler = MCPProtocolHandler(
+            server: newServer,
+            tokenStore: newTokenStore,
+            rateLimiter: rateLimiter
+        )
+        let exchangeHandler = IntegrationsExchangeHandler.live()
+        let router = MCPRouter(routes: [protocolHandler, exchangeHandler])
+        await newServer.setRouter(router)
+
         let bridgeResult = await newTokenStore.generate(
             name: "__stdio_bridge__",
             permissions: .fullAccess

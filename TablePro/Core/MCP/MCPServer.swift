@@ -27,7 +27,7 @@ actor MCPServer {
     private var sessions: [String: MCPSession] = [:]
     private var cleanupTask: Task<Void, Never>?
     private let stateCallback: @Sendable (MCPServerState) -> Void
-    private var router: MCPRouter!
+    private var router: MCPRouter?
 
     private(set) var tokenStore: MCPTokenStore?
     private(set) var rateLimiter: MCPRateLimiter?
@@ -38,7 +38,10 @@ actor MCPServer {
 
     init(stateCallback: @escaping @Sendable (MCPServerState) -> Void) {
         self.stateCallback = stateCallback
-        self.router = MCPRouter()
+    }
+
+    func setRouter(_ router: MCPRouter) {
+        self.router = router
     }
 
     func setTokenStore(_ store: MCPTokenStore) {
@@ -280,7 +283,7 @@ actor MCPServer {
         }
     }
 
-    private static let corsHeaders: [(String, String)] = [
+    static let corsHeaders: [(String, String)] = [
         ("Access-Control-Allow-Origin", "http://localhost"),
         ("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"),
         ("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id, mcp-protocol-version, Authorization"),
@@ -295,7 +298,13 @@ actor MCPServer {
             return "\(host)"
         }()
 
-        let result = await router.route(request, server: self, remoteIP: remoteIP, tokenStore: tokenStore, rateLimiter: rateLimiter)
+        guard let router else {
+            sendHTTPError(connection: connection, status: 503, message: "Server not configured")
+            return
+        }
+
+        let routedRequest = request.withRemoteIP(remoteIP)
+        let result = await router.handle(routedRequest)
 
         switch result {
         case .json(let data, let sessionId):
