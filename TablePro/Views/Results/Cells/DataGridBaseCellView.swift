@@ -188,8 +188,8 @@ class DataGridBaseCellView: NSTableCellView {
 
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
-            backgroundView.isHidden = (backgroundStyle == .emphasized) || (changeBackgroundColor == nil)
-            if isFocusedCell { updateFocusRing() }
+            backgroundView.isHidden = (changeBackgroundColor == nil)
+            if isFocusedCell { needsDisplay = true }
         }
     }
 
@@ -201,7 +201,7 @@ class DataGridBaseCellView: NSTableCellView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        guard isFocusedCell, backgroundStyle != .emphasized else { return }
+        guard isFocusedCell else { return }
         NSGraphicsContext.saveGraphicsState()
         NSFocusRingPlacement.only.set()
         drawFocusRingMask()
