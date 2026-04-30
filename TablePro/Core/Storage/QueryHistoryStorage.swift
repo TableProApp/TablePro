@@ -53,11 +53,7 @@ actor QueryHistoryStorage {
         ).first ?? fileManager.temporaryDirectory
         let dir = appSupport.appendingPathComponent("TablePro")
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        let isRunningTests = NSClassFromString("XCTestCase") != nil
-        let fileName = isRunningTests
-            ? "query_history_test_\(ProcessInfo.processInfo.processIdentifier).db"
-            : "query_history.db"
-        return dir.appendingPathComponent(fileName)
+        return dir.appendingPathComponent("query_history.db")
     }
 
     deinit {
