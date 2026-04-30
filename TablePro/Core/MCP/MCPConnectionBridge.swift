@@ -11,6 +11,8 @@ import os
 actor MCPConnectionBridge {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
 
+    private var inFlightConnects: [UUID: Task<Void, Error>] = [:]
+
     // MARK: - Connection Management
 
     func listConnections() async -> JSONValue {
@@ -484,15 +486,12 @@ actor MCPConnectionBridge {
     // MARK: - Private Helpers
 
     private func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
-        let needsConnect: DatabaseConnection? = await MainActor.run {
+        let connection: DatabaseConnection? = await MainActor.run {
             if DatabaseManager.shared.activeSessions[connectionId]?.driver != nil { return nil }
             return ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
         }
-        if let connection = needsConnect {
-            await MainActor.run {
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            try await DatabaseManager.shared.connectToSession(connection)
+        if let connection {
+            try await connectIfNeeded(connection)
         }
         return try await MainActor.run {
             guard let session = DatabaseManager.shared.activeSessions[connectionId],
@@ -500,6 +499,27 @@ actor MCPConnectionBridge {
                 throw MCPError.notConnected(connectionId)
             }
             return (driver, session.connection.type)
+        }
+    }
+
+    private func connectIfNeeded(_ connection: DatabaseConnection) async throws {
+        if let existing = inFlightConnects[connection.id] {
+            try await existing.value
+            return
+        }
+        let task = Task {
+            await MainActor.run {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            try await DatabaseManager.shared.connectToSession(connection)
+        }
+        inFlightConnects[connection.id] = task
+        do {
+            try await task.value
+            inFlightConnects.removeValue(forKey: connection.id)
+        } catch {
+            inFlightConnects.removeValue(forKey: connection.id)
+            throw error
         }
     }
 
