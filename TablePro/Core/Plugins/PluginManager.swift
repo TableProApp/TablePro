@@ -18,7 +18,7 @@ final class PluginManager {
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let builtInPluginsURL: URL?
-    @ObservationIgnored let userPluginsDir: URL
+    @ObservationIgnored internal let userPluginsDir: URL
 
     internal(set) var plugins: [PluginEntry] = []
 
