@@ -17,9 +17,9 @@ final class DatabaseManager {
     static let shared = DatabaseManager()
     internal static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
 
-    @ObservationIgnored private let connectionStorage: ConnectionStorage
-    @ObservationIgnored private let appSettingsStorage: AppSettingsStorage
-    @ObservationIgnored private let pluginManager: PluginManager
+    @ObservationIgnored internal let connectionStorage: ConnectionStorage
+    @ObservationIgnored internal let appSettingsStorage: AppSettingsStorage
+    @ObservationIgnored internal let pluginManager: PluginManager
 
     /// All active connection sessions
     internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {
