@@ -364,4 +364,38 @@ struct DataGridColumnPoolTests {
         #expect(beforeIdentifiers == afterIdentifiers)
         #expect(beforeWidths == afterWidths)
     }
+
+    @Test("detachFromTableView removes pool columns and allows clean re-attach")
+    func detachFromTableView_removesPoolColumnsAndAllowsCleanReattach() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "name", "email"])
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 3),
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+        #expect(dataColumns(in: tableView).count == 3)
+
+        pool.detachFromTableView()
+        #expect(dataColumns(in: tableView).count == 0)
+        #expect(pool.totalSlots == 3)
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 3),
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: defaultWidthCalculator
+        )
+        #expect(dataColumns(in: tableView).count == 3)
+        #expect(pool.totalSlots == 3)
+    }
 }

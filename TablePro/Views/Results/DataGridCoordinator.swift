@@ -214,6 +214,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         cachedRowCount = 0
         cachedColumnCount = 0
         sortedIDs = nil
+        columnPool.detachFromTableView()
         if let tableView {
             while let col = tableView.tableColumns.last {
                 tableView.removeTableColumn(col)

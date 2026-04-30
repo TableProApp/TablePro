@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import QuartzCore
 
 @MainActor
 final class DataGridColumnPool {
@@ -17,6 +16,14 @@ final class DataGridColumnPool {
         attachedTableView = tableView
     }
 
+    func detachFromTableView() {
+        guard let tableView = attachedTableView else { return }
+        for column in pooledColumns where tableView.tableColumns.contains(column) {
+            tableView.removeTableColumn(column)
+        }
+        attachedTableView = nil
+    }
+
     func reconcile(
         tableView: NSTableView,
         schema: ColumnIdentitySchema,
@@ -26,16 +33,6 @@ final class DataGridColumnPool {
         hiddenColumnNames: Set<String>,
         widthCalculator: (String, Int) -> CGFloat
     ) {
-        NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0
-        NSAnimationContext.current.allowsImplicitAnimation = false
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        defer {
-            CATransaction.commit()
-            NSAnimationContext.endGrouping()
-        }
-
         attach(to: tableView)
         let visibleCount = schema.columnNames.count
 
@@ -121,16 +118,24 @@ final class DataGridColumnPool {
         visibleCount: Int,
         targetOrder: [Int]
     ) {
-        let attachedIdentifiers = Set(tableView.tableColumns.map(\.identifier))
+        var attached = Set(tableView.tableColumns.map(\.identifier))
         let baseOffset = tableView.tableColumns.first?.identifier == ColumnIdentitySchema.rowNumberIdentifier ? 1 : 0
 
-        for slot in targetOrder where !attachedIdentifiers.contains(pooledColumns[slot].identifier) {
+        for slot in targetOrder where !attached.contains(pooledColumns[slot].identifier) {
             tableView.addTableColumn(pooledColumns[slot])
+            attached.insert(pooledColumns[slot].identifier)
         }
 
-        for slot in 0..<pooledColumns.count where slot >= visibleCount && !attachedIdentifiers.contains(pooledColumns[slot].identifier) {
+        for slot in 0..<pooledColumns.count
+        where slot >= visibleCount && !attached.contains(pooledColumns[slot].identifier) {
             tableView.addTableColumn(pooledColumns[slot])
+            attached.insert(pooledColumns[slot].identifier)
         }
+
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        NSAnimationContext.current.allowsImplicitAnimation = false
+        defer { NSAnimationContext.endGrouping() }
 
         for (targetPosition, slot) in targetOrder.enumerated() {
             let identifier = ColumnIdentitySchema.slotIdentifier(slot)
