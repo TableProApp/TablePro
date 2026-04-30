@@ -80,12 +80,11 @@ final class WelcomeViewModel {
 
     @ObservationIgnored private var openWindow: OpenWindowAction?
     @ObservationIgnored private var connectionUpdatedObserver: NSObjectProtocol?
-    @ObservationIgnored private var shareFileObserver: NSObjectProtocol?
     @ObservationIgnored private var exportObserver: NSObjectProtocol?
     @ObservationIgnored private var importObserver: NSObjectProtocol?
     @ObservationIgnored private var linkedFoldersObserver: NSObjectProtocol?
     @ObservationIgnored private var importFromAppObserver: NSObjectProtocol?
-    @ObservationIgnored private var deeplinkImportObserver: NSObjectProtocol?
+    @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
 
     // MARK: - Computed Properties
 
@@ -168,16 +167,6 @@ final class WelcomeViewModel {
             }
         }
 
-        shareFileObserver = NotificationCenter.default.addObserver(
-            forName: .connectionShareFileOpened, object: nil, queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor [weak self] in
-                guard let url = notification.object as? URL else { return }
-                _ = PendingActionStore.shared.consumeConnectionShareURL()
-                self?.activeSheet = .importFile(url)
-            }
-        }
-
         exportObserver = NotificationCenter.default.addObserver(
             forName: .exportConnections, object: nil, queue: .main
         ) { [weak self] _ in
@@ -211,35 +200,49 @@ final class WelcomeViewModel {
             }
         }
 
-        deeplinkImportObserver = NotificationCenter.default.addObserver(
-            forName: .deeplinkImportRequested, object: nil, queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let exportable = (notification.object as? ExportableConnection)
-                    ?? PendingActionStore.shared.consumeDeeplinkImport()
-                guard let exportable else { return }
-                PendingActionStore.shared.deeplinkImport = nil
-                self.activeSheet = .deeplinkImport(exportable)
-            }
-        }
-
         loadConnections()
         linkedConnections = LinkedFolderWatcher.shared.linkedConnections
 
-        if let pendingURL = PendingActionStore.shared.consumeConnectionShareURL() {
-            activeSheet = .importFile(pendingURL)
-        }
+        consumePendingRouterActions()
+        startWelcomeRouterObservation()
+    }
 
-        if let pendingImport = PendingActionStore.shared.consumeDeeplinkImport() {
+    private func consumePendingRouterActions() {
+        if let pendingURL = WelcomeRouter.shared.consumePendingShare() {
+            activeSheet = .importFile(pendingURL)
+            return
+        }
+        if let pendingImport = WelcomeRouter.shared.consumePendingImport() {
             activeSheet = .deeplinkImport(pendingImport)
         }
     }
 
+    private func startWelcomeRouterObservation() {
+        welcomeRouterTask?.cancel()
+        welcomeRouterTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                let didChange = await Self.awaitWelcomeRouterChange()
+                guard didChange else { return }
+                self?.consumePendingRouterActions()
+            }
+        }
+    }
+
+    private static func awaitWelcomeRouterChange() async -> Bool {
+        await withCheckedContinuation { continuation in
+            withObservationTracking({
+                _ = WelcomeRouter.shared.pendingImport
+                _ = WelcomeRouter.shared.pendingConnectionShare
+            }, onChange: {
+                continuation.resume(returning: true)
+            })
+        }
+    }
+
     deinit {
-        [connectionUpdatedObserver, shareFileObserver, exportObserver,
-         importObserver, importFromAppObserver, linkedFoldersObserver,
-         deeplinkImportObserver].forEach {
+        welcomeRouterTask?.cancel()
+        [connectionUpdatedObserver, exportObserver, importObserver,
+         importFromAppObserver, linkedFoldersObserver].forEach {
             if let observer = $0 {
                 NotificationCenter.default.removeObserver(observer)
             }
