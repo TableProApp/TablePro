@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import QuartzCore
 
 @MainActor
 final class DataGridColumnPool {
@@ -25,6 +26,16 @@ final class DataGridColumnPool {
         hiddenColumnNames: Set<String>,
         widthCalculator: (String, Int) -> CGFloat
     ) {
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        NSAnimationContext.current.allowsImplicitAnimation = false
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer {
+            CATransaction.commit()
+            NSAnimationContext.endGrouping()
+        }
+
         attach(to: tableView)
         let visibleCount = schema.columnNames.count
 
