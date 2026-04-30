@@ -395,10 +395,10 @@ final class MCPToolHandler: Sendable {
         try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
         try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
 
+        let (databaseType, safeModeLevel, _) = try await resolveConnectionMeta(connectionId)
         var queries: [(label: String, sql: String)] = []
 
         if let query {
-            let (databaseType, safeModeLevel, _) = try await resolveConnectionMeta(connectionId)
             try await authGuard.checkQueryPermission(
                 sql: query,
                 connectionId: connectionId,
@@ -407,8 +407,18 @@ final class MCPToolHandler: Sendable {
             )
             queries.append((label: "query", sql: query))
         } else if let tables {
+            let quoteIdentifier = Self.identifierQuoter(for: databaseType)
             for table in tables {
-                queries.append((label: table, sql: "SELECT * FROM \(table) LIMIT \(maxRows)"))
+                try Self.validateExportTableName(table)
+                let quoted = Self.quoteQualifiedIdentifier(table, quoter: quoteIdentifier)
+                let sql = "SELECT * FROM \(quoted) LIMIT \(maxRows)"
+                try await authGuard.checkQueryPermission(
+                    sql: sql,
+                    connectionId: connectionId,
+                    databaseType: databaseType,
+                    safeModeLevel: safeModeLevel
+                )
+                queries.append((label: table, sql: sql))
             }
         }
 
@@ -612,6 +622,28 @@ final class MCPToolHandler: Sendable {
             }
             return (session.connection.type, session.connection.safeModeLevel, session.activeDatabase)
         }
+    }
+
+    static func validateExportTableName(_ table: String) throws {
+        let pattern = "^[A-Za-z0-9_][A-Za-z0-9_.]*$"
+        guard table.range(of: pattern, options: .regularExpression) != nil else {
+            throw MCPError.invalidParams(
+                "Invalid table name: '\(table)'. Allowed characters: letters, digits, underscore, and '.' for schema-qualified names."
+            )
+        }
+    }
+
+    static func identifierQuoter(for databaseType: DatabaseType) -> (String) -> String {
+        if let dialect = try? resolveSQLDialect(for: databaseType) {
+            return quoteIdentifierFromDialect(dialect)
+        }
+        return { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }
+    }
+
+    static func quoteQualifiedIdentifier(_ identifier: String, quoter: (String) -> String) -> String {
+        identifier.split(separator: ".", omittingEmptySubsequences: false)
+            .map { quoter(String($0)) }
+            .joined(separator: ".")
     }
 
     func encodeJSON(_ value: JSONValue) -> String {
