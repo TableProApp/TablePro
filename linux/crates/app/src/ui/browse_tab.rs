@@ -1031,11 +1031,23 @@ impl BrowseTab {
     }
 
     /// Build the (RowKey, current_values) pair for a row at the
-    /// given position in the current result. Returns None if the
-    /// table has no PK or the position is out of range.
+    /// given position. `row_position` is in filter-model space (the
+    /// space `GtkColumnView` activates against), which includes
+    /// prepended drafts — so we resolve through the selection model
+    /// rather than indexing `result.rows` directly. The earlier
+    /// direct-indexing version was off by N when N drafts were
+    /// prepended, silently targeting the wrong persisted row's PK
+    /// from the right-click delete, Set NULL shortcut, and any
+    /// cell-edit on a persisted row that sits below a draft.
+    ///
+    /// Returns None for drafts (caller is expected to handle the
+    /// draft path before reaching here), for tables with no PK, or
+    /// when the position is out of range.
     fn row_key_at(&self, row_position: u32) -> Option<(crate::services::change_tracker::RowKey, Vec<Value>)> {
-        let result = self.current_result.as_ref()?;
-        let row = result.rows.get(row_position as usize)?;
+        let row_obj = self.row_object_at(row_position)?;
+        if row_obj.draft_id().is_some() {
+            return None;
+        }
         let pk_indices: Vec<usize> = self
             .current_columns
             .iter()
@@ -1046,9 +1058,13 @@ impl BrowseTab {
         if pk_indices.is_empty() {
             return None;
         }
-        let pk_values: Vec<Value> = pk_indices.iter().map(|&i| row[i].clone()).collect();
+        let cells = row_obj.cells_clone();
+        let pk_values: Vec<Value> = pk_indices
+            .iter()
+            .map(|&i| cells.get(i).cloned())
+            .collect::<Option<_>>()?;
         let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
-        Some((key, row.clone()))
+        Some((key, cells))
     }
 
     /// Returns true when the loaded columns include at least one PK.
@@ -1822,9 +1838,6 @@ impl SimpleComponent for BrowseTab {
                 let Some(selection) = self.current_selection.as_ref() else {
                     return;
                 };
-                let Some(result) = self.current_result.as_ref() else {
-                    return;
-                };
                 let positions = selected_positions(selection);
                 if positions.is_empty() {
                     return;
@@ -1843,17 +1856,36 @@ impl SimpleComponent for BrowseTab {
                     });
                     return;
                 }
-                // Snapshot (key, row) pairs now so a background
-                // RowsLoaded between dialog open and confirmation
-                // can't shift positions out from under us. The tracker
-                // applies pending state by key, not by position.
+                // Snapshot (key, row) pairs by walking the selection's
+                // own model. Earlier we indexed `result.rows[pos]`
+                // directly, but `pos` is in filter-model space (which
+                // includes prepended drafts), not server-result space.
+                // With drafts present the off-by-N mismatch silently
+                // tracked the wrong PKs for deletion. Going through
+                // the model gives us the actual RowObject at that
+                // position, so drafts skip cleanly via draft_id and
+                // persisted rows resolve to their real cells.
+                let Some(model) = selection.model() else {
+                    return;
+                };
                 let snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)> = positions
                     .iter()
                     .filter_map(|pos| {
-                        let row = result.rows.get(*pos as usize)?;
-                        let pk_values: Vec<Value> = pk_indices.iter().map(|&i| row[i].clone()).collect();
+                        let item = model.item(*pos)?;
+                        let row_obj = item.downcast::<super::row_object::RowObject>().ok()?;
+                        // Drafts are in-memory only; track_delete
+                        // expects a persisted row. Discarding a draft
+                        // is a separate flow (Ctrl+Z on the Insert).
+                        if row_obj.draft_id().is_some() {
+                            return None;
+                        }
+                        let cells = row_obj.cells_clone();
+                        let pk_values: Vec<Value> = pk_indices
+                            .iter()
+                            .map(|&i| cells.get(i).cloned())
+                            .collect::<Option<_>>()?;
                         let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
-                        Some((key, row.clone()))
+                        Some((key, cells))
                     })
                     .collect();
                 if snapshot.is_empty() {
@@ -1861,12 +1893,21 @@ impl SimpleComponent for BrowseTab {
                 }
                 let count = snapshot.len();
                 let tab_id = self.tab_id;
+                let selection_for_commit = selection.clone();
                 let commit_delete = move |snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)>| {
                     crate::services::change_tracker::with_tab(tab_id, |t| {
                         for (key, row) in snapshot {
                             t.track_delete(key, row);
                         }
                     });
+                    // Clear the multi-row selection so the
+                    // "{n} selected" badge disappears and the Delete
+                    // button tooltip resets. Without this the bitset
+                    // still contains the now-strikethrough rows
+                    // (they remain in the model until Save). Spreadsheet
+                    // convention: a bulk action ends the selection it
+                    // operated on.
+                    selection_for_commit.unselect_all();
                 };
                 if count >= BULK_DELETE_CONFIRM_THRESHOLD {
                     // Dialog parent is any descendant of the toplevel
