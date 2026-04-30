@@ -15,6 +15,14 @@ actor MCPAuthGuard {
     /// Per-session approved connections (for askEachTime policy)
     private var sessionApprovals: [String: Set<UUID>] = [:]
 
+    /// In-flight approval prompts keyed by (sessionId, connectionId) to dedupe concurrent requests.
+    private var inFlightApprovals: [ApprovalKey: Task<Bool, Error>] = [:]
+
+    private struct ApprovalKey: Hashable {
+        let sessionId: String
+        let connectionId: UUID
+    }
+
     // MARK: - Connection Access Check
 
     func checkConnectionAccess(connectionId: UUID, sessionId: String) async throws {
@@ -51,10 +59,30 @@ actor MCPAuthGuard {
                 break
             }
 
-            let userApproved = try await promptUserApproval(
-                connectionName: snapshot.name,
-                databaseType: snapshot.databaseType
-            )
+            let key = ApprovalKey(sessionId: sessionId, connectionId: connectionId)
+            let approvalTask: Task<Bool, Error>
+            if let existing = inFlightApprovals[key] {
+                approvalTask = existing
+            } else {
+                let connectionName = snapshot.name
+                let databaseType = snapshot.databaseType
+                approvalTask = Task {
+                    try await self.promptUserApproval(
+                        connectionName: connectionName,
+                        databaseType: databaseType
+                    )
+                }
+                inFlightApprovals[key] = approvalTask
+            }
+
+            let userApproved: Bool
+            do {
+                userApproved = try await approvalTask.value
+                inFlightApprovals.removeValue(forKey: key)
+            } catch {
+                inFlightApprovals.removeValue(forKey: key)
+                throw error
+            }
 
             if userApproved {
                 sessionApprovals[sessionId, default: []].insert(connectionId)
