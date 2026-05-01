@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - MCP server lazy-starts on first external request. Manual enable in Settings is no longer required
 - Settings tab renamed from "MCP" to "Integrations" with new sections for connected clients, activity log, and pairing
+- Integrations settings: rename MCP Server section to Integrations, restructure with searchable activity log, native list with keyboard navigation, accessibility labels, color-blind-safe status icons.
+- Activity log gained an Export… button that writes the current filtered list to CSV.
+- Connection Advanced settings: AI Policy and External Clients now share a single External Access section. The External Clients picker uses a segmented control.
 - Storage and sync singletons accept dependencies via init for test isolation, matching Apple's URLSession and UserDefaults convention. Production callers using `.shared` are unchanged. `SQLFavoriteStorage` is now an actor so its first access no longer blocks the main thread on SQLite setup.
 - Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
 - Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
@@ -98,6 +101,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP `export_data`: tightened table name validation to reject double-dot, leading-dot, and trailing-dot identifiers (e.g. `schema..table`). `quoteQualifiedIdentifier` now rejects empty segments instead of producing `"schema".""."table"`.
 - MCP `focus_query_tab`: re-validate that the resolved tab still belongs to the authorized connection between the auth check and the window raise, closing a TOCTOU window where a tab could be re-bound to a different connection.
 - MCP pairing: cap pending exchange codes at 50 to prevent unbounded memory growth from repeated pairing attempts.
+- Pairing approval no longer grants access on Return key; Approve must be clicked. Deny remains the cancel action and Escape still dismisses.
+- Pairing approval shows a live countdown for the 5-minute exchange code window and disables Approve when it runs out.
+- Pairing approval connection list is searchable with Select All / Deselect All controls and bounded height for many connections.
+- Token deletion now requires confirmation in a destructive alert, with the token name in the message. Backspace on a selected token in the list shows the same alert.
+- Disconnect on a connected client now requires confirmation before tearing down the session.
+- Token list switched to a native macOS list with keyboard navigation, multi-select, and a context menu (Revoke, Copy ID, Delete…). "Deactivate" was renamed to "Revoke" so the UI matches the documented language.
+- Activity log layout fixed: the inner list no longer nests inside the settings Form, so vertical scrolling has a single owner. Connection column shows the connection name instead of the UUID prefix and falls back to "Deleted connection (…)" when the connection is gone.
+- Activity log gained search across action, token, connection, and details, plus a 90-day retention notice.
+- Token reveal warning banner uses thin material with an orange border so it stays visible in Dark Mode.
+- Token, audit, and pairing sheets use a flexible minimum height so they no longer clip with larger Dynamic Type sizes.
+- Token list "Last used" now uses RelativeDateTimeFormatter so localized strings read correctly (e.g. "5 minutes ago" in en) instead of the broken duplicated " ago" suffix.
+- Token reveal, audit refresh, and copy buttons now expose VoiceOver accessibility labels in addition to tooltips.
 
 ## [0.36.0] - 2026-04-27
 
