@@ -360,7 +360,7 @@ extension MCPError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-struct MCPClientInfo: Codable, Sendable {
+struct LegacyMCPClientInfo: Codable, Sendable {
     let name: String
     let version: String?
 }

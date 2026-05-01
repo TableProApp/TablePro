@@ -6,7 +6,7 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
 
     private weak var server: MCPServer?
     private let tokenStore: MCPTokenStore?
-    private let rateLimiter: MCPRateLimiter?
+    private let rateLimiter: LegacyMCPRateLimiter?
 
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -14,7 +14,7 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
     var methods: [HTTPRequest.Method] { [.get, .post, .delete] }
     var path: String { "/mcp" }
 
-    init(server: MCPServer, tokenStore: MCPTokenStore?, rateLimiter: MCPRateLimiter?) {
+    init(server: MCPServer, tokenStore: MCPTokenStore?, rateLimiter: LegacyMCPRateLimiter?) {
         self.server = server
         self.tokenStore = tokenStore
         self.rateLimiter = rateLimiter
@@ -136,7 +136,7 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
     }
 
     @discardableResult
-    private func recordAuthFailure(ip: String?) async -> MCPRateLimiter.AuthRateResult? {
+    private func recordAuthFailure(ip: String?) async -> LegacyMCPRateLimiter.AuthRateResult? {
         guard let rateLimiter, let ip else { return nil }
         return await rateLimiter.checkAndRecord(ip: ip, success: false)
     }
@@ -299,7 +299,7 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
            let name = clientInfo["name"]?.stringValue
         {
             let version = clientInfo["version"]?.stringValue
-            await session.setClientInfo(MCPClientInfo(name: name, version: version))
+            await session.setClientInfo(LegacyMCPClientInfo(name: name, version: version))
         }
 
         do {
@@ -330,7 +330,7 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
 
     private func handleCancellation(
         _ request: JSONRPCRequest,
-        session: MCPSession
+        session: LegacyMCPSession
     ) async -> MCPRouter.RouteResult {
         guard let params = request.params,
               let requestIdValue = params["requestId"]

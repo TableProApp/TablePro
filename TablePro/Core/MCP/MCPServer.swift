@@ -24,13 +24,13 @@ actor MCPServer {
 
     private var allowRemoteAccess: Bool = false
     private var listener: NWListener?
-    private var sessions: [String: MCPSession] = [:]
+    private var sessions: [String: LegacyMCPSession] = [:]
     private var cleanupTask: Task<Void, Never>?
     private let stateCallback: @Sendable (MCPServerState) -> Void
     private var router: MCPRouter?
 
     private(set) var tokenStore: MCPTokenStore?
-    private(set) var rateLimiter: MCPRateLimiter?
+    private(set) var rateLimiter: LegacyMCPRateLimiter?
 
     private(set) var toolCallHandler: (@Sendable (String, JSONValue?, String, MCPAuthToken?) async throws -> MCPToolResult)?
     private(set) var resourceReadHandler: (@Sendable (String, String) async throws -> MCPResourceReadResult)?
@@ -48,7 +48,7 @@ actor MCPServer {
         self.tokenStore = store
     }
 
-    func setRateLimiter(_ limiter: MCPRateLimiter) {
+    func setRateLimiter(_ limiter: LegacyMCPRateLimiter) {
         self.rateLimiter = limiter
     }
 
@@ -339,19 +339,19 @@ actor MCPServer {
         }
     }
 
-    func createSession() -> MCPSession? {
+    func createSession() -> LegacyMCPSession? {
         guard sessions.count < Self.maxSessions else {
             Self.logger.warning("Maximum session limit reached (\(Self.maxSessions))")
             return nil
         }
 
-        let session = MCPSession()
+        let session = LegacyMCPSession()
         sessions[session.id] = session
         Self.logger.info("Created session \(session.id) (total: \(self.sessions.count))")
         return session
     }
 
-    func session(for sessionId: String) -> MCPSession? {
+    func session(for sessionId: String) -> LegacyMCPSession? {
         sessions[sessionId]
     }
 

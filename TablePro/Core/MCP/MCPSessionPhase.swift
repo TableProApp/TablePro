@@ -1,6 +1,6 @@
 import Foundation
 
-enum MCPSessionTerminationReason: Sendable, Equatable {
+enum LegacyMCPSessionTerminationReason: Sendable, Equatable {
     case removed
     case idleTimeout
     case serverStopped
@@ -11,7 +11,7 @@ enum MCPSessionPhase: Sendable, Equatable {
     case created
     case initializing
     case active(tokenId: UUID?, tokenName: String?)
-    case terminated(reason: MCPSessionTerminationReason)
+    case terminated(reason: LegacyMCPSessionTerminationReason)
 
     var isActive: Bool {
         if case .active = self { return true }

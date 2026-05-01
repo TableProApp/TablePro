@@ -58,7 +58,7 @@ final class MCPServerManager {
         await newTokenStore.loadFromDisk()
         self.tokenStore = newTokenStore
 
-        let rateLimiter = MCPRateLimiter()
+        let rateLimiter = LegacyMCPRateLimiter()
 
         let bridge = MCPConnectionBridge()
         let authPolicy = MCPAuthPolicy()
