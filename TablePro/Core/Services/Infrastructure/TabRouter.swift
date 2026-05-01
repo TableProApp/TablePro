@@ -97,6 +97,12 @@ internal final class TabRouter {
             await switchSchemaOrDatabase(connectionId: connectionId, target: database)
         }
 
+        if focusExistingTableTab(connectionId: connectionId, database: database, schema: schema, table: table) {
+            NSApp.activate(ignoringOtherApps: true)
+            closeWelcomeWindows()
+            return
+        }
+
         let payload = EditorTabPayload(
             connectionId: connectionId,
             tabType: .table,
@@ -108,6 +114,29 @@ internal final class TabRouter {
         WindowManager.shared.openTab(payload: payload)
         NSApp.activate(ignoringOtherApps: true)
         closeWelcomeWindows()
+    }
+
+    private func focusExistingTableTab(
+        connectionId: UUID, database: String?, schema: String?, table: String
+    ) -> Bool {
+        for coordinator in MainContentCoordinator.allActiveCoordinators()
+            where coordinator.connectionId == connectionId {
+            let match = coordinator.tabManager.tabs.first { tab in
+                guard tab.tabType == .table,
+                      tab.tableContext.tableName == table else { return false }
+                let databaseMatches = database.map { $0 == tab.tableContext.databaseName } ?? true
+                let schemaMatches = schema.map { $0 == tab.tableContext.schemaName } ?? true
+                return databaseMatches && schemaMatches
+            }
+            guard let match else { continue }
+            coordinator.tabManager.selectedTabId = match.id
+            if let windowId = coordinator.windowId,
+               let window = WindowLifecycleMonitor.shared.window(for: windowId) {
+                window.makeKeyAndOrderFront(nil)
+            }
+            return true
+        }
+        return false
     }
 
     // MARK: - Query
