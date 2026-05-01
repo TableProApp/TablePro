@@ -247,6 +247,7 @@ extension DatabaseManager {
                 session.currentSchema = nil
             }
             appSettingsStorage.saveLastSchema(nil, for: connectionId)
+            await SchemaService.shared.invalidate(connectionId: connectionId)
             await reconnectSession(connectionId)
         } else if pm?.capabilities.supportsSchemaSwitching == true,
                   let schemaDriver = driver as? SchemaSwitchable {

@@ -102,19 +102,11 @@ extension MainContentCoordinator {
             "[close] coordinator.handleWindowWillClose connId=\(self.connectionId, privacy: .public) tabs=\(self.tabManager.tabs.count)"
         )
 
-        // Persist remaining non-preview tabs synchronously. saveNowSync writes
-        // directly without spawning a Task — required here because the window
-        // is closing and we cannot rely on async tasks being serviced.
-        let persistableTabs = tabManager.tabs.filter { !$0.isPreview }
-        if persistableTabs.isEmpty {
-            // Empty → clear saved state so next open shows a default empty window.
-            persistence.saveNowSync(tabs: [], selectedTabId: nil)
-        } else {
-            let normalizedSelectedId =
-                persistableTabs.contains(where: { $0.id == tabManager.selectedTabId })
-                ? tabManager.selectedTabId : persistableTabs.first?.id
-            persistence.saveNowSync(tabs: persistableTabs, selectedTabId: normalizedSelectedId)
-        }
+        // Persist tabs aggregated across all windows for this connection.
+        // Writing this window's tabs in isolation can clobber sibling windows'
+        // state on disk — for example, closing an empty window would erase the
+        // saved tabs of an open sibling window.
+        persistence.saveOrClearAggregatedSync()
 
         // Cancel the pending eviction task before teardown drops it.
         evictionTask?.cancel()

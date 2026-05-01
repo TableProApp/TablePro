@@ -137,17 +137,13 @@ extension MainContentView {
 
             if !remainingTabs.isEmpty {
                 let selectedWasFirst = firstTab.id == selectedId
-                Task { @MainActor in
-                    for tab in remainingTabs {
-                        let restorePayload = EditorTabPayload(
-                            from: tab, connectionId: connection.id, skipAutoExecute: true)
-                        WindowManager.shared.openTab(payload: restorePayload)
-                    }
-                    // Bring the first window to front only if it had the selected tab.
-                    // Otherwise let the last restored window stay focused.
-                    if selectedWasFirst {
-                        viewWindow?.makeKeyAndOrderFront(nil)
-                    }
+                for tab in remainingTabs {
+                    let restorePayload = EditorTabPayload(
+                        from: tab, connectionId: connection.id, skipAutoExecute: true)
+                    WindowManager.shared.openTab(payload: restorePayload)
+                }
+                if selectedWasFirst {
+                    viewWindow?.makeKeyAndOrderFront(nil)
                 }
             }
 

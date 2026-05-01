@@ -228,22 +228,32 @@ final class MainContentCoordinator {
         set { _isAppTerminating.withLock { $0 = newValue } }
     }
 
+    /// Stable instance identity. Used to key the registry so a recycled
+    /// `ObjectIdentifier` from a freshly-allocated coordinator can never
+    /// remove a different instance's entry from a delayed cleanup Task.
+    let instanceId = UUID()
+
     /// Registry of active coordinators for aggregated quit-time persistence.
-    /// Keyed by ObjectIdentifier of each coordinator instance.
-    static var activeCoordinators: [ObjectIdentifier: MainContentCoordinator] = [:]
+    /// Keyed by `instanceId` (UUID) — never by `ObjectIdentifier`, which can
+    /// be recycled across allocations.
+    static var activeCoordinators: [UUID: MainContentCoordinator] = [:]
 
     /// Register this coordinator so quit-time persistence can aggregate tabs.
-    private func registerForPersistence() {
-        Self.activeCoordinators[ObjectIdentifier(self)] = self
+    /// Idempotent — repeated registration is a no-op.
+    func registerEagerly() {
+        Self.activeCoordinators[instanceId] = self
     }
 
-    /// Unregister this coordinator from quit-time aggregation.
+    private func registerForPersistence() {
+        Self.activeCoordinators[instanceId] = self
+    }
+
     private func unregisterFromPersistence() {
-        Self.activeCoordinators.removeValue(forKey: ObjectIdentifier(self))
+        Self.activeCoordinators.removeValue(forKey: instanceId)
     }
 
     /// Collect non-preview tabs for persistence.
-    private static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
+    static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
         let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
 
@@ -269,7 +279,7 @@ final class MainContentCoordinator {
     }
 
     /// Get selected tab ID from any coordinator for a given connectionId.
-    private static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
+    static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
         activeCoordinators.values
             .first { $0.connectionId == connectionId && $0.tabManager.selectedTabId != nil }?
             .tabManager.selectedTabId
@@ -569,7 +579,7 @@ final class MainContentCoordinator {
         // Never-activated coordinators are throwaway instances created by SwiftUI
         // during body re-evaluation — @State only keeps the first, rest are discarded
         guard _didActivate.withLock({ $0 }) else {
-            let id = ObjectIdentifier(self)
+            let id = instanceId
             Task { @MainActor in
                 Self.activeCoordinators.removeValue(forKey: id)
             }
