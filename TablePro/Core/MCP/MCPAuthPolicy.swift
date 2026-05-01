@@ -51,23 +51,23 @@ actor MCPAuthPolicy {
         }
 
         guard let snapshot = await loadConnection(connectionId) else {
-            return .denied(String(localized: "Connection not found"))
+            return .denied(reason: String(localized: "Connection not found"))
         }
 
         if snapshot.policy == .never {
-            return .denied(String(localized: "AI access is disabled for this connection"))
+            return .denied(reason: String(localized: "AI access is disabled for this connection"))
         }
 
         if snapshot.externalAccess == .blocked {
-            return .denied(String(localized: "External access is disabled for this connection"))
+            return .denied(reason: String(localized: "External access is disabled for this connection"))
         }
 
         if !token.connectionAccess.allows(connectionId) {
-            return .denied(String(localized: "Token does not have access to this connection"))
+            return .denied(reason: String(localized: "Token does not have access to this connection"))
         }
 
         if case .denied(let reason) = decideTokenTier(token: token, tool: tool) {
-            return .denied(reason)
+            return .denied(reason: reason)
         }
 
         if let writeReason = denialForWriteIntent(
@@ -76,7 +76,7 @@ actor MCPAuthPolicy {
             externalAccess: snapshot.externalAccess,
             databaseType: snapshot.databaseType
         ) {
-            return .denied(writeReason)
+            return .denied(reason: writeReason)
         }
 
         if snapshot.policy == .askEachTime,
@@ -242,7 +242,7 @@ actor MCPAuthPolicy {
             return .allowed
         }
         return .denied(
-            "Token '\(token.name)' with permission '\(token.permissions.displayName)' "
+            reason: "Token '\(token.name)' with permission '\(token.permissions.displayName)' "
                 + "cannot access '\(tool)'"
         )
     }

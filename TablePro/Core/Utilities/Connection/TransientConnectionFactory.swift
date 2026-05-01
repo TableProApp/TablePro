@@ -5,6 +5,7 @@
 
 import Foundation
 
+@MainActor
 internal enum TransientConnectionFactory {
     internal static func build(from parsed: ParsedConnectionURL) -> DatabaseConnection {
         var sshConfig = SSHConfiguration()

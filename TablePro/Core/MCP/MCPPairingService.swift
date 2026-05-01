@@ -122,10 +122,11 @@ final class MCPPairingService {
 
         let approval = try await AlertHelper.runPairingApproval(request: request)
 
+        let connectionAccess: ConnectionAccess = approval.allowedConnectionIds.map { .limited($0) } ?? .all
         let result = await tokenStore.generate(
             name: request.clientName,
             permissions: approval.grantedPermissions,
-            allowedConnectionIds: approval.allowedConnectionIds,
+            connectionAccess: connectionAccess,
             expiresAt: approval.expiresAt
         )
 

@@ -20,14 +20,14 @@ internal final class AppLaunchCoordinator {
 
     private var pendingIntents: [LaunchIntent] = []
     private var deadlineTask: Task<Void, Never>?
-    private var didFinishLaunching = false
+    private var hasFinishedLaunching = false
 
     private init() {}
 
     // MARK: - App Lifecycle Hooks
 
     internal func didFinishLaunching() {
-        didFinishLaunching = true
+        hasFinishedLaunching = true
         let deadline = Date().addingTimeInterval(0.150)
         phase = .collectingIntents(deadline: deadline)
         deadlineTask = Task { [weak self] in
@@ -98,7 +98,7 @@ internal final class AppLaunchCoordinator {
     }
 
     private func transitionToRouting() {
-        guard didFinishLaunching else { return }
+        guard hasFinishedLaunching else { return }
         phase = .routing
         let intents = pendingIntents
         pendingIntents.removeAll()
