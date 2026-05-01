@@ -9,16 +9,21 @@ import Foundation
 extension MCPToolHandler {
     // MARK: - list_recent_tabs
 
-    func handleListRecentTabs(_ args: JSONValue?, token: MCPAuthToken?) async throws -> MCPToolResult {
+    func handleListRecentTabs(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let limit = optionalInt(args, key: "limit", default: 20, clamp: 1...500)
+
+        if let token, !token.permissions.satisfies(.readOnly) {
+            throw MCPError.forbidden(
+                "Token '\(token.name)' with permission '\(token.permissions.displayName)' cannot access 'list_recent_tabs'"
+            )
+        }
 
         let snapshots = await MainActor.run { Self.collectTabSnapshots() }
         let blockedConnectionIds = await MainActor.run { Self.blockedExternalConnectionIds() }
-        let allowed = token?.allowedConnectionIds
+        let access = token?.connectionAccess ?? .all
         let filtered = snapshots.filter { snapshot in
             guard !blockedConnectionIds.contains(snapshot.connectionId) else { return false }
-            if let allowed, !allowed.contains(snapshot.connectionId) { return false }
-            return true
+            return access.allows(snapshot.connectionId)
         }
 
         let trimmed = Array(filtered.prefix(limit))
@@ -51,7 +56,7 @@ extension MCPToolHandler {
 
     // MARK: - search_query_history
 
-    func handleSearchQueryHistory(_ args: JSONValue?, token: MCPAuthToken?) async throws -> MCPToolResult {
+    func handleSearchQueryHistory(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let query = try requireString(args, key: "query")
         let connectionIdString = optionalString(args, key: "connection_id")
         let limit = optionalInt(args, key: "limit", default: 50, clamp: 1...500)
@@ -62,6 +67,12 @@ extension MCPToolHandler {
             throw MCPError.invalidParams("'since' must be less than or equal to 'until'")
         }
 
+        if let token, !token.permissions.satisfies(.readOnly) {
+            throw MCPError.forbidden(
+                "Token '\(token.name)' with permission '\(token.permissions.displayName)' cannot access 'search_query_history'"
+            )
+        }
+
         let blockedConnectionIds = await MainActor.run { Self.blockedExternalConnectionIds() }
 
         let connectionId: UUID?
@@ -69,7 +80,9 @@ extension MCPToolHandler {
             guard let parsed = UUID(uuidString: connectionIdString) else {
                 throw MCPError.invalidParams("Invalid UUID for parameter: connection_id")
             }
-            if let token { try checkTokenConnectionAccess(token, connectionId: parsed) }
+            if let token, !token.connectionAccess.allows(parsed) {
+                throw MCPError.forbidden("Token does not have access to this connection")
+            }
             if blockedConnectionIds.contains(parsed) {
                 throw MCPError.forbidden(
                     String(localized: "External access is disabled for this connection")
@@ -119,11 +132,15 @@ extension MCPToolHandler {
 
     // MARK: - open_connection_window
 
-    func handleOpenConnectionWindow(_ args: JSONValue?, token: MCPAuthToken?) async throws -> MCPToolResult {
+    func handleOpenConnectionWindow(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await ensureConnectionExists(connectionId)
-        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readOnly)
+        try await authPolicy.resolveAndAuthorize(
+            token: token ?? Self.anonymousFullAccessToken,
+            tool: "open_connection_window",
+            connectionId: connectionId,
+            sessionId: sessionId
+        )
 
         let windowId = await MainActor.run { () -> UUID in
             let payload = EditorTabPayload(
@@ -146,15 +163,19 @@ extension MCPToolHandler {
 
     // MARK: - open_table_tab
 
-    func handleOpenTableTab(_ args: JSONValue?, token: MCPAuthToken?) async throws -> MCPToolResult {
+    func handleOpenTableTab(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
         let tableName = try requireString(args, key: "table_name")
         let databaseName = optionalString(args, key: "database_name")
         let schemaName = optionalString(args, key: "schema_name")
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await ensureConnectionExists(connectionId)
-        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readOnly)
+        try await authPolicy.resolveAndAuthorize(
+            token: token ?? Self.anonymousFullAccessToken,
+            tool: "open_table_tab",
+            connectionId: connectionId,
+            sessionId: sessionId
+        )
 
         let windowId = await MainActor.run { () -> UUID in
             let payload = EditorTabPayload(
@@ -181,7 +202,7 @@ extension MCPToolHandler {
 
     // MARK: - focus_query_tab
 
-    func handleFocusQueryTab(_ args: JSONValue?, token: MCPAuthToken?) async throws -> MCPToolResult {
+    func handleFocusQueryTab(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let tabId = try requireUUID(args, key: "tab_id")
 
         let resolved = await MainActor.run { () -> (hasWindow: Bool, windowId: UUID?, connectionId: UUID?)? in
@@ -198,8 +219,12 @@ extension MCPToolHandler {
         guard let connectionId = resolved.connectionId else {
             throw MCPError.notFound("connection")
         }
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readOnly)
+        try await authPolicy.resolveAndAuthorize(
+            token: token ?? Self.anonymousFullAccessToken,
+            tool: "focus_query_tab",
+            connectionId: connectionId,
+            sessionId: sessionId
+        )
 
         let raised = await MainActor.run { () -> Bool in
             for snapshot in Self.collectTabSnapshots() where snapshot.tabId == tabId {
@@ -237,8 +262,8 @@ extension MCPToolHandler {
         if scopedConnectionId != nil {
             return nil
         }
-        if let tokenAllowed = token?.allowedConnectionIds {
-            return tokenAllowed.subtracting(blockedConnectionIds)
+        if let access = token?.connectionAccess, case .limited(let allowed) = access {
+            return allowed.subtracting(blockedConnectionIds)
         }
         guard !blockedConnectionIds.isEmpty else { return nil }
         let allConnectionIds = await MainActor.run {
@@ -290,6 +315,7 @@ extension MCPToolHandler {
         let connections = ConnectionStorage.shared.loadConnections()
         return Set(connections.filter { $0.externalAccess == .blocked }.map(\.id))
     }
+
 }
 
 struct TabSnapshot {

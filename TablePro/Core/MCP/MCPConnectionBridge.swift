@@ -487,19 +487,23 @@ actor MCPConnectionBridge {
     // MARK: - Private Helpers
 
     private func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
-        let connection: DatabaseConnection? = await MainActor.run {
-            if DatabaseManager.shared.activeSessions[connectionId]?.driver != nil { return nil }
-            return ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
+        let pending: DatabaseConnection? = await MainActor.run {
+            switch DatabaseManager.shared.connectionState(connectionId) {
+            case .live: return nil
+            case .stored(let connection): return connection
+            case .unknown: return nil
+            }
         }
-        if let connection {
-            try await connectIfNeeded(connection)
+        if let pending {
+            try await connectIfNeeded(pending)
         }
         return try await MainActor.run {
-            guard let session = DatabaseManager.shared.activeSessions[connectionId],
-                  let driver = session.driver else {
+            switch DatabaseManager.shared.connectionState(connectionId) {
+            case .live(let driver, let session):
+                return (driver, session.connection.type)
+            case .stored, .unknown:
                 throw MCPError.notConnected(connectionId)
             }
-            return (driver, session.connection.type)
         }
     }
 

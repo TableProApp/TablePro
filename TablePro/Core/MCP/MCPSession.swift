@@ -6,14 +6,22 @@ actor MCPSession {
     let createdAt: ContinuousClock.Instant
 
     var lastActivityAt: ContinuousClock.Instant
-    var isInitialized: Bool = false
+    private(set) var phase: MCPSessionPhase = .created
     var clientInfo: MCPClientInfo?
     var sseConnection: NWConnection?
     var runningTasks: [JSONRPCId: Task<Void, Never>] = [:]
     private(set) var eventCounter: Int = 0
-    private(set) var authenticatedTokenId: UUID?
-    private(set) var tokenName: String?
     private(set) var remoteAddress: String?
+
+    var authenticatedTokenId: UUID? {
+        if case .active(let tokenId, _) = phase { return tokenId }
+        return nil
+    }
+
+    var tokenName: String? {
+        if case .active(_, let tokenName) = phase { return tokenName }
+        return nil
+    }
 
     init() {
         self.id = UUID().uuidString
@@ -33,20 +41,31 @@ actor MCPSession {
         runningTasks.removeAll()
     }
 
-    func setInitialized(_ value: Bool) {
-        isInitialized = value
+    func transition(to next: MCPSessionPhase) throws {
+        guard isValidTransition(from: phase, to: next) else {
+            throw MCPError.invalidRequest(
+                "Invalid session phase transition from \(phase) to \(next)"
+            )
+        }
+        phase = next
+    }
+
+    private func isValidTransition(from current: MCPSessionPhase, to next: MCPSessionPhase) -> Bool {
+        switch (current, next) {
+        case (.created, .initializing),
+             (.created, .active),
+             (.created, .terminated),
+             (.initializing, .active),
+             (.initializing, .terminated),
+             (.active, .terminated):
+            return true
+        default:
+            return false
+        }
     }
 
     func setClientInfo(_ info: MCPClientInfo?) {
         clientInfo = info
-    }
-
-    func setAuthenticatedTokenId(_ id: UUID?) {
-        authenticatedTokenId = id
-    }
-
-    func setTokenName(_ name: String?) {
-        tokenName = name
     }
 
     func setRemoteAddress(_ address: String?) {

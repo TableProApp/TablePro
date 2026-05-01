@@ -224,7 +224,7 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
         authenticatedToken: MCPAuthToken?
     ) async -> MCPRouter.RouteResult {
         if request.method == "initialize" {
-            return await handleInitialize(request, server: server, authenticatedToken: authenticatedToken)
+            return await handleInitialize(request, server: server)
         }
 
         if request.method == "ping" {
@@ -241,7 +241,14 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
         await session.markActive()
 
         if request.method == "notifications/initialized" {
-            await session.setInitialized(true)
+            do {
+                try await session.transition(to: .active(
+                    tokenId: authenticatedToken?.id,
+                    tokenName: authenticatedToken?.name
+                ))
+            } catch {
+                return encodeError(MCPError.invalidRequest("Cannot initialize session in current phase"), id: request.id)
+            }
             return .accepted
         }
 
@@ -249,7 +256,7 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
             return await handleCancellation(request, session: session)
         }
 
-        guard await session.isInitialized else {
+        guard await session.phase.isActive else {
             return encodeError(
                 MCPError.invalidRequest("Session not initialized. Send notifications/initialized first."),
                 id: request.id
@@ -281,8 +288,7 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
 
     private func handleInitialize(
         _ request: JSONRPCRequest,
-        server: MCPServer,
-        authenticatedToken: MCPAuthToken?
+        server: MCPServer
     ) async -> MCPRouter.RouteResult {
         guard let session = await server.createSession() else {
             return encodeError(MCPError.internalError("Maximum sessions reached"), id: request.id)
@@ -296,9 +302,11 @@ final class MCPProtocolHandler: MCPRouteHandler, @unchecked Sendable {
             await session.setClientInfo(MCPClientInfo(name: name, version: version))
         }
 
-        if let token = authenticatedToken {
-            await session.setAuthenticatedTokenId(token.id)
-            await session.setTokenName(token.name)
+        do {
+            try await session.transition(to: .initializing)
+        } catch {
+            await server.removeSession(session.id)
+            return encodeError(MCPError.invalidRequest("Cannot initialize session"), id: request.id)
         }
 
         let result = MCPInitializeResult(
