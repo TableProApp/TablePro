@@ -434,8 +434,6 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLitePluginDriver")
-    private static let limitRegex = try? NSRegularExpression(pattern: "(?i)\\s+LIMIT\\s+\\d+")
-    private static let offsetRegex = try? NSRegularExpression(pattern: "(?i)\\s+OFFSET\\s+\\d+")
 
     var currentSchema: String? { nil }
     var serverVersion: String? { String(cString: sqlite3_libversion()) }
@@ -560,20 +558,62 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         ["PRAGMA foreign_keys = ON"]
     }
 
-    // MARK: - Pagination
+    // MARK: - User Query
 
-    func fetchRowCount(query: String) async throws -> Int {
-        let baseQuery = stripLimitOffset(from: query)
-        let countQuery = "SELECT COUNT(*) FROM (\(baseQuery))"
-        let result = try await execute(query: countQuery)
-        guard let firstRow = result.rows.first, let countStr = firstRow.first else { return 0 }
-        return Int(countStr ?? "0") ?? 0
-    }
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [String?]?) async throws -> PluginQueryResult {
+        if let parameters {
+            let raw = try await executeParameterized(query: query, parameters: parameters)
+            guard let cap = rowCap, raw.rows.count > cap else { return raw }
+            return PluginQueryResult(
+                columns: raw.columns,
+                columnTypeNames: raw.columnTypeNames,
+                rows: Array(raw.rows.prefix(cap)),
+                rowsAffected: raw.rowsAffected,
+                executionTime: raw.executionTime,
+                isTruncated: true,
+                statusMessage: raw.statusMessage
+            )
+        }
 
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let baseQuery = stripLimitOffset(from: query)
-        let paginatedQuery = "\(baseQuery) LIMIT \(limit) OFFSET \(offset)"
-        return try await execute(query: paginatedQuery)
+        let startTime = Date()
+        var columns: [String] = []
+        var columnTypeNames: [String] = []
+        var rows: [[String?]] = []
+        var truncated = false
+
+        let stream = streamRows(query: query)
+        for try await element in stream {
+            switch element {
+            case .header(let header):
+                columns = header.columns
+                columnTypeNames = header.columnTypeNames
+            case .rows(let batch):
+                if let cap = rowCap {
+                    let remaining = cap - rows.count
+                    if remaining <= 0 {
+                        truncated = true
+                    } else if batch.count > remaining {
+                        rows.append(contentsOf: batch.prefix(remaining))
+                        truncated = true
+                    } else {
+                        rows.append(contentsOf: batch)
+                    }
+                } else {
+                    rows.append(contentsOf: batch)
+                }
+                if truncated { break }
+            }
+            if truncated { break }
+        }
+
+        return PluginQueryResult(
+            columns: columns,
+            columnTypeNames: columnTypeNames,
+            rows: rows,
+            rowsAffected: 0,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: truncated
+        )
     }
 
     // MARK: - Schema Operations
@@ -885,22 +925,6 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return NSString(string: path).expandingTildeInPath
         }
         return path
-    }
-
-    private func stripLimitOffset(from query: String) -> String {
-        var result = query
-
-        if let limitRegex = Self.limitRegex {
-            let range = NSRange(result.startIndex..., in: result)
-            result = limitRegex.stringByReplacingMatches(in: result, range: range, withTemplate: "")
-        }
-
-        if let offsetRegex = Self.offsetRegex {
-            let range = NSRange(result.startIndex..., in: result)
-            result = offsetRegex.stringByReplacingMatches(in: result, range: range, withTemplate: "")
-        }
-
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Create Table DDL

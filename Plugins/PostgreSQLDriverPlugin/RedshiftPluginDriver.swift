@@ -16,8 +16,6 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var _currentSchema: String = "public"
 
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "RedshiftPluginDriver")
-    private static let limitRegex = try? NSRegularExpression(pattern: "(?i)\\s+LIMIT\\s+\\d+")
-    private static let offsetRegex = try? NSRegularExpression(pattern: "(?i)\\s+OFFSET\\s+\\d+")
 
     var currentSchema: String? { _currentSchema }
     var supportsSchemas: Bool { true }
@@ -115,64 +113,6 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             executionTime: Date().timeIntervalSince(startTime),
             isTruncated: result.isTruncated
         )
-    }
-
-    func fetchRowCount(query: String) async throws -> Int {
-        let baseQuery = stripLimitOffset(from: query)
-        let countQuery = "SELECT COUNT(*) FROM (\(baseQuery)) AS __count_subquery__"
-        let result = try await execute(query: countQuery)
-        guard let firstRow = result.rows.first, let countStr = firstRow.first else { return 0 }
-        return Int(countStr ?? "0") ?? 0
-    }
-
-    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
-        guard limit > 0 else {
-            let result = try await execute(query: query)
-            return PluginPagedResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                hasMore: false,
-                nextOffset: result.rows.count
-            )
-        }
-
-        if let regex = Self.limitRegex,
-           regex.firstMatch(in: query, range: NSRange(query.startIndex..., in: query)) != nil
-        {
-            let result = try await execute(query: query)
-            return PluginPagedResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                hasMore: false,
-                nextOffset: result.rows.count
-            )
-        }
-
-        let baseQuery = stripLimitOffset(from: query)
-        let probeQuery = "\(baseQuery) LIMIT \(limit + 1)"
-        let result = try await execute(query: probeQuery)
-
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-
-        return PluginPagedResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: rows.count
-        )
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let baseQuery = stripLimitOffset(from: query)
-        let paginatedQuery = "\(baseQuery) LIMIT \(limit) OFFSET \(offset)"
-        return try await execute(query: paginatedQuery)
     }
 
     // MARK: - Reconnect
@@ -723,18 +663,4 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         """
     }
 
-    // MARK: - Helpers
-
-    private func stripLimitOffset(from query: String) -> String {
-        var result = query
-        if let regex = Self.limitRegex {
-            result = regex.stringByReplacingMatches(
-                in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
-        }
-        if let regex = Self.offsetRegex {
-            result = regex.stringByReplacingMatches(
-                in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
-        }
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
