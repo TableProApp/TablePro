@@ -207,7 +207,7 @@ struct TableProToolbar: ViewModifier {
                     } label: {
                         Label("History", systemImage: "clock")
                     }
-                    .help(String(localized: "Toggle Query History (⌥⌘H)"))
+                    .help(String(localized: "Toggle Query History (⇧⌘Y)"))
 
                     Button {
                         actions?.exportTables()

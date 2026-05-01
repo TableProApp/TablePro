@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Cmd+N` now opens the New Connection form. Manage Connections moves to the File menu without a default shortcut.
 - `Cmd+D` now duplicates the selected row. Save as Favorite moves to `Cmd+Shift+D`.
 - Removed default shortcuts that conflicted with system reservations: `Cmd+Y` (Quick Look), `Cmd+Option+Delete` (Empty Trash), `Cmd+Ctrl+C` (Color Picker), `Cmd+L` (URL bar / Add Link).
-- Show History moves from `Cmd+Y` to `Cmd+Option+H` to mirror the other panel toggles.
+- Show History moves from `Cmd+Y` (system Quick Look) to `Cmd+Shift+Y` to free the system shortcut while keeping the Y mnemonic. (`Cmd+Option+H` is reserved by macOS for Hide Others, so we avoid that chord too.)
 - Truncate Table no longer has a default shortcut; the action stays in the Edit menu and the sidebar context menu.
 - Switch Connection no longer has a default shortcut; the menu entry remains and users can rebind in Settings > Keyboard.
 - Explain with AI no longer has a default shortcut; the menu entry remains and users can rebind in Settings > Keyboard.
