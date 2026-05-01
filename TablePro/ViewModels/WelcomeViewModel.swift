@@ -78,7 +78,6 @@ final class WelcomeViewModel {
 
     // MARK: - Notification Observers
 
-    @ObservationIgnored private var openWindow: OpenWindowAction?
     @ObservationIgnored private var connectionUpdatedObserver: NSObjectProtocol?
     @ObservationIgnored private var exportObserver: NSObjectProtocol?
     @ObservationIgnored private var importObserver: NSObjectProtocol?
@@ -145,8 +144,7 @@ final class WelcomeViewModel {
 
     // MARK: - Setup & Teardown
 
-    func setUp(openWindow: OpenWindowAction) {
-        self.openWindow = openWindow
+    func setUp() {
         guard connectionUpdatedObserver == nil else { return }
 
         if expandedGroupIds.isEmpty {
@@ -264,10 +262,6 @@ final class WelcomeViewModel {
     // MARK: - Connection Actions
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        guard let openWindow else { return }
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
         WelcomeWindowFactory.close()
         WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
@@ -291,10 +285,6 @@ final class WelcomeViewModel {
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        guard let openWindow else { return }
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
         WelcomeWindowFactory.close()
         WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
@@ -334,8 +324,7 @@ final class WelcomeViewModel {
     func duplicateConnection(_ connection: DatabaseConnection) {
         let duplicate = storage.duplicateConnection(connection)
         loadConnections()
-        openWindow?(id: "connection-form", value: duplicate.id as UUID?)
-        focusConnectionFormWindow()
+        ConnectionFormWindowFactory.openOrFront(connectionId: duplicate.id)
     }
 
     // MARK: - Delete

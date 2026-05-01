@@ -52,7 +52,7 @@ extension ConnectionFormView {
 
                 // Cancel
                 Button("Cancel") {
-                    NSApplication.shared.closeWindows(withId: "connection-form")
+                    ConnectionFormWindowFactory.closeAll()
                 }
 
                 if isNew {
@@ -74,7 +74,7 @@ extension ConnectionFormView {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onExitCommand {
-            NSApplication.shared.closeWindows(withId: "connection-form")
+            ConnectionFormWindowFactory.closeAll()
         }
         .onChange(of: host) { _, _ in testSucceeded = false }
         .onChange(of: port) { _, _ in testSucceeded = false }

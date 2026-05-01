@@ -626,23 +626,15 @@ struct TableProApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "connection-form", for: UUID?.self) { $connectionId in
-            ConnectionFormView(connectionId: connectionId ?? nil)
-                .background(OpenWindowHandler())
-        }
-        .windowResizability(.contentSize)
-
-        // NOTE (prototype): main windows are now created imperatively via
-        // MainWindowFactory → NSWindow + NSHostingController. The retired
-        // `WindowGroup(id:"main", for: EditorTabPayload.self)` caused SwiftUI to
-        // re-instantiate ContentView for every historical payload on every scene
-        // phase diff (5-7 phantom inits per open). AppKit-native windows avoid
-        // that and eliminate the 68-437ms openWindow() latency.
-
-        // Settings Window - opens with Cmd+,
+        // All app windows are created imperatively via NSWindow + NSHostingController
+        // factories (MainWindow via WindowManager, Welcome via WelcomeWindowFactory,
+        // ConnectionForm via ConnectionFormWindowFactory). Declaring them as SwiftUI
+        // Scenes auto-opens the first Scene on launch and races with cold-launch
+        // intent routing.
         Settings {
             SettingsView()
                 .environment(updaterBridge)
+                .background(SettingsNotificationBridge())
         }
 
         .commands {
@@ -722,22 +714,18 @@ private struct MCPServerMenuItem: View {
     }
 }
 
-// MARK: - Open Window Handler
+// MARK: - Settings Notification Bridge
 
-/// Helper view that listens for window open notifications
-private struct OpenWindowHandler: View {
-    @Environment(\.openWindow)
-    private var openWindow
+/// Forwards `.openSettingsWindow` notifications to SwiftUI's `openSettings`
+/// action. Lives inside the Settings scene because `\.openSettings` is only
+/// available there.
+private struct SettingsNotificationBridge: View {
     @Environment(\.openSettings)
     private var openSettings
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .onAppear {
-                // Store openWindow action for imperative access (e.g., from MainContentCommandActions)
-                WindowOpener.shared.openWindow = openWindow
-            }
             .onReceive(NotificationCenter.default.publisher(for: .openSettingsWindow)) { _ in
                 openSettings()
             }

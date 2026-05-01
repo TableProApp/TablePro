@@ -279,7 +279,7 @@ extension ConnectionFormView {
             if !connectionToSave.localOnly {
                 SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
-            NSApplication.shared.closeWindows(withId: "connection-form")
+            ConnectionFormWindowFactory.closeAll()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
             if connect {
                 connectToDatabase(connectionToSave)
@@ -292,7 +292,7 @@ extension ConnectionFormView {
                     SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
                 }
             }
-            NSApplication.shared.closeWindows(withId: "connection-form")
+            ConnectionFormWindowFactory.closeAll()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
         }
     }
@@ -301,14 +301,11 @@ extension ConnectionFormView {
         guard let id = connectionId,
               let connection = storage.loadConnections().first(where: { $0.id == id }) else { return }
         storage.deleteConnection(connection)
-        NSApplication.shared.closeWindows(withId: "connection-form")
+        ConnectionFormWindowFactory.closeAll()
         NotificationCenter.default.post(name: .connectionUpdated, object: nil)
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
         WelcomeWindowFactory.close()
         WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
@@ -349,9 +346,6 @@ extension ConnectionFormView {
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
         WelcomeWindowFactory.close()
         WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
