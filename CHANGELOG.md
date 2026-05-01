@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Query execution no longer rewrites user SQL. Result safety cap is applied at the row level instead of via query rewrite. When a result is capped, the status bar shows the loaded row count with a Fetch All button. Load More on user-query tabs is removed; table-view pagination is unchanged.
+- Driver protocol: removed fetchFirstPage, fetchNextPage, fetchRows, fetchRowCount and their parameterized variants. Replaced with executeUserQuery(query:rowCap:parameters:). PluginKit ABI bumped to 9. Separately distributed plugins (Oracle, DuckDB, MSSQL, MongoDB, BigQuery, LibSQL, Cassandra, Etcd, CloudflareD1, DynamoDB) require update before use with this version.
+- Settings renamed: `enforceQueryResultLimit` is now `truncateQueryResults`, `queryResultLimit` is now `queryResultRowCap`. Custom values revert to default on first launch after upgrade.
 - Storage and sync singletons accept dependencies via init for test isolation, matching Apple's URLSession and UserDefaults convention. Production callers using `.shared` are unchanged. `SQLFavoriteStorage` is now an actor so its first access no longer blocks the main thread on SQLite setup.
 - Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
 - Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
@@ -67,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SELECT queries with a user-written LIMIT now return the requested row count. Previously the query engine stripped the user's LIMIT and substituted its own cap, so `LIMIT 10` could return up to 10,000 rows. Affected SQLite, DuckDB, LibSQL, ClickHouse, Redshift, CloudflareD1, and the MCP query path. Mirror bug on MSSQL and Oracle silently injected an ORDER BY into queries that lacked one. (#956)
 - Crash on macOS 26 when opening SQL Preview (NSColor.cgColor calls deprecated colorSpaceName)
 - Connection form: `usePrivateKey=true` from URL no longer disables Test/Create buttons
 - Transient connections from URL clean up keychain entries on connection failure
