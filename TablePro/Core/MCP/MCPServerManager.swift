@@ -88,7 +88,7 @@ final class MCPServerManager {
         await newServer.setRouter(router)
 
         let bridgeResult = await newTokenStore.generate(
-            name: "__stdio_bridge__",
+            name: MCPTokenStore.stdioBridgeTokenName,
             permissions: .fullAccess
         )
         self.bridgeTokenId = bridgeResult.token.id

@@ -152,6 +152,8 @@ enum TokenPermissions: String, Codable, Sendable, CaseIterable, Identifiable {
 }
 
 actor MCPTokenStore {
+    static let stdioBridgeTokenName = "__stdio_bridge__"
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPTokenStore")
 
     private var tokens: [MCPAuthToken] = []
@@ -277,9 +279,9 @@ actor MCPTokenStore {
             Self.logger.error("Failed to load MCP tokens: \(error.localizedDescription, privacy: .public)")
         }
 
-        let staleCount = tokens.filter({ $0.name == "__stdio_bridge__" }).count
+        let staleCount = tokens.filter({ $0.name == Self.stdioBridgeTokenName }).count
         if staleCount > 0 {
-            tokens.removeAll { $0.name == "__stdio_bridge__" }
+            tokens.removeAll { $0.name == Self.stdioBridgeTokenName }
             save()
             Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
         }

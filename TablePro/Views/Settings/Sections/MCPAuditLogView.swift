@@ -14,6 +14,7 @@ struct MCPAuditLogView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            searchBar
             filterBar
 
             if isLoading {
@@ -34,12 +35,34 @@ struct MCPAuditLogView: View {
             }
         }
         .padding()
-        .searchable(
-            text: $searchText,
-            placement: .toolbar,
-            prompt: Text(String(localized: "Search activity"))
-        )
         .task { await reload() }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(String(localized: "Search activity"), text: $searchText)
+                .textFieldStyle(.plain)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Clear search"))
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .textBackgroundColor))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private var filterBar: some View {
@@ -47,12 +70,12 @@ struct MCPAuditLogView: View {
             Picker(selection: $selectedTokenId) {
                 Text(String(localized: "All tokens")).tag(UUID?.none)
                 ForEach(tokens) { token in
-                    Text(token.name).tag(Optional(token.id))
+                    Text(displayTokenName(token.name)).tag(Optional(token.id))
                 }
             } label: {
                 Text(String(localized: "Token"))
             }
-            .frame(maxWidth: 220)
+            .frame(minWidth: 180, maxWidth: 240)
 
             Picker(selection: $selectedCategory) {
                 Text(String(localized: "All categories")).tag(AuditCategory?.none)
@@ -62,7 +85,7 @@ struct MCPAuditLogView: View {
             } label: {
                 Text(String(localized: "Category"))
             }
-            .frame(maxWidth: 200)
+            .frame(minWidth: 180, maxWidth: 220)
 
             Picker(selection: $selectedRange) {
                 ForEach(TimeRangeOption.allCases) { option in
@@ -71,7 +94,7 @@ struct MCPAuditLogView: View {
             } label: {
                 Text(String(localized: "Range"))
             }
-            .frame(maxWidth: 180)
+            .frame(minWidth: 160, maxWidth: 200)
 
             Spacer()
 
@@ -145,13 +168,17 @@ struct MCPAuditLogView: View {
         return String(format: String(localized: "Deleted connection (%@)"), String(prefix))
     }
 
+    private func displayTokenName(_ name: String) -> String {
+        name == MCPTokenStore.stdioBridgeTokenName ? String(localized: "Built-in CLI") : name
+    }
+
     private func reload() async {
         isLoading = true
         defer { isLoading = false }
 
         let store = MCPServerManager.shared.tokenStore
         if let store {
-            tokens = await store.list().filter { $0.name != "__stdio_bridge__" }
+            tokens = await store.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
         }
         connections = ConnectionStorage.shared.loadConnections()
 
@@ -234,20 +261,32 @@ private struct MCPAuditLogRow: View {
     let entry: AuditEntry
     let connectionName: String?
 
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             IntegrationStatusIndicator(status: outcomeStatus)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(entry.action)
+                HStack(spacing: 8) {
+                    Text(displayActionName)
                         .font(.callout.weight(.medium))
                     Text(entry.category.displayName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color(nsColor: .quaternaryLabelColor))
+                        )
                 }
                 if let tokenName = entry.tokenName {
-                    Text(tokenName)
+                    Text(displayTokenName(tokenName))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -258,23 +297,27 @@ private struct MCPAuditLogRow: View {
                 }
                 if let details = entry.details {
                     Text(details)
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
                 }
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(entry.timestamp, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(entry.timestamp.formatted(date: .numeric, time: .standard))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            Text(Self.relativeFormatter.localizedString(for: entry.timestamp, relativeTo: .now))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
-        .help(entry.details ?? entry.action)
+        .help(entry.timestamp.formatted(date: .complete, time: .standard))
+    }
+
+    private var displayActionName: String {
+        let words = entry.action.split(separator: ".").map { $0.capitalized }
+        return words.joined(separator: " ")
+    }
+
+    private func displayTokenName(_ name: String) -> String {
+        name == MCPTokenStore.stdioBridgeTokenName ? String(localized: "Built-in CLI") : name
     }
 
     private var outcomeStatus: IntegrationStatus {

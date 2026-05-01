@@ -213,7 +213,7 @@ struct MCPSection: View {
 
     private func refreshTokens() async {
         guard let store = MCPServerManager.shared.tokenStore else { return }
-        tokenList = await store.list().filter { $0.name != "__stdio_bridge__" }
+        tokenList = await store.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
     }
 }
 
