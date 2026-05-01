@@ -30,12 +30,16 @@ struct MainContentView: View {
 
     // Shared state from parent
     @Binding var windowTitle: String
-    @Binding var tables: [TableInfo]
+    @Bindable var schemaService = SchemaService.shared
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
     @Binding var tableOperationOptions: [String: TableOperationOptions]
     var rightPanelState: RightPanelState
+
+    private var tables: [TableInfo] {
+        schemaService.tables(for: connection.id)
+    }
 
     // MARK: - State Objects
 
@@ -66,7 +70,6 @@ struct MainContentView: View {
         connection: DatabaseConnection,
         payload: EditorTabPayload?,
         windowTitle: Binding<String>,
-        tables: Binding<[TableInfo]>,
         sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -81,7 +84,6 @@ struct MainContentView: View {
         self.connection = connection
         self.payload = payload
         self._windowTitle = windowTitle
-        self._tables = tables
         self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
@@ -202,7 +204,7 @@ struct MainContentView: View {
         case .quickSwitcher:
             QuickSwitcherSheet(
                 isPresented: dismissBinding,
-                schemaProvider: coordinator.schemaProvider,
+                schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
                 connectionId: connection.id,
                 databaseType: connection.type,
                 onSelect: { item in
@@ -262,7 +264,7 @@ struct MainContentView: View {
                 setupCommandActions()
                 updateToolbarPendingState()
                 updateInspectorContext()
-                rightPanelState.aiViewModel.schemaProvider = coordinator.schemaProvider
+                rightPanelState.aiViewModel.schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
                 coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
 

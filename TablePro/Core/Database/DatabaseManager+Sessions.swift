@@ -354,6 +354,8 @@ extension DatabaseManager {
         )
         removeSessionEntry(for: sessionId)
 
+        await SchemaService.shared.invalidate(connectionId: sessionId)
+
         // Clean up shared schema cache for this connection
         SchemaProviderRegistry.shared.clear(for: sessionId)
 

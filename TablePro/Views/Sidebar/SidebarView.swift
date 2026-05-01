@@ -13,8 +13,8 @@ import SwiftUI
 struct SidebarView: View {
 
     @State private var viewModel: SidebarViewModel
+    @Bindable private var schemaService = SchemaService.shared
 
-    @Binding var tables: [TableInfo]
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
@@ -22,6 +22,10 @@ struct SidebarView: View {
     var onDoubleClick: ((TableInfo) -> Void)?
     var connectionId: UUID
     private weak var coordinator: MainContentCoordinator?
+
+    private var tables: [TableInfo] {
+        schemaService.tables(for: connectionId)
+    }
 
     private var filteredTables: [TableInfo] {
         guard !viewModel.searchText.isEmpty else { return tables }
@@ -36,7 +40,6 @@ struct SidebarView: View {
     }
 
     init(
-        tables: Binding<[TableInfo]>,
         sidebarState: SharedSidebarState,
         onDoubleClick: ((TableInfo) -> Void)? = nil,
         pendingTruncates: Binding<Set<String>>,
@@ -46,7 +49,6 @@ struct SidebarView: View {
         connectionId: UUID,
         coordinator: MainContentCoordinator? = nil
     ) {
-        _tables = tables
         self.sidebarState = sidebarState
         self.onDoubleClick = onDoubleClick
         _pendingTruncates = pendingTruncates
@@ -56,7 +58,6 @@ struct SidebarView: View {
             set: { sidebarState.selectedTables = $0 }
         )
         let vm = SidebarViewModel(
-            tables: tables,
             selectedTables: selectedBinding,
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
@@ -93,7 +94,6 @@ struct SidebarView: View {
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
-            coordinator?.healSidebarLoadingStateIfNeeded()
             // Update toolbar version if driver connected before this window's observer was set up
             if let driver = DatabaseManager.shared.driver(for: connectionId),
                coordinator?.toolbarState.databaseVersion == nil {
@@ -122,23 +122,16 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var tablesContent: some View {
-        let rawState = coordinator?.sidebarLoadingState ?? .idle
-        let effectiveState: SidebarLoadingState = {
-            if case .error = rawState { return rawState }
-            if !tables.isEmpty { return .loaded }
-            if case .loading = rawState { return .loading }
-            return rawState
-        }()
-        switch effectiveState {
-        case .loading:
+        switch schemaService.state(for: connectionId) {
+        case .loading where tables.isEmpty:
             loadingState
-        case .error(let message):
+        case .failed(let message):
             errorState(message: message)
         case .loaded where !viewModel.searchText.isEmpty && filteredTables.isEmpty:
             noMatchState
-        case .loaded where tables.isEmpty:
+        case .loaded(let allTables) where allTables.isEmpty:
             emptyState
-        case .loaded:
+        case .loaded, .loading:
             tableList
         case .idle:
             emptyState
@@ -266,7 +259,6 @@ struct SidebarView: View {
 
 #Preview {
     SidebarView(
-        tables: .constant([]),
         sidebarState: SharedSidebarState(),
         pendingTruncates: .constant([]),
         pendingDeletes: .constant([]),

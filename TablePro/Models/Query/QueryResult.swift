@@ -72,7 +72,7 @@ enum DatabaseError: Error, LocalizedError {
 }
 
 /// Information about a database table
-struct TableInfo: Identifiable, Hashable {
+struct TableInfo: Identifiable, Hashable, Sendable {
     var id: String { "\(name)_\(type.rawValue)" }
     let name: String
     let type: TableType
