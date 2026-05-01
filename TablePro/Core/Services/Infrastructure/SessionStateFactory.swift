@@ -46,7 +46,10 @@ enum SessionStateFactory {
         connection: DatabaseConnection,
         payload: EditorTabPayload?
     ) -> SessionState {
-        let tabMgr = QueryTabManager()
+        let connectionId = connection.id
+        let tabMgr = QueryTabManager(globalTabsProvider: {
+            MainActor.assumeIsolated { MainContentCoordinator.allTabs(for: connectionId) }
+        })
         let changeMgr = DataChangeManager()
         changeMgr.databaseType = connection.type
         let filterMgr = FilterStateManager()
