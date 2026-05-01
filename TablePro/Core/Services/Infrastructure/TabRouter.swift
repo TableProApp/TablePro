@@ -72,6 +72,13 @@ internal final class TabRouter {
         guard let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) else {
             throw TabRouterError.connectionNotFound(id)
         }
+        if let existing = WindowLifecycleMonitor.shared.findWindow(for: id) {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            try await DatabaseManager.shared.ensureConnected(connection)
+            closeWelcomeWindows()
+            return
+        }
         try await runPreConnectScriptIfNeeded(connection)
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         WindowManager.shared.openTab(payload: payload)
