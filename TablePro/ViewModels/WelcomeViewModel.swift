@@ -33,7 +33,6 @@ final class WelcomeViewModel {
 
     private let storage = ConnectionStorage.shared
     private let groupStorage = GroupStorage.shared
-    private let dbManager = DatabaseManager.shared
 
     // MARK: - State
 
@@ -263,11 +262,9 @@ final class WelcomeViewModel {
 
     func connectToDatabase(_ connection: DatabaseConnection) {
         WelcomeWindowFactory.close()
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
         Task {
             do {
-                try await dbManager.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch is CancellationError {
                 closeConnectionWindows(for: connection.id)
                 WelcomeWindowFactory.openOrFront()
@@ -286,11 +283,9 @@ final class WelcomeViewModel {
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
         WelcomeWindowFactory.close()
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
         Task {
             do {
-                try await dbManager.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch is CancellationError {
                 closeConnectionWindows(for: connection.id)
                 WelcomeWindowFactory.openOrFront()

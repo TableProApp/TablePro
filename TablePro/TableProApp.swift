@@ -196,7 +196,7 @@ struct AppMenuCommands: Commands {
         // File menu
         CommandGroup(replacing: .newItem) {
             Button("Manage Connections") {
-                NotificationCenter.default.post(name: .newConnection, object: nil)
+                WelcomeWindowFactory.openOrFront()
             }
             .optionalKeyboardShortcut(shortcut(for: .manageConnections))
         }
@@ -384,7 +384,7 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isConnected ?? false))
 
             Button("Switch Connection...") {
-                NotificationCenter.default.post(name: .openConnectionSwitcher, object: nil)
+                actions?.openConnectionSwitcher()
             }
             .optionalKeyboardShortcut(shortcut(for: .switchConnection))
             .disabled(!(actions?.isConnected ?? false))
@@ -650,9 +650,6 @@ struct TableProApp: App {
 // MARK: - Notification Names
 
 extension Notification.Name {
-    // Connection lifecycle
-    static let newConnection = Notification.Name("newConnection")
-    static let openConnectionSwitcher = Notification.Name("openConnectionSwitcher")
 
     // Multi-listener broadcasts (Sidebar + Coordinator + StructureView)
     static let refreshData = Notification.Name("refreshData")

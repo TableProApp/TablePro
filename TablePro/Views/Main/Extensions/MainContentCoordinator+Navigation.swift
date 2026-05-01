@@ -65,14 +65,18 @@ extension MainContentCoordinator {
         }
 
         // Check if another native window tab already has this table open — switch to it
-        if let keyWindow = NSApp.keyWindow {
-            let ownWindows = Set(WindowLifecycleMonitor.shared.windows(for: connectionId).map { ObjectIdentifier($0) })
-            let tabbedWindows = keyWindow.tabbedWindows ?? [keyWindow]
-            for window in tabbedWindows
-                where window.title == tableName && ownWindows.contains(ObjectIdentifier(window)) {
-                window.makeKeyAndOrderFront(nil)
-                return
+        for sibling in MainContentCoordinator.allActiveCoordinators()
+            where sibling !== self && sibling.connectionId == connectionId {
+            let hasMatch = sibling.tabManager.tabs.contains { tab in
+                tab.tabType == .table
+                    && tab.tableContext.tableName == tableName
+                    && tab.tableContext.databaseName == currentDatabase
             }
+            guard hasMatch,
+                  let windowId = sibling.windowId,
+                  let window = WindowLifecycleMonitor.shared.window(for: windowId) else { continue }
+            window.makeKeyAndOrderFront(nil)
+            return
         }
 
         // If no tabs exist (empty state), add a table tab directly.

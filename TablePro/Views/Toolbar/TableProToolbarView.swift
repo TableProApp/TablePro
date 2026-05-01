@@ -59,7 +59,6 @@ struct ToolbarPrincipalContent: View {
 struct TableProToolbar: ViewModifier {
     @Bindable var state: ConnectionToolbarState
     @FocusedValue(\.commandActions) private var actions: MainContentCommandActions?
-    @State private var showConnectionSwitcher = false
 
     func body(content: Content) -> some View {
         content
@@ -68,14 +67,14 @@ struct TableProToolbar: ViewModifier {
 
                 ToolbarItem(placement: .navigation) {
                     Button {
-                        showConnectionSwitcher.toggle()
+                        state.showConnectionSwitcher.toggle()
                     } label: {
                         Label("Connection", systemImage: "network")
                     }
                     .help(String(localized: "Switch Connection (⌘⌥C)"))
-                    .popover(isPresented: $showConnectionSwitcher) {
+                    .popover(isPresented: $state.showConnectionSwitcher) {
                         ConnectionSwitcherPopover {
-                            showConnectionSwitcher = false
+                            state.showConnectionSwitcher = false
                         }
                     }
                 }
@@ -228,9 +227,6 @@ struct TableProToolbar: ViewModifier {
                         .disabled(state.connectionState != .connected || state.safeModeLevel.blocksAllWrites)
                     }
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openConnectionSwitcher)) { _ in
-                showConnectionSwitcher = true
             }
     }
 }

@@ -45,7 +45,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Observers
 
     private var connectionStatusObserver: NSObjectProtocol?
-    private var newConnectionObserver: NSObjectProtocol?
 
     // MARK: - Init
 
@@ -199,15 +198,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 self?.handleConnectionStatusChange()
             }
         }
-        newConnectionObserver = NotificationCenter.default.addObserver(
-            forName: .newConnection,
-            object: nil,
-            queue: .main
-        ) { _ in
-            MainActor.assumeIsolated {
-                WelcomeWindowFactory.openOrFront()
-            }
-        }
         handleConnectionStatusChange()
     }
 
@@ -215,10 +205,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         if let observer = connectionStatusObserver {
             NotificationCenter.default.removeObserver(observer)
             connectionStatusObserver = nil
-        }
-        if let observer = newConnectionObserver {
-            NotificationCenter.default.removeObserver(observer)
-            newConnectionObserver = nil
         }
     }
 

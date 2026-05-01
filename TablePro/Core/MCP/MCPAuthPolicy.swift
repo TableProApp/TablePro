@@ -156,7 +156,8 @@ actor MCPAuthPolicy {
         let window: NSWindow? = needsDialog
             ? await MainActor.run {
                 NSApp.activate(ignoringOtherApps: true)
-                return NSApp.keyWindow ?? NSApp.mainWindow
+                return WindowLifecycleMonitor.shared.findWindow(for: connectionId)
+                    ?? NSApp.mainWindow
             }
             : nil
 
@@ -242,8 +243,12 @@ actor MCPAuthPolicy {
             return .allowed
         }
         return .denied(
-            reason: "Token '\(token.name)' with permission '\(token.permissions.displayName)' "
-                + "cannot access '\(tool)'"
+            reason: String(
+                format: String(localized: "Token '%@' with permission '%@' cannot access '%@'"),
+                token.name,
+                token.permissions.displayName,
+                tool
+            )
         )
     }
 

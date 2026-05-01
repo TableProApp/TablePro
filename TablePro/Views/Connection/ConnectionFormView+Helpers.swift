@@ -307,11 +307,9 @@ extension ConnectionFormView {
 
     func connectToDatabase(_ connection: DatabaseConnection) {
         WelcomeWindowFactory.close()
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
         Task {
             do {
-                try await dbManager.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch {
                 handleConnectError(error, connection: connection)
             }
@@ -347,11 +345,9 @@ extension ConnectionFormView {
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
         WelcomeWindowFactory.close()
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
         Task {
             do {
-                try await dbManager.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch {
                 handleConnectError(error, connection: connection)
             }

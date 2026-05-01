@@ -46,7 +46,8 @@ internal final class TabRouter {
 
         case .openTable(let id, let database, let schema, let table, let isView):
             try await openTable(
-                connectionId: id, database: database, schema: schema, table: table, isView: isView
+                connectionId: id, transientConnection: nil,
+                database: database, schema: schema, table: table, isView: isView
             )
 
         case .openQuery(let id, let sql):
@@ -90,9 +91,15 @@ internal final class TabRouter {
     // MARK: - Table
 
     private func openTable(
-        connectionId: UUID, database: String?, schema: String?, table: String, isView: Bool
+        connectionId: UUID, transientConnection: DatabaseConnection? = nil,
+        database: String?, schema: String?, table: String, isView: Bool
     ) async throws {
-        guard let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId }) else {
+        let connection: DatabaseConnection
+        if let transientConnection {
+            connection = transientConnection
+        } else if let stored = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId }) {
+            connection = stored
+        } else {
             throw TabRouterError.connectionNotFound(connectionId)
         }
         try await runPreConnectScriptIfNeeded(connection)
@@ -128,7 +135,7 @@ internal final class TabRouter {
     ) -> Bool {
         for coordinator in MainContentCoordinator.allActiveCoordinators()
             where coordinator.connectionId == connectionId {
-            let match = coordinator.tabManager.tabs.first { tab in
+            let hasMatch = coordinator.tabManager.tabs.contains { tab in
                 guard tab.tabType == .table,
                       tab.tableContext.tableName == table else { return false }
                 let databaseMatches = database.map { db in
@@ -139,12 +146,12 @@ internal final class TabRouter {
                 } ?? true
                 return databaseMatches && schemaMatches
             }
-            guard let match else { continue }
-            coordinator.tabManager.selectedTabId = match.id
+            guard hasMatch else { continue }
             if let windowId = coordinator.windowId,
                let window = WindowLifecycleMonitor.shared.window(for: windowId) {
                 window.makeKeyAndOrderFront(nil)
             }
+            coordinator.openTableTab(table)
             return true
         }
         return false
@@ -172,6 +179,12 @@ internal final class TabRouter {
         try await runPreConnectScriptIfNeeded(connection)
         try await DatabaseManager.shared.ensureConnected(connection)
 
+        if focusExistingQueryTab(connectionId: connectionId, sql: sql) {
+            NSApp.activate(ignoringOtherApps: true)
+            closeWelcomeWindows()
+            return
+        }
+
         let payload = EditorTabPayload(
             connectionId: connectionId,
             tabType: .query,
@@ -180,6 +193,23 @@ internal final class TabRouter {
         WindowManager.shared.openTab(payload: payload)
         NSApp.activate(ignoringOtherApps: true)
         closeWelcomeWindows()
+    }
+
+    private func focusExistingQueryTab(connectionId: UUID, sql: String) -> Bool {
+        for coordinator in MainContentCoordinator.allActiveCoordinators()
+            where coordinator.connectionId == connectionId {
+            let match = coordinator.tabManager.tabs.first { tab in
+                tab.tabType == .query && tab.content.query == sql
+            }
+            guard let match else { continue }
+            coordinator.tabManager.selectedTabId = match.id
+            if let windowId = coordinator.windowId,
+               let window = WindowLifecycleMonitor.shared.window(for: windowId) {
+                window.makeKeyAndOrderFront(nil)
+            }
+            return true
+        }
+        return false
     }
 
     private func previewForSQL(_ sql: String) -> String {
@@ -224,36 +254,37 @@ internal final class TabRouter {
         }
 
         do {
+            if let table = parsed.tableName {
+                try await openTable(
+                    connectionId: connection.id,
+                    transientConnection: isTransient ? connection : nil,
+                    database: parsed.database.isEmpty ? nil : parsed.database,
+                    schema: parsed.schema,
+                    table: table,
+                    isView: parsed.isView
+                )
+                if parsed.filterColumn != nil || parsed.filterCondition != nil {
+                    try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
+                }
+                return
+            }
+
             try await runPreConnectScriptIfNeeded(connection)
             let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
             WindowManager.shared.openTab(payload: payload)
             NSApp.activate(ignoringOtherApps: true)
             try await DatabaseManager.shared.ensureConnected(connection)
             closeWelcomeWindows()
+
+            if let schema = parsed.schema {
+                await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
+            }
         } catch {
             if isTransient {
                 ConnectionStorage.shared.deletePassword(for: connection.id)
                 ConnectionStorage.shared.deleteSSHPassword(for: connection.id)
             }
             throw error
-        }
-
-        if let schema = parsed.schema {
-            await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
-        }
-
-        if let table = parsed.tableName {
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .table,
-                tableName: table,
-                isView: parsed.isView
-            )
-            WindowManager.shared.openTab(payload: payload)
-
-            if parsed.filterColumn != nil || parsed.filterCondition != nil {
-                try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
-            }
         }
     }
 
