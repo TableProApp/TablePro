@@ -120,16 +120,19 @@ struct MCPAuditLogView: View {
         .onChange(of: selectedRange) { _, _ in Task { await reload() } }
     }
 
+    @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray")
-                .font(.system(size: 32))
-                .foregroundStyle(.tertiary)
-            Text(String(localized: "No activity yet"))
-                .foregroundStyle(.secondary)
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ContentUnavailableView.search(text: searchText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ContentUnavailableView(
+                String(localized: "No activity yet"),
+                systemImage: "tray",
+                description: Text(String(localized: "External integrations and MCP client requests will appear here."))
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
     }
 
     private var entryList: some View {
