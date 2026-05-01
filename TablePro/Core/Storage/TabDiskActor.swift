@@ -60,11 +60,6 @@ internal actor TabDiskActor {
         try data.write(to: fileURL, options: .atomic)
     }
 
-    /// Log a save error from callers that handle errors externally.
-    nonisolated static func logSaveError(connectionId: UUID, error: Error) {
-        logger.error("Failed to save tab state for \(connectionId): \(error.localizedDescription)")
-    }
-
     /// Load tab state for a connection. Returns nil if the file is missing or corrupt.
     internal func load(connectionId: UUID) -> TabDiskState? {
         let fileURL = tabStateFileURL(for: connectionId)
@@ -96,6 +91,8 @@ internal actor TabDiskActor {
     }
 
     /// List all connection IDs that have saved tab state on disk.
+    /// Self-cleans legacy empty-payload files: if a file decodes with no tabs,
+    /// it is deleted and its connection ID is excluded from the result.
     internal func connectionIdsWithSavedState() -> [UUID] {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(
@@ -104,10 +101,18 @@ internal actor TabDiskActor {
         ) else {
             return []
         }
-        return files.compactMap { url -> UUID? in
-            guard url.pathExtension == "json" else { return nil }
-            return UUID(uuidString: url.deletingPathExtension().lastPathComponent)
+        var validIds: [UUID] = []
+        for url in files where url.pathExtension == "json" {
+            guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) else { continue }
+            if let data = try? Data(contentsOf: url),
+               let state = try? decoder.decode(TabDiskState.self, from: data),
+               !state.tabs.isEmpty {
+                validIds.append(id)
+            } else {
+                try? fm.removeItem(at: url)
+            }
         }
+        return validIds
     }
 
     // MARK: - Static Path Helpers
@@ -145,7 +150,20 @@ internal actor TabDiskActor {
             let fileURL = tabStateFileURL(for: connectionId)
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            logger.error("saveSync failed for \(connectionId): \(error.localizedDescription)")
+            logger.fault("saveSync failed for \(connectionId): \(error.localizedDescription)")
+        }
+    }
+
+    /// Synchronous clear for `applicationWillTerminate`, where no run loop
+    /// remains to execute an async Task. Mirrors `saveSync` — deletes the
+    /// connection's tab state file directly.
+    nonisolated internal static func clearSync(connectionId: UUID) {
+        let fileURL = tabStateFileURL(for: connectionId)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+        } catch {
+            logger.fault("clearSync failed for \(connectionId): \(error.localizedDescription)")
         }
     }
 
