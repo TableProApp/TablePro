@@ -218,6 +218,7 @@ extension MCPToolHandler {
 
         let raised = await MainActor.run { () -> Bool in
             for snapshot in Self.collectTabSnapshots() where snapshot.tabId == tabId {
+                guard snapshot.connectionId == connectionId else { return false }
                 guard let window = snapshot.window else { return false }
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)

@@ -16,14 +16,20 @@ struct PairingExchangeRecord: Sendable, Equatable {
 
 final class PairingExchangeStore: @unchecked Sendable {
     static let exchangeWindow: TimeInterval = 300
+    static let maxPendingCodes = 50
 
     private let lock = NSLock()
     private var pending: [String: PairingExchangeRecord] = [:]
 
-    func insert(code: String, record: PairingExchangeRecord) {
+    func insert(code: String, record: PairingExchangeRecord) throws {
         lock.lock()
         defer { lock.unlock() }
         prune(now: Date.now)
+        guard pending.count < Self.maxPendingCodes else {
+            throw MCPError.forbidden(
+                String(localized: "Too many pending pairing codes. Try again later.")
+            )
+        }
         pending[code] = record
     }
 
@@ -131,14 +137,19 @@ final class MCPPairingService {
         )
 
         let code = UUID().uuidString
-        store.insert(
-            code: code,
-            record: PairingExchangeRecord(
-                plaintextToken: result.plaintext,
-                challenge: request.challenge,
-                expiresAt: Date.now.addingTimeInterval(PairingExchangeStore.exchangeWindow)
+        do {
+            try store.insert(
+                code: code,
+                record: PairingExchangeRecord(
+                    plaintextToken: result.plaintext,
+                    challenge: request.challenge,
+                    expiresAt: Date.now.addingTimeInterval(PairingExchangeStore.exchangeWindow)
+                )
             )
-        )
+        } catch {
+            await tokenStore.delete(tokenId: result.token.id)
+            throw error
+        }
 
         guard let redirect = buildRedirectURL(base: request.redirectURL, code: code) else {
             Self.logger.error("Failed to build pairing redirect URL")

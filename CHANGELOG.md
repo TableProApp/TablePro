@@ -95,6 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persist connection deletions before firing the sync notification, fixing the same race for deleted connections.
 - Refuse to generate SQL when the database dialect cannot be resolved, instead of silently emitting unquoted identifiers.
 - MCP `execute_query`: strip trailing semicolons before appending `LIMIT/OFFSET`, fixing `syntax error at or near LIMIT` for queries like `select * from t;`.
+- MCP `export_data`: tightened table name validation to reject double-dot, leading-dot, and trailing-dot identifiers (e.g. `schema..table`). `quoteQualifiedIdentifier` now rejects empty segments instead of producing `"schema".""."table"`.
+- MCP `focus_query_tab`: re-validate that the resolved tab still belongs to the authorized connection between the auth check and the window raise, closing a TOCTOU window where a tab could be re-bound to a different connection.
+- MCP pairing: cap pending exchange codes at 50 to prevent unbounded memory growth from repeated pairing attempts.
 
 ## [0.36.0] - 2026-04-27
 

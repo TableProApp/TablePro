@@ -27,7 +27,7 @@ struct MCPPairingServiceTests {
         let verifier = "test-verifier-1"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        store.insert(code: "code-1", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        try store.insert(code: "code-1", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
 
         let token = try store.consume(code: "code-1", verifier: verifier)
 
@@ -39,7 +39,7 @@ struct MCPPairingServiceTests {
         let verifier = "test-verifier-2"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        store.insert(code: "code-2", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        try store.insert(code: "code-2", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
 
         _ = try store.consume(code: "code-2", verifier: verifier)
 
@@ -51,7 +51,7 @@ struct MCPPairingServiceTests {
         let verifier = "test-verifier-3"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        store.insert(code: "code-3", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        try store.insert(code: "code-3", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
 
         _ = try store.consume(code: "code-3", verifier: verifier)
 
@@ -78,11 +78,11 @@ struct MCPPairingServiceTests {
     }
 
     @Test("consume returns expired when entry has expired")
-    func consumeExpiredEntryReturnsExpired() {
+    func consumeExpiredEntryReturnsExpired() throws {
         let verifier = "test-verifier-4"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        store.insert(code: "code-4", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
+        try store.insert(code: "code-4", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
 
         do {
             _ = try store.consume(code: "code-4", verifier: verifier, now: Date.now)
@@ -98,10 +98,10 @@ struct MCPPairingServiceTests {
     }
 
     @Test("consume returns forbidden when challenge does not match the verifier")
-    func consumeMismatchedChallengeReturnsForbidden() {
+    func consumeMismatchedChallengeReturnsForbidden() throws {
         let store = makeStore()
         let challenge = base64UrlSha256(of: "intended-verifier")
-        store.insert(code: "code-5", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        try store.insert(code: "code-5", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
 
         do {
             _ = try store.consume(code: "code-5", verifier: "attacker-verifier")
@@ -117,11 +117,11 @@ struct MCPPairingServiceTests {
     }
 
     @Test("consume on expired code removes the entry")
-    func consumeOnExpiredCodeRemovesEntry() {
+    func consumeOnExpiredCodeRemovesEntry() throws {
         let verifier = "test-verifier-6"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        store.insert(code: "code-6", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
+        try store.insert(code: "code-6", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
 
         _ = try? store.consume(code: "code-6", verifier: verifier)
 
@@ -129,17 +129,17 @@ struct MCPPairingServiceTests {
     }
 
     @Test("pruneExpired removes only expired entries")
-    func pruneRemovesOnlyExpiredEntries() {
+    func pruneRemovesOnlyExpiredEntries() throws {
         let store = makeStore()
-        store.insert(
+        try store.insert(
             code: "alive",
             record: record(plaintext: "tp_a", challenge: "challenge", expiresIn: 60)
         )
-        store.insert(
+        try store.insert(
             code: "stale-1",
             record: record(plaintext: "tp_b", challenge: "challenge", expiresIn: -1)
         )
-        store.insert(
+        try store.insert(
             code: "stale-2",
             record: record(plaintext: "tp_c", challenge: "challenge", expiresIn: -10)
         )
@@ -177,5 +177,34 @@ struct MCPPairingServiceTests {
     @Test("constantTimeEqual returns false for different lengths")
     func constantTimeEqualLengthMismatch() {
         #expect(PairingExchangeStore.constantTimeEqual("abc", "abcd") == false)
+    }
+
+    @Test("insert throws after maxPendingCodes consecutive inserts")
+    func insertThrowsWhenPendingCapReached() throws {
+        let store = makeStore()
+        for index in 0..<PairingExchangeStore.maxPendingCodes {
+            try store.insert(
+                code: "code-cap-\(index)",
+                record: record(plaintext: "tp_x", challenge: "challenge", expiresIn: 60)
+            )
+        }
+
+        do {
+            try store.insert(
+                code: "code-overflow",
+                record: record(plaintext: "tp_x", challenge: "challenge", expiresIn: 60)
+            )
+            Issue.record("Expected forbidden error after exceeding maxPendingCodes")
+        } catch let error as MCPError {
+            guard case .forbidden = error else {
+                Issue.record("Expected forbidden, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        #expect(store.count() == PairingExchangeStore.maxPendingCodes)
+        #expect(store.contains(code: "code-overflow") == false)
     }
 }

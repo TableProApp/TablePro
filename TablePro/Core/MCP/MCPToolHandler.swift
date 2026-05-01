@@ -437,7 +437,7 @@ final class MCPToolHandler: Sendable {
         } else if let tables {
             let quoteIdentifier = Self.identifierQuoter(for: databaseType)
             for table in tables {
-                let quoted = Self.quoteQualifiedIdentifier(table, quoter: quoteIdentifier)
+                let quoted = try Self.quoteQualifiedIdentifier(table, quoter: quoteIdentifier)
                 let sql = "SELECT * FROM \(quoted) LIMIT \(maxRows)"
                 try await authPolicy.checkSafeModeDialog(
                     sql: sql,
@@ -653,7 +653,7 @@ final class MCPToolHandler: Sendable {
     }
 
     static func validateExportTableName(_ table: String) throws {
-        let pattern = "^[A-Za-z0-9_][A-Za-z0-9_.]*$"
+        let pattern = "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$"
         guard table.range(of: pattern, options: .regularExpression) != nil else {
             throw MCPError.invalidParams(
                 "Invalid table name: '\(table)'. Allowed characters: letters, digits, underscore, and '.' for schema-qualified names."
@@ -668,10 +668,14 @@ final class MCPToolHandler: Sendable {
         return { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }
     }
 
-    static func quoteQualifiedIdentifier(_ identifier: String, quoter: (String) -> String) -> String {
-        identifier.split(separator: ".", omittingEmptySubsequences: false)
-            .map { quoter(String($0)) }
-            .joined(separator: ".")
+    static func quoteQualifiedIdentifier(_ identifier: String, quoter: (String) -> String) throws -> String {
+        let segments = identifier.split(separator: ".", omittingEmptySubsequences: true)
+        guard !segments.isEmpty, segments.count == identifier.split(separator: ".", omittingEmptySubsequences: false).count else {
+            throw MCPError.invalidParams(
+                "Invalid qualified identifier: '\(identifier)'. Empty components are not allowed."
+            )
+        }
+        return segments.map { quoter(String($0)) }.joined(separator: ".")
     }
 
     static func sandboxedDownloadsURL(for path: String) throws -> URL {
