@@ -457,7 +457,7 @@ private struct HistoryToolbarButton: View {
         } label: {
             Label("History", systemImage: "clock")
         }
-        .help(String(localized: "Toggle Query History (⌘Y)"))
+        .help(String(localized: "Toggle Query History (⌥⌘H)"))
     }
 }
 

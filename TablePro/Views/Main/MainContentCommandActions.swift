@@ -251,6 +251,8 @@ final class MainContentCommandActions {
 
     var currentDatabaseType: DatabaseType { connection.type }
 
+    var connectionId: UUID { connection.id }
+
     var supportsDatabaseSwitching: Bool {
         PluginManager.shared.supportsDatabaseSwitching(for: connection.type)
     }
@@ -290,6 +292,28 @@ final class MainContentCommandActions {
 
     var hasStructureChanges: Bool {
         coordinator?.toolbarState.hasStructureChanges ?? false
+    }
+
+    var isSidebarVisible: Bool {
+        guard let collapsed = coordinator?.splitViewController?.isSidebarCollapsed else { return false }
+        return !collapsed
+    }
+
+    var isInspectorVisible: Bool {
+        coordinator?.inspectorProxy?.isInspectorVisible ?? false
+    }
+
+    var isFilterPanelVisible: Bool {
+        filterStateManager.isVisible
+    }
+
+    var isHistoryPanelVisible: Bool {
+        coordinator?.toolbarState.isHistoryPanelVisible ?? false
+    }
+
+    var isResultsVisible: Bool {
+        guard let collapsed = coordinator?.toolbarState.isResultsCollapsed else { return false }
+        return !collapsed
     }
 
     // MARK: - Unsaved Changes Check

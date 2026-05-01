@@ -122,6 +122,18 @@ struct AppMenuCommands: Commands {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
 
+    private func openNewMainWindow() {
+        let connectionId = actions?.connectionId
+            ?? NSApp.keyWindow.flatMap { WindowLifecycleMonitor.shared.connectionId(forWindow: $0) }
+        guard let connectionId else {
+            WelcomeWindowFactory.openOrFront()
+            return
+        }
+        WindowManager.shared.openTab(
+            payload: EditorTabPayload(connectionId: connectionId, intent: .newEmptyTab)
+        )
+    }
+
     /// Prefers the focused scene value; falls back to the coordinator back-reference
     /// so Cmd+W still routes through `closeTab()` (with its unsaved-changes dialog)
     /// when focus is inside an AppKit subview and `@FocusedValue` has not resolved.
@@ -195,10 +207,15 @@ struct AppMenuCommands: Commands {
 
         // File menu
         CommandGroup(replacing: .newItem) {
-            Button("Manage Connections") {
-                NotificationCenter.default.post(name: .newConnection, object: nil)
+            Button(String(localized: "New Connection...")) {
+                WindowOpener.shared.openWindow?(id: "connection-form")
             }
-            .optionalKeyboardShortcut(shortcut(for: .manageConnections))
+            .optionalKeyboardShortcut(shortcut(for: .newConnection))
+
+            Button(String(localized: "New Window")) {
+                openNewMainWindow()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .newWindow))
         }
 
         CommandGroup(after: .newItem) {
@@ -212,6 +229,11 @@ struct AppMenuCommands: Commands {
                 actions?.createView()
             }
             .disabled(!(actions?.isConnected ?? false) || actions?.isReadOnly ?? false)
+
+            Button(String(localized: "Manage Connections...")) {
+                NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .manageConnections))
 
             Button("Open Database...") {
                 actions?.openDatabaseSwitcher()
@@ -227,7 +249,7 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button("Save Changes") {
+            Button(String(localized: "Save")) {
                 actions?.saveChanges()
             }
             .optionalKeyboardShortcut(shortcut(for: .saveChanges))
@@ -423,14 +445,38 @@ struct AppMenuCommands: Commands {
         // Edit menu - pasteboard commands with FocusedValue support
         PasteboardCommands(settingsManager: settingsManager)
 
-        // Edit menu - Find + row operations (after pasteboard)
+        // Edit menu - Find submenu + row operations (after pasteboard)
         CommandGroup(after: .pasteboard) {
             Divider()
 
-            Button(String(localized: "Find...")) {
-                EditorEventRouter.shared.showFindPanelForKeyWindow()
+            Menu(String(localized: "Find")) {
+                Button(String(localized: "Find...")) {
+                    EditorEventRouter.shared.showFindPanelForKeyWindow()
+                }
+                .optionalKeyboardShortcut(shortcut(for: .find))
+
+                Button(String(localized: "Find Next")) {
+                    EditorEventRouter.shared.findNextForKeyWindow()
+                }
+                .optionalKeyboardShortcut(shortcut(for: .findNext))
+
+                Button(String(localized: "Find Previous")) {
+                    EditorEventRouter.shared.findPreviousForKeyWindow()
+                }
+                .optionalKeyboardShortcut(shortcut(for: .findPrevious))
+
+                Divider()
+
+                Button(String(localized: "Use Selection for Find")) {
+                    EditorEventRouter.shared.useSelectionForFindForKeyWindow()
+                }
+                .optionalKeyboardShortcut(shortcut(for: .useSelectionForFind))
+
+                Button(String(localized: "Jump to Selection")) {
+                    EditorEventRouter.shared.jumpToSelectionForKeyWindow()
+                }
+                .optionalKeyboardShortcut(shortcut(for: .jumpToSelection))
             }
-            .keyboardShortcut("f", modifiers: .command)
 
             Divider()
 
@@ -458,12 +504,16 @@ struct AppMenuCommands: Commands {
 
         // View menu
         CommandGroup(after: .sidebar) {
-            Button(String(localized: "Toggle Sidebar")) {
+            Button(actions?.isSidebarVisible == true
+                   ? String(localized: "Hide Sidebar")
+                   : String(localized: "Show Sidebar")) {
                 NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleTableBrowser))
 
-            Button("Toggle Inspector") {
+            Button(actions?.isInspectorVisible == true
+                   ? String(localized: "Hide Inspector")
+                   : String(localized: "Show Inspector")) {
                 actions?.toggleRightSidebar()
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleInspector))
@@ -471,13 +521,17 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button("Toggle Filters") {
+            Button(actions?.isFilterPanelVisible == true
+                   ? String(localized: "Hide Filters")
+                   : String(localized: "Show Filters")) {
                 actions?.toggleFilterPanel()
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleFilters))
             .disabled(!(actions?.isConnected ?? false) || !(actions?.isTableTab ?? false))
 
-            Button("Toggle History") {
+            Button(actions?.isHistoryPanelVisible == true
+                   ? String(localized: "Hide History")
+                   : String(localized: "Show History")) {
                 actions?.toggleHistoryPanel()
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleHistory))
@@ -485,7 +539,9 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button("Toggle Results") {
+            Button(actions?.isResultsVisible == true
+                   ? String(localized: "Hide Results")
+                   : String(localized: "Show Results")) {
                 actions?.toggleResults()
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleResults))

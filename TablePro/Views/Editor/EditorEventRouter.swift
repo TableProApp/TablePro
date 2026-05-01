@@ -95,6 +95,26 @@ internal final class EditorEventRouter {
         coordinator.showFindPanel()
     }
 
+    internal func findNextForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.findNextMatch()
+    }
+
+    internal func findPreviousForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.findPreviousMatch()
+    }
+
+    internal func useSelectionForFindForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.useSelectionForFind()
+    }
+
+    internal func jumpToSelectionForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.jumpToSelection()
+    }
+
     // MARK: - Lookup
 
     private func editor(for window: NSWindow?) -> (SQLEditorCoordinator, TextView)? {

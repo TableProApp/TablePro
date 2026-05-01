@@ -35,4 +35,16 @@ public extension TextViewController {
         _ = textView.resignFirstResponder()
         findViewController?.showFindPanel()
     }
+
+    func findNextMatch() {
+        findViewController?.viewModel.moveToNextMatch()
+    }
+
+    func findPreviousMatch() {
+        findViewController?.viewModel.moveToPreviousMatch()
+    }
+
+    func setFindText(_ text: String) {
+        findViewController?.viewModel.findText = text
+    }
 }

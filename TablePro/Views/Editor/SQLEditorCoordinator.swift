@@ -526,6 +526,31 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         controller?.showFindPanel()
     }
 
+    func findNextMatch() {
+        controller?.findNextMatch()
+    }
+
+    func findPreviousMatch() {
+        controller?.findPreviousMatch()
+    }
+
+    func useSelectionForFind() {
+        guard let controller, let textView = controller.textView else { return }
+        let range = textView.selectedRange()
+        guard range.length > 0 else { return }
+        let selected = (textView.string as NSString).substring(with: range)
+        guard !selected.isEmpty else { return }
+        controller.setFindText(selected)
+        controller.showFindPanel()
+    }
+
+    func jumpToSelection() {
+        guard let controller, let textView = controller.textView else { return }
+        let range = textView.selectedRange()
+        guard range.location != NSNotFound else { return }
+        textView.scrollToRange(range)
+    }
+
     // MARK: - CodeEditSourceEditor Workarounds
 
     /// Reorder FindViewController's subviews so the find panel is on top for hit testing.

@@ -22,9 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy rows writes TSV, HTML table, and plain text to the clipboard for richer paste in spreadsheet apps
 - Row drag adds TSV and HTML representations alongside the internal drag type
 - AI provider settings allow manually entering a model name when the provider does not return one
+- Edit menu has a Find submenu with Find, Find Next (`Cmd+G`), Find Previous (`Cmd+Shift+G`), Use Selection for Find (`Cmd+E`), and Jump to Selection (`Cmd+J`)
+- File menu has a New Window item (`Cmd+Ctrl+N`) that opens a fresh editor window for the active connection
 
 ### Changed
 
+- `Cmd+N` now opens the New Connection form. Manage Connections moves to the File menu without a default shortcut.
+- `Cmd+D` now duplicates the selected row. Save as Favorite moves to `Cmd+Shift+D`.
+- Removed default shortcuts that conflicted with system reservations: `Cmd+Y` (Quick Look), `Cmd+Option+Delete` (Empty Trash), `Cmd+Ctrl+C` (Color Picker), `Cmd+L` (URL bar / Add Link).
+- Show History moves from `Cmd+Y` to `Cmd+Option+H` to mirror the other panel toggles.
+- Truncate Table no longer has a default shortcut; the action stays in the Edit menu and the sidebar context menu.
+- Switch Connection no longer has a default shortcut; the menu entry remains and users can rebind in Settings > Keyboard.
+- Explain with AI no longer has a default shortcut; the menu entry remains and users can rebind in Settings > Keyboard.
+- File menu "Save Changes" renamed to "Save".
+- View menu Show/Hide labels now flip based on panel state (Show Sidebar / Hide Sidebar, Show Inspector / Hide Inspector, Show Filters / Hide Filters, Show History / Hide History, Show Results / Hide Results).
 - Storage and sync singletons accept dependencies via init for test isolation, matching Apple's URLSession and UserDefaults convention. Production callers using `.shared` are unchanged. `SQLFavoriteStorage` is now an actor so its first access no longer blocks the main thread on SQLite setup.
 - Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
 - Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
