@@ -123,8 +123,8 @@ struct DataGridSettings: Codable, Equatable {
     var autoShowInspector: Bool
     var enableSmartValueDetection: Bool
     var countRowsIfEstimateLessThan: Int
-    var queryResultLimit: Int
-    var enforceQueryResultLimit: Bool
+    var queryResultRowCap: Int
+    var truncateQueryResults: Bool
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -136,8 +136,8 @@ struct DataGridSettings: Codable, Equatable {
         autoShowInspector: false,
         enableSmartValueDetection: true,
         countRowsIfEstimateLessThan: 100_000,
-        queryResultLimit: 10_000,
-        enforceQueryResultLimit: true
+        queryResultRowCap: 10_000,
+        truncateQueryResults: true
     )
 
     init(
@@ -150,8 +150,8 @@ struct DataGridSettings: Codable, Equatable {
         autoShowInspector: Bool = false,
         enableSmartValueDetection: Bool = true,
         countRowsIfEstimateLessThan: Int = 100_000,
-        queryResultLimit: Int = 10_000,
-        enforceQueryResultLimit: Bool = true
+        queryResultRowCap: Int = 10_000,
+        truncateQueryResults: Bool = true
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -162,13 +162,12 @@ struct DataGridSettings: Codable, Equatable {
         self.autoShowInspector = autoShowInspector
         self.enableSmartValueDetection = enableSmartValueDetection
         self.countRowsIfEstimateLessThan = countRowsIfEstimateLessThan
-        self.queryResultLimit = queryResultLimit
-        self.enforceQueryResultLimit = enforceQueryResultLimit
+        self.queryResultRowCap = queryResultRowCap
+        self.truncateQueryResults = truncateQueryResults
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // Old fontFamily/fontSize keys are ignored (moved to ThemeFonts)
         rowHeight = try container.decodeIfPresent(DataGridRowHeight.self, forKey: .rowHeight) ?? .normal
         dateFormat = try container.decodeIfPresent(DateFormatOption.self, forKey: .dateFormat) ?? .iso8601
         nullDisplay = try container.decodeIfPresent(String.self, forKey: .nullDisplay) ?? "NULL"
@@ -178,8 +177,8 @@ struct DataGridSettings: Codable, Equatable {
         autoShowInspector = try container.decodeIfPresent(Bool.self, forKey: .autoShowInspector) ?? false
         enableSmartValueDetection = try container.decodeIfPresent(Bool.self, forKey: .enableSmartValueDetection) ?? true
         countRowsIfEstimateLessThan = try container.decodeIfPresent(Int.self, forKey: .countRowsIfEstimateLessThan) ?? 100_000
-        queryResultLimit = try container.decodeIfPresent(Int.self, forKey: .queryResultLimit) ?? 10_000
-        enforceQueryResultLimit = try container.decodeIfPresent(Bool.self, forKey: .enforceQueryResultLimit) ?? true
+        queryResultRowCap = try container.decodeIfPresent(Int.self, forKey: .queryResultRowCap) ?? 10_000
+        truncateQueryResults = try container.decodeIfPresent(Bool.self, forKey: .truncateQueryResults) ?? true
     }
 
     // MARK: - Validated Properties
@@ -227,18 +226,18 @@ struct DataGridSettings: Codable, Equatable {
         return nil
     }
 
-    /// Validated queryResultLimit (100 to 500,000; 0 means unlimited)
-    var validatedQueryResultLimit: Int {
-        if queryResultLimit == 0 { return 0 }
-        return queryResultLimit.clamped(to: SettingsValidationRules.queryResultLimitRange)
+    /// Validated queryResultRowCap (100 to 500,000; 0 means unlimited)
+    var validatedQueryResultRowCap: Int {
+        if queryResultRowCap == 0 { return 0 }
+        return queryResultRowCap.clamped(to: SettingsValidationRules.queryResultRowCapRange)
     }
 
-    /// Validation error for queryResultLimit (for UI feedback)
-    var queryResultLimitValidationError: String? {
-        let range = SettingsValidationRules.queryResultLimitRange
-        if queryResultLimit != 0 && (queryResultLimit < range.lowerBound || queryResultLimit > range.upperBound) {
+    /// Validation error for queryResultRowCap (for UI feedback)
+    var queryResultRowCapValidationError: String? {
+        let range = SettingsValidationRules.queryResultRowCapRange
+        if queryResultRowCap != 0 && (queryResultRowCap < range.lowerBound || queryResultRowCap > range.upperBound) {
             return String(
-                format: String(localized: "Query result limit must be between %@ and %@"),
+                format: String(localized: "Query result row cap must be between %@ and %@"),
                 range.lowerBound.formatted(),
                 range.upperBound.formatted()
             )

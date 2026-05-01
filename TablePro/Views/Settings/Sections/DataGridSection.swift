@@ -62,11 +62,11 @@ struct DataGridSection: View {
         }
 
         Section {
-            Toggle("Enforce query result limit", isOn: $settings.enforceQueryResultLimit)
-                .help(String(localized: "Limit initial query results and load more on demand"))
+            Toggle("Truncate query results", isOn: $settings.truncateQueryResults)
+                .help(String(localized: "Cap user query results at the configured row count"))
 
-            if settings.enforceQueryResultLimit {
-                Picker("Row limit:", selection: $settings.queryResultLimit) {
+            if settings.truncateQueryResults {
+                Picker("Row cap:", selection: $settings.queryResultRowCap) {
                     Text("100").tag(100)
                     Text("1,000").tag(1_000)
                     Text("5,000").tag(5_000)
@@ -76,17 +76,17 @@ struct DataGridSection: View {
                     Text("500,000").tag(500_000)
                 }
 
-                if let error = settings.queryResultLimitValidationError {
+                if let error = settings.queryResultRowCapValidationError {
                     Text(error)
                         .font(.caption)
                         .foregroundStyle(Color(nsColor: .systemRed))
                 }
             }
         } header: {
-            Text("Query Result Limit")
+            Text("Query Result Row Cap")
         } footer: {
-            if settings.enforceQueryResultLimit, settings.queryResultLimitValidationError == nil {
-                Text("Query results exceeding this limit show Load More / Fetch All buttons")
+            if settings.truncateQueryResults, settings.queryResultRowCapValidationError == nil {
+                Text("Capped results show a Fetch All button to load the full set")
             }
         }
     }
