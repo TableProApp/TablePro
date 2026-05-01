@@ -13,7 +13,7 @@ final class DataGridCellFactory {
     private static let sampleRowCount = 30
     private static let maxMeasureChars = 50
 
-    private static let headerFont: NSFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+    private static let headerFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
 
     func calculateColumnWidth(for columnName: String) -> CGFloat {
         let attributes: [NSAttributedString.Key: Any] = [.font: Self.headerFont]

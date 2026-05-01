@@ -1,0 +1,73 @@
+---
+title: External API
+description: URL scheme, MCP server, and pairing flow for Raycast, Cursor, Claude Desktop, and other external clients
+---
+
+# External API
+
+The TablePro External API is the public contract that lets other apps drive TablePro. Raycast, Cursor, Claude Desktop, and custom scripts all use the same surface. This page is the entry point. Pick the subpage that matches what you want to do.
+
+## Three pillars
+
+The External API has three independent layers. Most clients use a mix of all three.
+
+<CardGroup cols={3}>
+  <Card title="URL scheme" icon="link" href="/external-api/url-scheme">
+    `tablepro://` deep links open connections, tables, and queries in the GUI.
+  </Card>
+  <Card title="MCP server" icon="plug" href="/external-api/mcp-tools">
+    JSON-RPC tools and resources for AI clients. HTTP and stdio transports.
+  </Card>
+  <Card title="Pairing" icon="handshake" href="/external-api/pairing">
+    One-click flow to issue a scoped token to an extension.
+  </Card>
+</CardGroup>
+
+## When to use which
+
+| Goal | Use |
+|------|-----|
+| Open a connection from a script or other app | URL scheme |
+| Run a query and read rows back | MCP `execute_query` |
+| Browse schema for an AI model | MCP `list_tables`, `describe_table` |
+| Issue a token to a Raycast or Cursor extension | Pairing |
+| Navigate to a tab the user already has open | MCP `list_recent_tabs` + `focus_query_tab` |
+
+URL scheme drives the GUI. MCP exchanges data. Pairing bootstraps trust.
+
+## Security model
+
+The External API is gated by three independent layers. A request must clear all three.
+
+1. **Per-connection external access.** Each connection has an `externalAccess` setting: `blocked`, `readOnly` (default), or `readWrite`. Set per connection in the connection editor. Tokens cannot exceed this level.
+2. **Token scope.** Tokens are issued with `readOnly`, `readWrite`, or `fullAccess` scope and an optional per-connection allowlist. See [Tokens](/external-api/tokens).
+3. **AI policy and Safe Mode.** The connection's AI policy (`alwaysAllow` / `askEachTime` / `never`) and Safe Mode rules apply on top. Destructive operations require an explicit confirmation phrase.
+
+The effective permission for any request is `MIN(token.scope, connection.externalAccess)`. A token with `fullAccess` against a connection with `readOnly` cannot mutate.
+
+Every request is recorded in the activity log. Open **Settings > Integrations > Activity Log** to inspect.
+
+## Quick start
+
+- Install the [Raycast extension](/external-api/raycast) and run `Pair with TablePro`.
+- Or wire stdio MCP into your [MCP client](/external-api/mcp-clients) without an extension.
+- Or open a deep link from your shell:
+
+```bash
+open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
+```
+
+## Versioning
+
+The External API follows TablePro's semver. Paths and tools are additive within a major version. See [Versioning](/external-api/versioning) for the deprecation policy.
+
+## Subpages
+
+- [URL Scheme](/external-api/url-scheme): every `tablepro://` action and parameter.
+- [MCP Tools](/external-api/mcp-tools): JSON-RPC tool catalog with input and output schemas.
+- [MCP Resources](/external-api/mcp-resources): resources you can read.
+- [Pairing](/external-api/pairing): sequence diagram and PKCE flow.
+- [Tokens](/external-api/tokens): scope model, allowlists, revocation.
+- [Raycast](/external-api/raycast): extension install and command list.
+- [MCP Clients](/external-api/mcp-clients): stdio MCP setup for Claude Desktop, Claude Code, Cursor, Cline, Continue, Zed, Windsurf, Goose, and custom clients.
+- [Versioning](/external-api/versioning): stability policy.

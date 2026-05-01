@@ -258,22 +258,19 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
 private struct ConnectionToolbarButton: View {
     let coordinator: MainContentCoordinator
-    @State private var showSwitcher = false
 
     var body: some View {
+        @Bindable var state = coordinator.toolbarState
         Button {
-            showSwitcher.toggle()
+            state.showConnectionSwitcher.toggle()
         } label: {
             Label("Connection", systemImage: "network")
         }
         .help(String(localized: "Switch Connection (⌘⌥C)"))
-        .popover(isPresented: $showSwitcher) {
+        .popover(isPresented: $state.showConnectionSwitcher) {
             ConnectionSwitcherPopover {
-                showSwitcher = false
+                state.showConnectionSwitcher = false
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openConnectionSwitcher)) { _ in
-            showSwitcher = true
         }
     }
 }

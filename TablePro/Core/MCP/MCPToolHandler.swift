@@ -4,12 +4,12 @@ import os
 final class MCPToolHandler: Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPToolHandler")
 
-    private let bridge: MCPConnectionBridge
-    private let authGuard: MCPAuthGuard
+    let bridge: MCPConnectionBridge
+    let authPolicy: MCPAuthPolicy
 
-    init(bridge: MCPConnectionBridge, authGuard: MCPAuthGuard) {
+    init(bridge: MCPConnectionBridge, authPolicy: MCPAuthPolicy) {
         self.bridge = bridge
-        self.authGuard = authGuard
+        self.authPolicy = authPolicy
     }
 
     func handleToolCall(
@@ -18,19 +18,45 @@ final class MCPToolHandler: Sendable {
         sessionId: String,
         token: MCPAuthToken? = nil
     ) async throws -> MCPToolResult {
-        if let token {
-            try checkTokenToolPermission(token, toolName: name)
+        do {
+            let result = try await dispatchTool(
+                name: name,
+                arguments: arguments,
+                sessionId: sessionId,
+                token: token
+            )
+            logToolOutcome(name: name, token: token, arguments: arguments, outcome: .success, error: nil)
+            return result
+        } catch let error as MCPError {
+            let outcome: AuditOutcome
+            if case .forbidden = error {
+                outcome = .denied
+            } else {
+                outcome = .error
+            }
+            logToolOutcome(name: name, token: token, arguments: arguments, outcome: outcome, error: error.message)
+            throw error
+        } catch {
+            logToolOutcome(name: name, token: token, arguments: arguments, outcome: .error, error: error.localizedDescription)
+            throw error
         }
+    }
 
+    private func dispatchTool(
+        name: String,
+        arguments: JSONValue?,
+        sessionId: String,
+        token: MCPAuthToken?
+    ) async throws -> MCPToolResult {
         switch name {
         case "list_connections":
-            return try await handleListConnections()
+            return try await handleListConnections(token: token)
         case "connect":
             return try await handleConnect(arguments, sessionId: sessionId, token: token)
         case "disconnect":
-            return try await handleDisconnect(arguments, token: token)
+            return try await handleDisconnect(arguments, sessionId: sessionId, token: token)
         case "get_connection_status":
-            return try await handleGetConnectionStatus(arguments, token: token)
+            return try await handleGetConnectionStatus(arguments, sessionId: sessionId, token: token)
         case "execute_query":
             return try await handleExecuteQuery(arguments, sessionId: sessionId, token: token)
         case "list_tables":
@@ -51,63 +77,114 @@ final class MCPToolHandler: Sendable {
             return try await handleSwitchDatabase(arguments, sessionId: sessionId, token: token)
         case "switch_schema":
             return try await handleSwitchSchema(arguments, sessionId: sessionId, token: token)
+        case "list_recent_tabs":
+            return try await handleListRecentTabs(arguments, sessionId: sessionId, token: token)
+        case "search_query_history":
+            return try await handleSearchQueryHistory(arguments, sessionId: sessionId, token: token)
+        case "open_connection_window":
+            return try await handleOpenConnectionWindow(arguments, sessionId: sessionId, token: token)
+        case "open_table_tab":
+            return try await handleOpenTableTab(arguments, sessionId: sessionId, token: token)
+        case "focus_query_tab":
+            return try await handleFocusQueryTab(arguments, sessionId: sessionId, token: token)
         default:
             throw MCPError.methodNotFound(name)
         }
     }
 
-    private func checkTokenToolPermission(_ token: MCPAuthToken, toolName: String) throws {
-        let required = minimumPermission(for: toolName)
-        guard token.permissions.satisfies(required) else {
-            throw MCPError.forbidden(
-                "Token '\(token.name)' with permission '\(token.permissions.displayName)' "
-                    + "cannot access '\(toolName)'"
-            )
-        }
+    private func logToolOutcome(
+        name: String,
+        token: MCPAuthToken?,
+        arguments: JSONValue?,
+        outcome: AuditOutcome,
+        error: String?
+    ) {
+        let connectionId = arguments?["connection_id"]?.stringValue.flatMap(UUID.init(uuidString:))
+        MCPAuditLogger.logToolCalled(
+            tokenId: token?.id,
+            tokenName: token?.name,
+            toolName: name,
+            connectionId: connectionId,
+            outcome: outcome,
+            errorMessage: error
+        )
     }
 
-    private func minimumPermission(for toolName: String) -> TokenPermissions {
-        switch toolName {
-        case "confirm_destructive_operation":
-            return .fullAccess
-        case "switch_database", "switch_schema", "export_data":
-            return .readWrite
-        default:
-            return .readOnly
-        }
+    private func authorize(
+        token: MCPAuthToken?,
+        tool: String,
+        connectionId: UUID?,
+        sql: String? = nil,
+        sessionId: String
+    ) async throws {
+        try await authPolicy.resolveAndAuthorize(
+            token: token ?? Self.anonymousFullAccessToken,
+            tool: tool,
+            connectionId: connectionId,
+            sql: sql,
+            sessionId: sessionId
+        )
     }
 
-    private func checkTokenConnectionAccess(_ token: MCPAuthToken, connectionId: UUID) throws {
-        guard let allowed = token.allowedConnectionIds else { return }
-        guard allowed.contains(connectionId) else {
-            throw MCPError.forbidden("Token does not have access to this connection")
-        }
-    }
+    static let anonymousFullAccessToken: MCPAuthToken = MCPAuthToken(
+        id: UUID(),
+        name: "__anonymous__",
+        prefix: "tp_anon",
+        tokenHash: "",
+        salt: "",
+        permissions: .fullAccess,
+        connectionAccess: .all,
+        createdAt: Date.now,
+        lastUsedAt: nil,
+        expiresAt: nil,
+        isActive: true
+    )
 
-    private func handleListConnections() async throws -> MCPToolResult {
+    private func handleListConnections(token: MCPAuthToken?) async throws -> MCPToolResult {
         let result = await bridge.listConnections()
-        return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
+        let filtered = filterConnectionsByToken(result, token: token)
+        return MCPToolResult(content: [.text(encodeJSON(filtered))], isError: nil)
+    }
+
+    private func filterConnectionsByToken(_ value: JSONValue, token: MCPAuthToken?) -> JSONValue {
+        guard let access = token?.connectionAccess, case .limited(let allowed) = access else {
+            return value
+        }
+        guard case .object(var dict) = value,
+              let entries = dict["connections"]?.arrayValue
+        else {
+            return value
+        }
+        let filtered = entries.filter { entry in
+            guard let idString = entry["id"]?.stringValue,
+                  let id = UUID(uuidString: idString)
+            else {
+                return false
+            }
+            return allowed.contains(id)
+        }
+        dict["connections"] = .array(filtered)
+        return .object(dict)
     }
 
     private func handleConnect(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(token: token, tool: "connect", connectionId: connectionId, sessionId: sessionId)
         let result = try await bridge.connect(connectionId: connectionId)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
     }
 
-    private func handleDisconnect(_ args: JSONValue?, token: MCPAuthToken?) async throws -> MCPToolResult {
+    private func handleDisconnect(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
+        try await authorize(token: token, tool: "disconnect", connectionId: connectionId, sessionId: sessionId)
         try await bridge.disconnect(connectionId: connectionId)
         let result: JSONValue = .object(["status": "disconnected"])
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
     }
 
-    private func handleGetConnectionStatus(_ args: JSONValue?, token: MCPAuthToken?) async throws -> MCPToolResult {
+    private func handleGetConnectionStatus(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
+        try await authorize(token: token, tool: "get_connection_status", connectionId: connectionId, sessionId: sessionId)
         let result = try await bridge.getConnectionStatus(connectionId: connectionId)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
     }
@@ -129,8 +206,13 @@ final class MCPToolHandler: Sendable {
             throw MCPError.invalidParams("Multi-statement queries are not supported. Send one statement at a time.")
         }
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(
+            token: token,
+            tool: "execute_query",
+            connectionId: connectionId,
+            sql: query,
+            sessionId: sessionId
+        )
 
         let (databaseType, safeModeLevel, databaseName) = try await resolveConnectionMeta(connectionId)
 
@@ -150,11 +232,21 @@ final class MCPToolHandler: Sendable {
                     + "Use the confirm_destructive_operation tool instead."
             )
 
-        case .write, .safe:
-            if let token {
-                try checkTokenQueryTierPermission(token, tier: tier)
+        case .write:
+            if let token, !token.permissions.satisfies(.readWrite) {
+                throw MCPError.forbidden(
+                    "Token '\(token.name)' with '\(token.permissions.displayName)' permission cannot execute write queries"
+                )
             }
-            try await authGuard.checkQueryPermission(
+            try await authPolicy.checkSafeModeDialog(
+                sql: query,
+                connectionId: connectionId,
+                databaseType: databaseType,
+                safeModeLevel: safeModeLevel
+            )
+
+        case .safe:
+            try await authPolicy.checkSafeModeDialog(
                 sql: query,
                 connectionId: connectionId,
                 databaseType: databaseType,
@@ -167,29 +259,11 @@ final class MCPToolHandler: Sendable {
             connectionId: connectionId,
             databaseName: databaseName,
             maxRows: maxRows,
-            timeoutSeconds: timeoutSeconds
+            timeoutSeconds: timeoutSeconds,
+            token: token
         )
 
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
-    }
-
-    private func checkTokenQueryTierPermission(_ token: MCPAuthToken, tier: QueryTier) throws {
-        switch tier {
-        case .safe:
-            return
-        case .write:
-            guard token.permissions.satisfies(.readWrite) else {
-                throw MCPError.forbidden(
-                    "Token '\(token.name)' with '\(token.permissions.displayName)' permission cannot execute write queries"
-                )
-            }
-        case .destructive:
-            guard token.permissions == .fullAccess else {
-                throw MCPError.forbidden(
-                    "Token '\(token.name)' with '\(token.permissions.displayName)' permission cannot execute destructive queries"
-                )
-            }
-        }
     }
 
     private func handleConfirmDestructiveOperation(
@@ -213,8 +287,13 @@ final class MCPToolHandler: Sendable {
             )
         }
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(
+            token: token,
+            tool: "confirm_destructive_operation",
+            connectionId: connectionId,
+            sql: query,
+            sessionId: sessionId
+        )
 
         let (databaseType, safeModeLevel, databaseName) = try await resolveConnectionMeta(connectionId)
 
@@ -226,7 +305,7 @@ final class MCPToolHandler: Sendable {
             )
         }
 
-        try await authGuard.checkQueryPermission(
+        try await authPolicy.checkSafeModeDialog(
             sql: query,
             connectionId: connectionId,
             databaseType: databaseType,
@@ -241,7 +320,8 @@ final class MCPToolHandler: Sendable {
             connectionId: connectionId,
             databaseName: databaseName,
             maxRows: 0,
-            timeoutSeconds: timeoutSeconds
+            timeoutSeconds: timeoutSeconds,
+            token: token
         )
 
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
@@ -253,8 +333,7 @@ final class MCPToolHandler: Sendable {
         let database = optionalString(args, key: "database")
         let schema = optionalString(args, key: "schema")
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(token: token, tool: "list_tables", connectionId: connectionId, sessionId: sessionId)
 
         if let database {
             _ = try await bridge.switchDatabase(connectionId: connectionId, database: database)
@@ -272,8 +351,7 @@ final class MCPToolHandler: Sendable {
         let table = try requireString(args, key: "table")
         let schema = optionalString(args, key: "schema")
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(token: token, tool: "describe_table", connectionId: connectionId, sessionId: sessionId)
 
         let result = try await bridge.describeTable(connectionId: connectionId, table: table, schema: schema)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
@@ -281,8 +359,7 @@ final class MCPToolHandler: Sendable {
 
     private func handleListDatabases(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(token: token, tool: "list_databases", connectionId: connectionId, sessionId: sessionId)
         let result = try await bridge.listDatabases(connectionId: connectionId)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
     }
@@ -291,8 +368,7 @@ final class MCPToolHandler: Sendable {
         let connectionId = try requireUUID(args, key: "connection_id")
         let database = optionalString(args, key: "database")
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(token: token, tool: "list_schemas", connectionId: connectionId, sessionId: sessionId)
 
         if let database {
             _ = try await bridge.switchDatabase(connectionId: connectionId, database: database)
@@ -307,8 +383,7 @@ final class MCPToolHandler: Sendable {
         let table = try requireString(args, key: "table")
         let schema = optionalString(args, key: "schema")
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(token: token, tool: "get_table_ddl", connectionId: connectionId, sessionId: sessionId)
 
         let result = try await bridge.getTableDDL(connectionId: connectionId, table: table, schema: schema)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
@@ -330,14 +405,29 @@ final class MCPToolHandler: Sendable {
             throw MCPError.invalidParams("Either 'query' or 'tables' must be provided")
         }
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        if let tables {
+            for table in tables {
+                try Self.validateExportTableName(table)
+            }
+        }
 
+        if let outputPath {
+            _ = try Self.sandboxedDownloadsURL(for: outputPath)
+        }
+
+        try await authorize(
+            token: token,
+            tool: "export_data",
+            connectionId: connectionId,
+            sql: query,
+            sessionId: sessionId
+        )
+
+        let (databaseType, safeModeLevel, _) = try await resolveConnectionMeta(connectionId)
         var queries: [(label: String, sql: String)] = []
 
         if let query {
-            let (databaseType, safeModeLevel, _) = try await resolveConnectionMeta(connectionId)
-            try await authGuard.checkQueryPermission(
+            try await authPolicy.checkSafeModeDialog(
                 sql: query,
                 connectionId: connectionId,
                 databaseType: databaseType,
@@ -345,8 +435,17 @@ final class MCPToolHandler: Sendable {
             )
             queries.append((label: "query", sql: query))
         } else if let tables {
+            let quoteIdentifier = Self.identifierQuoter(for: databaseType)
             for table in tables {
-                queries.append((label: table, sql: "SELECT * FROM \(table) LIMIT \(maxRows)"))
+                let quoted = try Self.quoteQualifiedIdentifier(table, quoter: quoteIdentifier)
+                let sql = "SELECT * FROM \(quoted) LIMIT \(maxRows)"
+                try await authPolicy.checkSafeModeDialog(
+                    sql: sql,
+                    connectionId: connectionId,
+                    databaseType: databaseType,
+                    safeModeLevel: safeModeLevel
+                )
+                queries.append((label: table, sql: sql))
             }
         }
 
@@ -392,6 +491,8 @@ final class MCPToolHandler: Sendable {
         }
 
         if let outputPath {
+            let fileURL = try Self.sandboxedDownloadsURL(for: outputPath)
+
             let fullContent: String
             if exportResults.count == 1,
                let data = exportResults.first?["data"]?.stringValue
@@ -401,11 +502,10 @@ final class MCPToolHandler: Sendable {
                 fullContent = exportResults.compactMap { $0["data"]?.stringValue }.joined(separator: "\n\n")
             }
 
-            let fileURL = URL(fileURLWithPath: outputPath)
             try fullContent.write(to: fileURL, atomically: true, encoding: .utf8)
 
             let response: JSONValue = .object([
-                "path": .string(outputPath),
+                "path": .string(fileURL.path),
                 "rows_exported": .int(totalRowsExported)
             ])
             return MCPToolResult(content: [.text(encodeJSON(response))], isError: nil)
@@ -425,8 +525,7 @@ final class MCPToolHandler: Sendable {
         let connectionId = try requireUUID(args, key: "connection_id")
         let database = try requireString(args, key: "database")
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(token: token, tool: "switch_database", connectionId: connectionId, sessionId: sessionId)
 
         let result = try await bridge.switchDatabase(connectionId: connectionId, database: database)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
@@ -436,8 +535,7 @@ final class MCPToolHandler: Sendable {
         let connectionId = try requireUUID(args, key: "connection_id")
         let schema = try requireString(args, key: "schema")
 
-        if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authorize(token: token, tool: "switch_schema", connectionId: connectionId, sessionId: sessionId)
 
         let result = try await bridge.switchSchema(connectionId: connectionId, schema: schema)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
@@ -448,7 +546,8 @@ final class MCPToolHandler: Sendable {
         connectionId: UUID,
         databaseName: String,
         maxRows: Int,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        token: MCPAuthToken? = nil
     ) async throws -> JSONValue {
         let startTime = Date()
         do {
@@ -459,19 +558,29 @@ final class MCPToolHandler: Sendable {
                 timeoutSeconds: timeoutSeconds
             )
             let elapsed = Date().timeIntervalSince(startTime)
-            await authGuard.logQuery(
+            let rowCount = result["row_count"]?.intValue ?? 0
+            await authPolicy.logQuery(
                 sql: query,
                 connectionId: connectionId,
                 databaseName: databaseName,
                 executionTime: elapsed,
-                rowCount: result["row_count"]?.intValue ?? 0,
+                rowCount: rowCount,
                 wasSuccessful: true,
                 errorMessage: nil
+            )
+            MCPAuditLogger.logQueryExecuted(
+                tokenId: token?.id,
+                tokenName: token?.name,
+                connectionId: connectionId,
+                sql: query,
+                durationMs: Int(elapsed * 1_000),
+                rowCount: rowCount,
+                outcome: .success
             )
             return result
         } catch {
             let elapsed = Date().timeIntervalSince(startTime)
-            await authGuard.logQuery(
+            await authPolicy.logQuery(
                 sql: query,
                 connectionId: connectionId,
                 databaseName: databaseName,
@@ -480,11 +589,21 @@ final class MCPToolHandler: Sendable {
                 wasSuccessful: false,
                 errorMessage: error.localizedDescription
             )
+            MCPAuditLogger.logQueryExecuted(
+                tokenId: token?.id,
+                tokenName: token?.name,
+                connectionId: connectionId,
+                sql: query,
+                durationMs: Int(elapsed * 1_000),
+                rowCount: 0,
+                outcome: .error,
+                errorMessage: error.localizedDescription
+            )
             throw error
         }
     }
 
-    private func requireUUID(_ args: JSONValue?, key: String) throws -> UUID {
+    func requireUUID(_ args: JSONValue?, key: String) throws -> UUID {
         guard let value = args?[key]?.stringValue else {
             throw MCPError.invalidParams("Missing required parameter: \(key)")
         }
@@ -494,18 +613,18 @@ final class MCPToolHandler: Sendable {
         return uuid
     }
 
-    private func requireString(_ args: JSONValue?, key: String) throws -> String {
+    func requireString(_ args: JSONValue?, key: String) throws -> String {
         guard let value = args?[key]?.stringValue else {
             throw MCPError.invalidParams("Missing required parameter: \(key)")
         }
         return value
     }
 
-    private func optionalString(_ args: JSONValue?, key: String) -> String? {
+    func optionalString(_ args: JSONValue?, key: String) -> String? {
         args?[key]?.stringValue
     }
 
-    private func optionalInt(_ args: JSONValue?, key: String, default defaultValue: Int, clamp range: ClosedRange<Int>) -> Int {
+    func optionalInt(_ args: JSONValue?, key: String, default defaultValue: Int, clamp range: ClosedRange<Int>) -> Int {
         guard let value = args?[key]?.intValue else { return defaultValue }
         return min(max(value, range.lowerBound), range.upperBound)
     }
@@ -522,14 +641,60 @@ final class MCPToolHandler: Sendable {
 
     private func resolveConnectionMeta(_ connectionId: UUID) async throws -> (DatabaseType, SafeModeLevel, String) {
         try await MainActor.run {
-            guard let session = DatabaseManager.shared.activeSessions[connectionId] else {
+            switch DatabaseManager.shared.connectionState(connectionId) {
+            case .live(_, let session):
+                return (session.connection.type, session.connection.safeModeLevel, session.activeDatabase)
+            case .stored(let conn):
+                return (conn.type, conn.safeModeLevel, conn.database)
+            case .unknown:
                 throw MCPError.notConnected(connectionId)
             }
-            return (session.connection.type, session.connection.safeModeLevel, session.activeDatabase)
         }
     }
 
-    private func encodeJSON(_ value: JSONValue) -> String {
+    static func validateExportTableName(_ table: String) throws {
+        let pattern = "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$"
+        guard table.range(of: pattern, options: .regularExpression) != nil else {
+            throw MCPError.invalidParams(
+                "Invalid table name: '\(table)'. Allowed characters: letters, digits, underscore, and '.' for schema-qualified names."
+            )
+        }
+    }
+
+    static func identifierQuoter(for databaseType: DatabaseType) -> (String) -> String {
+        if let dialect = try? resolveSQLDialect(for: databaseType) {
+            return quoteIdentifierFromDialect(dialect)
+        }
+        return { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }
+    }
+
+    static func quoteQualifiedIdentifier(_ identifier: String, quoter: (String) -> String) throws -> String {
+        let segments = identifier.split(separator: ".", omittingEmptySubsequences: true)
+        guard !segments.isEmpty, segments.count == identifier.split(separator: ".", omittingEmptySubsequences: false).count else {
+            throw MCPError.invalidParams(
+                "Invalid qualified identifier: '\(identifier)'. Empty components are not allowed."
+            )
+        }
+        return segments.map { quoter(String($0)) }.joined(separator: ".")
+    }
+
+    static func sandboxedDownloadsURL(for path: String) throws -> URL {
+        guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            throw MCPError.invalidParams("Downloads directory is not available")
+        }
+        let downloadsRoot = downloads.standardizedFileURL.resolvingSymlinksInPath().path
+        let candidate = path.hasPrefix("/") ? URL(fileURLWithPath: path) : downloads.appendingPathComponent(path)
+        let resolvedPath = candidate.standardizedFileURL.resolvingSymlinksInPath().path
+        let prefix = downloadsRoot.hasSuffix("/") ? downloadsRoot : downloadsRoot + "/"
+        guard resolvedPath == downloadsRoot || resolvedPath.hasPrefix(prefix) else {
+            throw MCPError.invalidParams(
+                "output_path must be inside the Downloads directory (\(downloadsRoot))"
+            )
+        }
+        return URL(fileURLWithPath: resolvedPath)
+    }
+
+    func encodeJSON(_ value: JSONValue) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(value),

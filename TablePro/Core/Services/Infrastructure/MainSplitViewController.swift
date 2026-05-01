@@ -45,7 +45,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Observers
 
     private var connectionStatusObserver: NSObjectProtocol?
-    private var newConnectionObserver: NSObjectProtocol?
 
     // MARK: - Init
 
@@ -199,15 +198,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 self?.handleConnectionStatusChange()
             }
         }
-        newConnectionObserver = NotificationCenter.default.addObserver(
-            forName: .newConnection,
-            object: nil,
-            queue: .main
-        ) { _ in
-            MainActor.assumeIsolated {
-                NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
-            }
-        }
         handleConnectionStatusChange()
     }
 
@@ -215,10 +205,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         if let observer = connectionStatusObserver {
             NotificationCenter.default.removeObserver(observer)
             connectionStatusObserver = nil
-        }
-        if let observer = newConnectionObserver {
-            NotificationCenter.default.removeObserver(observer)
-            newConnectionObserver = nil
         }
     }
 
@@ -320,7 +306,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private func buildSidebarView() -> some View {
         if let currentSession, let sessionState {
             SidebarView(
-                tables: sessionTablesBinding,
                 sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
                 onDoubleClick: { [weak self] table in
                     guard let coordinator = self?.sessionState?.coordinator else { return }
@@ -358,7 +343,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 connection: currentSession.connection,
                 payload: payload,
                 windowTitle: windowTitleBinding,
-                tables: sessionTablesBinding,
                 sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
                 pendingTruncates: sessionPendingTruncatesBinding,
                 pendingDeletes: sessionPendingDeletesBinding,
@@ -417,10 +401,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 }
             }
         )
-    }
-
-    private var sessionTablesBinding: Binding<[TableInfo]> {
-        createSessionBinding(get: { $0.tables }, set: { $0.tables = $1 }, defaultValue: [])
     }
 
     private var sessionPendingTruncatesBinding: Binding<Set<String>> {

@@ -195,6 +195,9 @@ final class ConnectionToolbarState {
     /// Whether the SQL review popover is showing
     var showSQLReviewPopover: Bool = false
 
+    /// Whether the connection switcher popover is showing
+    var showConnectionSwitcher: Bool = false
+
     /// SQL statements to display in the review popover
     var previewStatements: [String] = []
 

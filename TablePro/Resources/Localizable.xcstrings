@@ -2669,6 +2669,9 @@
         }
       }
     },
+    "1 day" : {
+
+    },
     "1 of %lld conflicts" : {
       "localizations" : {
         "tr" : {
@@ -3457,6 +3460,9 @@
         }
       }
     },
+    "Access Level" : {
+
+    },
     "Account" : {
       "localizations" : {
         "tr" : {
@@ -3801,6 +3807,9 @@
           }
         }
       }
+    },
+    "Activity Log" : {
+
     },
     "Actual" : {
       "localizations" : {
@@ -4302,6 +4311,9 @@
         }
       }
     },
+    "Administration" : {
+
+    },
     "Advanced" : {
 
     },
@@ -4682,6 +4694,9 @@
         }
       }
     },
+    "All categories" : {
+
+    },
     "All columns" : {
       "localizations" : {
         "tr" : {
@@ -4842,6 +4857,9 @@
         }
       }
     },
+    "All time" : {
+
+    },
     "All Time" : {
       "localizations" : {
         "tr" : {
@@ -4864,6 +4882,9 @@
         }
       }
     },
+    "All tokens" : {
+
+    },
     "Allow" : {
       "localizations" : {
         "tr" : {
@@ -4885,6 +4906,9 @@
           }
         }
       }
+    },
+    "Allow %@ to access TablePro?" : {
+
     },
     "Allow AI Access" : {
       "localizations" : {
@@ -4909,6 +4933,9 @@
       }
     },
     "Allow remote connections" : {
+
+    },
+    "Allowed Connections" : {
 
     },
     "Also handles" : {
@@ -5051,6 +5078,9 @@
     "Always Show" : {
 
     },
+    "An external app is asking for an API token. Review the permissions before approving." : {
+
+    },
     "An external link wants to add a database connection:\n\nName: %@\n%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5102,7 +5132,18 @@
         }
       }
     },
+    "An external link wants to open a query on \"%@\":\n\n%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "An external link wants to open a query on \"%1$@\":\n\n%2$@"
+          }
+        }
+      }
+    },
     "An external link wants to open a query on connection \"%@\":\n\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5630,6 +5671,12 @@
           }
         }
       }
+    },
+    "Approve" : {
+
+    },
+    "Approve Integration" : {
+
     },
     "Are you sure you want to cancel the running query for this session?" : {
       "localizations" : {
@@ -6677,6 +6724,9 @@
         }
       }
     },
+    "Blocked" : {
+
+    },
     "Blue" : {
       "localizations" : {
         "tr" : {
@@ -7190,6 +7240,9 @@
           }
         }
       }
+    },
+    "Cancelled by user." : {
+
     },
     "Cannot connect to Ollama at %@. Is Ollama running?" : {
       "localizations" : {
@@ -9676,6 +9729,9 @@
         }
       }
     },
+    "Connection is read-only for external clients" : {
+
+    },
     "Connection lost" : {
       "localizations" : {
         "tr" : {
@@ -9720,7 +9776,11 @@
         }
       }
     },
+    "Connection not found" : {
+
+    },
     "Connection Not Found" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -9923,6 +9983,9 @@
         }
       }
     },
+    "Connection: %@" : {
+
+    },
     "Connections" : {
       "localizations" : {
         "tr" : {
@@ -10077,6 +10140,9 @@
           }
         }
       }
+    },
+    "Controls how external clients (Raycast, Cursor, Claude Desktop) access this connection. Tokens cannot exceed this level even with full-access scope." : {
+
     },
     "Conversation History" : {
       "extractionState" : "stale",
@@ -10835,6 +10901,12 @@
       }
     },
     "Could not generate SQL for changes." : {
+
+    },
+    "Could Not Open File" : {
+
+    },
+    "Could not parse database URL: %@" : {
 
     },
     "Could not reach the license server. Check your internet connection and try again." : {
@@ -13512,6 +13584,9 @@
           }
         }
       }
+    },
+    "Denied" : {
+
     },
     "Deny" : {
       "localizations" : {
@@ -17214,6 +17289,12 @@
         }
       }
     },
+    "External Access" : {
+
+    },
+    "External access is disabled for this connection" : {
+
+    },
     "Extra Large" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -19408,6 +19489,9 @@
       }
     },
     "Full Access" : {
+
+    },
+    "Full access including destructive DDL after explicit confirmation." : {
 
     },
     "Function" : {
@@ -21826,6 +21910,9 @@
         }
       }
     },
+    "Integrations" : {
+
+    },
     "Interactive Data Grid" : {
       "localizations" : {
         "tr" : {
@@ -22162,6 +22249,9 @@
           }
         }
       }
+    },
+    "Invalid UUID: %@" : {
+
     },
     "Invisibles" : {
       "localizations" : {
@@ -22847,6 +22937,15 @@
           }
         }
       }
+    },
+    "Last 7 days" : {
+
+    },
+    "Last 24 hours" : {
+
+    },
+    "Last 30 days" : {
+
     },
     "Last query execution summary" : {
       "localizations" : {
@@ -24081,6 +24180,9 @@
         }
       }
     },
+    "Malformed deep link path: %@" : {
+
+    },
     "Manage Connections" : {
       "localizations" : {
         "tr" : {
@@ -24482,9 +24584,6 @@
         }
       }
     },
-    "MCP" : {
-
-    },
     "MCP Access Request" : {
       "localizations" : {
         "tr" : {
@@ -24860,6 +24959,9 @@
           }
         }
       }
+    },
+    "Missing required parameter: %@" : {
+
     },
     "Missing value for parameter: %@" : {
 
@@ -26115,6 +26217,9 @@
         }
       }
     },
+    "No activity yet" : {
+
+    },
     "No AI provider configured. Go to Settings > AI to add one." : {
       "localizations" : {
         "tr" : {
@@ -26490,6 +26595,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚无外键"
+          }
+        }
+      }
+    },
+    "No free port in range %d-%d" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No free port in range %1$d-%2$d"
           }
         }
       }
@@ -27119,6 +27234,7 @@
       }
     },
     "No saved connection named \"%@\"." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27139,6 +27255,9 @@
           }
         }
       }
+    },
+    "No saved connection with ID \"%@\"." : {
+
     },
     "No saved connections" : {
 
@@ -29209,6 +29328,9 @@
           }
         }
       }
+    },
+    "Pairing Failed" : {
+
     },
     "Panel State" : {
       "localizations" : {
@@ -32120,6 +32242,12 @@
         }
       }
     },
+    "Range" : {
+
+    },
+    "Rate limited" : {
+
+    },
     "Rate limited. Please try again later." : {
       "localizations" : {
         "tr" : {
@@ -32281,6 +32409,12 @@
         }
       }
     },
+    "Read schema and run any non-destructive query, including INSERT, UPDATE, and DELETE." : {
+
+    },
+    "Read schema and run SELECT queries." : {
+
+    },
     "Read-only" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -32370,6 +32504,9 @@
           }
         }
       }
+    },
+    "Read-Write" : {
+
     },
     "Reading connections..." : {
       "localizations" : {
@@ -33674,6 +33811,9 @@
           }
         }
       }
+    },
+    "Resource" : {
+
     },
     "Restart TablePro for the language change to take full effect." : {
       "localizations" : {
@@ -37711,6 +37851,9 @@
         }
       }
     },
+    "SQL dialect for %@ is not available. The plugin may not be installed or loaded." : {
+
+    },
     "SQL Editor" : {
       "localizations" : {
         "tr" : {
@@ -37795,6 +37938,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SQL INSERT 语句。用于在其他数据库中重建数据。"
+          }
+        }
+      }
+    },
+    "SQL is too long: %d characters (limit %d)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SQL is too long: %1$d characters (limit %2$d)"
           }
         }
       }
@@ -42196,10 +42349,26 @@
     "Token" : {
 
     },
+    "Token '%@' with permission '%@' cannot access '%@'" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Token '%1$@' with permission '%2$@' cannot access '%3$@'"
+          }
+        }
+      }
+    },
+    "Token does not have access to this connection" : {
+
+    },
     "Token Name" : {
 
     },
     "Too many submissions. Please try again later." : {
+
+    },
+    "Tool" : {
 
     },
     "Toolbar" : {
@@ -43067,6 +43236,9 @@
         }
       }
     },
+    "Unknown deep link host: %@" : {
+
+    },
     "Unknown error" : {
       "localizations" : {
         "tr" : {
@@ -43110,6 +43282,9 @@
           }
         }
       }
+    },
+    "Unknown URL scheme: %@" : {
+
     },
     "Unlicensed" : {
       "localizations" : {
@@ -43244,6 +43419,9 @@
         }
       }
     },
+    "Unsupported database type: %@" : {
+
+    },
     "Unsupported encryption version %d" : {
       "localizations" : {
         "tr" : {
@@ -43310,6 +43488,9 @@
           }
         }
       }
+    },
+    "Unsupported intent: %@" : {
+
     },
     "Unsupported MongoDB method: %@" : {
       "extractionState" : "stale",

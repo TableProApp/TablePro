@@ -49,7 +49,7 @@ extension MainContentCoordinator {
 
         // During database switch, update the existing tab in-place instead of
         // opening a new native window tab.
-        if sidebarLoadingState == .loading {
+        if case .loading = SchemaService.shared.state(for: connectionId) {
             if tabManager.tabs.isEmpty {
                 do {
                     try tabManager.addTableTab(
@@ -65,14 +65,18 @@ extension MainContentCoordinator {
         }
 
         // Check if another native window tab already has this table open — switch to it
-        if let keyWindow = NSApp.keyWindow {
-            let ownWindows = Set(WindowLifecycleMonitor.shared.windows(for: connectionId).map { ObjectIdentifier($0) })
-            let tabbedWindows = keyWindow.tabbedWindows ?? [keyWindow]
-            for window in tabbedWindows
-                where window.title == tableName && ownWindows.contains(ObjectIdentifier(window)) {
-                window.makeKeyAndOrderFront(nil)
-                return
+        for sibling in MainContentCoordinator.allActiveCoordinators()
+            where sibling !== self && sibling.connectionId == connectionId {
+            let hasMatch = sibling.tabManager.tabs.contains { tab in
+                tab.tabType == .table
+                    && tab.tableContext.tableName == tableName
+                    && tab.tableContext.databaseName == currentDatabase
             }
+            guard hasMatch,
+                  let windowId = sibling.windowId,
+                  let window = WindowLifecycleMonitor.shared.window(for: windowId) else { continue }
+            window.makeKeyAndOrderFront(nil)
+            return
         }
 
         // If no tabs exist (empty state), add a table tab directly.
@@ -401,7 +405,6 @@ extension MainContentCoordinator {
 
     /// Switch to a different database (called from database switcher)
     func switchDatabase(to database: String) async {
-        sidebarLoadingState = .loading
         filterStateManager.clearAll()
         let previousDatabase = toolbarState.databaseName
         toolbarState.databaseName = database
@@ -414,14 +417,11 @@ extension MainContentCoordinator {
             tableRowsStore.tearDown()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
-            DatabaseManager.shared.updateSession(connectionId) { session in
-                session.tables = []
-            }
+            await SchemaService.shared.invalidate(connectionId: connectionId)
 
             await refreshTables()
         } catch {
             toolbarState.databaseName = previousDatabase
-            sidebarLoadingState = .error(error.localizedDescription)
 
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
@@ -436,7 +436,6 @@ extension MainContentCoordinator {
     func switchSchema(to schema: String) async {
         guard PluginManager.shared.supportsSchemaSwitching(for: connection.type) else { return }
 
-        sidebarLoadingState = .loading
         filterStateManager.clearAll()
         let previousSchema = toolbarState.databaseName
         toolbarState.databaseName = schema
@@ -449,9 +448,7 @@ extension MainContentCoordinator {
             tableRowsStore.tearDown()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
-            DatabaseManager.shared.updateSession(connectionId) { session in
-                session.tables = []
-            }
+            await SchemaService.shared.invalidate(connectionId: connectionId)
 
             await refreshTables()
         } catch {

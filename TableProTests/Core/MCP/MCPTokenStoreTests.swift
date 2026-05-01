@@ -5,8 +5,6 @@ import Testing
 
 @Suite("MCP Token Store")
 struct MCPTokenStoreTests {
-    // MARK: - Helpers
-
     private func makeStore() -> MCPTokenStore {
         MCPTokenStore()
     }
@@ -29,8 +27,6 @@ struct MCPTokenStoreTests {
             isActive: isActive
         )
     }
-
-    // MARK: - TokenPermissions
 
     @Test("readOnly satisfies readOnly")
     func readOnlySatisfiesReadOnly() {
@@ -84,8 +80,6 @@ struct MCPTokenStoreTests {
         #expect(TokenPermissions.fullAccess.id == "fullAccess")
     }
 
-    // MARK: - MCPAuthToken
-
     @Test("isExpired returns false when expiresAt is nil")
     func isExpiredNilExpiresAt() {
         let token = makeToken(expiresAt: nil)
@@ -121,8 +115,6 @@ struct MCPTokenStoreTests {
         let token = makeToken(isActive: false, expiresAt: nil)
         #expect(token.isEffectivelyActive == false)
     }
-
-    // MARK: - MCPTokenStore
 
     @Test("generate creates token with tp_ prefix")
     func generateCreatesTokenWithPrefix() async {

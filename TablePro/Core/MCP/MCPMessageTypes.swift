@@ -5,8 +5,6 @@
 
 import Foundation
 
-// MARK: - JSONValue
-
 enum JSONValue: Codable, Equatable, Sendable {
     case null
     case bool(Bool)
@@ -78,8 +76,6 @@ enum JSONValue: Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - JSONValue Literals
-
 extension JSONValue: ExpressibleByStringLiteral {
     init(stringLiteral value: String) {
         self = .string(value)
@@ -115,8 +111,6 @@ extension JSONValue: ExpressibleByDictionaryLiteral {
         self = .object(Dictionary(uniqueKeysWithValues: elements))
     }
 }
-
-// MARK: - JSONValue Accessors
 
 extension JSONValue {
     subscript(key: String) -> JSONValue? {
@@ -161,8 +155,6 @@ extension JSONValue {
     }
 }
 
-// MARK: - JSONRPCId
-
 enum JSONRPCId: Codable, Equatable, Hashable, Sendable {
     case string(String)
     case int(Int)
@@ -193,8 +185,6 @@ enum JSONRPCId: Codable, Equatable, Hashable, Sendable {
         }
     }
 }
-
-// MARK: - JSON-RPC 2.0 Base Types
 
 struct JSONRPCRequest: Codable, Sendable {
     let jsonrpc: String
@@ -273,8 +263,6 @@ struct JSONRPCErrorDetail: Codable, Sendable {
     let data: JSONValue?
 }
 
-// MARK: - MCPError
-
 enum MCPError: Error, Sendable {
     case parseError
     case invalidRequest(String)
@@ -286,6 +274,9 @@ enum MCPError: Error, Sendable {
     case timeout(String, context: [String: String]? = nil)
     case resultTooLarge
     case serverDisabled
+    case notFound(String)
+    case expired(String)
+    case userCancelled
 
     var code: Int {
         switch self {
@@ -299,6 +290,9 @@ enum MCPError: Error, Sendable {
         case .timeout: -32_002
         case .resultTooLarge: -32_003
         case .serverDisabled: -32_004
+        case .notFound: -32_005
+        case .expired: -32_006
+        case .userCancelled: -32_007
         }
     }
 
@@ -324,6 +318,12 @@ enum MCPError: Error, Sendable {
             "Result too large"
         case .serverDisabled:
             "MCP server is disabled"
+        case .notFound(let detail):
+            "Not found: \(detail)"
+        case .expired(let detail):
+            "Expired: \(detail)"
+        case .userCancelled:
+            "User cancelled"
         }
     }
 
@@ -349,9 +349,16 @@ enum MCPError: Error, Sendable {
             error: JSONRPCErrorDetail(code: code, message: message, data: contextData)
         )
     }
+
+    var isUserCancelled: Bool {
+        if case .userCancelled = self { return true }
+        return false
+    }
 }
 
-// MARK: - MCP Initialize
+extension MCPError: LocalizedError {
+    var errorDescription: String? { message }
+}
 
 struct MCPClientInfo: Codable, Sendable {
     let name: String
@@ -383,8 +390,6 @@ struct MCPServerInfo: Codable, Sendable {
     let version: String
 }
 
-// MARK: - MCP Tools
-
 struct MCPToolDefinition: Codable, Sendable {
     let name: String
     let description: String
@@ -404,8 +409,6 @@ struct MCPContent: Codable, Sendable {
         MCPContent(type: "text", text: value)
     }
 }
-
-// MARK: - MCP Resources
 
 struct MCPResourceDefinition: Codable, Sendable {
     let uri: String

@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: Built-in AI for SQL: chat, inline suggestions, explain, optimize, fix-error. Multi-provider.
+description: "Built-in AI for SQL: chat, inline suggestions, explain, optimize, fix-error. Multi-provider."
 ---
 
 # AI Assistant
@@ -191,3 +191,12 @@ Set a per-connection AI policy in the connection form: **Use Default**, **Always
     alt="Per-connection AI policy"
   />
 </Frame>
+
+### External AI clients
+
+External clients (Raycast, Cursor, Claude Desktop, and other MCP clients) call the same AI tools through the [External API](/external-api). Two per-connection settings gate them:
+
+- **AI policy** decides whether the connection is reachable by AI clients at all. `Never` blocks every external AI tool call against this connection.
+- **External Access** caps the level: `blocked`, `readOnly` (default), or `readWrite`. A token's effective permission is `MIN(token.scope, connection.externalAccess)`. Set this in the connection form's **Advanced** tab.
+
+See [Tokens](/external-api/tokens) for the scope model.

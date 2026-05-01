@@ -1,0 +1,113 @@
+---
+title: MCP Resources
+description: Read-only resources exposed by the MCP server
+---
+
+# MCP Resources
+
+Resources are read-only views of TablePro state. AI clients use them to discover what is available before calling tools. Every resource is scope-gated the same way as tools and respects the per-connection allowlist.
+
+URIs use the `tablepro://` scheme inside the MCP transport. Do not confuse them with shell-level [URL scheme deep links](/external-api/url-scheme).
+
+## `tablepro://connections`
+
+All saved connections with their current session state.
+
+**Returns**:
+
+```json
+{
+  "connections": [
+    {
+      "id": "9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1",
+      "name": "Production",
+      "type": "PostgreSQL",
+      "host": "db.example.com",
+      "port": 5432,
+      "database": "app",
+      "username": "app",
+      "is_connected": false,
+      "ai_policy": "askEachTime",
+      "safe_mode": "silent"
+    }
+  ]
+}
+```
+
+`database` reflects the active session database when connected, otherwise the saved default. `type` uses display casing (`MySQL`, `PostgreSQL`, `SQLite`, etc.). `safe_mode` is one of `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, `readOnly`. `ai_policy` is one of `askEachTime`, `alwaysAllow`, `never`.
+
+Connections with `externalAccess: blocked` are omitted. The envelope matches the `list_connections` tool.
+
+**Scope**: `readOnly`.
+
+## `tablepro://connections/{id}/schema`
+
+Tables and columns visible on the current connection session.
+
+**Path parameter**: `id` is the connection UUID.
+
+**Returns**:
+
+```json
+{
+  "tables": [
+    {
+      "name": "users",
+      "type": "table",
+      "columns": [
+        { "name": "id", "data_type": "uuid", "is_nullable": false, "is_primary_key": true },
+        { "name": "email", "data_type": "text", "is_nullable": false, "is_primary_key": false }
+      ]
+    }
+  ]
+}
+```
+
+The response is flat: tables for the active database/schema only. To switch context, call the `switch_database` or `switch_schema` tool first. `type` matches the underlying `TableType` raw value (for example `table`, `view`).
+
+Capped at 100 tables. When more exist, the response also includes `truncated: true` and `total_tables: <count>`. For larger schemas, page through `list_tables` instead.
+
+**Scope**: `readOnly`.
+
+## `tablepro://connections/{id}/history`
+
+Recent query history for a connection.
+
+**Path parameter**: `id` is the connection UUID.
+
+**Query parameters**:
+
+| Parameter | Description |
+|-----------|-------------|
+| `limit` | 1-500. Default 50. |
+| `search` | Full-text query string. |
+| `date_filter` | `today`, `thisWeek`, or `thisMonth`. Anything else is treated as no date filter. |
+
+**Returns**:
+
+```json
+{
+  "history": [
+    {
+      "id": "9b2d3c5a-...",
+      "query": "SELECT * FROM users WHERE active = true",
+      "database_name": "app",
+      "executed_at": "2026-04-26T10:14:22Z",
+      "execution_time_ms": 18.4,
+      "row_count": 142,
+      "was_successful": true
+    }
+  ]
+}
+```
+
+`executed_at` is an ISO 8601 timestamp. `execution_time_ms` is a double in milliseconds. `error_message` is included when `was_successful` is false.
+
+**Scope**: `readOnly`.
+
+## Errors
+
+| Code | Meaning |
+|------|---------|
+| `403` | Token allowlist rejects the connection, or `externalAccess` is `blocked`. |
+| `404` | Connection not found. |

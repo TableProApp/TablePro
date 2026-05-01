@@ -13,34 +13,48 @@ struct DeeplinkHandlerTests {
 
     // MARK: - Connect Actions
 
-    @Test("Connect action with simple name")
-    func testConnectSimpleName() {
-        let url = URL(string: "tablepro://connect/Production")!
+    private static let sampleId = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+
+    @Test("Connect action with UUID")
+    func testConnectByUUID() {
+        let url = URL(string: "tablepro://connect/\(Self.sampleId.uuidString)")!
         let action = DeeplinkHandler.parse(url)
-        if case .connect(let name) = action {
-            #expect(name == "Production")
+        if case .connect(let connectionId) = action {
+            #expect(connectionId == Self.sampleId)
         } else {
             Issue.record("Expected .connect, got \(String(describing: action))")
         }
     }
 
-    @Test("Connect action with percent-encoded name")
-    func testConnectPercentEncodedName() {
-        let url = URL(string: "tablepro://connect/My%20DB")!
-        let action = DeeplinkHandler.parse(url)
-        if case .connect(let name) = action {
-            #expect(name == "My DB")
+    @Test("Connect action with non-UUID first segment returns nil")
+    func testConnectNonUUIDReturnsNil() {
+        let url = URL(string: "tablepro://connect/Production")!
+        #expect(DeeplinkHandler.parse(url) == nil)
+    }
+
+    @Test("Connect action with empty path returns nil")
+    func testConnectEmptyPathReturnsNil() {
+        let url = URL(string: "tablepro://connect/")!
+        #expect(DeeplinkHandler.parse(url) == nil)
+    }
+
+    @Test("Connect action accepts lowercase UUID")
+    func testConnectLowercaseUUID() {
+        let id = UUID()
+        let url = URL(string: "tablepro://connect/\(id.uuidString.lowercased())")!
+        if case .connect(let parsed) = DeeplinkHandler.parse(url) {
+            #expect(parsed == id)
         } else {
-            Issue.record("Expected .connect, got \(String(describing: action))")
+            Issue.record("Expected .connect for lowercase UUID")
         }
     }
 
     @Test("Open table without database")
     func testOpenTableWithoutDatabase() {
-        let url = URL(string: "tablepro://connect/Prod/table/users")!
+        let url = URL(string: "tablepro://connect/\(Self.sampleId.uuidString)/table/users")!
         let action = DeeplinkHandler.parse(url)
-        if case .openTable(let connectionName, let tableName, let databaseName) = action {
-            #expect(connectionName == "Prod")
+        if case .openTable(let connectionId, let tableName, let databaseName) = action {
+            #expect(connectionId == Self.sampleId)
             #expect(tableName == "users")
             #expect(databaseName == nil)
         } else {
@@ -50,10 +64,10 @@ struct DeeplinkHandlerTests {
 
     @Test("Open table with database")
     func testOpenTableWithDatabase() {
-        let url = URL(string: "tablepro://connect/Prod/database/analytics/table/events")!
+        let url = URL(string: "tablepro://connect/\(Self.sampleId.uuidString)/database/analytics/table/events")!
         let action = DeeplinkHandler.parse(url)
-        if case .openTable(let connectionName, let tableName, let databaseName) = action {
-            #expect(connectionName == "Prod")
+        if case .openTable(let connectionId, let tableName, let databaseName) = action {
+            #expect(connectionId == Self.sampleId)
             #expect(tableName == "events")
             #expect(databaseName == "analytics")
         } else {
@@ -63,10 +77,10 @@ struct DeeplinkHandlerTests {
 
     @Test("Open query with decoded SQL")
     func testOpenQueryDecodedSQL() {
-        let url = URL(string: "tablepro://connect/Prod/query?sql=SELECT%20*%20FROM%20users")!
+        let url = URL(string: "tablepro://connect/\(Self.sampleId.uuidString)/query?sql=SELECT%20*%20FROM%20users")!
         let action = DeeplinkHandler.parse(url)
-        if case .openQuery(let connectionName, let sql) = action {
-            #expect(connectionName == "Prod")
+        if case .openQuery(let connectionId, let sql) = action {
+            #expect(connectionId == Self.sampleId)
             #expect(sql == "SELECT * FROM users")
         } else {
             Issue.record("Expected .openQuery, got \(String(describing: action))")
@@ -75,14 +89,14 @@ struct DeeplinkHandlerTests {
 
     @Test("Open query with empty SQL returns nil")
     func testOpenQueryEmptySQLReturnsNil() {
-        let url = URL(string: "tablepro://connect/Prod/query?sql=")!
+        let url = URL(string: "tablepro://connect/\(Self.sampleId.uuidString)/query?sql=")!
         let action = DeeplinkHandler.parse(url)
         #expect(action == nil)
     }
 
     @Test("Unrecognized path returns nil")
     func testUnrecognizedPathReturnsNil() {
-        let url = URL(string: "tablepro://connect/Prod/unknown/path")!
+        let url = URL(string: "tablepro://connect/\(Self.sampleId.uuidString)/unknown/path")!
         let action = DeeplinkHandler.parse(url)
         #expect(action == nil)
     }
@@ -99,6 +113,86 @@ struct DeeplinkHandlerTests {
         let url = URL(string: "https://example.com")!
         let action = DeeplinkHandler.parse(url)
         #expect(action == nil)
+    }
+
+    @Test("Malformed UUID with extra characters returns nil")
+    func testMalformedUUIDReturnsNil() {
+        let url = URL(string: "tablepro://connect/not-a-real-uuid-1234")!
+        #expect(DeeplinkHandler.parse(url) == nil)
+    }
+
+    // MARK: - Integrations Actions
+
+    @Test("Pair action parses required params")
+    func testPairAction() {
+        let url = URL(string: "tablepro://integrations/pair?client=Raycast&challenge=abc123&redirect=raycast://callback&scopes=readOnly")!
+        if case .pairIntegration(let request) = DeeplinkHandler.parse(url) {
+            #expect(request.clientName == "Raycast")
+            #expect(request.challenge == "abc123")
+            #expect(request.redirectURL.absoluteString == "raycast://callback")
+            #expect(request.requestedScopes == "readOnly")
+            #expect(request.requestedConnectionIds == nil)
+        } else {
+            Issue.record("Expected .pairIntegration")
+        }
+    }
+
+    @Test("Pair action parses connection-ids CSV")
+    func testPairActionConnectionIds() {
+        let id1 = UUID()
+        let id2 = UUID()
+        let csv = "\(id1.uuidString),\(id2.uuidString)"
+        let url = URL(string: "tablepro://integrations/pair?client=Raycast&challenge=abc&redirect=raycast://cb&connection-ids=\(csv)")!
+        if case .pairIntegration(let request) = DeeplinkHandler.parse(url) {
+            #expect(request.requestedConnectionIds == Set([id1, id2]))
+        } else {
+            Issue.record("Expected .pairIntegration with parsed UUIDs")
+        }
+    }
+
+    @Test("Pair missing client returns nil")
+    func testPairMissingClientReturnsNil() {
+        let url = URL(string: "tablepro://integrations/pair?challenge=abc&redirect=raycast://cb")!
+        #expect(DeeplinkHandler.parse(url) == nil)
+    }
+
+    @Test("Pair missing challenge returns nil")
+    func testPairMissingChallengeReturnsNil() {
+        let url = URL(string: "tablepro://integrations/pair?client=Raycast&redirect=raycast://cb")!
+        #expect(DeeplinkHandler.parse(url) == nil)
+    }
+
+    @Test("Exchange action parses code and verifier")
+    func testExchangeAction() {
+        let url = URL(string: "tablepro://integrations/exchange?code=abc-123&verifier=xyz-456")!
+        if case .exchangePairing(let exchange) = DeeplinkHandler.parse(url) {
+            #expect(exchange.code == "abc-123")
+            #expect(exchange.verifier == "xyz-456")
+        } else {
+            Issue.record("Expected .exchangePairing")
+        }
+    }
+
+    @Test("Exchange missing verifier returns nil")
+    func testExchangeMissingVerifierReturnsNil() {
+        let url = URL(string: "tablepro://integrations/exchange?code=abc")!
+        #expect(DeeplinkHandler.parse(url) == nil)
+    }
+
+    @Test("Start MCP action parses without params")
+    func testStartMCPAction() {
+        let url = URL(string: "tablepro://integrations/start-mcp")!
+        if case .startMCP = DeeplinkHandler.parse(url) {
+            // matched
+        } else {
+            Issue.record("Expected .startMCP")
+        }
+    }
+
+    @Test("Unknown integrations action returns nil")
+    func testUnknownIntegrationsAction() {
+        let url = URL(string: "tablepro://integrations/unknown")!
+        #expect(DeeplinkHandler.parse(url) == nil)
     }
 
     // MARK: - Import — Basic Fields

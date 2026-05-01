@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 5A32BBFA2F9D5EAB00BAEB5F /* X509 */; };
-		5A32BC0B2F9D659100BAEB5F /* mcp-server in CopyFiles */ = {isa = PBXBuildFile; fileRef = 5A32BC002F9D5F1300BAEB5F /* mcp-server */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		5A32BC0B2F9D659100BAEB5F /* tablepro-mcp in CopyFiles */ = {isa = PBXBuildFile; fileRef = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */; };
 		5A3A69BA2F976F38000AC5B2 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B92F976F38000AC5B2 /* GhosttyTheme */; };
 		5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -75,6 +75,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		5A32BC0C2F9D659200BAEB5F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A32BBFF2F9D5F1300BAEB5F;
+			remoteInfo = "tablepro-mcp";
+		};
 		5A860000B00000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
@@ -219,7 +226,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 6;
 			files = (
-				5A32BC0B2F9D659100BAEB5F /* mcp-server in CopyFiles */,
+				5A32BC0B2F9D659100BAEB5F /* tablepro-mcp in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -259,7 +266,7 @@
 
 /* Begin PBXFileReference section */
 		5A1091C72EF17EDC0055EA7C /* TablePro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TablePro.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		5A32BC002F9D5F1300BAEB5F /* mcp-server */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "mcp-server"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "tablepro-mcp"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LibSQLDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A860000100000000 /* TableProPluginKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TableProPluginKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A861000100000000 /* OracleDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OracleDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -311,8 +318,8 @@
 		5A32BC082F9D5FC900BAEB5F /* Exceptions for "TablePro" folder in "mcp-server" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				MCPBridge/main.swift,
-				MCPBridge/MCPBridgeProxy.swift,
+				CLI/main.swift,
+				CLI/MCPBridgeProxy.swift,
 			);
 			target = 5A32BBFF2F9D5F1300BAEB5F /* mcp-server */;
 		};
@@ -452,9 +459,9 @@
 		5AF312BE2F36FF7500E86682 /* Exceptions for "TablePro" folder in "TablePro" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				CLI/main.swift,
+				CLI/MCPBridgeProxy.swift,
 				Info.plist,
-				MCPBridge/main.swift,
-				MCPBridge/MCPBridgeProxy.swift,
 			);
 			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
 		};
@@ -913,7 +920,7 @@
 				5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */,
 				5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */,
 				5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */,
-				5A32BC002F9D5F1300BAEB5F /* mcp-server */,
+				5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -994,6 +1001,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				5A32BC0D2F9D659200BAEB5F /* PBXTargetDependency */,
 				5A860000C00000000 /* PBXTargetDependency */,
 				5A861000C00000000 /* PBXTargetDependency */,
 				5A862000C00000000 /* PBXTargetDependency */,
@@ -1050,7 +1058,7 @@
 			packageProductDependencies = (
 			);
 			productName = "mcp-server";
-			productReference = 5A32BC002F9D5F1300BAEB5F /* mcp-server */;
+			productReference = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */;
 			productType = "com.apple.product-type.tool";
 		};
 		5A3BE6F72F97DA8100611C1F /* LibSQLDriverPlugin */ = {
@@ -2024,6 +2032,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		5A32BC0D2F9D659200BAEB5F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A32BBFF2F9D5F1300BAEB5F /* mcp-server */;
+			targetProxy = 5A32BC0C2F9D659200BAEB5F /* PBXContainerItemProxy */;
+		};
 		5A860000C00000000 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 5A860000000000000 /* TableProPluginKit */;
@@ -2402,7 +2415,8 @@
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_HARDENED_RUNTIME = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.TablePro.tablepro-mcp";
+				PRODUCT_NAME = "tablepro-mcp";
 				SDKROOT = macosx;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -2417,7 +2431,8 @@
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_HARDENED_RUNTIME = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.TablePro.tablepro-mcp";
+				PRODUCT_NAME = "tablepro-mcp";
 				SDKROOT = macosx;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;

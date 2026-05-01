@@ -14,7 +14,7 @@ Open with `Cmd+,`. Settings are grouped into tabs.
   <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">Custom shortcuts.</Card>
   <Card title="AI" icon="sparkles" href="/features/ai-assistant#configure-a-provider">Provider config, inline suggestions, context, privacy.</Card>
   <Card title="Terminal" icon="terminal" href="/features/terminal#settings">Font, theme, CLI paths.</Card>
-  <Card title="MCP" icon="network-wired" href="/features/mcp#enabling-the-server">MCP server config.</Card>
+  <Card title="MCP" icon="network-wired" href="/features/mcp#enabling-the-server">Server config, tokens, activity log, connected clients.</Card>
   <Card title="Plugins" icon="puzzle-piece" href="/customization/settings#plugins">Manage drivers and exporters.</Card>
   <Card title="Account" icon="user" href="/features/icloud-sync">License, iCloud sync, linked folders.</Card>
 </CardGroup>
@@ -73,6 +73,18 @@ No queries or database content is transmitted.
 | **Group all connections in one window** | Off | Force all tabs into one window regardless of connection |
 
 A tab is "clean" when it's a table tab (not query/create), unpinned, no unsaved changes, and no interactions (sort, filter, selection).
+
+## MCP
+
+The **MCP** tab covers the [External API](/external-api) surface. The server lazy-starts on first use and exposes the following sections:
+
+- **MCP Server**: enable toggle and live status. The server runs on a free port in the `51000-52000` range. See [MCP Server](/features/mcp).
+- **MCP Configuration**: row limit defaults, query timeout, "log MCP queries in history".
+- **Authentication**: list, create, and revoke bearer tokens. Issued by the [pairing flow](/external-api/pairing) or generated manually. See [Tokens](/external-api/tokens).
+- **Activity Log**: every authentication, tool call, and resource read with token, category, action, connection, and outcome. 90-day retention. Backed by `~/Library/Application Support/TablePro/mcp-audit.db`.
+- **Network**: remote access toggle, TLS certificate, fingerprint, and PEM export.
+- **MCP Setup**: one-click config snippets for Claude Code, Claude Desktop, and Cursor.
+- **Connected Clients**: live list of MCP clients connected to the server.
 
 ## Plugins
 

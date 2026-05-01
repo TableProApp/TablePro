@@ -38,14 +38,6 @@ struct DisplayFormatsCacheEntry {
     let formats: [ValueDisplayFormat?]
 }
 
-/// Sidebar table loading state — single source of truth for sidebar UI
-enum SidebarLoadingState: Equatable {
-    case idle
-    case loading
-    case loaded
-    case error(String)
-}
-
 /// Represents which sheet is currently active in MainContentView.
 /// Uses a single `.sheet(item:)` modifier instead of multiple `.sheet(isPresented:)`.
 enum ActiveSheet: Identifiable {
@@ -141,15 +133,12 @@ final class MainContentCoordinator {
 
     // MARK: - Published State
 
-    var schemaProvider: SQLSchemaProvider
     var cursorPositions: [CursorPosition] = []
     var tableMetadata: TableMetadata?
-    // Removed: showErrorAlert and errorAlertMessage - errors now display inline
     var activeSheet: ActiveSheet?
     var importFileURL: URL?
     var exportPreselectedTableNames: Set<String>?
     var needsLazyLoad = false
-    var sidebarLoadingState: SidebarLoadingState = .idle
 
     /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
     @ObservationIgnored var querySortCache: [UUID: QuerySortCacheEntry] = [:]
@@ -171,10 +160,8 @@ final class MainContentCoordinator {
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
-    @ObservationIgnored private var urlFilterObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var pluginDriverObserver: NSObjectProtocol?
     @ObservationIgnored private var fileWatcher: DatabaseFileWatcher?
-    @ObservationIgnored private var lastSchemaRefreshDate = Date.distantPast
 
     /// Set during handleTabChange to suppress redundant column-change reconfiguration
     @ObservationIgnored internal var isHandlingTabSwitch = false
@@ -241,61 +228,32 @@ final class MainContentCoordinator {
         set { _isAppTerminating.withLock { $0 = newValue } }
     }
 
+    /// Stable instance identity. Used to key the registry so a recycled
+    /// `ObjectIdentifier` from a freshly-allocated coordinator can never
+    /// remove a different instance's entry from a delayed cleanup Task.
+    let instanceId = UUID()
+
     /// Registry of active coordinators for aggregated quit-time persistence.
-    /// Keyed by ObjectIdentifier of each coordinator instance.
-    private static var activeCoordinators: [ObjectIdentifier: MainContentCoordinator] = [:]
+    /// Keyed by `instanceId` (UUID) — never by `ObjectIdentifier`, which can
+    /// be recycled across allocations.
+    static var activeCoordinators: [UUID: MainContentCoordinator] = [:]
 
     /// Register this coordinator so quit-time persistence can aggregate tabs.
+    /// Idempotent — repeated registration is a no-op.
+    func registerEagerly() {
+        Self.activeCoordinators[instanceId] = self
+    }
+
     private func registerForPersistence() {
-        Self.activeCoordinators[ObjectIdentifier(self)] = self
+        Self.activeCoordinators[instanceId] = self
     }
 
-    /// Unregister this coordinator from quit-time aggregation.
     private func unregisterFromPersistence() {
-        Self.activeCoordinators.removeValue(forKey: ObjectIdentifier(self))
-    }
-
-    /// Find a coordinator by its window identifier.
-    static func coordinator(for windowId: UUID) -> MainContentCoordinator? {
-        activeCoordinators.values.first { $0.windowId == windowId }
-    }
-
-    /// Find the coordinator whose `contentWindow` matches the given NSWindow.
-    /// Used by `TabWindowController` to dispatch NSWindowDelegate callbacks
-    /// to the correct coordinator without needing a shared registry key.
-    static func coordinator(forWindow window: NSWindow) -> MainContentCoordinator? {
-        activeCoordinators.values.first { $0.contentWindow === window }
-    }
-
-    /// Check whether any active coordinator has unsaved edits.
-    static func hasAnyUnsavedChanges() -> Bool {
-        activeCoordinators.values.contains { coordinator in
-            coordinator.changeManager.hasChanges
-                || coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges }
-        }
-    }
-
-    /// Collect all tabs from all active coordinators for a given connectionId.
-    static func allTabs(for connectionId: UUID) -> [QueryTab] {
-        activeCoordinators.values
-            .filter { $0.connectionId == connectionId }
-            .flatMap { $0.tabManager.tabs }
-    }
-
-    /// Find the first coordinator for `connectionId` that owns a tab matching `predicate`.
-    /// Used to dedup cross-window tabs (Server Dashboard singleton, ER Diagram reuse).
-    static func coordinator(
-        forConnection connectionId: UUID,
-        tabMatching predicate: (QueryTab) -> Bool
-    ) -> MainContentCoordinator? {
-        activeCoordinators.values.first { coordinator in
-            coordinator.connectionId == connectionId
-                && coordinator.tabManager.tabs.contains(where: predicate)
-        }
+        Self.activeCoordinators.removeValue(forKey: instanceId)
     }
 
     /// Collect non-preview tabs for persistence.
-    private static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
+    static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
         let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
 
@@ -321,7 +279,7 @@ final class MainContentCoordinator {
     }
 
     /// Get selected tab ID from any coordinator for a given connectionId.
-    private static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
+    static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
         activeCoordinators.values
             .first { $0.connectionId == connectionId && $0.tabManager.selectedTabId != nil }?
             .tabManager.selectedTabId
@@ -394,9 +352,8 @@ final class MainContentCoordinator {
         )
         self.persistence = TabPersistenceCoordinator(connectionId: connection.id)
 
-        self.schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
+        _ = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
         SchemaProviderRegistry.shared.retain(for: connection.id)
-        urlFilterObservers = setupURLNotificationObservers()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
 
@@ -453,16 +410,6 @@ final class MainContentCoordinator {
         )
     }
 
-    /// Transition sidebar from `.idle` to `.loaded` when tables already exist
-    /// (e.g. populated by another window's `refreshTables()`).
-    func healSidebarLoadingStateIfNeeded() {
-        guard sidebarLoadingState == .idle else { return }
-        let tables = DatabaseManager.shared.session(for: connectionId)?.tables ?? []
-        if !tables.isEmpty {
-            sidebarLoadingState = .loaded
-        }
-    }
-
     /// Start watching the database file for external changes (SQLite, DuckDB).
     private func startFileWatcherIfNeeded() {
         guard PluginManager.shared.connectionMode(for: connection.type) == .fileBased else { return }
@@ -471,8 +418,9 @@ final class MainContentCoordinator {
 
         let watcher = DatabaseFileWatcher()
         watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
-            guard let self, self.sidebarLoadingState != .loading else { return }
-            Task { await self.refreshTablesIfStale() }
+            guard let self else { return }
+            if case .loading = SchemaService.shared.state(for: self.connectionId) { return }
+            Task { await self.refreshTables() }
         }
         fileWatcher = watcher
     }
@@ -480,9 +428,14 @@ final class MainContentCoordinator {
     /// Refresh schema only if not recently refreshed (avoids redundant work
     /// when both the file watcher and window focus trigger close together).
     func refreshTablesIfStale() async {
-        guard Date().timeIntervalSince(lastSchemaRefreshDate) > 2 else { return }
-        lastSchemaRefreshDate = Date()
-        await refreshTables()
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        await SchemaService.shared.reloadIfStale(
+            connectionId: connectionId,
+            driver: driver,
+            connection: connection,
+            staleness: 2
+        )
+        await reconcilePostSchemaLoad()
     }
 
     func showAIChatPanel() {
@@ -512,45 +465,44 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
-        lastSchemaRefreshDate = Date()
-        sidebarLoadingState = .loading
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            sidebarLoadingState = .error(String(localized: "Not connected"))
-            return
-        }
-        do {
-            let tables = try await driver.fetchTables()
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            DatabaseManager.shared.updateSession(connectionId) { $0.tables = tables }
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        await SchemaService.shared.reload(
+            connectionId: connectionId,
+            driver: driver,
+            connection: connection
+        )
+        await reconcilePostSchemaLoad()
+    }
+
+    /// Push the SchemaService table list into the autocomplete provider and prune sidebar
+    /// state for tables that no longer exist.
+    private func reconcilePostSchemaLoad() async {
+        guard case .loaded(let tables) = SchemaService.shared.state(for: connectionId) else { return }
+        if let driver = DatabaseManager.shared.driver(for: connectionId),
+           let provider = SchemaProviderRegistry.shared.provider(for: connectionId) {
             let currentDb = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
-            await schemaProvider.resetForDatabase(currentDb, tables: tables, driver: driver)
+            await provider.resetForDatabase(currentDb, tables: tables, driver: driver)
+        }
 
-            // Clean up stale selections and pending operations for tables that no longer exist
-            if let vm = sidebarViewModel {
-                let validNames = Set(tables.map(\.name))
-                let staleSelections = vm.selectedTables.filter { !validNames.contains($0.name) }
-                if !staleSelections.isEmpty {
-                    vm.selectedTables.subtract(staleSelections)
-                }
-                let stalePendingDeletes = vm.pendingDeletes.subtracting(validNames)
-                if !stalePendingDeletes.isEmpty {
-                    vm.pendingDeletes.subtract(stalePendingDeletes)
-                    for name in stalePendingDeletes {
-                        vm.tableOperationOptions.removeValue(forKey: name)
-                    }
-                }
-                let stalePendingTruncates = vm.pendingTruncates.subtracting(validNames)
-                if !stalePendingTruncates.isEmpty {
-                    vm.pendingTruncates.subtract(stalePendingTruncates)
-                    for name in stalePendingTruncates {
-                        vm.tableOperationOptions.removeValue(forKey: name)
-                    }
-                }
+        guard let vm = sidebarViewModel else { return }
+        let validNames = Set(tables.map(\.name))
+        let staleSelections = vm.selectedTables.filter { !validNames.contains($0.name) }
+        if !staleSelections.isEmpty {
+            vm.selectedTables.subtract(staleSelections)
+        }
+        let stalePendingDeletes = vm.pendingDeletes.subtracting(validNames)
+        if !stalePendingDeletes.isEmpty {
+            vm.pendingDeletes.subtract(stalePendingDeletes)
+            for name in stalePendingDeletes {
+                vm.tableOperationOptions.removeValue(forKey: name)
             }
-
-            sidebarLoadingState = .loaded
-        } catch {
-            sidebarLoadingState = .error(error.localizedDescription)
+        }
+        let stalePendingTruncates = vm.pendingTruncates.subtracting(validNames)
+        if !stalePendingTruncates.isEmpty {
+            vm.pendingTruncates.subtract(stalePendingTruncates)
+            for name in stalePendingTruncates {
+                vm.tableOperationOptions.removeValue(forKey: name)
+            }
         }
     }
 
@@ -564,10 +516,6 @@ final class MainContentCoordinator {
         _didTeardown.withLock { $0 = true }
 
         unregisterFromPersistence()
-        for observer in urlFilterObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        urlFilterObservers.removeAll()
         if let observer = terminationObserver {
             NotificationCenter.default.removeObserver(observer)
             terminationObserver = nil
@@ -631,7 +579,7 @@ final class MainContentCoordinator {
         // Never-activated coordinators are throwaway instances created by SwiftUI
         // during body re-evaluation — @State only keeps the first, rest are discarded
         guard _didActivate.withLock({ $0 }) else {
-            let id = ObjectIdentifier(self)
+            let id = instanceId
             Task { @MainActor in
                 Self.activeCoordinators.removeValue(forKey: id)
             }
@@ -674,12 +622,9 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Load schema only if the shared provider hasn't loaded yet
+    /// Load schema if not already loaded by another window for this connection.
     func loadSchemaIfNeeded() async {
-        let alreadyLoaded = await schemaProvider.isSchemaLoaded()
-        if !alreadyLoaded {
-            await loadSchema()
-        }
+        await loadSchema()
     }
 
     /// Initialize view with connection info and load schema (legacy — used by first window)
@@ -702,7 +647,12 @@ final class MainContentCoordinator {
 
     func loadSchema() async {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        await schemaProvider.loadSchema(using: driver, connection: connection)
+        await SchemaService.shared.load(
+            connectionId: connectionId,
+            driver: driver,
+            connection: connection
+        )
+        await reconcilePostSchemaLoad()
     }
 
     func loadTableMetadata(tableName: String) async {

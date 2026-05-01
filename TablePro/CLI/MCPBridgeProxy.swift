@@ -49,19 +49,22 @@ private final class CertificatePinningDelegate: NSObject, URLSessionDelegate {
 }
 
 final class MCPBridgeProxy {
+    private static let pollInterval: TimeInterval = 0.2
+    private static let pollTimeout: TimeInterval = 10.0
+    private static let launchURL = "tablepro://integrations/start-mcp"
+
     private let handshakePath: String
     private var sessionId: String?
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        self.handshakePath = "\(home)/Library/Application Support/com.TablePro/mcp-handshake.json"
+        self.handshakePath = "\(home)/Library/Application Support/TablePro/mcp-handshake.json"
     }
 
     func run() async {
         let handshake: MCPHandshake
-
         do {
-            handshake = try loadHandshake()
+            handshake = try await acquireHandshake()
         } catch {
             writeStderr("Error: \(error.localizedDescription)\n")
             writeJsonRpcError(
@@ -72,16 +75,63 @@ final class MCPBridgeProxy {
             exit(1)
         }
 
-        guard isProcessRunning(pid: handshake.pid) else {
-            writeStderr("Error: TablePro process \(handshake.pid) is not running\n")
-            writeJsonRpcError(
-                id: .null,
-                code: -32_000,
-                message: "TablePro is not running. Launch the app and enable the MCP server."
-            )
-            exit(1)
+        let urlSession = makeSession(handshake: handshake)
+        let scheme = (handshake.tls ?? false) ? "https" : "http"
+        let baseUrl = "\(scheme)://127.0.0.1:\(handshake.port)/mcp"
+        await readLoop(baseUrl: baseUrl, bearerToken: handshake.token, urlSession: urlSession)
+    }
+
+    private func acquireHandshake() async throws -> MCPHandshake {
+        if let handshake = try? loadHandshake(), isProcessRunning(pid: handshake.pid) {
+            return handshake
         }
 
+        if (try? loadHandshake()) != nil {
+            writeStderr("Stale handshake detected; relaunching TablePro\n")
+            removeHandshake()
+        }
+
+        try launchHostApp()
+        return try await pollForHandshake()
+    }
+
+    private func loadHandshake() throws -> MCPHandshake {
+        let data = try Data(contentsOf: URL(fileURLWithPath: handshakePath))
+        return try JSONDecoder().decode(MCPHandshake.self, from: data)
+    }
+
+    private func removeHandshake() {
+        try? FileManager.default.removeItem(atPath: handshakePath)
+    }
+
+    private func isProcessRunning(pid: Int32) -> Bool {
+        kill(pid, 0) == 0
+    }
+
+    private func launchHostApp() throws {
+        writeStderr("TablePro not running; launching via \(Self.launchURL)\n")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-g", Self.launchURL]
+        try process.run()
+        process.waitUntilExit()
+        if process.terminationStatus != 0 {
+            throw BridgeError.launchFailed(status: process.terminationStatus)
+        }
+    }
+
+    private func pollForHandshake() async throws -> MCPHandshake {
+        let deadline = Date().addingTimeInterval(Self.pollTimeout)
+        while Date() < deadline {
+            if let handshake = try? loadHandshake(), isProcessRunning(pid: handshake.pid) {
+                return handshake
+            }
+            try? await Task.sleep(nanoseconds: UInt64(Self.pollInterval * 1_000_000_000))
+        }
+        throw BridgeError.handshakeTimeout
+    }
+
+    private func makeSession(handshake: MCPHandshake) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 60
@@ -92,22 +142,7 @@ final class MCPBridgeProxy {
         } else {
             delegate = nil
         }
-        let urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-
-        let scheme = (handshake.tls ?? false) ? "https" : "http"
-        let baseUrl = "\(scheme)://127.0.0.1:\(handshake.port)/mcp"
-        let bearerToken = handshake.token
-
-        await readLoop(baseUrl: baseUrl, bearerToken: bearerToken, urlSession: urlSession)
-    }
-
-    private func loadHandshake() throws -> MCPHandshake {
-        let data = try Data(contentsOf: URL(fileURLWithPath: handshakePath))
-        return try JSONDecoder().decode(MCPHandshake.self, from: data)
-    }
-
-    private func isProcessRunning(pid: Int32) -> Bool {
-        kill(pid, 0) == 0
+        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }
 
     private func readLoop(baseUrl: String, bearerToken: String, urlSession: URLSession) async {
@@ -132,14 +167,12 @@ final class MCPBridgeProxy {
                 let requestId = extractRequestId(from: lineDataCopy)
 
                 do {
-                    let responseData = try await forwardRequest(
+                    try await forwardAndEmit(
                         lineDataCopy,
                         baseUrl: baseUrl,
                         bearerToken: bearerToken,
                         urlSession: urlSession
                     )
-                    writeStdout(responseData)
-                    writeStdout(Data([0x0A]))
                 } catch {
                     writeStderr("Request failed: \(error.localizedDescription)\n")
                     writeJsonRpcError(
@@ -152,12 +185,12 @@ final class MCPBridgeProxy {
         }
     }
 
-    private func forwardRequest(
+    private func forwardAndEmit(
         _ body: Data,
         baseUrl: String,
         bearerToken: String,
         urlSession: URLSession
-    ) async throws -> Data {
+    ) async throws {
         guard let url = URL(string: baseUrl) else {
             throw BridgeError.invalidUrl
         }
@@ -166,9 +199,8 @@ final class MCPBridgeProxy {
         request.httpMethod = "POST"
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-
         if let sessionId {
             request.setValue(sessionId, forHTTPHeaderField: "Mcp-Session-Id")
         }
@@ -177,22 +209,47 @@ final class MCPBridgeProxy {
 
         if let httpResponse = response as? HTTPURLResponse {
             captureSessionId(from: httpResponse)
+            let contentType = headerValue(httpResponse, forKey: "content-type")?.lowercased() ?? ""
+            if contentType.contains("text/event-stream") {
+                emitSSE(data)
+                return
+            }
         }
 
-        return data
+        writeStdout(data)
+        writeStdout(Data([0x0A]))
+    }
+
+    private func emitSSE(_ data: Data) {
+        guard let raw = String(data: data, encoding: .utf8) else { return }
+        for line in raw.split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" }) {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst("data:".count)
+            let trimmed = payload.drop(while: { $0 == " " })
+            guard !trimmed.isEmpty else { continue }
+            if let payloadData = String(trimmed).data(using: .utf8) {
+                writeStdout(payloadData)
+                writeStdout(Data([0x0A]))
+            }
+        }
+    }
+
+    private func headerValue(_ response: HTTPURLResponse, forKey key: String) -> String? {
+        for (rawKey, rawValue) in response.allHeaderFields {
+            guard let keyString = rawKey as? String,
+                  keyString.lowercased() == key.lowercased(),
+                  let valueString = rawValue as? String else { continue }
+            return valueString
+        }
+        return nil
     }
 
     private func captureSessionId(from response: HTTPURLResponse) {
-        let headerFields = response.allHeaderFields
-        for (key, value) in headerFields {
-            guard let keyString = key as? String else { continue }
-            guard keyString.lowercased() == "mcp-session-id" else { continue }
-            guard let valueString = value as? String else { continue }
-
-            sessionId = valueString
-            writeStderr("Session established: \(valueString)\n")
-            return
+        guard let value = headerValue(response, forKey: "mcp-session-id") else { return }
+        if sessionId == nil {
+            writeStderr("Session established: \(value)\n")
         }
+        sessionId = value
     }
 
     private func extractRequestId(from data: Data) -> JsonRpcId {
@@ -255,11 +312,17 @@ private enum JsonRpcId {
 
 private enum BridgeError: LocalizedError {
     case invalidUrl
+    case launchFailed(status: Int32)
+    case handshakeTimeout
 
     var errorDescription: String? {
         switch self {
         case .invalidUrl:
             "Invalid MCP server URL"
+        case .launchFailed(let status):
+            "Failed to launch TablePro (open exit \(status))"
+        case .handshakeTimeout:
+            "Timed out waiting for TablePro MCP server to start"
         }
     }
 }

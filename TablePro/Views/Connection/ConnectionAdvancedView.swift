@@ -13,6 +13,7 @@ struct ConnectionAdvancedView: View {
     @Binding var startupCommands: String
     @Binding var preConnectScript: String
     @Binding var aiPolicy: AIConnectionPolicy?
+    @Binding var externalAccess: ExternalAccessLevel
     @Binding var localOnly: Bool
 
     let databaseType: DatabaseType
@@ -72,8 +73,8 @@ struct ConnectionAdvancedView: View {
                 .foregroundStyle(.secondary)
             }
 
-            if AppSettingsManager.shared.ai.enabled {
-                Section(String(localized: "AI")) {
+            Section {
+                if AppSettingsManager.shared.ai.enabled {
                     Picker(String(localized: "AI Policy"), selection: $aiPolicy) {
                         Text(String(localized: "Use Default"))
                             .tag(AIConnectionPolicy?.none as AIConnectionPolicy?)
@@ -83,6 +84,25 @@ struct ConnectionAdvancedView: View {
                         }
                     }
                 }
+
+                Picker(String(localized: "External Clients"), selection: $externalAccess) {
+                    ForEach(ExternalAccessLevel.allCases) { level in
+                        Text(level.displayName).tag(level)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text(String(localized: "External Access"))
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    if AppSettingsManager.shared.ai.enabled {
+                        Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, and other MCP clients. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+                    } else {
+                        Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop) access this connection. Tokens cannot exceed this level even with full-access scope."))
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if AppSettingsManager.shared.sync.enabled {

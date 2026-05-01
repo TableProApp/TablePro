@@ -1,0 +1,489 @@
+---
+title: MCP Tools
+description: JSON-RPC tool catalog with input schemas, output schemas, scope requirements, and examples
+---
+
+# MCP Tools
+
+The MCP server exposes tools and resources over JSON-RPC. The tools are grouped by category below. Every tool is scope-gated: a request must come with a token whose scope and connection allowlist permit the call.
+
+## Transports
+
+The same tool catalog is available over two transports:
+
+- **HTTP**: `http://127.0.0.1:<port>/mcp` (port from the handshake file). Bearer token in `Authorization` header.
+- **stdio**: bundled `tablepro-mcp` CLI bridges stdio JSON-RPC to localhost HTTP. No token needed because the bridge reuses the in-app handshake.
+
+See [MCP Clients](/external-api/mcp-clients) for stdio config snippets.
+
+## Scope and access matrix
+
+Every tool requires one of these scopes. The scope is the token's; the connection's `externalAccess` setting can downgrade it further.
+
+| Scope | Read schema | Run SELECT | Run INSERT/UPDATE/DELETE | Confirm DROP/TRUNCATE |
+|-------|:-----------:|:----------:|:------------------------:|:--------------------:|
+| `readOnly` | yes | yes | no | no |
+| `readWrite` | yes | yes | yes | no |
+| `fullAccess` | yes | yes | yes | yes (with phrase) |
+
+If `connection.externalAccess` is `blocked`, every tool that targets that connection returns `403 forbidden`. If `readOnly`, write tools return `403` even with a `readWrite` token.
+
+## Connection tools
+
+### `list_connections`
+
+List all saved connections.
+
+**Input**: none.
+
+**Output**:
+
+```json
+{
+  "connections": [
+    {
+      "id": "9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1",
+      "name": "Production",
+      "type": "PostgreSQL",
+      "host": "db.example.com",
+      "port": 5432,
+      "database": "app",
+      "username": "app",
+      "is_connected": false,
+      "ai_policy": "askEachTime",
+      "safe_mode": "silent"
+    }
+  ]
+}
+```
+
+**Scope**: `readOnly`.
+
+### `connect`
+
+Open a database connection.
+
+**Input**:
+
+```json
+{ "connection_id": "9f1f0c3e-..." }
+```
+
+**Output**:
+
+```json
+{
+  "status": "connected",
+  "current_database": "app",
+  "current_schema": "public",
+  "server_version": "PostgreSQL 16.2"
+}
+```
+
+`current_schema` and `server_version` are present when known.
+
+**Scope**: `readOnly`.
+
+### `disconnect`
+
+Close a connection.
+
+**Input**: `{ "connection_id": "..." }`
+
+**Output**: empty object on success.
+
+**Scope**: `readOnly`.
+
+### `get_connection_status`
+
+Return version, uptime, and active database for a connection.
+
+**Input**: `{ "connection_id": "..." }`
+
+**Output**:
+
+```json
+{
+  "status": "connected",
+  "current_database": "app",
+  "current_schema": "public",
+  "server_version": "PostgreSQL 16.2",
+  "connected_at": "2026-04-26T10:14:22Z",
+  "last_active_at": "2026-04-26T10:14:22Z"
+}
+```
+
+`status` is one of `connected`, `connecting`, `disconnected`, `error`. When `error`, an `error` object with a `message` field is included.
+
+**Scope**: `readOnly`.
+
+## Schema tools
+
+### `list_databases`
+
+**Input**: `{ "connection_id": "..." }`
+
+**Output**: `{ "databases": ["app", "analytics"] }` (array of database names)
+
+**Scope**: `readOnly`.
+
+### `list_schemas`
+
+**Input**: `{ "connection_id": "...", "database": "app" }` (database optional)
+
+**Output**: `{ "schemas": ["public", "reporting"] }` (array of schema names)
+
+**Scope**: `readOnly`.
+
+### `list_tables`
+
+**Input**:
+
+```json
+{
+  "connection_id": "...",
+  "database": "app",
+  "schema": "public",
+  "include_row_counts": false
+}
+```
+
+**Output**:
+
+```json
+{
+  "tables": [
+    { "name": "users", "type": "table" },
+    { "name": "orders_view", "type": "view" }
+  ]
+}
+```
+
+When `include_row_counts` is true and the driver supports it, each entry also includes `row_count`.
+
+**Scope**: `readOnly`.
+
+### `describe_table`
+
+Columns, indexes, foreign keys, primary key, DDL.
+
+**Input**:
+
+```json
+{
+  "connection_id": "...",
+  "table": "users",
+  "schema": "public"
+}
+```
+
+`schema` is optional. The current database is used unless the connection was first switched with `switch_database`.
+
+**Output**:
+
+```json
+{
+  "columns": [
+    {
+      "name": "id",
+      "data_type": "uuid",
+      "is_nullable": false,
+      "is_primary_key": true
+    },
+    {
+      "name": "email",
+      "data_type": "text",
+      "is_nullable": false
+    }
+  ],
+  "indexes": [
+    {
+      "name": "users_email_idx",
+      "columns": ["email"],
+      "is_unique": true,
+      "is_primary": false,
+      "type": "btree"
+    }
+  ],
+  "foreign_keys": [],
+  "ddl": "CREATE TABLE users (...)",
+  "approximate_row_count": 12345
+}
+```
+
+`default_value`, `extra`, and `comment` are present on a column when set. `ddl` and `approximate_row_count` are present when the driver supports them.
+
+**Scope**: `readOnly`.
+
+### `get_table_ddl`
+
+Just the `CREATE TABLE` statement.
+
+**Input**: same as `describe_table` (`connection_id`, `table`, `schema`).
+
+**Output**: `{ "ddl": "CREATE TABLE ..." }`
+
+**Scope**: `readOnly`.
+
+## Query tools
+
+### `execute_query`
+
+Run a SQL query.
+
+**Input**:
+
+```json
+{
+  "connection_id": "...",
+  "query": "SELECT id, email FROM users WHERE active = true LIMIT 100",
+  "max_rows": 500,
+  "timeout_seconds": 30,
+  "database": "app",
+  "schema": "public"
+}
+```
+
+`max_rows` defaults to 500, max 10,000. `timeout_seconds` defaults to 30, max 300. Single-statement queries only. Query size cap is 100 KB.
+
+**Output**:
+
+```json
+{
+  "columns": ["id", "email"],
+  "rows": [["9f1f...", "alice@example.com"]],
+  "row_count": 1,
+  "rows_affected": 0,
+  "execution_time_ms": 14,
+  "is_truncated": false
+}
+```
+
+`columns` is an array of column-name strings. `rows` is an array of rows, where each row is an array of strings (or `null`) aligned to the `columns` order. `status_message` is added when the driver returns one.
+
+**Scope**:
+
+- `readOnly` for SELECT, SHOW, EXPLAIN.
+- `readWrite` for INSERT, UPDATE, DELETE.
+- DROP, TRUNCATE, ALTER...DROP are rejected. Use `confirm_destructive_operation`.
+
+Safe Mode rules apply on top. A connection in Safe Mode `readOnly` returns `403` for any write SQL.
+
+### `confirm_destructive_operation`
+
+Run a DROP, TRUNCATE, or ALTER...DROP after a typed confirmation.
+
+**Input**:
+
+```json
+{
+  "connection_id": "...",
+  "query": "DROP TABLE legacy_events",
+  "confirmation_phrase": "I understand this is irreversible"
+}
+```
+
+The confirmation phrase is fixed: `I understand this is irreversible`. Anything else returns `400 invalid confirmation`.
+
+**Output**: same shape as `execute_query`.
+
+**Scope**: `fullAccess`.
+
+### `export_data`
+
+Export query or table data as CSV, JSON, or SQL.
+
+**Input**:
+
+```json
+{
+  "connection_id": "...",
+  "format": "csv",
+  "tables": ["users", "orders"],
+  "max_rows": 50000
+}
+```
+
+`format` is one of `csv`, `json`, `sql`. `max_rows` defaults to 50,000, max 100,000. Provide either `tables` or `query`. Pass `output_path` to write to disk instead of returning data inline.
+
+**Output**: an envelope with one entry per query/table exported. Each entry has the export label and either inline data or the file path. Provide `output_path` in the request to receive a file-path response.
+
+**Scope**: `readOnly`.
+
+### `switch_database` / `switch_schema`
+
+**Input**: `{ "connection_id": "...", "database": "analytics" }` or `{ "connection_id": "...", "schema": "reporting" }`
+
+**Output**: `{ "status": "switched", "current_database": "analytics" }` or `{ "status": "switched", "current_schema": "reporting" }`
+
+**Scope**: `readOnly`.
+
+## Navigation tools
+
+These mutate UI state in the running TablePro app: opening tabs, focusing windows. They require `readWrite` scope because the user sees the result.
+
+### `open_connection_window`
+
+Open a connection in TablePro and bring its window to front.
+
+**Input**: `{ "connection_id": "..." }`
+
+**Output**:
+
+```json
+{
+  "status": "opened",
+  "connection_id": "9f1f...",
+  "window_id": "..."
+}
+```
+
+**Scope**: `readWrite`.
+
+### `open_table_tab`
+
+Open a table tab.
+
+**Input**:
+
+```json
+{
+  "connection_id": "...",
+  "table_name": "users",
+  "database_name": "app",
+  "schema_name": "public"
+}
+```
+
+`database_name` and `schema_name` are optional. If omitted, the connection's current database/schema is used.
+
+**Output**:
+
+```json
+{
+  "status": "opened",
+  "connection_id": "9f1f...",
+  "table_name": "users",
+  "window_id": "..."
+}
+```
+
+**Scope**: `readWrite`.
+
+### `focus_query_tab`
+
+Bring an existing tab to front.
+
+**Input**: `{ "tab_id": "..." }`
+
+**Output**:
+
+```json
+{
+  "status": "focused",
+  "tab_id": "...",
+  "window_id": "...",
+  "connection_id": "9f1f..."
+}
+```
+
+**Scope**: `readWrite`.
+
+### `list_recent_tabs`
+
+Read the cross-window tab registry.
+
+**Input**: `{ "limit": 20 }` (optional, 1-500, default 20).
+
+**Output**:
+
+```json
+{
+  "tabs": [
+    {
+      "tab_id": "...",
+      "connection_id": "9f1f...",
+      "connection_name": "Production",
+      "tab_type": "query",
+      "display_title": "users by signup date",
+      "is_active": true,
+      "table_name": "users",
+      "database_name": "app",
+      "schema_name": "public",
+      "window_id": "..."
+    }
+  ]
+}
+```
+
+`tab_type` is one of `query`, `table`, `createTable`, `erDiagram`, `serverDashboard`, `terminal`. `table_name`, `database_name`, `schema_name`, and `window_id` are present when known.
+
+**Scope**: `readOnly`.
+
+## History tools
+
+### `search_query_history`
+
+Full-text search over the query history database.
+
+**Input**:
+
+```json
+{
+  "query": "users active",
+  "connection_id": "9f1f...",
+  "limit": 50,
+  "since": 1745577262,
+  "until": 1745663662
+}
+```
+
+`connection_id` is optional. `limit` is 1-500, default 50. `since` and `until` are optional Unix epoch seconds; both bounds are inclusive. Either may be set on its own. Pass an empty `query` ("") to skip the full-text filter and only narrow by date or connection.
+
+**Output**:
+
+```json
+{
+  "entries": [
+    {
+      "id": "...",
+      "connection_id": "9f1f...",
+      "database_name": "app",
+      "query": "SELECT * FROM users WHERE active = true",
+      "executed_at": 1745663662.0,
+      "execution_time_ms": 18,
+      "row_count": 142,
+      "was_successful": true
+    }
+  ]
+}
+```
+
+`executed_at` is a Unix timestamp in seconds. `error_message` is included when `was_successful` is false.
+
+**Scope**: `readOnly`.
+
+## Errors
+
+All tools return JSON-RPC errors with these codes:
+
+| Code | Meaning |
+|------|---------|
+| `400` | Invalid input |
+| `401` | Missing or invalid bearer token |
+| `403` | Token scope or `externalAccess` rejects the request |
+| `404` | Connection, table, or tab not found |
+| `408` | Query timeout |
+| `429` | Rate limit |
+| `500` | Server error |
+
+Error responses include a `message` field. Example:
+
+```json
+{
+  "error": {
+    "code": 403,
+    "message": "Connection is read-only for external clients"
+  }
+}
+```

@@ -61,9 +61,9 @@ final class MCPServerManager {
         let rateLimiter = MCPRateLimiter()
 
         let bridge = MCPConnectionBridge()
-        let authGuard = MCPAuthGuard()
-        let toolHandler = MCPToolHandler(bridge: bridge, authGuard: authGuard)
-        let resourceHandler = MCPResourceHandler(bridge: bridge, authGuard: authGuard)
+        let authPolicy = MCPAuthPolicy()
+        let toolHandler = MCPToolHandler(bridge: bridge, authPolicy: authPolicy)
+        let resourceHandler = MCPResourceHandler(bridge: bridge, authPolicy: authPolicy)
 
         await newServer.setTokenStore(newTokenStore)
         await newServer.setRateLimiter(rateLimiter)
@@ -75,11 +75,20 @@ final class MCPServerManager {
             try await resourceHandler.handleResourceRead(uri: uri, sessionId: sessionId)
         }
         await newServer.setSessionCleanupHandler { sessionId in
-            await authGuard.clearSession(sessionId)
+            await authPolicy.clearSession(sessionId)
         }
 
+        let protocolHandler = MCPProtocolHandler(
+            server: newServer,
+            tokenStore: newTokenStore,
+            rateLimiter: rateLimiter
+        )
+        let exchangeHandler = IntegrationsExchangeHandler.live()
+        let router = MCPRouter(routes: [protocolHandler, exchangeHandler])
+        await newServer.setRouter(router)
+
         let bridgeResult = await newTokenStore.generate(
-            name: "__stdio_bridge__",
+            name: MCPTokenStore.stdioBridgeTokenName,
             permissions: .fullAccess
         )
         self.bridgeTokenId = bridgeResult.token.id
@@ -150,6 +159,29 @@ final class MCPServerManager {
         await start(port: port)
     }
 
+    func lazyStart() async {
+        if case .running = state { return }
+        if case .starting = state { return }
+
+        let settings = AppSettingsManager.shared.mcp
+        let preferredPort = UInt16(clamping: settings.port)
+
+        let chosenPort: UInt16
+        if preferredPort > 0, MCPPortAllocator.isFree(port: preferredPort) {
+            chosenPort = preferredPort
+        } else {
+            do {
+                chosenPort = try MCPPortAllocator.findFreePort(in: 51_000...52_000)
+            } catch {
+                Self.logger.error("Lazy start failed to allocate port: \(error.localizedDescription)")
+                state = .failed(error.localizedDescription)
+                return
+            }
+        }
+
+        await start(port: chosenPort)
+    }
+
     func disconnectClient(_ sessionId: String) async {
         await server?.removeSession(sessionId)
         await refreshClients()
@@ -180,7 +212,7 @@ final class MCPServerManager {
 
     private static let handshakeDirectoryPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return "\(home)/Library/Application Support/com.TablePro"
+        return "\(home)/Library/Application Support/TablePro"
     }()
 
     private static let handshakeFilePath: String = {

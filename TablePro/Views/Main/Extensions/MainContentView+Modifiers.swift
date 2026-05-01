@@ -54,7 +54,6 @@ struct FocusedCommandActionsModifier: ViewModifier {
         connection: DatabaseConnection.preview,
         payload: nil,
         windowTitle: .constant("SQL Query"),
-        tables: .constant([]),
         sidebarState: SharedSidebarState(),
         pendingTruncates: .constant([]),
         pendingDeletes: .constant([]),

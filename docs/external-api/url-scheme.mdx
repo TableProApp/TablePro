@@ -1,0 +1,204 @@
+---
+title: URL Scheme
+description: Every tablepro:// deep link action with parameters and examples
+---
+
+# URL Scheme
+
+The `tablepro://` URL scheme drives the TablePro GUI from outside the app. Use it from the shell with `open`, from another app with `NSWorkspace.shared.open(url:)`, or from a Raycast extension with `open()` from `@raycast/api`.
+
+The scheme covers two kinds of actions:
+
+- **Navigate**: open a connection, table, or query tab.
+- **Pair**: bootstrap an MCP token for an extension.
+
+Data exchange is not part of the URL scheme. For that, use [MCP](/external-api/mcp-tools).
+
+## Connection IDs are UUIDs
+
+Connection paths use the connection's UUID, not its display name.
+
+```
+tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1
+```
+
+You can copy the URL for any connection from the sidebar context menu: right-click the connection, **Copy Connection Deep Link**.
+
+<Warning>
+Pre-0.37 builds accepted `tablepro://connect/<name>/...` paths. Those paths were removed in 0.37. Bookmarks built against old TablePro versions must be regenerated. Use **Copy Connection Deep Link** to get the new UUID-keyed URL.
+</Warning>
+
+## Open a connection
+
+```
+tablepro://connect/<connection-uuid>
+```
+
+Opens the saved connection. If the connection is already open in a window, that window comes to front. If the UUID does not match a saved connection, an error alert appears.
+
+```bash
+open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
+```
+
+## Open a table
+
+```
+tablepro://connect/<connection-uuid>/table/<table-name>
+tablepro://connect/<connection-uuid>/database/<db>/table/<table-name>
+tablepro://connect/<connection-uuid>/database/<db>/schema/<schema>/table/<table-name>
+```
+
+The first form opens the table in the connection's current database and schema. The second selects a database first. The third (Postgres-style) selects both.
+
+Table and schema names with spaces or special characters must be percent-encoded.
+
+```bash
+# Open a table in the current database
+open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/table/users"
+
+# Open a table in a specific database
+open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/database/analytics/table/events"
+
+# Postgres: select database and schema
+open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/database/app/schema/reporting/table/daily_events"
+```
+
+## Run a query
+
+```
+tablepro://connect/<connection-uuid>/query?sql=<percent-encoded-sql>
+tablepro://connect/<connection-uuid>/query?sql=<percent-encoded-sql>&token=<token>
+```
+
+Opens a new query tab with the SQL pre-filled. Without a `token`, TablePro shows a confirmation dialog with the SQL before opening, so the user can verify the query is safe.
+
+If a valid `token` is provided and the token has `query.write` scope (i.e. `readWrite` or `fullAccess`), the confirmation is skipped. The token is matched against the active connection's `externalAccess` level. A read-only connection rejects any write SQL regardless of token scope.
+
+```bash
+# With confirmation
+open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/query?sql=SELECT%20*%20FROM%20users%20LIMIT%2010"
+
+# With token, no confirmation
+open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/query?sql=SELECT%20*%20FROM%20users%20LIMIT%2010&token=tp_abc123..."
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `sql` | yes | Percent-encoded SQL. |
+| `token` | no | Bearer token. Skips the confirmation dialog when present and valid. |
+
+## Start pairing
+
+```
+tablepro://integrations/pair?client=<name>&challenge=<base64url>&redirect=<url>&scopes=<csv>&connection-ids=<csv>
+```
+
+Starts a pairing flow. TablePro presents an approval sheet, the user picks scopes and connections, and TablePro returns a one-time code via the `redirect` URL.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `client` | yes | Display name shown in the approval sheet, e.g. `Raycast on macbook-pro`. |
+| `challenge` | yes | Base64url-encoded SHA-256 hash of the verifier (PKCE). |
+| `redirect` | yes | URL to receive the `code` query parameter on success. |
+| `scopes` | no | Comma-separated requested scopes: `readOnly`, `readWrite`, `fullAccess`. Defaults to `readOnly`. |
+| `connection-ids` | no | Comma-separated UUIDs to preselect in the allowlist. Defaults to all. |
+
+The user can change scopes and connections in the approval sheet. The query parameters are a request, not a grant.
+
+Example invocation from a Raycast extension:
+
+```ts
+import { open } from "@raycast/api";
+
+const params = new URLSearchParams({
+  client: "Raycast on macbook-pro",
+  challenge: challengeB64Url,
+  redirect: "raycast://extensions/ngoquocdat/tablepro/pair-callback",
+  scopes: "readOnly,readWrite",
+});
+await open(`tablepro://integrations/pair?${params}`);
+```
+
+See [Pairing](/external-api/pairing) for the full sequence and the exchange step.
+
+## Lazy-start the MCP server
+
+```
+tablepro://integrations/start-mcp
+```
+
+Starts the MCP server if it is not already running, then returns. Used by the bundled `tablepro-mcp` CLI to bootstrap on cold launch.
+
+The user does not need to enable MCP in Settings beforehand. The first call starts the server on a free port in the `51000-52000` range and writes a handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`.
+
+```bash
+open "tablepro://integrations/start-mcp"
+```
+
+## Import a connection
+
+```
+tablepro://import?name=<n>&host=<h>&port=<p>&type=<t>&username=<u>&database=<db>
+```
+
+Creates a saved connection from query parameters and opens the connection editor for review. A confirmation dialog shows the connection details before adding, so you can reject unexpected imports. The user adds a password before connecting; passwords are never accepted in the URL.
+
+Required parameters: `name`, `host`, `type`.
+
+`type` accepts any registered database type name (case-insensitive). Examples: `MySQL`, `PostgreSQL`, `MongoDB`, `Redis`, `ClickHouse`, `Oracle`, `DuckDB`, `Cassandra`.
+
+```bash
+open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"
+```
+
+### Core parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `port` | Server port. Defaults to the database type's standard port. |
+| `username` | Database username. |
+| `database` | Default database name. |
+| `color` | Connection color in the sidebar. |
+| `tagName` | Tag to assign. |
+| `groupName` | Group to place the connection in. |
+| `safeModeLevel` | Safe Mode level: `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, or `readOnly`. |
+| `aiPolicy` | AI access policy: `useDefault`, `alwaysAllow`, `askEachTime`, or `never`. |
+
+### SSH parameters
+
+Set `ssh=1` to enable SSH tunneling.
+
+| Parameter | Description |
+|-----------|-------------|
+| `sshHost` | SSH server hostname. |
+| `sshPort` | SSH port. Default `22`. |
+| `sshUsername` | SSH username. |
+| `sshAuthMethod` | `password`, `privateKey`, `agent`, or `keyboardInteractive`. |
+| `sshPrivateKeyPath` | Path to private key file. |
+| `sshUseSSHConfig` | Set to `1` to read `~/.ssh/config`. |
+| `sshAgentSocketPath` | Custom SSH agent socket path. |
+| `sshJumpHosts` | JSON array of jump hosts. |
+| `sshTotpMode` | TOTP mode for two-factor SSH auth. |
+
+### SSL parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `sslMode` | `disabled`, `preferred`, `required`, `verify-ca`, or `verify-full`. |
+| `sslCaCertPath` | CA certificate file path. |
+| `sslClientCertPath` | Client certificate file path. |
+| `sslClientKeyPath` | Client key file path. |
+
+### Plugin-specific fields
+
+Use the `af_` prefix to pass driver-specific fields. For example, `af_replicaSet=myrs` passes `replicaSet` to the MongoDB plugin.
+
+## Errors
+
+Invalid UUIDs, missing connections, or malformed query parameters surface as error alerts. The error message names the failing field. Examples:
+
+- `Connection not found: 9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1`
+- `Invalid connection ID format`
+- `Missing required parameter: client`
+
+URL scheme errors are also written to the activity log under the `admin` category with outcome `error`.
