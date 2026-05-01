@@ -698,15 +698,15 @@ private struct MCPServerMenuItem: View {
         case .running:
             let count = manager.connectedClients.count
             if count == 0 {
-                return String(localized: "MCP Server: Running")
+                return String(localized: "Integrations: Running")
             }
-            return String(format: String(localized: "MCP Server: Running (%d clients)"), count)
+            return String(format: String(localized: "Integrations: Running (%d clients)"), count)
         case .failed:
-            return String(localized: "MCP Server: Failed")
+            return String(localized: "Integrations: Failed")
         case .stopped:
-            return String(localized: "MCP Server: Stopped")
+            return String(localized: "Integrations: Stopped")
         case .starting:
-            return String(localized: "MCP Server: Starting...")
+            return String(localized: "Integrations: Starting...")
         }
     }
 }
