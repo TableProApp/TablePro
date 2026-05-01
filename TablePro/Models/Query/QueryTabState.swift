@@ -96,9 +96,8 @@ struct PaginationState: Equatable {
     var isLoading: Bool = false      // Loading indicator
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
 
-    // Progressive loading state (query tabs)
+    // Result truncation state (query tabs)
     var hasMoreRows: Bool = false
-    var loadMoreOffset: Int = 0
     var isLoadingMore: Bool = false
     var baseQueryForMore: String?
     var baseQueryParameterValues: [String?]?
@@ -194,10 +193,9 @@ struct PaginationState: Equatable {
         isLoading = false
     }
 
-    /// Reset progressive loading state
+    /// Reset result truncation state
     mutating func resetLoadMore() {
         hasMoreRows = false
-        loadMoreOffset = 0
         isLoadingMore = false
         baseQueryForMore = nil
         baseQueryParameterValues = nil

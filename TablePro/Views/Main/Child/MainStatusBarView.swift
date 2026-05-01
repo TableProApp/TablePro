@@ -48,8 +48,7 @@ struct MainStatusBarView: View {
     let onOffsetChange: (Int) -> Void
     let onPaginationGo: () -> Void
 
-    // Progressive loading callbacks
-    var onLoadMore: (() -> Void)?
+    // Truncated result callback
     var onFetchAll: (() -> Void)?
 
     var body: some View {
@@ -95,21 +94,12 @@ struct MainStatusBarView: View {
                     }
 
                     if snapshot.tabType == .query && snapshot.pagination.hasMoreRows && !snapshot.pagination.isLoadingMore {
-                        Text("—")
-                            .font(.caption)
-                            .foregroundStyle(.quaternary)
-                        Button {
-                            onLoadMore?()
-                        } label: {
-                            Text("Load More")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.tint)
-
                         Text("·")
                             .font(.caption)
                             .foregroundStyle(.quaternary)
+                        Text("truncated")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         Button {
                             onFetchAll?()
                         } label: {
@@ -117,7 +107,7 @@ struct MainStatusBarView: View {
                                 .font(.caption)
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tint)
                     }
 
                     if let statusMessage = snapshot.statusMessage {
@@ -221,12 +211,7 @@ struct MainStatusBarView: View {
             }
         } else if snapshot.tabType == .query && pagination.hasMoreRows {
             let formattedCount = loadedCount.formatted(.number.grouping(.automatic))
-            if let total = total, total > 0 {
-                let formattedTotal = total.formatted(.number.grouping(.automatic))
-                let prefix = pagination.isApproximateRowCount ? "~" : ""
-                return String(format: String(localized: "%@ of %@%@ rows"), formattedCount, prefix, formattedTotal)
-            }
-            return String(format: String(localized: "%@ rows (more available)"), formattedCount)
+            return String(format: String(localized: "Showing %@ rows"), formattedCount)
         } else if snapshot.tabType == .table, let total = total, total > 0 {
             let formattedTotal = total.formatted(.number.grouping(.automatic))
             let prefix = pagination.isApproximateRowCount ? "~" : ""
