@@ -1,0 +1,60 @@
+//
+//  WelcomeRouter.swift
+//  TablePro
+//
+
+import AppKit
+import Foundation
+import Observation
+
+@MainActor
+@Observable
+internal final class WelcomeRouter {
+    internal static let shared = WelcomeRouter()
+
+    private(set) var pendingImport: ExportableConnection?
+    private(set) var pendingConnectionShare: URL?
+    private(set) var pendingSQLFiles: [URL] = []
+
+    private init() {}
+
+    internal func routeImport(_ exportable: ExportableConnection) {
+        pendingImport = exportable
+        showWelcomeWindow()
+    }
+
+    internal func routeShare(_ url: URL) {
+        pendingConnectionShare = url
+        showWelcomeWindow()
+    }
+
+    internal func enqueueSQLFile(_ url: URL) {
+        pendingSQLFiles.append(url)
+    }
+
+    internal func consumePendingImport() -> ExportableConnection? {
+        let value = pendingImport
+        pendingImport = nil
+        return value
+    }
+
+    internal func consumePendingShare() -> URL? {
+        let value = pendingConnectionShare
+        pendingConnectionShare = nil
+        return value
+    }
+
+    internal func consumePendingSQLFiles() -> [URL] {
+        let value = pendingSQLFiles
+        pendingSQLFiles.removeAll()
+        return value
+    }
+
+    private func showWelcomeWindow() {
+        for window in NSApp.windows where AppLaunchCoordinator.isWelcomeWindow(window) {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
+    }
+}

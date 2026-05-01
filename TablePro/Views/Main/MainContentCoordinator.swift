@@ -160,7 +160,6 @@ final class MainContentCoordinator {
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
-    @ObservationIgnored private var urlFilterObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var pluginDriverObserver: NSObjectProtocol?
     @ObservationIgnored private var fileWatcher: DatabaseFileWatcher?
 
@@ -345,7 +344,6 @@ final class MainContentCoordinator {
 
         _ = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
         SchemaProviderRegistry.shared.retain(for: connection.id)
-        urlFilterObservers = setupURLNotificationObservers()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
 
@@ -508,10 +506,6 @@ final class MainContentCoordinator {
         _didTeardown.withLock { $0 = true }
 
         unregisterFromPersistence()
-        for observer in urlFilterObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        urlFilterObservers.removeAll()
         if let observer = terminationObserver {
             NotificationCenter.default.removeObserver(observer)
             terminationObserver = nil
