@@ -144,12 +144,3 @@ Libs/*.a
 Libs/.downloaded
 Libs/dylibs/
 Libs/ios/
-
-# Claude Code worktrees and scratch
-.claude/worktrees/
-*.profraw
-
-# Reference repos cloned for inspection (not part of project)
-/Sequel-Ace/
-/dbeaver/
-/licenseapp/
