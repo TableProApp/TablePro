@@ -1,16 +1,15 @@
-//
-//  MCPAuditLogView.swift
-//  TablePro
-//
-
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MCPAuditLogView: View {
     @State private var entries: [AuditEntry] = []
     @State private var tokens: [MCPAuthToken] = []
+    @State private var connections: [DatabaseConnection] = []
     @State private var selectedTokenId: UUID?
     @State private var selectedCategory: AuditCategory?
     @State private var selectedRange: TimeRangeOption = .last7Days
+    @State private var searchText: String = ""
     @State private var isLoading = false
 
     var body: some View {
@@ -21,12 +20,25 @@ struct MCPAuditLogView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
-            } else if entries.isEmpty {
+            } else if filteredEntries.isEmpty {
                 emptyState
             } else {
                 entryList
             }
+
+            HStack {
+                Text(String(localized: "Activity is retained for 90 days."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
         }
+        .padding()
+        .searchable(
+            text: $searchText,
+            placement: .toolbar,
+            prompt: Text(String(localized: "Search activity"))
+        )
         .task { await reload() }
     }
 
@@ -64,10 +76,20 @@ struct MCPAuditLogView: View {
             Spacer()
 
             Button {
+                exportCSV()
+            } label: {
+                Label(String(localized: "Export…"), systemImage: "square.and.arrow.up")
+            }
+            .accessibilityLabel(String(localized: "Export activity to CSV"))
+            .help(String(localized: "Export the filtered activity log to CSV"))
+            .disabled(filteredEntries.isEmpty)
+
+            Button {
                 Task { await reload() }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
+            .accessibilityLabel(String(localized: "Refresh"))
             .help(String(localized: "Refresh"))
         }
         .onChange(of: selectedTokenId) { _, _ in Task { await reload() } }
@@ -88,11 +110,39 @@ struct MCPAuditLogView: View {
     }
 
     private var entryList: some View {
-        List(entries) { entry in
-            MCPAuditLogRow(entry: entry)
+        List(filteredEntries) { entry in
+            MCPAuditLogRow(
+                entry: entry,
+                connectionName: connectionName(for: entry.connectionId)
+            )
         }
         .listStyle(.inset)
         .frame(minHeight: 240)
+    }
+
+    private var filteredEntries: [AuditEntry] {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return entries }
+        let needle = trimmed.lowercased()
+        return entries.filter { entry in
+            if entry.action.lowercased().contains(needle) { return true }
+            if let tokenName = entry.tokenName?.lowercased(), tokenName.contains(needle) { return true }
+            if let connectionName = connectionName(for: entry.connectionId)?.lowercased(),
+                connectionName.contains(needle) {
+                return true
+            }
+            if let details = entry.details?.lowercased(), details.contains(needle) { return true }
+            return false
+        }
+    }
+
+    private func connectionName(for id: UUID?) -> String? {
+        guard let id else { return nil }
+        if let connection = connections.first(where: { $0.id == id }) {
+            return connection.name
+        }
+        let prefix = id.uuidString.prefix(8)
+        return String(format: String(localized: "Deleted connection (%@)"), String(prefix))
     }
 
     private func reload() async {
@@ -103,6 +153,7 @@ struct MCPAuditLogView: View {
         if let store {
             tokens = await store.list().filter { $0.name != "__stdio_bridge__" }
         }
+        connections = ConnectionStorage.shared.loadConnections()
 
         let since = selectedRange.startDate
         let category = selectedCategory
@@ -115,14 +166,78 @@ struct MCPAuditLogView: View {
         )
         entries = result
     }
+
+    private func exportCSV() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.nameFieldStringValue = "tablepro-activity-\(Self.fileTimestamp()).csv"
+        panel.canCreateDirectories = true
+        panel.title = String(localized: "Export Activity Log")
+
+        let response = panel.runModal()
+        guard response == .OK, let url = panel.url else { return }
+
+        let csv = csvString(for: filteredEntries)
+        do {
+            try csv.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Could not export activity log")
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: String(localized: "OK"))
+            alert.runModal()
+        }
+    }
+
+    private func csvString(for entries: [AuditEntry]) -> String {
+        let header = [
+            "Timestamp",
+            "Category",
+            "Action",
+            "Connection",
+            "Token",
+            "Outcome",
+            "Details"
+        ].joined(separator: ",")
+        let rows = entries.map { entry -> String in
+            let timestamp = ISO8601DateFormatter().string(from: entry.timestamp)
+            let cells = [
+                timestamp,
+                entry.category.rawValue,
+                entry.action,
+                connectionName(for: entry.connectionId) ?? "",
+                entry.tokenName ?? "",
+                entry.outcome,
+                entry.details ?? ""
+            ]
+            return cells.map(Self.escapeCSV).joined(separator: ",")
+        }
+        return ([header] + rows).joined(separator: "\n") + "\n"
+    }
+
+    private static func escapeCSV(_ value: String) -> String {
+        let needsQuotes = value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")
+        guard needsQuotes else { return value }
+        let escaped = value.replacingOccurrences(of: "\"", with: "\"\"")
+        return "\"\(escaped)\""
+    }
+
+    private static func fileTimestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter.string(from: .now)
+    }
 }
 
 private struct MCPAuditLogRow: View {
     let entry: AuditEntry
+    let connectionName: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            outcomeBadge
+            IntegrationStatusIndicator(status: outcomeStatus)
+                .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(entry.action)
@@ -136,8 +251,8 @@ private struct MCPAuditLogRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if let connectionId = entry.connectionId {
-                    Text(String(format: String(localized: "Connection: %@"), connectionId.uuidString.prefix(8) + "…"))
+                if let connectionName {
+                    Text(String(format: String(localized: "Connection: %@"), connectionName))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -162,20 +277,12 @@ private struct MCPAuditLogRow: View {
         .help(entry.details ?? entry.action)
     }
 
-    private var outcomeBadge: some View {
-        Circle()
-            .fill(outcomeColor)
-            .frame(width: 8, height: 8)
-            .padding(.top, 6)
-    }
-
-    private var outcomeColor: Color {
+    private var outcomeStatus: IntegrationStatus {
         switch entry.outcome {
-        case AuditOutcome.success.rawValue: .green
-        case AuditOutcome.denied.rawValue: .orange
-        case AuditOutcome.rateLimited.rawValue: .orange
-        case AuditOutcome.error.rawValue: .red
-        default: .secondary
+        case AuditOutcome.success.rawValue: return .success
+        case AuditOutcome.denied.rawValue, AuditOutcome.rateLimited.rawValue: return .warning
+        case AuditOutcome.error.rawValue: return .error
+        default: return .stopped
         }
     }
 }
