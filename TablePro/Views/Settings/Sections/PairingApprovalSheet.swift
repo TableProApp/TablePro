@@ -1,8 +1,3 @@
-//
-//  PairingApprovalSheet.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct PairingApproval: Sendable {
@@ -13,6 +8,7 @@ struct PairingApproval: Sendable {
 
 struct PairingApprovalSheet: View {
     let request: PairingRequest
+    let codeExpiresAt: Date
     let onComplete: (Result<PairingApproval, Error>) -> Void
 
     @State private var permissions: TokenPermissions
@@ -20,9 +16,18 @@ struct PairingApprovalSheet: View {
     @State private var selectedConnectionIds: Set<UUID> = []
     @State private var expiry: ExpiryOption = .never
     @State private var connections: [DatabaseConnection] = []
+    @State private var connectionSearch: String = ""
+    @State private var now: Date = .now
 
-    init(request: PairingRequest, onComplete: @escaping (Result<PairingApproval, Error>) -> Void) {
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    init(
+        request: PairingRequest,
+        codeExpiresAt: Date,
+        onComplete: @escaping (Result<PairingApproval, Error>) -> Void
+    ) {
         self.request = request
+        self.codeExpiresAt = codeExpiresAt
         self.onComplete = onComplete
         let initialPermissions = Self.initialPermissions(from: request)
         _permissions = State(initialValue: initialPermissions)
@@ -47,12 +52,15 @@ struct PairingApprovalSheet: View {
             Divider()
             actionBar.padding()
         }
-        .frame(width: 520, height: 560)
+        .frame(width: 520, minHeight: 560)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
             if connectionAccess == .all {
                 selectedConnectionIds = Set(connections.map(\.id))
             }
+        }
+        .onReceive(timer) { value in
+            now = value
         }
     }
 
@@ -63,9 +71,40 @@ struct PairingApprovalSheet: View {
             Text(String(localized: "An external app is asking for an API token. Review the permissions before approving."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            countdownLabel
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
+    }
+
+    private var countdownLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isExpired ? "clock.badge.exclamationmark.fill" : "clock")
+                .foregroundStyle(isExpired ? Color(nsColor: .systemRed) : Color(nsColor: .secondaryLabelColor))
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text(countdownText)
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(isExpired ? Color(nsColor: .systemRed) : .secondary)
+                .contentTransition(.numericText())
+        }
+    }
+
+    private var remainingSeconds: Int {
+        let interval = codeExpiresAt.timeIntervalSince(now)
+        return max(0, Int(interval.rounded(.up)))
+    }
+
+    private var isExpired: Bool {
+        remainingSeconds <= 0
+    }
+
+    private var countdownText: String {
+        if isExpired {
+            return String(localized: "Code expired")
+        }
+        return String(format: String(localized: "Code expires in %d seconds"), remainingSeconds)
     }
 
     private var permissionsSection: some View {
@@ -111,17 +150,45 @@ struct PairingApprovalSheet: View {
             Text(String(localized: "No saved connections"))
                 .foregroundStyle(.secondary)
         } else {
-            ForEach(connections) { connection in
-                Toggle(isOn: connectionBinding(for: connection.id)) {
-                    HStack(spacing: 6) {
-                        Text(connection.name)
-                        Text(connection.type.displayName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            HStack {
+                TextField(String(localized: "Search connections"), text: $connectionSearch)
+                    .textFieldStyle(.roundedBorder)
+                Spacer()
+                Button(String(localized: "Select All")) {
+                    selectedConnectionIds.formUnion(filteredConnections.map(\.id))
+                }
+                Button(String(localized: "Deselect All")) {
+                    selectedConnectionIds.subtract(filteredConnections.map(\.id))
+                }
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(filteredConnections) { connection in
+                        Toggle(isOn: connectionBinding(for: connection.id)) {
+                            HStack(spacing: 6) {
+                                Text(connection.name)
+                                Text(connection.type.displayName)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        .padding(.vertical, 2)
                     }
                 }
-                .toggleStyle(.checkbox)
             }
+            .frame(maxHeight: 200)
+        }
+    }
+
+    private var filteredConnections: [DatabaseConnection] {
+        let trimmed = connectionSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return connections }
+        let lowercased = trimmed.lowercased()
+        return connections.filter { connection in
+            connection.name.lowercased().contains(lowercased)
+                || connection.type.displayName.lowercased().contains(lowercased)
         }
     }
 
@@ -153,9 +220,14 @@ struct PairingApprovalSheet: View {
                 )
                 onComplete(.success(approval))
             }
-            .keyboardShortcut(.defaultAction)
-            .disabled(connectionAccess == .selected && selectedConnectionIds.isEmpty)
+            .disabled(approveDisabled)
         }
+    }
+
+    private var approveDisabled: Bool {
+        if isExpired { return true }
+        if connectionAccess == .selected && selectedConnectionIds.isEmpty { return true }
+        return false
     }
 
     private func connectionBinding(for id: UUID) -> Binding<Bool> {

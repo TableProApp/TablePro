@@ -85,9 +85,11 @@ final class AlertHelper {
     static func runPairingApproval(request: PairingRequest) async throws -> PairingApproval {
         try await withCheckedThrowingContinuation { continuation in
             var deliver: ((Result<PairingApproval, Error>) -> Void)?
+            let codeExpiresAt = Date.now.addingTimeInterval(PairingExchangeStore.exchangeWindow)
             let host = NSHostingController(
                 rootView: PairingApprovalSheet(
                     request: request,
+                    codeExpiresAt: codeExpiresAt,
                     onComplete: { result in deliver?(result) }
                 )
             )
