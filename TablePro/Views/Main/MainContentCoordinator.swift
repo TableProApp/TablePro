@@ -1009,7 +1009,7 @@ final class MainContentCoordinator {
         let conn = connection
         let tabId = tabManager.tabs[index].id
 
-        let (useProgressiveLoading, progressiveLimit) = resolveProgressiveLoading(sql: sql, tabType: tab.tabType)
+        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType)
         let effectiveSQL = sql
 
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: effectiveSQL)
@@ -1055,8 +1055,7 @@ final class MainContentCoordinator {
                     fetchResult = try await Self.fetchQueryData(
                         driver: queryDriver,
                         sql: effectiveSQL,
-                        useProgressiveLoading: useProgressiveLoading,
-                        progressiveLimit: progressiveLimit
+                        rowCap: rowCap
                     )
                 }
                 let safeColumns = fetchResult.columns
@@ -1065,7 +1064,7 @@ final class MainContentCoordinator {
                 let safeExecutionTime = fetchResult.executionTime
                 let safeRowsAffected = fetchResult.rowsAffected
                 let safeStatusMessage = fetchResult.statusMessage
-                let pageContext = fetchResult.pageContext
+                let isTruncated = fetchResult.isTruncated
 
                 guard !Task.isCancelled else {
                     parallelSchemaTask?.cancel()
@@ -1117,7 +1116,7 @@ final class MainContentCoordinator {
                         hasSchema: schemaResult != nil,
                         sql: sql,
                         connection: conn,
-                        queryPageContext: pageContext
+                        isTruncated: isTruncated
                     )
                 }
 

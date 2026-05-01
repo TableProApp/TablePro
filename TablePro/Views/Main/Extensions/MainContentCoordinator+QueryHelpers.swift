@@ -13,14 +13,7 @@ import TableProPluginKit
 
 private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
 
-/// Context for progressive query result loading
-internal struct QueryPageContext {
-    let hasMore: Bool
-    let nextOffset: Int
-    let baseQuery: String
-}
-
-/// Result of the data fetch phase (either progressive or full)
+/// Result of the data fetch phase
 internal struct QueryFetchResult {
     let columns: [String]
     let columnTypes: [ColumnType]
@@ -28,114 +21,69 @@ internal struct QueryFetchResult {
     let executionTime: TimeInterval
     let rowsAffected: Int
     let statusMessage: String?
-    let pageContext: QueryPageContext?
+    let isTruncated: Bool
 }
 
 // MARK: - Query Execution Helpers
 
 extension MainContentCoordinator {
-    /// Execute a query using either progressive loading or standard execution
+    /// Execute a user-supplied SQL query, applying an optional row cap on the result set
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,
-        useProgressiveLoading: Bool,
-        progressiveLimit: Int
+        rowCap: Int?
     ) async throws -> QueryFetchResult {
-        if useProgressiveLoading && progressiveLimit > 0 {
-            let start = CFAbsoluteTimeGetCurrent()
-            progressLog.info("[fetchFirstPage] sql=\(sql.prefix(100), privacy: .public) limit=\(progressiveLimit)")
-            let pagedResult = try await driver.fetchFirstPage(query: sql, limit: progressiveLimit)
-            let elapsed = CFAbsoluteTimeGetCurrent() - start
-            progressLog.info("[fetchFirstPage] rows=\(pagedResult.rows.count) hasMore=\(pagedResult.hasMore) driverTime=\(String(format: "%.3f", pagedResult.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
-            let pageContext: QueryPageContext? = pagedResult.hasMore
-                ? QueryPageContext(hasMore: true, nextOffset: pagedResult.nextOffset, baseQuery: sql)
-                : nil
-            return QueryFetchResult(
-                columns: pagedResult.columns,
-                columnTypes: pagedResult.columnTypes,
-                rows: pagedResult.rows,
-                executionTime: pagedResult.executionTime,
-                rowsAffected: 0,
-                statusMessage: nil,
-                pageContext: pageContext
-            )
-        } else {
-            let start = CFAbsoluteTimeGetCurrent()
-            progressLog.info("[execute] sql=\(sql.prefix(100), privacy: .public)")
-            let result = try await driver.execute(query: sql)
-            let elapsed = CFAbsoluteTimeGetCurrent() - start
-            progressLog.info("[execute] rows=\(result.rows.count) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
-            return QueryFetchResult(
-                columns: result.columns,
-                columnTypes: result.columnTypes,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                rowsAffected: result.rowsAffected,
-                statusMessage: result.statusMessage,
-                pageContext: nil
-            )
-        }
+        let start = CFAbsoluteTimeGetCurrent()
+        progressLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil")")
+        let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        progressLog.info("[executeUserQuery] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
+        return QueryFetchResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: result.rows,
+            executionTime: result.executionTime,
+            rowsAffected: result.rowsAffected,
+            statusMessage: result.statusMessage,
+            isTruncated: result.isTruncated
+        )
     }
 
     nonisolated static func fetchQueryDataParameterized(
         driver: DatabaseDriver,
         sql: String,
         parameters: [Any?],
-        useProgressiveLoading: Bool,
-        progressiveLimit: Int
+        rowCap: Int?
     ) async throws -> QueryFetchResult {
-        if useProgressiveLoading && progressiveLimit > 0 {
-            let start = CFAbsoluteTimeGetCurrent()
-            progressLog.info("[fetchFirstPageParameterized] sql=\(sql.prefix(100), privacy: .public) limit=\(progressiveLimit) params=\(parameters.count)")
-            let pagedResult = try await driver.fetchFirstPageParameterized(
-                query: sql,
-                parameters: parameters,
-                limit: progressiveLimit
-            )
-            let elapsed = CFAbsoluteTimeGetCurrent() - start
-            progressLog.info("[fetchFirstPageParameterized] rows=\(pagedResult.rows.count) hasMore=\(pagedResult.hasMore) driverTime=\(String(format: "%.3f", pagedResult.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
-            let pageContext: QueryPageContext? = pagedResult.hasMore
-                ? QueryPageContext(hasMore: true, nextOffset: pagedResult.nextOffset, baseQuery: sql)
-                : nil
-            return QueryFetchResult(
-                columns: pagedResult.columns,
-                columnTypes: pagedResult.columnTypes,
-                rows: pagedResult.rows,
-                executionTime: pagedResult.executionTime,
-                rowsAffected: 0,
-                statusMessage: nil,
-                pageContext: pageContext
-            )
-        } else {
-            let start = CFAbsoluteTimeGetCurrent()
-            progressLog.info("[executeParameterized] sql=\(sql.prefix(100), privacy: .public) params=\(parameters.count)")
-            let result = try await driver.executeParameterized(query: sql, parameters: parameters)
-            let elapsed = CFAbsoluteTimeGetCurrent() - start
-            progressLog.info("[executeParameterized] rows=\(result.rows.count) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
-            return QueryFetchResult(
-                columns: result.columns,
-                columnTypes: result.columnTypes,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                rowsAffected: result.rowsAffected,
-                statusMessage: result.statusMessage,
-                pageContext: nil
-            )
-        }
+        let start = CFAbsoluteTimeGetCurrent()
+        progressLog.info("[executeUserQueryParameterized] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil") params=\(parameters.count)")
+        let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: parameters)
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        progressLog.info("[executeUserQueryParameterized] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
+        return QueryFetchResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: result.rows,
+            executionTime: result.executionTime,
+            rowsAffected: result.rowsAffected,
+            statusMessage: result.statusMessage,
+            isTruncated: result.isTruncated
+        )
     }
 
-    /// Determine whether progressive loading should be used for this query
-    func resolveProgressiveLoading(sql: String, tabType: TabType) -> (useProgressive: Bool, limit: Int) {
+    /// Decide whether to apply the configured row cap to a user query.
+    /// Returns the cap value if truncation is enabled and the query is a non-write SELECT/WITH on a query tab.
+    func resolveRowCap(sql: String, tabType: TabType) -> Int? {
         let dataGridSettings = AppSettingsManager.shared.dataGrid
         let trimmedUpper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let isSelectQuery = trimmedUpper.hasPrefix("SELECT ") || trimmedUpper.hasPrefix("WITH ")
 
-        if tabType == .query && isSelectQuery && !isWriteQuery(sql) && !isDDLQuery(sql)
-            && dataGridSettings.enforceQueryResultLimit
-        {
-            return (true, dataGridSettings.validatedQueryResultLimit)
+        guard tabType == .query, isSelectQuery, !isWriteQuery(sql), !isDDLQuery(sql),
+              dataGridSettings.truncateQueryResults
+        else {
+            return nil
         }
-        return (false, 0)
+        return dataGridSettings.validatedQueryResultRowCap
     }
 
     /// Parsed schema metadata ready to apply to a tab
@@ -242,7 +190,7 @@ extension MainContentCoordinator {
         hasSchema: Bool,
         sql: String,
         connection conn: DatabaseConnection,
-        queryPageContext: QueryPageContext? = nil,
+        isTruncated: Bool = false,
         queryParameterValues: [QueryParameter]? = nil
     ) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
@@ -314,11 +262,9 @@ extension MainContentCoordinator {
         updatedTab.display.resultSets = pinned + [rs]
         updatedTab.display.activeResultSetId = rs.id
 
-        // Update progressive loading state
-        if let context = queryPageContext {
-            updatedTab.pagination.hasMoreRows = context.hasMore
-            updatedTab.pagination.loadMoreOffset = context.nextOffset
-            updatedTab.pagination.baseQueryForMore = context.hasMore ? context.baseQuery : nil
+        if isTruncated {
+            updatedTab.pagination.hasMoreRows = true
+            updatedTab.pagination.baseQueryForMore = sql
             updatedTab.pagination.isLoadingMore = false
         } else {
             updatedTab.pagination.resetLoadMore()

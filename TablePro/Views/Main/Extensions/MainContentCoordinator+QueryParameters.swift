@@ -90,10 +90,7 @@ extension MainContentCoordinator {
         let conn = connection
         let tabId = tabManager.tabs[index].id
 
-        let (useProgressiveLoading, progressiveLimit) = resolveProgressiveLoading(
-            sql: sql,
-            tabType: tab.tabType
-        )
+        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType)
         let effectiveSQL = sql
 
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: effectiveSQL)
@@ -139,17 +136,10 @@ extension MainContentCoordinator {
                         driver: queryDriver,
                         sql: effectiveSQL,
                         parameters: parameters,
-                        useProgressiveLoading: useProgressiveLoading,
-                        progressiveLimit: progressiveLimit
+                        rowCap: rowCap
                     )
                 }
-                let safeColumns = fetchResult.columns
-                let safeColumnTypes = fetchResult.columnTypes
-                let safeRows = fetchResult.rows
                 let safeExecutionTime = fetchResult.executionTime
-                let safeRowsAffected = fetchResult.rowsAffected
-                let safeStatusMessage = fetchResult.statusMessage
-                let pageContext = fetchResult.pageContext
 
                 guard !Task.isCancelled else {
                     parallelSchemaTask?.cancel()
@@ -434,7 +424,7 @@ extension MainContentCoordinator {
                 hasSchema: schemaResult != nil,
                 sql: sql,
                 connection: connection,
-                queryPageContext: fetchResult.pageContext,
+                isTruncated: fetchResult.isTruncated,
                 queryParameterValues: originalParameters
             )
 

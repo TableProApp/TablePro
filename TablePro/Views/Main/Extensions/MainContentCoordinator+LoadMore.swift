@@ -32,104 +32,6 @@ extension MainContentCoordinator {
         }
     }
 
-    // MARK: - Load More Rows
-
-    func loadMoreRows() {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-              !tab.pagination.isLoadingMore,
-              !tab.execution.isExecuting,
-              tab.pagination.hasMoreRows,
-              let baseQuery = tab.pagination.baseQueryForMore else { return }
-
-        let tabId = tab.id
-        let offset = tab.pagination.loadMoreOffset
-        let limit = AppSettingsManager.shared.dataGrid.validatedQueryResultLimit
-        let capturedGeneration = queryGeneration
-        let storedParamValues = tab.pagination.baseQueryParameterValues
-
-        tabManager.tabs[tabIndex].pagination.isLoadingMore = true
-        toolbarState.setExecuting(true)
-
-        currentQueryTask = Task { [weak self] in
-            guard let self, !isTearingDown else { return }
-
-            do {
-                guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-                    throw DatabaseError.notConnected
-                }
-                let fetchStart = CFAbsoluteTimeGetCurrent()
-                progressLog.info("[loadMore] offset=\(offset) limit=\(limit)")
-                let pagedResult: PagedQueryResult
-                if let paramValues = storedParamValues {
-                    let anyParams: [Any?] = paramValues.map { $0 as Any? }
-                    pagedResult = try await driver.fetchNextPageParameterized(
-                        query: baseQuery,
-                        parameters: anyParams,
-                        offset: offset,
-                        limit: limit
-                    )
-                } else {
-                    pagedResult = try await driver.fetchNextPage(
-                        query: baseQuery,
-                        offset: offset,
-                        limit: limit
-                    )
-                }
-                let fetchElapsed = CFAbsoluteTimeGetCurrent() - fetchStart
-                progressLog.info("[loadMore] rows=\(pagedResult.rows.count) hasMore=\(pagedResult.hasMore) fetchTime=\(String(format: "%.3f", fetchElapsed))s")
-
-                guard !Task.isCancelled else { return }
-
-                await MainActor.run { [weak self] in
-                    guard let self, !isTearingDown else { return }
-                    guard capturedGeneration == queryGeneration else {
-                        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                            tabManager.tabs[idx].pagination.isLoadingMore = false
-                        }
-                        toolbarState.setExecuting(false)
-                        return
-                    }
-                    guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-                        toolbarState.setExecuting(false)
-                        return
-                    }
-
-                    var tab = tabManager.tabs[idx]
-                    var pageOffset = 0
-                    let appendDelta = mutateActiveTableRows(for: tab.id) { rows in
-                        pageOffset = rows.count
-                        return rows.appendPage(pagedResult.rows, startingAt: rows.count)
-                    }
-                    let newCount = pageOffset + pagedResult.rows.count
-                    tab.schemaVersion += 1
-                    tab.pagination.loadMoreOffset = pagedResult.nextOffset
-                    tab.pagination.hasMoreRows = pagedResult.hasMore
-                    tab.pagination.isLoadingMore = false
-                    if !pagedResult.hasMore {
-                        tab.pagination.baseQueryForMore = nil
-                    }
-                    tabManager.tabs[idx] = tab
-                    dataTabDelegate?.tableViewCoordinator?.applyDelta(appendDelta)
-                    toolbarState.setExecuting(false)
-                    if capturedGeneration == queryGeneration {
-                        currentQueryTask = nil
-                    }
-                    progressLog.info("[loadMore] applied totalRows=\(newCount)")
-                }
-            } catch {
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].pagination.isLoadingMore = false
-                    }
-                    toolbarState.setExecuting(false)
-                    currentQueryTask = nil
-                    Self.logger.error("Load more failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-        }
-    }
-
     // MARK: - Fetch All Rows
 
     func fetchAllRows() {
@@ -193,13 +95,12 @@ extension MainContentCoordinator {
 
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
-                let result: QueryResult
-                if let paramValues = storedParamValues {
-                    let anyParams: [Any?] = paramValues.map { $0 as Any? }
-                    result = try await driver.executeParameterized(query: baseQuery, parameters: anyParams)
-                } else {
-                    result = try await driver.execute(query: baseQuery)
-                }
+                let anyParams: [Any?]? = storedParamValues.map { $0.map { $0 as Any? } }
+                let result = try await driver.executeUserQuery(
+                    query: baseQuery,
+                    rowCap: nil,
+                    parameters: anyParams
+                )
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
 

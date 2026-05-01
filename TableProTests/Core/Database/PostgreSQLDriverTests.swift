@@ -186,8 +186,7 @@ private final class MockPostgreSQLDriver: DatabaseDriver {
 
     func execute(query: String) async throws -> QueryResult { .empty }
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult { .empty }
-    func fetchRowCount(query: String) async throws -> Int { 0 }
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> QueryResult { .empty }
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult { .empty }
 
     func fetchTables() async throws -> [TableInfo] { [] }
     func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }

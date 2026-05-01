@@ -40,9 +40,7 @@ private final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
     }
 
-    func fetchRowCount(query: String) async throws -> Int { 0 }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> QueryResult {
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
     }
 

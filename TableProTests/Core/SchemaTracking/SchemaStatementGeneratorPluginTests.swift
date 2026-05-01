@@ -64,10 +64,6 @@ private final class MockPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
-    func fetchRowCount(query: String) async throws -> Int { 0 }
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
