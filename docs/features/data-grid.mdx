@@ -29,7 +29,7 @@ The header shows row count, execution time, and affected rows for UPDATE/DELETE 
 
 Toggle between **Data**, **Structure**, and **JSON** in the status bar. Query tabs show Data and JSON only.
 
-JSON mode renders all rows as a JSON array with Text and Tree views. Select rows in Data mode first to show only those rows in JSON. Copy JSON button copies to clipboard. View mode is per-tab.
+JSON mode renders all rows as a JSON array. Toggle between Text and Tree views in the toolbar. To export only specific rows, select them in Data mode first, then switch to JSON. The Copy JSON button writes to the clipboard. View mode is remembered per tab.
 
 ## Column Features
 
@@ -47,7 +47,7 @@ Click a column header to sort:
 - **Second click**: Sort descending (Z-A, 9-0)
 - **Third click**: Remove sort
 
-Sorting is local to the loaded page. For server-side sorting, use `ORDER BY` in your query.
+Sort applies to the full result. TablePro re-runs the query with `ORDER BY` appended; if your query already has an `ORDER BY`, it is replaced.
 
 {/* Screenshot: Column header with sort indicator */}
 <Frame caption="Column header with sort indicator">
@@ -201,7 +201,7 @@ Double-click a JSON cell to open the viewer. Switch between **Text** and **Tree*
 
 Text mode shows syntax-highlighted JSON with brace matching. Tree mode shows a collapsible outline you can search, expand/collapse all, and right-click to copy values or key paths like `$.users[0].email`.
 
-Values are compacted on save. Invalid JSON falls back to text mode.
+JSON is minified on save. Invalid JSON falls back to text mode.
 
 {/* Screenshot: JSON editor with validation */}
 <Frame caption="JSON viewer with Text/Tree toggle">
@@ -219,7 +219,7 @@ Values are compacted on save. Invalid JSON falls back to text mode.
 
 ### Hex Editor (BLOB/Binary)
 
-BLOB, BINARY, and VARBINARY cells open a hex editor popover. Edit as space-separated hex bytes (e.g., `48 65 6C 6C 6F`). Live validation flags invalid input in red. The Cell Inspector sidebar also provides hex editing.
+BLOB, BINARY, and VARBINARY cells open a hex editor popover. Edit as space-separated hex bytes (e.g., `48 65 6C 6C 6F`). Invalid input is highlighted in red as you type. The Cell Inspector sidebar also offers hex editing.
 
 <Note>
 BLOBs larger than 10 KB are read-only. Use an external hex editor for large binary data.
@@ -333,7 +333,7 @@ Select cells and press `Cmd+C` for TSV, `Cmd+Shift+C` for CSV, or `Cmd+Option+J`
 
 ## Pagination
 
-Large result sets are paginated. Configure page size in **Settings** > **Editor** (Small: 100, Medium: 500, Large: 1,000, Custom: 10–100,000). Smaller pages load faster.
+Table tabs paginate large result sets. Set page size in **Settings** > **Editor** (Small: 100, Medium: 500, Large: 1,000, Custom: any value from 10 to 100,000). Smaller pages load faster.
 
 {/* Screenshot: Pagination controls with page navigation */}
 <Frame caption="Pagination controls with page navigation">
@@ -366,37 +366,38 @@ Right-click a column header > **Display As** to override per column. Overrides p
 NULL values show as styled "NULL" text (customizable in **Settings** > **Editor**). Configure date format, row height, and alternate row colors in the same settings panel.
 
 
-## Progressive Loading
+## Result Truncation
 
-Query tabs load rows in batches. The first execution returns up to 10,000 rows (configurable in Settings). If more rows exist, the status bar shows the count and two actions:
+Query tabs cap results at 10,000 rows by default to keep the UI responsive on large queries. When the cap kicks in, the status bar shows a truncation marker and a Fetch All button:
 
-<Frame caption="Status bar with progressive loading actions">
+<Frame caption="Truncation banner with Fetch All">
   <img
     className="block dark:hidden"
     src="/images/progressive-loading.png"
-    alt="Progressive loading status bar"
+    alt="Truncation banner with Fetch All button"
   />
   <img
     className="hidden dark:block"
     src="/images/progressive-loading-dark.png"
-    alt="Progressive loading status bar"
+    alt="Truncation banner with Fetch All button"
   />
 </Frame>
 
-- **Load More** - appends the next batch to the grid
-- **Fetch All** - loads all remaining rows in one query. Shows a confirmation first.
+- **Showing N rows (truncated)** means the query returned more than the cap and the grid is showing the first N rows
+- **Fetch All** re-runs the query without a cap. A confirmation appears first because large result sets use significant memory.
 
-The status bar shows how many rows are loaded and the estimated total, for example: `10,000 of ~1,238,120 rows`.
+Your `LIMIT` and `OFFSET` are passed to the database unchanged. `SELECT ... LIMIT 10` returns 10 rows whether the cap is set or not. The cap only kicks in when the database returns more rows than your cap allows, which happens on queries with no `LIMIT` or with a `LIMIT` larger than the cap.
 
-Table tabs use page-based navigation and are not affected by this setting.
+Configure the cap in **Settings** > **Editor**:
 
-### Sorting with partial results
+- **Truncate query results**: turns the cap on or off
+- **Row cap**: 100 to 500,000, or 0 for unlimited
 
-When only part of the result is loaded and you click a column header to sort, TablePro re-runs the query with `ORDER BY` added. This gives correct sort order across the full table, not just the loaded rows.
+Table tabs are not affected by this setting. They use [Pagination](#pagination) instead.
 
 ### Cancelling
 
-Press `Cmd+.` or click the stop button in the toolbar to cancel a running query or a Load More / Fetch All operation.
+Press `Cmd+.` or click the stop button in the toolbar to cancel a running query or a Fetch All operation.
 
 ## MongoDB Collections
 
