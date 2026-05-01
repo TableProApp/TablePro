@@ -186,6 +186,13 @@ final class QueryTabManager {
         databaseName: String = "",
         quoteIdentifier: ((String) -> String)? = nil
     ) throws {
+        if let existing = tabs.first(where: {
+            $0.tabType == .table && $0.tableContext.tableName == tableName && $0.tableContext.databaseName == databaseName
+        }) {
+            selectedTabId = existing.id
+            return
+        }
+
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName, databaseType: databaseType, quoteIdentifier: quoteIdentifier
