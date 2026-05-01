@@ -32,37 +32,6 @@ struct CloudflareD1DriverHelperTests {
         return string.range(of: uuidPattern, options: .regularExpression) != nil
     }
 
-    private static func stripLimitOffset(from query: String) -> String {
-        let ns = query as NSString
-        let len = ns.length
-        guard len > 0 else { return query }
-
-        let upper = query.uppercased() as NSString
-        var depth = 0
-        var i = len - 1
-
-        while i >= 4 {
-            let ch = upper.character(at: i)
-            if ch == 0x29 { depth += 1 }
-            else if ch == 0x28 { depth -= 1 }
-            else if depth == 0 && ch == 0x54 {
-                let start = i - 4
-                if start >= 0 {
-                    let candidate = upper.substring(with: NSRange(location: start, length: 5))
-                    if candidate == "LIMIT" {
-                        if start == 0 || CharacterSet.whitespacesAndNewlines
-                            .contains(UnicodeScalar(upper.character(at: start - 1)) ?? UnicodeScalar(0)) {
-                            return ns.substring(to: start)
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                        }
-                    }
-                }
-            }
-            i -= 1
-        }
-        return query
-    }
-
     private static func formatDDL(_ ddl: String) -> String {
         guard ddl.uppercased().hasPrefix("CREATE TABLE") else {
             return ddl
@@ -211,44 +180,6 @@ struct CloudflareD1DriverHelperTests {
     @Test("Rejects UUID with extra characters")
     func rejectsUuidWithExtra() {
         #expect(!Self.isUuid("550e8400-e29b-41d4-a716-446655440000-extra"))
-    }
-
-    // MARK: - stripLimitOffset
-
-    @Test("Strips LIMIT clause from end")
-    func stripsLimit() {
-        let result = Self.stripLimitOffset(from: "SELECT * FROM users LIMIT 10")
-        #expect(result == "SELECT * FROM users")
-    }
-
-    @Test("Strips LIMIT and OFFSET from end")
-    func stripsLimitOffset() {
-        let result = Self.stripLimitOffset(from: "SELECT * FROM users LIMIT 10 OFFSET 20")
-        #expect(result == "SELECT * FROM users")
-    }
-
-    @Test("Returns query unchanged without LIMIT")
-    func noLimitUnchanged() {
-        let query = "SELECT * FROM users WHERE id = 1"
-        #expect(Self.stripLimitOffset(from: query) == query)
-    }
-
-    @Test("Does not strip LIMIT inside subquery")
-    func preservesSubqueryLimit() {
-        let query = "SELECT * FROM (SELECT * FROM users LIMIT 5) AS sub LIMIT 10"
-        let result = Self.stripLimitOffset(from: query)
-        #expect(result.contains("LIMIT 5"))
-    }
-
-    @Test("Handles empty query")
-    func emptyQuery() {
-        #expect(Self.stripLimitOffset(from: "") == "")
-    }
-
-    @Test("Handles case-insensitive LIMIT")
-    func caseInsensitiveLimit() {
-        let result = Self.stripLimitOffset(from: "SELECT * FROM users limit 10")
-        #expect(result == "SELECT * FROM users")
     }
 
     // MARK: - formatDDL
