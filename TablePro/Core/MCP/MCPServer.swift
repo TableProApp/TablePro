@@ -132,11 +132,20 @@ actor MCPServer {
         cleanupTask?.cancel()
         cleanupTask = nil
 
+        let sessionIds = Array(sessions.keys)
         for (_, session) in sessions {
             await session.cancelAllTasks()
             await session.cancelSSEConnection()
         }
         sessions.removeAll()
+
+        // Run the per-session cleanup handler so policy-side state
+        // (e.g. MCPAuthPolicy.sessionApprovals) doesn't leak across server restarts.
+        if let cleanupHandler = sessionCleanupHandler {
+            for id in sessionIds {
+                await cleanupHandler(id)
+            }
+        }
 
         if let currentListener = listener {
             listener = nil

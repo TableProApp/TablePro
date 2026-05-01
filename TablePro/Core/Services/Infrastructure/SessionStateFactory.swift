@@ -30,8 +30,28 @@ enum SessionStateFactory {
     /// only one coordinator exists per window — no duplicate-tab side effects.
     private static var pendingSessionStates: [UUID: SessionState] = [:]
 
+    /// Pending entries that aren't claimed by a `ContentView.init` within this TTL
+    /// are dropped to prevent leaks if the window-open path errors out before the
+    /// hand-off completes.
+    private static let pendingEntryTTL: Duration = .seconds(5)
+
     static func registerPending(_ state: SessionState, for payloadId: UUID) {
         pendingSessionStates[payloadId] = state
+        Task { [payloadId] in
+            try? await Task.sleep(for: pendingEntryTTL)
+            await MainActor.run {
+                guard let abandoned = pendingSessionStates.removeValue(forKey: payloadId) else {
+                    return
+                }
+                // Coordinator was eagerly registered with `activeCoordinators`
+                // by `create(...)`. If no `ContentView.init` consumed the pending
+                // entry within the TTL, the window-open path never completed —
+                // unregister so the coordinator can deallocate.
+                MainContentCoordinator.activeCoordinators.removeValue(
+                    forKey: abandoned.coordinator.instanceId
+                )
+            }
+        }
     }
 
     static func consumePending(for payloadId: UUID) -> SessionState? {
@@ -157,6 +177,13 @@ enum SessionStateFactory {
             columnVisibilityManager: colVisMgr,
             toolbarState: toolbarSt
         )
+
+        // Eagerly publish to the active-coordinator registry so concurrent
+        // window opens for the same connection both observe each other when
+        // computing globals like nextQueryTitle. Without this, two windows
+        // opened back-to-back can both compute "Query 1" before either has
+        // run onAppear.
+        coord.registerEagerly()
 
         return SessionState(
             tabManager: tabMgr,
