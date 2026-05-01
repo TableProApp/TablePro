@@ -115,6 +115,15 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let pqConn = libpqConnection else {
+            return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
+        }
+        return pqConn.streamQuery(query)
+    }
+
     // MARK: - Reconnect
 
     private func isConnectionLostError(_ error: NSError) -> Bool {
