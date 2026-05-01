@@ -93,12 +93,16 @@ extension MainContentView {
         _ = await schemaLoad
     }
 
+    private func addDefaultEmptyTab() {
+        let allTabs = MainContentCoordinator.allTabs(for: connection.id)
+        let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
+        tabManager.addTab(title: title, databaseName: connection.database)
+    }
+
     private func handleRestoreOrDefault() async {
         if WindowLifecycleMonitor.shared.hasOtherWindows(for: connection.id, excluding: windowId) {
             if tabManager.tabs.isEmpty {
-                let allTabs = MainContentCoordinator.allTabs(for: connection.id)
-                let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
-                tabManager.addTab(title: title, databaseName: connection.database)
+                addDefaultEmptyTab()
             }
             MainContentView.lifecycleLogger.info(
                 "[open] handleRestoreOrDefault short-circuit (other windows exist) windowId=\(windowId, privacy: .public)"
@@ -111,7 +115,11 @@ extension MainContentView {
         MainContentView.lifecycleLogger.info(
             "[open] restoreFromDisk done windowId=\(windowId, privacy: .public) tabsRestored=\(result.tabs.count) source=\(String(describing: result.source), privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(restoreStart) * 1_000))"
         )
-        if !result.tabs.isEmpty {
+        if result.tabs.isEmpty {
+            addDefaultEmptyTab()
+            return
+        }
+        do {
             var restoredTabs = result.tabs
             for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
                 if let tableName = restoredTabs[i].tableContext.tableName {
