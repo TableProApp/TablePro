@@ -12,13 +12,11 @@ import UniformTypeIdentifiers
 
 struct ConnectionFormView: View {
     static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormView")
-    @Environment(\.openWindow) var openWindow
 
     // Connection ID: nil = new connection, UUID = edit existing
     let connectionId: UUID?
 
     let storage = ConnectionStorage.shared
-    let dbManager = DatabaseManager.shared
 
     var isNew: Bool { connectionId == nil }
 

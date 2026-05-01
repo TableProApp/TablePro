@@ -41,7 +41,6 @@ final class SidebarViewModel {
 
     // MARK: - Binding Storage
 
-    private var tablesBinding: Binding<[TableInfo]>
     private var selectedTablesBinding: Binding<Set<TableInfo>>
     private var pendingTruncatesBinding: Binding<Set<String>>
     private var pendingDeletesBinding: Binding<Set<String>>
@@ -53,11 +52,6 @@ final class SidebarViewModel {
     private let connectionId: UUID
 
     // MARK: - Convenience Accessors
-
-    var tables: [TableInfo] {
-        get { tablesBinding.wrappedValue }
-        set { tablesBinding.wrappedValue = newValue }
-    }
 
     var selectedTables: Set<TableInfo> {
         get { selectedTablesBinding.wrappedValue }
@@ -82,7 +76,6 @@ final class SidebarViewModel {
     // MARK: - Initialization
 
     init(
-        tables: Binding<[TableInfo]>,
         selectedTables: Binding<Set<TableInfo>>,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -90,7 +83,6 @@ final class SidebarViewModel {
         databaseType: DatabaseType,
         connectionId: UUID
     ) {
-        self.tablesBinding = tables
         self.selectedTablesBinding = selectedTables
         self.pendingTruncatesBinding = pendingTruncates
         self.pendingDeletesBinding = pendingDeletes

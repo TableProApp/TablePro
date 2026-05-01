@@ -2,9 +2,6 @@
 //  SessionStateFactory.swift
 //  TablePro
 //
-//  Factory for creating session state objects used by MainContentView.
-//  Extracted from MainContentView.init to enable testability.
-//
 
 import Foundation
 import os
@@ -22,23 +19,36 @@ enum SessionStateFactory {
         let coordinator: MainContentCoordinator
     }
 
-    /// Hand-off registry for SessionState created eagerly by `WindowManager.openTab`.
-    /// `WindowManager` creates the coordinator BEFORE `TabWindowController.init` so the
-    /// NSToolbar can be installed synchronously in init (eliminating the toolbar flash
-    /// caused by lazy install via `WindowAccessor → configureWindow` after the window
-    /// is already on-screen). `ContentView.init` consumes the same SessionState here so
-    /// only one coordinator exists per window — no duplicate-tab side effects.
     private static var pendingSessionStates: [UUID: SessionState] = [:]
+    private static var pendingExpirationTasks: [UUID: Task<Void, Never>] = [:]
+
+    private static let pendingEntryTTL: Duration = .seconds(5)
 
     static func registerPending(_ state: SessionState, for payloadId: UUID) {
         pendingSessionStates[payloadId] = state
+        pendingExpirationTasks[payloadId]?.cancel()
+        pendingExpirationTasks[payloadId] = Task { [payloadId] in
+            try? await Task.sleep(for: pendingEntryTTL)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                pendingExpirationTasks.removeValue(forKey: payloadId)
+                guard let abandoned = pendingSessionStates.removeValue(forKey: payloadId) else {
+                    return
+                }
+                MainContentCoordinator.activeCoordinators.removeValue(
+                    forKey: abandoned.coordinator.instanceId
+                )
+            }
+        }
     }
 
     static func consumePending(for payloadId: UUID) -> SessionState? {
-        pendingSessionStates.removeValue(forKey: payloadId)
+        pendingExpirationTasks.removeValue(forKey: payloadId)?.cancel()
+        return pendingSessionStates.removeValue(forKey: payloadId)
     }
 
     static func removePending(for payloadId: UUID) {
+        pendingExpirationTasks.removeValue(forKey: payloadId)?.cancel()
         pendingSessionStates.removeValue(forKey: payloadId)
     }
 
@@ -46,14 +56,16 @@ enum SessionStateFactory {
         connection: DatabaseConnection,
         payload: EditorTabPayload?
     ) -> SessionState {
-        let tabMgr = QueryTabManager()
+        let connectionId = connection.id
+        let tabMgr = QueryTabManager(globalTabsProvider: {
+            MainActor.assumeIsolated { MainContentCoordinator.allTabs(for: connectionId) }
+        })
         let changeMgr = DataChangeManager()
         changeMgr.databaseType = connection.type
         let filterMgr = FilterStateManager()
         let colVisMgr = ColumnVisibilityManager()
         let toolbarSt = ConnectionToolbarState(connection: connection)
 
-        // Eagerly populate version + state from existing session to avoid flash
         if let session = DatabaseManager.shared.session(for: connection.id) {
             toolbarSt.updateConnectionState(from: session.status)
             if let driver = session.driver {
@@ -65,7 +77,6 @@ enum SessionStateFactory {
         }
         toolbarSt.hasCompletedSetup = true
 
-        // Redis: set initial database name eagerly to avoid toolbar flash
         if connection.type.pluginTypeId == "Redis" {
             let dbIndex = connection.redisDatabase ?? Int(connection.database) ?? 0
             toolbarSt.databaseName = String(dbIndex)
@@ -136,7 +147,11 @@ enum SessionStateFactory {
             case .newEmptyTab:
                 let allTabs = MainContentCoordinator.allTabs(for: connection.id)
                 let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
-                tabMgr.addTab(title: title, databaseName: payload.databaseName ?? connection.database)
+                tabMgr.addTab(
+                    initialQuery: payload.initialQuery,
+                    title: title,
+                    databaseName: payload.databaseName ?? connection.database
+                )
             case .restoreOrDefault:
                 break
             }
@@ -150,6 +165,13 @@ enum SessionStateFactory {
             columnVisibilityManager: colVisMgr,
             toolbarState: toolbarSt
         )
+
+        // Eagerly publish to the active-coordinator registry so concurrent
+        // window opens for the same connection both observe each other when
+        // computing globals like nextQueryTitle. Without this, two windows
+        // opened back-to-back can both compute "Query 1" before either has
+        // run onAppear.
+        coord.registerEagerly()
 
         return SessionState(
             tabManager: tabMgr,

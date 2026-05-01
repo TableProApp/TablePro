@@ -13,6 +13,19 @@ struct HTTPRequest: Sendable {
     let path: String
     let headers: [String: String]
     let body: Data?
+    var remoteIP: String?
+
+    init(method: Method, path: String, headers: [String: String], body: Data?, remoteIP: String? = nil) {
+        self.method = method
+        self.path = path
+        self.headers = headers
+        self.body = body
+        self.remoteIP = remoteIP
+    }
+
+    func withRemoteIP(_ remoteIP: String?) -> HTTPRequest {
+        HTTPRequest(method: method, path: path, headers: headers, body: body, remoteIP: remoteIP)
+    }
 }
 
 enum HTTPParseError: Error, Sendable {

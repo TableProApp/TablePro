@@ -13,10 +13,7 @@ import TableProPluginKit
 /// Popover content for quick connection switching
 struct ConnectionSwitcherPopover: View {
     @State private var savedConnections: [DatabaseConnection] = []
-    @State private var isConnecting: UUID?
     @State private var selectedIndex: Int = 0
-
-    @Environment(\.openWindow) private var openWindow
 
     /// Callback when the popover should dismiss
     var onDismiss: (() -> Void)?
@@ -94,7 +91,6 @@ struct ConnectionSwitcherPopover: View {
                                     connection: connection,
                                     isActive: false,
                                     isConnected: false,
-                                    isConnecting: isConnecting == connection.id,
                                     isHighlighted: itemIndex == selectedIndex
                                 )
                             }
@@ -126,7 +122,7 @@ struct ConnectionSwitcherPopover: View {
             // Manage connections button
             Button {
                 onDismiss?()
-                NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
+                WelcomeWindowFactory.openOrFront()
             } label: {
                 HStack {
                     Image(systemName: "gear")
@@ -203,7 +199,6 @@ struct ConnectionSwitcherPopover: View {
         connection: DatabaseConnection,
         isActive: Bool,
         isConnected: Bool,
-        isConnecting: Bool = false,
         isHighlighted: Bool = false
     ) -> some View {
         HStack(spacing: 8) {
@@ -228,10 +223,7 @@ struct ConnectionSwitcherPopover: View {
             Spacer()
 
             // Status indicator
-            if isConnecting {
-                ProgressView()
-                    .controlSize(.small)
-            } else if isActive {
+            if isActive {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(isHighlighted ? Color(nsColor: .alternateSelectedControlTextColor) : Color(nsColor: .systemGreen))
                     .font(.system(size: 14))
@@ -287,23 +279,18 @@ struct ConnectionSwitcherPopover: View {
     }
 
     private func switchToSession(_ sessionId: UUID) {
-        onDismiss?()
-        // Try to bring existing window for this connection to front
-        if let existingWindow = findWindow(for: sessionId) {
-            existingWindow.makeKeyAndOrderFront(nil)
-        } else {
-            openWindowForDifferentConnection(EditorTabPayload(connectionId: sessionId))
-        }
+        openConnection(sessionId)
     }
 
     private func connectToSaved(_ connection: DatabaseConnection) {
-        isConnecting = connection.id
+        openConnection(connection.id)
+    }
+
+    private func openConnection(_ id: UUID) {
         onDismiss?()
-        // Open a new window, then connect — window shows "Connecting..." until ready
-        openWindowForDifferentConnection(EditorTabPayload(connectionId: connection.id))
         Task {
             do {
-                try await DatabaseManager.shared.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(id))
             } catch {
                 await MainActor.run {
                     AlertHelper.showErrorSheet(
@@ -312,32 +299,6 @@ struct ConnectionSwitcherPopover: View {
                         window: NSApp.keyWindow
                     )
                 }
-            }
-            await MainActor.run {
-                isConnecting = nil
-            }
-        }
-    }
-
-    /// Find an existing visible window for the given connection ID
-    private func findWindow(for connectionId: UUID) -> NSWindow? {
-        WindowLifecycleMonitor.shared.findWindow(for: connectionId)
-    }
-
-    /// Open a new window for a different connection, ensuring it doesn't
-    /// merge as a tab with the current connection's window group
-    /// (unless the user opted to group all connections in one window).
-    private func openWindowForDifferentConnection(_ payload: EditorTabPayload) {
-        if AppSettingsManager.shared.tabs.groupAllConnectionTabs {
-            WindowManager.shared.openTab(payload: payload)
-        } else {
-            // Temporarily disable tab merging so the new window opens independently
-            let currentWindow = NSApp.keyWindow
-            let previousMode = currentWindow?.tabbingMode ?? .preferred
-            currentWindow?.tabbingMode = .disallowed
-            WindowManager.shared.openTab(payload: payload)
-            DispatchQueue.main.async {
-                currentWindow?.tabbingMode = previousMode
             }
         }
     }

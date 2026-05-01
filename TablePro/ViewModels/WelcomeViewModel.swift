@@ -33,7 +33,6 @@ final class WelcomeViewModel {
 
     private let storage = ConnectionStorage.shared
     private let groupStorage = GroupStorage.shared
-    private let dbManager = DatabaseManager.shared
 
     // MARK: - State
 
@@ -78,14 +77,12 @@ final class WelcomeViewModel {
 
     // MARK: - Notification Observers
 
-    @ObservationIgnored private var openWindow: OpenWindowAction?
     @ObservationIgnored private var connectionUpdatedObserver: NSObjectProtocol?
-    @ObservationIgnored private var shareFileObserver: NSObjectProtocol?
     @ObservationIgnored private var exportObserver: NSObjectProtocol?
     @ObservationIgnored private var importObserver: NSObjectProtocol?
     @ObservationIgnored private var linkedFoldersObserver: NSObjectProtocol?
     @ObservationIgnored private var importFromAppObserver: NSObjectProtocol?
-    @ObservationIgnored private var deeplinkImportObserver: NSObjectProtocol?
+    @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
 
     // MARK: - Computed Properties
 
@@ -146,8 +143,7 @@ final class WelcomeViewModel {
 
     // MARK: - Setup & Teardown
 
-    func setUp(openWindow: OpenWindowAction) {
-        self.openWindow = openWindow
+    func setUp() {
         guard connectionUpdatedObserver == nil else { return }
 
         if expandedGroupIds.isEmpty {
@@ -165,16 +161,6 @@ final class WelcomeViewModel {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.loadConnections()
-            }
-        }
-
-        shareFileObserver = NotificationCenter.default.addObserver(
-            forName: .connectionShareFileOpened, object: nil, queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor [weak self] in
-                guard let url = notification.object as? URL else { return }
-                _ = PendingActionStore.shared.consumeConnectionShareURL()
-                self?.activeSheet = .importFile(url)
             }
         }
 
@@ -211,35 +197,74 @@ final class WelcomeViewModel {
             }
         }
 
-        deeplinkImportObserver = NotificationCenter.default.addObserver(
-            forName: .deeplinkImportRequested, object: nil, queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let exportable = (notification.object as? ExportableConnection)
-                    ?? PendingActionStore.shared.consumeDeeplinkImport()
-                guard let exportable else { return }
-                PendingActionStore.shared.deeplinkImport = nil
-                self.activeSheet = .deeplinkImport(exportable)
-            }
-        }
-
         loadConnections()
         linkedConnections = LinkedFolderWatcher.shared.linkedConnections
 
-        if let pendingURL = PendingActionStore.shared.consumeConnectionShareURL() {
-            activeSheet = .importFile(pendingURL)
-        }
+        consumePendingRouterActions()
+        startWelcomeRouterObservation()
+    }
 
-        if let pendingImport = PendingActionStore.shared.consumeDeeplinkImport() {
+    private func consumePendingRouterActions() {
+        if let pendingURL = WelcomeRouter.shared.consumePendingShare() {
+            activeSheet = .importFile(pendingURL)
+            return
+        }
+        if let pendingImport = WelcomeRouter.shared.consumePendingImport() {
             activeSheet = .deeplinkImport(pendingImport)
         }
     }
 
+    private func startWelcomeRouterObservation() {
+        welcomeRouterTask?.cancel()
+        welcomeRouterTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                let didChange = await Self.awaitWelcomeRouterChange()
+                guard didChange else { return }
+                self?.consumePendingRouterActions()
+            }
+        }
+    }
+
+    private static func awaitWelcomeRouterChange() async -> Bool {
+        let box = ContinuationBox()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                box.set(continuation)
+                withObservationTracking({
+                    _ = WelcomeRouter.shared.pendingImport
+                    _ = WelcomeRouter.shared.pendingConnectionShare
+                }, onChange: {
+                    box.resume(with: true)
+                })
+            }
+        } onCancel: {
+            box.resume(with: false)
+        }
+    }
+
+    private final class ContinuationBox: @unchecked Sendable {
+        private var continuation: CheckedContinuation<Bool, Never>?
+        private let lock = NSLock()
+
+        func set(_ continuation: CheckedContinuation<Bool, Never>) {
+            lock.lock()
+            defer { lock.unlock() }
+            self.continuation = continuation
+        }
+
+        func resume(with value: Bool) {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(returning: value)
+        }
+    }
+
     deinit {
-        [connectionUpdatedObserver, shareFileObserver, exportObserver,
-         importObserver, importFromAppObserver, linkedFoldersObserver,
-         deeplinkImportObserver].forEach {
+        welcomeRouterTask?.cancel()
+        [connectionUpdatedObserver, exportObserver, importObserver,
+         importFromAppObserver, linkedFoldersObserver].forEach {
             if let observer = $0 {
                 NotificationCenter.default.removeObserver(observer)
             }
@@ -261,26 +286,13 @@ final class WelcomeViewModel {
     // MARK: - Connection Actions
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        guard let openWindow else { return }
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
-        // Close welcome BEFORE opening the new editor window. Otherwise the
-        // welcome window (still key + visible) reasserts itself during the
-        // new window's `makeKeyAndOrderFront` — the new window briefly
-        // becomes key, immediately resigns, welcome retakes key, and the
-        // app is left with no key window after welcome closes → menu
-        // @FocusedValue nil → Cmd+T/1...9 disabled.
-        NSApplication.shared.closeWindows(withId: "welcome")
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
+        WelcomeWindowFactory.close()
         Task {
             do {
-                try await dbManager.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch is CancellationError {
-                // User cancelled password prompt — return to welcome
                 closeConnectionWindows(for: connection.id)
-                self.openWindow?(id: "welcome")
+                WelcomeWindowFactory.openOrFront()
             } catch {
                 if case PluginError.pluginNotInstalled = error {
                     Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
@@ -295,21 +307,13 @@ final class WelcomeViewModel {
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        guard let openWindow else { return }
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
-        // Close welcome before opening editor — see connectToDatabase above
-        // for the welcome-reasserts-key race that disabled menu shortcuts.
-        NSApplication.shared.closeWindows(withId: "welcome")
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
+        WelcomeWindowFactory.close()
         Task {
             do {
-                try await dbManager.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch is CancellationError {
                 closeConnectionWindows(for: connection.id)
-                self.openWindow?(id: "welcome")
+                WelcomeWindowFactory.openOrFront()
             } catch {
                 Self.logger.error(
                     "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")
@@ -340,8 +344,7 @@ final class WelcomeViewModel {
     func duplicateConnection(_ connection: DatabaseConnection) {
         let duplicate = storage.duplicateConnection(connection)
         loadConnections()
-        openWindow?(id: "connection-form", value: duplicate.id as UUID?)
-        focusConnectionFormWindow()
+        ConnectionFormWindowFactory.openOrFront(connectionId: duplicate.id)
     }
 
     // MARK: - Delete
@@ -589,17 +592,15 @@ final class WelcomeViewModel {
     // MARK: - Private Helpers
 
     private func handleConnectionFailure(error: Error, connectionId: UUID) {
-        guard let openWindow else { return }
         closeConnectionWindows(for: connectionId)
         connectionError = error.localizedDescription
         showConnectionError = true
-        openWindow(id: "welcome")
+        WelcomeWindowFactory.openOrFront()
     }
 
     private func handleMissingPlugin(connection: DatabaseConnection) {
-        guard let openWindow else { return }
         closeConnectionWindows(for: connection.id)
-        openWindow(id: "welcome")
+        WelcomeWindowFactory.openOrFront()
         pluginInstallConnection = connection
     }
 

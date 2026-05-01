@@ -316,15 +316,8 @@ final class MainContentCommandActions {
     // MARK: - Tab Operations (Group A — Called Directly)
 
     func newTab(initialQuery: String? = nil) {
-        // If no tabs exist (empty state), add directly to this window
-        if coordinator?.tabManager.tabs.isEmpty == true {
-            coordinator?.tabManager.addTab(initialQuery: initialQuery, databaseName: connection.database)
-            return
-        }
-        // Open a new native macOS window tab with a query editor
         let payload = EditorTabPayload(
             connectionId: connection.id,
-            tabType: .query,
             initialQuery: initialQuery,
             intent: .newEmptyTab
         )
@@ -487,11 +480,11 @@ final class MainContentCommandActions {
     // MARK: - Tab Navigation (Group A — Called Directly)
 
     func selectTab(number: Int) {
-        // Switch to the nth native window tab
         guard let keyWindow = NSApp.keyWindow,
               let tabbedWindows = keyWindow.tabbedWindows,
-              number > 0, number <= tabbedWindows.count else { return }
-        tabbedWindows[number - 1].makeKeyAndOrderFront(nil)
+              tabbedWindows.indices.contains(number - 1) else { return }
+        let target = tabbedWindows[number - 1]
+        target.makeKeyAndOrderFront(nil)
     }
 
     // MARK: - Filter Operations (Group A — Called Directly)
@@ -704,6 +697,10 @@ final class MainContentCommandActions {
         coordinator?.activeSheet = .quickSwitcher
     }
 
+    func openConnectionSwitcher() {
+        coordinator?.toolbarState.showConnectionSwitcher = true
+    }
+
     // MARK: - Undo/Redo (Group A — Called Directly)
 
     func undoChange() {
@@ -762,9 +759,11 @@ final class MainContentCommandActions {
             if let driver = DatabaseManager.shared.driver(for: self.connection.id) {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }
-            if coordinator?.sidebarLoadingState != .loading {
-                await coordinator?.refreshTables()
+            if case .loading = SchemaService.shared.state(for: self.connection.id) {
+                coordinator?.initRedisKeyTreeIfNeeded()
+                return
             }
+            await coordinator?.refreshTables()
             coordinator?.initRedisKeyTreeIfNeeded()
         }
     }
@@ -791,32 +790,9 @@ final class MainContentCommandActions {
 
     private func handleOpenSQLFiles(_ notification: Notification) {
         guard let urls = notification.object as? [URL] else { return }
-
         Task {
             for url in urls {
-                if let existingWindow = WindowLifecycleMonitor.shared.window(forSourceFile: url) {
-                    existingWindow.makeKeyAndOrderFront(nil)
-                    continue
-                }
-
-                let content = await Task.detached(priority: .userInitiated) { () -> String? in
-                    do {
-                        return try String(contentsOf: url, encoding: .utf8)
-                    } catch {
-                        Self.logger.error("Failed to read \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                        return nil
-                    }
-                }.value
-
-                if let content {
-                    let payload = EditorTabPayload(
-                        connectionId: connection.id,
-                        tabType: .query,
-                        initialQuery: content,
-                        sourceFileURL: url
-                    )
-                    WindowManager.shared.openTab(payload: payload)
-                }
+                try? await TabRouter.shared.route(.openSQLFile(url))
             }
         }
     }

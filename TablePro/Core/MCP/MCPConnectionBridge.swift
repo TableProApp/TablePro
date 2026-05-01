@@ -11,8 +11,6 @@ import os
 actor MCPConnectionBridge {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
 
-    private var inFlightConnects: [UUID: Task<Void, Error>] = [:]
-
     // MARK: - Connection Management
 
     func listConnections() async -> JSONValue {
@@ -72,9 +70,7 @@ actor MCPConnectionBridge {
             return .object(result)
         }
 
-        // Not connected yet -- create a new session via DatabaseManager.
-        // connectToSession is @MainActor; Swift hops automatically for async calls.
-        try await DatabaseManager.shared.connectToSession(connection)
+        try await DatabaseManager.shared.ensureConnected(connection)
 
         let (serverVersion, currentDatabase, currentSchema) = await MainActor.run {
             let session = DatabaseManager.shared.activeSessions[connectionId]
@@ -173,8 +169,9 @@ actor MCPConnectionBridge {
         timeoutSeconds: Int
     ) async throws -> JSONValue {
         let (driver, databaseType) = try await resolveDriver(connectionId)
-        let isWrite = QueryClassifier.isWriteQuery(query, databaseType: databaseType)
-        let hasReturning = query.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        let normalizedQuery = Self.stripTrailingSemicolons(query)
+        let isWrite = QueryClassifier.isWriteQuery(normalizedQuery, databaseType: databaseType)
+        let hasReturning = normalizedQuery.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         let shouldUseFetchRows = !isWrite || hasReturning
         let effectiveLimit = maxRows + 1
 
@@ -186,9 +183,9 @@ actor MCPConnectionBridge {
             try await withThrowingTaskGroup(of: QueryResult.self) { group in
                 group.addTask {
                     if shouldUseFetchRows {
-                        try await driver.fetchRows(query: query, offset: 0, limit: effectiveLimit)
+                        try await driver.fetchRows(query: normalizedQuery, offset: 0, limit: effectiveLimit)
                     } else {
-                        try await driver.execute(query: query)
+                        try await driver.execute(query: normalizedQuery)
                     }
                 }
                 group.addTask {
@@ -237,15 +234,8 @@ actor MCPConnectionBridge {
     // MARK: - Schema Operations
 
     func listTables(connectionId: UUID, includeRowCounts: Bool) async throws -> JSONValue {
-        let provider = await MainActor.run {
-            SchemaProviderRegistry.shared.provider(for: connectionId)
-        }
-        var cachedTables: [TableInfo] = []
-        if let provider {
-            let cached = await provider.getTables()
-            if !cached.isEmpty {
-                cachedTables = cached
-            }
+        let cachedTables = await MainActor.run {
+            SchemaService.shared.tables(for: connectionId)
         }
 
         let tables: [TableInfo]
@@ -385,16 +375,8 @@ actor MCPConnectionBridge {
     // MARK: - Schema Resource (for resources/read)
 
     func fetchSchemaResource(connectionId: UUID) async throws -> JSONValue {
-        // Check SchemaProviderRegistry cache first
-        let provider = await MainActor.run {
-            SchemaProviderRegistry.shared.provider(for: connectionId)
-        }
-        var cachedTables: [TableInfo] = []
-        if let provider {
-            let cached = await provider.getTables()
-            if !cached.isEmpty {
-                cachedTables = cached
-            }
+        let cachedTables = await MainActor.run {
+            SchemaService.shared.tables(for: connectionId)
         }
 
         let (driver, _) = try await resolveDriver(connectionId)
@@ -486,33 +468,28 @@ actor MCPConnectionBridge {
     // MARK: - Private Helpers
 
     private func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
-        let connection: DatabaseConnection? = await MainActor.run {
-            if DatabaseManager.shared.activeSessions[connectionId]?.driver != nil { return nil }
-            return ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
+        let pending: DatabaseConnection? = await MainActor.run {
+            switch DatabaseManager.shared.connectionState(connectionId) {
+            case .live: return nil
+            case .stored(let connection): return connection
+            case .unknown: return nil
+            }
         }
-        if let connection {
-            try await connectIfNeeded(connection)
+        if let pending {
+            try await connectIfNeeded(pending)
         }
         return try await MainActor.run {
-            guard let session = DatabaseManager.shared.activeSessions[connectionId],
-                  let driver = session.driver else {
+            switch DatabaseManager.shared.connectionState(connectionId) {
+            case .live(let driver, let session):
+                return (driver, session.connection.type)
+            case .stored, .unknown:
                 throw MCPError.notConnected(connectionId)
             }
-            return (driver, session.connection.type)
         }
     }
 
     private func connectIfNeeded(_ connection: DatabaseConnection) async throws {
-        if let existing = inFlightConnects[connection.id] {
-            try await existing.value
-            return
-        }
-        let task = Task<Void, Error> { [connection] in
-            try await DatabaseManager.shared.connectToSession(connection)
-        }
-        inFlightConnects[connection.id] = task
-        defer { inFlightConnects.removeValue(forKey: connection.id) }
-        try await task.value
+        try await DatabaseManager.shared.ensureConnected(connection)
     }
 
     private func resolveSession(_ connectionId: UUID) async throws -> ConnectionSession {
@@ -532,5 +509,14 @@ actor MCPConnectionBridge {
             }
             return connection
         }
+    }
+
+    static func stripTrailingSemicolons(_ query: String) -> String {
+        var result = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while result.hasSuffix(";") {
+            result = String(result.dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return result
     }
 }

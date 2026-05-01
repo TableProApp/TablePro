@@ -61,9 +61,9 @@ final class MCPServerManager {
         let rateLimiter = MCPRateLimiter()
 
         let bridge = MCPConnectionBridge()
-        let authGuard = MCPAuthGuard()
-        let toolHandler = MCPToolHandler(bridge: bridge, authGuard: authGuard)
-        let resourceHandler = MCPResourceHandler(bridge: bridge, authGuard: authGuard)
+        let authPolicy = MCPAuthPolicy()
+        let toolHandler = MCPToolHandler(bridge: bridge, authPolicy: authPolicy)
+        let resourceHandler = MCPResourceHandler(bridge: bridge, authPolicy: authPolicy)
 
         await newServer.setTokenStore(newTokenStore)
         await newServer.setRateLimiter(rateLimiter)
@@ -75,8 +75,17 @@ final class MCPServerManager {
             try await resourceHandler.handleResourceRead(uri: uri, sessionId: sessionId)
         }
         await newServer.setSessionCleanupHandler { sessionId in
-            await authGuard.clearSession(sessionId)
+            await authPolicy.clearSession(sessionId)
         }
+
+        let protocolHandler = MCPProtocolHandler(
+            server: newServer,
+            tokenStore: newTokenStore,
+            rateLimiter: rateLimiter
+        )
+        let exchangeHandler = IntegrationsExchangeHandler.live()
+        let router = MCPRouter(routes: [protocolHandler, exchangeHandler])
+        await newServer.setRouter(router)
 
         let bridgeResult = await newTokenStore.generate(
             name: "__stdio_bridge__",

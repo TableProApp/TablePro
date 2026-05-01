@@ -58,20 +58,9 @@ extension MainContentView {
             coordinator.promotePreviewTab()
         }
 
-        let persistableTabs = tabManager.tabs.filter { !$0.isPreview }
-        if persistableTabs.isEmpty {
-            coordinator.persistence.clearSavedState()
-        } else {
-            let normalizedSelectedId =
-                persistableTabs.contains(where: { $0.id == tabManager.selectedTabId })
-                ? tabManager.selectedTabId : persistableTabs.first?.id
-            coordinator.persistence.saveNow(
-                tabs: persistableTabs,
-                selectedTabId: normalizedSelectedId
-            )
-        }
+        coordinator.persistence.saveOrClearAggregated()
         MainContentView.lifecycleLogger.debug(
-            "[switch] handleStructureChange tabCount=\(tabManager.tabs.count) persistableCount=\(persistableTabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
+            "[switch] handleStructureChange tabCount=\(tabManager.tabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
     }
 
