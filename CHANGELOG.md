@@ -83,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- File associations for `.sql`, `.sqlite`, `.duckdb`, and related extensions disabled in Finder's Open With menu. The custom UTIs (`com.tablepro.sql`, `com.tablepro.sqlite-db`, `com.tablepro.duckdb`) were declared under `UTImportedTypeDeclarations` instead of `UTExportedTypeDeclarations`, so Launch Services treated them as "imported" claims and ranked them below other apps. SQL is now `LSHandlerRank: Owner`, SQLite is `Default`, DuckDB is `Owner`/`Editor`, and `com.tablepro.sqlite-db` conforms to `com.apple.sqlite3`.
 - Crash on macOS 26 when opening SQL Preview (NSColor.cgColor calls deprecated colorSpaceName)
 - Connection form: `usePrivateKey=true` from URL no longer disables Test/Create buttons
 - Transient connections from URL clean up keychain entries on connection failure
