@@ -67,9 +67,6 @@
         }
       }
     },
-    " ago" : {
-
-    },
     "--" : {
       "localizations" : {
         "tr" : {
@@ -250,6 +247,9 @@
         }
       }
     },
+    "“%@” will be disconnected and any in-flight requests will be cancelled." : {
+
+    },
     "\"%@\" will be permanently deleted." : {
       "localizations" : {
         "tr" : {
@@ -271,6 +271,9 @@
           }
         }
       }
+    },
+    "“%@” will be permanently deleted. External clients using this token will lose access immediately." : {
+
     },
     "\"%@\" will be removed from your system. This action cannot be undone." : {
       "localizations" : {
@@ -985,6 +988,7 @@
       }
     },
     "%@ of %@%@ rows" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1110,6 +1114,7 @@
       }
     },
     "%@ rows (more available)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -1392,6 +1397,9 @@
           }
         }
       }
+    },
+    "%1$@, %2$@" : {
+
     },
     "%d connections found" : {
       "localizations" : {
@@ -3460,9 +3468,6 @@
         }
       }
     },
-    "Access Level" : {
-
-    },
     "Account" : {
       "localizations" : {
         "tr" : {
@@ -3807,6 +3812,9 @@
           }
         }
       }
+    },
+    "Activity is retained for 90 days." : {
+
     },
     "Activity Log" : {
 
@@ -4267,6 +4275,9 @@
         }
       }
     },
+    "Add the JSON below inside the file and save" : {
+
+    },
     "Add validation rules to ensure data integrity" : {
       "localizations" : {
         "tr" : {
@@ -4492,6 +4503,9 @@
           }
         }
       }
+    },
+    "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, and other MCP clients. Effective scope is the minimum of the requesting token's scope and the External Clients level." : {
+
     },
     "AI Provider" : {
       "extractionState" : "stale",
@@ -6954,6 +6968,9 @@
         }
       }
     },
+    "Built-in CLI" : {
+
+    },
     "Built-in plugins cannot be uninstalled" : {
       "localizations" : {
         "tr" : {
@@ -7335,6 +7352,9 @@
         }
       }
     },
+    "Cap user query results at the configured row count" : {
+
+    },
     "Capabilities" : {
       "localizations" : {
         "tr" : {
@@ -7379,6 +7399,9 @@
           }
         }
       }
+    },
+    "Capped results show a Fetch All button to load the full set" : {
+
     },
     "Caption" : {
       "extractionState" : "stale",
@@ -7866,6 +7889,12 @@
         }
       }
     },
+    "Claude Code" : {
+
+    },
+    "Claude Desktop" : {
+
+    },
     "Clear" : {
       "localizations" : {
         "tr" : {
@@ -8092,7 +8121,6 @@
       }
     },
     "Clear search" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8225,6 +8253,12 @@
           }
         }
       }
+    },
+    "Click \"+ Add new global MCP server\"" : {
+
+    },
+    "Click \"Edit Config\" to open claude_desktop_config.json" : {
+
     },
     "Click + to add a relationship between this table and another" : {
       "localizations" : {
@@ -8431,6 +8465,7 @@
       }
     },
     "Client:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8678,6 +8713,12 @@
           }
         }
       }
+    },
+    "Code expired" : {
+
+    },
+    "Code expires in %d seconds" : {
+
     },
     "collapse" : {
       "localizations" : {
@@ -9471,6 +9512,9 @@
           }
         }
       }
+    },
+    "Connect a Client" : {
+
     },
     "Connect Anyway" : {
       "localizations" : {
@@ -10602,6 +10646,9 @@
         }
       }
     },
+    "Copy ID" : {
+
+    },
     "Copy JSON" : {
 
     },
@@ -10764,6 +10811,9 @@
         }
       }
     },
+    "Copy token" : {
+
+    },
     "Copy Token" : {
 
     },
@@ -10855,6 +10905,9 @@
           }
         }
       }
+    },
+    "Could not export activity log" : {
+
     },
     "Could not fetch plugin registry" : {
       "localizations" : {
@@ -13518,6 +13571,12 @@
         }
       }
     },
+    "Delete token?" : {
+
+    },
+    "Delete…" : {
+
+    },
     "Deleted" : {
       "localizations" : {
         "tr" : {
@@ -13539,6 +13598,9 @@
           }
         }
       }
+    },
+    "Deleted connection (%@)" : {
+
     },
     "Deleted Text" : {
       "localizations" : {
@@ -13611,6 +13673,9 @@
       }
     },
     "Description" : {
+
+    },
+    "Deselect All" : {
 
     },
     "Destructive Changes" : {
@@ -13921,6 +13986,9 @@
           }
         }
       }
+    },
+    "Disconnect client?" : {
+
     },
     "Disconnected" : {
       "localizations" : {
@@ -15519,6 +15587,7 @@
       }
     },
     "Enforce query result limit" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -16754,6 +16823,12 @@
         }
       }
     },
+    "Export Activity Log" : {
+
+    },
+    "Export activity to CSV" : {
+
+    },
     "Export as PNG" : {
       "localizations" : {
         "tr" : {
@@ -17196,6 +17271,9 @@
         }
       }
     },
+    "Export the filtered activity log to CSV" : {
+
+    },
     "Export to File..." : {
 
     },
@@ -17220,6 +17298,9 @@
           }
         }
       }
+    },
+    "Export…" : {
+
     },
     "Exports data as mongosh-compatible scripts. Drop, Indexes, and Data options are configured per collection in the collection list." : {
       "extractionState" : "stale",
@@ -17293,6 +17374,12 @@
 
     },
     "External access is disabled for this connection" : {
+
+    },
+    "External Clients" : {
+
+    },
+    "External integrations and MCP client requests will appear here." : {
 
     },
     "Extra Large" : {
@@ -19544,7 +19631,13 @@
     "Generate" : {
 
     },
-    "Generate New Token" : {
+    "Generate a token so external clients can connect with their own credentials." : {
+
+    },
+    "Generate token" : {
+
+    },
+    "Generate Token" : {
 
     },
     "Generated WHERE Clause" : {
@@ -21913,6 +22006,21 @@
     "Integrations" : {
 
     },
+    "Integrations: Failed" : {
+
+    },
+    "Integrations: Running" : {
+
+    },
+    "Integrations: Running (%d clients)" : {
+
+    },
+    "Integrations: Starting..." : {
+
+    },
+    "Integrations: Stopped" : {
+
+    },
     "Interactive Data Grid" : {
       "localizations" : {
         "tr" : {
@@ -23564,6 +23672,7 @@
       }
     },
     "Limit initial query results and load more on demand" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -23771,6 +23880,7 @@
       }
     },
     "Load More" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24607,6 +24717,7 @@
       }
     },
     "MCP Configuration" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24651,6 +24762,7 @@
       }
     },
     "MCP Server" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24673,6 +24785,7 @@
       }
     },
     "MCP Server: Failed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24695,6 +24808,7 @@
       }
     },
     "MCP Server: Running" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24717,6 +24831,7 @@
       }
     },
     "MCP Server: Running (%d clients)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24739,6 +24854,7 @@
       }
     },
     "MCP Server: Starting..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24761,6 +24877,7 @@
       }
     },
     "MCP Server: Stopped" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24783,6 +24900,7 @@
       }
     },
     "MCP Setup" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -28425,6 +28543,9 @@
         }
       }
     },
+    "Open Claude Desktop, go to Settings > Developer" : {
+
+    },
     "Open Connection" : {
       "localizations" : {
         "tr" : {
@@ -28468,6 +28589,9 @@
           }
         }
       }
+    },
+    "Open Cursor, go to Settings > MCP" : {
+
     },
     "Open database" : {
       "extractionState" : "stale",
@@ -29675,6 +29799,9 @@
       }
     },
     "Paste Cells" : {
+
+    },
+    "Paste the JSON below and save" : {
 
     },
     "Paste your CREATE TABLE statement below:" : {
@@ -31902,6 +32029,7 @@
 
     },
     "Query Result Limit" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -31924,6 +32052,7 @@
       }
     },
     "Query result limit must be between %@ and %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -31951,7 +32080,21 @@
         }
       }
     },
+    "Query Result Row Cap" : {
+
+    },
+    "Query result row cap must be between %@ and %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Query result row cap must be between %1$@ and %2$@"
+          }
+        }
+      }
+    },
     "Query results exceeding this limit show Load More / Fetch All buttons" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33815,6 +33958,9 @@
     "Resource" : {
 
     },
+    "Restart Claude Desktop" : {
+
+    },
     "Restart TablePro for the language change to take full effect." : {
       "localizations" : {
         "tr" : {
@@ -34030,6 +34176,9 @@
     "Reveal token" : {
 
     },
+    "Revoke" : {
+
+    },
     "Revoked" : {
 
     },
@@ -34224,6 +34373,9 @@
         }
       }
     },
+    "Row cap:" : {
+
+    },
     "Row Details" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -34293,6 +34445,7 @@
       }
     },
     "Row limit:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -34491,6 +34644,9 @@
           }
         }
       }
+    },
+    "Run the command below in your terminal" : {
+
     },
     "Running on port %d" : {
       "localizations" : {
@@ -35303,6 +35459,9 @@
         }
       }
     },
+    "Search activity" : {
+
+    },
     "Search columns..." : {
       "localizations" : {
         "tr" : {
@@ -35324,6 +35483,9 @@
           }
         }
       }
+    },
+    "Search connections" : {
+
     },
     "Search databases..." : {
       "localizations" : {
@@ -36215,6 +36377,9 @@
         }
       }
     },
+    "Server Configuration" : {
+
+    },
     "Server Dashboard" : {
       "localizations" : {
         "tr" : {
@@ -36553,6 +36718,9 @@
           }
         }
       }
+    },
+    "Settings" : {
+
     },
     "Settings were changed" : {
       "localizations" : {
@@ -37046,6 +37214,9 @@
           }
         }
       }
+    },
+    "Showing %@ rows" : {
+
     },
     "Showing first 50,000 keys" : {
       "localizations" : {
@@ -38875,6 +39046,36 @@
           }
         }
       }
+    },
+    "Status: active" : {
+
+    },
+    "Status: error" : {
+
+    },
+    "Status: expired" : {
+
+    },
+    "Status: failed" : {
+
+    },
+    "Status: revoked" : {
+
+    },
+    "Status: running" : {
+
+    },
+    "Status: starting" : {
+
+    },
+    "Status: stopped" : {
+
+    },
+    "Status: success" : {
+
+    },
+    "Status: warning" : {
+
     },
     "Steps to Reproduce" : {
 
@@ -42365,6 +42566,9 @@
     "Token Name" : {
 
     },
+    "Too many pending pairing codes. Try again later." : {
+
+    },
     "Too many submissions. Please try again later." : {
 
     },
@@ -42680,6 +42884,9 @@
           }
         }
       }
+    },
+    "Truncate query results" : {
+
     },
     "Truncate Table" : {
       "localizations" : {
