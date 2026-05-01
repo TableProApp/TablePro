@@ -987,35 +987,6 @@
         }
       }
     },
-    "%@ of %@%@ rows" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ of %2$@%3$@ rows"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@/%@%@ satır"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ trên %@%@ dòng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@/%@%@ 行"
-          }
-        }
-      }
-    },
     "%@ on %@ completed successfully." : {
       "localizations" : {
         "en" : {
@@ -1109,29 +1080,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 行"
-          }
-        }
-      }
-    },
-    "%@ rows (more available)" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ satır (daha fazla mevcut)"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ dòng (còn thêm)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 行（还有更多）"
           }
         }
       }
@@ -2136,64 +2084,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 个表，%lld 个关系"
-          }
-        }
-      }
-    },
-    "%lld-%lld of %@ rows" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld-%2$lld of %3$@ rows"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld-%lld / %@ satır"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld-%2$lld trong %3$@ dòng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld-%lld / %@ 行"
-          }
-        }
-      }
-    },
-    "%lld-%lld of %@%@ rows" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld-%2$lld of %3$@%4$@ rows"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld-%lld / %@%@ satır"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld-%2$lld của %3$@%4$@ dòng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld-%lld / %@%@ 行"
           }
         }
       }
@@ -15586,29 +15476,6 @@
         }
       }
     },
-    "Enforce query result limit" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sorgu sonuç limitini uygula"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Áp dụng giới hạn kết quả truy vấn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "强制查询结果限制"
-          }
-        }
-      }
-    },
     "Engine" : {
       "localizations" : {
         "tr" : {
@@ -23671,29 +23538,6 @@
         }
       }
     },
-    "Limit initial query results and load more on demand" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İlk sorgu sonuçlarını sınırla ve istendiğinde daha fazla yükle"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Giới hạn kết quả truy vấn ban đầu và tải thêm khi cần"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "限制初始查询结果并按需加载更多"
-          }
-        }
-      }
-    },
     "Line %lld: %@" : {
       "localizations" : {
         "en" : {
@@ -23875,29 +23719,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加载模型"
-          }
-        }
-      }
-    },
-    "Load More" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Daha Fazla Yükle"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tải thêm"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "加载更多"
           }
         }
       }
@@ -32089,29 +31910,6 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Query result row cap must be between %1$@ and %2$@"
-          }
-        }
-      }
-    },
-    "Query results exceeding this limit show Load More / Fetch All buttons" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu limiti aşan sorgu sonuçları Daha Fazla Yükle / Tümünü Getir düğmelerini gösterir"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kết quả truy vấn vượt quá giới hạn sẽ hiển thị nút Tải thêm / Tải tất cả"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "超过此限制的查询结果将显示“加载更多”/“获取全部”按钮"
           }
         }
       }
