@@ -230,18 +230,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return AsyncThrowingStream { $0.finish(throwing: OracleError.notConnected) }
         }
 
-        var effectiveQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        while effectiveQuery.hasSuffix(";") {
-            effectiveQuery = String(effectiveQuery.dropLast())
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        effectiveQuery = stripOracleOffsetFetch(from: effectiveQuery)
-
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            let queryToRun = effectiveQuery
             let streamTask = Task {
                 do {
-                    try await conn.streamQuery(queryToRun, continuation: continuation)
+                    try await conn.streamQuery(query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -250,29 +242,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 streamTask.cancel()
             }
         }
-    }
-
-    func fetchRowCount(query: String) async throws -> Int {
-        let countQuery = "SELECT COUNT(*) FROM (\(query))"
-        let result = try await execute(query: countQuery)
-        guard let row = result.rows.first,
-              let cell = row.first,
-              let str = cell,
-              let count = Int(str) else {
-            return 0
-        }
-        return count
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        var base = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        while base.hasSuffix(";") {
-            base = String(base.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        base = stripOracleOffsetFetch(from: base)
-        let orderBy = hasTopLevelOrderBy(base) ? "" : " ORDER BY 1"
-        let paginated = "\(base)\(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return try await execute(query: paginated)
     }
 
     // MARK: - Schema Operations
@@ -1133,53 +1102,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func effectiveSchemaEscaped(_ schema: String?) -> String {
         let raw = schema ?? _currentSchema ?? config.username.uppercased()
         return raw.replacingOccurrences(of: "'", with: "''")
-    }
-
-    private func hasTopLevelOrderBy(_ query: String) -> Bool {
-        let ns = query.uppercased() as NSString
-        let len = ns.length
-        guard len >= 8 else { return false }
-        var depth = 0
-        var i = len - 1
-        while i >= 7 {
-            let ch = ns.character(at: i)
-            if ch == 0x29 { depth += 1 }
-            else if ch == 0x28 { depth -= 1 }
-            else if depth == 0 && ch == 0x59 {
-                let start = i - 7
-                if start >= 0 {
-                    let candidate = ns.substring(with: NSRange(location: start, length: 8))
-                    if candidate == "ORDER BY" { return true }
-                }
-            }
-            i -= 1
-        }
-        return false
-    }
-
-    private func stripOracleOffsetFetch(from query: String) -> String {
-        let ns = query.uppercased() as NSString
-        let len = ns.length
-        guard len >= 6 else { return query }
-        var depth = 0
-        var i = len - 1
-        while i >= 5 {
-            let ch = ns.character(at: i)
-            if ch == 0x29 { depth += 1 }
-            else if ch == 0x28 { depth -= 1 }
-            else if depth == 0 && ch == 0x54 {
-                let start = i - 5
-                if start >= 0 {
-                    let candidate = ns.substring(with: NSRange(location: start, length: 6))
-                    if candidate == "OFFSET" {
-                        return (query as NSString).substring(to: start)
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                    }
-                }
-            }
-            i -= 1
-        }
-        return query
     }
 
     private static let fromTableRegex = try? NSRegularExpression(

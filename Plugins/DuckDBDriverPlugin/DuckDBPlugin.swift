@@ -702,34 +702,17 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        let baseQuery = stripLimitOffset(from: query)
         let actor = connectionActor
 
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             Task {
                 do {
-                    try await actor.streamQuery(baseQuery, continuation: continuation)
+                    try await actor.streamQuery(query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
         }
-    }
-
-    // MARK: - Pagination
-
-    func fetchRowCount(query: String) async throws -> Int {
-        let baseQuery = stripLimitOffset(from: query)
-        let countQuery = "SELECT COUNT(*) FROM (\(baseQuery)) AS _count_subquery"
-        let result = try await execute(query: countQuery)
-        guard let firstRow = result.rows.first, let countStr = firstRow.first else { return 0 }
-        return Int(countStr ?? "0") ?? 0
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let baseQuery = stripLimitOffset(from: query)
-        let paginatedQuery = "\(baseQuery) LIMIT \(limit) OFFSET \(offset)"
-        return try await execute(query: paginatedQuery)
     }
 
     // MARK: - Schema Operations
@@ -1110,95 +1093,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func escapeIdentifier(_ value: String) -> String {
         value.replacingOccurrences(of: "\"", with: "\"\"")
-    }
-
-    private func stripLimitOffset(from query: String) -> String {
-        var result = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Strip trailing semicolons
-        while result.hasSuffix(";") {
-            result = String(result.dropLast()).trimmingCharacters(in: .whitespaces)
-        }
-
-        // Only strip LIMIT/OFFSET at the top level (depth 0) from the end.
-        // Strip OFFSET first (comes after LIMIT), then LIMIT.
-        for keyword in ["OFFSET", "LIMIT"] {
-            let upper = result.uppercased() as NSString
-            if let pos = findLastTopLevelKeyword(keyword, upper: upper, length: upper.length) {
-                result = (result as NSString).substring(to: pos)
-                    .trimmingCharacters(in: .whitespaces)
-            }
-        }
-
-        return result
-    }
-
-    private func findLastTopLevelKeyword(
-        _ keyword: String,
-        upper: NSString,
-        length: Int
-    ) -> Int? {
-        let keyLen = keyword.count
-        let parenOpen = UInt16(UnicodeScalar("(").value)
-        let parenClose = UInt16(UnicodeScalar(")").value)
-        let singleQuote = UInt16(UnicodeScalar("'").value)
-        let doubleQuote = UInt16(UnicodeScalar("\"").value)
-
-        var depth = 0
-        var inString = false
-        var inIdentifier = false
-        var i = length - 1
-
-        while i >= 0 {
-            let ch = upper.character(at: i)
-
-            if inString {
-                if ch == singleQuote {
-                    if i > 0 && upper.character(at: i - 1) == singleQuote {
-                        i -= 1
-                    } else {
-                        inString = false
-                    }
-                }
-            } else if inIdentifier {
-                if ch == doubleQuote {
-                    if i > 0 && upper.character(at: i - 1) == doubleQuote {
-                        i -= 1
-                    } else {
-                        inIdentifier = false
-                    }
-                }
-            } else {
-                if ch == singleQuote {
-                    inString = true
-                } else if ch == doubleQuote {
-                    inIdentifier = true
-                } else if ch == parenClose {
-                    depth += 1
-                } else if ch == parenOpen {
-                    depth -= 1
-                } else if depth == 0 {
-                    let start = i - keyLen + 1
-                    if start >= 0 {
-                        let candidate = upper.substring(with: NSRange(location: start, length: keyLen))
-                        if candidate == keyword {
-                            let beforeOk = start == 0 || {
-                                guard let scalar = Unicode.Scalar(upper.character(at: start - 1)) else {
-                                    return false
-                                }
-                                return CharacterSet.whitespaces.contains(scalar)
-                            }()
-                            if beforeOk {
-                                return start
-                            }
-                        }
-                    }
-                }
-            }
-            i -= 1
-        }
-
-        return nil
     }
 
     private func fetchPrimaryKeyColumns(

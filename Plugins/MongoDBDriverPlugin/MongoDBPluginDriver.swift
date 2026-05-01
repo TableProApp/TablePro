@@ -135,60 +135,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
         mongoConnection?.cancelCurrentQuery()
     }
 
-    // MARK: - Paginated Query Support
-
-    func fetchRowCount(query: String) async throws -> Int {
-        guard let conn = mongoConnection else {
-            throw MongoDBPluginError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let db = currentDb
-        let operation = try MongoShellParser.parse(trimmed)
-
-        switch operation {
-        case .find(let collection, let filter, _):
-            let count = try await conn.countDocuments(database: db, collection: collection, filter: filter)
-            return Int(count)
-        case .findOne:
-            return 1
-        case .aggregate(let collection, let pipeline):
-            let result = try await conn.aggregate(database: db, collection: collection, pipeline: pipeline)
-            return result.docs.count
-        case .countDocuments(let collection, let filter):
-            let count = try await conn.countDocuments(database: db, collection: collection, filter: filter)
-            return Int(count)
-        default:
-            return 0
-        }
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let startTime = Date()
-
-        guard let conn = mongoConnection else {
-            throw MongoDBPluginError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let db = currentDb
-        let operation = try MongoShellParser.parse(trimmed)
-
-        switch operation {
-        case .find(let collection, let filter, var options):
-            options.skip = offset
-            options.limit = limit
-            let result = try await conn.find(
-                database: db, collection: collection, filter: filter,
-                sort: options.sort, projection: options.projection,
-                skip: offset, limit: limit
-            )
-            return buildPluginResult(from: result.docs, startTime: startTime, isTruncated: result.isTruncated)
-        default:
-            return try await executeOperation(operation, connection: conn, startTime: startTime)
-        }
-    }
-
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {

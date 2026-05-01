@@ -962,25 +962,6 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 
-    // MARK: - Pagination
-
-    func fetchRowCount(query: String) async throws -> Int {
-        // CQL does not support subqueries, so we can't wrap an arbitrary query in SELECT COUNT(*) FROM (...).
-        // Return -1 to signal unknown count; the UI will hide the total page count.
-        -1
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        // CQL does not support OFFSET. Only the first page (offset=0) can be fetched via simple LIMIT.
-        // For offset>0, throw so the caller knows pagination is unsupported for arbitrary queries.
-        if offset > 0 {
-            throw CassandraPluginError.unsupportedOperation
-        }
-        let baseQuery = stripTrailingSemicolon(query)
-        let paginatedQuery = "\(baseQuery) LIMIT \(limit)"
-        return try await execute(query: paginatedQuery)
-    }
-
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {

@@ -132,49 +132,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await execute(query: query)
     }
 
-    func fetchRowCount(query: String) async throws -> Int {
-        guard let client = httpClient else {
-            throw EtcdError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let parsed = EtcdQueryBuilder.parseRangeQuery(trimmed) {
-            return try await countKeys(prefix: parsed.prefix, filterType: parsed.filterType, filterValue: parsed.filterValue, client: client)
-        }
-
-        if let parsed = EtcdQueryBuilder.parseCountQuery(trimmed) {
-            return try await countKeys(prefix: parsed.prefix, filterType: parsed.filterType, filterValue: parsed.filterValue, client: client)
-        }
-
-        return 0
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let startTime = Date()
-
-        guard let client = httpClient else {
-            throw EtcdError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let parsed = EtcdQueryBuilder.parseRangeQuery(trimmed) {
-            return try await fetchKeysPage(
-                prefix: parsed.prefix,
-                offset: offset,
-                limit: limit,
-                sortAscending: parsed.sortAscending,
-                filterType: parsed.filterType,
-                filterValue: parsed.filterValue,
-                client: client,
-                startTime: startTime
-            )
-        }
-
-        return try await execute(query: query)
-    }
-
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

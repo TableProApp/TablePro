@@ -170,9 +170,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw LibSQLError.notConnected
         }
 
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseQuery = stripLimitOffset(from: trimmed)
-        let result = try await client.execute(sql: baseQuery)
+        let result = try await client.execute(sql: query)
 
         let columns = result.cols.map(\.name)
         let columnTypeNames = result.cols.map { $0.decltype ?? "" }
@@ -188,22 +186,6 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         continuation.finish()
-    }
-
-    // MARK: - Pagination
-
-    func fetchRowCount(query: String) async throws -> Int {
-        let baseQuery = stripLimitOffset(from: query)
-        let countQuery = "SELECT COUNT(*) FROM (\(baseQuery)) _t"
-        let result = try await execute(query: countQuery)
-        guard let firstRow = result.rows.first, let countStr = firstRow.first else { return 0 }
-        return Int(countStr ?? "0") ?? 0
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let baseQuery = stripLimitOffset(from: query)
-        let paginatedQuery = "\(baseQuery) LIMIT \(limit) OFFSET \(offset)"
-        return try await execute(query: paginatedQuery)
     }
 
     // MARK: - Schema Operations
@@ -698,37 +680,6 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             executionTime: executionTime,
             isTruncated: truncated
         )
-    }
-
-    private func stripLimitOffset(from query: String) -> String {
-        let ns = query as NSString
-        let len = ns.length
-        guard len > 0 else { return query }
-
-        let upper = query.uppercased() as NSString
-        var depth = 0
-        var i = len - 1
-
-        while i >= 4 {
-            let ch = upper.character(at: i)
-            if ch == 0x29 { depth += 1 }
-            else if ch == 0x28 { depth -= 1 }
-            else if depth == 0 && ch == 0x54 {
-                let start = i - 4
-                if start >= 0 {
-                    let candidate = upper.substring(with: NSRange(location: start, length: 5))
-                    if candidate == "LIMIT" {
-                        if start == 0 || CharacterSet.whitespacesAndNewlines
-                            .contains(UnicodeScalar(upper.character(at: start - 1)) ?? UnicodeScalar(0)) {
-                            return ns.substring(to: start)
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                        }
-                    }
-                }
-            }
-            i -= 1
-        }
-        return query
     }
 
     private func formatDDL(_ ddl: String) -> String {

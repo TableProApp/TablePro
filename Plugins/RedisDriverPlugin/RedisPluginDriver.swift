@@ -94,69 +94,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await execute(query: query)
     }
 
-    func fetchRowCount(query: String) async throws -> Int {
-        guard let conn = redisConnection else {
-            throw RedisPluginError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let operation = try RedisCommandParser.parse(trimmed)
-
-        switch operation {
-        case .scan(_, let pattern, _):
-            let keys = try await scanAllKeys(connection: conn, pattern: pattern, maxKeys: Self.maxScanKeys)
-            return keys.count
-
-        case .keys(let pattern):
-            let result = try await conn.executeCommand(["KEYS", pattern])
-            return result.arrayValue?.count ?? 0
-
-        case .dbsize:
-            let result = try await conn.executeCommand(["DBSIZE"])
-            return result.intValue ?? 0
-
-        default:
-            return 0
-        }
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let startTime = Date()
-        redisConnection?.resetCancellation()
-
-        guard let conn = redisConnection else {
-            throw RedisPluginError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let operation = try RedisCommandParser.parse(trimmed)
-
-        switch operation {
-        case .scan(_, let pattern, _):
-            let dbIndex = conn.currentDatabase()
-            let cacheKey = "\(dbIndex):\(pattern ?? "*")"
-            let allKeys: [String]
-            if cachedScanPattern == cacheKey, let cached = cachedScanKeys {
-                allKeys = cached
-            } else {
-                allKeys = try await scanAllKeys(
-                    connection: conn, pattern: pattern, maxKeys: Self.maxScanKeys
-                )
-                cachedScanPattern = cacheKey
-                cachedScanKeys = allKeys
-            }
-            let pageEnd = min(offset + limit, allKeys.count)
-            guard offset < allKeys.count else {
-                return buildEmptyKeyResult(startTime: startTime)
-            }
-            let pageKeys = Array(allKeys[offset ..< pageEnd])
-            return try await buildKeyBrowseResult(keys: pageKeys, connection: conn, startTime: startTime)
-
-        default:
-            return try await executeOperation(operation, connection: conn, startTime: startTime)
-        }
-    }
-
     // MARK: - Query Cancellation
 
     func cancelQuery() throws {
