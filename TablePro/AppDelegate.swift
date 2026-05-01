@@ -179,11 +179,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = notification.object as? NSWindow else { return }
         let windowId = ObjectIdentifier(window)
 
-        if AppLaunchCoordinator.isWelcomeWindow(window) && !configuredWindows.contains(windowId) {
-            configureWelcomeWindowStyle(window)
-            configuredWindows.insert(windowId)
-        }
-
         if AppLaunchCoordinator.isConnectionFormWindow(window) && !configuredWindows.contains(windowId) {
             configureConnectionFormWindowStyle(window)
             configuredWindows.insert(windowId)
@@ -200,7 +195,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }.count
             if remaining == 0 {
                 NotificationCenter.default.post(name: .mainWindowWillClose, object: nil)
-                openWelcomeWindow()
+                WelcomeWindowFactory.openOrFront()
             }
         }
     }
@@ -211,44 +206,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func openWelcomeWindow() {
-        for window in NSApp.windows where AppLaunchCoordinator.isWelcomeWindow(window) {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
-    }
-
     // MARK: - Window Style
-
-    private func configureWelcomeWindowStyle(_ window: NSWindow) {
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
-        window.styleMask.remove(.miniaturizable)
-
-        window.collectionBehavior.remove(.fullScreenPrimary)
-        window.collectionBehavior.insert(.fullScreenNone)
-
-        if window.styleMask.contains(.resizable) {
-            window.styleMask.remove(.resizable)
-        }
-
-        let welcomeSize = NSSize(width: 700, height: 450)
-        if window.frame.size != welcomeSize {
-            window.setContentSize(welcomeSize)
-            window.center()
-        }
-
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.titlebarAppearsTransparent = true
-
-        window.makeKeyAndOrderFront(nil)
-
-        if let textField = window.contentView?.firstEditableTextField() {
-            window.makeFirstResponder(textField)
-        }
-    }
 
     private func configureConnectionFormWindowStyle(_ window: NSWindow) {
         window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
@@ -306,7 +264,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showWelcomeFromDock() {
-        openWelcomeWindow()
+        WelcomeWindowFactory.openOrFront()
     }
 
     @objc func newWindowForTab(_ sender: Any?) {

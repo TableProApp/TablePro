@@ -221,10 +221,6 @@ internal final class AppLaunchCoordinator {
     }
 
     private func showWelcomeWindow() {
-        for window in NSApp.windows where Self.isWelcomeWindow(window) {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
+        WelcomeWindowFactory.openOrFront()
     }
 }

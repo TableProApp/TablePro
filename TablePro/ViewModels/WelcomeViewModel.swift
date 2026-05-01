@@ -268,22 +268,15 @@ final class WelcomeViewModel {
         if WindowOpener.shared.openWindow == nil {
             WindowOpener.shared.openWindow = openWindow
         }
-        // Close welcome BEFORE opening the new editor window. Otherwise the
-        // welcome window (still key + visible) reasserts itself during the
-        // new window's `makeKeyAndOrderFront` — the new window briefly
-        // becomes key, immediately resigns, welcome retakes key, and the
-        // app is left with no key window after welcome closes → menu
-        // @FocusedValue nil → Cmd+T/1...9 disabled.
-        NSApplication.shared.closeWindows(withId: "welcome")
+        WelcomeWindowFactory.close()
         WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
         Task {
             do {
                 try await dbManager.connectToSession(connection)
             } catch is CancellationError {
-                // User cancelled password prompt — return to welcome
                 closeConnectionWindows(for: connection.id)
-                self.openWindow?(id: "welcome")
+                WelcomeWindowFactory.openOrFront()
             } catch {
                 if case PluginError.pluginNotInstalled = error {
                     Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
@@ -302,9 +295,7 @@ final class WelcomeViewModel {
         if WindowOpener.shared.openWindow == nil {
             WindowOpener.shared.openWindow = openWindow
         }
-        // Close welcome before opening editor — see connectToDatabase above
-        // for the welcome-reasserts-key race that disabled menu shortcuts.
-        NSApplication.shared.closeWindows(withId: "welcome")
+        WelcomeWindowFactory.close()
         WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
         Task {
@@ -312,7 +303,7 @@ final class WelcomeViewModel {
                 try await dbManager.connectToSession(connection)
             } catch is CancellationError {
                 closeConnectionWindows(for: connection.id)
-                self.openWindow?(id: "welcome")
+                WelcomeWindowFactory.openOrFront()
             } catch {
                 Self.logger.error(
                     "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")
@@ -592,17 +583,15 @@ final class WelcomeViewModel {
     // MARK: - Private Helpers
 
     private func handleConnectionFailure(error: Error, connectionId: UUID) {
-        guard let openWindow else { return }
         closeConnectionWindows(for: connectionId)
         connectionError = error.localizedDescription
         showConnectionError = true
-        openWindow(id: "welcome")
+        WelcomeWindowFactory.openOrFront()
     }
 
     private func handleMissingPlugin(connection: DatabaseConnection) {
-        guard let openWindow else { return }
         closeConnectionWindows(for: connection.id)
-        openWindow(id: "welcome")
+        WelcomeWindowFactory.openOrFront()
         pluginInstallConnection = connection
     }
 

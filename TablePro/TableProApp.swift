@@ -626,19 +626,9 @@ struct TableProApp: App {
     }
 
     var body: some Scene {
-        // Welcome Window - opens on launch (must be first Window scene so SwiftUI
-        // restores it by default when clicking the dock icon)
-        Window("Welcome to TablePro", id: "welcome") {
-            WelcomeWindowView()
-                .background(OpenWindowHandler())  // Handle window notifications from startup
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 700, height: 450)
-
-        // Connection Form Window - opens when creating/editing a connection
         WindowGroup(id: "connection-form", for: UUID?.self) { $connectionId in
             ConnectionFormView(connectionId: connectionId ?? nil)
+                .background(OpenWindowHandler())
         }
         .windowResizability(.contentSize)
 
@@ -688,7 +678,6 @@ extension Notification.Name {
     // Window lifecycle notifications
     static let mainWindowWillClose = Notification.Name("mainWindowWillClose")
     static let openMainWindow = Notification.Name("openMainWindow")
-    static let openWelcomeWindow = Notification.Name("openWelcomeWindow")
 
     // Database URL handling notifications
     static let switchSchemaFromURL = Notification.Name("switchSchemaFromURL")
@@ -753,9 +742,6 @@ private struct OpenWindowHandler: View {
             .onAppear {
                 // Store openWindow action for imperative access (e.g., from MainContentCommandActions)
                 WindowOpener.shared.openWindow = openWindow
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openWelcomeWindow)) { _ in
-                openWindow(id: "welcome")
             }
             .onReceive(NotificationCenter.default.publisher(for: .openMainWindow)) { notification in
                 if let payload = notification.object as? EditorTabPayload {

@@ -205,7 +205,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             queue: .main
         ) { _ in
             MainActor.assumeIsolated {
-                NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
+                WelcomeWindowFactory.openOrFront()
             }
         }
         handleConnectionStatusChange()

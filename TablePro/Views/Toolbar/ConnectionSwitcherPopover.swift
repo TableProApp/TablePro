@@ -126,7 +126,7 @@ struct ConnectionSwitcherPopover: View {
             // Manage connections button
             Button {
                 onDismiss?()
-                NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
+                WelcomeWindowFactory.openOrFront()
             } label: {
                 HStack {
                     Image(systemName: "gear")

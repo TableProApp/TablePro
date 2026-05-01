@@ -309,10 +309,7 @@ extension ConnectionFormView {
         if WindowOpener.shared.openWindow == nil {
             WindowOpener.shared.openWindow = openWindow
         }
-        // Close welcome BEFORE opening the editor window so it can't reassert
-        // key status during the new window's `makeKeyAndOrderFront`. See
-        // WelcomeViewModel.connectToDatabase for the diagnosed race.
-        NSApplication.shared.closeWindows(withId: "welcome")
+        WelcomeWindowFactory.close()
         WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
         Task {
@@ -330,7 +327,7 @@ extension ConnectionFormView {
             return
         }
         closeConnectionWindows(for: connection.id)
-        openWindow(id: "welcome")
+        WelcomeWindowFactory.openOrFront()
         guard !(error is CancellationError) else { return }
         Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
         AlertHelper.showErrorSheet(
@@ -341,7 +338,7 @@ extension ConnectionFormView {
 
     func handleMissingPlugin(connection: DatabaseConnection) {
         closeConnectionWindows(for: connection.id)
-        openWindow(id: "welcome")
+        WelcomeWindowFactory.openOrFront()
         pluginInstallConnection = connection
     }
 
@@ -355,9 +352,7 @@ extension ConnectionFormView {
         if WindowOpener.shared.openWindow == nil {
             WindowOpener.shared.openWindow = openWindow
         }
-        // Close welcome before opening editor — see connectToDatabase above
-        // for the welcome-reasserts-key race that disabled menu shortcuts.
-        NSApplication.shared.closeWindows(withId: "welcome")
+        WelcomeWindowFactory.close()
         WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
         Task {

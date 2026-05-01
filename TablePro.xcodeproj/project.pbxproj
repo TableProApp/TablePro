@@ -459,9 +459,9 @@
 		5AF312BE2F36FF7500E86682 /* Exceptions for "TablePro" folder in "TablePro" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Info.plist,
 				CLI/main.swift,
 				CLI/MCPBridgeProxy.swift,
+				Info.plist,
 			);
 			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
 		};

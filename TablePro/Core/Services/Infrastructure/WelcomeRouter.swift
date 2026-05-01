@@ -51,10 +51,6 @@ internal final class WelcomeRouter {
     }
 
     private func showWelcomeWindow() {
-        for window in NSApp.windows where AppLaunchCoordinator.isWelcomeWindow(window) {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
+        WelcomeWindowFactory.openOrFront()
     }
 }
