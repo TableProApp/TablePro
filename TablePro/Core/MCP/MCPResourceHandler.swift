@@ -5,11 +5,11 @@ final class MCPResourceHandler: Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPResourceHandler")
 
     private let bridge: MCPConnectionBridge
-    private let authGuard: MCPAuthGuard
+    private let authPolicy: MCPAuthPolicy
 
-    init(bridge: MCPConnectionBridge, authGuard: MCPAuthGuard) {
+    init(bridge: MCPConnectionBridge, authPolicy: MCPAuthPolicy) {
         self.bridge = bridge
-        self.authGuard = authGuard
+        self.authPolicy = authPolicy
     }
 
     func handleResourceRead(uri: String, sessionId: String) async throws -> MCPResourceReadResult {
@@ -65,7 +65,12 @@ final class MCPResourceHandler: Sendable {
     }
 
     private func handleSchemaResource(uri: String, connectionId: UUID, sessionId: String) async throws -> MCPResourceReadResult {
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authPolicy.resolveAndAuthorize(
+            token: MCPToolHandler.anonymousFullAccessToken,
+            tool: "describe_table",
+            connectionId: connectionId,
+            sessionId: sessionId
+        )
         let result = try await bridge.fetchSchemaResource(connectionId: connectionId)
         let jsonString = encodeJSON(result)
         return MCPResourceReadResult(contents: [
@@ -79,7 +84,12 @@ final class MCPResourceHandler: Sendable {
         queryItems: [URLQueryItem],
         sessionId: String
     ) async throws -> MCPResourceReadResult {
-        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authPolicy.resolveAndAuthorize(
+            token: MCPToolHandler.anonymousFullAccessToken,
+            tool: "search_query_history",
+            connectionId: connectionId,
+            sessionId: sessionId
+        )
         let limit = queryItems.first(where: { $0.name == "limit" })
             .flatMap { $0.value }
             .flatMap { Int($0) }

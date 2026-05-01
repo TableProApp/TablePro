@@ -26,6 +26,12 @@ final class QueryTabManager {
     @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
     @ObservationIgnored private var _tabIndexMapDirty = true
 
+    @ObservationIgnored private let globalTabsProvider: () -> [QueryTab]
+
+    init(globalTabsProvider: @escaping () -> [QueryTab] = { [] }) {
+        self.globalTabsProvider = globalTabsProvider
+    }
+
     private func rebuildTabIndexMapIfNeeded() {
         guard _tabIndexMapDirty else { return }
         _tabIndexMap = Dictionary(uniqueKeysWithValues: tabs.enumerated().map { ($1.id, $0) })
@@ -50,11 +56,6 @@ final class QueryTabManager {
         return (tabs[index], index)
     }
 
-    init() {
-        tabs = []
-        selectedTabId = nil
-    }
-
     // MARK: - Tab Naming
 
     /// Next "Query N" title based on existing tabs across all windows.
@@ -69,6 +70,10 @@ final class QueryTabManager {
         return "Query \(maxNumber + 1)"
     }
 
+    private func nextTitle() -> String {
+        Self.nextQueryTitle(existingTabs: globalTabsProvider() + tabs)
+    }
+
     // MARK: - Tab Management
 
     func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil) {
@@ -81,7 +86,7 @@ final class QueryTabManager {
             return
         }
 
-        let tabTitle = title ?? Self.nextQueryTitle(existingTabs: tabs)
+        let tabTitle = title ?? nextTitle()
         var newTab = QueryTab(title: tabTitle, tabType: .query)
 
         if let query = initialQuery {
@@ -181,6 +186,13 @@ final class QueryTabManager {
         databaseName: String = "",
         quoteIdentifier: ((String) -> String)? = nil
     ) throws {
+        if let existing = tabs.first(where: {
+            $0.tabType == .table && $0.tableContext.tableName == tableName && $0.tableContext.databaseName == databaseName
+        }) {
+            selectedTabId = existing.id
+            return
+        }
+
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName, databaseType: databaseType, quoteIdentifier: quoteIdentifier

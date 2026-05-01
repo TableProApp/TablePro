@@ -119,6 +119,7 @@ extension ConnectionFormView {
             selectedGroupId = existing.groupId
             safeModeLevel = existing.safeModeLevel
             aiPolicy = existing.aiPolicy
+            externalAccess = existing.externalAccess
             localOnly = existing.localOnly
 
             // Load additional fields from connection
@@ -235,6 +236,7 @@ extension ConnectionFormView {
             sshTunnelMode: sshTunnelMode,
             safeModeLevel: safeModeLevel,
             aiPolicy: aiPolicy,
+            externalAccess: externalAccess,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : startupCommands,
@@ -277,7 +279,7 @@ extension ConnectionFormView {
             if !connectionToSave.localOnly {
                 SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
-            NSApplication.shared.closeWindows(withId: "connection-form")
+            ConnectionFormWindowFactory.closeAll()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
             if connect {
                 connectToDatabase(connectionToSave)
@@ -290,7 +292,7 @@ extension ConnectionFormView {
                     SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
                 }
             }
-            NSApplication.shared.closeWindows(withId: "connection-form")
+            ConnectionFormWindowFactory.closeAll()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
         }
     }
@@ -299,23 +301,15 @@ extension ConnectionFormView {
         guard let id = connectionId,
               let connection = storage.loadConnections().first(where: { $0.id == id }) else { return }
         storage.deleteConnection(connection)
-        NSApplication.shared.closeWindows(withId: "connection-form")
+        ConnectionFormWindowFactory.closeAll()
         NotificationCenter.default.post(name: .connectionUpdated, object: nil)
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
-        // Close welcome BEFORE opening the editor window so it can't reassert
-        // key status during the new window's `makeKeyAndOrderFront`. See
-        // WelcomeViewModel.connectToDatabase for the diagnosed race.
-        NSApplication.shared.closeWindows(withId: "welcome")
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
+        WelcomeWindowFactory.close()
         Task {
             do {
-                try await dbManager.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch {
                 handleConnectError(error, connection: connection)
             }
@@ -328,7 +322,7 @@ extension ConnectionFormView {
             return
         }
         closeConnectionWindows(for: connection.id)
-        openWindow(id: "welcome")
+        WelcomeWindowFactory.openOrFront()
         guard !(error is CancellationError) else { return }
         Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
         AlertHelper.showErrorSheet(
@@ -339,7 +333,7 @@ extension ConnectionFormView {
 
     func handleMissingPlugin(connection: DatabaseConnection) {
         closeConnectionWindows(for: connection.id)
-        openWindow(id: "welcome")
+        WelcomeWindowFactory.openOrFront()
         pluginInstallConnection = connection
     }
 
@@ -350,17 +344,10 @@ extension ConnectionFormView {
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
-        // Close welcome before opening editor — see connectToDatabase above
-        // for the welcome-reasserts-key race that disabled menu shortcuts.
-        NSApplication.shared.closeWindows(withId: "welcome")
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
+        WelcomeWindowFactory.close()
         Task {
             do {
-                try await dbManager.connectToSession(connection)
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch {
                 handleConnectError(error, connection: connection)
             }

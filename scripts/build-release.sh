@@ -598,6 +598,14 @@ build_for_arch() {
         exit 1
     fi
 
+    # Verify embedded MCP stdio bridge made it into the bundle
+    MCP_CLI_PATH="$BUILD_DIR/$OUTPUT_NAME/Contents/MacOS/tablepro-mcp"
+    if [ ! -x "$MCP_CLI_PATH" ]; then
+        echo "❌ FATAL: tablepro-mcp helper missing from $MCP_CLI_PATH"
+        echo "Check the mcp-server target's Copy Files build phase on the TablePro target."
+        exit 1
+    fi
+
     # Get size
     SIZE=$(ls -lh "$BINARY_PATH" 2>/dev/null | awk '{print $5}')
     if [ -z "$SIZE" ]; then

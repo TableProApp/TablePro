@@ -19,7 +19,6 @@ struct ConnectionSessionEquivalenceTests {
         id: UUID = UUID(),
         database: String = "testdb",
         type: DatabaseType = .mysql,
-        tables: [TableInfo] = [],
         status: ConnectionStatus = .connected
     ) -> ConnectionSession {
         let connection = DatabaseConnection(
@@ -30,7 +29,6 @@ struct ConnectionSessionEquivalenceTests {
         )
         var session = ConnectionSession(connection: connection)
         session.status = status
-        session.tables = tables
         return session
     }
 
@@ -71,16 +69,15 @@ struct ConnectionSessionEquivalenceTests {
         #expect(!a.isContentViewEquivalent(to: b))
     }
 
-    @Test("Returns false when tables change")
-    func falseWhenTablesChange() {
+    @Test("Tables are excluded from equivalence (owned by SchemaService)")
+    @MainActor
+    func tablesAreExcludedFromEquivalence() async {
         let id = UUID()
-        var a = makeSession(id: id)
-        var b = makeSession(id: id)
+        let a = makeSession(id: id)
+        let b = makeSession(id: id)
 
-        a.tables = [TestFixtures.makeTableInfo(name: "users")]
-        b.tables = [TestFixtures.makeTableInfo(name: "orders")]
-
-        #expect(!a.isContentViewEquivalent(to: b))
+        await SchemaService.shared.invalidate(connectionId: id)
+        #expect(a.isContentViewEquivalent(to: b))
     }
 
     @Test("Returns false when status changes")
@@ -162,14 +159,6 @@ struct ConnectionSessionStateTests {
         #expect(!session.isConnected)
     }
 
-    @Test("clearCachedData clears tables")
-    func clearCachedDataClearsTables() {
-        var session = makeSession()
-        session.tables = [TestFixtures.makeTableInfo(name: "users")]
-        session.clearCachedData()
-        #expect(session.tables.isEmpty)
-    }
-
     @Test("clearCachedData clears selectedTables")
     func clearCachedDataClearsSelectedTables() {
         var session = makeSession()
@@ -207,7 +196,7 @@ struct ConnectionSessionStateTests {
         let connection = TestFixtures.makeConnection(name: "Production")
         var session = ConnectionSession(connection: connection)
         session.status = .connected
-        session.tables = [TestFixtures.makeTableInfo(name: "users")]
+        session.selectedTables = [TestFixtures.makeTableInfo(name: "users")]
         session.clearCachedData()
         #expect(session.status == .connected)
         #expect(session.connection.id == connection.id)

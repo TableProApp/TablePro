@@ -144,6 +144,36 @@ extension DatabaseType {
     }
 }
 
+// MARK: - External Access
+
+enum ExternalAccessLevel: String, Codable, Sendable, CaseIterable, Identifiable {
+    case blocked
+    case readOnly
+    case readWrite
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .blocked: return String(localized: "Blocked")
+        case .readOnly: return String(localized: "Read-Only")
+        case .readWrite: return String(localized: "Read-Write")
+        }
+    }
+
+    private var rank: Int {
+        switch self {
+        case .blocked: 0
+        case .readOnly: 1
+        case .readWrite: 2
+        }
+    }
+
+    func satisfies(_ required: ExternalAccessLevel) -> Bool {
+        rank >= required.rank
+    }
+}
+
 // MARK: - Connection Color
 
 /// Preset colors for connection status indicators
@@ -213,6 +243,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sshTunnelMode: SSHTunnelMode
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
+    var externalAccess: ExternalAccessLevel = .readOnly
     var additionalFields: [String: String] = [:]
     var redisDatabase: Int?
     var startupCommands: String?
@@ -291,6 +322,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         sshTunnelMode: SSHTunnelMode = .disabled,
         safeModeLevel: SafeModeLevel = .silent,
         aiPolicy: AIConnectionPolicy? = nil,
+        externalAccess: ExternalAccessLevel = .readOnly,
         mongoAuthSource: String? = nil,
         mongoReadPreference: String? = nil,
         mongoWriteConcern: String? = nil,
@@ -335,6 +367,7 @@ struct DatabaseConnection: Identifiable, Hashable {
             self.sshTunnelMode = sshTunnelMode
         }
         self.aiPolicy = aiPolicy
+        self.externalAccess = externalAccess
         self.redisDatabase = redisDatabase
         self.startupCommands = startupCommands
         self.sortOrder = sortOrder
@@ -385,7 +418,7 @@ extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, groupId, sshProfileId
-        case sshTunnelMode, safeModeLevel, aiPolicy, additionalFields
+        case sshTunnelMode, safeModeLevel, aiPolicy, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly
     }
 
@@ -406,6 +439,7 @@ extension DatabaseConnection: Codable {
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
         safeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
         aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
+        externalAccess = try container.decodeIfPresent(ExternalAccessLevel.self, forKey: .externalAccess) ?? .readOnly
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields) ?? [:]
         redisDatabase = try container.decodeIfPresent(Int.self, forKey: .redisDatabase)
         startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
@@ -446,6 +480,7 @@ extension DatabaseConnection: Codable {
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
+        try container.encode(externalAccess, forKey: .externalAccess)
         try container.encode(additionalFields, forKey: .additionalFields)
         try container.encodeIfPresent(redisDatabase, forKey: .redisDatabase)
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)

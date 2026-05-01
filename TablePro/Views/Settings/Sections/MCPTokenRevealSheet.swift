@@ -1,8 +1,3 @@
-//
-//  MCPTokenRevealSheet.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 
@@ -15,7 +10,7 @@ struct MCPTokenRevealSheet: View {
 
     @State private var isTokenRevealed = false
     @State private var tokenCopied = false
-    @State private var selectedClient: MCPSetupClient = .claudeCode
+    @State private var selectedClient: IntegrationClient = .claudeCode
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,35 +27,35 @@ struct MCPTokenRevealSheet: View {
 
             HStack {
                 Spacer()
-                Button("Done") { dismiss() }
+                Button(String(localized: "Done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
             .padding()
         }
-        .frame(width: 540, height: 520)
+        .frame(minWidth: 540, minHeight: 520)
     }
-
-    // MARK: - Warning Banner
 
     private var warningBanner: some View {
         Label {
-            Text("This token will not be shown again")
+            Text(String(localized: "This token will not be shown again"))
                 .fontWeight(.medium)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color(nsColor: .systemOrange))
         }
-        .foregroundStyle(Color(nsColor: .systemOrange))
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .systemOrange).opacity(0.1))
+        .background(.thinMaterial)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color(nsColor: .systemOrange), lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    // MARK: - Token Display
-
     private var tokenDisplay: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Token")
+            Text(String(localized: "Token"))
                 .font(.headline)
 
             HStack(spacing: 8) {
@@ -77,7 +72,12 @@ struct MCPTokenRevealSheet: View {
                 } label: {
                     Image(systemName: isTokenRevealed ? "eye.slash" : "eye")
                 }
-                .help(isTokenRevealed ? String(localized: "Hide token") : String(localized: "Reveal token"))
+                .accessibilityLabel(isTokenRevealed
+                    ? String(localized: "Hide token")
+                    : String(localized: "Reveal token"))
+                .help(isTokenRevealed
+                    ? String(localized: "Hide token")
+                    : String(localized: "Reveal token"))
             }
             .padding(10)
             .background(.quaternary)
@@ -94,10 +94,13 @@ struct MCPTokenRevealSheet: View {
                 HStack(spacing: 4) {
                     Image(systemName: tokenCopied ? "checkmark" : "doc.on.doc")
                         .contentTransition(.symbolEffect(.replace))
-                    Text(tokenCopied ? "Copied" : "Copy Token")
+                    Text(tokenCopied
+                        ? String(localized: "Copied")
+                        : String(localized: "Copy Token"))
                 }
             }
             .buttonStyle(.borderedProminent)
+            .accessibilityLabel(String(localized: "Copy token"))
         }
     }
 
@@ -105,56 +108,33 @@ struct MCPTokenRevealSheet: View {
         String(plaintext.prefix(8)) + String(repeating: "\u{2022}", count: 24)
     }
 
-    // MARK: - Setup Instructions
-
     private var setupInstructions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Setup Instructions")
+            Text(String(localized: "Setup Instructions"))
                 .font(.headline)
 
-            Picker("Client", selection: $selectedClient) {
-                ForEach(MCPSetupClient.allCases) { client in
+            Picker(String(localized: "Client"), selection: $selectedClient) {
+                ForEach(IntegrationClient.allCases) { client in
                     Text(client.displayName).tag(client)
                 }
             }
             .labelsHidden()
             .pickerStyle(.segmented)
 
-            snippetView(for: selectedClient)
+            CopyableCodeBlock(text: configSnippet(for: selectedClient))
         }
     }
-
-    @ViewBuilder
-    private func snippetView(for client: MCPSetupClient) -> some View {
-        let snippet = configSnippet(for: client)
-        MCPCopyableCodeBlock(text: snippet)
-    }
-
-    // MARK: - Config Snippets
 
     private var baseURL: String {
         let scheme = allowRemoteConnections ? "https" : "http"
         return "\(scheme)://127.0.0.1:\(port)/mcp"
     }
 
-    private func configSnippet(for client: MCPSetupClient) -> String {
+    private func configSnippet(for client: IntegrationClient) -> String {
         switch client {
         case .claudeCode:
             return "claude mcp add tablepro --transport http \(baseURL) --header \"Authorization: Bearer \(plaintext)\""
-        case .claudeDesktop:
-            return """
-            {
-              "mcpServers": {
-                "tablepro": {
-                  "url": "\(baseURL)",
-                  "headers": {
-                    "Authorization": "Bearer \(plaintext)"
-                  }
-                }
-              }
-            }
-            """
-        case .cursor:
+        case .claudeDesktop, .cursor:
             return """
             {
               "mcpServers": {
@@ -173,56 +153,5 @@ struct MCPTokenRevealSheet: View {
     private func copyToClipboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-    }
-}
-
-// MARK: - Setup Client
-
-private enum MCPSetupClient: String, CaseIterable, Identifiable {
-    case claudeCode
-    case claudeDesktop
-    case cursor
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .claudeCode: "Claude Code"
-        case .claudeDesktop: "Claude Desktop"
-        case .cursor: "Cursor"
-        }
-    }
-}
-
-// MARK: - Copyable Code Block
-
-private struct MCPCopyableCodeBlock: View {
-    let text: String
-    @State private var copied = false
-
-    var body: some View {
-        HStack(alignment: .top) {
-            Text(text)
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                copied = true
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(1.5))
-                    copied = false
-                }
-            } label: {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .help(String(localized: "Copy to clipboard"))
-        }
     }
 }

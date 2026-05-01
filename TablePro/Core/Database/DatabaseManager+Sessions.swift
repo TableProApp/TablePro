@@ -13,17 +13,12 @@ import TableProPluginKit
 // MARK: - Session Management
 
 extension DatabaseManager {
-    /// Connect to a database and create/switch to its session
-    /// If connection already has a session, switches to it instead
     func connectToSession(_ connection: DatabaseConnection) async throws {
-        // Check if session already exists and is connected
         if let existing = activeSessions[connection.id], existing.driver != nil {
-            // Session is fully connected, just switch to it
             switchToSession(connection.id)
             return
         }
 
-        // Resolve environment variable references in connection fields (Pro feature)
         let resolvedConnection: DatabaseConnection
         if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
             resolvedConnection = EnvVarResolver.resolveConnection(connection)
@@ -31,7 +26,6 @@ extension DatabaseManager {
             resolvedConnection = connection
         }
 
-        // Create new session (or reuse a prepared one)
         if activeSessions[connection.id] == nil {
             var session = ConnectionSession(connection: connection)
             session.status = .connecting
@@ -39,18 +33,15 @@ extension DatabaseManager {
         }
         currentSessionId = connection.id
 
-        // Create SSH tunnel if needed and build effective connection
         let effectiveConnection: DatabaseConnection
         do {
             effectiveConnection = try await buildEffectiveConnection(for: resolvedConnection)
         } catch {
-            // Remove failed session
             removeSessionEntry(for: connection.id)
             currentSessionId = nil
             throw error
         }
 
-        // Run pre-connect hook if configured (only on explicit connect, not auto-reconnect)
         if let script = resolvedConnection.preConnectScript,
            !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
@@ -63,7 +54,6 @@ extension DatabaseManager {
             }
         }
 
-        // Resolve password override for prompt-for-password connections
         var passwordOverride: String?
         if connection.promptForPassword {
             if let cached = activeSessions[connection.id]?.cachedPassword {
@@ -83,7 +73,6 @@ extension DatabaseManager {
             }
         }
 
-        // Create appropriate driver with effective connection
         let driver: DatabaseDriver
         do {
             driver = try await DatabaseDriverFactory.createDriver(
@@ -92,7 +81,6 @@ extension DatabaseManager {
                 awaitPlugins: true
             )
         } catch {
-            // Close tunnel if SSH was established
             if connection.resolvedSSHConfig.enabled {
                 Task {
                     do {
@@ -110,35 +98,32 @@ extension DatabaseManager {
         do {
             try await driver.connect()
 
-            // Apply query timeout from settings (best-effort — some PostgreSQL-compatible
-            // databases like Aurora DSQL don't support SET statement_timeout)
             let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
             if timeoutSeconds > 0 {
                 do {
                     try await driver.applyQueryTimeout(timeoutSeconds)
                 } catch {
+                    // Best-effort: some PostgreSQL-compatible databases like Aurora DSQL
+                    // don't support SET statement_timeout.
                     Self.logger.warning(
                         "Query timeout not supported for \(connection.name): \(error.localizedDescription)"
                     )
                 }
             }
 
-            // Run startup commands before schema init
             await executeStartupCommands(
                 resolvedConnection.startupCommands, on: driver, connectionName: connection.name
             )
 
-            // Initialize schema for drivers that support schema switching
             if let schemaDriver = driver as? SchemaSwitchable {
                 activeSessions[connection.id]?.currentSchema = schemaDriver.currentSchema
             }
 
-            // Run post-connect actions declared by the plugin
             await executePostConnectActions(
                 for: connection, resolvedConnection: resolvedConnection, driver: driver
             )
 
-            // Batch all session mutations into a single write to fire objectWillChange once
+            // Batch all session mutations into a single write to fire objectWillChange once.
             if var session = activeSessions[connection.id] {
                 session.driver = driver
                 session.status = driver.status
@@ -149,13 +134,10 @@ extension DatabaseManager {
                 setSession(session, for: connection.id)
             }
 
-            // Save as last connection for "Reopen Last Session" feature
             appSettingsStorage.saveLastConnectionId(connection.id)
 
-            // Post notification for reliable delivery
             NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
 
-            // Start health monitoring if the plugin supports it
             let supportsHealth = PluginMetadataRegistry.shared.snapshot(
                 forTypeId: connection.type.pluginTypeId
             )?.supportsHealthMonitor ?? true
@@ -164,7 +146,6 @@ extension DatabaseManager {
                 await startHealthMonitor(for: connection.id)
             }
         } catch {
-            // Close tunnel if connection failed
             if connection.resolvedSSHConfig.enabled {
                 Task {
                     do {
@@ -175,12 +156,10 @@ extension DatabaseManager {
                 }
             }
 
-            // Remove failed session completely so UI returns to Welcome window
+            // Remove failed session completely so UI returns to Welcome window.
             removeSessionEntry(for: connection.id)
 
-            // Clear current session if this was it
             if currentSessionId == connection.id {
-                // Switch to another session if available, otherwise clear
                 if let nextSessionId = activeSessions.keys.first {
                     currentSessionId = nextSessionId
                 } else {
@@ -268,6 +247,7 @@ extension DatabaseManager {
                 session.currentSchema = nil
             }
             appSettingsStorage.saveLastSchema(nil, for: connectionId)
+            await SchemaService.shared.invalidate(connectionId: connectionId)
             await reconnectSession(connectionId)
         } else if pm?.capabilities.supportsSchemaSwitching == true,
                   let schemaDriver = driver as? SchemaSwitchable {
@@ -304,7 +284,6 @@ extension DatabaseManager {
         appSettingsStorage.saveLastSchema(schema, for: connectionId)
     }
 
-    /// Switch to an existing session
     func switchToSession(_ sessionId: UUID) {
         guard activeSessions[sessionId] != nil else { return }
         currentSessionId = sessionId
@@ -313,7 +292,6 @@ extension DatabaseManager {
         }
     }
 
-    /// Disconnect a specific session
     func disconnectSession(_ sessionId: UUID) async {
         let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
         guard let session = activeSessions[sessionId] else {
@@ -327,7 +305,6 @@ extension DatabaseManager {
             "[close] disconnectSession start connId=\(sessionId, privacy: .public) name=\(session.connection.name, privacy: .public) hasSSH=\(session.connection.resolvedSSHConfig.enabled)"
         )
 
-        // Close SSH tunnel if exists
         if session.connection.resolvedSSHConfig.enabled {
             let sshStart = Date()
             do {
@@ -340,7 +317,6 @@ extension DatabaseManager {
             )
         }
 
-        // Stop health monitoring
         let hmStart = Date()
         await stopHealthMonitor(for: sessionId)
         lifecycleLogger.info(
@@ -354,18 +330,16 @@ extension DatabaseManager {
         )
         removeSessionEntry(for: sessionId)
 
-        // Clean up shared schema cache for this connection
+        await SchemaService.shared.invalidate(connectionId: sessionId)
+
         SchemaProviderRegistry.shared.clear(for: sessionId)
 
-        // Clean up shared sidebar state for this connection
         SharedSidebarState.removeConnection(sessionId)
 
-        // If this was the current session, switch to another or clear
         if currentSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {
                 switchToSession(nextSessionId)
             } else {
-                // No more sessions - clear current session and last connection ID
                 currentSessionId = nil
                 appSettingsStorage.saveLastConnectionId(nil)
             }
@@ -375,7 +349,6 @@ extension DatabaseManager {
         )
     }
 
-    /// Disconnect all sessions
     func disconnectAll() async {
         let monitorIds = Array(healthMonitors.keys)
         for sessionId in monitorIds {
@@ -388,8 +361,7 @@ extension DatabaseManager {
         }
     }
 
-    /// Update session state (for preserving UI state).
-    /// Skips the write-back when no observable fields changed, avoiding spurious connectionStatusVersion bumps.
+    // Skips the write-back when no observable fields changed, avoiding spurious connectionStatusVersion bumps.
     func updateSession(_ sessionId: UUID, update: (inout ConnectionSession) -> Void) {
         guard var session = activeSessions[sessionId] else { return }
         let before = session
@@ -400,14 +372,12 @@ extension DatabaseManager {
         setSession(session, for: sessionId)
     }
 
-    /// Write a session and bump its per-connection version counter.
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1
         NotificationCenter.default.post(name: .connectionStatusDidChange, object: connectionId)
     }
 
-    /// Remove a session and clean up its per-connection version counter.
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
@@ -415,12 +385,10 @@ extension DatabaseManager {
     }
 
     #if DEBUG
-    /// Test-only: inject a session for unit testing without real database connections
     internal func injectSession(_ session: ConnectionSession, for connectionId: UUID) {
         setSession(session, for: connectionId)
     }
 
-    /// Test-only: remove an injected session
     internal func removeSession(for connectionId: UUID) {
         removeSessionEntry(for: connectionId)
     }

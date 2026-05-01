@@ -71,3 +71,15 @@ The current Safe Mode level appears as a badge in the toolbar (orange for Alert 
 
 Safe Mode gates apply to query execution, saving cell edits, table operations, and sidebar changes.
 
+## External Clients
+
+Safe Mode runs inside the app on every query you execute. External clients (Raycast, Cursor, Claude Desktop, and other MCP clients) hit a separate gate first.
+
+A write request from an external client clears three locks in this order:
+
+1. **External Access** (per-connection, `blocked` / `readOnly` / `readWrite`). Set in the connection form's **Advanced** tab. A `readOnly` connection rejects any write before the request reaches the database.
+2. **Token scope** (per-integration, `readOnly` / `readWrite` / `fullAccess`). Issued by the [pairing flow](/external-api/pairing) and bounded by External Access: effective permission is `MIN(token.scope, connection.externalAccess)`.
+3. **Safe Mode** (per-query). The same rules on this page apply once the request has been routed to the connection. Touch ID prompts and confirmation dialogs still appear, even for queries originating from an external client.
+
+DROP and TRUNCATE always need an explicit confirmation phrase via the `confirm_destructive_operation` tool, regardless of token scope. See [External API security model](/external-api#security-model).
+

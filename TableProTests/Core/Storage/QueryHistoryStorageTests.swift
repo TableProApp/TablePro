@@ -204,6 +204,44 @@ struct QueryHistoryStorageTests {
         #expect(remaining.isEmpty)
     }
 
+    @Test("fetchHistory with since/until window excludes entries outside the range")
+    func fetchHistorySinceUntilWindow() async {
+        let connId = UUID()
+        let now = Date()
+        let oneHourAgo = now.addingTimeInterval(-3_600)
+        let twoHoursAgo = now.addingTimeInterval(-7_200)
+
+        let outside = QueryHistoryEntry(
+            query: "SELECT outside_window",
+            connectionId: connId,
+            databaseName: "testdb",
+            executedAt: twoHoursAgo,
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+        let inside = QueryHistoryEntry(
+            query: "SELECT inside_window",
+            connectionId: connId,
+            databaseName: "testdb",
+            executedAt: oneHourAgo,
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+
+        _ = await storage.addHistory(outside)
+        _ = await storage.addHistory(inside)
+
+        let windowed = await storage.fetchHistory(
+            connectionId: connId,
+            since: now.addingTimeInterval(-5_400),
+            until: now
+        )
+        #expect(windowed.count == 1)
+        #expect(windowed.first?.query == "SELECT inside_window")
+    }
+
     @Test("Combined connectionId + dateFilter works")
     func combinedConnectionIdAndDateFilter() async {
         let targetConn = UUID()

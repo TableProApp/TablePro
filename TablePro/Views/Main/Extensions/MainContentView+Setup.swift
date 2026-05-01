@@ -95,11 +95,6 @@ extension MainContentView {
 
     private func handleRestoreOrDefault() async {
         if WindowLifecycleMonitor.shared.hasOtherWindows(for: connection.id, excluding: windowId) {
-            if tabManager.tabs.isEmpty {
-                let allTabs = MainContentCoordinator.allTabs(for: connection.id)
-                let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
-                tabManager.addTab(title: title, databaseName: connection.database)
-            }
             MainContentView.lifecycleLogger.info(
                 "[open] handleRestoreOrDefault short-circuit (other windows exist) windowId=\(windowId, privacy: .public)"
             )
@@ -111,7 +106,8 @@ extension MainContentView {
         MainContentView.lifecycleLogger.info(
             "[open] restoreFromDisk done windowId=\(windowId, privacy: .public) tabsRestored=\(result.tabs.count) source=\(String(describing: result.source), privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(restoreStart) * 1_000))"
         )
-        if !result.tabs.isEmpty {
+        guard !result.tabs.isEmpty else { return }
+        do {
             var restoredTabs = result.tabs
             for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
                 if let tableName = restoredTabs[i].tableContext.tableName {
@@ -141,17 +137,13 @@ extension MainContentView {
 
             if !remainingTabs.isEmpty {
                 let selectedWasFirst = firstTab.id == selectedId
-                Task { @MainActor in
-                    for tab in remainingTabs {
-                        let restorePayload = EditorTabPayload(
-                            from: tab, connectionId: connection.id, skipAutoExecute: true)
-                        WindowManager.shared.openTab(payload: restorePayload)
-                    }
-                    // Bring the first window to front only if it had the selected tab.
-                    // Otherwise let the last restored window stay focused.
-                    if selectedWasFirst {
-                        viewWindow?.makeKeyAndOrderFront(nil)
-                    }
+                for tab in remainingTabs {
+                    let restorePayload = EditorTabPayload(
+                        from: tab, connectionId: connection.id, skipAutoExecute: true)
+                    WindowManager.shared.openTab(payload: restorePayload)
+                }
+                if selectedWasFirst {
+                    viewWindow?.makeKeyAndOrderFront(nil)
                 }
             }
 

@@ -263,7 +263,7 @@ struct MainEditorContentView: View {
                         parameters: parameterBinding(for: tab),
                         isParameterPanelVisible: parameterVisibilityBinding(for: tab),
                         onExecute: { coordinator.runQuery() },
-                        schemaProvider: coordinator.schemaProvider,
+                        schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id),
                         databaseType: coordinator.connection.type,
                         connectionId: coordinator.connection.id,
                         connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,

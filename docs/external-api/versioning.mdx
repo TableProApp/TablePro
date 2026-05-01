@@ -1,0 +1,59 @@
+---
+title: Versioning
+description: Stability policy for the URL scheme, MCP tools, and resource catalog
+---
+
+# Versioning
+
+The External API follows TablePro's semver. The contract is the URL scheme, the MCP tool catalog, the resource list, and the pairing flow.
+
+## Stability rules
+
+Within a major version, the External API is **additive only**:
+
+- New URL scheme actions can be added.
+- New MCP tools can be added.
+- New tool input fields can be added if they are optional with a sensible default.
+- New tool output fields can be added.
+- New resources can be added.
+- New error codes can be added.
+
+Within a major version, none of the following will happen:
+
+- A URL scheme path will not be removed or change meaning.
+- A tool will not be removed or renamed.
+- A required input field will not be added to an existing tool.
+- An output field will not be removed or change type.
+- A resource will not be removed.
+
+## Breaking changes
+
+Breaking changes ship only at major TablePro version bumps (e.g. 1.x to 2.x). The 0.x series is pre-1.0; we treat minor versions as the release boundary, but only break with explicit notice.
+
+When a breaking change ships:
+
+- The next previous version emits a deprecation warning in the activity log on every use of the affected surface.
+- The release notes call it out under the `BREAKING` heading in CHANGELOG.
+- The deprecated surface continues to work for at least one minor version after the warning is introduced.
+
+## Deprecation lifecycle
+
+1. **Announce.** A `Deprecated` note is added to the docs. CHANGELOG mentions the affected surface.
+2. **Warn.** The next version logs a deprecation warning to the activity log when the surface is used. The warning names the replacement.
+3. **Remove.** A later version removes the surface. CHANGELOG marks it `BREAKING`.
+
+The warn-to-remove gap is at least one minor version.
+
+## What is not under the contract
+
+The following are not part of the External API contract and can change at any time without notice:
+
+- Internal MCP message routing details, transport framing, and HTTP path layout under `/v1/internal/*`.
+- The handshake file format at `~/Library/Application Support/TablePro/mcp-handshake.json`. Use the bundled `tablepro-mcp` CLI rather than parsing it yourself.
+- The tokens file format at `~/Library/Application Support/TablePro/mcp-tokens.json`. Tokens are managed via Settings, not the file.
+- Audit log file format at `~/Library/Application Support/TablePro/mcp-audit.db`. Read via the activity log view.
+- The connections file format at `~/Library/Application Support/TablePro/connections.json`. Treat as best-effort. Schema can shift between minor versions; integrations should fall back to MCP `list_connections`.
+
+## Reporting issues
+
+If you find a behavior that contradicts these rules, file an issue at [github.com/TableProApp/TablePro](https://github.com/TableProApp/TablePro/issues). Include the TablePro version, the URL or MCP call, expected and actual behavior, and a snippet of the activity log row if relevant.

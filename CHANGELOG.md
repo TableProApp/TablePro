@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- External API for Raycast, Cursor, Claude Desktop, and other MCP clients: URL scheme, stdio MCP transport, pairing flow, activity log
+- UUID-keyed deep links: `tablepro://connect/<uuid>`, `.../table/<name>`, `.../query?sql=...`, `tablepro://integrations/pair?...`, `tablepro://integrations/start-mcp`
+- stdio MCP transport via bundled `tablepro-mcp` CLI at `Contents/MacOS/tablepro-mcp`. Reads handshake file, no token needed
+- Per-connection `External Access` setting (`blocked`, `readOnly`, `readWrite`). Defaults to `readOnly`. Bounds token reach via `MIN(token.scope, connection.externalAccess)`
+- Pairing flow with PKCE code exchange. One-click token issuance for Raycast and other extensions
+- Activity log at `~/Library/Application Support/TablePro/mcp-audit.db`. Viewable in Settings > Integrations > Activity Log. 90-day retention
+- New MCP tools: `list_recent_tabs`, `search_query_history`, `open_connection_window`, `open_table_tab`, `focus_query_tab`
 - PostgreSQL ICU collation provider in Create Database (PG 15+). Provider picker is added when the server reports PG 15 or newer. ICU locale list comes from `pg_collation`. SQL emission is version-aware: PG 16+ uses unified `LOCALE`, PG 15 uses `ICU_LOCALE` with `LC_COLLATE 'C' LC_CTYPE 'C'`.
 - Connection URL parsing: SSH `user:password@host` split, `safeModeLevel` from TablePlus URLs, case-insensitive query params
 - Connection URL export: SSH password, Redis database index, MongoDB auth params (`authSource`, `authMechanism`, `replicaSet`), and multi-host
@@ -28,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Query execution no longer rewrites user SQL. Result safety cap is applied at the row level instead of via query rewrite. When a result is capped, the status bar shows the loaded row count with a Fetch All button. Load More on user-query tabs is removed; table-view pagination is unchanged.
 - Driver protocol: removed fetchFirstPage, fetchNextPage, fetchRows, fetchRowCount and their parameterized variants. Replaced with executeUserQuery(query:rowCap:parameters:). PluginKit ABI bumped to 9. Separately distributed plugins (Oracle, DuckDB, MSSQL, MongoDB, BigQuery, LibSQL, Cassandra, Etcd, CloudflareD1, DynamoDB) require update before use with this version.
 - Settings renamed: `enforceQueryResultLimit` is now `truncateQueryResults`, `queryResultLimit` is now `queryResultRowCap`. Custom values revert to default on first launch after upgrade.
+- MCP server lazy-starts on first external request. Manual enable in Settings is no longer required
+- Settings tab renamed from "MCP" to "Integrations" with new sections for connected clients, activity log, and pairing
+- Integrations settings: rename MCP Server section to Integrations, restructure with searchable activity log, native list with keyboard navigation, accessibility labels, color-blind-safe status icons.
+- Activity log gained an Export… button that writes the current filtered list to CSV.
+- Connection Advanced settings: AI Policy and External Clients now share a single External Access section. The External Clients picker uses a segmented control.
 - Storage and sync singletons accept dependencies via init for test isolation, matching Apple's URLSession and UserDefaults convention. Production callers using `.shared` are unchanged. `SQLFavoriteStorage` is now an actor so its first access no longer blocks the main thread on SQLite setup.
 - Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
 - Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
@@ -67,10 +79,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data grid cell focus ring redraws when the user toggles Light or Dark mode mid-session, picking up the system's appearance-aware focus indicator color
 - Data grid keeps sortedIDs and cachedRowCount paired by calling updateCache() immediately after the SwiftUI bridge writes new sortedIDs to the coordinator, removing a window where the cached count and the sort permutation could disagree
 - Display formats memoized per tab on MainContentCoordinator keyed by schema version, smart-detection setting, and format-overrides version, so ValueDisplayDetector.detect runs once per result schema instead of on every SwiftUI body evaluation
+- MCP HTTP router replaced with a route registry. `MCPRouter` now matches paths and methods against a list of `MCPRouteHandler` values; `/mcp` traffic and `/v1/integrations/exchange` traffic each live in their own handler file under `Core/MCP/Routes/`. OPTIONS preflight is handled once at the router level for every path
+- `MCPAuthGuard` and `MCPConnectionBridge` route concurrent dedup through a shared `OnceTask` actor (`Core/Concurrency/OnceTask.swift`). Cleanup of in-flight slots happens in `defer` inside the actor, so a cancelled or thrown caller no longer leaves a stale entry behind.
+
+### Removed (BREAKING)
+
+- `tablepro://connect/<name>/...` deep links. Replace with UUID-keyed paths from "Copy Connection Deep Link" in the sidebar context menu. User-saved bookmarks must be regenerated
+- MCP server data directory moved from `~/Library/Application Support/com.TablePro/` to `~/Library/Application Support/TablePro/`. Existing tokens, audit log, and handshake files are not migrated. Re-pair Raycast, Cursor, Claude Desktop, and any other external clients after upgrading. Delete the old directory with `rm -rf ~/Library/Application Support/com.TablePro`
 
 ### Fixed
 
 - SELECT queries with a user-written LIMIT now return the requested row count. Previously the query engine stripped the user's LIMIT and substituted its own cap, so `LIMIT 10` could return up to 10,000 rows. Affected SQLite, DuckDB, LibSQL, ClickHouse, Redshift, CloudflareD1, and the MCP query path. Mirror bug on MSSQL and Oracle silently injected an ORDER BY into queries that lacked one. (#956)
+- New tab from the empty "no tabs open" state opened a separate window-tab next to the placeholder instead of replacing it. The toolbar `+`, ⌘T, and the native NSWindow tab `+` now add the new query to the current empty window when its tab manager has no tabs.
+- File associations for `.sql`, `.sqlite`, `.duckdb`, and related extensions disabled in Finder's Open With menu. The custom UTIs (`com.tablepro.sql`, `com.tablepro.sqlite-db`, `com.tablepro.duckdb`) were declared under `UTImportedTypeDeclarations` instead of `UTExportedTypeDeclarations`, so Launch Services treated them as "imported" claims and ranked them below other apps. SQL is now `LSHandlerRank: Owner`, SQLite is `Default`, DuckDB is `Owner`/`Editor`, and `com.tablepro.sqlite-db` conforms to `com.apple.sqlite3`.
 - Crash on macOS 26 when opening SQL Preview (NSColor.cgColor calls deprecated colorSpaceName)
 - Connection form: `usePrivateKey=true` from URL no longer disables Test/Create buttons
 - Transient connections from URL clean up keychain entries on connection failure
@@ -81,6 +102,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persist group deletions before firing the sync notification, fixing a race that could re-upload deleted groups via iCloud.
 - Persist connection deletions before firing the sync notification, fixing the same race for deleted connections.
 - Refuse to generate SQL when the database dialect cannot be resolved, instead of silently emitting unquoted identifiers.
+- MCP `execute_query`: strip trailing semicolons before appending `LIMIT/OFFSET`, fixing `syntax error at or near LIMIT` for queries like `select * from t;`.
+- MCP `export_data`: tightened table name validation to reject double-dot, leading-dot, and trailing-dot identifiers (e.g. `schema..table`). `quoteQualifiedIdentifier` now rejects empty segments instead of producing `"schema".""."table"`.
+- MCP `focus_query_tab`: re-validate that the resolved tab still belongs to the authorized connection between the auth check and the window raise, closing a TOCTOU window where a tab could be re-bound to a different connection.
+- MCP pairing: cap pending exchange codes at 50 to prevent unbounded memory growth from repeated pairing attempts.
+- Pairing approval no longer grants access on Return key; Approve must be clicked. Deny remains the cancel action and Escape still dismisses.
+- Pairing approval shows a live countdown for the 5-minute exchange code window and disables Approve when it runs out.
+- Pairing approval connection list is searchable with Select All / Deselect All controls and bounded height for many connections.
+- Token deletion now requires confirmation in a destructive alert, with the token name in the message. Backspace on a selected token in the list shows the same alert.
+- Disconnect on a connected client now requires confirmation before tearing down the session.
+- Token list switched to a native macOS list with keyboard navigation, multi-select, and a context menu (Revoke, Copy ID, Delete…). "Deactivate" was renamed to "Revoke" so the UI matches the documented language.
+- Activity log layout fixed: the inner list no longer nests inside the settings Form, so vertical scrolling has a single owner. Connection column shows the connection name instead of the UUID prefix and falls back to "Deleted connection (…)" when the connection is gone.
+- Activity log gained search across action, token, connection, and details, plus a 90-day retention notice.
+- Token reveal warning banner uses thin material with an orange border so it stays visible in Dark Mode.
+- Token, audit, and pairing sheets use a flexible minimum height so they no longer clip with larger Dynamic Type sizes.
+- Token list "Last used" now uses RelativeDateTimeFormatter so localized strings read correctly (e.g. "5 minutes ago" in en) instead of the broken duplicated " ago" suffix.
+- Token reveal, audit refresh, and copy buttons now expose VoiceOver accessibility labels in addition to tooltips.
 
 ## [0.36.0] - 2026-04-27
 

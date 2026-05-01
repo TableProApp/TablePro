@@ -7,44 +7,30 @@ import AppKit
 import os
 import SwiftUI
 
-internal extension URL {
-    /// Returns the URL string with the password component replaced by `***` for safe logging.
-    var sanitizedForLogging: String {
-        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false),
-              components.password != nil else {
-            return absoluteString
-        }
-        components.password = "***"
-        return components.string ?? absoluteString
-    }
-}
-
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    var configuredWindows = Set<ObjectIdentifier>()
-    var queuedFileURLs: [URL] = []
-    var queuedURLEntries: [QueuedURLEntry] = []
-    var isHandlingFileOpen = false
-    var fileOpenSuppressionCount = 0
-    var isProcessingQueuedURLs = false
-    var isAutoReconnecting = false
-    var connectingURLConnectionIds = Set<UUID>()
-    var connectingURLParamKeys = Set<String>()
-    var connectingFilePaths = Set<String>()
-
-    // MARK: - NSApplicationDelegate
+    // MARK: - URL & File Open
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        handleOpenURLs(urls)
+        AppLaunchCoordinator.shared.handleOpenURLs(urls)
     }
 
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        AppLaunchCoordinator.shared.handleHandoff(userActivity)
+        return true
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        AppLaunchCoordinator.shared.handleReopen(hasVisibleWindows: flag)
+    }
+
+    // MARK: - Lifecycle
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Re-apply appearance now that NSApp exists.
-        // AppSettingsManager.shared may already be initialized (by @State in TableProApp),
-        // but NSApp was nil at that point so NSApp?.appearance was a no-op.
         let appearanceSettings = AppSettingsManager.shared.appearance
         ThemeEngine.shared.updateAppearanceAndTheme(
             mode: appearanceSettings.appearanceMode,
@@ -90,53 +76,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = QueryHistoryStorage.shared
         }
 
-        let settings = AppSettingsStorage.shared.loadGeneral()
-        if settings.startupBehavior == .reopenLast {
-            let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
-            if !connectionIds.isEmpty {
-                closeWelcomeWindowEagerly()
-                attemptAutoReconnectAll(connectionIds: connectionIds)
-            } else if let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
-                // Backward compat: fall back to single lastConnectionId for upgrades
-                closeWelcomeWindowEagerly()
-                attemptAutoReconnect(connectionId: lastConnectionId)
-            } else {
-                // Crash recovery: if the app crashed before applicationWillTerminate
-                // could save the list, scan the TabState directory for connections
-                // that still have saved tab state on disk.
-                Task { @MainActor [weak self] in
-                    let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
-                    if !diskIds.isEmpty {
-                        self?.closeWelcomeWindowEagerly()
-                        self?.attemptAutoReconnectAll(connectionIds: diskIds)
-                    } else {
-                        self?.closeRestoredMainWindows()
-                    }
-                }
-            }
-        } else {
-            closeRestoredMainWindows()
-        }
+        AppLaunchCoordinator.shared.didFinishLaunching()
 
-        // NOTE: These observers are not explicitly removed because AppDelegate
-        // lives for the entire app lifetime. NotificationCenter uses weak
-        // references for selector-based observers on macOS 10.11+.
-
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(windowDidBecomeKey(_:)),
-            name: NSWindow.didBecomeKeyNotification, object: nil
-        )
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(windowDidChangeOcclusionState(_:)),
-            name: NSWindow.didChangeOcclusionStateNotification, object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(handleDatabaseDidConnect),
-            name: .databaseDidConnect, object: nil
         )
         NotificationCenter.default.addObserver(
             self, selector: #selector(handlePluginsRejected(_:)),
@@ -147,6 +91,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: .focusConnectionFormWindowRequested, object: nil
         )
     }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        SyncCoordinator.shared.syncIfNeeded()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
+        if hasUnsaved {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "You have unsaved changes")
+            alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: String(localized: "Cancel"))
+            alert.addButton(withTitle: String(localized: "Quit Anyway"))
+            alert.buttons[1].hasDestructiveAction = true
+            let response = alert.runModal()
+            guard response == .alertSecondButtonReturn else { return .terminateCancel }
+        }
+
+        Task {
+            await MCPServerManager.shared.stop()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        LinkedFolderWatcher.shared.stop()
+        TerminalProcessManager.registry.terminateAllSync()
+        SSHTunnelManager.shared.terminateAllProcessesSync()
+    }
+
+    @objc func showHelp(_ sender: Any?) {
+        if let url = URL(string: "https://docs.tablepro.app") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // MARK: - Plugin Rejection Alert
 
     @objc private func handlePluginsRejected(_ notification: Notification) {
         guard let rejected = notification.object as? [RejectedPlugin],
@@ -184,40 +167,101 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationDidBecomeActive(_ notification: Notification) {
-        SyncCoordinator.shared.syncIfNeeded()
+    // MARK: - Window Notifications
+
+    @objc func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+
+        if AppLaunchCoordinator.isMainWindow(window) {
+            let remaining = NSApp.windows.filter {
+                $0 !== window && AppLaunchCoordinator.isMainWindow($0) && $0.isVisible
+            }.count
+            if remaining == 0 {
+                NotificationCenter.default.post(name: .mainWindowWillClose, object: nil)
+                WelcomeWindowFactory.openOrFront()
+            }
+        }
     }
 
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
-        if hasUnsaved {
-            let alert = NSAlert()
-            alert.messageText = String(localized: "You have unsaved changes")
-            alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: String(localized: "Cancel"))
-            alert.addButton(withTitle: String(localized: "Quit Anyway"))
-            alert.buttons[1].hasDestructiveAction = true
-            let response = alert.runModal()
-            guard response == .alertSecondButtonReturn else { return .terminateCancel }
+    @objc func handleFocusConnectionForm() {
+        if let window = NSApp.windows.first(where: { AppLaunchCoordinator.isConnectionFormWindow($0) }) {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    // MARK: - Dock Menu
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+
+        let welcomeItem = NSMenuItem(
+            title: String(localized: "Show Welcome Window"),
+            action: #selector(showWelcomeFromDock),
+            keyEquivalent: ""
+        )
+        welcomeItem.target = self
+        menu.addItem(welcomeItem)
+
+        let connections = ConnectionStorage.shared.loadConnections()
+        if !connections.isEmpty {
+            let connectionsItem = NSMenuItem(title: String(localized: "Open Connection"), action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+
+            for connection in connections {
+                let item = NSMenuItem(
+                    title: connection.name,
+                    action: #selector(connectFromDock(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = connection.id
+                let iconName = connection.type.iconName
+                let original = NSImage(systemSymbolName: iconName, accessibilityDescription: nil)
+                    ?? NSImage(named: iconName)
+                if let original {
+                    let resized = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
+                        original.draw(in: rect)
+                        return true
+                    }
+                    item.image = resized
+                }
+                submenu.addItem(item)
+            }
+
+            connectionsItem.submenu = submenu
+            menu.addItem(connectionsItem)
         }
 
+        return menu
+    }
+
+    @objc func showWelcomeFromDock() {
+        WelcomeWindowFactory.openOrFront()
+    }
+
+    @objc func newWindowForTab(_ sender: Any?) {
+        guard let keyWindow = NSApp.keyWindow,
+              let connectionId = MainActor.assumeIsolated({
+                  WindowLifecycleMonitor.shared.connectionId(forWindow: keyWindow)
+              })
+        else { return }
+
+        MainActor.assumeIsolated {
+            if let actions = MainContentCoordinator.allActiveCoordinators()
+                .first(where: { $0.connectionId == connectionId })?.commandActions {
+                actions.newTab()
+            } else {
+                WindowManager.shared.openTab(
+                    payload: EditorTabPayload(connectionId: connectionId, intent: .newEmptyTab)
+                )
+            }
+        }
+    }
+
+    @objc func connectFromDock(_ sender: NSMenuItem) {
+        guard let connectionId = sender.representedObject as? UUID else { return }
         Task {
-            await MCPServerManager.shared.stop()
-            NSApp.reply(toApplicationShouldTerminate: true)
-        }
-        return .terminateLater
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        LinkedFolderWatcher.shared.stop()
-        TerminalProcessManager.registry.terminateAllSync()
-        SSHTunnelManager.shared.terminateAllProcessesSync()
-    }
-
-    @objc func showHelp(_ sender: Any?) {
-        if let url = URL(string: "https://docs.tablepro.app") {
-            NSWorkspace.shared.open(url)
+            await LaunchIntentRouter.shared.route(.openConnection(connectionId))
         }
     }
 

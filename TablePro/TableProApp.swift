@@ -196,7 +196,7 @@ struct AppMenuCommands: Commands {
         // File menu
         CommandGroup(replacing: .newItem) {
             Button("Manage Connections") {
-                NotificationCenter.default.post(name: .newConnection, object: nil)
+                WelcomeWindowFactory.openOrFront()
             }
             .optionalKeyboardShortcut(shortcut(for: .manageConnections))
         }
@@ -384,7 +384,7 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isConnected ?? false))
 
             Button("Switch Connection...") {
-                NotificationCenter.default.post(name: .openConnectionSwitcher, object: nil)
+                actions?.openConnectionSwitcher()
             }
             .optionalKeyboardShortcut(shortcut(for: .switchConnection))
             .disabled(!(actions?.isConnected ?? false))
@@ -626,33 +626,15 @@ struct TableProApp: App {
     }
 
     var body: some Scene {
-        // Welcome Window - opens on launch (must be first Window scene so SwiftUI
-        // restores it by default when clicking the dock icon)
-        Window("Welcome to TablePro", id: "welcome") {
-            WelcomeWindowView()
-                .background(OpenWindowHandler())  // Handle window notifications from startup
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 700, height: 450)
-
-        // Connection Form Window - opens when creating/editing a connection
-        WindowGroup(id: "connection-form", for: UUID?.self) { $connectionId in
-            ConnectionFormView(connectionId: connectionId ?? nil)
-        }
-        .windowResizability(.contentSize)
-
-        // NOTE (prototype): main windows are now created imperatively via
-        // MainWindowFactory → NSWindow + NSHostingController. The retired
-        // `WindowGroup(id:"main", for: EditorTabPayload.self)` caused SwiftUI to
-        // re-instantiate ContentView for every historical payload on every scene
-        // phase diff (5-7 phantom inits per open). AppKit-native windows avoid
-        // that and eliminate the 68-437ms openWindow() latency.
-
-        // Settings Window - opens with Cmd+,
+        // All app windows are created imperatively via NSWindow + NSHostingController
+        // factories (MainWindow via WindowManager, Welcome via WelcomeWindowFactory,
+        // ConnectionForm via ConnectionFormWindowFactory). Declaring them as SwiftUI
+        // Scenes auto-opens the first Scene on launch and races with cold-launch
+        // intent routing.
         Settings {
             SettingsView()
                 .environment(updaterBridge)
+                .background(SettingsNotificationBridge())
         }
 
         .commands {
@@ -668,9 +650,6 @@ struct TableProApp: App {
 // MARK: - Notification Names
 
 extension Notification.Name {
-    // Connection lifecycle
-    static let newConnection = Notification.Name("newConnection")
-    static let openConnectionSwitcher = Notification.Name("openConnectionSwitcher")
 
     // Multi-listener broadcasts (Sidebar + Coordinator + StructureView)
     static let refreshData = Notification.Name("refreshData")
@@ -687,12 +666,6 @@ extension Notification.Name {
 
     // Window lifecycle notifications
     static let mainWindowWillClose = Notification.Name("mainWindowWillClose")
-    static let openMainWindow = Notification.Name("openMainWindow")
-    static let openWelcomeWindow = Notification.Name("openWelcomeWindow")
-
-    // Database URL handling notifications
-    static let switchSchemaFromURL = Notification.Name("switchSchemaFromURL")
-    static let applyURLFilter = Notification.Name("applyURLFilter")
 }
 
 // MARK: - Check for Updates
@@ -725,45 +698,31 @@ private struct MCPServerMenuItem: View {
         case .running:
             let count = manager.connectedClients.count
             if count == 0 {
-                return String(localized: "MCP Server: Running")
+                return String(localized: "Integrations: Running")
             }
-            return String(format: String(localized: "MCP Server: Running (%d clients)"), count)
+            return String(format: String(localized: "Integrations: Running (%d clients)"), count)
         case .failed:
-            return String(localized: "MCP Server: Failed")
+            return String(localized: "Integrations: Failed")
         case .stopped:
-            return String(localized: "MCP Server: Stopped")
+            return String(localized: "Integrations: Stopped")
         case .starting:
-            return String(localized: "MCP Server: Starting...")
+            return String(localized: "Integrations: Starting...")
         }
     }
 }
 
-// MARK: - Open Window Handler
+// MARK: - Settings Notification Bridge
 
-/// Helper view that listens for window open notifications
-private struct OpenWindowHandler: View {
-    @Environment(\.openWindow)
-    private var openWindow
+/// Forwards `.openSettingsWindow` notifications to SwiftUI's `openSettings`
+/// action. Lives inside the Settings scene because `\.openSettings` is only
+/// available there.
+private struct SettingsNotificationBridge: View {
     @Environment(\.openSettings)
     private var openSettings
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .onAppear {
-                // Store openWindow action for imperative access (e.g., from MainContentCommandActions)
-                WindowOpener.shared.openWindow = openWindow
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openWelcomeWindow)) { _ in
-                openWindow(id: "welcome")
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openMainWindow)) { notification in
-                if let payload = notification.object as? EditorTabPayload {
-                    WindowManager.shared.openTab(payload: payload)
-                } else if let connectionId = notification.object as? UUID {
-                    WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connectionId))
-                }
-            }
             .onReceive(NotificationCenter.default.publisher(for: .openSettingsWindow)) { _ in
                 openSettings()
             }

@@ -16,7 +16,6 @@ struct WelcomeWindowView: View {
 
     @State var vm = WelcomeViewModel()
     @FocusState private var focus: FocusField?
-    @Environment(\.openWindow) var openWindow
 
     var body: some View {
         ZStack {
@@ -36,7 +35,7 @@ struct WelcomeWindowView: View {
         .ignoresSafeArea()
         .frame(minWidth: 600, idealWidth: 700, minHeight: 400, idealHeight: 450)
         .onAppear {
-            vm.setUp(openWindow: openWindow)
+            vm.setUp()
             focus = .search
         }
         .alert(
@@ -171,7 +170,7 @@ struct WelcomeWindowView: View {
         HStack(spacing: 0) {
             WelcomeLeftPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
-                onCreateConnection: { openWindow(id: "connection-form") }
+                onCreateConnection: { ConnectionFormWindowFactory.openOrFront() }
             )
             Divider()
             rightPanel
@@ -184,7 +183,7 @@ struct WelcomeWindowView: View {
     private var rightPanel: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Button(action: { openWindow(id: "connection-form") }) {
+                Button(action: { ConnectionFormWindowFactory.openOrFront() }) {
                     Image(systemName: "plus")
                         .font(.callout.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -418,7 +417,7 @@ struct WelcomeWindowView: View {
                     .font(.callout)
                     .foregroundStyle(.tertiary)
 
-                Button(action: { openWindow(id: "connection-form") }) {
+                Button(action: { ConnectionFormWindowFactory.openOrFront() }) {
                     Label("New Connection", systemImage: "plus")
                 }
                 .controlSize(.large)

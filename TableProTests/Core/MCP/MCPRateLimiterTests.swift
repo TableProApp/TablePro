@@ -9,8 +9,6 @@ import Testing
 
 @Suite("MCP Rate Limiter")
 struct MCPRateLimiterTests {
-    // MARK: - Helpers
-
     private func makeLimiter() -> MCPRateLimiter {
         MCPRateLimiter()
     }
@@ -30,8 +28,6 @@ struct MCPRateLimiterTests {
         }
         return retryAfter
     }
-
-    // MARK: - Basic Behavior
 
     @Test("First request is allowed")
     func firstRequestAllowed() async {
@@ -62,8 +58,6 @@ struct MCPRateLimiterTests {
         let result = await limiter.isLockedOut(ip: "unknown")
         expectAllowed(result)
     }
-
-    // MARK: - Escalating Lockout
 
     @Test("Second failure triggers 1s lockout")
     func secondFailureLockout() async {
@@ -121,8 +115,6 @@ struct MCPRateLimiterTests {
         #expect(remainingRetry <= initialRetry)
     }
 
-    // MARK: - Lockout Check
-
     @Test("isLockedOut returns rateLimited during lockout")
     func isLockedOutDuringLockout() async {
         let limiter = makeLimiter()
@@ -139,8 +131,6 @@ struct MCPRateLimiterTests {
         let result = await limiter.isLockedOut(ip: "fresh-ip")
         expectAllowed(result)
     }
-
-    // MARK: - Per-IP Isolation
 
     @Test("Different IPs have independent counters")
     func independentCounters() async {
@@ -168,8 +158,6 @@ struct MCPRateLimiterTests {
         expectAllowed(resultB, message: "IP-B should not be affected by IP-A lockout")
     }
 
-    // MARK: - Success Resets
-
     @Test("Success after failure resets counter")
     func successResetsCounter() async {
         let limiter = makeLimiter()
@@ -182,8 +170,6 @@ struct MCPRateLimiterTests {
         let secondFail = await limiter.checkAndRecord(ip: "10.0.2.1", success: false)
         expectRateLimited(secondFail, message: "Second failure after reset should lock out again")
     }
-
-    // MARK: - Edge Cases
 
     @Test("Empty IP string works")
     func emptyIpString() async {

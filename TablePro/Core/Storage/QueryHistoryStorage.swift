@@ -269,14 +269,32 @@ actor QueryHistoryStorage {
         offset: Int = 0,
         connectionId: UUID? = nil,
         searchText: String? = nil,
-        dateFilter: DateFilter = .all
+        dateFilter: DateFilter = .all,
+        since: Date? = nil,
+        until: Date? = nil,
+        allowedConnectionIds: Set<UUID>? = nil
     ) -> [QueryHistoryEntry] {
         var entries: [QueryHistoryEntry] = []
+
+        if let allowedConnectionIds, allowedConnectionIds.isEmpty {
+            return entries
+        }
+
+        let effectiveSince = [dateFilter.startDate, since].compactMap { $0 }.max()
+
+        let allowedList: [UUID]?
+        if let allowedConnectionIds {
+            allowedList = Array(allowedConnectionIds)
+        } else {
+            allowedList = nil
+        }
 
         var sql: String
         var bindIndex: Int32 = 1
         var hasConnectionFilter = false
-        var hasDateFilter = false
+        var hasSinceFilter = false
+        var hasUntilFilter = false
+        var hasAllowedFilter = false
 
         if let searchText = searchText, !searchText.isEmpty {
             sql = """
@@ -291,9 +309,20 @@ actor QueryHistoryStorage {
                 hasConnectionFilter = true
             }
 
-            if dateFilter.startDate != nil {
+            if let allowedList {
+                let placeholders = Array(repeating: "?", count: allowedList.count).joined(separator: ", ")
+                sql += " AND h.connection_id IN (\(placeholders))"
+                hasAllowedFilter = true
+            }
+
+            if effectiveSince != nil {
                 sql += " AND h.executed_at >= ?"
-                hasDateFilter = true
+                hasSinceFilter = true
+            }
+
+            if until != nil {
+                sql += " AND h.executed_at <= ?"
+                hasUntilFilter = true
             }
         } else {
             sql =
@@ -306,9 +335,20 @@ actor QueryHistoryStorage {
                 hasConnectionFilter = true
             }
 
-            if dateFilter.startDate != nil {
+            if let allowedList {
+                let placeholders = Array(repeating: "?", count: allowedList.count).joined(separator: ", ")
+                whereClauses.append("connection_id IN (\(placeholders))")
+                hasAllowedFilter = true
+            }
+
+            if effectiveSince != nil {
                 whereClauses.append("executed_at >= ?")
-                hasDateFilter = true
+                hasSinceFilter = true
+            }
+
+            if until != nil {
+                whereClauses.append("executed_at <= ?")
+                hasUntilFilter = true
             }
 
             if !whereClauses.isEmpty {
@@ -338,8 +378,20 @@ actor QueryHistoryStorage {
             bindIndex += 1
         }
 
-        if let startDate = dateFilter.startDate, hasDateFilter {
-            sqlite3_bind_double(statement, bindIndex, startDate.timeIntervalSince1970)
+        if let allowedList, hasAllowedFilter {
+            for allowedId in allowedList {
+                sqlite3_bind_text(statement, bindIndex, allowedId.uuidString, -1, SQLITE_TRANSIENT)
+                bindIndex += 1
+            }
+        }
+
+        if let effectiveSince, hasSinceFilter {
+            sqlite3_bind_double(statement, bindIndex, effectiveSince.timeIntervalSince1970)
+            bindIndex += 1
+        }
+
+        if let until, hasUntilFilter {
+            sqlite3_bind_double(statement, bindIndex, until.timeIntervalSince1970)
             bindIndex += 1
         }
 
