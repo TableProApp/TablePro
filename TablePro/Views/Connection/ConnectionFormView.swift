@@ -17,7 +17,6 @@ struct ConnectionFormView: View {
     let connectionId: UUID?
 
     let storage = ConnectionStorage.shared
-    let dbManager = DatabaseManager.shared
 
     var isNew: Bool { connectionId == nil }
 
