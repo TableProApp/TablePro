@@ -131,43 +131,22 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         return mapQueryResult(pluginResult)
     }
 
-    func fetchRowCount(query: String) async throws -> Int {
-        try await pluginDriver.fetchRowCount(query: query)
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> QueryResult {
-        let pluginResult = try await pluginDriver.fetchRows(query: query, offset: offset, limit: limit)
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        let stringParams: [String?]?
+        if let parameters {
+            stringParams = parameters.map { param -> String? in
+                guard let p = param else { return nil }
+                return Self.stringValue(for: p)
+            }
+        } else {
+            stringParams = nil
+        }
+        let pluginResult = try await pluginDriver.executeUserQuery(
+            query: query,
+            rowCap: rowCap,
+            parameters: stringParams
+        )
         return mapQueryResult(pluginResult)
-    }
-
-    // MARK: - Progressive Loading
-
-    func fetchFirstPage(query: String, limit: Int) async throws -> PagedQueryResult {
-        let pluginResult = try await pluginDriver.fetchFirstPage(query: query, limit: limit)
-        return mapPagedResult(pluginResult)
-    }
-
-    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult {
-        let pluginResult = try await pluginDriver.fetchNextPage(query: query, offset: offset, limit: limit)
-        return mapPagedResult(pluginResult)
-    }
-
-    func fetchFirstPageParameterized(query: String, parameters: [Any?], limit: Int) async throws -> PagedQueryResult {
-        let stringParams = parameters.map { param -> String? in
-            guard let p = param else { return nil }
-            return Self.stringValue(for: p)
-        }
-        let pluginResult = try await pluginDriver.fetchFirstPageParameterized(query: query, parameters: stringParams, limit: limit)
-        return mapPagedResult(pluginResult)
-    }
-
-    func fetchNextPageParameterized(query: String, parameters: [Any?], offset: Int, limit: Int) async throws -> PagedQueryResult {
-        let stringParams = parameters.map { param -> String? in
-            guard let p = param else { return nil }
-            return Self.stringValue(for: p)
-        }
-        let pluginResult = try await pluginDriver.fetchNextPageParameterized(query: query, parameters: stringParams, offset: offset, limit: limit)
-        return mapPagedResult(pluginResult)
     }
 
     // MARK: - Schema Operations
@@ -532,17 +511,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     // MARK: - Result Mapping
-
-    private func mapPagedResult(_ pluginResult: PluginPagedResult) -> PagedQueryResult {
-        PagedQueryResult(
-            columns: pluginResult.columns,
-            columnTypes: pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) },
-            rows: pluginResult.rows,
-            executionTime: pluginResult.executionTime,
-            hasMore: pluginResult.hasMore,
-            nextOffset: pluginResult.nextOffset
-        )
-    }
 
     private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
         let columnTypes = pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) }

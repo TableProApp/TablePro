@@ -38,8 +38,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     // Queries
     func execute(query: String) async throws -> PluginQueryResult
-    func fetchRowCount(query: String) async throws -> Int
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [String?]?) async throws -> PluginQueryResult
 
     // Schema
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
@@ -139,12 +138,6 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     // Streaming row fetch for export
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error>
-
-    // Progressive loading
-    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult
-    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult
-    func fetchFirstPageParameterized(query: String, parameters: [String?], limit: Int) async throws -> PluginPagedResult
-    func fetchNextPageParameterized(query: String, parameters: [String?], offset: Int, limit: Int) async throws -> PluginPagedResult
 }
 
 public extension PluginDatabaseDriver {
@@ -524,147 +517,24 @@ public extension PluginDatabaseDriver {
         return hasDigit
     }
 
-    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
-        guard limit > 0 else {
-            let result = try await execute(query: query)
-            return PluginPagedResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                hasMore: false,
-                nextOffset: result.rows.count
-            )
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [String?]?) async throws -> PluginQueryResult {
+        let raw: PluginQueryResult
+        if let parameters {
+            raw = try await executeParameterized(query: query, parameters: parameters)
+        } else {
+            raw = try await execute(query: query)
         }
-        let result = try await fetchRows(query: query, offset: 0, limit: limit + 1)
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-        return PluginPagedResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: rows.count
+        guard let cap = rowCap, raw.rows.count > cap else {
+            return raw
+        }
+        return PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: true,
+            statusMessage: raw.statusMessage
         )
-    }
-
-    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult {
-        let result = try await fetchRows(query: query, offset: offset, limit: limit + 1)
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-        return PluginPagedResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: offset + rows.count
-        )
-    }
-
-    func fetchFirstPageParameterized(query: String, parameters: [String?], limit: Int) async throws -> PluginPagedResult {
-        guard limit > 0 else {
-            let result = try await executeParameterized(query: query, parameters: parameters)
-            return PluginPagedResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                hasMore: false,
-                nextOffset: result.rows.count
-            )
-        }
-        let sanitized = Self.sanitizeQueryForWrapping(query)
-        let wrappedQuery = "SELECT * FROM (\(sanitized)) _t LIMIT \(limit + 1) OFFSET 0"
-        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-        return PluginPagedResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: rows.count
-        )
-    }
-
-    func fetchNextPageParameterized(query: String, parameters: [String?], offset: Int, limit: Int) async throws -> PluginPagedResult {
-        let sanitized = Self.sanitizeQueryForWrapping(query)
-        let wrappedQuery = "SELECT * FROM (\(sanitized)) _t LIMIT \(limit + 1) OFFSET \(offset)"
-        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-        return PluginPagedResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: offset + rows.count
-        )
-    }
-
-    func fetchRowCount(query: String) async throws -> Int {
-        let sanitized = Self.sanitizeQueryForWrapping(query)
-        let result = try await execute(query: "SELECT COUNT(*) FROM (\(sanitized)) _t")
-        guard let firstRow = result.rows.first, let value = firstRow.first, let countStr = value else {
-            return 0
-        }
-        return Int(countStr) ?? 0
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let sanitized = Self.sanitizeQueryForWrapping(query)
-        return try await execute(query: "\(sanitized) LIMIT \(limit) OFFSET \(offset)")
-    }
-
-    private static func sanitizeQueryForWrapping(_ query: String) -> String {
-        var result = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        while result.hasSuffix(";") {
-            result = String(result.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return result
-    }
-
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            let task = Task {
-                do {
-                    let batchSize = 1_000
-                    let firstPage = try await fetchRows(query: query, offset: 0, limit: batchSize)
-                    continuation.yield(.header(PluginStreamHeader(
-                        columns: firstPage.columns,
-                        columnTypeNames: firstPage.columnTypeNames,
-                        estimatedRowCount: nil
-                    )))
-                    if !firstPage.rows.isEmpty {
-                        continuation.yield(.rows(firstPage.rows))
-                    }
-                    if firstPage.rows.count < batchSize {
-                        continuation.finish()
-                        return
-                    }
-                    await Task.yield()
-                    var offset = firstPage.rows.count
-                    while true {
-                        try Task.checkCancellation()
-                        let page = try await fetchRows(query: query, offset: offset, limit: batchSize)
-                        if page.rows.isEmpty { break }
-                        continuation.yield(.rows(page.rows))
-                        offset += page.rows.count
-                        if page.rows.count < batchSize { break }
-                        await Task.yield()
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
-            }
-        }
     }
 }
