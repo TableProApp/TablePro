@@ -677,11 +677,6 @@ extension Notification.Name {
 
     // Window lifecycle notifications
     static let mainWindowWillClose = Notification.Name("mainWindowWillClose")
-    static let openMainWindow = Notification.Name("openMainWindow")
-
-    // Database URL handling notifications
-    static let switchSchemaFromURL = Notification.Name("switchSchemaFromURL")
-    static let applyURLFilter = Notification.Name("applyURLFilter")
 }
 
 // MARK: - Check for Updates
@@ -742,13 +737,6 @@ private struct OpenWindowHandler: View {
             .onAppear {
                 // Store openWindow action for imperative access (e.g., from MainContentCommandActions)
                 WindowOpener.shared.openWindow = openWindow
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openMainWindow)) { notification in
-                if let payload = notification.object as? EditorTabPayload {
-                    WindowManager.shared.openTab(payload: payload)
-                } else if let connectionId = notification.object as? UUID {
-                    WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connectionId))
-                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .openSettingsWindow)) { _ in
                 openSettings()

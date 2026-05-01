@@ -16,7 +16,21 @@ internal final class WelcomeRouter {
     private(set) var pendingConnectionShare: URL?
     private(set) var pendingSQLFiles: [URL] = []
 
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: .databaseDidConnect, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                WelcomeRouter.shared.drainPendingSQLFiles()
+            }
+        }
+    }
+
+    private func drainPendingSQLFiles() {
+        let urls = consumePendingSQLFiles()
+        guard !urls.isEmpty else { return }
+        NotificationCenter.default.post(name: .openSQLFiles, object: urls)
+    }
 
     internal func routeImport(_ exportable: ExportableConnection) {
         pendingImport = exportable
