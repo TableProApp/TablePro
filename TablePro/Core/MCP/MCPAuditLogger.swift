@@ -11,8 +11,6 @@ enum MCPAuditLogger {
 
     private static let sqlExcerptLimit = 256
 
-    // MARK: - Auth
-
     static func logAuthSuccess(tokenName: String, ip: String) {
         serverAuth.info("Auth success: token=\(tokenName, privacy: .public) ip=\(ip, privacy: .public)")
         record(
@@ -45,8 +43,6 @@ enum MCPAuditLogger {
             details: "ip=\(ip) retryAfter=\(retryAfterSeconds)s"
         )
     }
-
-    // MARK: - Admin
 
     static func logTokenCreated(tokenName: String) {
         serverAdmin.info("Token created: \(tokenName, privacy: .public)")
@@ -89,8 +85,6 @@ enum MCPAuditLogger {
         )
     }
 
-    // MARK: - Query
-
     static func logQueryExecuted(
         tokenId: UUID?,
         tokenName: String?,
@@ -132,8 +126,6 @@ enum MCPAuditLogger {
         )
     }
 
-    // MARK: - Tool
-
     static func logToolCalled(
         tokenId: UUID?,
         tokenName: String?,
@@ -167,8 +159,6 @@ enum MCPAuditLogger {
         )
     }
 
-    // MARK: - Resource
-
     static func logResourceRead(
         tokenId: UUID?,
         tokenName: String?,
@@ -198,8 +188,6 @@ enum MCPAuditLogger {
             details: detailParts.joined(separator: " ")
         )
     }
-
-    // MARK: - Storage Bridge
 
     private static func record(
         category: AuditCategory,

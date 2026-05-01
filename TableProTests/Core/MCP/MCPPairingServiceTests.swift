@@ -6,8 +6,6 @@ import Testing
 
 @Suite("MCP Pairing Exchange Store")
 struct MCPPairingServiceTests {
-    // MARK: - Helpers
-
     private func base64UrlSha256(of value: String) -> String {
         PairingExchangeStore.sha256Base64Url(of: value)
     }
@@ -23,8 +21,6 @@ struct MCPPairingServiceTests {
             expiresAt: Date.now.addingTimeInterval(expiresIn)
         )
     }
-
-    // MARK: - Happy path
 
     @Test("consume returns stored token when challenge and verifier match")
     func consumeReturnsTokenForValidVerifier() throws {
@@ -63,8 +59,6 @@ struct MCPPairingServiceTests {
             try store.consume(code: "code-3", verifier: verifier)
         }
     }
-
-    // MARK: - Failure modes
 
     @Test("consume returns notFound for unknown code")
     func consumeUnknownCodeReturnsNotFound() {
@@ -134,8 +128,6 @@ struct MCPPairingServiceTests {
         #expect(store.contains(code: "code-6") == false)
     }
 
-    // MARK: - Pruning
-
     @Test("pruneExpired removes only expired entries")
     func pruneRemovesOnlyExpiredEntries() {
         let store = makeStore()
@@ -160,8 +152,6 @@ struct MCPPairingServiceTests {
         #expect(store.contains(code: "stale-2") == false)
     }
 
-    // MARK: - SHA256 helper
-
     @Test("sha256Base64Url matches CryptoKit output without padding")
     func sha256Base64UrlMatchesCryptoKit() {
         let value = "verifier-string"
@@ -173,8 +163,6 @@ struct MCPPairingServiceTests {
 
         #expect(PairingExchangeStore.sha256Base64Url(of: value) == expected)
     }
-
-    // MARK: - constantTimeEqual
 
     @Test("constantTimeEqual returns true for identical strings")
     func constantTimeEqualIdentical() {

@@ -46,8 +46,6 @@ struct MCPToolHandlerIntegrationTests {
         try await body()
     }
 
-    // MARK: - list_connections
-
     @Test("list_connections omits connections with externalAccess == .blocked")
     func listConnectionsFiltersBlocked() async throws {
         let handler = makeHandler()
@@ -66,8 +64,6 @@ struct MCPToolHandlerIntegrationTests {
             #expect(payload.contains(visible.id.uuidString))
         }
     }
-
-    // MARK: - list_recent_tabs
 
     @Test("list_recent_tabs returns tabs JSON object")
     func listRecentTabsShape() async throws {
@@ -109,8 +105,6 @@ struct MCPToolHandlerIntegrationTests {
         )
         #expect(result.isError == nil)
     }
-
-    // MARK: - search_query_history
 
     @Test("search_query_history rejects missing query parameter")
     func searchQueryHistoryRequiresQuery() async {
@@ -411,8 +405,6 @@ struct MCPToolHandlerIntegrationTests {
         #expect(!payload.contains("outside_\(marker)"))
     }
 
-    // MARK: - External access readOnly enforcement
-
     @Test("switch_database against a readOnly connection returns forbidden")
     func switchDatabaseDeniedByReadOnlyExternalAccess() async throws {
         let handler = makeHandler()
@@ -546,8 +538,6 @@ struct MCPToolHandlerIntegrationTests {
         #expect(!ExternalAccessLevel.blocked.satisfies(.readWrite))
     }
 
-    // MARK: - open_connection_window
-
     @Test("open_connection_window rejects missing connection_id")
     func openConnectionWindowRequiresConnectionId() async {
         let handler = makeHandler()
@@ -632,8 +622,6 @@ struct MCPToolHandlerIntegrationTests {
         }
     }
 
-    // MARK: - open_table_tab
-
     @Test("open_table_tab requires table_name")
     func openTableTabRequiresTableName() async {
         let handler = makeHandler()
@@ -652,8 +640,6 @@ struct MCPToolHandlerIntegrationTests {
             Issue.record("Expected MCPError, got \(error)")
         }
     }
-
-    // MARK: - focus_query_tab
 
     @Test("focus_query_tab returns notFound when tab is not open")
     func focusQueryTabNotFound() async {
@@ -693,8 +679,6 @@ struct MCPToolHandlerIntegrationTests {
             Issue.record("Expected MCPError, got \(error)")
         }
     }
-
-    // MARK: - Unknown tool
 
     @Test("Unknown tool name throws methodNotFound")
     func unknownToolThrows() async {

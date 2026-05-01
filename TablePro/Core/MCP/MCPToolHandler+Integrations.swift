@@ -7,8 +7,6 @@ import AppKit
 import Foundation
 
 extension MCPToolHandler {
-    // MARK: - list_recent_tabs
-
     func handleListRecentTabs(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let limit = optionalInt(args, key: "limit", default: 20, clamp: 1...500)
 
@@ -53,8 +51,6 @@ extension MCPToolHandler {
 
         return MCPToolResult(content: [.text(encodeJSON(.object(["tabs": .array(payload)])))], isError: nil)
     }
-
-    // MARK: - search_query_history
 
     func handleSearchQueryHistory(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let query = try requireString(args, key: "query")
@@ -130,8 +126,6 @@ extension MCPToolHandler {
         return MCPToolResult(content: [.text(encodeJSON(.object(["entries": .array(payload)])))], isError: nil)
     }
 
-    // MARK: - open_connection_window
-
     func handleOpenConnectionWindow(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
         try await ensureConnectionExists(connectionId)
@@ -160,8 +154,6 @@ extension MCPToolHandler {
         ])
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
     }
-
-    // MARK: - open_table_tab
 
     func handleOpenTableTab(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
@@ -199,8 +191,6 @@ extension MCPToolHandler {
         ])
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
     }
-
-    // MARK: - focus_query_tab
 
     func handleFocusQueryTab(_ args: JSONValue?, sessionId: String, token: MCPAuthToken?) async throws -> MCPToolResult {
         let tabId = try requireUUID(args, key: "tab_id")
@@ -251,8 +241,6 @@ extension MCPToolHandler {
 
         return MCPToolResult(content: [.text(encodeJSON(.object(dict)))], isError: nil)
     }
-
-    // MARK: - Helpers
 
     private func resolveHistoryAllowlist(
         token: MCPAuthToken?,

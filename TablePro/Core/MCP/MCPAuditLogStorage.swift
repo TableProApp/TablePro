@@ -55,8 +55,6 @@ actor MCPAuditLogStorage {
         }
     }
 
-    // MARK: - Database Setup
-
     private func setupDatabase() {
         let fileManager = FileManager.default
         guard
@@ -114,8 +112,6 @@ actor MCPAuditLogStorage {
         sqlite3_finalize(statement)
     }
 
-    // MARK: - Insert
-
     @discardableResult
     func addEntry(_ entry: AuditEntry) -> Bool {
         let sql = """
@@ -164,8 +160,6 @@ actor MCPAuditLogStorage {
 
         return sqlite3_step(statement) == SQLITE_DONE
     }
-
-    // MARK: - Query
 
     func query(
         category: AuditCategory? = nil,
@@ -230,8 +224,6 @@ actor MCPAuditLogStorage {
         return 0
     }
 
-    // MARK: - Prune
-
     @discardableResult
     func prune(olderThan days: Int) -> Int {
         guard days > 0 else { return 0 }
@@ -258,8 +250,6 @@ actor MCPAuditLogStorage {
         defer { sqlite3_finalize(statement) }
         return sqlite3_step(statement) == SQLITE_DONE
     }
-
-    // MARK: - Parsing
 
     private func parseEntry(_ statement: OpaquePointer?) -> AuditEntry? {
         guard let statement,

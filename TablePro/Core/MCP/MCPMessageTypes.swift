@@ -5,8 +5,6 @@
 
 import Foundation
 
-// MARK: - JSONValue
-
 enum JSONValue: Codable, Equatable, Sendable {
     case null
     case bool(Bool)
@@ -78,8 +76,6 @@ enum JSONValue: Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - JSONValue Literals
-
 extension JSONValue: ExpressibleByStringLiteral {
     init(stringLiteral value: String) {
         self = .string(value)
@@ -115,8 +111,6 @@ extension JSONValue: ExpressibleByDictionaryLiteral {
         self = .object(Dictionary(uniqueKeysWithValues: elements))
     }
 }
-
-// MARK: - JSONValue Accessors
 
 extension JSONValue {
     subscript(key: String) -> JSONValue? {
@@ -161,8 +155,6 @@ extension JSONValue {
     }
 }
 
-// MARK: - JSONRPCId
-
 enum JSONRPCId: Codable, Equatable, Hashable, Sendable {
     case string(String)
     case int(Int)
@@ -193,8 +185,6 @@ enum JSONRPCId: Codable, Equatable, Hashable, Sendable {
         }
     }
 }
-
-// MARK: - JSON-RPC 2.0 Base Types
 
 struct JSONRPCRequest: Codable, Sendable {
     let jsonrpc: String
@@ -272,8 +262,6 @@ struct JSONRPCErrorDetail: Codable, Sendable {
     let message: String
     let data: JSONValue?
 }
-
-// MARK: - MCPError
 
 enum MCPError: Error, Sendable {
     case parseError
@@ -372,8 +360,6 @@ extension MCPError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-// MARK: - MCP Initialize
-
 struct MCPClientInfo: Codable, Sendable {
     let name: String
     let version: String?
@@ -404,8 +390,6 @@ struct MCPServerInfo: Codable, Sendable {
     let version: String
 }
 
-// MARK: - MCP Tools
-
 struct MCPToolDefinition: Codable, Sendable {
     let name: String
     let description: String
@@ -425,8 +409,6 @@ struct MCPContent: Codable, Sendable {
         MCPContent(type: "text", text: value)
     }
 }
-
-// MARK: - MCP Resources
 
 struct MCPResourceDefinition: Codable, Sendable {
     let uri: String

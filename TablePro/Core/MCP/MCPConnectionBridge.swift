@@ -11,8 +11,6 @@ import os
 actor MCPConnectionBridge {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
 
-    // MARK: - Connection Management
-
     func listConnections() async -> JSONValue {
         let (connections, activeSessions) = await MainActor.run {
             let conns = ConnectionStorage.shared.loadConnections()
@@ -160,8 +158,6 @@ actor MCPConnectionBridge {
         return .object(result)
     }
 
-    // MARK: - Query Execution
-
     func executeQuery(
         connectionId: UUID,
         query: String,
@@ -230,8 +226,6 @@ actor MCPConnectionBridge {
 
         return .object(response)
     }
-
-    // MARK: - Schema Operations
 
     func listTables(connectionId: UUID, includeRowCounts: Bool) async throws -> JSONValue {
         let cachedTables = await MainActor.run {
@@ -352,8 +346,6 @@ actor MCPConnectionBridge {
         return .object(["ddl": .string(ddl)])
     }
 
-    // MARK: - Database/Schema Switching
-
     func switchDatabase(connectionId: UUID, database: String) async throws -> JSONValue {
         // switchDatabase is @MainActor; Swift hops automatically for async calls.
         try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
@@ -371,8 +363,6 @@ actor MCPConnectionBridge {
             "current_schema": .string(schema)
         ])
     }
-
-    // MARK: - Schema Resource (for resources/read)
 
     func fetchSchemaResource(connectionId: UUID) async throws -> JSONValue {
         let cachedTables = await MainActor.run {
@@ -423,8 +413,6 @@ actor MCPConnectionBridge {
         return .object(result)
     }
 
-    // MARK: - History Resource
-
     func fetchHistoryResource(
         connectionId: UUID,
         limit: Int,
@@ -464,8 +452,6 @@ actor MCPConnectionBridge {
 
         return .object(["history": .array(jsonEntries)])
     }
-
-    // MARK: - Private Helpers
 
     private func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
         let pending: DatabaseConnection? = await MainActor.run {
