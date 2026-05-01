@@ -563,7 +563,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func executeUserQuery(query: String, rowCap: Int?, parameters: [String?]?) async throws -> PluginQueryResult {
         if let parameters {
             let raw = try await executeParameterized(query: query, parameters: parameters)
-            guard let cap = rowCap, raw.rows.count > cap else { return raw }
+            guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
             return PluginQueryResult(
                 columns: raw.columns,
                 columnTypeNames: raw.columnTypeNames,
@@ -588,7 +588,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 columns = header.columns
                 columnTypeNames = header.columnTypeNames
             case .rows(let batch):
-                if let cap = rowCap {
+                if let cap = rowCap, cap > 0 {
                     let remaining = cap - rows.count
                     if remaining <= 0 {
                         truncated = true

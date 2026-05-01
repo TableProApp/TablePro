@@ -524,7 +524,7 @@ public extension PluginDatabaseDriver {
         } else {
             raw = try await execute(query: query)
         }
-        guard let cap = rowCap, raw.rows.count > cap else {
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else {
             return raw
         }
         return PluginQueryResult(

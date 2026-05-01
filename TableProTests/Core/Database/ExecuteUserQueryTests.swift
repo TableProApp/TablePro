@@ -2,9 +2,6 @@
 //  ExecuteUserQueryTests.swift
 //  TableProTests
 //
-//  Regression coverage for the executeUserQuery driver path that replaced
-//  the removed strip-and-replace pagination API. See issue #956.
-//
 
 import Foundation
 import Testing
@@ -44,6 +41,17 @@ struct ExecuteUserQueryTests {
         let driver = StubPluginDriver(rows: rows)
 
         let result = try await driver.executeUserQuery(query: "SELECT * FROM t", rowCap: nil, parameters: nil)
+
+        #expect(result.rows.count == 100)
+        #expect(!result.isTruncated)
+    }
+
+    @Test("Treats rowCap of 0 as unlimited and returns the full result")
+    func zeroCapMeansUnlimited() async throws {
+        let rows = (1...100).map { ["row_\($0)"] }
+        let driver = StubPluginDriver(rows: rows)
+
+        let result = try await driver.executeUserQuery(query: "SELECT * FROM t", rowCap: 0, parameters: nil)
 
         #expect(result.rows.count == 100)
         #expect(!result.isTruncated)
