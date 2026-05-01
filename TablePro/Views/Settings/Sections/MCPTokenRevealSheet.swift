@@ -32,7 +32,7 @@ struct MCPTokenRevealSheet: View {
             }
             .padding()
         }
-        .frame(width: 540, minHeight: 520)
+        .frame(minWidth: 540, minHeight: 520)
     }
 
     private var warningBanner: some View {

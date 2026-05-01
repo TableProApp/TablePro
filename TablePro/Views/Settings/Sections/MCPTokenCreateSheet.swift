@@ -28,7 +28,7 @@ struct MCPTokenCreateSheet: View {
             actionBar
                 .padding()
         }
-        .frame(width: 480, minHeight: 520)
+        .frame(minWidth: 480, minHeight: 520)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
         }

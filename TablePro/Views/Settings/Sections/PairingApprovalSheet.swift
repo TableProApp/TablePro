@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct PairingApproval: Sendable {
@@ -52,7 +53,7 @@ struct PairingApprovalSheet: View {
             Divider()
             actionBar.padding()
         }
-        .frame(width: 520, minHeight: 560)
+        .frame(minWidth: 520, minHeight: 560)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
             if connectionAccess == .all {
