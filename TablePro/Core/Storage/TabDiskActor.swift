@@ -10,16 +10,11 @@
 import Foundation
 import os
 
-/// Persisted tab state for a connection
 internal struct TabDiskState: Codable {
     let tabs: [PersistedTab]
     let selectedTabId: UUID?
 }
 
-/// Actor that serializes all tab-state disk I/O.
-///
-/// Data is stored as individual JSON files per connection in:
-///   `~/Library/Application Support/TablePro/TabState/`
 internal actor TabDiskActor {
     internal static let shared = TabDiskActor()
 
@@ -52,7 +47,6 @@ internal actor TabDiskActor {
 
     // MARK: - Public API
 
-    /// Save tab state for a connection. Throws on encoding or disk write failure.
     internal func save(connectionId: UUID, tabs: [PersistedTab], selectedTabId: UUID?) throws {
         let state = TabDiskState(tabs: tabs, selectedTabId: selectedTabId)
         let data = try encoder.encode(state)
@@ -60,7 +54,6 @@ internal actor TabDiskActor {
         try data.write(to: fileURL, options: .atomic)
     }
 
-    /// Load tab state for a connection. Returns nil if the file is missing or corrupt.
     internal func load(connectionId: UUID) -> TabDiskState? {
         let fileURL = tabStateFileURL(for: connectionId)
 
@@ -77,7 +70,6 @@ internal actor TabDiskActor {
         }
     }
 
-    /// Delete the tab state file for a connection.
     internal func clear(connectionId: UUID) {
         let fileURL = tabStateFileURL(for: connectionId)
 
@@ -90,9 +82,6 @@ internal actor TabDiskActor {
         }
     }
 
-    /// List all connection IDs that have saved tab state on disk.
-    /// Self-cleans legacy empty-payload files: if a file decodes with no tabs,
-    /// it is deleted and its connection ID is excluded from the result.
     internal func connectionIdsWithSavedState() -> [UUID] {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(
@@ -132,9 +121,6 @@ internal actor TabDiskActor {
 
     // MARK: - Synchronous Save (quit-time only)
 
-    /// Synchronous file write for `applicationWillTerminate`, where no run loop
-    /// remains to execute an async Task. Safe because the process is single-threaded
-    /// at termination — no concurrent actor access is possible.
     nonisolated internal static func saveSync(
         connectionId: UUID,
         tabs: [PersistedTab],
@@ -154,9 +140,6 @@ internal actor TabDiskActor {
         }
     }
 
-    /// Synchronous clear for `applicationWillTerminate`, where no run loop
-    /// remains to execute an async Task. Mirrors `saveSync` — deletes the
-    /// connection's tab state file directly.
     nonisolated internal static func clearSync(connectionId: UUID) {
         let fileURL = tabStateFileURL(for: connectionId)
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
@@ -175,9 +158,6 @@ internal actor TabDiskActor {
 
     // MARK: - Migration from UserDefaults
 
-    /// One-time migration: reads existing tab state from UserDefaults,
-    /// writes it to file storage, then clears the old UserDefaults keys.
-    /// This is a static method to avoid actor-isolation issues during init.
     private static func performMigrationIfNeeded(tabStateDirectory: URL) {
         let defaults = UserDefaults.standard
 

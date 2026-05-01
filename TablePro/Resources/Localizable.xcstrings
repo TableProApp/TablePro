@@ -42349,6 +42349,16 @@
     "Token" : {
 
     },
+    "Token '%@' with permission '%@' cannot access '%@'" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Token '%1$@' with permission '%2$@' cannot access '%3$@'"
+          }
+        }
+      }
+    },
     "Token does not have access to this connection" : {
 
     },

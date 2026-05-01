@@ -226,13 +226,38 @@ final class WelcomeViewModel {
     }
 
     private static func awaitWelcomeRouterChange() async -> Bool {
-        await withCheckedContinuation { continuation in
-            withObservationTracking({
-                _ = WelcomeRouter.shared.pendingImport
-                _ = WelcomeRouter.shared.pendingConnectionShare
-            }, onChange: {
-                continuation.resume(returning: true)
-            })
+        let box = ContinuationBox()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                box.set(continuation)
+                withObservationTracking({
+                    _ = WelcomeRouter.shared.pendingImport
+                    _ = WelcomeRouter.shared.pendingConnectionShare
+                }, onChange: {
+                    box.resume(with: true)
+                })
+            }
+        } onCancel: {
+            box.resume(with: false)
+        }
+    }
+
+    private final class ContinuationBox: @unchecked Sendable {
+        private var continuation: CheckedContinuation<Bool, Never>?
+        private let lock = NSLock()
+
+        func set(_ continuation: CheckedContinuation<Bool, Never>) {
+            lock.lock()
+            defer { lock.unlock() }
+            self.continuation = continuation
+        }
+
+        func resume(with value: Bool) {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(returning: value)
         }
     }
 

@@ -32,9 +32,9 @@ final class SchemaService {
 
     func load(connectionId: UUID, driver: DatabaseDriver, connection: DatabaseConnection) async {
         switch state(for: connectionId) {
-        case .loading, .loaded:
+        case .loaded:
             return
-        case .idle, .failed:
+        case .idle, .loading, .failed:
             await runLoad(connectionId: connectionId, driver: driver, connection: connection)
         }
     }

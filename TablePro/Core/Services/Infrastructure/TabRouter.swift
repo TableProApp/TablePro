@@ -135,7 +135,7 @@ internal final class TabRouter {
     ) -> Bool {
         for coordinator in MainContentCoordinator.allActiveCoordinators()
             where coordinator.connectionId == connectionId {
-            let hasMatch = coordinator.tabManager.tabs.contains { tab in
+            guard let match = coordinator.tabManager.tabs.first(where: { tab in
                 guard tab.tabType == .table,
                       tab.tableContext.tableName == table else { return false }
                 let databaseMatches = database.map { db in
@@ -145,13 +145,12 @@ internal final class TabRouter {
                     tab.tableContext.schemaName.map { $0 == sch } ?? false
                 } ?? true
                 return databaseMatches && schemaMatches
-            }
-            guard hasMatch else { continue }
+            }) else { continue }
+            coordinator.tabManager.selectedTabId = match.id
             if let windowId = coordinator.windowId,
                let window = WindowLifecycleMonitor.shared.window(for: windowId) {
                 window.makeKeyAndOrderFront(nil)
             }
-            coordinator.openTableTab(table)
             return true
         }
         return false
@@ -213,10 +212,10 @@ internal final class TabRouter {
     }
 
     private func previewForSQL(_ sql: String) -> String {
-        let length = (sql as NSString).length
-        guard length > 300 else { return sql }
-        let head = String(sql.prefix(300))
-        let hidden = length - 300
+        let nsSQL = sql as NSString
+        guard nsSQL.length > 300 else { return sql }
+        let head = nsSQL.substring(to: 300)
+        let hidden = nsSQL.length - 300
         return head + String(format: String(localized: "\n\n… (%d more characters not shown)"), hidden)
     }
 
