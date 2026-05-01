@@ -12,8 +12,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    var configuredWindows = Set<ObjectIdentifier>()
-
     // MARK: - URL & File Open
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -80,10 +78,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         AppLaunchCoordinator.shared.didFinishLaunching()
 
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(windowDidBecomeKey(_:)),
-            name: NSWindow.didBecomeKeyNotification, object: nil
-        )
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil
@@ -175,19 +169,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Window Notifications
 
-    @objc func windowDidBecomeKey(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow else { return }
-        let windowId = ObjectIdentifier(window)
-
-        if AppLaunchCoordinator.isConnectionFormWindow(window) && !configuredWindows.contains(windowId) {
-            configureConnectionFormWindowStyle(window)
-            configuredWindows.insert(windowId)
-        }
-    }
-
     @objc func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        configuredWindows.remove(ObjectIdentifier(window))
 
         if AppLaunchCoordinator.isMainWindow(window) {
             let remaining = NSApp.windows.filter {
@@ -204,17 +187,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = NSApp.windows.first(where: { AppLaunchCoordinator.isConnectionFormWindow($0) }) {
             window.makeKeyAndOrderFront(nil)
         }
-    }
-
-    // MARK: - Window Style
-
-    private func configureConnectionFormWindowStyle(_ window: NSWindow) {
-        window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
-        window.standardWindowButton(.zoomButton)?.isEnabled = false
-        window.styleMask.remove(.miniaturizable)
-
-        window.collectionBehavior.remove(.fullScreenPrimary)
-        window.collectionBehavior.insert(.fullScreenNone)
     }
 
     // MARK: - Dock Menu

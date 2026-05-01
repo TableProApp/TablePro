@@ -11,8 +11,6 @@ import os
 actor MCPConnectionBridge {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
 
-    private let connectDedup = OnceTask<UUID, Void>()
-
     // MARK: - Connection Management
 
     func listConnections() async -> JSONValue {
@@ -72,9 +70,7 @@ actor MCPConnectionBridge {
             return .object(result)
         }
 
-        // Not connected yet -- create a new session via DatabaseManager.
-        // connectToSession is @MainActor; Swift hops automatically for async calls.
-        try await DatabaseManager.shared.connectToSession(connection)
+        try await DatabaseManager.shared.ensureConnected(connection)
 
         let (serverVersion, currentDatabase, currentSchema) = await MainActor.run {
             let session = DatabaseManager.shared.activeSessions[connectionId]
@@ -493,9 +489,7 @@ actor MCPConnectionBridge {
     }
 
     private func connectIfNeeded(_ connection: DatabaseConnection) async throws {
-        try await connectDedup.execute(key: connection.id) {
-            try await DatabaseManager.shared.connectToSession(connection)
-        }
+        try await DatabaseManager.shared.ensureConnected(connection)
     }
 
     private func resolveSession(_ connectionId: UUID) async throws -> ConnectionSession {

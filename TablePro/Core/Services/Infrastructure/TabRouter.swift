@@ -131,8 +131,12 @@ internal final class TabRouter {
             let match = coordinator.tabManager.tabs.first { tab in
                 guard tab.tabType == .table,
                       tab.tableContext.tableName == table else { return false }
-                let databaseMatches = database.map { $0 == tab.tableContext.databaseName } ?? true
-                let schemaMatches = schema.map { $0 == tab.tableContext.schemaName } ?? true
+                let databaseMatches = database.map { db in
+                    tab.tableContext.databaseName == db
+                } ?? true
+                let schemaMatches = schema.map { sch in
+                    tab.tableContext.schemaName.map { $0 == sch } ?? false
+                } ?? true
                 return databaseMatches && schemaMatches
             }
             guard let match else { continue }

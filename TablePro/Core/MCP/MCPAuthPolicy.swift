@@ -214,6 +214,7 @@ actor MCPAuthPolicy {
 
     private static func promptApproval(reason: String) async throws -> Bool {
         try await withThrowingTaskGroup(of: Bool.self) { group in
+            defer { group.cancelAll() }
             group.addTask {
                 await AlertHelper.runApprovalModal(
                     title: String(localized: "MCP Access Request"),
@@ -231,7 +232,6 @@ actor MCPAuthPolicy {
             guard let result = try await group.next() else {
                 throw MCPError.internalError("No result from approval prompt")
             }
-            group.cancelAll()
             return result
         }
     }

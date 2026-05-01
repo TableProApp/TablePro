@@ -78,12 +78,6 @@ internal final class WindowManager {
 
         retain(controller: controller, window: window)
 
-        // Pre-mark so AppDelegate.windowDidBecomeKey skips its tabbing-merge
-        // block (we do the merge here, at creation, with the correct ordering).
-        if let appDelegate = NSApp.delegate as? AppDelegate {
-            appDelegate.configuredWindows.insert(ObjectIdentifier(window))
-        }
-
         // --- Tab-group merge, correctly ordered ---
         //
         // The earlier prototype called `addTabbedWindow(window, …)` before
