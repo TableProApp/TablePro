@@ -218,7 +218,7 @@ final class MCPServerManager {
             for await exchange in transport.exchanges {
                 guard let self else { return }
                 guard await self.isCurrentGeneration(generation) else { return }
-                await dispatcher.dispatch(exchange)
+                Task { await dispatcher.dispatch(exchange) }
             }
         }
     }
