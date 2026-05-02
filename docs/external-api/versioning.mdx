@@ -7,6 +7,8 @@ description: Stability policy for the URL scheme, MCP tools, and resource catalo
 
 The External API follows TablePro's semver. The contract is the URL scheme, the MCP tool catalog, the resource list, and the pairing flow.
 
+The MCP server reports `protocolVersion: "2025-03-26"` from `initialize`. That value comes from the [Model Context Protocol spec](https://modelcontextprotocol.io) and is independent of TablePro's app version.
+
 ## Stability rules
 
 Within a major version, the External API is **additive only**:

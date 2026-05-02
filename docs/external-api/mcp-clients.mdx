@@ -44,10 +44,10 @@ Restart Claude Desktop. Open a new chat, click the connectors icon below the inp
 Use the `claude mcp add` CLI:
 
 ```bash
-claude mcp add --transport stdio tablepro -- /Applications/TablePro.app/Contents/MacOS/tablepro-mcp
+claude mcp add tablepro -- /Applications/TablePro.app/Contents/MacOS/tablepro-mcp
 ```
 
-The double dash separates Claude Code's flags from the command it runs. Verify with `claude mcp list`.
+The double dash separates Claude Code's flags from the command it runs. stdio is the default transport, so no `--transport` flag is needed. Verify with `claude mcp list`.
 
 ## Cursor
 
@@ -200,8 +200,10 @@ After configuring a client, the fastest check is to ask it to list TablePro tool
 If the call fails, the response code tells you which layer rejected it:
 
 - **stdio process exits immediately**: TablePro is not running, or you are on a build older than 0.37. Open TablePro and re-launch the client.
-- **`401 Unauthorized`**: the bridge token is stale. Quit and reopen TablePro to regenerate the handshake.
+- **`401 Unauthorized`** (`WWW-Authenticate: Bearer ...`): the bridge token is stale. Quit and reopen TablePro to regenerate the handshake.
 - **`403 Forbidden`**: the connection's `externalAccess` is `blocked` or `readOnly`, or the token's allowlist excludes it. Open the connection editor in TablePro and adjust under **External Access**.
+- **`404 Session not found`** (JSON-RPC code `-32001`): the session expired (idle timeout is 15 minutes) or the server restarted. Per the MCP spec, drop the cached `Mcp-Session-Id` and start a new `initialize` handshake. Compliant clients (Claude Desktop 0.7+, Cursor, Cline) do this automatically.
+- **`429 Too Many Requests`**: 5 failed auth attempts within 60 seconds against the same `(client_address, principal)` pair triggered a 5-minute lockout. Wait it out or restart TablePro to clear the bucket.
 
 ## Troubleshooting
 

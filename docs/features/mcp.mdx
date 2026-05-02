@@ -157,4 +157,4 @@ The reachable surface is the [tool catalog](/external-api/mcp-tools) and the [UR
 
 **Certificate trust error**: export the PEM from **Settings > Integrations > Network** and add it to your client's trust store, or use fingerprint pinning.
 
-**`429 Too Many Requests`**: too many failed auth attempts. The lockout escalates to 5 minutes and resets on the next successful auth.
+**`429 Too Many Requests`**: 5 failed auth attempts within 60 seconds against the same `(client_address, principal)` pair triggers a 5-minute lockout. A successful auth clears the bucket.

@@ -9,6 +9,31 @@ Resources are read-only views of TablePro state. AI clients use them to discover
 
 URIs use the `tablepro://` scheme inside the MCP transport. Do not confuse them with shell-level [URL scheme deep links](/external-api/url-scheme).
 
+## Discovery
+
+Two MCP methods enumerate resources:
+
+- `resources/list` returns the static `tablepro://connections` resource plus a schema and history entry for each currently connected database.
+- `resources/templates/list` returns the URI templates for `tablepro://connections/{id}/schema` and `tablepro://connections/{id}/history`, so clients can construct a URL for any connection without waiting for it to be open.
+
+## Response envelope
+
+`resources/read` wraps the resource payload in the MCP standard envelope:
+
+```json
+{
+  "contents": [
+    {
+      "uri": "tablepro://connections",
+      "mimeType": "application/json",
+      "text": "{...JSON payload below as a string...}"
+    }
+  ]
+}
+```
+
+The shapes documented below are what you get after parsing `text` as JSON.
+
 ## `tablepro://connections`
 
 All saved connections with their current session state.
@@ -107,7 +132,9 @@ Recent query history for a connection.
 
 ## Errors
 
-| Code | Meaning |
-|------|---------|
-| `403` | Token allowlist rejects the connection, or `externalAccess` is `blocked`. |
-| `404` | Connection not found. |
+| JSON-RPC code | HTTP status | Meaning |
+|---------------|-------------|---------|
+| `-32602` | 200 | Invalid params (malformed URI, missing `uri`, bad UUID, connection not active). |
+| `-32601` | 404 | Unknown resource URI (e.g. `tablepro://connections/{id}/foo`). |
+| `-32004` | 404 | Resource not found in the data layer. |
+| `-32007` | 403 | Token allowlist rejects the connection, or `externalAccess` is `blocked`. |

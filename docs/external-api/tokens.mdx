@@ -28,15 +28,25 @@ The `prefix` is shown in the token list so the user can identify a token without
 
 ## Scopes
 
-| Scope | Read schema | SELECT | INSERT/UPDATE/DELETE | DROP/TRUNCATE | UI mutation |
-|-------|:-----------:|:------:|:--------------------:|:-------------:|:-----------:|
-| `readOnly` | yes | yes | no | no | no |
-| `readWrite` | yes | yes | yes | no | yes |
-| `fullAccess` | yes | yes | yes | yes (with phrase) | yes |
+A token's `permissions` value maps to the MCP scopes the server enforces:
 
-UI mutation covers `open_connection_window`, `open_table_tab`, `focus_query_tab`. These open windows and tabs in the running app.
+| Token permission | MCP scopes granted |
+|------------------|--------------------|
+| `readOnly` | `tools:read`, `resources:read` |
+| `readWrite` | `tools:read`, `tools:write`, `resources:read` |
+| `fullAccess` | `tools:read`, `tools:write`, `resources:read`, `admin` |
 
-DROP and TRUNCATE always require an explicit confirmation phrase via `confirm_destructive_operation`, even with `fullAccess`. There is no token scope that bypasses the phrase.
+What each token can do:
+
+| Permission | Read schema | SELECT | INSERT/UPDATE/DELETE | DROP/TRUNCATE | switch_database/switch_schema | open / focus tabs |
+|------------|:-----------:|:------:|:--------------------:|:-------------:|:----------------------------:|:-----------------:|
+| `readOnly` | yes | yes | no | no | no | yes |
+| `readWrite` | yes | yes | yes | yes (with phrase) | yes | yes |
+| `fullAccess` | yes | yes | yes | yes (with phrase) | yes | yes |
+
+Navigation tools (`open_connection_window`, `open_table_tab`, `focus_query_tab`, `list_recent_tabs`) need only `tools:read`. They surface UI but never bypass the connection allowlist or `externalAccess: blocked`.
+
+DROP and TRUNCATE always require an explicit confirmation phrase via `confirm_destructive_operation`, plus a token with `tools:write` (i.e. `readWrite` or `fullAccess`). There is no token permission that bypasses the phrase.
 
 ## Connection allowlist
 
@@ -56,11 +66,11 @@ The effective permission is `MIN(token.scope, connection.externalAccess)`.
 | `readOnly` | `readWrite` | `readOnly` |
 | `readWrite` | `readOnly` | `readOnly` |
 | `fullAccess` | `readOnly` | `readOnly` |
-| `fullAccess` | `readWrite` | `readWrite` (no destructive) |
+| `fullAccess` | `readWrite` | `readWrite` |
 | `fullAccess` | `blocked` | denied |
 | any | `blocked` | denied |
 
-A `fullAccess` token cannot mutate data on a `readOnly` connection. A token's reach is bounded by both itself and the connection.
+A `fullAccess` or `readWrite` token cannot mutate data on a `readOnly` connection. A token's reach is bounded by both itself and the connection's `externalAccess`.
 
 ## Creation
 
@@ -110,16 +120,15 @@ Entries are kept for 90 days, auto-pruned on app launch.
 
 ## Rate limits
 
-Per-IP, on failed auth:
+The MCP authenticator throttles failed token attempts. The bucket key is `(client_address, principal_fingerprint)`, so a misbehaving bridge cannot lock out other principals on the same loopback address.
 
-| Failures | Lockout |
-|----------|---------|
-| 2 | 1 second |
-| 3 | 5 seconds |
-| 4 | 30 seconds |
-| 5+ | 5 minutes |
+| Setting | Value |
+|---------|-------|
+| Failure window | 60 seconds |
+| Max failures in window | 5 |
+| Lockout after threshold | 5 minutes |
 
-A successful auth resets the counter. During lockout the server returns `429 Too Many Requests`.
+A successful auth clears the bucket. During lockout the server returns HTTP `429 Too Many Requests` with JSON-RPC `code: -32000, message: "Rate limited"`.
 
 ## What tokens cannot do
 

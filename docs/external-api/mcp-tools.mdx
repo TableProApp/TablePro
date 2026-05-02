@@ -11,10 +11,10 @@ The MCP server exposes tools and resources over JSON-RPC. The tools are grouped 
 
 The same tool catalog is available over two transports:
 
-- **HTTP**: `http://127.0.0.1:<port>/mcp` (port from the handshake file). Bearer token in `Authorization` header.
+- **HTTP**: MCP Streamable HTTP at `http://127.0.0.1:<port>/mcp` (port from the handshake file). POST for JSON-RPC requests, GET for the SSE stream that carries server-initiated notifications. Bearer token in `Authorization` header.
 - **stdio**: bundled `tablepro-mcp` CLI bridges stdio JSON-RPC to localhost HTTP. No token needed because the bridge reuses the in-app handshake.
 
-See [MCP Clients](/external-api/mcp-clients) for stdio config snippets.
+The server reports `protocolVersion: "2025-03-26"` from `initialize`. See [MCP Clients](/external-api/mcp-clients) for stdio config snippets.
 
 ## Scope and access matrix
 
@@ -90,9 +90,9 @@ Close a connection.
 
 **Input**: `{ "connection_id": "..." }`
 
-**Output**: empty object on success.
+**Output**: `{ "status": "disconnected" }` on success.
 
-**Scope**: `readOnly`.
+**Scope**: `readWrite`.
 
 ### `get_connection_status`
 
@@ -177,7 +177,7 @@ Columns, indexes, foreign keys, primary key, DDL.
 }
 ```
 
-`schema` is optional. The current database is used unless the connection was first switched with `switch_database`.
+`schema` is optional. The connection's current schema is used when omitted. To target a different database, call `switch_database` first.
 
 **Output**:
 
@@ -229,7 +229,7 @@ Just the `CREATE TABLE` statement.
 
 ### `execute_query`
 
-Run a SQL query.
+Execute a SQL query. All queries are subject to the connection's safe mode policy. DROP, TRUNCATE, and ALTER...DROP must use `confirm_destructive_operation`.
 
 **Input**:
 
@@ -244,7 +244,7 @@ Run a SQL query.
 }
 ```
 
-`max_rows` defaults to 500, max 10,000. `timeout_seconds` defaults to 30, max 300. Single-statement queries only. Query size cap is 100 KB.
+Defaults for `max_rows` and `timeout_seconds` come from **Settings > Integrations > MCP Configuration** (default row limit, query timeout). `max_rows` is clamped to the configured maximum (default 10,000). `timeout_seconds` is clamped to 1-300. Single-statement queries only. Query size cap is 100 KB. `database` and `schema` are optional; when present, the tool calls `switch_database` and/or `switch_schema` before executing.
 
 **Output**:
 
@@ -269,6 +269,8 @@ Run a SQL query.
 
 Safe Mode rules apply on top. A connection in Safe Mode `readOnly` returns `403` for any write SQL.
 
+**Streaming progress**: pass `_meta.progressToken` in the request and the server sends `notifications/progress` events on the SSE channel as the query moves through "Connecting", "Executing", "Formatting result", and "Done". Clients that don't include a token get the final response only.
+
 ### `confirm_destructive_operation`
 
 Run a DROP, TRUNCATE, or ALTER...DROP after a typed confirmation.
@@ -287,7 +289,7 @@ The confirmation phrase is fixed: `I understand this is irreversible`. Anything 
 
 **Output**: same shape as `execute_query`.
 
-**Scope**: `fullAccess`.
+**Scope**: `readWrite` or `fullAccess` (both grant the `tools:write` MCP scope). The connection's external access must also permit writes; a `readOnly` connection rejects destructive operations even with a matching token.
 
 ### `export_data`
 
@@ -304,9 +306,9 @@ Export query or table data as CSV, JSON, or SQL.
 }
 ```
 
-`format` is one of `csv`, `json`, `sql`. `max_rows` defaults to 50,000, max 100,000. Provide either `tables` or `query`. Pass `output_path` to write to disk instead of returning data inline.
+`format` is one of `csv`, `json`, `sql`. `max_rows` defaults to 50,000, max 100,000. Provide either `tables` or `query`. Table names accept letters, digits, underscore, and `.` for schema-qualified names. Pass `output_path` to write to disk instead of returning data inline; the path must resolve inside the user's `~/Downloads` directory or the request is rejected with `400`.
 
-**Output**: an envelope with one entry per query/table exported. Each entry has the export label and either inline data or the file path. Provide `output_path` in the request to receive a file-path response.
+**Output**: when `output_path` is set, returns `{ "path": "...", "rows_exported": N }`. Otherwise returns the export inline. A single export returns `{ "label": "...", "format": "csv", "row_count": N, "data": "..." }`. Multiple exports (multi-table requests) return `{ "exports": [ { "label": "...", "format": "csv", "row_count": N, "data": "..." }, ... ] }`.
 
 **Scope**: `readOnly`.
 
@@ -316,15 +318,15 @@ Export query or table data as CSV, JSON, or SQL.
 
 **Output**: `{ "status": "switched", "current_database": "analytics" }` or `{ "status": "switched", "current_schema": "reporting" }`
 
-**Scope**: `readOnly`.
+**Scope**: `readWrite` (mutates session state).
 
 ## Navigation tools
 
-These mutate UI state in the running TablePro app: opening tabs, focusing windows. They require `readWrite` scope because the user sees the result.
+These open or focus tabs and windows in the running TablePro app. They require `readOnly` scope and respect the connection allowlist; tabs from `externalAccess: blocked` connections are filtered out.
 
 ### `open_connection_window`
 
-Open a connection in TablePro and bring its window to front.
+Open a connection in TablePro and bring its window to front. If the connection is already open, the existing window is focused.
 
 **Input**: `{ "connection_id": "..." }`
 
@@ -338,7 +340,7 @@ Open a connection in TablePro and bring its window to front.
 }
 ```
 
-**Scope**: `readWrite`.
+**Scope**: `readOnly`.
 
 ### `open_table_tab`
 
@@ -368,11 +370,11 @@ Open a table tab.
 }
 ```
 
-**Scope**: `readWrite`.
+**Scope**: `readOnly`.
 
 ### `focus_query_tab`
 
-Bring an existing tab to front.
+Bring an existing tab to front. The `tab_id` comes from `list_recent_tabs`.
 
 **Input**: `{ "tab_id": "..." }`
 
@@ -387,11 +389,13 @@ Bring an existing tab to front.
 }
 ```
 
-**Scope**: `readWrite`.
+If the tab is no longer open, the call returns `-32602 invalid params` with detail `tab not found`.
+
+**Scope**: `readOnly`.
 
 ### `list_recent_tabs`
 
-Read the cross-window tab registry.
+Read the cross-window tab registry. Tabs from connections with `externalAccess: blocked` are filtered out.
 
 **Input**: `{ "limit": 20 }` (optional, 1-500, default 20).
 
@@ -465,25 +469,37 @@ Full-text search over the query history database.
 
 ## Errors
 
-All tools return JSON-RPC errors with these codes:
+Tool failures come back as JSON-RPC error envelopes. Codes follow the JSON-RPC spec plus TablePro's reserved range:
 
-| Code | Meaning |
-|------|---------|
-| `400` | Invalid input |
-| `401` | Missing or invalid bearer token |
-| `403` | Token scope or `externalAccess` rejects the request |
-| `404` | Connection, table, or tab not found |
-| `408` | Query timeout |
-| `429` | Rate limit |
-| `500` | Server error |
+| JSON-RPC code | HTTP status | Meaning |
+|---------------|-------------|---------|
+| `-32700` | 400 | Parse error (malformed JSON body) |
+| `-32600` | 400 | Invalid request (bad envelope, missing `Mcp-Session-Id`) |
+| `-32601` | 200 / 404 | Method or resource URI not found |
+| `-32602` | 200 | Invalid params (bad input, unknown tab id, unknown connection) |
+| `-32603` | 500 | Internal error |
+| `-32001` | 404 / 401 | Session not found, or unauthenticated |
+| `-32002` | 200 | Request cancelled |
+| `-32003` | 200 | Request timeout (e.g. query timeout) |
+| `-32004` | 404 | Resource not found |
+| `-32005` | 413 | Payload too large |
+| `-32007` | 403 | Forbidden (token scope, allowlist, or `externalAccess` rejects) |
+| `-32008` | 401 | Token expired |
+| `-32000` | 429 / 503 | Server error (rate limited, service unavailable) |
 
-Error responses include a `message` field. Example:
+Error responses include a `message`. Example:
 
 ```json
 {
+  "jsonrpc": "2.0",
+  "id": 7,
   "error": {
-    "code": 403,
-    "message": "Connection is read-only for external clients"
+    "code": -32007,
+    "message": "Forbidden: Connection is read-only for external clients"
   }
 }
 ```
+
+A `404` from `GET/POST/DELETE /mcp` with a stale `Mcp-Session-Id` returns the JSON-RPC envelope with `code: -32001, message: "Session not found"`. Per the [MCP spec](https://modelcontextprotocol.io), clients MUST treat that response as a signal to start a new `initialize` handshake before retrying.
+
+`401` responses include a `WWW-Authenticate: Bearer realm="TablePro MCP"` header. When the token has expired, the challenge adds `error="invalid_token", error_description="token_expired"`.

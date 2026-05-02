@@ -67,25 +67,19 @@ open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/database/app/schem
 
 ```
 tablepro://connect/<connection-uuid>/query?sql=<percent-encoded-sql>
-tablepro://connect/<connection-uuid>/query?sql=<percent-encoded-sql>&token=<token>
 ```
 
-Opens a new query tab with the SQL pre-filled. Without a `token`, TablePro shows a confirmation dialog with the SQL before opening, so the user can verify the query is safe.
+Opens a new query tab with the SQL pre-filled. TablePro always shows a confirmation dialog with a preview of the SQL before opening, so the user can verify the query is safe. The query does not auto-execute; the user runs it from the editor. The SQL has a 51,200-character cap.
 
-If a valid `token` is provided and the token has `query.write` scope (i.e. `readWrite` or `fullAccess`), the confirmation is skipped. The token is matched against the active connection's `externalAccess` level. A read-only connection rejects any write SQL regardless of token scope.
+To run SQL from a script and read rows back, use the MCP [`execute_query`](/external-api/mcp-tools) tool instead. The URL scheme is for handing SQL into the GUI, not for headless execution.
 
 ```bash
-# With confirmation
 open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/query?sql=SELECT%20*%20FROM%20users%20LIMIT%2010"
-
-# With token, no confirmation
-open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/query?sql=SELECT%20*%20FROM%20users%20LIMIT%2010&token=tp_abc123..."
 ```
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `sql` | yes | Percent-encoded SQL. |
-| `token` | no | Bearer token. Skips the confirmation dialog when present and valid. |
+| `sql` | yes | Percent-encoded SQL. Max 51,200 characters. |
 
 ## Start pairing
 
