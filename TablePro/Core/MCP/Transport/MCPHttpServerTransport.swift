@@ -290,6 +290,11 @@ public actor MCPHttpServerTransport {
         let clientAddress: MCPClientAddress = await context.clientAddress()
         let now = await clock.now()
 
+        if head.method == .post, stripQueryString(head.path) == "/v1/integrations/exchange" {
+            await handleIntegrationsExchange(body: body, context: context)
+            return
+        }
+
         switch head.method {
         case .options:
             await context.writeOptions204()
@@ -311,6 +316,71 @@ public actor MCPHttpServerTransport {
                 ),
                 requestId: nil
             )
+        }
+    }
+
+    private func handleIntegrationsExchange(body: Data, context: HttpConnectionContext) async {
+        struct ExchangeBody: Decodable {
+            let code: String
+            let codeVerifier: String
+            enum CodingKeys: String, CodingKey {
+                case code
+                case codeVerifier = "code_verifier"
+            }
+        }
+        struct ExchangeResponse: Encodable {
+            let token: String
+        }
+
+        let parsed: ExchangeBody
+        do {
+            parsed = try JSONDecoder().decode(ExchangeBody.self, from: body)
+        } catch {
+            await context.writePlainJsonError(status: .badRequest, message: "Invalid JSON body")
+            await context.cancel()
+            return
+        }
+
+        guard !parsed.code.isEmpty, !parsed.codeVerifier.isEmpty else {
+            await context.writePlainJsonError(status: .badRequest, message: "Missing code or code_verifier")
+            await context.cancel()
+            return
+        }
+
+        let exchange = PairingExchange(code: parsed.code, verifier: parsed.codeVerifier)
+        let outcome: Result<String, Error> = await MainActor.run {
+            do {
+                return .success(try MCPPairingService.shared.exchange(exchange))
+            } catch {
+                return .failure(error)
+            }
+        }
+
+        switch outcome {
+        case .success(let token):
+            let payload = (try? JSONEncoder().encode(ExchangeResponse(token: token))) ?? Data()
+            await context.writePlainJsonResponse(status: .ok, body: payload)
+            await context.cancel()
+        case .failure(let error):
+            let mapped = Self.mapExchangeError(error)
+            await context.writePlainJsonError(status: mapped.status, message: mapped.message)
+            await context.cancel()
+        }
+    }
+
+    private static func mapExchangeError(_ error: Error) -> (status: HttpStatus, message: String) {
+        guard let domainError = error as? MCPDataLayerError else {
+            return (.internalServerError, "Internal error")
+        }
+        switch domainError {
+        case .notFound:
+            return (.notFound, "Pairing code not found")
+        case .expired:
+            return (HttpStatus(code: 410, reasonPhrase: "Gone"), "Pairing code expired")
+        case .forbidden:
+            return (.forbidden, "Challenge mismatch")
+        default:
+            return (.internalServerError, "Internal error")
         }
     }
 
@@ -758,6 +828,24 @@ actor HttpConnectionContext {
         let head = HttpResponseHead(status: status, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: data)
         await send(payload)
+    }
+
+    func writePlainJsonResponse(status: HttpStatus, body: Data) async {
+        if cancelled { return }
+        var headers: [(String, String)] = [
+            ("Content-Type", "application/json"),
+            ("Connection", "close")
+        ]
+        headers.append(contentsOf: MCPCorsHeaders.standard)
+        let head = HttpResponseHead(status: status, headers: HttpHeaders(headers))
+        let payload = HttpResponseEncoder.encode(head, body: body)
+        await send(payload)
+    }
+
+    func writePlainJsonError(status: HttpStatus, message: String) async {
+        struct ErrorBody: Encodable { let error: String }
+        let payload = (try? JSONEncoder().encode(ErrorBody(error: message))) ?? Data()
+        await writePlainJsonResponse(status: status, body: payload)
     }
 
     func writeOptions204() async {
