@@ -65,6 +65,18 @@ private actor QueryGate {
     }
 }
 
+// MARK: - Unsupported Type Warner
+
+private actor UnsupportedTypeWarner {
+    private var seen: Set<String> = []
+
+    func warnIfNew(_ typeName: String) -> Bool {
+        guard !seen.contains(typeName) else { return false }
+        seen.insert(typeName)
+        return true
+    }
+}
+
 // MARK: - Connection Class
 
 final class OracleConnectionWrapper: @unchecked Sendable {
@@ -318,18 +330,105 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Cell Decoding
 
-    /// Decode an OracleCell to String, trying multiple type strategies.
-    /// OracleNIO may fail to decode NUMBER as String directly.
+    private let unsupportedWarner = UnsupportedTypeWarner()
+
     private func decodeCell(_ cell: OracleCell) -> String? {
-        if let value = try? cell.decode(String.self) { return value }
-        if let value = try? cell.decode(Int.self) { return String(value) }
-        if let value = try? cell.decode(Double.self) { return String(value) }
-        if let value = try? cell.decode(Bool.self) { return String(value) }
-        // Last resort: read raw bytes as UTF-8
-        if var buf = cell.bytes {
-            return buf.readString(length: buf.readableBytes)
+        guard cell.bytes != nil else { return nil }
+
+        do {
+            switch cell.dataType {
+            case .varchar, .nVarchar, .char, .nChar, .long, .longNVarchar,
+                 .clob, .nCLOB, .json, .rowID:
+                return try cell.decode(String.self)
+
+            case .number, .binaryInteger:
+                return Self.decodeNumber(cell)
+
+            case .binaryFloat:
+                return String(try cell.decode(Float.self))
+
+            case .binaryDouble:
+                return String(try cell.decode(Double.self))
+
+            case .boolean:
+                return try cell.decode(Bool.self) ? "true" : "false"
+
+            case .date:
+                return OracleCellFormatting.formatDate(try cell.decode(Date.self))
+
+            case .timestamp:
+                return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .utc)
+
+            case .timestampLTZ, .timestampTZ:
+                return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .local)
+
+            case .intervalDS:
+                let interval = try cell.decode(IntervalDS.self)
+                return OracleCellFormatting.formatIntervalDS(
+                    days: interval.days,
+                    hours: interval.hours,
+                    minutes: interval.minutes,
+                    seconds: interval.seconds,
+                    nanoseconds: interval.fractionalSeconds
+                )
+
+            case .intervalYM:
+                let interval = try cell.decode(IntervalYM.self)
+                return OracleCellFormatting.formatIntervalYM(
+                    years: interval.years,
+                    months: interval.months
+                )
+
+            case .raw, .longRAW, .blob:
+                return Self.hexEncode(cell.bytes)
+
+            case .bFile:
+                return "<bfile>"
+
+            case .cursor:
+                return "<cursor>"
+
+            case .vector:
+                return "<vector>"
+
+            default:
+                return unsupportedPlaceholder(for: cell.dataType)
+            }
+        } catch {
+            osLogger.error("Oracle decode failed for column '\(cell.columnName)' type \(self.oracleTypeName(cell.dataType)): \(String(describing: error))")
+            return "<decode error>"
+        }
+    }
+
+    private func unsupportedPlaceholder(for type: OracleDataType) -> String {
+        let name = oracleTypeName(type)
+        let warner = unsupportedWarner
+        Task.detached {
+            if await warner.warnIfNew(name) {
+                osLogger.warning("Oracle column type '\(name)' is not supported; rendering as placeholder")
+            }
+        }
+        return OracleCellFormatting.unsupportedPlaceholder(typeName: name)
+    }
+
+    private static func hexEncode(_ buffer: ByteBuffer?) -> String? {
+        guard var copy = buffer else { return nil }
+        let total = copy.readableBytes
+        guard let bytes = copy.readBytes(length: total) else { return nil }
+        return OracleCellFormatting.hexEncode(bytes)
+    }
+
+    private static func decodeNumber(_ cell: OracleCell) -> String? {
+        if let value = try? cell.decode(Int.self) {
+            return String(value)
+        }
+        if let value = try? cell.decode(OracleNumber.self) {
+            return value.description
+        }
+        if let value = try? cell.decode(Double.self) {
+            return String(value)
         }
         return nil
     }

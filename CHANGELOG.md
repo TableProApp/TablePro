@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Oracle TIMESTAMP, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH LOCAL TIME ZONE, INTERVAL DAY TO SECOND, INTERVAL YEAR TO MONTH, DATE, RAW, and BLOB columns now render through typed decoders instead of garbled text. Tables containing INTERVAL YEAR TO MONTH or BFILE columns no longer crash the app on row fetch. Unknown column types display `<unsupported: type>` instead of crashing (#965)
+
 ## [0.37.0] - 2026-05-01
 
 ### Added
