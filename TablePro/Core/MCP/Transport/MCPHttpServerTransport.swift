@@ -658,7 +658,7 @@ public actor MCPHttpServerTransport {
         case 403:
             return .forbidden(reason: reason.logMessage)
         case 429:
-            return .rateLimited()
+            return .rateLimited(retryAfterSeconds: reason.retryAfterSeconds)
         default:
             return MCPProtocolError(
                 code: JsonRpcErrorCode.serverError,

@@ -268,7 +268,7 @@ struct MCPHttpServerTransportTests {
         #expect(parsed.code != 0)
     }
 
-    @Test("Rate limit kicks in after repeated bad attempts")
+    @Test("Rate limit kicks in after repeated bad attempts and includes Retry-After")
     func rateLimitAfterBadAttempts() async throws {
         let auth = StubBearerAuthenticator(validToken: "valid", maxAttempts: 3)
         let (transport, _, port) = try await startedTransport(authenticator: auth)
@@ -290,6 +290,8 @@ struct MCPHttpServerTransportTests {
         let http = try #require(response as? HTTPURLResponse)
 
         #expect(http.statusCode == 429)
+        let retryAfter = http.value(forHTTPHeaderField: "Retry-After")
+        #expect(retryAfter == "30")
         let parsed = try parseJsonRpcError(data)
         #expect(parsed.code != 0)
     }

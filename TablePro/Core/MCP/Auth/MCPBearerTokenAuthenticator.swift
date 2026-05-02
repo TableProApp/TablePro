@@ -74,10 +74,16 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
 
     private let tokenStore: any MCPTokenStoreProtocol
     private let rateLimiter: MCPRateLimiter
+    private let clock: any MCPClock
 
-    public init(tokenStore: any MCPTokenStoreProtocol, rateLimiter: MCPRateLimiter) {
+    public init(
+        tokenStore: any MCPTokenStoreProtocol,
+        rateLimiter: MCPRateLimiter,
+        clock: any MCPClock = MCPSystemClock()
+    ) {
         self.tokenStore = tokenStore
         self.rateLimiter = rateLimiter
+        self.clock = clock
     }
 
     public func authenticate(
@@ -88,10 +94,10 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
 
         guard let header = authorizationHeader, !header.isEmpty else {
             let key = MCPRateLimitKey(clientAddress: clientAddress, principalFingerprint: nil)
-            if await rateLimiter.isLocked(key: key) {
+            if let retry = await rateLimitedRetryAfter(key: key) {
                 Self.logger.warning("Auth rejected (rate limited, missing header)")
-                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: 0)
-                return .deny(.rateLimited())
+                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
+                return .deny(.rateLimited(retryAfterSeconds: retry))
             }
             Self.logger.info("Auth missing Authorization header")
             MCPAuditLogger.logAuthFailure(reason: "missing_authorization_header", ip: ipString)
@@ -100,9 +106,9 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
 
         guard let token = Self.parseBearerToken(header) else {
             let key = MCPRateLimitKey(clientAddress: clientAddress, principalFingerprint: nil)
-            if await rateLimiter.isLocked(key: key) {
-                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: 0)
-                return .deny(.rateLimited())
+            if let retry = await rateLimitedRetryAfter(key: key) {
+                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
+                return .deny(.rateLimited(retryAfterSeconds: retry))
             }
             _ = await rateLimiter.recordAttempt(key: key, success: false)
             Self.logger.info("Auth invalid Authorization scheme")
@@ -116,21 +122,22 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
             principalFingerprint: fingerprint
         )
 
-        if await rateLimiter.isLocked(key: principalKey) {
+        if let retry = await rateLimitedRetryAfter(key: principalKey) {
             Self.logger.warning(
                 "Auth rate limited fingerprint=\(fingerprint, privacy: .public)"
             )
-            MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: 0)
-            return .deny(.rateLimited())
+            MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
+            return .deny(.rateLimited(retryAfterSeconds: retry))
         }
 
         let validation = await tokenStore.validateBearerToken(token)
         switch validation {
         case .failure(let error):
             let verdict = await rateLimiter.recordAttempt(key: principalKey, success: false)
-            if case .lockedUntil = verdict {
-                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: 0)
-                return .deny(.rateLimited())
+            if case .lockedUntil(let unlockDate) = verdict {
+                let retry = await retryAfter(unlockDate: unlockDate)
+                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
+                return .deny(.rateLimited(retryAfterSeconds: retry))
             }
             switch error {
             case .unknownToken:
@@ -163,6 +170,19 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
             MCPAuditLogger.logAuthSuccess(tokenName: validated.label ?? "-", ip: ipString)
             return .allow(principal)
         }
+    }
+
+    private func rateLimitedRetryAfter(key: MCPRateLimitKey) async -> Int? {
+        guard await rateLimiter.isLocked(key: key) else { return nil }
+        guard let unlockDate = await rateLimiter.lockedUntil(key: key) else { return nil }
+        return await retryAfter(unlockDate: unlockDate)
+    }
+
+    private func retryAfter(unlockDate: Date) async -> Int {
+        let now = await clock.now()
+        let delta = unlockDate.timeIntervalSince(now)
+        if delta <= 0 { return 1 }
+        return max(1, Int(delta.rounded(.up)))
     }
 
     private static func ipString(for address: MCPClientAddress) -> String {

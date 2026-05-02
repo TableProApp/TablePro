@@ -110,11 +110,16 @@ public extension MCPProtocolError {
         )
     }
 
-    static func rateLimited() -> Self {
-        Self(
+    static func rateLimited(retryAfterSeconds: Int? = nil) -> Self {
+        var headers: [(String, String)] = []
+        if let retryAfterSeconds, retryAfterSeconds > 0 {
+            headers.append(("Retry-After", String(retryAfterSeconds)))
+        }
+        return Self(
             code: JsonRpcErrorCode.serverError,
             message: "Rate limited",
-            httpStatus: .tooManyRequests
+            httpStatus: .tooManyRequests,
+            extraHeaders: headers
         )
     }
 

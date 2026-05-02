@@ -9,11 +9,18 @@ public struct MCPAuthDenialReason: Sendable, Equatable {
     public let httpStatus: Int
     public let challenge: String?
     public let logMessage: String
+    public let retryAfterSeconds: Int?
 
-    public init(httpStatus: Int, challenge: String?, logMessage: String) {
+    public init(
+        httpStatus: Int,
+        challenge: String?,
+        logMessage: String,
+        retryAfterSeconds: Int? = nil
+    ) {
         self.httpStatus = httpStatus
         self.challenge = challenge
         self.logMessage = logMessage
+        self.retryAfterSeconds = retryAfterSeconds
     }
 
     public static func unauthenticated(reason: String) -> Self {
@@ -48,11 +55,12 @@ public struct MCPAuthDenialReason: Sendable, Equatable {
         )
     }
 
-    public static func rateLimited() -> Self {
+    public static func rateLimited(retryAfterSeconds: Int? = nil) -> Self {
         Self(
             httpStatus: 429,
             challenge: nil,
-            logMessage: "rate_limited"
+            logMessage: "rate_limited",
+            retryAfterSeconds: retryAfterSeconds
         )
     }
 }

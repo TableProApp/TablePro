@@ -50,7 +50,7 @@ actor StubBearerAuthenticator: MCPAuthenticator {
     ) async -> MCPAuthDecision {
         let attempts = attemptsByAddress[clientAddress] ?? 0
         if attempts >= maxAttempts {
-            return .deny(.rateLimited())
+            return .deny(.rateLimited(retryAfterSeconds: 30))
         }
 
         guard let raw = authorizationHeader, !raw.isEmpty else {

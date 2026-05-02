@@ -88,6 +88,12 @@ public actor MCPRateLimiter {
         return lockedUntil > (await clock.now())
     }
 
+    public func lockedUntil(key: MCPRateLimitKey) async -> Date? {
+        guard let lockedUntil = buckets[key]?.lockedUntil else { return nil }
+        guard lockedUntil > (await clock.now()) else { return nil }
+        return lockedUntil
+    }
+
     public func reset(key: MCPRateLimitKey) async {
         buckets.removeValue(forKey: key)
     }
