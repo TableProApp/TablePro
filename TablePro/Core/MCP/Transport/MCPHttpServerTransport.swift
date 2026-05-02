@@ -286,6 +286,8 @@ public actor MCPHttpServerTransport {
         let clientAddress: MCPClientAddress = await context.clientAddress()
         let now = await clock.now()
 
+        await context.setOrigin(head.headers.value(for: "Origin"))
+
         if head.method == .post, stripQueryString(head.path) == "/v1/integrations/exchange" {
             await handleIntegrationsExchange(body: body, context: context)
             return
@@ -757,10 +759,19 @@ actor HttpConnectionContext {
     private var requestComplete = false
     private var cancelled = false
     private var sseActive = false
+    private var origin: String?
 
     init(id: UUID, connection: NWConnection) {
         self.id = id
         self.connection = connection
+    }
+
+    func setOrigin(_ value: String?) {
+        origin = value
+    }
+
+    private func corsHeaders() -> [(String, String)] {
+        MCPCorsHeaders.headers(forOrigin: origin)
     }
 
     func start(
@@ -878,7 +889,7 @@ actor HttpConnectionContext {
             headers.append(("Mcp-Session-Id", sessionId.rawValue))
         }
         headers.append(contentsOf: extraHeaders)
-        headers.append(contentsOf: MCPCorsHeaders.standard)
+        headers.append(contentsOf: self.corsHeaders())
         let head = HttpResponseHead(status: status, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: data)
         await send(payload)
@@ -890,7 +901,7 @@ actor HttpConnectionContext {
             ("Content-Type", "application/json"),
             ("Connection", "close")
         ]
-        headers.append(contentsOf: MCPCorsHeaders.standard)
+        headers.append(contentsOf: self.corsHeaders())
         let head = HttpResponseHead(status: status, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: body)
         await send(payload)
@@ -905,7 +916,7 @@ actor HttpConnectionContext {
     func writeOptions204() async {
         if cancelled { return }
         var headers: [(String, String)] = [("Connection", "close")]
-        headers.append(contentsOf: MCPCorsHeaders.standard)
+        headers.append(contentsOf: self.corsHeaders())
         let head = HttpResponseHead(status: .noContent, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: nil)
         await send(payload)
@@ -914,7 +925,7 @@ actor HttpConnectionContext {
     func writeNoContent() async {
         if cancelled { return }
         var headers: [(String, String)] = [("Connection", "close")]
-        headers.append(contentsOf: MCPCorsHeaders.standard)
+        headers.append(contentsOf: self.corsHeaders())
         let head = HttpResponseHead(status: .noContent, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: nil)
         await send(payload)
@@ -923,7 +934,7 @@ actor HttpConnectionContext {
     func writeAccepted() async {
         if cancelled { return }
         var headers: [(String, String)] = [("Connection", "close")]
-        headers.append(contentsOf: MCPCorsHeaders.standard)
+        headers.append(contentsOf: self.corsHeaders())
         let head = HttpResponseHead(status: .accepted, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: nil)
         await send(payload)
@@ -938,7 +949,7 @@ actor HttpConnectionContext {
             ("Connection", "keep-alive"),
             ("Mcp-Session-Id", sessionId.rawValue)
         ]
-        headers.append(contentsOf: MCPCorsHeaders.standard)
+        headers.append(contentsOf: self.corsHeaders())
         let head = HttpResponseHead(status: .ok, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: nil)
         await send(payload)

@@ -86,13 +86,16 @@ struct MCPHttpServerTransportTests {
         return request
     }
 
-    private func makeOptions(port: UInt16) -> URLRequest {
+    private func makeOptions(port: UInt16, origin: String? = "http://localhost") -> URLRequest {
         guard let url = URL(string: "http://127.0.0.1:\(port)/mcp") else {
             fatalError("Failed to construct test URL")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "OPTIONS"
         request.setValue("Bearer test-token", forHTTPHeaderField: "Authorization")
+        if let origin {
+            request.setValue(origin, forHTTPHeaderField: "Origin")
+        }
         return request
     }
 
@@ -355,21 +358,49 @@ struct MCPHttpServerTransportTests {
         #expect(parsed.code == JsonRpcErrorCode.methodNotFound)
     }
 
-    @Test("OPTIONS request returns 204 with CORS headers")
+    @Test("OPTIONS request returns 204 with CORS headers reflecting allowed origin")
     func optionsReturnsNoContent() async throws {
         let auth = StubAlwaysAllowAuthenticator()
         let (transport, _, port) = try await startedTransport(authenticator: auth)
         defer { Task { await transport.stop() } }
 
-        let request = makeOptions(port: port)
+        let request = makeOptions(port: port, origin: "http://localhost")
         let (_, response) = try await URLSession.shared.data(for: request)
         let http = try #require(response as? HTTPURLResponse)
 
         #expect(http.statusCode == 204)
         let allowOrigin = http.value(forHTTPHeaderField: "Access-Control-Allow-Origin")
-        #expect(allowOrigin != nil)
+        #expect(allowOrigin == "http://localhost")
         let allowHeaders = http.value(forHTTPHeaderField: "Access-Control-Allow-Headers")
         #expect(allowHeaders?.contains("Last-Event-ID") == true)
+    }
+
+    @Test("OPTIONS request from disallowed origin omits CORS headers")
+    func optionsDisallowedOriginOmitsCors() async throws {
+        let auth = StubAlwaysAllowAuthenticator()
+        let (transport, _, port) = try await startedTransport(authenticator: auth)
+        defer { Task { await transport.stop() } }
+
+        let request = makeOptions(port: port, origin: "https://evil.example.com")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let http = try #require(response as? HTTPURLResponse)
+
+        #expect(http.statusCode == 204)
+        #expect(http.value(forHTTPHeaderField: "Access-Control-Allow-Origin") == nil)
+    }
+
+    @Test("OPTIONS request without Origin header omits CORS headers")
+    func optionsWithoutOriginOmitsCors() async throws {
+        let auth = StubAlwaysAllowAuthenticator()
+        let (transport, _, port) = try await startedTransport(authenticator: auth)
+        defer { Task { await transport.stop() } }
+
+        let request = makeOptions(port: port, origin: nil)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let http = try #require(response as? HTTPURLResponse)
+
+        #expect(http.statusCode == 204)
+        #expect(http.value(forHTTPHeaderField: "Access-Control-Allow-Origin") == nil)
     }
 
     @Test("Initialize with unsupported protocolVersion returns invalid_request error")
