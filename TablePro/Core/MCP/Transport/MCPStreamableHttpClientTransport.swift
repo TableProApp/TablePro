@@ -24,30 +24,33 @@ public struct MCPStreamableHttpClientConfiguration: Sendable {
     }
 }
 
-public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unchecked Sendable {
-    public let inbound: AsyncThrowingStream<JsonRpcMessage, Error>
+public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
+    nonisolated public let inbound: AsyncThrowingStream<JsonRpcMessage, Error>
 
-    private let continuation: AsyncThrowingStream<JsonRpcMessage, Error>.Continuation
+    nonisolated private let continuationBox: StreamContinuationBox
     private let configuration: MCPStreamableHttpClientConfiguration
     private let urlSession: URLSession
-    private let errorLogger: MCPBridgeLogger?
-    private let state: ClientState
+    private let errorLogger: (any MCPBridgeLogger)?
     private let writer: HttpWriter
+    private var sessionId: String?
+    private var isClosed = false
+    private var serverInitiatedStreamOpen = false
+    private var tasks: [Task<Void, Never>] = []
 
     public init(
         configuration: MCPStreamableHttpClientConfiguration,
         urlSession: URLSession? = nil,
-        errorLogger: MCPBridgeLogger? = nil
+        errorLogger: (any MCPBridgeLogger)? = nil
     ) {
         self.configuration = configuration
         self.errorLogger = errorLogger
-        state = ClientState()
 
-        var capturedContinuation: AsyncThrowingStream<JsonRpcMessage, Error>.Continuation!
-        inbound = AsyncThrowingStream<JsonRpcMessage, Error> { continuation in
-            capturedContinuation = continuation
+        let box = StreamContinuationBox()
+        let stream = AsyncThrowingStream<JsonRpcMessage, Error> { continuation in
+            box.set(continuation)
         }
-        continuation = capturedContinuation
+        self.continuationBox = box
+        self.inbound = stream
 
         if let urlSession {
             self.urlSession = urlSession
@@ -67,7 +70,7 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
     }
 
     public func send(_ message: JsonRpcMessage) async throws {
-        if await state.isClosed {
+        if isClosed {
             throw MCPTransportError.closed
         }
 
@@ -83,36 +86,50 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
             guard let self else { return }
             await self.dispatch(body: body, requestId: requestId)
         }
-        await state.trackTask(task)
+        trackTask(task)
     }
 
     public func openSseStream() async throws {
-        if await state.isClosed {
+        if isClosed {
             throw MCPTransportError.closed
         }
-        if await state.serverInitiatedStreamOpen {
+        if serverInitiatedStreamOpen {
             return
         }
-        await state.markServerInitiatedStreamOpen(true)
+        serverInitiatedStreamOpen = true
 
         let task: Task<Void, Never> = Task { [weak self] in
             guard let self else { return }
             await self.runServerInitiatedStream()
         }
-        await state.trackTask(task)
+        trackTask(task)
     }
 
     public func close() async {
-        if await state.isClosed {
+        if isClosed {
             return
         }
-        await state.setClosed()
-        let tasks = await state.takeTasks()
-        for task in tasks {
+        isClosed = true
+        let pending = tasks
+        tasks.removeAll()
+        for task in pending {
             task.cancel()
         }
         urlSession.invalidateAndCancel()
-        continuation.finish()
+        continuationBox.finish()
+    }
+
+    private func trackTask(_ task: Task<Void, Never>) {
+        tasks.removeAll { $0.isCancelled }
+        tasks.append(task)
+    }
+
+    private func setSessionId(_ value: String) {
+        sessionId = value
+    }
+
+    private func currentSessionId() -> String? {
+        sessionId
     }
 
     private func dispatch(body: Data, requestId: JsonRpcId?) async {
@@ -132,7 +149,7 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
-        if let sessionId = await state.sessionId {
+        if let sessionId = currentSessionId() {
             request.setValue(sessionId, forHTTPHeaderField: "Mcp-Session-Id")
         }
 
@@ -141,7 +158,7 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
             throw MCPTransportError.readFailed(detail: "non-HTTP response")
         }
 
-        await captureSessionIdIfPresent(from: httpResponse)
+        captureSessionIdIfPresent(from: httpResponse)
 
         let status = httpResponse.statusCode
         let contentType = headerValue(httpResponse, name: "Content-Type")?.lowercased() ?? ""
@@ -168,7 +185,7 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
         }
 
         let data = try await collectBytes(bytes)
-        await handleNonSuccessResponse(
+        handleNonSuccessResponse(
             status: status,
             headers: httpResponse,
             body: data,
@@ -182,7 +199,7 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
             request.httpMethod = "GET"
             request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
             request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
-            if let sessionId = await state.sessionId {
+            if let sessionId = currentSessionId() {
                 request.setValue(sessionId, forHTTPHeaderField: "Mcp-Session-Id")
             }
 
@@ -191,11 +208,11 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
                 errorLogger?.log(.warning, "server-initiated stream: non-HTTP response")
                 return
             }
-            await captureSessionIdIfPresent(from: httpResponse)
+            captureSessionIdIfPresent(from: httpResponse)
             let status = httpResponse.statusCode
             guard (200..<300).contains(status) else {
                 let body = try await collectBytes(bytes)
-                await handleNonSuccessResponse(
+                handleNonSuccessResponse(
                     status: status,
                     headers: httpResponse,
                     body: body,
@@ -254,7 +271,7 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
         }
         do {
             let message = try JsonRpcCodec.decode(payload)
-            continuation.yield(message)
+            continuationBox.yield(message)
         } catch {
             errorLogger?.log(.warning, "SSE: skipping malformed JSON-RPC frame: \(error)")
         }
@@ -263,12 +280,12 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
     private func pushJsonBody(_ data: Data, fallbackId: JsonRpcId?) {
         do {
             let message = try JsonRpcCodec.decode(data)
-            continuation.yield(message)
+            continuationBox.yield(message)
         } catch {
             errorLogger?.log(.warning, "HTTP: malformed JSON-RPC body: \(error)")
             let synthetic = MCPProtocolError.parseError(detail: String(describing: error))
                 .toJsonRpcErrorResponse(id: fallbackId)
-            continuation.yield(.errorResponse(synthetic))
+            continuationBox.yield(.errorResponse(synthetic))
         }
     }
 
@@ -277,7 +294,7 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
         headers: HTTPURLResponse,
         body: Data,
         requestId: JsonRpcId?
-    ) async {
+    ) {
         if requestId == nil {
             errorLogger?.log(.warning, "HTTP \(status) for notification (no response will be emitted)")
             return
@@ -285,11 +302,11 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
 
         if !body.isEmpty, let parsed = try? JsonRpcCodec.decode(body) {
             if case .errorResponse = parsed {
-                continuation.yield(parsed)
+                continuationBox.yield(parsed)
                 return
             }
             if case .successResponse = parsed {
-                continuation.yield(parsed)
+                continuationBox.yield(parsed)
                 return
             }
         }
@@ -297,7 +314,7 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
         let challenge = headerValue(headers, name: "WWW-Authenticate") ?? "Bearer realm=\"TablePro\""
         let protocolError = Self.protocolError(forStatus: status, body: body, challenge: challenge)
         let response = protocolError.toJsonRpcErrorResponse(id: requestId)
-        continuation.yield(.errorResponse(response))
+        continuationBox.yield(.errorResponse(response))
     }
 
     private func handleSendError(error: Error, requestId: JsonRpcId?) async {
@@ -310,12 +327,12 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
         }
         let protocolError = MCPProtocolError.internalError(detail: String(describing: error))
         let response = protocolError.toJsonRpcErrorResponse(id: requestId)
-        continuation.yield(.errorResponse(response))
+        continuationBox.yield(.errorResponse(response))
     }
 
-    private func captureSessionIdIfPresent(from response: HTTPURLResponse) async {
+    private func captureSessionIdIfPresent(from response: HTTPURLResponse) {
         guard let value = headerValue(response, name: "Mcp-Session-Id") else { return }
-        await state.setSessionId(value)
+        setSessionId(value)
     }
 
     private func headerValue(_ response: HTTPURLResponse, name: String) -> String? {
@@ -369,36 +386,6 @@ public final class MCPStreamableHttpClientTransport: MCPMessageTransport, @unche
     }
 }
 
-private actor ClientState {
-    private(set) var sessionId: String?
-    private(set) var isClosed = false
-    private(set) var serverInitiatedStreamOpen = false
-    private var tasks: [Task<Void, Never>] = []
-
-    func setSessionId(_ id: String) {
-        sessionId = id
-    }
-
-    func setClosed() {
-        isClosed = true
-    }
-
-    func markServerInitiatedStreamOpen(_ value: Bool) {
-        serverInitiatedStreamOpen = value
-    }
-
-    func trackTask(_ task: Task<Void, Never>) {
-        tasks.removeAll { $0.isCancelled }
-        tasks.append(task)
-    }
-
-    func takeTasks() -> [Task<Void, Never>] {
-        let copy = tasks
-        tasks.removeAll()
-        return copy
-    }
-}
-
 private actor HttpWriter {
     func serialize<T: Sendable>(_ work: @Sendable () async throws -> T) async throws -> T {
         try await work()
@@ -407,9 +394,9 @@ private actor HttpWriter {
 
 private final class CertificatePinningDelegate: NSObject, URLSessionDelegate {
     private let expectedFingerprint: String
-    private let errorLogger: MCPBridgeLogger?
+    private let errorLogger: (any MCPBridgeLogger)?
 
-    init(expectedFingerprint: String, errorLogger: MCPBridgeLogger?) {
+    init(expectedFingerprint: String, errorLogger: (any MCPBridgeLogger)?) {
         self.expectedFingerprint = expectedFingerprint
         self.errorLogger = errorLogger
     }
