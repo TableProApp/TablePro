@@ -318,8 +318,27 @@
 		5A32BC082F9D5FC900BAEB5F /* Exceptions for "TablePro" folder in "mcp-server" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				CLI/main.swift,
-				CLI/MCPBridgeProxy.swift,
+				
+				CLI/BridgeMain.swift,
+				CLI/Handshake.swift,
+				CLI/BridgeProxy.swift,
+				Core/MCP/Wire/JsonValue.swift,
+				Core/MCP/Wire/JsonRpcId.swift,
+				Core/MCP/Wire/JsonRpcVersion.swift,
+				Core/MCP/Wire/JsonRpcErrorCode.swift,
+				Core/MCP/Wire/JsonRpcError.swift,
+				Core/MCP/Wire/JsonRpcMessage.swift,
+				Core/MCP/Wire/JsonRpcCodec.swift,
+				Core/MCP/Wire/SseFrame.swift,
+				Core/MCP/Wire/SseEncoder.swift,
+				Core/MCP/Wire/SseDecoder.swift,
+				Core/MCP/Wire/HttpRequestHead.swift,
+				Core/MCP/Wire/HttpResponseHead.swift,
+				Core/MCP/Transport/MCPMessageTransport.swift,
+				Core/MCP/Transport/MCPProtocolError.swift,
+				Core/MCP/Transport/MCPStdioMessageTransport.swift,
+				Core/MCP/Transport/MCPStreamableHttpClientTransport.swift,
+				Core/MCP/Transport/MCPBridgeLogger.swift,
 			);
 			target = 5A32BBFF2F9D5F1300BAEB5F /* mcp-server */;
 		};
@@ -459,8 +478,10 @@
 		5AF312BE2F36FF7500E86682 /* Exceptions for "TablePro" folder in "TablePro" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				CLI/main.swift,
-				CLI/MCPBridgeProxy.swift,
+				
+				CLI/BridgeMain.swift,
+				CLI/Handshake.swift,
+				CLI/BridgeProxy.swift,
 				Info.plist,
 			);
 			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
