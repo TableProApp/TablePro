@@ -8,7 +8,7 @@ enum ToolQueryExecutor {
         databaseName: String,
         maxRows: Int,
         timeoutSeconds: Int
-    ) async throws -> JSONValue {
+    ) async throws -> JsonValue {
         let startTime = Date()
         do {
             let result = try await services.connectionBridge.executeQuery(

@@ -37,11 +37,11 @@ public struct DescribeTableTool: MCPToolImplementation {
         let table = try MCPArgumentDecoder.requireString(arguments, key: "table")
         let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
 
-        let legacy = try await services.connectionBridge.describeTable(
+        let payload = try await services.connectionBridge.describeTable(
             connectionId: connectionId,
             table: table,
             schema: schema
         )
-        return .json(JsonValue.fromLegacy(legacy))
+        return .json(payload)
     }
 }

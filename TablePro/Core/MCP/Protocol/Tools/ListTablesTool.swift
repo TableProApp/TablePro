@@ -47,10 +47,10 @@ public struct ListTablesTool: MCPToolImplementation {
             _ = try await services.connectionBridge.switchSchema(connectionId: connectionId, schema: schema)
         }
 
-        let legacy = try await services.connectionBridge.listTables(
+        let payload = try await services.connectionBridge.listTables(
             connectionId: connectionId,
             includeRowCounts: includeRowCounts
         )
-        return .json(JsonValue.fromLegacy(legacy))
+        return .json(payload)
     }
 }

@@ -32,10 +32,10 @@ public struct SwitchDatabaseTool: MCPToolImplementation {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let database = try MCPArgumentDecoder.requireString(arguments, key: "database")
         Self.logger.debug("switch_database tool invoked for connection \(connectionId.uuidString, privacy: .public)")
-        let legacy = try await services.connectionBridge.switchDatabase(
+        let payload = try await services.connectionBridge.switchDatabase(
             connectionId: connectionId,
             database: database
         )
-        return .json(JsonValue.fromLegacy(legacy))
+        return .json(payload)
     }
 }

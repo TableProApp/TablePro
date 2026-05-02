@@ -37,8 +37,8 @@ public enum MCPSessionTransitionError: Error, Sendable, Equatable {
 }
 
 public actor MCPSession {
-    public let id: MCPSessionId
-    public let createdAt: Date
+    nonisolated public let id: MCPSessionId
+    nonisolated public let createdAt: Date
     public private(set) var lastActivityAt: Date
     public private(set) var state: MCPSessionState
     public private(set) var clientInfo: MCPClientInfo?

@@ -10,7 +10,7 @@ struct MCPSection: View {
     @State private var showRevealSheet = false
     @State private var revealedToken: MCPAuthToken?
     @State private var revealedPlaintext: String = ""
-    @State private var disconnectCandidate: MCPServer.SessionSnapshot?
+    @State private var disconnectCandidate: MCPServerManager.SessionSnapshot?
 
     var body: some View {
         Section(String(localized: "Integrations")) {

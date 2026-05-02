@@ -109,7 +109,7 @@ public struct ExportDataTool: MCPToolImplementation {
             }
         }
 
-        var exportResults: [JSONValue] = []
+        var exportResults: [JsonValue] = []
         var totalRowsExported = 0
 
         for (label, sql) in queries {
@@ -164,20 +164,20 @@ public struct ExportDataTool: MCPToolImplementation {
             }
             try fullContent.write(to: fileURL, atomically: true, encoding: .utf8)
 
-            let response: JSONValue = .object([
+            let response: JsonValue = .object([
                 "path": .string(fileURL.path),
                 "rows_exported": .int(totalRowsExported)
             ])
-            return .json(JsonValue.fromLegacy(response))
+            return .json(response)
         }
 
-        let response: JSONValue
+        let response: JsonValue
         if exportResults.count == 1, let single = exportResults.first {
             response = single
         } else {
             response = .object(["exports": .array(exportResults)])
         }
-        return .json(JsonValue.fromLegacy(response))
+        return .json(response)
     }
 
     static func validateExportTableName(_ table: String) throws {
@@ -222,7 +222,7 @@ public struct ExportDataTool: MCPToolImplementation {
         return URL(fileURLWithPath: resolvedPath)
     }
 
-    static func formatCSV(columns: [String], rows: [JSONValue]) -> String {
+    static func formatCSV(columns: [String], rows: [JsonValue]) -> String {
         var lines: [String] = []
         lines.append(columns.map { escapeCSVField($0) }.joined(separator: ","))
         for row in rows {
@@ -255,11 +255,11 @@ public struct ExportDataTool: MCPToolImplementation {
         return field
     }
 
-    static func formatJSON(columns: [String], rows: [JSONValue]) -> String {
-        var objects: [JSONValue] = []
+    static func formatJSON(columns: [String], rows: [JsonValue]) -> String {
+        var objects: [JsonValue] = []
         for row in rows {
             guard let cells = row.arrayValue else { continue }
-            var dict: [String: JSONValue] = [:]
+            var dict: [String: JsonValue] = [:]
             for (index, column) in columns.enumerated() where index < cells.count {
                 dict[column] = cells[index]
             }
@@ -268,7 +268,7 @@ public struct ExportDataTool: MCPToolImplementation {
         return encodeJSON(.array(objects))
     }
 
-    static func formatSQL(table: String, columns: [String], rows: [JSONValue]) -> String {
+    static func formatSQL(table: String, columns: [String], rows: [JsonValue]) -> String {
         guard !columns.isEmpty else { return "" }
         var statements: [String] = []
         let escapedTable = "`\(table.replacingOccurrences(of: "`", with: "``"))`"
@@ -304,7 +304,7 @@ public struct ExportDataTool: MCPToolImplementation {
         return statements.joined(separator: "\n")
     }
 
-    static func encodeJSON(_ value: JSONValue) -> String {
+    static func encodeJSON(_ value: JsonValue) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(value),

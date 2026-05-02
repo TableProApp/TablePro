@@ -237,6 +237,16 @@ extension DatabaseDriver {
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
     }
 
+    func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
+
+    func createDatabase(_ request: CreateDatabaseRequest) async throws {
+        throw NSError(
+            domain: "DatabaseDriver",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Create database is not supported by this driver"]
+        )
+    }
+
     /// Default fetchAllDatabaseMetadata: falls back to per-database calls (N+1).
     /// Drivers should override with a single bulk query where possible.
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {

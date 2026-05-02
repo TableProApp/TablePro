@@ -49,7 +49,7 @@ struct RowOperationsDispatchTests {
         let tabId: UUID
     }
 
-    private func makeFixture(rowCount: Int = 5) -> Fixture {
+    private func makeFixture(rowCount: Int = 5) throws -> Fixture {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
@@ -87,8 +87,8 @@ struct RowOperationsDispatchTests {
     }
 
     @Test("Soft-delete of existing rows dispatches invalidateCachesForUndoRedo")
-    func softDeleteDispatchesInvalidate() {
-        let f = makeFixture(rowCount: 5)
+    func softDeleteDispatchesInvalidate() throws {
+        let f = try makeFixture(rowCount: 5)
         let beforeInvalidate = f.fake.invalidateCount
 
         f.coordinator.deleteSelectedRows(indices: [0, 1])
@@ -98,8 +98,8 @@ struct RowOperationsDispatchTests {
     }
 
     @Test("Physical delete of inserted rows dispatches applyDelta, not invalidate")
-    func physicalDeleteDispatchesDelta() {
-        let f = makeFixture(rowCount: 3)
+    func physicalDeleteDispatchesDelta() throws {
+        let f = try makeFixture(rowCount: 3)
         f.coordinator.addNewRow()
         let insertedIndex = f.coordinator.tableRowsStore.tableRows(for: f.tabId).count - 1
         let beforeInvalidate = f.fake.invalidateCount

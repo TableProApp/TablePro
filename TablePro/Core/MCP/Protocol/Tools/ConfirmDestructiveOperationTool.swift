@@ -86,6 +86,6 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             timeoutSeconds: timeoutSeconds
         )
 
-        return .json(JsonValue.fromLegacy(result))
+        return .json(result)
     }
 }

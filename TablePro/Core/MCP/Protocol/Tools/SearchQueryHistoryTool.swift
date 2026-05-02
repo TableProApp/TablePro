@@ -51,7 +51,7 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             throw MCPProtocolError.invalidParams(detail: "'since' must be less than or equal to 'until'")
         }
 
-        let blocked = await MainActor.run { MCPToolHandler.blockedExternalConnectionIds() }
+        let blocked = await MainActor.run { MCPTabSnapshotProvider.blockedExternalConnectionIds() }
 
         if let connectionId, blocked.contains(connectionId) {
             throw MCPProtocolError.forbidden(reason: "External access is disabled for this connection")

@@ -27,7 +27,7 @@ public struct ConnectTool: MCPToolImplementation {
     ) async throws -> MCPToolCallResult {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         Self.logger.debug("connect tool invoked for connection \(connectionId.uuidString, privacy: .public)")
-        let legacy = try await services.connectionBridge.connect(connectionId: connectionId)
-        return .json(JsonValue.fromLegacy(legacy))
+        let payload = try await services.connectionBridge.connect(connectionId: connectionId)
+        return .json(payload)
     }
 }

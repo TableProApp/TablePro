@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- MCP: complete rewrite of the server, bridge, and protocol layer for spec compliance and reliability. Non-2xx responses now emit JSON-RPC error envelopes (the bridge previously forwarded plain `{"error":"..."}` bodies, which broke Claude Desktop's stdio parser when sessions expired). The stdio bridge no longer polls `availableData` for stdin (which silently exited mid-session) and uses incremental SSE parsing instead of buffering full responses. Idle session timeout raised from 5 to 15 minutes. Rate limiter now keys on `(client_address, principal_fingerprint)` instead of IP only, fixing a localhost auth-DoS surface. Streaming progress notifications via `notifications/progress` are now supported for long-running tool calls.
+
+### Fixed
+- MCP: stale `Mcp-Session-Id` after idle timeout now produces a JSON-RPC `-32001 "Session not found"` envelope with HTTP 404, matching the spec and letting clients re-initialize cleanly. Previously the bridge forwarded a plain `{"error":"Session not found"}` body that Claude Desktop's parser rejected, hanging the request until a 4-minute client-side timeout fired.
+
 ## [0.37.0] - 2026-05-01
 
 ### Added

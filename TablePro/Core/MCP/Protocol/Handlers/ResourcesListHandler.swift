@@ -44,8 +44,7 @@ public struct ResourcesListHandler: MCPMethodHandler {
     }
 
     private static func connectedConnectionItems(services: MCPToolServices) async -> [ConnectedConnectionItem] {
-        let legacy = await services.connectionBridge.listConnections()
-        let value = JsonValue.fromLegacy(legacy)
+        let value = await services.connectionBridge.listConnections()
         guard let connections = value["connections"]?.arrayValue else { return [] }
 
         return connections.compactMap { entry -> ConnectedConnectionItem? in

@@ -35,11 +35,11 @@ public struct GetTableDdlTool: MCPToolImplementation {
         let table = try MCPArgumentDecoder.requireString(arguments, key: "table")
         let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
 
-        let legacy = try await services.connectionBridge.getTableDDL(
+        let payload = try await services.connectionBridge.getTableDDL(
             connectionId: connectionId,
             table: table,
             schema: schema
         )
-        return .json(JsonValue.fromLegacy(legacy))
+        return .json(payload)
     }
 }

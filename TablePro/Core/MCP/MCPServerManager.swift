@@ -11,19 +11,36 @@ enum MCPServerState: Sendable, Equatable {
 
 @MainActor @Observable
 final class MCPServerManager {
+    struct SessionSnapshot: Sendable, Identifiable {
+        let id: String
+        let clientName: String
+        let clientVersion: String?
+        let connectedSince: Date
+        let lastActivityAt: Date
+        let tokenName: String?
+        let remoteAddress: String?
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPServerManager")
 
     static let shared = MCPServerManager()
 
     private(set) var state: MCPServerState = .stopped
-    private(set) var connectedClients: [MCPServer.SessionSnapshot] = []
-    private var server: MCPServer?
-    private var clientRefreshTask: Task<Void, Never>?
-    private var serverGeneration: Int = 0
+    private(set) var connectedClients: [SessionSnapshot] = []
     private(set) var tokenStore: MCPTokenStore?
+
+    private var transport: MCPHttpServerTransport?
+    private var dispatcher: MCPProtocolDispatcher?
+    private var sessionStore: MCPSessionStore?
+    private var rateLimiter: MCPRateLimiter?
+    private var dispatchTask: Task<Void, Never>?
+    private var stateTask: Task<Void, Never>?
+    private var sessionEventsTask: Task<Void, Never>?
+    private var clientRefreshTask: Task<Void, Never>?
     private var tlsManager: MCPTLSManager?
     private var bridgeTokenId: UUID?
     private var internalBridgeToken: String?
+    private var serverGeneration: Int = 0
 
     var isRunning: Bool {
         if case .running = state { return true } else { return false }
@@ -31,109 +48,107 @@ final class MCPServerManager {
 
     var connectedClientCount: Int {
         get async {
-            guard let server else { return 0 }
-            return await server.sessionCount
+            guard let sessionStore else { return 0 }
+            return await sessionStore.count()
         }
     }
 
     private init() {}
 
     func start(port: UInt16) async {
-        if server != nil {
+        if transport != nil {
             await stop()
         }
 
         serverGeneration += 1
         let generation = serverGeneration
-        let newServer = MCPServer { [weak self] newState in
-            Task { @MainActor in
-                guard let self, self.serverGeneration == generation else { return }
-                self.state = newState
-            }
-        }
-
-        self.server = newServer
+        state = .starting
 
         let newTokenStore = MCPTokenStore()
         await newTokenStore.loadFromDisk()
-        self.tokenStore = newTokenStore
-
-        let rateLimiter = LegacyMCPRateLimiter()
-
-        let bridge = MCPConnectionBridge()
-        let authPolicy = MCPAuthPolicy()
-        let toolHandler = MCPToolHandler(bridge: bridge, authPolicy: authPolicy)
-        let resourceHandler = MCPResourceHandler(bridge: bridge, authPolicy: authPolicy)
-
-        await newServer.setTokenStore(newTokenStore)
-        await newServer.setRateLimiter(rateLimiter)
-
-        await newServer.setToolCallHandler { name, arguments, sessionId, token in
-            try await toolHandler.handleToolCall(name: name, arguments: arguments, sessionId: sessionId, token: token)
-        }
-        await newServer.setResourceReadHandler { uri, sessionId in
-            try await resourceHandler.handleResourceRead(uri: uri, sessionId: sessionId)
-        }
-        await newServer.setSessionCleanupHandler { sessionId in
-            await authPolicy.clearSession(sessionId)
-        }
-
-        let protocolHandler = MCPProtocolHandler(
-            server: newServer,
-            tokenStore: newTokenStore,
-            rateLimiter: rateLimiter
-        )
-        let exchangeHandler = IntegrationsExchangeHandler.live()
-        let router = MCPRouter(routes: [protocolHandler, exchangeHandler])
-        await newServer.setRouter(router)
+        tokenStore = newTokenStore
 
         let bridgeResult = await newTokenStore.generate(
             name: MCPTokenStore.stdioBridgeTokenName,
             permissions: .fullAccess
         )
-        self.bridgeTokenId = bridgeResult.token.id
-        self.internalBridgeToken = bridgeResult.plaintext
+        bridgeTokenId = bridgeResult.token.id
+        internalBridgeToken = bridgeResult.plaintext
+
+        let settings = AppSettingsManager.shared.mcp
+        let configuration: MCPHttpServerConfiguration
+        do {
+            configuration = try await makeConfiguration(port: port, settings: settings)
+        } catch {
+            Self.logger.error("MCP TLS configuration failed: \(error.localizedDescription, privacy: .public)")
+            state = .failed("TLS certificate generation failed")
+            await cleanupBridgeToken()
+            tokenStore = nil
+            return
+        }
+
+        let newSessionStore = MCPSessionStore(policy: .standard)
+        await newSessionStore.startCleanup()
+        sessionStore = newSessionStore
+
+        let newRateLimiter = MCPRateLimiter()
+        rateLimiter = newRateLimiter
+
+        let authenticator = MCPBearerTokenAuthenticator(
+            tokenStore: newTokenStore,
+            rateLimiter: newRateLimiter
+        )
+
+        let newTransport = MCPHttpServerTransport(
+            configuration: configuration,
+            sessionStore: newSessionStore,
+            authenticator: authenticator
+        )
+        transport = newTransport
+
+        let progressSink = TransportProgressSink(transport: newTransport)
+        let services = MCPToolServices(
+            connectionBridge: MCPConnectionBridge(),
+            authPolicy: MCPAuthPolicy()
+        )
+
+        let handlers: [any MCPMethodHandler] = [
+            InitializeHandler(),
+            PingHandler(),
+            ToolsListHandler(),
+            ToolsCallHandler(services: services),
+            ResourcesListHandler(services: services),
+            ResourcesReadHandler(services: services),
+            ResourcesTemplatesListHandler(),
+            PromptsListHandler(),
+            PromptsGetHandler(),
+            LoggingSetLevelHandler(),
+            CompletionCompleteHandler()
+        ]
+
+        let newDispatcher = MCPProtocolDispatcher(
+            handlers: handlers,
+            sessionStore: newSessionStore,
+            progressSink: progressSink
+        )
+        dispatcher = newDispatcher
+
+        startDispatchLoop(transport: newTransport, dispatcher: newDispatcher, generation: generation)
+        startStateLoop(transport: newTransport, generation: generation)
+        startSessionEventsLoop(sessionStore: newSessionStore, generation: generation)
 
         do {
-            let settings = AppSettingsManager.shared.mcp
-
-            var tlsIdentity: SecIdentity?
-            if settings.allowRemoteConnections {
-                let manager = MCPTLSManager()
-                self.tlsManager = manager
-                do {
-                    tlsIdentity = try await manager.loadOrGenerate()
-                } catch {
-                    Self.logger.error("Failed to generate TLS certificate: \(error.localizedDescription)")
-                    state = .failed("TLS certificate generation failed")
-                    return
-                }
-            }
-
-            try await newServer.start(
-                port: port,
-                allowRemoteAccess: settings.allowRemoteConnections,
-                tlsIdentity: tlsIdentity
-            )
-            let certFingerprint = await tlsManager?.fingerprint
-            writeHandshakeFile(port: port, tlsCertFingerprint: certFingerprint)
+            try await newTransport.start()
             startClientRefresh()
             MCPAuditLogger.logServerStarted(
                 port: port,
                 remoteAccess: settings.allowRemoteConnections,
-                tlsEnabled: tlsIdentity != nil
+                tlsEnabled: configuration.tls != nil
             )
         } catch {
-            Self.logger.error("Failed to start MCP server: \(error.localizedDescription)")
+            Self.logger.error("Failed to start MCP server: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
-            if let bridgeId = bridgeTokenId {
-                await tokenStore?.delete(tokenId: bridgeId)
-                bridgeTokenId = nil
-            }
-            server = nil
-            self.tokenStore = nil
-            self.tlsManager = nil
-            self.internalBridgeToken = nil
+            await teardown()
         }
     }
 
@@ -141,16 +156,7 @@ final class MCPServerManager {
         stopClientRefresh()
         deleteHandshakeFile()
         MCPAuditLogger.logServerStopped()
-        guard let server else { return }
-        await server.stop()
-        if let bridgeId = bridgeTokenId {
-            await tokenStore?.delete(tokenId: bridgeId)
-            bridgeTokenId = nil
-        }
-        self.server = nil
-        self.tokenStore = nil
-        self.tlsManager = nil
-        self.internalBridgeToken = nil
+        await teardown()
         state = .stopped
     }
 
@@ -173,7 +179,7 @@ final class MCPServerManager {
             do {
                 chosenPort = try MCPPortAllocator.findFreePort(in: 51_000...52_000)
             } catch {
-                Self.logger.error("Lazy start failed to allocate port: \(error.localizedDescription)")
+                Self.logger.error("Lazy start failed to allocate port: \(error.localizedDescription, privacy: .public)")
                 state = .failed(error.localizedDescription)
                 return
             }
@@ -183,8 +189,121 @@ final class MCPServerManager {
     }
 
     func disconnectClient(_ sessionId: String) async {
-        await server?.removeSession(sessionId)
+        guard let sessionStore else { return }
+        await sessionStore.terminate(id: MCPSessionId(sessionId), reason: .clientRequested)
         await refreshClients()
+    }
+
+    private func makeConfiguration(
+        port: UInt16,
+        settings: MCPSettings
+    ) async throws -> MCPHttpServerConfiguration {
+        if settings.allowRemoteConnections {
+            let manager = MCPTLSManager()
+            tlsManager = manager
+            let identity = try await manager.loadOrGenerate()
+            let tls = MCPTLSConfiguration(identity: identity)
+            return .remote(port: port, tls: tls)
+        }
+        return .loopback(port: port)
+    }
+
+    private func startDispatchLoop(
+        transport: MCPHttpServerTransport,
+        dispatcher: MCPProtocolDispatcher,
+        generation: Int
+    ) {
+        dispatchTask?.cancel()
+        dispatchTask = Task { [weak self] in
+            for await exchange in transport.exchanges {
+                guard let self else { return }
+                guard await self.isCurrentGeneration(generation) else { return }
+                await dispatcher.dispatch(exchange)
+            }
+        }
+    }
+
+    private func startStateLoop(transport: MCPHttpServerTransport, generation: Int) {
+        stateTask?.cancel()
+        stateTask = Task { [weak self] in
+            for await transportState in transport.listenerState {
+                guard let self else { return }
+                await self.applyTransportState(transportState, generation: generation)
+            }
+        }
+    }
+
+    private func startSessionEventsLoop(sessionStore: MCPSessionStore, generation: Int) {
+        sessionEventsTask?.cancel()
+        sessionEventsTask = Task { [weak self] in
+            let stream = await sessionStore.events
+            for await event in stream {
+                guard let self else { return }
+                guard await self.isCurrentGeneration(generation) else { return }
+                Self.logger.debug("Session event: \(String(describing: event), privacy: .public)")
+                await self.refreshClients()
+            }
+        }
+    }
+
+    private func isCurrentGeneration(_ generation: Int) -> Bool {
+        serverGeneration == generation
+    }
+
+    private func applyTransportState(_ transportState: MCPHttpServerState, generation: Int) {
+        guard isCurrentGeneration(generation) else { return }
+        switch transportState {
+        case .idle:
+            state = .stopped
+        case .starting:
+            state = .starting
+        case .running(let port):
+            state = .running(port: port)
+            Task { [weak self] in
+                guard let self else { return }
+                let fingerprint = await self.tlsManager?.fingerprint
+                self.writeHandshakeFile(port: port, tlsCertFingerprint: fingerprint)
+            }
+        case .stopped:
+            state = .stopped
+        case .failed(let reason):
+            state = .failed(reason)
+        }
+    }
+
+    private func teardown() async {
+        dispatchTask?.cancel()
+        dispatchTask = nil
+        stateTask?.cancel()
+        stateTask = nil
+        sessionEventsTask?.cancel()
+        sessionEventsTask = nil
+
+        if let transport {
+            await transport.stop()
+        }
+        transport = nil
+
+        if let sessionStore {
+            await sessionStore.shutdown(reason: .serverShutdown)
+        }
+        sessionStore = nil
+
+        dispatcher = nil
+        rateLimiter = nil
+        tlsManager = nil
+
+        await cleanupBridgeToken()
+        tokenStore = nil
+        connectedClients = []
+    }
+
+    private func cleanupBridgeToken() async {
+        if let bridgeId = bridgeTokenId {
+            await tokenStore?.delete(tokenId: bridgeId)
+            bridgeTokenId = nil
+        }
+        internalBridgeToken = nil
     }
 
     private func startClientRefresh() {
@@ -203,11 +322,16 @@ final class MCPServerManager {
     }
 
     private func refreshClients() async {
-        guard let server else {
+        guard let sessionStore else {
             connectedClients = []
             return
         }
-        connectedClients = await server.sessionSnapshots()
+        let snapshots = await collectSessionSnapshots(from: sessionStore)
+        connectedClients = snapshots
+    }
+
+    private func collectSessionSnapshots(from store: MCPSessionStore) async -> [SessionSnapshot] {
+        await store.snapshotsForUI()
     }
 
     private static let handshakeDirectoryPath: String = {
@@ -227,7 +351,7 @@ final class MCPServerManager {
             "port": Int(port),
             "token": bridgeToken,
             "pid": ProcessInfo.processInfo.processIdentifier,
-            "protocolVersion": "2025-03-26",
+            "protocolVersion": InitializeHandler.supportedProtocolVersion,
             "tls": settings.allowRemoteConnections
         ]
         if let tlsCertFingerprint {
@@ -257,9 +381,9 @@ final class MCPServerManager {
                 ofItemAtPath: Self.handshakeFilePath
             )
 
-            Self.logger.info("Wrote MCP handshake file at \(Self.handshakeFilePath)")
+            Self.logger.info("Wrote MCP handshake file at \(Self.handshakeFilePath, privacy: .public)")
         } catch {
-            Self.logger.error("Failed to write MCP handshake file: \(error.localizedDescription)")
+            Self.logger.error("Failed to write MCP handshake file: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -271,7 +395,35 @@ final class MCPServerManager {
             try fileManager.removeItem(atPath: Self.handshakeFilePath)
             Self.logger.info("Deleted MCP handshake file")
         } catch {
-            Self.logger.error("Failed to delete MCP handshake file: \(error.localizedDescription)")
+            Self.logger.error("Failed to delete MCP handshake file: \(error.localizedDescription, privacy: .public)")
         }
+    }
+}
+
+private struct TransportProgressSink: MCPProgressSink {
+    let transport: MCPHttpServerTransport
+
+    func sendNotification(_ notification: JsonRpcNotification, toSession sessionId: MCPSessionId) async {
+        await transport.sendNotification(notification, toSession: sessionId)
+    }
+}
+
+private extension MCPSessionStore {
+    func snapshotsForUI() async -> [MCPServerManager.SessionSnapshot] {
+        var result: [MCPServerManager.SessionSnapshot] = []
+        for session in await allSessions() {
+            let snapshot = await session.snapshot()
+            let info = snapshot.clientInfo
+            result.append(MCPServerManager.SessionSnapshot(
+                id: snapshot.id.rawValue,
+                clientName: info?.name ?? String(localized: "Unknown"),
+                clientVersion: info?.version,
+                connectedSince: snapshot.createdAt,
+                lastActivityAt: snapshot.lastActivityAt,
+                tokenName: nil,
+                remoteAddress: nil
+            ))
+        }
+        return result
     }
 }

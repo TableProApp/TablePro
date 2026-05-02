@@ -42,7 +42,6 @@ private func makeSUT(
     let optionsBinding = Binding(get: { optionsState }, set: { optionsState = $0 })
 
     let vm = SidebarViewModel(
-        tables: tablesBinding,
         selectedTables: selectedBinding,
         pendingTruncates: truncatesBinding,
         pendingDeletes: deletesBinding,

@@ -27,8 +27,8 @@ public struct ListRecentTabsTool: MCPToolImplementation {
     ) async throws -> MCPToolCallResult {
         let limit = MCPArgumentDecoder.optionalInt(arguments, key: "limit", default: 20, clamp: 1...500) ?? 20
 
-        let snapshots = await MainActor.run { MCPToolHandler.collectTabSnapshots() }
-        let blocked = await MainActor.run { MCPToolHandler.blockedExternalConnectionIds() }
+        let snapshots = await MainActor.run { MCPTabSnapshotProvider.collectTabSnapshots() }
+        let blocked = await MainActor.run { MCPTabSnapshotProvider.blockedExternalConnectionIds() }
         let filtered = snapshots.filter { !blocked.contains($0.connectionId) }
         let trimmed = Array(filtered.prefix(limit))
 

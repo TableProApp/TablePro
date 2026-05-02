@@ -58,6 +58,10 @@ public actor MCPSessionStore {
         sessions.count
     }
 
+    public func allSessions() async -> [MCPSession] {
+        Array(sessions.values)
+    }
+
     public var events: AsyncStream<MCPSessionEvent> {
         let (stream, continuation) = AsyncStream<MCPSessionEvent>.makeStream(
             bufferingPolicy: .bufferingNewest(64)

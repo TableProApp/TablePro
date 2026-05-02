@@ -24,7 +24,7 @@ public struct ListDatabasesTool: MCPToolImplementation {
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
-        let legacy = try await services.connectionBridge.listDatabases(connectionId: connectionId)
-        return .json(JsonValue.fromLegacy(legacy))
+        let payload = try await services.connectionBridge.listDatabases(connectionId: connectionId)
+        return .json(payload)
     }
 }

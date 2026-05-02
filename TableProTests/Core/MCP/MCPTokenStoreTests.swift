@@ -20,7 +20,7 @@ struct MCPTokenStoreTests {
             tokenHash: "fakehash",
             salt: "fakesalt",
             permissions: .readOnly,
-            allowedConnectionIds: nil,
+            connectionAccess: .all,
             createdAt: Date.now,
             lastUsedAt: nil,
             expiresAt: expiresAt,
@@ -183,23 +183,31 @@ struct MCPTokenStoreTests {
         #expect(result.token.expiresAt != nil)
     }
 
-    @Test("generate with nil connectionIds stores nil")
-    func generateWithNilConnectionIds() async {
+    @Test("generate with .all access stores .all")
+    func generateWithAllAccess() async {
         let store = makeStore()
-        let result = await store.generate(name: "test", permissions: .readOnly, allowedConnectionIds: nil)
+        let result = await store.generate(name: "test", permissions: .readOnly, connectionAccess: .all)
         await store.delete(tokenId: result.token.id)
 
-        #expect(result.token.allowedConnectionIds == nil)
+        #expect(result.token.connectionAccess == .all)
     }
 
-    @Test("generate with specific connectionIds stores them")
-    func generateWithSpecificConnectionIds() async {
+    @Test("generate with .limited stores the connection ids")
+    func generateWithLimitedAccess() async {
         let ids: Set<UUID> = [UUID(), UUID()]
         let store = makeStore()
-        let result = await store.generate(name: "test", permissions: .readOnly, allowedConnectionIds: ids)
+        let result = await store.generate(
+            name: "test",
+            permissions: .readOnly,
+            connectionAccess: .limited(ids)
+        )
         await store.delete(tokenId: result.token.id)
 
-        #expect(result.token.allowedConnectionIds == ids)
+        if case .limited(let stored) = result.token.connectionAccess {
+            #expect(stored == ids)
+        } else {
+            Issue.record("Expected .limited connection access")
+        }
     }
 
     @Test("validate returns token for valid bearer")

@@ -96,26 +96,23 @@ public struct ResourcesReadHandler: MCPMethodHandler {
     private static func fetchPayload(for route: ResourceRoute, services: MCPToolServices) async throws -> JsonValue {
         switch route {
         case .connectionsList:
-            let legacy = await services.connectionBridge.listConnections()
-            return JsonValue.fromLegacy(legacy)
+            return await services.connectionBridge.listConnections()
 
         case .connectionSchema(let connectionId):
             do {
-                let legacy = try await services.connectionBridge.fetchSchemaResource(connectionId: connectionId)
-                return JsonValue.fromLegacy(legacy)
+                return try await services.connectionBridge.fetchSchemaResource(connectionId: connectionId)
             } catch let error as MCPError {
                 throw mapLegacyError(error)
             }
 
         case .connectionHistory(let connectionId, let limit, let search, let dateFilter):
             do {
-                let legacy = try await services.connectionBridge.fetchHistoryResource(
+                return try await services.connectionBridge.fetchHistoryResource(
                     connectionId: connectionId,
                     limit: limit,
                     search: search,
                     dateFilter: dateFilter
                 )
-                return JsonValue.fromLegacy(legacy)
             } catch let error as MCPError {
                 throw mapLegacyError(error)
             }

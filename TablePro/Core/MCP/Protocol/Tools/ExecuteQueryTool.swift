@@ -128,10 +128,8 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         try await throwIfCancelled(context)
         await context.progress.emit(progress: 0.8, total: 1.0, message: "Formatting result")
 
-        let payload = JsonValue.fromLegacy(result)
-
         await context.progress.emit(progress: 1.0, total: 1.0, message: "Done")
-        return .json(payload)
+        return .json(result)
     }
 
     private func classifyAndAuthorize(

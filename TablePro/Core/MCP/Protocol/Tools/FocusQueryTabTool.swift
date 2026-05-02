@@ -27,7 +27,7 @@ public struct FocusQueryTabTool: MCPToolImplementation {
         let tabId = try MCPArgumentDecoder.requireUuid(arguments, key: "tab_id")
 
         let resolved: (windowId: UUID?, connectionId: UUID, raised: Bool)? = await MainActor.run {
-            for snapshot in MCPToolHandler.collectTabSnapshots() where snapshot.tabId == tabId {
+            for snapshot in MCPTabSnapshotProvider.collectTabSnapshots() where snapshot.tabId == tabId {
                 guard let window = snapshot.window else {
                     return (windowId: snapshot.windowId, connectionId: snapshot.connectionId, raised: false)
                 }

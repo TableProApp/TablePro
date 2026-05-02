@@ -103,30 +103,6 @@ struct TabPersistenceCoordinatorTests {
         await sleep()
     }
 
-    @Test("saveNow with pre-converted PersistedTab array round-trips")
-    func saveNowWithPersistedTabsRoundTrips() async {
-        let coordinator = makeCoordinator()
-        let persistedTabs = [
-            PersistedTab(id: UUID(), title: "P1", query: "SELECT 1", tabType: .query, tableName: nil),
-            PersistedTab(id: UUID(), title: "P2", query: "SELECT 2", tabType: .table, tableName: "users")
-        ]
-        let selectedId = persistedTabs[0].id
-
-        coordinator.saveNow(persistedTabs: persistedTabs, selectedTabId: selectedId)
-        await sleep()
-
-        let result = await coordinator.restoreFromDisk()
-
-        #expect(result.tabs.count == 2)
-        #expect(result.selectedTabId == selectedId)
-        #expect(result.tabs[0].title == "P1")
-        #expect(result.tabs[1].tableContext.tableName == "users")
-        #expect(result.source == .disk)
-
-        coordinator.clearSavedState()
-        await sleep()
-    }
-
     @Test("Large query over 500KB is truncated to empty string in persisted tab")
     func largeQueryIsTruncated() async {
         let coordinator = makeCoordinator()

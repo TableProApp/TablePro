@@ -34,7 +34,7 @@ public struct ListSchemasTool: MCPToolImplementation {
             _ = try await services.connectionBridge.switchDatabase(connectionId: connectionId, database: database)
         }
 
-        let legacy = try await services.connectionBridge.listSchemas(connectionId: connectionId)
-        return .json(JsonValue.fromLegacy(legacy))
+        let payload = try await services.connectionBridge.listSchemas(connectionId: connectionId)
+        return .json(payload)
     }
 }

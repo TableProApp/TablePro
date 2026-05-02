@@ -311,7 +311,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -342,7 +342,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -373,7 +373,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -398,7 +398,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -419,7 +419,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -435,7 +435,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -453,7 +453,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -510,7 +510,7 @@ struct ConnectionSharingTests {
 
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }

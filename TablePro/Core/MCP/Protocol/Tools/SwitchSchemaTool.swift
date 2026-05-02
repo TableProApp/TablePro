@@ -32,10 +32,10 @@ public struct SwitchSchemaTool: MCPToolImplementation {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let schema = try MCPArgumentDecoder.requireString(arguments, key: "schema")
         Self.logger.debug("switch_schema tool invoked for connection \(connectionId.uuidString, privacy: .public)")
-        let legacy = try await services.connectionBridge.switchSchema(
+        let payload = try await services.connectionBridge.switchSchema(
             connectionId: connectionId,
             schema: schema
         )
-        return .json(JsonValue.fromLegacy(legacy))
+        return .json(payload)
     }
 }

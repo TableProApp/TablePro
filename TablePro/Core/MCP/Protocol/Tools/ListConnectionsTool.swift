@@ -18,7 +18,7 @@ public struct ListConnectionsTool: MCPToolImplementation {
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
-        let legacy = await services.connectionBridge.listConnections()
-        return .json(JsonValue.fromLegacy(legacy))
+        let payload = await services.connectionBridge.listConnections()
+        return .json(payload)
     }
 }

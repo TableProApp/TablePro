@@ -279,6 +279,27 @@ public extension PluginDatabaseDriver {
         return "\"\(escaped)\""
     }
 
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let result = try await self.execute(query: query)
+                    let header = PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames
+                    )
+                    continuation.yield(.header(header))
+                    if !result.rows.isEmpty {
+                        continuation.yield(.rows(result.rows))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     func escapeStringLiteral(_ value: String) -> String {
         var result = value
         result = result.replacingOccurrences(of: "'", with: "''")
