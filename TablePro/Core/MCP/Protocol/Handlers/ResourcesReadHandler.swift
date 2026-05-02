@@ -118,7 +118,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
         case .connectionSchema(let connectionId):
             do {
                 return try await services.connectionBridge.fetchSchemaResource(connectionId: connectionId)
-            } catch let error as MCPError {
+            } catch let error as MCPDataLayerError {
                 throw mapDomainError(error)
             }
 
@@ -130,32 +130,46 @@ public struct ResourcesReadHandler: MCPMethodHandler {
                     search: search,
                     dateFilter: dateFilter
                 )
-            } catch let error as MCPError {
+            } catch let error as MCPDataLayerError {
                 throw mapDomainError(error)
             }
         }
     }
 
-    private static func mapDomainError(_ error: MCPError) -> MCPProtocolError {
+    private static func mapDomainError(_ error: MCPDataLayerError) -> MCPProtocolError {
         switch error {
-        case .invalidParams(let detail):
+        case .invalidArgument(let detail):
             return MCPProtocolError.invalidParams(detail: detail)
-        case .invalidRequest(let detail):
-            return MCPProtocolError.invalidRequest(detail: detail)
         case .notConnected(let id):
             return MCPProtocolError.invalidParams(detail: "Connection not active: \(id.uuidString)")
         case .forbidden(let reason, _):
             return MCPProtocolError.forbidden(reason: reason)
-        case .methodNotFound(let method):
-            return MCPProtocolError.methodNotFound(method: method)
+        case .notFound(let detail):
+            return MCPProtocolError(
+                code: JsonRpcErrorCode.resourceNotFound,
+                message: detail,
+                httpStatus: .notFound
+            )
+        case .expired(let detail):
+            return MCPProtocolError(
+                code: JsonRpcErrorCode.expired,
+                message: detail,
+                httpStatus: .ok
+            )
         case .timeout(let detail, _):
             return MCPProtocolError(
-                code: JsonRpcErrorCode.requestCancelled,
+                code: JsonRpcErrorCode.requestTimeout,
                 message: "Timeout: \(detail)",
                 httpStatus: .ok
             )
-        default:
-            return MCPProtocolError.internalError(detail: String(describing: error))
+        case .userCancelled:
+            return MCPProtocolError(
+                code: JsonRpcErrorCode.requestCancelled,
+                message: "User cancelled",
+                httpStatus: .ok
+            )
+        case .dataSourceError(let detail):
+            return MCPProtocolError.internalError(detail: detail)
         }
     }
 

@@ -91,7 +91,7 @@ public actor MCPConnectionBridge {
             DatabaseManager.shared.activeSessions[connectionId] != nil
         }
         guard sessionExists else {
-            throw MCPError.notConnected(connectionId)
+            throw MCPDataLayerError.notConnected(connectionId)
         }
         await DatabaseManager.shared.disconnectSession(connectionId)
     }
@@ -106,7 +106,7 @@ public actor MCPConnectionBridge {
         }
 
         guard let core else {
-            throw MCPError.notConnected(connectionId)
+            throw MCPDataLayerError.notConnected(connectionId)
         }
 
         let meta = await MainActor.run {
@@ -182,10 +182,10 @@ public actor MCPConnectionBridge {
                 group.addTask {
                     try await Task.sleep(for: .seconds(timeoutSeconds))
                     try? driver.cancelQuery()
-                    throw MCPError.timeout("Query timed out after \(timeoutSeconds) seconds")
+                    throw MCPDataLayerError.timeout("Query timed out after \(timeoutSeconds) seconds")
                 }
                 guard let first = try await group.next() else {
-                    throw MCPError.internalError("No result from query execution")
+                    throw MCPDataLayerError.dataSourceError("No result from query execution")
                 }
                 group.cancelAll()
                 return first
@@ -458,7 +458,7 @@ public actor MCPConnectionBridge {
             case .live(let driver, let session):
                 return (driver, session.connection.type)
             case .stored, .unknown:
-                throw MCPError.notConnected(connectionId)
+                throw MCPDataLayerError.notConnected(connectionId)
             }
         }
     }
@@ -470,7 +470,7 @@ public actor MCPConnectionBridge {
     private func resolveSession(_ connectionId: UUID) async throws -> ConnectionSession {
         try await MainActor.run {
             guard let session = DatabaseManager.shared.activeSessions[connectionId] else {
-                throw MCPError.notConnected(connectionId)
+                throw MCPDataLayerError.notConnected(connectionId)
             }
             return session
         }
@@ -480,7 +480,7 @@ public actor MCPConnectionBridge {
         try await MainActor.run {
             let connections = ConnectionStorage.shared.loadConnections()
             guard let connection = connections.first(where: { $0.id == connectionId }) else {
-                throw MCPError.invalidParams("Connection not found: \(connectionId)")
+                throw MCPDataLayerError.invalidArgument("Connection not found: \(connectionId)")
             }
             return connection
         }

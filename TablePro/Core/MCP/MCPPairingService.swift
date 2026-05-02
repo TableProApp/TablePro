@@ -26,7 +26,7 @@ final class PairingExchangeStore: @unchecked Sendable {
         defer { lock.unlock() }
         prune(now: Date.now)
         guard pending.count < Self.maxPendingCodes else {
-            throw MCPError.forbidden(
+            throw MCPDataLayerError.forbidden(
                 String(localized: "Too many pending pairing codes. Try again later.")
             )
         }
@@ -39,17 +39,17 @@ final class PairingExchangeStore: @unchecked Sendable {
         prune(now: now)
 
         guard let entry = pending[code] else {
-            throw MCPError.notFound("pairing code")
+            throw MCPDataLayerError.notFound("pairing code")
         }
 
         guard entry.expiresAt > now else {
             pending.removeValue(forKey: code)
-            throw MCPError.expired("pairing code")
+            throw MCPDataLayerError.expired("pairing code")
         }
 
         let computed = Self.sha256Base64Url(of: verifier)
         guard Self.constantTimeEqual(entry.challenge, computed) else {
-            throw MCPError.forbidden("challenge mismatch")
+            throw MCPDataLayerError.forbidden("challenge mismatch")
         }
 
         let token = entry.plaintextToken
@@ -123,7 +123,7 @@ final class MCPPairingService {
 
         guard let tokenStore = MCPServerManager.shared.tokenStore else {
             Self.logger.error("Token store unavailable after lazyStart")
-            throw MCPError.internalError("Token store unavailable")
+            throw MCPDataLayerError.dataSourceError("Token store unavailable")
         }
 
         let approval = try await AlertHelper.runPairingApproval(request: request)
@@ -154,7 +154,7 @@ final class MCPPairingService {
         guard let redirect = buildRedirectURL(base: request.redirectURL, code: code) else {
             Self.logger.error("Failed to build pairing redirect URL")
             await tokenStore.delete(tokenId: result.token.id)
-            throw MCPError.invalidParams("redirect URL")
+            throw MCPDataLayerError.invalidArgument("redirect URL")
         }
 
         Self.logger.info("Pairing approved for client '\(request.clientName, privacy: .public)'")
