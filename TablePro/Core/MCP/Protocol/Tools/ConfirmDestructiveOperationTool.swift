@@ -83,7 +83,8 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             connectionId: connectionId,
             databaseName: meta.databaseName,
             maxRows: 0,
-            timeoutSeconds: timeoutSeconds
+            timeoutSeconds: timeoutSeconds,
+            principalLabel: context.principal.metadata.label
         )
 
         return .json(result)

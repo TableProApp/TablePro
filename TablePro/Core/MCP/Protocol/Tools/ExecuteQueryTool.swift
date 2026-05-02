@@ -122,7 +122,8 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             connectionId: connectionId,
             databaseName: meta.databaseName,
             maxRows: maxRows,
-            timeoutSeconds: timeoutSeconds
+            timeoutSeconds: timeoutSeconds,
+            principalLabel: context.principal.metadata.label
         )
 
         try await throwIfCancelled(context)

@@ -19,22 +19,39 @@ public struct ResourcesReadHandler: MCPMethodHandler {
             throw MCPProtocolError.invalidParams(detail: "Missing required parameter: uri")
         }
 
-        let route = try Self.parseRoute(uri: uri)
-        let payload = try await Self.fetchPayload(for: route, services: services)
-        let text = Self.encodeJsonString(payload)
+        do {
+            let route = try Self.parseRoute(uri: uri)
+            let payload = try await Self.fetchPayload(for: route, services: services)
+            let text = Self.encodeJsonString(payload)
 
-        let result: JsonValue = .object([
-            "contents": .array([
-                .object([
-                    "uri": .string(uri),
-                    "mimeType": .string("application/json"),
-                    "text": .string(text)
+            let result: JsonValue = .object([
+                "contents": .array([
+                    .object([
+                        "uri": .string(uri),
+                        "mimeType": .string("application/json"),
+                        "text": .string(text)
+                    ])
                 ])
             ])
-        ])
 
-        Self.logger.debug("resources/read uri=\(uri, privacy: .public)")
-        return MCPMethodHandlerHelpers.successResponse(id: context.requestId, result: result)
+            Self.logger.debug("resources/read uri=\(uri, privacy: .public)")
+            MCPAuditLogger.logResourceRead(
+                tokenId: nil,
+                tokenName: context.principal.metadata.label,
+                uri: uri,
+                outcome: .success
+            )
+            return MCPMethodHandlerHelpers.successResponse(id: context.requestId, result: result)
+        } catch {
+            MCPAuditLogger.logResourceRead(
+                tokenId: nil,
+                tokenName: context.principal.metadata.label,
+                uri: uri,
+                outcome: .error,
+                errorMessage: (error as? MCPProtocolError)?.message ?? error.localizedDescription
+            )
+            throw error
+        }
     }
 
     private enum ResourceRoute {
@@ -102,7 +119,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
             do {
                 return try await services.connectionBridge.fetchSchemaResource(connectionId: connectionId)
             } catch let error as MCPError {
-                throw mapLegacyError(error)
+                throw mapDomainError(error)
             }
 
         case .connectionHistory(let connectionId, let limit, let search, let dateFilter):
@@ -114,12 +131,12 @@ public struct ResourcesReadHandler: MCPMethodHandler {
                     dateFilter: dateFilter
                 )
             } catch let error as MCPError {
-                throw mapLegacyError(error)
+                throw mapDomainError(error)
             }
         }
     }
 
-    private static func mapLegacyError(_ error: MCPError) -> MCPProtocolError {
+    private static func mapDomainError(_ error: MCPError) -> MCPProtocolError {
         switch error {
         case .invalidParams(let detail):
             return MCPProtocolError.invalidParams(detail: detail)

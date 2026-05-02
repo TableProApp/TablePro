@@ -75,23 +75,29 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
         authorizationHeader: String?,
         clientAddress: MCPClientAddress
     ) async -> MCPAuthDecision {
+        let ipString = Self.ipString(for: clientAddress)
+
         guard let header = authorizationHeader, !header.isEmpty else {
             let key = MCPRateLimitKey(clientAddress: clientAddress, principalFingerprint: nil)
             if await rateLimiter.isLocked(key: key) {
                 Self.logger.warning("Auth rejected (rate limited, missing header)")
+                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: 0)
                 return .deny(.rateLimited())
             }
             Self.logger.info("Auth missing Authorization header")
+            MCPAuditLogger.logAuthFailure(reason: "missing_authorization_header", ip: ipString)
             return .deny(.unauthenticated(reason: "missing_authorization_header"))
         }
 
         guard let token = Self.parseBearerToken(header) else {
             let key = MCPRateLimitKey(clientAddress: clientAddress, principalFingerprint: nil)
             if await rateLimiter.isLocked(key: key) {
+                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: 0)
                 return .deny(.rateLimited())
             }
             _ = await rateLimiter.recordAttempt(key: key, success: false)
             Self.logger.info("Auth invalid Authorization scheme")
+            MCPAuditLogger.logAuthFailure(reason: "invalid_authorization_scheme", ip: ipString)
             return .deny(.unauthenticated(reason: "invalid_authorization_scheme"))
         }
 
@@ -105,6 +111,7 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
             Self.logger.warning(
                 "Auth rate limited fingerprint=\(fingerprint, privacy: .public)"
             )
+            MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: 0)
             return .deny(.rateLimited())
         }
 
@@ -113,17 +120,21 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
         case .failure(let error):
             let verdict = await rateLimiter.recordAttempt(key: principalKey, success: false)
             if case .lockedUntil = verdict {
+                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: 0)
                 return .deny(.rateLimited())
             }
             switch error {
             case .unknownToken:
                 Self.logger.info("Auth unknown token fingerprint=\(fingerprint, privacy: .public)")
+                MCPAuditLogger.logAuthFailure(reason: "unknown_token", ip: ipString)
                 return .deny(.tokenInvalid(reason: "unknown_token"))
             case .expired:
                 Self.logger.info("Auth expired token fingerprint=\(fingerprint, privacy: .public)")
+                MCPAuditLogger.logAuthFailure(reason: "expired_token", ip: ipString)
                 return .deny(.tokenExpired())
             case .revoked:
                 Self.logger.info("Auth revoked token fingerprint=\(fingerprint, privacy: .public)")
+                MCPAuditLogger.logAuthFailure(reason: "revoked_token", ip: ipString)
                 return .deny(.tokenInvalid(reason: "token_revoked"))
             }
 
@@ -139,7 +150,17 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
                 )
             )
             Self.logger.info("Auth allowed fingerprint=\(fingerprint, privacy: .public)")
+            MCPAuditLogger.logAuthSuccess(tokenName: validated.label ?? "-", ip: ipString)
             return .allow(principal)
+        }
+    }
+
+    private static func ipString(for address: MCPClientAddress) -> String {
+        switch address {
+        case .loopback:
+            return "127.0.0.1"
+        case .remote(let host):
+            return host
         }
     }
 

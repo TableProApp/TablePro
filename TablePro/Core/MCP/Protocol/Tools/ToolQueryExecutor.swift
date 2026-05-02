@@ -7,7 +7,8 @@ enum ToolQueryExecutor {
         connectionId: UUID,
         databaseName: String,
         maxRows: Int,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        principalLabel: String?
     ) async throws -> JsonValue {
         let startTime = Date()
         do {
@@ -28,6 +29,15 @@ enum ToolQueryExecutor {
                 wasSuccessful: true,
                 errorMessage: nil
             )
+            MCPAuditLogger.logQueryExecuted(
+                tokenId: nil,
+                tokenName: principalLabel,
+                connectionId: connectionId,
+                sql: query,
+                durationMs: Int(elapsed * 1000),
+                rowCount: rowCount,
+                outcome: .success
+            )
             return result
         } catch {
             let elapsed = Date().timeIntervalSince(startTime)
@@ -38,6 +48,16 @@ enum ToolQueryExecutor {
                 executionTime: elapsed,
                 rowCount: 0,
                 wasSuccessful: false,
+                errorMessage: error.localizedDescription
+            )
+            MCPAuditLogger.logQueryExecuted(
+                tokenId: nil,
+                tokenName: principalLabel,
+                connectionId: connectionId,
+                sql: query,
+                durationMs: Int(elapsed * 1000),
+                rowCount: 0,
+                outcome: .error,
                 errorMessage: error.localizedDescription
             )
             throw error

@@ -29,12 +29,45 @@ public struct ToolsCallHandler: MCPMethodHandler {
 
         let toolType = type(of: tool)
         if !toolType.requiredScopes.isSubset(of: context.principal.scopes) {
+            MCPAuditLogger.logToolCalled(
+                tokenId: nil,
+                tokenName: context.principal.metadata.label,
+                toolName: toolName,
+                connectionId: Self.connectionId(in: arguments),
+                outcome: .denied,
+                errorMessage: "missing_scope"
+            )
             throw MCPProtocolError.forbidden(reason: "Tool '\(toolName)' requires additional scopes")
         }
 
         Self.logger.info("tools/call name=\(toolName, privacy: .public)")
 
-        let result = try await tool.call(arguments: arguments, context: context, services: services)
-        return MCPMethodHandlerHelpers.successResponse(id: context.requestId, result: result.asJsonValue())
+        do {
+            let result = try await tool.call(arguments: arguments, context: context, services: services)
+            MCPAuditLogger.logToolCalled(
+                tokenId: nil,
+                tokenName: context.principal.metadata.label,
+                toolName: toolName,
+                connectionId: Self.connectionId(in: arguments),
+                outcome: result.isError ? .error : .success
+            )
+            return MCPMethodHandlerHelpers.successResponse(id: context.requestId, result: result.asJsonValue())
+        } catch {
+            MCPAuditLogger.logToolCalled(
+                tokenId: nil,
+                tokenName: context.principal.metadata.label,
+                toolName: toolName,
+                connectionId: Self.connectionId(in: arguments),
+                outcome: .error,
+                errorMessage: (error as? MCPProtocolError)?.message ?? error.localizedDescription
+            )
+            throw error
+        }
+    }
+
+    private static func connectionId(in arguments: JsonValue) -> UUID? {
+        guard case .object(let object) = arguments,
+              case .string(let value)? = object["connection_id"] else { return nil }
+        return UUID(uuidString: value)
     }
 }
