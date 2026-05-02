@@ -547,8 +547,15 @@ public actor MCPHttpServerTransport {
                 return
             }
             let candidate = MCPSessionId(raw)
-            guard await sessionStore.session(id: candidate) != nil else {
+            guard let session = await sessionStore.session(id: candidate) else {
                 await respondTopLevel(context: context, error: .sessionNotFound(), requestId: requestId)
+                return
+            }
+            if let mismatch = await Self.protocolVersionMismatch(
+                session: session,
+                headerValue: mcpProtocolVersion
+            ) {
+                await respondTopLevel(context: context, error: mismatch, requestId: requestId)
                 return
             }
             sessionId = candidate
@@ -679,6 +686,20 @@ public actor MCPHttpServerTransport {
     private func pathMatchesMcp(_ path: String) -> Bool {
         let trimmed = stripQueryString(path)
         return trimmed == "/mcp" || trimmed == "/mcp/"
+    }
+
+    private static func protocolVersionMismatch(
+        session: MCPSession,
+        headerValue: String?
+    ) async -> MCPProtocolError? {
+        let state = await session.state
+        guard case .ready = state else { return nil }
+        guard let negotiated = await session.negotiatedProtocolVersion else { return nil }
+        guard let headerValue, !headerValue.isEmpty else { return nil }
+        if headerValue == negotiated { return nil }
+        return .invalidRequest(
+            detail: "MCP-Protocol-Version mismatch: client sent \(headerValue), session negotiated \(negotiated)"
+        )
     }
 
     private func stripQueryString(_ path: String) -> String {

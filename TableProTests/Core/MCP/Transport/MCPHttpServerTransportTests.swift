@@ -372,6 +372,96 @@ struct MCPHttpServerTransportTests {
         #expect(allowHeaders?.contains("Last-Event-ID") == true)
     }
 
+    @Test("Initialize with unsupported protocolVersion returns invalid_request error")
+    func initializeRejectsUnsupportedProtocolVersion() async throws {
+        let auth = StubAlwaysAllowAuthenticator()
+        let (transport, _, port) = try await startedTransport(authenticator: auth)
+        defer { Task { await transport.stop() } }
+
+        let consumer = StubExchangeConsumer()
+        let store = MCPSessionStore()
+        let progressSink = NullProgressSink()
+        let dispatcher = MCPProtocolDispatcher(
+            handlers: [InitializeHandler()],
+            sessionStore: store,
+            progressSink: progressSink
+        )
+        await consumer.start(transport: transport) { exchange in
+            await dispatcher.dispatch(exchange)
+        }
+        defer { Task { await consumer.stop() } }
+
+        let request = JsonRpcRequest(
+            id: .number(1),
+            method: "initialize",
+            params: .object(["protocolVersion": .string("1999-01-01")])
+        )
+        let body = try JsonRpcCodec.encode(.request(request))
+        let httpRequest = makePost(port: port, body: body)
+        let (data, response) = try await URLSession.shared.data(for: httpRequest)
+        let http = try #require(response as? HTTPURLResponse)
+
+        #expect(http.statusCode == 400)
+        let parsed = try parseJsonRpcError(data)
+        #expect(parsed.code == JsonRpcErrorCode.invalidRequest)
+    }
+
+    @Test("Subsequent request with mismatched MCP-Protocol-Version is rejected")
+    func mismatchedProtocolVersionHeaderRejected() async throws {
+        let auth = StubAlwaysAllowAuthenticator()
+        let (transport, _, port) = try await startedTransport(authenticator: auth)
+        defer { Task { await transport.stop() } }
+
+        let consumer = StubExchangeConsumer()
+        let store = MCPSessionStore()
+        let progressSink = NullProgressSink()
+        let dispatcher = MCPProtocolDispatcher(
+            handlers: [InitializeHandler(), PingHandler()],
+            sessionStore: store,
+            progressSink: progressSink
+        )
+        await consumer.start(transport: transport) { exchange in
+            await dispatcher.dispatch(exchange)
+        }
+        defer { Task { await consumer.stop() } }
+
+        let initializeRequest = JsonRpcRequest(
+            id: .number(1),
+            method: "initialize",
+            params: .object(["protocolVersion": .string(InitializeHandler.supportedProtocolVersion)])
+        )
+        let initBody = try JsonRpcCodec.encode(.request(initializeRequest))
+        let (_, initResponse) = try await URLSession.shared.data(for: makePost(port: port, body: initBody))
+        let initHttp = try #require(initResponse as? HTTPURLResponse)
+        let sessionId = try #require(initHttp.value(forHTTPHeaderField: "Mcp-Session-Id"))
+
+        let initialized = JsonRpcNotification(method: "notifications/initialized", params: nil)
+        let initializedBody = try JsonRpcCodec.encode(.notification(initialized))
+        var initializedRequest = makePost(port: port, body: initializedBody, sessionId: sessionId)
+        _ = try await URLSession.shared.data(for: initializedRequest)
+        _ = initializedRequest
+
+        let pingRequest = JsonRpcRequest(id: .number(2), method: "ping", params: nil)
+        let pingBody = try JsonRpcCodec.encode(.request(pingRequest))
+        guard let url = URL(string: "http://127.0.0.1:\(port)/mcp") else {
+            Issue.record("Failed to construct URL")
+            return
+        }
+        var mismatched = URLRequest(url: url)
+        mismatched.httpMethod = "POST"
+        mismatched.httpBody = pingBody
+        mismatched.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        mismatched.setValue("1999-01-01", forHTTPHeaderField: "mcp-protocol-version")
+        mismatched.setValue(sessionId, forHTTPHeaderField: "Mcp-Session-Id")
+        mismatched.setValue("Bearer test-token", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: mismatched)
+        let http = try #require(response as? HTTPURLResponse)
+
+        #expect(http.statusCode == 400)
+        let parsed = try parseJsonRpcError(data)
+        #expect(parsed.code == JsonRpcErrorCode.invalidRequest)
+    }
+
     @Test("GET /mcp opens an SSE stream that delivers server-sent notifications")
     func getMcpStreamsServerNotifications() async throws {
         let auth = StubAlwaysAllowAuthenticator()

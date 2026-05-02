@@ -75,6 +75,10 @@ actor StubBearerAuthenticator: MCPAuthenticator {
     }
 }
 
+struct NullProgressSink: MCPProgressSink {
+    func sendNotification(_ notification: JsonRpcNotification, toSession sessionId: MCPSessionId) async {}
+}
+
 actor StubExchangeConsumer {
     private var task: Task<Void, Never>?
 
