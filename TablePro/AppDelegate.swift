@@ -31,6 +31,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            Self.logger.info("Running under XCTest, skipping normal app startup")
+            return
+        }
+
         let appearanceSettings = AppSettingsManager.shared.appearance
         ThemeEngine.shared.updateAppearanceAndTheme(
             mode: appearanceSettings.appearanceMode,
