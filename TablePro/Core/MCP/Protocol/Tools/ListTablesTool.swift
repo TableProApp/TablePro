@@ -10,19 +10,19 @@ public struct ListTablesTool: MCPToolImplementation {
         "properties": .object([
             "connection_id": .object([
                 "type": .string("string"),
-                "description": .string("UUID of the connection")
+                "description": .string(String(localized: "UUID of the connection"))
             ]),
             "database": .object([
                 "type": .string("string"),
-                "description": .string("Database name (uses current if omitted)")
+                "description": .string(String(localized: "Database name (uses current if omitted)"))
             ]),
             "schema": .object([
                 "type": .string("string"),
-                "description": .string("Schema name (uses current if omitted)")
+                "description": .string(String(localized: "Schema name (uses current if omitted)"))
             ]),
             "include_row_counts": .object([
                 "type": .string("boolean"),
-                "description": .string("Include approximate row counts (default false)")
+                "description": .string(String(localized: "Include approximate row counts (default false)"))
             ])
         ]),
         "required": .array([.string("connection_id")])

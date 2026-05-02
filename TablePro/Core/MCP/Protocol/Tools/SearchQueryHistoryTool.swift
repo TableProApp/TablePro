@@ -12,23 +12,23 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
         "properties": .object([
             "query": .object([
                 "type": .string("string"),
-                "description": .string("Search text (full-text matched against the query column)")
+                "description": .string(String(localized: "Search text (full-text matched against the query column)"))
             ]),
             "connection_id": .object([
                 "type": .string("string"),
-                "description": .string("Restrict to a specific connection (UUID, optional)")
+                "description": .string(String(localized: "Restrict to a specific connection (UUID, optional)"))
             ]),
             "limit": .object([
                 "type": .string("integer"),
-                "description": .string("Maximum number of entries to return (default 50, max 500)")
+                "description": .string(String(localized: "Maximum number of entries to return (default 50, max 500)"))
             ]),
             "since": .object([
                 "type": .string("number"),
-                "description": .string("Earliest executed_at to include, Unix epoch seconds (inclusive, optional)")
+                "description": .string(String(localized: "Earliest executed_at to include, Unix epoch seconds (inclusive, optional)"))
             ]),
             "until": .object([
                 "type": .string("number"),
-                "description": .string("Latest executed_at to include, Unix epoch seconds (inclusive, optional)")
+                "description": .string(String(localized: "Latest executed_at to include, Unix epoch seconds (inclusive, optional)"))
             ])
         ]),
         "required": .array([.string("query")])

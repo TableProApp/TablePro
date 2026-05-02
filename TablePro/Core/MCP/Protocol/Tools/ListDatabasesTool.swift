@@ -10,7 +10,7 @@ public struct ListDatabasesTool: MCPToolImplementation {
         "properties": .object([
             "connection_id": .object([
                 "type": .string("string"),
-                "description": .string("UUID of the connection")
+                "description": .string(String(localized: "UUID of the connection"))
             ])
         ]),
         "required": .array([.string("connection_id")])

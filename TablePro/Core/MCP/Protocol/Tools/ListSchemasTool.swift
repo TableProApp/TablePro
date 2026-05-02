@@ -10,11 +10,11 @@ public struct ListSchemasTool: MCPToolImplementation {
         "properties": .object([
             "connection_id": .object([
                 "type": .string("string"),
-                "description": .string("UUID of the connection")
+                "description": .string(String(localized: "UUID of the connection"))
             ]),
             "database": .object([
                 "type": .string("string"),
-                "description": .string("Database name (uses current if omitted)")
+                "description": .string(String(localized: "Database name (uses current if omitted)"))
             ])
         ]),
         "required": .array([.string("connection_id")])

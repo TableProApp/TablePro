@@ -10,15 +10,15 @@ public struct GetTableDdlTool: MCPToolImplementation {
         "properties": .object([
             "connection_id": .object([
                 "type": .string("string"),
-                "description": .string("UUID of the connection")
+                "description": .string(String(localized: "UUID of the connection"))
             ]),
             "table": .object([
                 "type": .string("string"),
-                "description": .string("Table name")
+                "description": .string(String(localized: "Table name"))
             ]),
             "schema": .object([
                 "type": .string("string"),
-                "description": .string("Schema name (uses current if omitted)")
+                "description": .string(String(localized: "Schema name (uses current if omitted)"))
             ])
         ]),
         "required": .array([.string("connection_id"), .string("table")])
