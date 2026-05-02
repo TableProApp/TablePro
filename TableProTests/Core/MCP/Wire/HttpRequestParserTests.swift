@@ -29,6 +29,24 @@ final class HttpRequestParserTests: XCTestCase {
         XCTAssertEqual(head.headers.value(for: "CONTENT-TYPE"), "text/plain")
     }
 
+    func testMcpSessionIdLookupCaseInsensitive() throws {
+        let lowercaseRaw = "GET / HTTP/1.1\r\nmcp-session-id: abc-123\r\n\r\n"
+        let lowercaseResult = try HttpRequestParser.parse(Data(lowercaseRaw.utf8))
+        guard case .complete(let lowerHead, _, _) = lowercaseResult else {
+            XCTFail("Expected complete for lowercase")
+            return
+        }
+        XCTAssertEqual(lowerHead.headers.value(for: "Mcp-Session-Id"), "abc-123")
+
+        let uppercaseRaw = "GET / HTTP/1.1\r\nMCP-SESSION-ID: xyz-789\r\n\r\n"
+        let uppercaseResult = try HttpRequestParser.parse(Data(uppercaseRaw.utf8))
+        guard case .complete(let upperHead, _, _) = uppercaseResult else {
+            XCTFail("Expected complete for uppercase")
+            return
+        }
+        XCTAssertEqual(upperHead.headers.value(for: "Mcp-Session-Id"), "xyz-789")
+    }
+
     func testParsesPostBodyOfExactContentLength() throws {
         let body = "{\"x\":1}"
         let raw = "POST /rpc HTTP/1.1\r\nHost: x\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
