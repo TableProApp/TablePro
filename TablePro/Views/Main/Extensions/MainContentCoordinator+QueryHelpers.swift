@@ -2,141 +2,38 @@
 //  MainContentCoordinator+QueryHelpers.swift
 //  TablePro
 //
-//  Query execution helper methods: schema parsing, metadata caching,
-//  phase result application, and error handling.
-//
 
 import AppKit
 import Foundation
 import os
 import TableProPluginKit
 
-private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
-
-/// Result of the data fetch phase
-internal struct QueryFetchResult {
-    let columns: [String]
-    let columnTypes: [ColumnType]
-    let rows: [[String?]]
-    let executionTime: TimeInterval
-    let rowsAffected: Int
-    let statusMessage: String?
-    let isTruncated: Bool
-}
-
-// MARK: - Query Execution Helpers
-
 extension MainContentCoordinator {
-    /// Execute a user-supplied SQL query, applying an optional row cap on the result set
-    nonisolated static func fetchQueryData(
-        driver: DatabaseDriver,
-        sql: String,
-        rowCap: Int?
-    ) async throws -> QueryFetchResult {
-        let start = CFAbsoluteTimeGetCurrent()
-        progressLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil")")
-        let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
-        let elapsed = CFAbsoluteTimeGetCurrent() - start
-        progressLog.info("[executeUserQuery] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
-        return QueryFetchResult(
-            columns: result.columns,
-            columnTypes: result.columnTypes,
-            rows: result.rows,
-            executionTime: result.executionTime,
-            rowsAffected: result.rowsAffected,
-            statusMessage: result.statusMessage,
-            isTruncated: result.isTruncated
-        )
-    }
-
-    nonisolated static func fetchQueryDataParameterized(
-        driver: DatabaseDriver,
-        sql: String,
-        parameters: [Any?],
-        rowCap: Int?
-    ) async throws -> QueryFetchResult {
-        let start = CFAbsoluteTimeGetCurrent()
-        progressLog.info("[executeUserQueryParameterized] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil") params=\(parameters.count)")
-        let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: parameters)
-        let elapsed = CFAbsoluteTimeGetCurrent() - start
-        progressLog.info("[executeUserQueryParameterized] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
-        return QueryFetchResult(
-            columns: result.columns,
-            columnTypes: result.columnTypes,
-            rows: result.rows,
-            executionTime: result.executionTime,
-            rowsAffected: result.rowsAffected,
-            statusMessage: result.statusMessage,
-            isTruncated: result.isTruncated
-        )
-    }
-
-    /// Decide whether to apply the configured row cap to a user query.
-    /// Returns the cap value if truncation is enabled and the query is a non-write SELECT/WITH on a query tab.
     func resolveRowCap(sql: String, tabType: TabType) -> Int? {
-        let dataGridSettings = AppSettingsManager.shared.dataGrid
-        let trimmedUpper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let isSelectQuery = trimmedUpper.hasPrefix("SELECT ") || trimmedUpper.hasPrefix("WITH ")
-
-        guard tabType == .query, isSelectQuery, !isWriteQuery(sql), !isDDLQuery(sql),
-              dataGridSettings.truncateQueryResults
-        else {
-            return nil
-        }
-        return dataGridSettings.validatedQueryResultRowCap
+        QueryExecutor.resolveRowCap(sql: sql, tabType: tabType, databaseType: connection.type)
     }
 
-    /// Parsed schema metadata ready to apply to a tab
-    struct ParsedSchemaMetadata {
-        let columnDefaults: [String: String?]
-        let columnForeignKeys: [String: ForeignKeyInfo]
-        let columnNullable: [String: Bool]
-        let primaryKeyColumns: [String]
-        let approximateRowCount: Int?
-        let columnEnumValues: [String: [String]]
-    }
-
-    /// Schema result from parallel or sequential metadata fetch
-    typealias SchemaResult = (columnInfo: [ColumnInfo], fkInfo: [ForeignKeyInfo], approximateRowCount: Int?)
-
-    /// Parse a SchemaResult into dictionaries ready for tab assignment
     func parseSchemaMetadata(_ schema: SchemaResult) -> ParsedSchemaMetadata {
-        var defaults: [String: String?] = [:]
-        var fks: [String: ForeignKeyInfo] = [:]
-        var nullable: [String: Bool] = [:]
-        for col in schema.columnInfo {
-            defaults[col.name] = col.defaultValue
-            nullable[col.name] = col.isNullable
-        }
-        for fk in schema.fkInfo {
-            fks[fk.column] = fk
-        }
-        // Parse enum/set values from column type definitions (MySQL, MariaDB, ClickHouse)
-        var enumValues: [String: [String]] = [:]
-        for col in schema.columnInfo {
-            if let values = ColumnType.parseEnumValues(from: col.dataType) {
-                enumValues[col.name] = values
-            } else if let values = ColumnType.parseClickHouseEnumValues(from: col.dataType) {
-                enumValues[col.name] = values
-            }
-        }
-        return ParsedSchemaMetadata(
-            columnDefaults: defaults,
-            columnForeignKeys: fks,
-            columnNullable: nullable,
-            primaryKeyColumns: schema.columnInfo.filter { $0.isPrimaryKey }.map(\.name),
-            approximateRowCount: schema.approximateRowCount,
-            columnEnumValues: enumValues
+        QueryExecutor.parseSchemaMetadata(schema)
+    }
+
+    func awaitSchemaResult(
+        parallelTask: Task<SchemaResult, Error>?,
+        tableName: String
+    ) async -> SchemaResult? {
+        await QueryExecutor.awaitSchemaResult(
+            connectionId: connectionId,
+            parallelTask: parallelTask,
+            tableName: tableName
         )
     }
 
-    /// Check whether metadata is already cached for the given table in a tab
     func isMetadataCached(tabId: UUID, tableName: String) -> Bool {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return false
         }
         let tab = tabManager.tabs[idx]
-        let tableRows = tableRowsStore.tableRows(for: tab.id)
+        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         guard tab.tableContext.tableName == tableName,
               !tableRows.columnDefaults.isEmpty,
               !tab.tableContext.primaryKeyColumns.isEmpty else {
@@ -154,28 +51,6 @@ extension MainContentCoordinator {
         return true
     }
 
-    /// Await schema metadata from parallel task or fall back to sequential fetch
-    func awaitSchemaResult(
-        parallelTask: Task<SchemaResult, Error>?,
-        tableName: String
-    ) async -> SchemaResult? {
-        if let parallelTask {
-            return try? await parallelTask.value
-        }
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
-        do {
-            async let cols = driver.fetchColumns(table: tableName)
-            async let fks = driver.fetchForeignKeys(table: tableName)
-            let (c, f) = try await (cols, fks)
-            let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
-            return (columnInfo: c, fkInfo: f, approximateRowCount: approxCount)
-        } catch {
-            Self.logger.error("Phase 2 schema fetch failed: \(error.localizedDescription)")
-            return nil
-        }
-    }
-
-    /// Apply Phase 1 query result data and optional metadata to the tab
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
         tabId: UUID,
         columns: [String],
@@ -226,7 +101,7 @@ extension MainContentCoordinator {
                 updatedTab.pagination.isApproximateRowCount = true
             }
         } else {
-            let existing = tableRowsStore.tableRows(for: updatedTab.id)
+            let existing = tabSessionRegistry.tableRows(for: updatedTab.id)
             columnDefaults = existing.columnDefaults
             columnForeignKeys = existing.columnForeignKeys
             columnNullable = existing.columnNullable
@@ -427,7 +302,7 @@ extension MainContentCoordinator {
                 guard capturedGeneration == queryGeneration else { return }
                 guard !Task.isCancelled else { return }
                 if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    let existing = tableRowsStore.tableRows(for: tabId)
+                    let existing = tabSessionRegistry.tableRows(for: tabId)
                     let hasNewValues = columnEnumValues.contains { key, value in
                         existing.columnEnumValues[key] != value
                     }

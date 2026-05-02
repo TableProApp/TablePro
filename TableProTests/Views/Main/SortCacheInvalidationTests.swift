@@ -10,8 +10,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("querySortCache invalidation on row mutations")
 @MainActor
@@ -22,8 +22,6 @@ struct SortCacheInvalidationTests {
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         try tabManager.addTableTab(tableName: "users")
@@ -66,7 +64,7 @@ struct SortCacheInvalidationTests {
         let (coordinator, _, tabId) = makeCoordinator()
         seedRows(coordinator, for: tabId, count: 3)
         coordinator.addNewRow()
-        let insertedIndex = coordinator.tableRowsStore.tableRows(for: tabId).count - 1
+        let insertedIndex = coordinator.tabSessionRegistry.tableRows(for: tabId).count - 1
         seedCache(coordinator, for: tabId)
 
         coordinator.deleteSelectedRows(indices: [insertedIndex])

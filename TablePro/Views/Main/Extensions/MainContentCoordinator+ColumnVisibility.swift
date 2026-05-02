@@ -6,37 +6,77 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// Save current hidden columns to the active tab's column layout
-    func saveColumnVisibilityToTab() {
-        guard let (_, index) = tabManager.selectedTabAndIndex else { return }
-        tabManager.tabs[index].columnLayout.hiddenColumns = columnVisibilityManager.saveToColumnLayout()
+    var selectedTabHiddenColumns: Set<String> {
+        guard let tab = tabManager.selectedTab else { return [] }
+        return tab.columnLayout.hiddenColumns
     }
 
-    /// Restore hidden columns from a tab's column layout
-    func restoreColumnVisibilityFromTab(_ tab: QueryTab) {
-        columnVisibilityManager.restoreFromColumnLayout(tab.columnLayout.hiddenColumns)
+    func hideColumn(_ columnName: String) {
+        mutateSelectedTabHiddenColumns { $0.insert(columnName) }
     }
 
-    /// Load per-table hidden columns from UserDefaults when opening a table tab
+    func showColumn(_ columnName: String) {
+        mutateSelectedTabHiddenColumns { $0.remove(columnName) }
+    }
+
+    func toggleColumnVisibility(_ columnName: String) {
+        mutateSelectedTabHiddenColumns { hidden in
+            if hidden.contains(columnName) {
+                hidden.remove(columnName)
+            } else {
+                hidden.insert(columnName)
+            }
+        }
+    }
+
+    func showAllColumns() {
+        mutateSelectedTabHiddenColumns { $0.removeAll() }
+    }
+
+    func hideAllColumns(_ columns: [String]) {
+        mutateSelectedTabHiddenColumns { $0 = Set(columns) }
+    }
+
+    func pruneHiddenColumns(currentColumns: [String]) {
+        let currentSet = Set(currentColumns)
+        mutateSelectedTabHiddenColumns { $0 = $0.intersection(currentSet) }
+    }
+
     func restoreLastHiddenColumnsForTable(_ tableName: String) {
-        columnVisibilityManager.restoreLastHiddenColumns(for: tableName, connectionId: connectionId)
+        let restored = ColumnVisibilityPersistence.loadHiddenColumns(
+            for: tableName,
+            connectionId: connectionId
+        )
+        mutateSelectedTabHiddenColumns { $0 = restored }
     }
 
     func saveColumnVisibilityForActiveTable() {
-        guard let tab = tabManager.selectedTab,
-              tab.tabType == .table,
+        guard let tab = tabManager.selectedTab else { return }
+        persistTabHiddenColumns(tab)
+    }
+
+    func persistOutgoingTabHiddenColumns(oldIndex: Int) {
+        guard tabManager.tabs.indices.contains(oldIndex) else { return }
+        persistTabHiddenColumns(tabManager.tabs[oldIndex])
+    }
+
+    private func persistTabHiddenColumns(_ tab: QueryTab) {
+        guard tab.tabType == .table,
               let tableName = tab.tableContext.tableName,
               !tableName.isEmpty else { return }
-        columnVisibilityManager.saveLastHiddenColumns(for: tableName, connectionId: connectionId)
+        ColumnVisibilityPersistence.saveHiddenColumns(
+            tab.columnLayout.hiddenColumns,
+            for: tableName,
+            connectionId: connectionId
+        )
     }
 
-    /// Prune hidden columns that no longer exist in the current result set
-    func pruneHiddenColumns(currentColumns: [String]) {
-        columnVisibilityManager.pruneStaleColumns(currentColumns)
-    }
-
-    /// Hide a single column (routed through coordinator for centralized control)
-    func hideColumn(_ columnName: String) {
-        columnVisibilityManager.hideColumn(columnName)
+    private func mutateSelectedTabHiddenColumns(_ mutate: (inout Set<String>) -> Void) {
+        guard let index = tabManager.selectedTabIndex else { return }
+        var hidden = tabManager.tabs[index].columnLayout.hiddenColumns
+        mutate(&hidden)
+        tabManager.tabs[index].columnLayout.hiddenColumns = hidden
+        let tabId = tabManager.tabs[index].id
+        tabSessionRegistry.session(for: tabId)?.columnLayout.hiddenColumns = hidden
     }
 }

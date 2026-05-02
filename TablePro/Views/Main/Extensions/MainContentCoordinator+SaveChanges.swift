@@ -249,7 +249,7 @@ extension MainContentCoordinator {
                             let firstRemovedIndex = tabManager.tabs
                                 .firstIndex { tabIdsToRemove.contains($0.id) } ?? 0
                             for tabId in tabIdsToRemove {
-                                tableRowsStore.removeTableRows(for: tabId)
+                                tabSessionRegistry.removeTableRows(for: tabId)
                             }
                             tabManager.tabs.removeAll { tabIdsToRemove.contains($0.id) }
                             if !tabManager.tabs.isEmpty {

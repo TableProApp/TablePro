@@ -101,7 +101,7 @@ extension MainContentView {
 
     private func buildQueryResultsSummary() -> String? {
         guard let tab = currentTab else { return nil }
-        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
+        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         guard !tableRows.columns.isEmpty, !tableRows.rows.isEmpty else { return nil }
 
         let columns = tableRows.columns

@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("Cross-Window Tab Eviction")
 @MainActor
@@ -15,15 +15,12 @@ struct EvictionTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
-        let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
         let connection = TestFixtures.makeConnection()
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
             changeManager: changeManager,
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         return (coordinator, tabManager)
@@ -53,13 +50,13 @@ struct EvictionTests {
         // Add a second tab so the first becomes background (eviction skips the selected tab)
         addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "orders")
 
-        #expect(coordinator.tableRowsStore.tableRows(for: backgroundTabId).rows.count == 10)
-        #expect(coordinator.tableRowsStore.isEvicted(backgroundTabId) == false)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: backgroundTabId).rows.count == 10)
+        #expect(coordinator.tabSessionRegistry.isEvicted(backgroundTabId) == false)
 
         coordinator.evictInactiveRowData()
 
-        #expect(coordinator.tableRowsStore.isEvicted(backgroundTabId) == true)
-        #expect(coordinator.tableRowsStore.tableRows(for: backgroundTabId).rows.isEmpty)
+        #expect(coordinator.tabSessionRegistry.isEvicted(backgroundTabId) == true)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: backgroundTabId).rows.isEmpty)
     }
 
     @Test("evictInactiveRowData skips tabs with pending changes")
@@ -72,8 +69,8 @@ struct EvictionTests {
         coordinator.evictInactiveRowData()
 
         let tabId = tabManager.tabs[0].id
-        #expect(coordinator.tableRowsStore.isEvicted(tabId) == false)
-        #expect(coordinator.tableRowsStore.tableRows(for: tabId).rows.count == 10)
+        #expect(coordinator.tabSessionRegistry.isEvicted(tabId) == false)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 10)
     }
 
     @Test("evictInactiveRowData preserves column metadata after eviction")
@@ -85,9 +82,9 @@ struct EvictionTests {
 
         coordinator.evictInactiveRowData()
 
-        let rows = coordinator.tableRowsStore.tableRows(for: backgroundTabId)
+        let rows = coordinator.tabSessionRegistry.tableRows(for: backgroundTabId)
         #expect(rows.columns == ["id", "name", "email"])
-        #expect(coordinator.tableRowsStore.isEvicted(backgroundTabId) == true)
+        #expect(coordinator.tabSessionRegistry.isEvicted(backgroundTabId) == true)
     }
 
     @Test("evictInactiveRowData with no tabs is no-op")

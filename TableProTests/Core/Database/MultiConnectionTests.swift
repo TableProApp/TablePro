@@ -179,15 +179,12 @@ struct CoordinatorConnectionIsolationTests {
         let connection = TestFixtures.makeConnection(id: connId, name: "MySQL", database: "db_a", type: .mysql)
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
-        let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
             changeManager: changeManager,
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }
@@ -206,8 +203,6 @@ struct CoordinatorConnectionIsolationTests {
             connection: conn1,
             tabManager: QueryTabManager(),
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator1.teardown() }
@@ -216,8 +211,6 @@ struct CoordinatorConnectionIsolationTests {
             connection: conn2,
             tabManager: QueryTabManager(),
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator2.teardown() }
@@ -251,15 +244,12 @@ struct CoordinatorConnectionIsolationTests {
         let connection = TestFixtures.makeConnection(id: connId, name: "MySQL", database: "db_a", type: .mysql)
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
-        let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
             changeManager: changeManager,
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }

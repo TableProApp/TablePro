@@ -61,7 +61,6 @@ struct FocusedCommandActionsModifier: ViewModifier {
         rightPanelState: RightPanelState(),
         tabManager: state.tabManager,
         changeManager: state.changeManager,
-        filterStateManager: state.filterStateManager,
         toolbarState: state.toolbarState,
         coordinator: state.coordinator
     )

@@ -11,7 +11,6 @@ import AppKit
 @MainActor
 final class DataTabGridDelegate: DataGridViewDelegate {
     weak var coordinator: MainContentCoordinator?
-    var columnVisibilityManager: ColumnVisibilityManager?
 
     var selectionState: GridSelectionState?
 
@@ -92,8 +91,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridShowAllColumns() {
-        columnVisibilityManager?.showAll()
-        coordinator?.saveColumnVisibilityToTab()
+        coordinator?.showAllColumns()
     }
 
     func dataGridEmptySpaceMenu() -> NSMenu? {

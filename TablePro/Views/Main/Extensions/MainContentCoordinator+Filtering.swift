@@ -25,12 +25,12 @@ extension MainContentCoordinator {
             self.tabManager.tabs[capturedTabIndex].pagination.reset()
 
             let tab = self.tabManager.tabs[capturedTabIndex]
-            let buffer = self.tableRowsStore.tableRows(for: tab.id)
+            let buffer = self.tabSessionRegistry.tableRows(for: tab.id)
             let exclusions = self.columnExclusions(for: capturedTableName)
             let newQuery = self.queryBuilder.buildFilteredQuery(
                 tableName: capturedTableName,
                 filters: capturedFilters,
-                logicMode: self.filterStateManager.filterLogicMode,
+                logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: buffer.columns,
                 limit: tab.pagination.pageSize,
@@ -41,11 +41,8 @@ extension MainContentCoordinator {
             self.tabManager.tabs[capturedTabIndex].content.query = newQuery
 
             if !capturedFilters.isEmpty {
-                self.filterStateManager.saveLastFilters(for: capturedTableName)
+                self.saveLastFilters(for: capturedTableName)
             }
-
-            // Persist filter state to tab so it survives tab switches
-            self.tabManager.tabs[capturedTabIndex].filterState = self.filterStateManager.saveToTabState()
 
             self.runQuery()
         }
@@ -62,7 +59,7 @@ extension MainContentCoordinator {
             guard capturedTabIndex < self.tabManager.tabs.count else { return }
 
             let tab = self.tabManager.tabs[capturedTabIndex]
-            let buffer = self.tableRowsStore.tableRows(for: tab.id)
+            let buffer = self.tabSessionRegistry.tableRows(for: tab.id)
             let exclusions = self.columnExclusions(for: capturedTableName)
             let newQuery = self.queryBuilder.buildBaseQuery(
                 tableName: capturedTableName,
@@ -74,16 +71,14 @@ extension MainContentCoordinator {
             )
 
             self.tabManager.tabs[capturedTabIndex].content.query = newQuery
-            self.tabManager.tabs[capturedTabIndex].filterState = self.filterStateManager.saveToTabState()
             self.runQuery()
         }
     }
 
     func restoreFiltersForTable(_ tableName: String) {
-        filterStateManager.restoreLastFilters(for: tableName)
+        restoreLastFilters(for: tableName)
         guard let (_, tabIndex) = tabManager.selectedTabAndIndex else { return }
-        tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
-        if filterStateManager.hasAppliedFilters {
+        if tabManager.tabs[tabIndex].filterState.hasAppliedFilters {
             rebuildTableQuery(at: tabIndex)
         }
     }
@@ -93,16 +88,16 @@ extension MainContentCoordinator {
               let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        let buffer = tableRowsStore.tableRows(for: tab.id)
-        let hasFilters = filterStateManager.hasAppliedFilters
+        let buffer = tabSessionRegistry.tableRows(for: tab.id)
+        let hasFilters = tab.filterState.hasAppliedFilters
         let exclusions = columnExclusions(for: tableName)
 
         let newQuery: String
         if hasFilters {
             newQuery = queryBuilder.buildFilteredQuery(
                 tableName: tableName,
-                filters: filterStateManager.appliedFilters,
-                logicMode: filterStateManager.filterLogicMode,
+                filters: tab.filterState.appliedFilters,
+                logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: buffer.columns,
                 limit: tab.pagination.pageSize,

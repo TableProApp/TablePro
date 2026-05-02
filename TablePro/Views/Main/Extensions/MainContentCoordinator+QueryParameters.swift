@@ -6,20 +6,7 @@ private let paramLog = Logger(subsystem: "com.TablePro", category: "QueryParamet
 
 extension MainContentCoordinator {
     func detectAndReconcileParameters(sql: String, existing: [QueryParameter]) -> [QueryParameter] {
-        let detectedNames = SQLParameterExtractor.extractParameters(from: sql)
-        guard !detectedNames.isEmpty else { return [] }
-
-        let existingByName = Dictionary(
-            existing.map { ($0.name, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        return detectedNames.map { name in
-            if let existing = existingByName[name] {
-                return existing
-            }
-            return QueryParameter(name: name)
-        }
+        QueryExecutor.detectAndReconcileParameters(sql: sql, existing: existing)
     }
 
     func executeQueryWithParameters(_ sql: String, parameters: [QueryParameter]) {
@@ -91,76 +78,39 @@ extension MainContentCoordinator {
         let tabId = tabManager.tabs[index].id
 
         let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType)
-        let effectiveSQL = sql
+        let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
-        let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: effectiveSQL)
+        let needsMetadataFetch: Bool
+        if isEditable, let tableName {
+            needsMetadataFetch = !isMetadataCached(tabId: tabId, tableName: tableName)
+        } else {
+            needsMetadataFetch = false
+        }
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
 
             do {
-                var parallelSchemaTask: Task<SchemaResult, Error>?
-                var needsMetadataFetch = false
-
-                if isEditable, let tableName = tableName {
-                    let cached = isMetadataCached(tabId: tabId, tableName: tableName)
-                    needsMetadataFetch = !cached
-
-                    if needsMetadataFetch {
-                        let connId = connectionId
-                        parallelSchemaTask = Task {
-                            guard let driver = DatabaseManager.shared.driver(for: connId) else {
-                                throw DatabaseError.notConnected
-                            }
-                            async let cols = driver.fetchColumns(table: tableName)
-                            async let fks = driver.fetchForeignKeys(table: tableName)
-                            let result = try await (columnInfo: cols, fkInfo: fks)
-                            let approxCount = try? await driver.fetchApproximateRowCount(
-                                table: tableName
-                            )
-                            return (
-                                columnInfo: result.columnInfo,
-                                fkInfo: result.fkInfo,
-                                approximateRowCount: approxCount
-                            )
-                        }
-                    }
-                }
-
-                guard let queryDriver = DatabaseManager.shared.driver(for: connectionId) else {
-                    throw DatabaseError.notConnected
-                }
-                let fetchResult: QueryFetchResult
-                do {
-                    fetchResult = try await Self.fetchQueryDataParameterized(
-                        driver: queryDriver,
-                        sql: effectiveSQL,
-                        parameters: parameters,
-                        rowCap: rowCap
-                    )
-                }
-                let safeExecutionTime = fetchResult.executionTime
+                let executionResult = try await queryExecutor.executeQuery(
+                    sql: sql,
+                    parameters: parameters,
+                    rowCap: rowCap,
+                    tableName: tableName,
+                    fetchSchemaForTable: needsMetadataFetch
+                )
 
                 guard !Task.isCancelled else {
-                    parallelSchemaTask?.cancel()
-                    await resetExecutionState(tabId: tabId, executionTime: safeExecutionTime)
+                    await resetExecutionState(
+                        tabId: tabId,
+                        executionTime: executionResult.fetchResult.executionTime
+                    )
                     return
                 }
 
-                var schemaResult: SchemaResult?
-                if needsMetadataFetch {
-                    schemaResult = await awaitSchemaResult(
-                        parallelTask: parallelSchemaTask,
-                        tableName: tableName ?? ""
-                    )
-                }
-
-                let metadata = schemaResult.map { self.parseSchemaMetadata($0) }
-
                 await applyParameterizedResult(
                     tabId: tabId,
-                    fetchResult: fetchResult,
-                    schemaResult: schemaResult,
+                    fetchResult: executionResult.fetchResult,
+                    schemaResult: executionResult.schemaResult,
                     tableName: tableName,
                     isEditable: isEditable,
                     sql: sql,
@@ -170,14 +120,14 @@ extension MainContentCoordinator {
                     nativeParameters: parameters
                 )
 
-                if isEditable, let tableName = tableName {
+                if isEditable, let tableName {
                     if needsMetadataFetch {
                         launchPhase2Work(
                             tableName: tableName,
                             tabId: tabId,
                             capturedGeneration: capturedGeneration,
                             connectionType: conn.type,
-                            schemaResult: schemaResult
+                            schemaResult: executionResult.schemaResult
                         )
                     } else {
                         launchPhase2Count(
@@ -392,7 +342,7 @@ extension MainContentCoordinator {
         originalParameters: [QueryParameter],
         nativeParameters: [Any?]
     ) async {
-        let metadata = schemaResult.map { self.parseSchemaMetadata($0) }
+        let metadata = schemaResult.map { QueryExecutor.parseSchemaMetadata($0) }
 
         await MainActor.run { [weak self] in
             guard let self else { return }

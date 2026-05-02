@@ -271,7 +271,6 @@ extension MainContentView {
     func setupCommandActions() {
         let actions = MainContentCommandActions(
             coordinator: coordinator,
-            filterStateManager: filterStateManager,
             connection: connection,
             selectionState: coordinator.selectionState,
             selectedTables: Binding(

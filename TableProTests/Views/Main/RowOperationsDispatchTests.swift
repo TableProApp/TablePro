@@ -10,8 +10,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @MainActor
 private final class FakeTableViewCoordinator: TableViewCoordinating {
@@ -55,8 +55,6 @@ struct RowOperationsDispatchTests {
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         let delegate = DataTabGridDelegate()
@@ -101,7 +99,7 @@ struct RowOperationsDispatchTests {
     func physicalDeleteDispatchesDelta() {
         let f = makeFixture(rowCount: 3)
         f.coordinator.addNewRow()
-        let insertedIndex = f.coordinator.tableRowsStore.tableRows(for: f.tabId).count - 1
+        let insertedIndex = f.coordinator.tabSessionRegistry.tableRows(for: f.tabId).count - 1
         let beforeInvalidate = f.fake.invalidateCount
         let beforeDelta = f.fake.deltaCount
 

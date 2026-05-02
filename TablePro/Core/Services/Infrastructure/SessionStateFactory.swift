@@ -13,8 +13,6 @@ enum SessionStateFactory {
     struct SessionState {
         let tabManager: QueryTabManager
         let changeManager: DataChangeManager
-        let filterStateManager: FilterStateManager
-        let columnVisibilityManager: ColumnVisibilityManager
         let toolbarState: ConnectionToolbarState
         let coordinator: MainContentCoordinator
     }
@@ -57,13 +55,15 @@ enum SessionStateFactory {
         payload: EditorTabPayload?
     ) -> SessionState {
         let connectionId = connection.id
-        let tabMgr = QueryTabManager(globalTabsProvider: {
-            MainActor.assumeIsolated { MainContentCoordinator.allTabs(for: connectionId) }
-        })
+        let tabSessionRegistry = TabSessionRegistry()
+        let tabMgr = QueryTabManager(
+            globalTabsProvider: {
+                MainActor.assumeIsolated { MainContentCoordinator.allTabs(for: connectionId) }
+            },
+            tabSessionRegistry: tabSessionRegistry
+        )
         let changeMgr = DataChangeManager()
         changeMgr.databaseType = connection.type
-        let filterMgr = FilterStateManager()
-        let colVisMgr = ColumnVisibilityManager()
         let toolbarSt = ConnectionToolbarState(connection: connection)
 
         if let session = DatabaseManager.shared.session(for: connection.id) {
@@ -115,7 +115,6 @@ enum SessionStateFactory {
                             }
                             if let initialFilter = payload.initialFilterState {
                                 tabMgr.tabs[index].filterState = initialFilter
-                                filterMgr.restoreFromTabState(initialFilter)
                             }
                         }
                     } else {
@@ -157,13 +156,15 @@ enum SessionStateFactory {
             }
         }
 
+        let queryExecutor = QueryExecutor(connection: connection)
+
         let coord = MainContentCoordinator(
             connection: connection,
             tabManager: tabMgr,
             changeManager: changeMgr,
-            filterStateManager: filterMgr,
-            columnVisibilityManager: colVisMgr,
-            toolbarState: toolbarSt
+            toolbarState: toolbarSt,
+            tabSessionRegistry: tabSessionRegistry,
+            queryExecutor: queryExecutor
         )
 
         // Eagerly publish to the active-coordinator registry so concurrent
@@ -176,8 +177,6 @@ enum SessionStateFactory {
         return SessionState(
             tabManager: tabMgr,
             changeManager: changeMgr,
-            filterStateManager: filterMgr,
-            columnVisibilityManager: colVisMgr,
             toolbarState: toolbarSt,
             coordinator: coord
         )

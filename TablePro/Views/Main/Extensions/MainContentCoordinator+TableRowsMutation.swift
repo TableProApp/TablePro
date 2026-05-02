@@ -17,25 +17,25 @@ extension MainContentCoordinator {
         _ mutate: (inout TableRows) -> Delta
     ) -> Delta {
         var delta: Delta = .none
-        tableRowsStore.updateTableRows(for: tabId) { rows in
+        tabSessionRegistry.updateTableRows(for: tabId) { rows in
             delta = mutate(&rows)
         }
         return delta
     }
 
     func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID) {
-        tableRowsStore.setTableRows(tableRows, for: tabId)
+        tabSessionRegistry.setTableRows(tableRows, for: tabId)
         notifyFullReplaceIfActive(tabId: tabId)
     }
 
     func switchActiveResultSet(to resultSetId: UUID?, in tabId: UUID) {
         guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         if let outgoing = tabManager.tabs[tabIdx].display.activeResultSet {
-            outgoing.tableRows = tableRowsStore.tableRows(for: tabId)
+            outgoing.tableRows = tabSessionRegistry.tableRows(for: tabId)
         }
         tabManager.tabs[tabIdx].display.activeResultSetId = resultSetId
         if let incoming = tabManager.tabs[tabIdx].display.activeResultSet {
-            tableRowsStore.setTableRows(incoming.tableRows, for: tabId)
+            tabSessionRegistry.setTableRows(incoming.tableRows, for: tabId)
             notifyFullReplaceIfActive(tabId: tabId)
         }
     }

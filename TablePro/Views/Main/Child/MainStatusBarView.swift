@@ -31,8 +31,8 @@ struct StatusBarSnapshot: Equatable {
 
 struct MainStatusBarView: View {
     let snapshot: StatusBarSnapshot
-    let filterStateManager: FilterStateManager
-    let columnVisibilityManager: ColumnVisibilityManager
+    let filterState: TabFilterState
+    let hiddenColumns: Set<String>
     let allColumns: [String]
     let selectedRowIndices: Set<Int>
     @Binding var viewMode: ResultsViewMode
@@ -48,8 +48,19 @@ struct MainStatusBarView: View {
     let onOffsetChange: (Int) -> Void
     let onPaginationGo: () -> Void
 
+    // Column visibility callbacks
+    let onToggleColumn: (String) -> Void
+    let onShowAllColumns: () -> Void
+    let onHideAllColumns: ([String]) -> Void
+
+    // Filter visibility callback
+    let onToggleFilters: () -> Void
+
     // Truncated result callback
     var onFetchAll: (() -> Void)?
+
+    private var hasHiddenColumns: Bool { !hiddenColumns.isEmpty }
+    private var hiddenCount: Int { hiddenColumns.count }
 
     var body: some View {
         HStack {
@@ -130,12 +141,12 @@ struct MainStatusBarView: View {
                         showColumnPopover.toggle()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: columnVisibilityManager.hasHiddenColumns
+                            Image(systemName: hasHiddenColumns
                                     ? "eye.slash.circle.fill"
                                     : "eye.circle")
                             Text("Columns")
-                            if columnVisibilityManager.hasHiddenColumns {
-                                let visible = allColumns.count - columnVisibilityManager.hiddenCount
+                            if hasHiddenColumns {
+                                let visible = allColumns.count - hiddenCount
                                 Text("(\(visible)/\(allColumns.count))")
                                     .foregroundStyle(.secondary)
                             }
@@ -145,7 +156,10 @@ struct MainStatusBarView: View {
                     .popover(isPresented: $showColumnPopover) {
                         ColumnVisibilityPopover(
                             columns: allColumns,
-                            columnVisibilityManager: columnVisibilityManager
+                            hiddenColumns: hiddenColumns,
+                            onToggleColumn: onToggleColumn,
+                            onShowAll: onShowAllColumns,
+                            onHideAll: onHideAllColumns
                         )
                     }
                 }
@@ -153,16 +167,16 @@ struct MainStatusBarView: View {
                 // Filters toggle button
                 if snapshot.tabType == .table, snapshot.hasTableName {
                     Toggle(isOn: Binding(
-                        get: { filterStateManager.isVisible },
-                        set: { _ in filterStateManager.toggle() }
+                        get: { filterState.isVisible },
+                        set: { _ in onToggleFilters() }
                     )) {
                         HStack(spacing: 4) {
-                            Image(systemName: filterStateManager.hasAppliedFilters
+                            Image(systemName: filterState.hasAppliedFilters
                                     ? "line.3.horizontal.decrease.circle.fill"
                                     : "line.3.horizontal.decrease.circle")
                             Text("Filters")
-                            if filterStateManager.hasAppliedFilters {
-                                Text("(\(filterStateManager.appliedFilters.count))")
+                            if filterState.hasAppliedFilters {
+                                Text("(\(filterState.appliedFilters.count))")
                                     .foregroundStyle(.secondary)
                             }
                         }

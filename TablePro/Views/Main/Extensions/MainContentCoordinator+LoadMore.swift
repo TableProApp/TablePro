@@ -41,7 +41,7 @@ extension MainContentCoordinator {
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
-        let loadedCount = tableRowsStore.tableRows(for: tab.id).rows.count
+        let loadedCount = tabSessionRegistry.tableRows(for: tab.id).rows.count
         let totalEstimate = tab.pagination.totalRowCount
 
         let message: String

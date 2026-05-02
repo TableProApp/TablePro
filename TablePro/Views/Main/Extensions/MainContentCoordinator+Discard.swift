@@ -102,7 +102,7 @@ extension MainContentCoordinator {
         }
 
         if let tableName = tabManager.selectedTab?.tableContext.tableName {
-            filterStateManager.saveLastFilters(for: tableName)
+            saveLastFilters(for: tableName)
         }
 
         pendingTruncates.removeAll()
@@ -118,7 +118,7 @@ extension MainContentCoordinator {
 
     private func collectInsertedRowIDs(tabId: UUID, indices: Set<Int>) -> Set<RowID> {
         guard !indices.isEmpty else { return [] }
-        guard let tableRows = tableRowsStore.existingTableRows(for: tabId) else { return [] }
+        guard let tableRows = tabSessionRegistry.existingTableRows(for: tabId) else { return [] }
         var ids = Set<RowID>()
         for index in indices where index >= 0 && index < tableRows.rows.count {
             let id = tableRows.rows[index].id

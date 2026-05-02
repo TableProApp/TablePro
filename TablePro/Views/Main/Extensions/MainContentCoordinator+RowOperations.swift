@@ -8,8 +8,8 @@ extension MainContentCoordinator {
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
-        let columnDefaults = tableRowsStore.tableRows(for: tabId).columnDefaults
-        let columns = tableRowsStore.tableRows(for: tabId).columns
+        let columnDefaults = tabSessionRegistry.tableRows(for: tabId).columnDefaults
+        let columns = tabSessionRegistry.tableRows(for: tabId).columns
 
         dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
@@ -55,7 +55,7 @@ extension MainContentCoordinator {
             return result.delta
         }
 
-        let totalRows = tableRowsStore.tableRows(for: tabId).count
+        let totalRows = tabSessionRegistry.tableRows(for: tabId).count
         if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < totalRows {
             selectionState.indices = [deleteResult.nextRowToSelect]
         } else {
@@ -79,8 +79,8 @@ extension MainContentCoordinator {
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
-        let columns = tableRowsStore.tableRows(for: tabId).columns
-        guard index >= 0, index < tableRowsStore.tableRows(for: tabId).count else { return }
+        let columns = tabSessionRegistry.tableRows(for: tabId).columns
+        guard index >= 0, index < tabSessionRegistry.tableRows(for: tabId).count else { return }
 
         dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
@@ -151,7 +151,7 @@ extension MainContentCoordinator {
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
         guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        let tableRows = tableRowsStore.tableRows(for: tab.id)
+        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
             tableRows: tableRows
@@ -160,7 +160,7 @@ extension MainContentCoordinator {
 
     func copySelectedRowsWithHeaders(indices: Set<Int>) {
         guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        let tableRows = tableRowsStore.tableRows(for: tab.id)
+        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
             tableRows: tableRows,
@@ -170,7 +170,7 @@ extension MainContentCoordinator {
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
         guard let (tab, _) = tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        let tableRows = tableRowsStore.tableRows(for: tab.id)
+        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         let rows = indices.sorted().compactMap { idx -> [String?]? in
             guard idx >= 0, idx < tableRows.count else { return nil }
             return tableRows.rows[idx].values
@@ -189,7 +189,7 @@ extension MainContentCoordinator {
               tab.tabType == .table else { return }
 
         let tabId = tab.id
-        let columns = tableRowsStore.tableRows(for: tabId).columns
+        let columns = tabSessionRegistry.tableRows(for: tabId).columns
 
         var pasteResult = RowOperationsManager.PasteRowsResult(pastedRows: [], delta: .none)
         mutateActiveTableRows(for: tabId) { rows in

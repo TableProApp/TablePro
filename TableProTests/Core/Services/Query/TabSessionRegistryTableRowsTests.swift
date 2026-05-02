@@ -1,14 +1,13 @@
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
-@Suite("TableRowsStore")
+@Suite("TabSessionRegistry+TableRows")
 @MainActor
-struct TableRowsStoreTests {
-
-    @Test("tableRows(for:) creates empty TableRows on first access and returns the same on second")
+struct TabSessionRegistryTableRowsTests {
+    @Test("tableRows(for:) returns empty TableRows on first access without creating a session")
     func tableRowsCreatesAndReturnsSameValue() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId = UUID()
 
         let first = store.tableRows(for: tabId)
@@ -23,7 +22,7 @@ struct TableRowsStoreTests {
 
     @Test("setTableRows(_:for:) replaces stored value")
     func setTableRowsReplacesEntry() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId = UUID()
 
         _ = store.tableRows(for: tabId)
@@ -41,7 +40,7 @@ struct TableRowsStoreTests {
 
     @Test("existingTableRows(for:) returns nil before set and value after")
     func existingTableRowsReflectsState() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId = UUID()
 
         #expect(store.existingTableRows(for: tabId) == nil)
@@ -60,7 +59,7 @@ struct TableRowsStoreTests {
 
     @Test("removeTableRows(for:) deletes the entry and clears evicted state")
     func removeTableRowsDeletes() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId = UUID()
 
         store.setTableRows(
@@ -77,7 +76,7 @@ struct TableRowsStoreTests {
 
     @Test("evict(for:) clears rows and marks evicted while preserving columns")
     func evictMarksEvicted() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId = UUID()
         let rows = TableRows.from(
             queryRows: [["a"], ["b"]],
@@ -97,13 +96,13 @@ struct TableRowsStoreTests {
 
     @Test("evict(for:) is no-op for unknown tab")
     func evictUnknownTabIsNoOp() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         store.evict(for: UUID())
     }
 
     @Test("evictAll(except:) evicts other tabs and spares the active one")
     func evictAllSparesActive() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let activeId = UUID()
         let otherId1 = UUID()
         let otherId2 = UUID()
@@ -127,7 +126,7 @@ struct TableRowsStoreTests {
 
     @Test("evictAll(except: nil) evicts every loaded tab")
     func evictAllNoActiveEvictsAll() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let id1 = UUID()
         let id2 = UUID()
         store.setTableRows(
@@ -147,7 +146,7 @@ struct TableRowsStoreTests {
 
     @Test("evictAll(except:) skips empty tables")
     func evictAllSkipsEmpty() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId = UUID()
         store.setTableRows(TableRows(), for: tabId)
 
@@ -157,7 +156,7 @@ struct TableRowsStoreTests {
 
     @Test("setTableRows clears evicted flag")
     func setClearsEvicted() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId = UUID()
         store.setTableRows(
             TableRows.from(queryRows: [["a"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
@@ -175,7 +174,7 @@ struct TableRowsStoreTests {
 
     @Test("updateTableRows applies mutation in place")
     func updateTableRowsAppliesMutation() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId = UUID()
         store.setTableRows(
             TableRows.from(queryRows: [["a"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
@@ -190,9 +189,9 @@ struct TableRowsStoreTests {
         #expect(resolved?.value(at: 0, column: 0) == "z")
     }
 
-    @Test("closing one tab removes only its TableRows entry, leaving siblings intact")
+    @Test("removing one tab leaves siblings intact")
     func closingTabRemovesOnlyThatEntry() {
-        let store = TableRowsStore()
+        let store = TabSessionRegistry()
         let tabId1 = UUID()
         let tabId2 = UUID()
 
@@ -211,9 +210,9 @@ struct TableRowsStoreTests {
         #expect(store.existingTableRows(for: tabId2)?.rows.count == 1)
     }
 
-    @Test("tearDown() clears the store")
-    func tearDownClearsAll() {
-        let store = TableRowsStore()
+    @Test("removeAll() clears the registry")
+    func removeAllClearsAll() {
+        let store = TabSessionRegistry()
         let id1 = UUID()
         let id2 = UUID()
         store.setTableRows(
@@ -225,7 +224,7 @@ struct TableRowsStoreTests {
             for: id2
         )
 
-        store.tearDown()
+        store.removeAll()
 
         #expect(store.existingTableRows(for: id1) == nil)
         #expect(store.existingTableRows(for: id2) == nil)

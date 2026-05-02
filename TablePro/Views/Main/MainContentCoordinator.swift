@@ -85,10 +85,9 @@ final class MainContentCoordinator {
     let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
-    let filterStateManager: FilterStateManager
-    let columnVisibilityManager: ColumnVisibilityManager
     let toolbarState: ConnectionToolbarState
-    let tableRowsStore = TableRowsStore()
+    let tabSessionRegistry: TabSessionRegistry
+    let queryExecutor: QueryExecutor
 
     // MARK: - Services
 
@@ -177,32 +176,15 @@ final class MainContentCoordinator {
     /// (e.g. save-then-close). Set before calling `saveChanges`, resumed by `executeCommitStatements`.
     @ObservationIgnored internal var saveCompletionContinuation: CheckedContinuation<Bool, Never>?
 
-    /// Called during teardown to let the view layer release cached row providers and sort data.
-    @ObservationIgnored var onTeardown: (() -> Void)?
-
-    // MARK: - Window Lifecycle (Phase 2: driven by TabWindowController NSWindowDelegate)
+    // MARK: - Window Lifecycle (driven by TabWindowController NSWindowDelegate)
 
     /// Whether this coordinator's window is the key (focused) window.
     /// Updated by TabWindowController delegate methods; consumed by
     /// event handlers (e.g. sidebar table-selection navigation filter).
     @ObservationIgnored var isKeyWindow = false
 
-    /// Timestamp of the most recent resignKey. Used by `handleWindowDidBecomeKey`
-    /// to detect menu-interaction bounces (resign + become within 200ms).
-    @ObservationIgnored var lastResignKeyDate = Date.distantPast
-
     /// Eviction task scheduled in `handleWindowDidResignKey` (fires 5s later).
     @ObservationIgnored var evictionTask: Task<Void, Never>?
-
-    /// View-layer callback invoked from `handleWindowDidBecomeKey` (e.g. sync
-    /// SwiftUI-scoped sidebar selection to the current tab). Set by MainContentView
-    /// in `.onAppear`. The callback closes over view state (@Binding tables,
-    /// SharedSidebarState) that isn't available to the coordinator.
-    @ObservationIgnored var onWindowBecameKey: (() -> Void)?
-
-    /// View-layer callback invoked from `handleWindowWillClose` before teardown
-    /// (e.g. `rightPanelState.teardown()` releases SwiftUI-scoped subviewmodels).
-    @ObservationIgnored var onWindowWillClose: (() -> Void)?
 
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
@@ -309,7 +291,7 @@ final class MainContentCoordinator {
     func evictInactiveRowData() {
         let selectedId = tabManager.selectedTabId
         for tab in tabManager.tabs where tab.id != selectedId && !tab.pendingChanges.hasChanges {
-            tableRowsStore.evict(for: tab.id)
+            tabSessionRegistry.evict(for: tab.id)
         }
     }
 
@@ -333,17 +315,17 @@ final class MainContentCoordinator {
         connection: DatabaseConnection,
         tabManager: QueryTabManager,
         changeManager: DataChangeManager,
-        filterStateManager: FilterStateManager,
-        columnVisibilityManager: ColumnVisibilityManager,
-        toolbarState: ConnectionToolbarState
+        toolbarState: ConnectionToolbarState,
+        tabSessionRegistry: TabSessionRegistry? = nil,
+        queryExecutor: QueryExecutor? = nil
     ) {
         let initStart = Date()
         self.connection = connection
         self.tabManager = tabManager
         self.changeManager = changeManager
-        self.filterStateManager = filterStateManager
-        self.columnVisibilityManager = columnVisibilityManager
         self.toolbarState = toolbarState
+        self.tabSessionRegistry = tabSessionRegistry ?? TabSessionRegistry()
+        self.queryExecutor = queryExecutor ?? QueryExecutor(connection: connection)
         let dialect = PluginManager.shared.sqlDialect(for: connection.type)
         self.queryBuilder = TableQueryBuilder(
             databaseType: connection.type,
@@ -535,15 +517,12 @@ final class MainContentCoordinator {
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
 
-        onTeardown?()
-        onTeardown = nil
-
         NotificationCenter.default.post(
             name: Self.teardownNotification,
             object: connection.id
         )
 
-        tableRowsStore.tearDown()
+        tabSessionRegistry.removeAll()
         querySortCache.removeAll()
         displayFormatsCache.removeAll()
         cachedTableColumnTypes.removeAll()
@@ -557,10 +536,8 @@ final class MainContentCoordinator {
         changeManager.clearChanges()
         changeManager.pluginDriver = nil
 
-        // Release metadata and filter state
+        // Release metadata
         tableMetadata = nil
-        filterStateManager.filters.removeAll()
-        filterStateManager.appliedFilters.removeAll()
 
         SchemaProviderRegistry.shared.release(for: connection.id)
         SchemaProviderRegistry.shared.purgeUnused()
@@ -665,22 +642,6 @@ final class MainContentCoordinator {
             Self.logger.error("Failed to load table metadata: \(error.localizedDescription, privacy: .public)")
         }
     }
-
-    /// Pre-compiled regex for extracting table name from SELECT queries
-    private static let tableNameRegex = try? NSRegularExpression(
-        pattern: #"(?i)^\s*SELECT\s+.+?\s+FROM\s+(?:\[([^\]]+)\]|[`"]([^`"]+)[`"]|([\w$]+))\s*(?:WHERE|ORDER|LIMIT|GROUP|HAVING|OFFSET|FETCH|$|;)"#,
-        options: []
-    )
-
-    private static let mongoCollectionRegex = try? NSRegularExpression(
-        pattern: #"^\s*db\.(\w+)\."#,
-        options: []
-    )
-
-    private static let mongoBracketCollectionRegex = try? NSRegularExpression(
-        pattern: #"^\s*db\["([^"]+)"\]"#,
-        options: []
-    )
 
     // MARK: - Query Execution
 
@@ -922,7 +883,6 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Internal query execution (called after any confirmations)
     internal func executeQueryInternal(
         _ sql: String
     ) {
@@ -941,8 +901,6 @@ final class MainContentCoordinator {
         queryGeneration += 1
         let capturedGeneration = queryGeneration
 
-        // Batch mutations into a single array write to avoid multiple @Published
-        // notifications — each notification triggers a full SwiftUI update cycle.
         var tab = tabManager.tabs[index]
         tab.execution.isExecuting = true
         tab.execution.executionTime = nil
@@ -960,81 +918,35 @@ final class MainContentCoordinator {
         let tabId = tabManager.tabs[index].id
 
         let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType)
-        let effectiveSQL = sql
+        let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
-        let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: effectiveSQL)
+        let needsMetadataFetch: Bool
+        if isEditable, let tableName {
+            needsMetadataFetch = !isMetadataCached(tabId: tabId, tableName: tableName)
+        } else {
+            needsMetadataFetch = false
+        }
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
 
             do {
-                // Pre-check metadata cache before starting any queries.
-                var parallelSchemaTask: Task<SchemaResult, Error>?
-                var needsMetadataFetch = false
-
-                if isEditable, let tableName = tableName {
-                    let cached = isMetadataCached(tabId: tabId, tableName: tableName)
-                    needsMetadataFetch = !cached
-
-                    // Metadata queries run on the main driver. They serialize behind any
-                    // in-flight query at the C-level DispatchQueue and execute immediately after.
-                    if needsMetadataFetch {
-                        let connId = connectionId
-                        // Note: Schema fetch operations are not tracked by ConnectionHealthMonitor.queriesInFlight.
-                        // This is acceptable because the health monitor checks session.isConnected before pinging,
-                        // and schema fetches are short-lived.
-                        parallelSchemaTask = Task {
-                            guard let driver = DatabaseManager.shared.driver(for: connId) else {
-                                throw DatabaseError.notConnected
-                            }
-                            async let cols = driver.fetchColumns(table: tableName)
-                            async let fks = driver.fetchForeignKeys(table: tableName)
-                            let result = try await (columnInfo: cols, fkInfo: fks)
-                            let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
-                            return (columnInfo: result.columnInfo, fkInfo: result.fkInfo, approximateRowCount: approxCount)
-                        }
-                    }
-                }
-
-                // Main data query (on primary driver — runs concurrently with metadata)
-                guard let queryDriver = DatabaseManager.shared.driver(for: connectionId) else {
-                    throw DatabaseError.notConnected
-                }
-                let fetchResult: QueryFetchResult
-                do {
-                    fetchResult = try await Self.fetchQueryData(
-                        driver: queryDriver,
-                        sql: effectiveSQL,
-                        rowCap: rowCap
-                    )
-                }
-                let safeColumns = fetchResult.columns
-                let safeColumnTypes = fetchResult.columnTypes
-                let safeRows = fetchResult.rows
-                let safeExecutionTime = fetchResult.executionTime
-                let safeRowsAffected = fetchResult.rowsAffected
-                let safeStatusMessage = fetchResult.statusMessage
-                let isTruncated = fetchResult.isTruncated
+                let executionResult = try await queryExecutor.executeQuery(
+                    sql: sql,
+                    parameters: nil,
+                    rowCap: rowCap,
+                    tableName: tableName,
+                    fetchSchemaForTable: needsMetadataFetch
+                )
 
                 guard !Task.isCancelled else {
-                    parallelSchemaTask?.cancel()
-                    await resetExecutionState(tabId: tabId, executionTime: safeExecutionTime)
+                    await resetExecutionState(
+                        tabId: tabId,
+                        executionTime: executionResult.fetchResult.executionTime
+                    )
                     return
                 }
 
-                // Await schema result before Phase 1 so data + FK arrows appear together
-                var schemaResult: SchemaResult?
-                if needsMetadataFetch {
-                    schemaResult = await awaitSchemaResult(
-                        parallelTask: parallelSchemaTask,
-                        tableName: tableName ?? ""
-                    )
-                }
-
-                // Parse schema metadata if available
-                let metadata = schemaResult.map { self.parseSchemaMetadata($0) }
-
-                // Phase 1: Display data rows + FK arrows in a single MainActor update.
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     currentQueryTask = nil
@@ -1042,9 +954,8 @@ final class MainContentCoordinator {
                         self.clearClickHouseProgress()
                     }
                     toolbarState.setExecuting(false)
-                    toolbarState.lastQueryDuration = safeExecutionTime
+                    toolbarState.lastQueryDuration = executionResult.fetchResult.executionTime
 
-                    // Always reset isExecuting even if generation is stale
                     if capturedGeneration != queryGeneration || Task.isCancelled {
                         if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                             tabManager.tabs[idx].execution.isExecuting = false
@@ -1054,34 +965,32 @@ final class MainContentCoordinator {
 
                     applyPhase1Result(
                         tabId: tabId,
-                        columns: safeColumns,
-                        columnTypes: safeColumnTypes,
-                        rows: safeRows,
-                        executionTime: safeExecutionTime,
-                        rowsAffected: safeRowsAffected,
-                        statusMessage: safeStatusMessage,
+                        columns: executionResult.fetchResult.columns,
+                        columnTypes: executionResult.fetchResult.columnTypes,
+                        rows: executionResult.fetchResult.rows,
+                        executionTime: executionResult.fetchResult.executionTime,
+                        rowsAffected: executionResult.fetchResult.rowsAffected,
+                        statusMessage: executionResult.fetchResult.statusMessage,
                         tableName: tableName,
                         isEditable: isEditable,
-                        metadata: metadata,
-                        hasSchema: schemaResult != nil,
+                        metadata: executionResult.parsedMetadata,
+                        hasSchema: executionResult.schemaResult != nil,
                         sql: sql,
                         connection: conn,
-                        isTruncated: isTruncated
+                        isTruncated: executionResult.fetchResult.isTruncated
                     )
                 }
 
-                // Phase 2: Background exact COUNT + enum values.
-                if isEditable, let tableName = tableName {
+                if isEditable, let tableName {
                     if needsMetadataFetch {
                         launchPhase2Work(
                             tableName: tableName,
                             tabId: tabId,
                             capturedGeneration: capturedGeneration,
                             connectionType: conn.type,
-                            schemaResult: schemaResult
+                            schemaResult: executionResult.schemaResult
                         )
                     } else {
-                        // Metadata cached but still need exact COUNT for pagination
                         launchPhase2Count(
                             tableName: tableName,
                             tabId: tabId,
@@ -1098,9 +1007,6 @@ final class MainContentCoordinator {
                     }
                 }
             } catch {
-                // Always reset isExecuting even if generation is stale —
-                // skipping this leaves the tab permanently stuck in "executing"
-                // state, requiring a reconnect to recover.
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
@@ -1184,7 +1090,7 @@ final class MainContentCoordinator {
         if result.isEmpty, let createSQL = try? await driver.fetchTableDDL(table: tableName) {
             let columns = try? await driver.fetchColumns(table: tableName)
             for col in columns ?? [] {
-                if let values = Self.parseSQLiteCheckConstraintValues(
+                if let values = QuerySqlParser.parseSQLiteCheckConstraintValues(
                     createSQL: createSQL, columnName: col.name
                 ) {
                     result[col.name] = values
@@ -1195,68 +1101,16 @@ final class MainContentCoordinator {
         return result
     }
 
-    private static func parseSQLiteCheckConstraintValues(createSQL: String, columnName: String) -> [String]? {
-        let escapedName = NSRegularExpression.escapedPattern(for: columnName)
-        let pattern = "CHECK\\s*\\(\\s*\"?\(escapedName)\"?\\s+IN\\s*\\(([^)]+)\\)\\s*\\)"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return nil
-        }
-        let nsString = createSQL as NSString
-        guard let match = regex.firstMatch(
-            in: createSQL,
-            range: NSRange(location: 0, length: nsString.length)
-        ), match.numberOfRanges > 1 else {
-            return nil
-        }
-        let valuesString = nsString.substring(with: match.range(at: 1))
-        return ColumnType.parseEnumValues(from: "ENUM(\(valuesString))")
-    }
-
     // MARK: - SQL Helpers
 
     static func stripTrailingOrderBy(from sql: String) -> String {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        let nsString = trimmed as NSString
-        let pattern = "\\s+ORDER\\s+BY\\s+(?![^(]*\\))[^)]*$"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return trimmed
-        }
-        let range = NSRange(location: 0, length: nsString.length)
-        return regex.stringByReplacingMatches(in: trimmed, range: range, withTemplate: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        QuerySqlParser.stripTrailingOrderBy(from: sql)
     }
 
     // MARK: - SQL Parsing
 
     func extractTableName(from sql: String) -> String? {
-        let nsRange = NSRange(sql.startIndex..., in: sql)
-
-        // SQL: SELECT ... FROM tableName  (group 1 = bracket-quoted, group 2 = plain/backtick/double-quote)
-        if let regex = Self.tableNameRegex,
-           let match = regex.firstMatch(in: sql, options: [], range: nsRange) {
-            for group in 1...3 {
-                let r = match.range(at: group)
-                if r.location != NSNotFound, let range = Range(r, in: sql) {
-                    return String(sql[range])
-                }
-            }
-        }
-
-        // MQL bracket notation: db["collectionName"].find(...)
-        if let regex = Self.mongoBracketCollectionRegex,
-           let match = regex.firstMatch(in: sql, options: [], range: nsRange),
-           let range = Range(match.range(at: 1), in: sql) {
-            return String(sql[range])
-        }
-
-        // MQL dot notation: db.collectionName.find(...)
-        if let regex = Self.mongoCollectionRegex,
-           let match = regex.firstMatch(in: sql, options: [], range: nsRange),
-           let range = Range(match.range(at: 1), in: sql) {
-            return String(sql[range])
-        }
-
-        return nil
+        QuerySqlParser.extractTableName(from: sql)
     }
 
     // MARK: - Sorting
@@ -1264,7 +1118,7 @@ final class MainContentCoordinator {
     func handleSort(columnIndex: Int, ascending: Bool, isMultiSort: Bool = false) {
         guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
 
-        let tableRows = tableRowsStore.tableRows(for: tab.id)
+        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
 
         var currentSort = tab.sortState

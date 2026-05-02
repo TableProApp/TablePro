@@ -10,14 +10,21 @@ import AppKit
 import CodeEditSourceEditor
 import SwiftUI
 
+/// Identity for the visibility-scoped lazy-load `.task(id:)` modifier on
+/// `MainEditorContentView`. Changes to either field cancel the previous
+/// task and start a new one — exactly the rapid-switch coalescing semantic
+/// we want for Cmd+Number tab navigation.
+private struct TabLoadKey: Hashable {
+    let tabId: UUID?
+    let loadEpoch: Int
+}
+
 struct MainEditorContentView: View {
     // MARK: - Dependencies
 
     var tabManager: QueryTabManager
     var coordinator: MainContentCoordinator
     var changeManager: DataChangeManager
-    var filterStateManager: FilterStateManager
-    var columnVisibilityManager: ColumnVisibilityManager
     let connection: DatabaseConnection
     let windowId: UUID
     let connectionId: UUID
@@ -119,10 +126,16 @@ struct MainEditorContentView: View {
             wireDataTabDelegateStableRefs()
             refreshDataTabDelegateMutableRefs()
             coordinator.dataTabDelegate = dataTabDelegate
-            coordinator.onTeardown = { [self] in
-                cachedChangeManager = nil
-                coordinator.dataTabDelegate = nil
-            }
+        }
+        .onDisappear {
+            cachedChangeManager = nil
+            coordinator.dataTabDelegate = nil
+        }
+        .task(id: TabLoadKey(
+            tabId: tabManager.selectedTabId,
+            loadEpoch: tabManager.selectedTab?.loadEpoch ?? 0
+        )) {
+            coordinator.lazyLoadCurrentTabIfNeeded()
         }
         .onChange(of: selectionState.indices) { _, newIndices in
             onSelectionChange(newIndices)
@@ -143,7 +156,6 @@ struct MainEditorContentView: View {
 
     private func wireDataTabDelegateStableRefs() {
         dataTabDelegate.coordinator = coordinator
-        dataTabDelegate.columnVisibilityManager = columnVisibilityManager
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
         dataTabDelegate.onSort = onSort
@@ -430,9 +442,9 @@ struct MainEditorContentView: View {
                             )
                         }
                     } else {
-                        if filterStateManager.isVisible && tab.tabType == .table {
+                        if tab.filterState.isVisible && tab.tabType == .table {
                             FilterPanelView(
-                                filterState: filterStateManager,
+                                coordinator: coordinator,
                                 columns: resolvedRows.columns,
                                 primaryKeyColumn: changeManager.primaryKeyColumn,
                                 databaseType: connection.type,
@@ -444,7 +456,7 @@ struct MainEditorContentView: View {
 
                         if tab.tabType == .query && !resolvedRows.columns.isEmpty
                             && resolvedRows.rows.isEmpty && tab.execution.lastExecutedAt != nil
-                            && !tab.execution.isExecuting && !filterStateManager.hasAppliedFilters
+                            && !tab.execution.isExecuting && !tab.filterState.hasAppliedFilters
                         {
                             emptyResultView(executionTime: tab.display.activeResultSet?.executionTime ?? tab.execution.executionTime)
                         } else {
@@ -499,7 +511,7 @@ struct MainEditorContentView: View {
         let tabId = tab.id
         DataGridView(
             tableRowsProvider: { [coordinator] in
-                coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
+                coordinator.tabSessionRegistry.existingTableRows(for: tabId) ?? TableRows()
             },
             tableRowsMutator: { [coordinator] mutate in
                 coordinator.mutateActiveTableRows(for: tabId) { rows in
@@ -516,7 +528,7 @@ struct MainEditorContentView: View {
                 primaryKeyColumns: changeManager.primaryKeyColumns,
                 tabType: tab.tabType,
                 showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
-                hiddenColumns: columnVisibilityManager.hiddenColumns
+                hiddenColumns: tab.columnLayout.hiddenColumns
             ),
             sortedIDs: sortedIDsForTab(tab),
             displayFormats: displayFormats(for: tab),
@@ -532,7 +544,7 @@ struct MainEditorContentView: View {
     }
 
     private func resolvedTableRows(for tab: QueryTab) -> TableRows {
-        coordinator.tableRowsStore.existingTableRows(for: tab.id) ?? TableRows()
+        coordinator.tabSessionRegistry.existingTableRows(for: tab.id) ?? TableRows()
     }
 
     private func displayFormats(for tab: QueryTab) -> [ValueDisplayFormat?] {
@@ -548,7 +560,7 @@ struct MainEditorContentView: View {
             return cached.formats
         }
 
-        let tableRows = coordinator.tableRowsStore.existingTableRows(for: tab.id)
+        let tableRows = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)
         let columns = tableRows?.columns ?? []
         let columnTypes = tableRows?.columnTypes ?? []
         guard !columns.isEmpty else { return [] }
@@ -694,8 +706,8 @@ struct MainEditorContentView: View {
         let resolvedRows = resolvedTableRows(for: tab)
         return MainStatusBarView(
             snapshot: StatusBarSnapshot(tab: tab, tableRows: resolvedRows),
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: columnVisibilityManager,
+            filterState: tab.filterState,
+            hiddenColumns: tab.columnLayout.hiddenColumns,
             allColumns: resolvedRows.columns,
             selectedRowIndices: selectionState.indices,
             viewMode: resultsViewModeBinding(for: tab),
@@ -706,6 +718,10 @@ struct MainEditorContentView: View {
             onLimitChange: onLimitChange,
             onOffsetChange: onOffsetChange,
             onPaginationGo: onPaginationGo,
+            onToggleColumn: { coordinator.toggleColumnVisibility($0) },
+            onShowAllColumns: { coordinator.showAllColumns() },
+            onHideAllColumns: { coordinator.hideAllColumns($0) },
+            onToggleFilters: { coordinator.toggleFilterPanel() },
             onFetchAll: { coordinator.fetchAllRows() }
         )
     }

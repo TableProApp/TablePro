@@ -16,6 +16,7 @@ final class QueryTabManager {
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
             }
+            syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
         }
     }
 
@@ -27,9 +28,28 @@ final class QueryTabManager {
     @ObservationIgnored private var _tabIndexMapDirty = true
 
     @ObservationIgnored private let globalTabsProvider: () -> [QueryTab]
+    @ObservationIgnored private weak var tabSessionRegistry: TabSessionRegistry?
 
-    init(globalTabsProvider: @escaping () -> [QueryTab] = { [] }) {
+    init(
+        globalTabsProvider: @escaping () -> [QueryTab] = { [] },
+        tabSessionRegistry: TabSessionRegistry? = nil
+    ) {
         self.globalTabsProvider = globalTabsProvider
+        self.tabSessionRegistry = tabSessionRegistry
+    }
+
+    private func syncTabSessionRegistry(oldTabs: [QueryTab], newTabs: [QueryTab]) {
+        guard let registry = tabSessionRegistry else { return }
+        let oldIds = Set(oldTabs.map(\.id))
+        let newIds = Set(newTabs.map(\.id))
+        for removedId in oldIds.subtracting(newIds) {
+            registry.unregister(id: removedId)
+        }
+        for addedTab in newTabs where !oldIds.contains(addedTab.id) {
+            if registry.session(for: addedTab.id) == nil {
+                registry.register(TabSession(queryTab: addedTab))
+            }
+        }
     }
 
     private func rebuildTabIndexMapIfNeeded() {
