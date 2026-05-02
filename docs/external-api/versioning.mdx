@@ -7,25 +7,25 @@ description: Stability policy for the URL scheme, MCP tools, and resource catalo
 
 The External API follows TablePro's semver. The contract is the URL scheme, the MCP tool catalog, the resource list, and the pairing flow.
 
-The MCP server speaks three versions of the [Model Context Protocol spec](https://modelcontextprotocol.io): `2025-03-26`, `2025-06-18`, and `2025-11-25`. On `initialize`, the server echoes whichever version the client requested if it matches one of these; otherwise it returns `2025-11-25` (the latest supported) and the client decides whether to proceed. The protocol version is independent of TablePro's app version.
+The MCP server accepts three versions from the [MCP spec](https://modelcontextprotocol.io): `2025-03-26`, `2025-06-18`, and `2025-11-25`. On `initialize` the server echoes the version the client asked for. If the client asks for something else, the server returns `2025-11-25` and the client decides whether to use it.
 
-### Capabilities advertised
+### Capabilities
 
-The server advertises only what it actually implements:
+The server reports these capabilities. Anything not listed here is not supported.
 
-- `tools.listChanged: false` — the tool catalog is static across a session
-- `resources.listChanged: false`, `resources.subscribe: false` — resources are static; clients should poll
-- `prompts.listChanged: false` — no prompts yet
-- `logging` — accepts `logging/setLevel`
-- `completions` — accepts `completion/complete` (returns empty list today)
+- `tools.listChanged: false`. The tool list does not change during a session.
+- `resources.listChanged: false`, `resources.subscribe: false`. Resources are static. Clients that need fresh data should call `resources/read` again.
+- `prompts.listChanged: false`. No prompts yet.
+- `logging`. Accepts `logging/setLevel`.
+- `completions`. Accepts `completion/complete`. Returns an empty list today.
 
-The server does not advertise the `elicitation` capability — it never initiates client-side prompts.
+There is no `elicitation` capability. The server does not ask clients for input.
 
-### 2025-11-25 features
+### What changed in 2025-11-25
 
-- **Structured tool output**: `tools/call` results include both a `content[]` text representation (for older clients) and a typed `structuredContent` field (for clients that prefer the structured shape). Tools that emit structured data: `list_*`, `describe_table`, `get_table_ddl`, `get_connection_status`, `list_recent_tabs`, `search_query_history`, `execute_query`, `confirm_destructive_operation`.
-- **Tool annotations**: `tools/list` includes `annotations` per tool. `readOnlyHint` and `idempotentHint` for read tools, `destructiveHint` for `confirm_destructive_operation`, `openWorldHint` for `execute_query` and `export_data`. Clients can use these to gate tool invocations behind user approval.
-- **Server `title`**: `serverInfo` includes a `title` field (`"TablePro"`) alongside `name` and `version`.
+- `tools/call` results now include `structuredContent` next to `content[]`. Older clients keep reading the text content. Newer clients can read the typed object directly. Tools that return data use both: `list_*`, `describe_table`, `get_table_ddl`, `get_connection_status`, `list_recent_tabs`, `search_query_history`, `execute_query`, `confirm_destructive_operation`.
+- `tools/list` returns annotations per tool. `readOnlyHint` and `idempotentHint` mark read tools. `destructiveHint` marks `confirm_destructive_operation`. `openWorldHint` marks `execute_query` and `export_data`.
+- `serverInfo` includes `title: "TablePro"`.
 
 ## Stability rules
 
