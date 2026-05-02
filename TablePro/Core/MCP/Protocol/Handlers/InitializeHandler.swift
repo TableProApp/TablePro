@@ -14,6 +14,14 @@ public struct InitializeHandler: MCPMethodHandler {
     public init() {}
 
     public func handle(params: JsonValue?, context: MCPRequestContext) async throws -> JsonRpcMessage {
+        let sessionState = await context.session.state
+        if case .ready = sessionState {
+            throw MCPProtocolError.invalidRequest(detail: "Session already initialized")
+        }
+        if await context.session.clientInfo != nil {
+            throw MCPProtocolError.invalidRequest(detail: "initialize already received for this session")
+        }
+
         let requestedVersion = params?["protocolVersion"]?.stringValue
         let negotiatedVersion = Self.negotiate(requestedVersion: requestedVersion)
         guard let protocolVersion = negotiatedVersion else {

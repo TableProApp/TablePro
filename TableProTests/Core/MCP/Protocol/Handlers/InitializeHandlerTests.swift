@@ -94,6 +94,40 @@ final class InitializeHandlerTests: XCTestCase {
         XCTAssertNil(info?.version)
     }
 
+    func testRejectsRepeatedInitializeOnSameSession() async throws {
+        let context = try await makeContext()
+        let handler = InitializeHandler()
+        let params: JsonValue = .object([
+            "protocolVersion": .string("2025-03-26"),
+            "clientInfo": .object(["name": .string("first")])
+        ])
+
+        _ = try await handler.handle(params: params, context: context)
+
+        do {
+            _ = try await handler.handle(params: params, context: context)
+            XCTFail("Expected handler to throw on second initialize")
+        } catch let error as MCPProtocolError {
+            XCTAssertEqual(error.code, JsonRpcErrorCode.invalidRequest)
+        }
+    }
+
+    func testRejectsUnsupportedProtocolVersion() async throws {
+        let context = try await makeContext()
+        let handler = InitializeHandler()
+        let params: JsonValue = .object([
+            "protocolVersion": .string("1999-01-01"),
+            "clientInfo": .object(["name": .string("vintage")])
+        ])
+
+        do {
+            _ = try await handler.handle(params: params, context: context)
+            XCTFail("Expected handler to throw on unsupported protocolVersion")
+        } catch let error as MCPProtocolError {
+            XCTAssertEqual(error.code, JsonRpcErrorCode.invalidRequest)
+        }
+    }
+
     func testMissingProtocolVersionFallsBackToSupported() async throws {
         let context = try await makeContext()
         let handler = InitializeHandler()
