@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- MCP: complete rewrite of the server, bridge, and protocol layer for spec compliance and reliability. Non-2xx responses now emit JSON-RPC error envelopes (the bridge previously forwarded plain `{"error":"..."}` bodies, which broke Claude Desktop's stdio parser when sessions expired). The stdio bridge no longer polls `availableData` for stdin (which silently exited mid-session) and uses incremental SSE parsing instead of buffering full responses. Idle session timeout raised from 5 to 15 minutes. Rate limiter now keys on `(client_address, principal_fingerprint)` instead of IP only, fixing a localhost auth-DoS surface. Streaming progress notifications via `notifications/progress` are now supported for long-running tool calls.
+### Added
+- MCP: streaming progress notifications. Long-running tool calls (e.g. `execute_query`) now emit `notifications/progress` events to clients that pass a `_meta.progressToken` in their request.
 
 ### Fixed
 - MCP: stale `Mcp-Session-Id` after idle timeout now produces a JSON-RPC `-32001 "Session not found"` envelope with HTTP 404, matching the spec and letting clients re-initialize cleanly. Previously the bridge forwarded a plain `{"error":"Session not found"}` body that Claude Desktop's parser rejected, hanging the request until a 4-minute client-side timeout fired.
+- MCP: stdio bridge no longer exits silently when stdin is briefly empty (was reading via `availableData`, which can't tell EOF from "no bytes right now"). Now uses `FileHandle.bytes` AsyncBytes.
+- MCP: SSE responses now stream incrementally instead of buffering the entire body before delivering events.
+- MCP: localhost auth-DoS surface closed. The rate limiter now keys on `(client_address, principal_fingerprint)` so failed attempts from one bridge can't lock out another.
+- MCP: in-app "Setup for Claude Desktop / Cursor" snippets now use the stdio command form pointing at the bundled `tablepro-mcp` binary. The previous `"url"` form was rejected by Claude Desktop entirely.
+
+### Changed
+- MCP: idle session timeout raised from 5 to 15 minutes.
+- MCP: complete internal rewrite of the server, stdio bridge, and protocol dispatcher for spec compliance. Public API of `MCPServerManager` and the on-disk handshake format are unchanged; clients do not need to re-pair.
 
 ## [0.37.0] - 2026-05-01
 

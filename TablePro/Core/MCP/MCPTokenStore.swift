@@ -269,8 +269,10 @@ actor MCPTokenStore {
             return
         }
 
+        var migratedFromLegacyFormat = false
         do {
             let data = try Data(contentsOf: storageUrl)
+            migratedFromLegacyFormat = data.contains(Self.legacyConnectionAccessKey)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             tokens = try decoder.decode([MCPAuthToken].self, from: data)
@@ -284,8 +286,16 @@ actor MCPTokenStore {
             tokens.removeAll { $0.name == Self.stdioBridgeTokenName }
             save()
             Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
+            return
+        }
+
+        if migratedFromLegacyFormat {
+            save()
+            Self.logger.info("Migrated MCP token file from allowedConnectionIds to connectionAccess")
         }
     }
+
+    private static let legacyConnectionAccessKey = Data("allowedConnectionIds".utf8)
 
     private func saveIfCooldownElapsed() {
         let now = ContinuousClock.now
