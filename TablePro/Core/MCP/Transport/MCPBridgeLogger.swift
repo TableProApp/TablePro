@@ -34,11 +34,9 @@ public struct MCPOSBridgeLogger: MCPBridgeLogger {
 }
 
 public struct MCPStderrBridgeLogger: MCPBridgeLogger {
-    private let writer: StderrWriter
+    private static let lock = NSLock()
 
-    public init() {
-        writer = StderrWriter()
-    }
+    public init() {}
 
     public func log(_ level: MCPBridgeLogLevel, _ message: String) {
         let prefix: String
@@ -49,10 +47,10 @@ public struct MCPStderrBridgeLogger: MCPBridgeLogger {
         case .error: prefix = "[error] "
         }
         let payload = prefix + message + "\n"
-        let target = writer
-        Task {
-            await target.write(payload)
-        }
+        guard let data = payload.data(using: .utf8) else { return }
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        FileHandle.standardError.write(data)
     }
 }
 
@@ -70,15 +68,3 @@ public struct MCPCompositeBridgeLogger: MCPBridgeLogger {
     }
 }
 
-private actor StderrWriter {
-    private let handle: FileHandle
-
-    init(handle: FileHandle = .standardError) {
-        self.handle = handle
-    }
-
-    func write(_ string: String) {
-        guard let data = string.data(using: .utf8) else { return }
-        handle.write(data)
-    }
-}
