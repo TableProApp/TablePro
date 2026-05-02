@@ -289,6 +289,26 @@ struct MCPTokenStoreTests {
         #expect(revokedToken.isActive == false)
     }
 
+    @Test("revoke fires registered revocation observers with token id")
+    func revokeNotifiesObservers() async {
+        let store = makeStore()
+        let result = await store.generate(name: "observed", permissions: .readOnly)
+
+        let receivedBox = Lock(value: [String]())
+        let observed = receivedBox
+        await store.addRevocationObserver { tokenIdString in
+            await observed.append(tokenIdString)
+        }
+
+        await store.revoke(tokenId: result.token.id)
+        try? await Task.sleep(for: .milliseconds(50))
+        await store.delete(tokenId: result.token.id)
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let received = await receivedBox.snapshot()
+        #expect(received.contains(result.token.id.uuidString))
+    }
+
     @Test("delete removes token from list")
     func deleteRemovesTokenFromList() async {
         let store = makeStore()
@@ -369,5 +389,21 @@ struct MCPTokenStoreTests {
         await store.delete(tokenId: result2.token.id)
 
         #expect(result1.plaintext != result2.plaintext)
+    }
+}
+
+private actor Lock<Value: Sendable>: Sendable {
+    private var value: Value
+
+    init(value: Value) {
+        self.value = value
+    }
+
+    func append<T>(_ element: T) where Value == [T] {
+        value.append(element)
+    }
+
+    func snapshot() -> Value {
+        value
     }
 }

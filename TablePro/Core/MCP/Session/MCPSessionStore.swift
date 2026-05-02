@@ -62,6 +62,17 @@ public actor MCPSessionStore {
         Array(sessions.values)
     }
 
+    public func sessionIds(forPrincipalTokenId tokenId: UUID) async -> [MCPSessionId] {
+        var matching: [MCPSessionId] = []
+        for (sessionId, session) in sessions {
+            let bound = await session.principalTokenId
+            if bound == tokenId {
+                matching.append(sessionId)
+            }
+        }
+        return matching
+    }
+
     public var events: AsyncStream<MCPSessionEvent> {
         let (stream, continuation) = AsyncStream<MCPSessionEvent>.makeStream(
             bufferingPolicy: .bufferingNewest(64)

@@ -43,6 +43,10 @@ public actor MCPProtocolDispatcher {
         await inflight.cancel(requestId: requestId, sessionId: sessionId)
     }
 
+    public func cancelInflight(matchingTokenId tokenId: UUID) async -> [MCPSessionId] {
+        await inflight.cancelAll(matchingTokenId: tokenId)
+    }
+
     private func handleRequest(_ request: JsonRpcRequest, exchange: MCPInboundExchange) async {
         guard let handler = handlers[request.method] else {
             await respondError(
@@ -90,9 +94,15 @@ public actor MCPProtocolDispatcher {
         }
 
         await session.touch(now: await clock.now())
+        await session.bindPrincipal(tokenId: principal.tokenId)
 
         let token = MCPCancellationToken()
-        await inflight.register(requestId: request.id, sessionId: session.id, token: token)
+        await inflight.register(
+            requestId: request.id,
+            sessionId: session.id,
+            token: token,
+            tokenId: principal.tokenId
+        )
 
         let progressToken = MCPProgressEmitter.extractProgressToken(from: request.params)
         let emitter = MCPProgressEmitter(

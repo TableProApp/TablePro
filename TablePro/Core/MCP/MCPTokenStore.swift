@@ -153,11 +153,24 @@ actor MCPTokenStore {
     private var lastSavedAt: ContinuousClock.Instant = .now
     private static let saveCooldown: Duration = .seconds(60)
 
+    private var revocationObservers: [UUID: @Sendable (String) async -> Void] = [:]
+
     init() {
         let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         let directory = appSupportUrl.appendingPathComponent("TablePro")
         self.storageUrl = directory.appendingPathComponent("mcp-tokens.json")
+    }
+
+    @discardableResult
+    func addRevocationObserver(_ handler: @escaping @Sendable (String) async -> Void) -> UUID {
+        let id = UUID()
+        revocationObservers[id] = handler
+        return id
+    }
+
+    func removeRevocationObserver(_ id: UUID) {
+        revocationObservers.removeValue(forKey: id)
     }
 
     func generate(
@@ -226,6 +239,7 @@ actor MCPTokenStore {
 
         tokens[index].isActive = false
         save()
+        notifyRevocationObservers(tokenId: tokenId)
 
         let revokedName = tokens[index].name
         Self.logger.info("Revoked MCP token '\(revokedName, privacy: .public)'")
@@ -241,8 +255,17 @@ actor MCPTokenStore {
         let name = tokens[index].name
         tokens.remove(at: index)
         save()
+        notifyRevocationObservers(tokenId: tokenId)
 
         Self.logger.info("Deleted MCP token '\(name, privacy: .public)'")
+    }
+
+    private func notifyRevocationObservers(tokenId: UUID) {
+        let observers = Array(revocationObservers.values)
+        let key = tokenId.uuidString
+        for observer in observers {
+            Task { await observer(key) }
+        }
     }
 
     func list() -> [MCPAuthToken] {

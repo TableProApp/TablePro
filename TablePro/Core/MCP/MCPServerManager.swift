@@ -41,6 +41,7 @@ final class MCPServerManager {
     private var bridgeTokenId: UUID?
     private var internalBridgeToken: String?
     private var serverGeneration: Int = 0
+    private var revocationObserverId: UUID?
 
     var isRunning: Bool {
         if case .running = state { return true } else { return false }
@@ -136,6 +137,12 @@ final class MCPServerManager {
         startDispatchLoop(transport: newTransport, dispatcher: newDispatcher, generation: generation)
         startStateLoop(transport: newTransport, generation: generation)
         startSessionEventsLoop(sessionStore: newSessionStore, generation: generation)
+        await registerRevocationObserver(
+            tokenStore: newTokenStore,
+            sessionStore: newSessionStore,
+            dispatcher: newDispatcher,
+            generation: generation
+        )
 
         do {
             try await newTransport.start()
@@ -250,6 +257,45 @@ final class MCPServerManager {
         serverGeneration == generation
     }
 
+    private func registerRevocationObserver(
+        tokenStore: MCPTokenStore,
+        sessionStore: MCPSessionStore,
+        dispatcher: MCPProtocolDispatcher,
+        generation: Int
+    ) async {
+        let observerId = await tokenStore.addRevocationObserver { [weak self] tokenIdString in
+            guard let tokenId = UUID(uuidString: tokenIdString) else { return }
+            guard let self else { return }
+            await self.handleTokenRevoked(
+                tokenId: tokenId,
+                sessionStore: sessionStore,
+                dispatcher: dispatcher,
+                generation: generation
+            )
+        }
+        revocationObserverId = observerId
+    }
+
+    private func handleTokenRevoked(
+        tokenId: UUID,
+        sessionStore: MCPSessionStore,
+        dispatcher: MCPProtocolDispatcher,
+        generation: Int
+    ) async {
+        guard isCurrentGeneration(generation) else { return }
+        let cancelledSessions = await dispatcher.cancelInflight(matchingTokenId: tokenId)
+        let extraSessions = await sessionStore.sessionIds(forPrincipalTokenId: tokenId)
+        let toTerminate = Set(cancelledSessions + extraSessions)
+        for sessionId in toTerminate {
+            await sessionStore.terminate(id: sessionId, reason: .clientRequested)
+        }
+        if !toTerminate.isEmpty {
+            Self.logger.info(
+                "Token \(tokenId.uuidString, privacy: .public) revoked: cancelled \(toTerminate.count, privacy: .public) session(s)"
+            )
+        }
+    }
+
     private func applyTransportState(_ transportState: MCPHttpServerState, generation: Int) {
         guard isCurrentGeneration(generation) else { return }
         switch transportState {
@@ -293,6 +339,10 @@ final class MCPServerManager {
         rateLimiter = nil
         tlsManager = nil
 
+        if let observerId = revocationObserverId, let store = tokenStore {
+            await store.removeRevocationObserver(observerId)
+            revocationObserverId = nil
+        }
         await cleanupBridgeToken()
         tokenStore = nil
         connectedClients = []

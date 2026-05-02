@@ -44,6 +44,7 @@ public actor MCPSession {
     public private(set) var clientInfo: MCPClientInfo?
     public private(set) var negotiatedProtocolVersion: String?
     public private(set) var clientCapabilities: JsonValue?
+    public private(set) var principalTokenId: UUID?
 
     public init(id: MCPSessionId = .generate(), now: Date = Date()) {
         self.id = id
@@ -53,11 +54,17 @@ public actor MCPSession {
         self.clientInfo = nil
         self.negotiatedProtocolVersion = nil
         self.clientCapabilities = nil
+        self.principalTokenId = nil
     }
 
     public func touch(now: Date = Date()) {
         guard !isTerminated else { return }
         lastActivityAt = now
+    }
+
+    public func bindPrincipal(tokenId: UUID?) {
+        guard !isTerminated else { return }
+        principalTokenId = tokenId
     }
 
     public func recordInitialize(

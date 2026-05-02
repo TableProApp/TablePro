@@ -82,6 +82,48 @@ final class MCPInflightRegistryTests: XCTestCase {
         XCTAssertFalse(cancelledB)
     }
 
+    func testCancelAllMatchingTokenIdCancelsOnlyMatching() async {
+        let registry = MCPInflightRegistry()
+        let tokenA = MCPCancellationToken()
+        let tokenB = MCPCancellationToken()
+        let tokenC = MCPCancellationToken()
+        let session = MCPSessionId("session-revoked")
+        let revokedTokenId = UUID()
+        let otherTokenId = UUID()
+
+        await registry.register(
+            requestId: .number(1),
+            sessionId: session,
+            token: tokenA,
+            tokenId: revokedTokenId
+        )
+        await registry.register(
+            requestId: .number(2),
+            sessionId: session,
+            token: tokenB,
+            tokenId: revokedTokenId
+        )
+        await registry.register(
+            requestId: .number(3),
+            sessionId: session,
+            token: tokenC,
+            tokenId: otherTokenId
+        )
+
+        let cancelledSessions = await registry.cancelAll(matchingTokenId: revokedTokenId)
+        XCTAssertEqual(cancelledSessions, [session])
+
+        let cancelledA = await tokenA.isCancelled()
+        let cancelledB = await tokenB.isCancelled()
+        let cancelledC = await tokenC.isCancelled()
+        XCTAssertTrue(cancelledA)
+        XCTAssertTrue(cancelledB)
+        XCTAssertFalse(cancelledC)
+
+        let count = await registry.count()
+        XCTAssertEqual(count, 1)
+    }
+
     func testCountReflectsActiveRegistrations() async {
         let registry = MCPInflightRegistry()
         let session = MCPSessionId("session-count")

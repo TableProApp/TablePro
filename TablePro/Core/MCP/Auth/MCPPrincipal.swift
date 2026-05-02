@@ -21,22 +21,31 @@ public struct MCPPrincipalMetadata: Sendable, Equatable {
 
 public struct MCPPrincipal: Sendable, Equatable, Hashable {
     public let tokenFingerprint: String
+    public let tokenId: UUID?
     public let scopes: Set<MCPScope>
     public let metadata: MCPPrincipalMetadata
 
-    public init(tokenFingerprint: String, scopes: Set<MCPScope>, metadata: MCPPrincipalMetadata) {
+    public init(
+        tokenFingerprint: String,
+        tokenId: UUID? = nil,
+        scopes: Set<MCPScope>,
+        metadata: MCPPrincipalMetadata
+    ) {
         self.tokenFingerprint = tokenFingerprint
+        self.tokenId = tokenId
         self.scopes = scopes
         self.metadata = metadata
     }
 
     public static func == (lhs: MCPPrincipal, rhs: MCPPrincipal) -> Bool {
         lhs.tokenFingerprint == rhs.tokenFingerprint
+            && lhs.tokenId == rhs.tokenId
             && lhs.scopes == rhs.scopes
             && lhs.metadata == rhs.metadata
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(tokenFingerprint)
+        hasher.combine(tokenId)
     }
 }

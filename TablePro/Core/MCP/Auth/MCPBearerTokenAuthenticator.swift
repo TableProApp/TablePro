@@ -3,12 +3,20 @@ import Foundation
 import os
 
 public struct MCPValidatedToken: Sendable, Equatable {
+    public let tokenId: UUID
     public let label: String?
     public let scopes: Set<MCPScope>
     public let issuedAt: Date
     public let expiresAt: Date?
 
-    public init(label: String?, scopes: Set<MCPScope>, issuedAt: Date, expiresAt: Date?) {
+    public init(
+        tokenId: UUID,
+        label: String?,
+        scopes: Set<MCPScope>,
+        issuedAt: Date,
+        expiresAt: Date?
+    ) {
+        self.tokenId = tokenId
         self.label = label
         self.scopes = scopes
         self.issuedAt = issuedAt
@@ -40,6 +48,7 @@ internal extension MCPTokenStore {
             return .failure(.revoked)
         }
         let validated = MCPValidatedToken(
+            tokenId: authToken.id,
             label: authToken.name,
             scopes: Self.mcpScopes(for: authToken.permissions),
             issuedAt: authToken.createdAt,
@@ -142,6 +151,7 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
             _ = await rateLimiter.recordAttempt(key: principalKey, success: true)
             let principal = MCPPrincipal(
                 tokenFingerprint: fingerprint,
+                tokenId: validated.tokenId,
                 scopes: validated.scopes,
                 metadata: MCPPrincipalMetadata(
                     label: validated.label,
