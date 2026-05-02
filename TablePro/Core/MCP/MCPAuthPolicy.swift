@@ -20,8 +20,10 @@ enum AuthDecision: Sendable {
     case denied(reason: String)
 }
 
-actor MCPAuthPolicy {
+public actor MCPAuthPolicy {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuthPolicy")
+
+    public init() {}
 
     private var sessionApprovals: [String: Set<UUID>] = [:]
     private let approvalDedup = OnceTask<ApprovalKey, Bool>()

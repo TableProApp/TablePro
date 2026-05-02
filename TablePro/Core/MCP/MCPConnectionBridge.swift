@@ -8,8 +8,10 @@
 import Foundation
 import os
 
-actor MCPConnectionBridge {
+public actor MCPConnectionBridge {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
+
+    public init() {}
 
     func listConnections() async -> JSONValue {
         let (connections, activeSessions) = await MainActor.run {
