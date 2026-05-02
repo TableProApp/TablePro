@@ -232,6 +232,7 @@ public actor MCPHttpServerTransport {
 
     private func handleNewConnection(_ connection: NWConnection) async {
         let connectionId = UUID()
+        Self.logger.debug("Accepted connection \(connectionId, privacy: .public)")
         let context = HttpConnectionContext(id: connectionId, connection: connection)
         connections[connectionId] = context
         await context.start { [weak self] data in
@@ -332,16 +333,20 @@ public actor MCPHttpServerTransport {
             let token: String
         }
 
+        Self.logger.info("Integrations exchange request received (\(body.count, privacy: .public) bytes)")
+
         let parsed: ExchangeBody
         do {
             parsed = try JSONDecoder().decode(ExchangeBody.self, from: body)
         } catch {
+            Self.logger.warning("Integrations exchange decode failed: \(error.localizedDescription, privacy: .public)")
             await context.writePlainJsonError(status: .badRequest, message: "Invalid JSON body")
             await context.cancel()
             return
         }
 
         guard !parsed.code.isEmpty, !parsed.codeVerifier.isEmpty else {
+            Self.logger.warning("Integrations exchange missing code or verifier")
             await context.writePlainJsonError(status: .badRequest, message: "Missing code or code_verifier")
             await context.cancel()
             return
@@ -358,11 +363,13 @@ public actor MCPHttpServerTransport {
 
         switch outcome {
         case .success(let token):
+            Self.logger.info("Integrations exchange succeeded (token len=\(token.count, privacy: .public))")
             let payload = (try? JSONEncoder().encode(ExchangeResponse(token: token))) ?? Data()
             await context.writePlainJsonResponse(status: .ok, body: payload)
             await context.cancel()
         case .failure(let error):
             let mapped = Self.mapExchangeError(error)
+            Self.logger.warning("Integrations exchange failed: status=\(mapped.status.code, privacy: .public) reason=\(mapped.message, privacy: .public)")
             await context.writePlainJsonError(status: mapped.status, message: mapped.message)
             await context.cancel()
         }
