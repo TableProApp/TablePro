@@ -66,10 +66,14 @@ public actor MCPHttpServerTransport {
 
     public func start() async throws {
         guard listener == nil else {
+            Self.logger.warning("start() called while listener already exists")
             throw MCPHttpServerError.alreadyStarted
         }
 
+        Self.logger.info("Starting MCP HTTP server: bind=\(String(describing: self.configuration.bindAddress)) port=\(self.configuration.port) tls=\(self.configuration.tls != nil)")
+
         if configuration.bindAddress == .anyInterface, configuration.tls == nil {
+            Self.logger.error("Remote access requested without TLS — refusing to start")
             throw MCPHttpServerError.tlsRequiredForRemoteAccess
         }
 
