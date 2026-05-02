@@ -12,6 +12,9 @@ struct MCPAuditLogView: View {
     @State private var searchText: String = ""
     @State private var isLoading = false
 
+    private let auditChanges = NotificationCenter.default
+        .publisher(for: .mcpAuditLogChanged)
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             searchBar
@@ -36,6 +39,9 @@ struct MCPAuditLogView: View {
         }
         .padding()
         .task { await reload() }
+        .onReceive(auditChanges) { _ in
+            Task { await reload() }
+        }
     }
 
     private var searchBar: some View {
