@@ -744,7 +744,7 @@ actor HttpConnectionContext {
         status: HttpStatus,
         sessionId: MCPSessionId?,
         extraHeaders: [(String, String)]
-    ) {
+    ) async {
         if cancelled { return }
         var headers: [(String, String)] = [
             ("Content-Type", "application/json"),
@@ -757,37 +757,37 @@ actor HttpConnectionContext {
         headers.append(contentsOf: MCPCorsHeaders.standard)
         let head = HttpResponseHead(status: status, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: data)
-        send(payload)
+        await send(payload)
     }
 
-    func writeOptions204() {
+    func writeOptions204() async {
         if cancelled { return }
         var headers: [(String, String)] = [("Connection", "close")]
         headers.append(contentsOf: MCPCorsHeaders.standard)
         let head = HttpResponseHead(status: .noContent, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: nil)
-        send(payload)
+        await send(payload)
     }
 
-    func writeNoContent() {
+    func writeNoContent() async {
         if cancelled { return }
         var headers: [(String, String)] = [("Connection", "close")]
         headers.append(contentsOf: MCPCorsHeaders.standard)
         let head = HttpResponseHead(status: .noContent, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: nil)
-        send(payload)
+        await send(payload)
     }
 
-    func writeAccepted() {
+    func writeAccepted() async {
         if cancelled { return }
         var headers: [(String, String)] = [("Connection", "close")]
         headers.append(contentsOf: MCPCorsHeaders.standard)
         let head = HttpResponseHead(status: .accepted, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: nil)
-        send(payload)
+        await send(payload)
     }
 
-    func writeSseStreamHeaders(sessionId: MCPSessionId) {
+    func writeSseStreamHeaders(sessionId: MCPSessionId) async {
         if cancelled { return }
         sseActive = true
         var headers: [(String, String)] = [
@@ -799,18 +799,18 @@ actor HttpConnectionContext {
         headers.append(contentsOf: MCPCorsHeaders.standard)
         let head = HttpResponseHead(status: .ok, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: nil)
-        send(payload)
+        await send(payload)
     }
 
-    func writeSseFrame(_ frame: SseFrame) {
+    func writeSseFrame(_ frame: SseFrame) async {
         if cancelled { return }
         let data = SseEncoder.encode(frame)
-        send(data)
+        await send(data)
     }
 
-    func writeRaw(_ data: Data) {
+    func writeRaw(_ data: Data) async {
         if cancelled { return }
-        send(data)
+        await send(data)
     }
 
     func cancel() {
@@ -823,12 +823,15 @@ actor HttpConnectionContext {
         sseActive
     }
 
-    private func send(_ data: Data) {
-        connection.send(content: data, completion: .contentProcessed { error in
-            if let error {
-                Self.logger.debug("Send error: \(error.localizedDescription, privacy: .public)")
-            }
-        })
+    private func send(_ data: Data) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            connection.send(content: data, completion: .contentProcessed { error in
+                if let error {
+                    Self.logger.debug("Send error: \(error.localizedDescription, privacy: .public)")
+                }
+                continuation.resume()
+            })
+        }
     }
 }
 
