@@ -343,20 +343,27 @@ final class MCPServerManager {
         "\(handshakeDirectoryPath)/mcp-handshake.json"
     }()
 
+    private struct HandshakeFilePayload: Encodable {
+        let port: Int
+        let token: String
+        let pid: Int32
+        let protocolVersion: String
+        let tls: Bool
+        let tlsCertFingerprint: String?
+    }
+
     private func writeHandshakeFile(port: UInt16, tlsCertFingerprint: String? = nil) {
         guard let bridgeToken = internalBridgeToken else { return }
 
         let settings = AppSettingsManager.shared.mcp
-        var handshake: [String: Any] = [
-            "port": Int(port),
-            "token": bridgeToken,
-            "pid": ProcessInfo.processInfo.processIdentifier,
-            "protocolVersion": InitializeHandler.supportedProtocolVersion,
-            "tls": settings.allowRemoteConnections
-        ]
-        if let tlsCertFingerprint {
-            handshake["tlsCertFingerprint"] = tlsCertFingerprint
-        }
+        let payload = HandshakeFilePayload(
+            port: Int(port),
+            token: bridgeToken,
+            pid: ProcessInfo.processInfo.processIdentifier,
+            protocolVersion: InitializeHandler.supportedProtocolVersion,
+            tls: settings.allowRemoteConnections,
+            tlsCertFingerprint: tlsCertFingerprint
+        )
 
         let fileManager = FileManager.default
         let directory = Self.handshakeDirectoryPath
@@ -373,7 +380,9 @@ final class MCPServerManager {
                 )
             }
 
-            let data = try JSONSerialization.data(withJSONObject: handshake, options: [.sortedKeys])
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(payload)
             let url = URL(fileURLWithPath: Self.handshakeFilePath)
             try data.write(to: url, options: [.atomic])
             try fileManager.setAttributes(
