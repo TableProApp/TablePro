@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- MCP: support for protocol versions `2025-06-18` and `2025-11-25` in addition to `2025-03-26`. Clients on the latest spec no longer downgrade. The server advertises the latest version it supports (`2025-11-25`) and falls back when a client requests an unknown version.
+- MCP: structured tool output (`structuredContent`) on every tool. The serialized JSON still appears in `content[].text` for backward compatibility, while 2025-11-25 clients can read the parsed object directly.
+- MCP: tool annotations (`title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) on every tool, plus `serverInfo.title` in `initialize` responses. Read tools advertise `readOnlyHint=true`; `confirm_destructive_operation` advertises `destructiveHint=true`.
+- MCP: `completions` capability advertised in `initialize` (the `completion/complete` handler was already wired).
 - MCP: streaming progress notifications. Long-running tool calls (e.g. `execute_query`) now emit `notifications/progress` events to clients that pass a `_meta.progressToken` in their request.
 - MCP: pairing redirect carries an explicit `error=denied` parameter when the user clicks Deny so extensions can show a clear error instead of hanging.
 - MCP: re-pairing the same client name automatically revokes the previous token instead of leaving it active.

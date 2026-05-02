@@ -18,6 +18,13 @@ public struct OpenConnectionWindowTool: MCPToolImplementation {
         "required": .array([.string("connection_id")])
     ])
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Open Connection Window"),
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
 
@@ -49,7 +56,7 @@ public struct OpenConnectionWindowTool: MCPToolImplementation {
             "connection_id": .string(connectionId.uuidString),
             "window_id": .string(windowId.uuidString)
         ])
-        return .json(result)
+        return .structured(result)
     }
 
     private func ensureConnectionExists(_ connectionId: UUID) async throws {

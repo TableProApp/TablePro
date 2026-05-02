@@ -4,6 +4,13 @@ public struct ListDatabasesTool: MCPToolImplementation {
     public static let name = "list_databases"
     public static let description = String(localized: "List all databases on the server")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "List Databases"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -25,6 +32,6 @@ public struct ListDatabasesTool: MCPToolImplementation {
     ) async throws -> MCPToolCallResult {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let payload = try await services.connectionBridge.listDatabases(connectionId: connectionId)
-        return .json(payload)
+        return .structured(payload)
     }
 }

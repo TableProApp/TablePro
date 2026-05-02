@@ -6,6 +6,13 @@ public struct DescribeTableTool: MCPToolImplementation {
         localized: "Get detailed table structure: columns, indexes, foreign keys, and DDL"
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Describe Table"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -42,6 +49,6 @@ public struct DescribeTableTool: MCPToolImplementation {
             table: table,
             schema: schema
         )
-        return .json(payload)
+        return .structured(payload)
     }
 }

@@ -19,7 +19,7 @@ final class InitializeHandlerTests: XCTestCase {
         let context = try await makeContext()
         let handler = InitializeHandler()
         let params: JsonValue = .object([
-            "protocolVersion": .string("2025-03-26"),
+            "protocolVersion": .string("2025-11-25"),
             "clientInfo": .object([
                 "name": .string("test-client"),
                 "version": .string("1.2.3")
@@ -39,7 +39,7 @@ final class InitializeHandlerTests: XCTestCase {
             return
         }
 
-        XCTAssertEqual(result["protocolVersion"]?.stringValue, InitializeHandler.supportedProtocolVersion)
+        XCTAssertEqual(result["protocolVersion"]?.stringValue, "2025-11-25")
 
         guard let serverInfo = result["serverInfo"], case .object(let serverInfoDict) = serverInfo else {
             XCTFail("Expected serverInfo object")
@@ -56,13 +56,36 @@ final class InitializeHandlerTests: XCTestCase {
         XCTAssertNotNil(capDict["resources"])
         XCTAssertNotNil(capDict["prompts"])
         XCTAssertNotNil(capDict["logging"])
+        XCTAssertNotNil(capDict["completions"])
+    }
+
+    func testEchoesBackEachSupportedProtocolVersion() async throws {
+        for version in ["2025-03-26", "2025-06-18", "2025-11-25"] {
+            let context = try await makeContext()
+            let handler = InitializeHandler()
+            let params: JsonValue = .object([
+                "protocolVersion": .string(version),
+                "clientInfo": .object(["name": .string("client")])
+            ])
+
+            let response = try await handler.handle(params: params, context: context)
+            guard case .successResponse(let success) = response,
+                  case .object(let result) = success.result else {
+                XCTFail("Expected success object for version \(version)")
+                return
+            }
+            XCTAssertEqual(result["protocolVersion"]?.stringValue, version)
+
+            let negotiated = await context.session.negotiatedProtocolVersion
+            XCTAssertEqual(negotiated, version)
+        }
     }
 
     func testRecordsClientInfoOnSession() async throws {
         let context = try await makeContext()
         let handler = InitializeHandler()
         let params: JsonValue = .object([
-            "protocolVersion": .string("2025-03-26"),
+            "protocolVersion": .string("2025-06-18"),
             "clientInfo": .object([
                 "name": .string("acme-cli"),
                 "version": .string("9.9.9")
@@ -77,7 +100,7 @@ final class InitializeHandlerTests: XCTestCase {
         XCTAssertEqual(info?.version, "9.9.9")
 
         let negotiated = await context.session.negotiatedProtocolVersion
-        XCTAssertEqual(negotiated, "2025-03-26")
+        XCTAssertEqual(negotiated, "2025-06-18")
 
         let recordedCapabilities = await context.session.clientCapabilities
         XCTAssertEqual(recordedCapabilities, .object(["x": .bool(true)]))
@@ -98,7 +121,7 @@ final class InitializeHandlerTests: XCTestCase {
         let context = try await makeContext()
         let handler = InitializeHandler()
         let params: JsonValue = .object([
-            "protocolVersion": .string("2025-03-26"),
+            "protocolVersion": .string("2025-11-25"),
             "clientInfo": .object(["name": .string("first")])
         ])
 
@@ -112,7 +135,7 @@ final class InitializeHandlerTests: XCTestCase {
         }
     }
 
-    func testRejectsUnsupportedProtocolVersion() async throws {
+    func testUnknownProtocolVersionDowngradesToLatest() async throws {
         let context = try await makeContext()
         let handler = InitializeHandler()
         let params: JsonValue = .object([
@@ -120,12 +143,34 @@ final class InitializeHandlerTests: XCTestCase {
             "clientInfo": .object(["name": .string("vintage")])
         ])
 
-        do {
-            _ = try await handler.handle(params: params, context: context)
-            XCTFail("Expected handler to throw on unsupported protocolVersion")
-        } catch let error as MCPProtocolError {
-            XCTAssertEqual(error.code, JsonRpcErrorCode.invalidRequest)
+        let response = try await handler.handle(params: params, context: context)
+        guard case .successResponse(let success) = response,
+              case .object(let result) = success.result else {
+            XCTFail("Expected success object")
+            return
         }
+        XCTAssertEqual(result["protocolVersion"]?.stringValue, InitializeHandler.supportedProtocolVersion)
+        XCTAssertEqual(InitializeHandler.supportedProtocolVersion, "2025-11-25")
+
+        let negotiated = await context.session.negotiatedProtocolVersion
+        XCTAssertEqual(negotiated, "2025-11-25")
+    }
+
+    func testNewerUnknownProtocolVersionDowngradesToLatest() async throws {
+        let context = try await makeContext()
+        let handler = InitializeHandler()
+        let params: JsonValue = .object([
+            "protocolVersion": .string("2099-01-01"),
+            "clientInfo": .object(["name": .string("future")])
+        ])
+
+        let response = try await handler.handle(params: params, context: context)
+        guard case .successResponse(let success) = response,
+              case .object(let result) = success.result else {
+            XCTFail("Expected success object")
+            return
+        }
+        XCTAssertEqual(result["protocolVersion"]?.stringValue, "2025-11-25")
     }
 
     func testMissingProtocolVersionFallsBackToSupported() async throws {

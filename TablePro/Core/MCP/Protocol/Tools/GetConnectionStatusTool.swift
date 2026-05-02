@@ -4,6 +4,13 @@ public struct GetConnectionStatusTool: MCPToolImplementation {
     public static let name = "get_connection_status"
     public static let description = String(localized: "Get detailed status of a database connection")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Get Connection Status"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -25,6 +32,6 @@ public struct GetConnectionStatusTool: MCPToolImplementation {
     ) async throws -> MCPToolCallResult {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let payload = try await services.connectionBridge.getConnectionStatus(connectionId: connectionId)
-        return .json(payload)
+        return .structured(payload)
     }
 }

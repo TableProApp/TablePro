@@ -4,6 +4,13 @@ public struct ListConnectionsTool: MCPToolImplementation {
     public static let name = "list_connections"
     public static let description = String(localized: "List all saved database connections with their status")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "List Connections"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -19,6 +26,6 @@ public struct ListConnectionsTool: MCPToolImplementation {
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
         let payload = await services.connectionBridge.listConnections()
-        return .json(payload)
+        return .structured(payload)
     }
 }

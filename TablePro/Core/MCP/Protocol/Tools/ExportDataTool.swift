@@ -39,6 +39,13 @@ public struct ExportDataTool: MCPToolImplementation {
         "required": .array([.string("connection_id"), .string("format")])
     ])
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Export Data"),
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+    )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
     private static let allowedFormats: Set<String> = ["csv", "json", "sql"]
@@ -168,7 +175,7 @@ public struct ExportDataTool: MCPToolImplementation {
                 "path": .string(fileURL.path),
                 "rows_exported": .int(totalRowsExported)
             ])
-            return .json(response)
+            return .structured(response)
         }
 
         let response: JsonValue
@@ -177,7 +184,7 @@ public struct ExportDataTool: MCPToolImplementation {
         } else {
             response = .object(["exports": .array(exportResults)])
         }
-        return .json(response)
+        return .structured(response)
     }
 
     static func validateExportTableName(_ table: String) throws {

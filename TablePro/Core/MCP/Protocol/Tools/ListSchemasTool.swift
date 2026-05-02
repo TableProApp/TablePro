@@ -4,6 +4,13 @@ public struct ListSchemasTool: MCPToolImplementation {
     public static let name = "list_schemas"
     public static let description = String(localized: "List schemas in a database")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "List Schemas"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -35,6 +42,6 @@ public struct ListSchemasTool: MCPToolImplementation {
         }
 
         let payload = try await services.connectionBridge.listSchemas(connectionId: connectionId)
-        return .json(payload)
+        return .structured(payload)
     }
 }

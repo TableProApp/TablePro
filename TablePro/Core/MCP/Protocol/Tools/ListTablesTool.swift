@@ -4,6 +4,13 @@ public struct ListTablesTool: MCPToolImplementation {
     public static let name = "list_tables"
     public static let description = String(localized: "List tables and views in a database")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "List Tables"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -51,6 +58,6 @@ public struct ListTablesTool: MCPToolImplementation {
             connectionId: connectionId,
             includeRowCounts: includeRowCounts
         )
-        return .json(payload)
+        return .structured(payload)
     }
 }

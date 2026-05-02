@@ -5,6 +5,13 @@ public struct FocusQueryTabTool: MCPToolImplementation {
     public static let name = "focus_query_tab"
     public static let description = String(localized: "Focus an already-open tab by id (returned from list_recent_tabs).")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Focus Query Tab"),
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -54,6 +61,6 @@ public struct FocusQueryTabTool: MCPToolImplementation {
             dict["window_id"] = .string(windowId.uuidString)
         }
 
-        return .json(.object(dict))
+        return .structured(.object(dict))
     }
 }

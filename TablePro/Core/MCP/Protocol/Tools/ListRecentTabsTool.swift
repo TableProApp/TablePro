@@ -6,6 +6,13 @@ public struct ListRecentTabsTool: MCPToolImplementation {
         localized: "List currently open tabs across all TablePro windows. Returns connection, tab type, table name, and titles for each tab."
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "List Recent Tabs"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -56,6 +63,6 @@ public struct ListRecentTabsTool: MCPToolImplementation {
             return .object(dict)
         }
 
-        return .json(.object(["tabs": .array(payload)]))
+        return .structured(.object(["tabs": .array(payload)]))
     }
 }

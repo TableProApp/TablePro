@@ -4,6 +4,13 @@ public struct GetTableDdlTool: MCPToolImplementation {
     public static let name = "get_table_ddl"
     public static let description = String(localized: "Get the CREATE TABLE DDL statement for a table")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Get Table DDL"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -40,6 +47,6 @@ public struct GetTableDdlTool: MCPToolImplementation {
             table: table,
             schema: schema
         )
-        return .json(payload)
+        return .structured(payload)
     }
 }

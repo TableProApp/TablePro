@@ -6,6 +6,13 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
         localized: "Search saved query history. Returns matching entries with execution time, row count, and outcome."
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Search Query History"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     public static let inputSchema: JsonValue = .object([
         "type": .string("object"),
@@ -97,6 +104,6 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             return .object(dict)
         }
 
-        return .json(.object(["entries": .array(payload)]))
+        return .structured(.object(["entries": .array(payload)]))
     }
 }

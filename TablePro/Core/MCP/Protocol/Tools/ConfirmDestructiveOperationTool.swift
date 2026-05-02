@@ -29,6 +29,13 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         ])
     ])
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Confirm Destructive Operation"),
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true
+    )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
     private static let requiredPhrase = "I understand this is irreversible"
@@ -87,6 +94,6 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             principalLabel: context.principal.metadata.label
         )
 
-        return .json(result)
+        return .structured(result)
     }
 }

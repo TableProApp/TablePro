@@ -76,6 +76,29 @@ struct ToolsCallHandlerTests {
         #expect(content?.first?["type"]?.stringValue == "text")
     }
 
+    @Test("list_connections includes structuredContent for 2025-11-25 clients")
+    func listConnectionsExposesStructuredContent() async throws {
+        let handler = makeHandler()
+        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
+        let params: JsonValue = .object([
+            "name": .string("list_connections"),
+            "arguments": .object([:])
+        ])
+
+        let response = try await handler.handle(params: params, context: context)
+        guard case .successResponse(let success) = response else {
+            Issue.record("expected success, got \(response)")
+            return
+        }
+        let structured = success.result["structuredContent"]
+        #expect(structured != nil)
+        if case .object = structured {
+            // ok
+        } else {
+            Issue.record("expected structuredContent to be an object")
+        }
+    }
+
     @Test("get_table_ddl with missing connection_id returns invalid params")
     func getTableDdlMissingId() async throws {
         let handler = makeHandler()

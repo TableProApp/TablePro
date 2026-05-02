@@ -37,6 +37,13 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         "required": .array([.string("connection_id"), .string("query")])
     ])
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Execute Query"),
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+    )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
 
@@ -130,7 +137,7 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         await context.progress.emit(progress: 0.8, total: 1.0, message: "Formatting result")
 
         await context.progress.emit(progress: 1.0, total: 1.0, message: "Done")
-        return .json(result)
+        return .structured(result)
     }
 
     private func classifyAndAuthorize(

@@ -15,6 +15,13 @@ public struct DisconnectTool: MCPToolImplementation {
         "required": .array([.string("connection_id")])
     ])
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Disconnect"),
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+    )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
 
@@ -29,6 +36,6 @@ public struct DisconnectTool: MCPToolImplementation {
         Self.logger.debug("disconnect tool invoked for connection \(connectionId.uuidString, privacy: .public)")
         try await services.connectionBridge.disconnect(connectionId: connectionId)
         let result: JsonValue = .object(["status": .string("disconnected")])
-        return .json(result)
+        return .structured(result)
     }
 }

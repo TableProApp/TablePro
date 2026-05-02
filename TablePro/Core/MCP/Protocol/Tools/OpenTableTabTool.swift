@@ -30,6 +30,13 @@ public struct OpenTableTabTool: MCPToolImplementation {
         "required": .array([.string("connection_id"), .string("table_name")])
     ])
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Open Table Tab"),
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
 
@@ -69,7 +76,7 @@ public struct OpenTableTabTool: MCPToolImplementation {
             "table_name": .string(tableName),
             "window_id": .string(windowId.uuidString)
         ])
-        return .json(result)
+        return .structured(result)
     }
 
     private func ensureConnectionExists(_ connectionId: UUID) async throws {

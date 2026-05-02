@@ -19,6 +19,13 @@ public struct SwitchSchemaTool: MCPToolImplementation {
         "required": .array([.string("connection_id"), .string("schema")])
     ])
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Switch Schema"),
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
 
@@ -36,6 +43,6 @@ public struct SwitchSchemaTool: MCPToolImplementation {
             connectionId: connectionId,
             schema: schema
         )
-        return .json(payload)
+        return .structured(payload)
     }
 }

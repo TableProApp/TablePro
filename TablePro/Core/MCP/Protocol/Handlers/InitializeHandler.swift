@@ -6,8 +6,12 @@ public struct InitializeHandler: MCPMethodHandler {
     public static let requiredScopes: Set<MCPScope> = []
     public static let allowedSessionStates: Set<MCPSessionAllowedState> = [.uninitialized]
 
-    public static let supportedProtocolVersion = "2025-03-26"
-    public static let supportedProtocolVersions: Set<String> = ["2025-03-26"]
+    public static let supportedProtocolVersion = "2025-11-25"
+    public static let supportedProtocolVersions: Set<String> = [
+        "2025-03-26",
+        "2025-06-18",
+        "2025-11-25"
+    ]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Handler.Initialize")
 
@@ -45,21 +49,23 @@ public struct InitializeHandler: MCPMethodHandler {
                     "subscribe": .bool(false)
                 ]),
                 "prompts": .object(["listChanged": .bool(false)]),
-                "logging": .object([:])
+                "logging": .object([:]),
+                "completions": .object([:])
             ]),
             "serverInfo": .object([
                 "name": .string("tablepro"),
+                "title": .string("TablePro"),
                 "version": .string("1.0.0")
             ])
         ])
 
         Self.logger.info(
-            "Initialize: client=\(clientName, privacy: .public) version=\(clientVersion ?? "-", privacy: .public) protocol=\(protocolVersion, privacy: .public)"
+            "Initialize: client=\(clientName, privacy: .public) version=\(clientVersion ?? "-", privacy: .public) protocol=\(protocolVersion, privacy: .public) requested=\(requestedVersion ?? "-", privacy: .public)"
         )
         return MCPMethodHandlerHelpers.successResponse(id: context.requestId, result: result)
     }
 
-    private static func negotiate(requestedVersion: String?) -> String {
+    public static func negotiate(requestedVersion: String?) -> String {
         guard let requestedVersion, !requestedVersion.isEmpty else {
             return supportedProtocolVersion
         }
