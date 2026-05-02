@@ -387,8 +387,26 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
 }
 
 private actor HttpWriter {
-    func serialize<T: Sendable>(_ work: @Sendable () async throws -> T) async throws -> T {
-        try await work()
+    private var pending: Task<Void, Never>?
+
+    func serialize<T: Sendable>(_ work: @Sendable @escaping () async throws -> T) async throws -> T {
+        let previous = pending
+        let result: Result<T, Error> = await withCheckedContinuation { continuation in
+            let task = Task { [previous] in
+                _ = await previous?.value
+                do {
+                    let value = try await work()
+                    continuation.resume(returning: .success(value))
+                } catch {
+                    continuation.resume(returning: .failure(error))
+                }
+            }
+            self.pending = task
+        }
+        switch result {
+        case .success(let value): return value
+        case .failure(let error): throw error
+        }
     }
 }
 
