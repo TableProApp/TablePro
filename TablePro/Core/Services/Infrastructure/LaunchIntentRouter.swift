@@ -43,7 +43,7 @@ internal final class LaunchIntentRouter {
             }
         } catch let error as TabRouterError where error == .userCancelled {
             Self.logger.info("Intent cancelled by user")
-        } catch let error as MCPError where error.isUserCancelled {
+        } catch let error as MCPDataLayerError where error.isUserCancelled {
             Self.logger.info("Pairing cancelled by user")
         } catch is CancellationError {
             Self.logger.info("Intent cancelled")

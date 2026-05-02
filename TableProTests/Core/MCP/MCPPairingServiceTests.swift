@@ -55,7 +55,7 @@ struct MCPPairingServiceTests {
 
         _ = try store.consume(code: "code-3", verifier: verifier)
 
-        #expect(throws: MCPError.self) {
+        #expect(throws: MCPDataLayerError.self) {
             try store.consume(code: "code-3", verifier: verifier)
         }
     }
@@ -67,7 +67,7 @@ struct MCPPairingServiceTests {
         do {
             _ = try store.consume(code: "missing", verifier: "any")
             Issue.record("Expected notFound error")
-        } catch let error as MCPError {
+        } catch let error as MCPDataLayerError {
             guard case .notFound = error else {
                 Issue.record("Expected notFound, got \(error)")
                 return
@@ -87,7 +87,7 @@ struct MCPPairingServiceTests {
         do {
             _ = try store.consume(code: "code-4", verifier: verifier, now: Date.now)
             Issue.record("Expected expired error")
-        } catch let error as MCPError {
+        } catch let error as MCPDataLayerError {
             guard case .expired = error else {
                 Issue.record("Expected expired, got \(error)")
                 return
@@ -106,7 +106,7 @@ struct MCPPairingServiceTests {
         do {
             _ = try store.consume(code: "code-5", verifier: "attacker-verifier")
             Issue.record("Expected forbidden error")
-        } catch let error as MCPError {
+        } catch let error as MCPDataLayerError {
             guard case .forbidden = error else {
                 Issue.record("Expected forbidden, got \(error)")
                 return
@@ -195,7 +195,7 @@ struct MCPPairingServiceTests {
                 record: record(plaintext: "tp_x", challenge: "challenge", expiresIn: 60)
             )
             Issue.record("Expected forbidden error after exceeding maxPendingCodes")
-        } catch let error as MCPError {
+        } catch let error as MCPDataLayerError {
             guard case .forbidden = error else {
                 Issue.record("Expected forbidden, got \(error)")
                 return

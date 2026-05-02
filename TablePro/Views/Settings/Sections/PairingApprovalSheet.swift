@@ -207,7 +207,7 @@ struct PairingApprovalSheet: View {
     private var actionBar: some View {
         HStack {
             Button(String(localized: "Deny"), role: .cancel) {
-                onComplete(.failure(MCPError.userCancelled))
+                onComplete(.failure(MCPDataLayerError.userCancelled))
             }
             .keyboardShortcut(.cancelAction)
 
