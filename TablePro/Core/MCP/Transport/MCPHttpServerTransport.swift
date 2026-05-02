@@ -81,10 +81,8 @@ public actor MCPHttpServerTransport {
 
         let parameters: NWParameters = makeParameters()
 
-        let port = NWEndpoint.Port(rawValue: configuration.port) ?? .any
-
         do {
-            let newListener = try NWListener(using: parameters, on: port)
+            let newListener = try NWListener(using: parameters)
             listener = newListener
 
             newListener.stateUpdateHandler = { [weak self] state in
