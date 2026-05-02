@@ -23,12 +23,7 @@ public struct InitializeHandler: MCPMethodHandler {
         }
 
         let requestedVersion = params?["protocolVersion"]?.stringValue
-        let negotiatedVersion = Self.negotiate(requestedVersion: requestedVersion)
-        guard let protocolVersion = negotiatedVersion else {
-            let supported = Self.supportedProtocolVersions.sorted().joined(separator: ", ")
-            let detail = "Unsupported protocolVersion: \(requestedVersion ?? "missing"). Server supports: \(supported)"
-            throw MCPProtocolError.invalidRequest(detail: detail)
-        }
+        let protocolVersion = Self.negotiate(requestedVersion: requestedVersion)
 
         let clientCapabilities = params?["capabilities"]
         let clientName = params?["clientInfo"]?["name"]?.stringValue ?? "unknown"
@@ -64,13 +59,13 @@ public struct InitializeHandler: MCPMethodHandler {
         return MCPMethodHandlerHelpers.successResponse(id: context.requestId, result: result)
     }
 
-    private static func negotiate(requestedVersion: String?) -> String? {
+    private static func negotiate(requestedVersion: String?) -> String {
         guard let requestedVersion, !requestedVersion.isEmpty else {
             return supportedProtocolVersion
         }
         if supportedProtocolVersions.contains(requestedVersion) {
             return requestedVersion
         }
-        return nil
+        return supportedProtocolVersion
     }
 }
