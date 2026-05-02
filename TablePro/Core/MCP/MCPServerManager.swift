@@ -61,6 +61,8 @@ final class MCPServerManager {
             await stop()
         }
 
+        Self.removeStaleHandshakeFileIfNeeded()
+
         serverGeneration += 1
         let generation = serverGeneration
         state = .starting
@@ -393,7 +395,7 @@ final class MCPServerManager {
         "\(handshakeDirectoryPath)/mcp-handshake.json"
     }()
 
-    private struct HandshakeFilePayload: Encodable {
+    private struct HandshakeFilePayload: Codable {
         let port: Int
         let token: String
         let pid: Int32
@@ -444,6 +446,18 @@ final class MCPServerManager {
         } catch {
             Self.logger.error("Failed to write MCP handshake file: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private static func removeStaleHandshakeFileIfNeeded() {
+        let path = handshakeFilePath
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return }
+        guard let payload = try? JSONDecoder().decode(HandshakeFilePayload.self, from: data) else { return }
+        let currentPid = ProcessInfo.processInfo.processIdentifier
+        if payload.pid == currentPid { return }
+        if kill(payload.pid, 0) == 0 { return }
+        try? FileManager.default.removeItem(atPath: path)
+        Self.logger.info("Removed stale MCP handshake from PID \(payload.pid, privacy: .public)")
     }
 
     private func deleteHandshakeFile() {
