@@ -22,6 +22,7 @@ public struct HttpStatus: Sendable, Equatable {
     public static let unsupportedMediaType = HttpStatus(code: 415, reasonPhrase: "Unsupported Media Type")
     public static let tooManyRequests = HttpStatus(code: 429, reasonPhrase: "Too Many Requests")
     public static let internalServerError = HttpStatus(code: 500, reasonPhrase: "Internal Server Error")
+    public static let notImplemented = HttpStatus(code: 501, reasonPhrase: "Not Implemented")
     public static let serviceUnavailable = HttpStatus(code: 503, reasonPhrase: "Service Unavailable")
 }
 

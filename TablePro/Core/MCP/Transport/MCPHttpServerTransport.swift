@@ -255,11 +255,6 @@ public actor MCPHttpServerTransport {
     private func handleReceivedData(connectionId: UUID, data: Data) async {
         guard let context = connections[connectionId] else { return }
 
-        if data.count > configuration.limits.maxRequestBodyBytes + configuration.limits.maxHeaderBytes {
-            await respondTopLevel(context: context, error: .payloadTooLarge(), requestId: nil)
-            return
-        }
-
         let parseResult: HttpRequestParseResult
         do {
             parseResult = try HttpRequestParser.parse(data)
@@ -334,12 +329,14 @@ public actor MCPHttpServerTransport {
         }
 
         Self.logger.info("Integrations exchange request received (\(body.count, privacy: .public) bytes)")
+        let ip = Self.ipString(for: await context.clientAddress())
 
         let parsed: ExchangeBody
         do {
             parsed = try JSONDecoder().decode(ExchangeBody.self, from: body)
         } catch {
             Self.logger.warning("Integrations exchange decode failed: \(error.localizedDescription, privacy: .public)")
+            MCPAuditLogger.logPairingExchange(outcome: .denied, ip: ip, details: "invalid JSON body")
             await context.writePlainJsonError(status: .badRequest, message: "Invalid JSON body")
             await context.cancel()
             return
@@ -347,6 +344,11 @@ public actor MCPHttpServerTransport {
 
         guard !parsed.code.isEmpty, !parsed.codeVerifier.isEmpty else {
             Self.logger.warning("Integrations exchange missing code or verifier")
+            MCPAuditLogger.logPairingExchange(
+                outcome: .denied,
+                ip: ip,
+                details: "missing code or code_verifier"
+            )
             await context.writePlainJsonError(status: .badRequest, message: "Missing code or code_verifier")
             await context.cancel()
             return
@@ -364,15 +366,37 @@ public actor MCPHttpServerTransport {
         switch outcome {
         case .success(let token):
             Self.logger.info("Integrations exchange succeeded (token len=\(token.count, privacy: .public))")
+            let label = await Self.resolveTokenLabel(for: token)
+            MCPAuditLogger.logPairingExchange(outcome: .success, tokenName: label, ip: ip)
             let payload = (try? JSONEncoder().encode(ExchangeResponse(token: token))) ?? Data()
             await context.writePlainJsonResponse(status: .ok, body: payload)
             await context.cancel()
         case .failure(let error):
             let mapped = Self.mapExchangeError(error)
             Self.logger.warning("Integrations exchange failed: status=\(mapped.status.code, privacy: .public) reason=\(mapped.message, privacy: .public)")
+            MCPAuditLogger.logPairingExchange(
+                outcome: .denied,
+                ip: ip,
+                details: mapped.message
+            )
             await context.writePlainJsonError(status: mapped.status, message: mapped.message)
             await context.cancel()
         }
+    }
+
+    private static func ipString(for address: MCPClientAddress) -> String {
+        switch address {
+        case .loopback:
+            return "127.0.0.1"
+        case .remote(let host):
+            return host
+        }
+    }
+
+    private static func resolveTokenLabel(for plaintext: String) async -> String? {
+        let store: MCPTokenStore? = await MainActor.run { MCPServerManager.shared.tokenStore }
+        guard let store else { return nil }
+        return await store.validate(bearerToken: plaintext)?.name
     }
 
     private static func mapExchangeError(_ error: Error) -> (status: HttpStatus, message: String) {
@@ -431,7 +455,19 @@ public actor MCPHttpServerTransport {
 
         await sessionStore.touch(id: sessionId)
 
-        _ = head.headers.value(for: "Last-Event-ID")
+        if head.headers.value(for: "Last-Event-ID") != nil {
+            await respondTopLevel(
+                context: context,
+                error: MCPProtocolError(
+                    code: JsonRpcErrorCode.serverError,
+                    message: "SSE event replay is not supported",
+                    httpStatus: .notImplemented
+                ),
+                requestId: nil
+            )
+            return
+        }
+
         let mcpProtocolVersion = head.headers.value(for: "mcp-protocol-version")
 
         let sink = TransportResponderSink(transport: self, context: context)
