@@ -372,6 +372,58 @@ struct MCPHttpServerTransportTests {
         #expect(allowHeaders?.contains("Last-Event-ID") == true)
     }
 
+    @Test("GET /mcp opens an SSE stream that delivers server-sent notifications")
+    func getMcpStreamsServerNotifications() async throws {
+        let auth = StubAlwaysAllowAuthenticator()
+        let (transport, _, port) = try await startedTransport(authenticator: auth)
+        defer { Task { await transport.stop() } }
+
+        let consumer = StubExchangeConsumer()
+        await runEchoLoop(transport: transport, consumer: consumer)
+        defer { Task { await consumer.stop() } }
+
+        let initBody = try makeRequestBody(method: "initialize")
+        let (_, initResponse) = try await URLSession.shared.data(for: makePost(port: port, body: initBody))
+        let initHttp = try #require(initResponse as? HTTPURLResponse)
+        let sessionId = try #require(initHttp.value(forHTTPHeaderField: "Mcp-Session-Id"))
+
+        guard let url = URL(string: "http://127.0.0.1:\(port)/mcp") else {
+            Issue.record("Failed to construct URL")
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue(sessionId, forHTTPHeaderField: "Mcp-Session-Id")
+        request.setValue("Bearer test-token", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 5
+
+        let session = URLSession(configuration: .ephemeral)
+        let streamTask = Task<(Int, String), Error> {
+            let (bytes, response) = try await session.bytes(for: request)
+            let httpResponse = response as? HTTPURLResponse
+            var collected = ""
+            for try await line in bytes.lines {
+                collected += line + "\n"
+                if collected.contains("notifications/test") { break }
+            }
+            return (httpResponse?.statusCode ?? 0, collected)
+        }
+
+        try await Task.sleep(for: .milliseconds(200))
+
+        let notification = JsonRpcNotification(
+            method: "notifications/test",
+            params: .object(["progress": .double(0.5)])
+        )
+        await transport.sendNotification(notification, toSession: MCPSessionId(sessionId))
+
+        let (status, body) = try await streamTask.value
+        #expect(status == 200)
+        #expect(body.contains("notifications/test"))
+        session.invalidateAndCancel()
+    }
+
     @Test("Idle session eviction terminates SSE-tracked sessions")
     func idleSessionEviction() async throws {
         let clock = MCPTestClock(start: Date(timeIntervalSince1970: 1_000_000))

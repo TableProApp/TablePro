@@ -297,7 +297,7 @@ public actor MCPHttpServerTransport {
             await context.cancel()
             return
         case .get:
-            await handleGetMcp(head: head, body: body, context: context, clientAddress: clientAddress, now: now)
+            await handleGetMcp(head: head, context: context, clientAddress: clientAddress)
         case .post:
             await handlePostMcp(head: head, body: body, context: context, clientAddress: clientAddress, now: now)
         case .delete:
@@ -417,10 +417,8 @@ public actor MCPHttpServerTransport {
 
     private func handleGetMcp(
         head: HttpRequestHead,
-        body: Data,
         context: HttpConnectionContext,
-        clientAddress: MCPClientAddress,
-        now: Date
+        clientAddress: MCPClientAddress
     ) async {
         guard pathMatchesMcp(head.path) else {
             await respondTopLevel(
@@ -435,25 +433,10 @@ public actor MCPHttpServerTransport {
             return
         }
 
-        let authResult = await authenticate(headers: head.headers, clientAddress: clientAddress)
-        guard case .allow(let principal) = authResult else {
-            if case .deny(let error) = authResult {
-                await respondTopLevel(context: context, error: error, requestId: nil)
-            }
-            return
-        }
-
         guard let sessionIdRaw = head.headers.value(for: "Mcp-Session-Id") else {
             await respondTopLevel(context: context, error: .missingSessionId(), requestId: nil)
             return
         }
-        let sessionId = MCPSessionId(sessionIdRaw)
-        guard await sessionStore.session(id: sessionId) != nil else {
-            await respondTopLevel(context: context, error: .sessionNotFound(), requestId: nil)
-            return
-        }
-
-        await sessionStore.touch(id: sessionId)
 
         if head.headers.value(for: "Last-Event-ID") != nil {
             await respondTopLevel(
@@ -468,25 +451,32 @@ public actor MCPHttpServerTransport {
             return
         }
 
-        let mcpProtocolVersion = head.headers.value(for: "mcp-protocol-version")
+        if let accept = head.headers.value(for: "Accept"),
+           !accept.lowercased().contains("text/event-stream"),
+           !accept.contains("*/*") {
+            await respondTopLevel(context: context, error: .notAcceptable(), requestId: nil)
+            return
+        }
 
-        let sink = TransportResponderSink(transport: self, context: context)
-        let responder = MCPExchangeResponder(sink: sink, requestId: nil)
+        let authResult = await authenticate(headers: head.headers, clientAddress: clientAddress)
+        guard case .allow = authResult else {
+            if case .deny(let error) = authResult {
+                await respondTopLevel(context: context, error: error, requestId: nil)
+            }
+            return
+        }
 
-        let placeholderRequest = JsonRpcRequest(id: .null, method: "$/sse-stream", params: nil)
-        let exchangeContext = MCPInboundContext(
-            sessionId: sessionId,
-            principal: principal,
-            clientAddress: clientAddress,
-            receivedAt: now,
-            mcpProtocolVersion: mcpProtocolVersion
-        )
-        let exchange = MCPInboundExchange(
-            message: .request(placeholderRequest),
-            context: exchangeContext,
-            responder: responder
-        )
-        exchangesContinuation?.yield(exchange)
+        let sessionId = MCPSessionId(sessionIdRaw)
+        guard await sessionStore.session(id: sessionId) != nil else {
+            await respondTopLevel(context: context, error: .sessionNotFound(), requestId: nil)
+            return
+        }
+
+        await sessionStore.touch(id: sessionId)
+
+        registerSseConnection(connectionId: context.id, sessionId: sessionId)
+        await context.writeSseStreamHeaders(sessionId: sessionId)
+        Self.logger.info("Registered SSE notification stream for session \(sessionId.rawValue, privacy: .public)")
     }
 
     private func handlePostMcp(
