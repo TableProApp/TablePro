@@ -119,7 +119,7 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
             return
         }
         XCTAssertEqual(response.id, .number(99))
-        XCTAssertEqual(response.error.code, JsonRpcErrorCode.sessionNotFound)
+        XCTAssertEqual(response.error.code, JsonRpcErrorCode.unauthenticated)
         XCTAssertEqual(response.error.message, "Unauthenticated")
         await transport.close()
     }

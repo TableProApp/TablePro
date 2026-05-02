@@ -77,7 +77,7 @@ public extension MCPProtocolError {
 
     static func unauthenticated(challenge: String = "Bearer realm=\"TablePro\"") -> Self {
         Self(
-            code: JsonRpcErrorCode.sessionNotFound,
+            code: JsonRpcErrorCode.unauthenticated,
             message: "Unauthenticated",
             httpStatus: .unauthorized,
             extraHeaders: [("WWW-Authenticate", challenge)]

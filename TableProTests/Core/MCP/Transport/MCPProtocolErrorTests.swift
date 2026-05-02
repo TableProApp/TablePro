@@ -48,6 +48,7 @@ final class MCPProtocolErrorTests: XCTestCase {
 
     func testUnauthenticatedIncludesWwwAuthenticate() {
         let error = MCPProtocolError.unauthenticated(challenge: "Bearer realm=\"x\"")
+        XCTAssertEqual(error.code, JsonRpcErrorCode.unauthenticated)
         XCTAssertEqual(error.httpStatus, .unauthorized)
         let header = error.extraHeaders.first { $0.0.lowercased() == "www-authenticate" }
         XCTAssertNotNil(header)

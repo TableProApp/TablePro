@@ -16,6 +16,7 @@ public enum JsonRpcErrorCode {
     public static let serverDisabled = -32_006
     public static let forbidden = -32_007
     public static let expired = -32_008
+    public static let unauthenticated = -32_009
 
     public static let serverErrorRange: ClosedRange<Int> = -32_099 ... -32_000
 }
