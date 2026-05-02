@@ -1,5 +1,4 @@
 import Foundation
-import Network
 import os
 
 public struct MCPInboundContext: Sendable {
