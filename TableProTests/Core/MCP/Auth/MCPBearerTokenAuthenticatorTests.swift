@@ -37,6 +37,7 @@ actor FakeMCPTokenStore: MCPTokenStoreProtocol {
 struct MCPBearerTokenAuthenticatorTests {
     private func makePrincipal(label: String = "test", scopes: Set<MCPScope> = [.toolsRead]) -> MCPValidatedToken {
         MCPValidatedToken(
+            tokenId: UUID(),
             label: label,
             scopes: scopes,
             issuedAt: Date(timeIntervalSince1970: 1_000_000),
