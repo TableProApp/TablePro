@@ -9,8 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - MCP: streaming progress notifications. Long-running tool calls (e.g. `execute_query`) now emit `notifications/progress` events to clients that pass a `_meta.progressToken` in their request.
+- MCP: pairing redirect carries an explicit `error=denied` parameter when the user clicks Deny so extensions can show a clear error instead of hanging.
+- MCP: re-pairing the same client name automatically revokes the previous token instead of leaving it active.
 
 ### Fixed
+- MCP: GET `/mcp` now opens a real SSE notification stream. Previously the GET path was routed through the request dispatcher, which had no handler for it, so the connection was closed immediately and `notifications/progress` events were dropped.
+- MCP: concurrent tool calls no longer serialize at the dispatcher loop. Each exchange is dispatched in its own child task while session-state guards still serialize per-session work.
+- MCP: server validates the `protocolVersion` requested in `initialize` against a supported set and rejects unknown versions with `-32600 invalid_request` instead of silently echoing back whatever the client sent.
+- MCP: server validates `MCP-Protocol-Version` on follow-up requests against the negotiated version on the session.
+- MCP: 429 responses now include a real `Retry-After` header derived from the rate-limiter lockout time. The audit log records the same value.
+- MCP: token revocation cancels every in-flight request issued by that token and terminates its sessions.
+- MCP: CORS reflects the request `Origin` against an allowlist (`localhost`, `127.0.0.1`, `claude.ai`, `app.cursor.com`) instead of unconditionally returning `Access-Control-Allow-Origin: http://localhost`. Requests without an `Origin` header (native clients) get no CORS headers.
+- MCP: duplicate `initialize` on the same session now returns `invalid_request` instead of silently overwriting `clientInfo`.
+- MCP: `xcodebuild test` no longer leaves an orphan `TablePro.app` running. The app delegate skips its normal startup when launched under XCTest.
+- MCP: server start removes a stale handshake file written by a crashed previous PID before writing a fresh one.
+- MCP: settings activity log refreshes automatically when new audit entries are written.
 - MCP: stale `Mcp-Session-Id` after idle timeout now produces a JSON-RPC `-32001 "Session not found"` envelope with HTTP 404, matching the spec and letting clients re-initialize cleanly. Previously the bridge forwarded a plain `{"error":"Session not found"}` body that Claude Desktop's parser rejected, hanging the request until a 4-minute client-side timeout fired.
 - MCP: stdio bridge no longer exits silently when stdin is briefly empty (was reading via `availableData`, which can't tell EOF from "no bytes right now"). Now uses `FileHandle.bytes` AsyncBytes.
 - MCP: SSE responses now stream incrementally instead of buffering the entire body before delivering events.
