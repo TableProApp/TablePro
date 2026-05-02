@@ -44,6 +44,45 @@ enum MCPAuditLogger {
         )
     }
 
+    static func logPairingExchange(
+        outcome: AuditOutcome,
+        tokenName: String? = nil,
+        ip: String,
+        details: String? = nil
+    ) {
+        let resolvedDetails = Self.composePairingDetails(ip: ip, extra: details)
+        switch outcome {
+        case .success:
+            serverAuth.info(
+                "Pairing exchange success: token=\(tokenName ?? "-", privacy: .public) ip=\(ip, privacy: .public)"
+            )
+        case .denied:
+            serverAuth.warning(
+                "Pairing exchange denied: ip=\(ip, privacy: .public) details=\(details ?? "-", privacy: .public)"
+            )
+        case .rateLimited:
+            serverAuth.warning("Pairing exchange rate limited: ip=\(ip, privacy: .public)")
+        case .error:
+            serverAuth.error(
+                "Pairing exchange error: ip=\(ip, privacy: .public) details=\(details ?? "-", privacy: .public)"
+            )
+        }
+        record(
+            category: .auth,
+            tokenName: tokenName,
+            action: "pairing.exchange",
+            outcome: outcome,
+            details: resolvedDetails
+        )
+    }
+
+    private static func composePairingDetails(ip: String, extra: String?) -> String {
+        guard let extra, !extra.isEmpty else {
+            return "ip=\(ip)"
+        }
+        return "ip=\(ip) \(extra)"
+    }
+
     static func logTokenCreated(tokenName: String) {
         serverAdmin.info("Token created: \(tokenName, privacy: .public)")
         record(

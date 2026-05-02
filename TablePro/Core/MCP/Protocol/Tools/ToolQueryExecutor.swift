@@ -34,7 +34,7 @@ enum ToolQueryExecutor {
                 tokenName: principalLabel,
                 connectionId: connectionId,
                 sql: query,
-                durationMs: Int(elapsed * 1000),
+                durationMs: Int(elapsed * 1_000),
                 rowCount: rowCount,
                 outcome: .success
             )
@@ -55,7 +55,7 @@ enum ToolQueryExecutor {
                 tokenName: principalLabel,
                 connectionId: connectionId,
                 sql: query,
-                durationMs: Int(elapsed * 1000),
+                durationMs: Int(elapsed * 1_000),
                 rowCount: 0,
                 outcome: .error,
                 errorMessage: error.localizedDescription
