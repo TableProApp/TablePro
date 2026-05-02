@@ -126,7 +126,20 @@ final class MCPPairingService {
             throw MCPDataLayerError.dataSourceError("Token store unavailable")
         }
 
-        let approval = try await AlertHelper.runPairingApproval(request: request)
+        let approval: PairingApproval
+        do {
+            approval = try await AlertHelper.runPairingApproval(request: request)
+        } catch let error as MCPDataLayerError where error.isUserCancelled {
+            Self.logger.info("Pairing denied for client '\(request.clientName, privacy: .public)'")
+            if let redirect = buildErrorRedirect(
+                base: request.redirectURL,
+                error: "denied",
+                description: "user_denied"
+            ) {
+                NSWorkspace.shared.open(redirect)
+            }
+            throw error
+        }
 
         let connectionAccess: ConnectionAccess = approval.allowedConnectionIds.map { .limited($0) } ?? .all
         let result = await tokenStore.generate(
@@ -173,6 +186,26 @@ final class MCPPairingService {
                 store.pruneExpired()
             }
         }
+    }
+
+    private func buildErrorRedirect(base: URL, error: String, description: String) -> URL? {
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        var items = components.queryItems ?? []
+        if base.scheme == "raycast" {
+            let payload: [String: String] = ["error": error, "error_description": description]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+                  let json = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+            items.append(URLQueryItem(name: "context", value: json))
+        } else {
+            items.append(URLQueryItem(name: "error", value: error))
+            items.append(URLQueryItem(name: "error_description", value: description))
+        }
+        components.queryItems = items
+        return components.url
     }
 
     private func buildRedirectURL(base: URL, code: String) -> URL? {

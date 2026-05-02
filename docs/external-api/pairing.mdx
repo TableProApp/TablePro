@@ -154,6 +154,17 @@ For preferences-backed storage, use `updateCommandMetadata` or write to the pass
 
 A failed exchange is recorded in the activity log under the `auth` category with outcome `denied`.
 
+### Denied approvals
+
+If the user clicks **Deny** on the approval sheet, TablePro opens the `redirect` URL with two extra parameters so the extension can show a clear error and stop spinning:
+
+- `error=denied`
+- `error_description=user_denied`
+
+For `raycast://...` redirects these are wrapped inside the standard `context` JSON payload (`{"error":"denied","error_description":"user_denied"}`); for any other scheme they are appended as flat query parameters.
+
+Extensions should treat the presence of an `error` parameter on the callback as terminal and surface the description to the user.
+
 ## Implementing pairing in another extension
 
 The flow is not Raycast-specific. Cursor, Claude Desktop, or any custom client can use it. Requirements:
