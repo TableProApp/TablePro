@@ -156,7 +156,13 @@ public actor MCPProtocolDispatcher {
                let session = await sessionStore.session(id: sessionId) {
                 let state = await session.state
                 if case .initializing = state {
-                    try? await session.transitionToReady()
+                    do {
+                        try await session.transitionToReady()
+                    } catch {
+                        Self.logger.warning(
+                            "Failed to transition session to ready: \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
                 }
             }
             await exchange.responder.acknowledgeAccepted()
@@ -193,7 +199,18 @@ public actor MCPProtocolDispatcher {
 
     private func resolveOrCreateSession(method: String, exchange: MCPInboundExchange) async -> MCPSession? {
         if method == "initialize" {
-            return try? await sessionStore.create()
+            if let sessionId = exchange.context.sessionId,
+               let existing = await sessionStore.session(id: sessionId) {
+                return existing
+            }
+            do {
+                return try await sessionStore.create()
+            } catch {
+                Self.logger.warning(
+                    "Failed to create session: \(error.localizedDescription, privacy: .public)"
+                )
+                return nil
+            }
         }
 
         guard let sessionId = exchange.context.sessionId else { return nil }
