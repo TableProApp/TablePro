@@ -244,7 +244,9 @@ private struct MCPSetupInstructions: View {
         .font(.callout)
     }
 
-    private var url: String { "http://127.0.0.1:\(port)/mcp" }
+    private var bridgeBinaryPath: String {
+        Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/tablepro-mcp").path
+    }
 
     private var steps: [String] {
         switch tool {
@@ -273,7 +275,7 @@ private struct MCPSetupInstructions: View {
             {
               "mcpServers": {
                 "tablepro": {
-                  "url": "\(url)"
+                  "command": "\(bridgeBinaryPath)"
                 }
               }
             }
@@ -285,7 +287,7 @@ private struct MCPSetupInstructions: View {
 
     private var command: String? {
         switch tool {
-        case .claudeCode: "claude mcp add tablepro --transport http \(url)"
+        case .claudeCode: "claude mcp add tablepro -- \(bridgeBinaryPath)"
         default: nil
         }
     }
