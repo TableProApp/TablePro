@@ -23,7 +23,15 @@ public enum MCPToolRegistry {
         OpenConnectionWindowTool()
     ]
 
+    private static let toolsByName: [String: any MCPToolImplementation] = {
+        var map: [String: any MCPToolImplementation] = [:]
+        for tool in allTools {
+            map[type(of: tool).name] = tool
+        }
+        return map
+    }()
+
     public static func tool(named name: String) -> (any MCPToolImplementation)? {
-        allTools.first { type(of: $0).name == name }
+        toolsByName[name]
     }
 }
