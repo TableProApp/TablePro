@@ -76,7 +76,6 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         case salt
         case permissions
         case connectionAccess
-        case allowedConnectionIds
         case createdAt
         case lastUsedAt
         case expiresAt
@@ -95,14 +94,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
         self.expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
         self.isActive = try container.decode(Bool.self, forKey: .isActive)
-
-        if let access = try container.decodeIfPresent(ConnectionAccess.self, forKey: .connectionAccess) {
-            self.connectionAccess = access
-        } else if let legacyIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .allowedConnectionIds) {
-            self.connectionAccess = .limited(legacyIds)
-        } else {
-            self.connectionAccess = .all
-        }
+        self.connectionAccess = try container.decodeIfPresent(ConnectionAccess.self, forKey: .connectionAccess) ?? .all
     }
 
     func encode(to encoder: Encoder) throws {
@@ -269,10 +261,8 @@ actor MCPTokenStore {
             return
         }
 
-        var migratedFromLegacyFormat = false
         do {
             let data = try Data(contentsOf: storageUrl)
-            migratedFromLegacyFormat = data.contains(Self.legacyConnectionAccessKey)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             tokens = try decoder.decode([MCPAuthToken].self, from: data)
@@ -286,16 +276,8 @@ actor MCPTokenStore {
             tokens.removeAll { $0.name == Self.stdioBridgeTokenName }
             save()
             Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
-            return
-        }
-
-        if migratedFromLegacyFormat {
-            save()
-            Self.logger.info("Migrated MCP token file from allowedConnectionIds to connectionAccess")
         }
     }
-
-    private static let legacyConnectionAccessKey = Data("allowedConnectionIds".utf8)
 
     private func saveIfCooldownElapsed() {
         let now = ContinuousClock.now
