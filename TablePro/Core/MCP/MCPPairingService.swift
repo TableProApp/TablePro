@@ -141,6 +141,8 @@ final class MCPPairingService {
             throw error
         }
 
+        await Self.revokeExistingTokens(named: request.clientName, in: tokenStore)
+
         let connectionAccess: ConnectionAccess = approval.allowedConnectionIds.map { .limited($0) } ?? .all
         let result = await tokenStore.generate(
             name: request.clientName,
@@ -176,6 +178,14 @@ final class MCPPairingService {
 
     func exchange(_ exchange: PairingExchange) throws -> String {
         try store.consume(code: exchange.code, verifier: exchange.verifier)
+    }
+
+    private static func revokeExistingTokens(named name: String, in store: MCPTokenStore) async {
+        let active = await store.activeTokens()
+        for token in active where token.name == name {
+            await store.revoke(tokenId: token.id)
+            Self.logger.info("Revoked previous token '\(name, privacy: .public)' before re-pairing")
+        }
     }
 
     private func startPruneLoop() {
