@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Oracle 10G password verifier authentication. Accounts whose `password_versions` includes a 10G hash now connect successfully, matching DBeaver/JDBC/sqlplus behavior. The 10G hash is documented as legacy; rotating to a modern verifier is still recommended (#483)
+- Oracle Test Connection now opens a focused diagnostic sheet for auth failures with copy-able diagnostic info, suggested actions, and a link to file an issue
+- Oracle connection negotiation now matches python-oracledb's 23ai compile-capability advertisement, including TTC4 explicit boundary, TTC5 token/pipelining/sessionless flags, OCI3 sync, dequeue selectors, and sparse vector features
+
 ### Changed
 
 - Internal: introduce `TabSession` as the foundation type for the editor tab/window subsystem rewrite. Currently a parallel structure mirroring `QueryTab`; subsequent PRs migrate state ownership and lifecycle hooks per `docs/architecture/tab-subsystem-rewrite.md`. No user-visible behavior change in this PR.
@@ -19,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Tab switching: rapid Cmd+Number presses no longer leave a tail of tab transitions playing after the user releases the keys. The tab-selection setter (`NSWindowTabGroup.selectedWindow`) is now wrapped in `NSAnimationContext.runAnimationGroup` with `duration = 0`, so AppKit applies each switch synchronously without queuing a CAAnimation. Lazy-load also moved out of `windowDidBecomeKey` into `.task(id:)` view-appearance lifecycle per Apple's documentation. Note: extreme Cmd+Number bursts (e.g. holding the key for key-repeat) still incur per-switch AppKit window-focus overhead; this is platform-inherent to native NSWindow tabs and documented in `docs/architecture/tab-subsystem-rewrite.md` D2
 - Oracle TIMESTAMP, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH LOCAL TIME ZONE, INTERVAL DAY TO SECOND, INTERVAL YEAR TO MONTH, DATE, RAW, and BLOB columns now render through typed decoders instead of garbled text. Tables containing INTERVAL YEAR TO MONTH or BFILE columns no longer crash the app on row fetch. Unknown column types display `<unsupported: type>` instead of crashing (#965)
+- Oracle connections to 23ai cloud and containerized deployments no longer fail with `uncleanShutdown` mid-handshake. OOB urgent-byte send now requires the server to advertise `TNS_ACCEPT_FLAG_CHECK_OOB`, matching python-oracledb behavior (#483)
 
 ## [0.37.0] - 2026-05-01
 

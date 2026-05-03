@@ -147,12 +147,46 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         } catch let sqlError as OracleSQLError {
             let detail = sqlError.serverInfo?.message ?? sqlError.description
             osLogger.error("Oracle connection failed: \(detail)")
-            throw OracleError(message: "Failed to connect to \(host):\(port)/\(service): \(detail)")
+            throw OracleError(message: friendlyConnectError(for: sqlError, fallback: detail))
         } catch {
             let detail = String(describing: error)
             osLogger.error("Oracle connection failed: \(detail)")
             throw OracleError(message: "Failed to connect to \(host):\(port)/\(service): \(detail)")
         }
+    }
+
+    private func friendlyConnectError(for error: OracleSQLError, fallback: String) -> String {
+        let target = "\(host):\(port)/\(serviceName.isEmpty ? database : serviceName)"
+        let codeDescription = error.code.description
+        if codeDescription.hasPrefix("unsupportedVerifierType") {
+            let template = String(localized: """
+                Failed to connect to %1$@. The database advertised a password verifier that \
+                TablePro does not recognize (%2$@). File an issue at \
+                github.com/TableProApp/TablePro/issues with the verifier flag.
+                """)
+            return String(format: template, target, codeDescription)
+        }
+        if codeDescription == "uncleanShutdown" {
+            let template = String(localized: """
+                Failed to connect to %@. The connection was dropped during the handshake. \
+                This is often an OOB compatibility issue with cloud-hosted or containerized \
+                Oracle. If the same connection works in DBeaver, please report at \
+                github.com/TableProApp/TablePro/issues/483.
+                """)
+            return String(format: template, target)
+        }
+        if codeDescription == "serverVersionNotSupported" {
+            let template = String(localized: """
+                Failed to connect to %@. The database returned a server version or auth \
+                scheme TablePro cannot negotiate. Check that the user account has an 11G or \
+                12C password hash (SELECT password_versions FROM dba_users WHERE \
+                username = '<USER>'). Ask your DBA to rotate the password under modern auth \
+                if the result includes only 10G.
+                """)
+            return String(format: template, target)
+        }
+        let template = String(localized: "Failed to connect to %1$@: %2$@")
+        return String(format: template, target, fallback)
     }
 
     func disconnect() {

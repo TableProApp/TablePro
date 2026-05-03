@@ -42,7 +42,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/TableProApp/oracle-nio",
       "state" : {
-        "revision" : "f343a0db14aba73e50a6f93bd981d3b07a61c6d4"
+        "revision" : "6bbaee5c5d177743413ed4b376f7dada2d855cd2"
       }
     },
     {

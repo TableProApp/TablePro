@@ -91,10 +91,17 @@ extension ConnectionFormView {
     }
 
     func loadConnectionData() {
+        let connectionFormLog = Logger(subsystem: "com.TablePro", category: "ConnectionForm")
+        connectionFormLog.debug(
+            "[trace] loadConnectionData connectionId=\(self.connectionId?.uuidString ?? "nil", privacy: .public) isNew=\(self.connectionId == nil)"
+        )
         sshState.profiles = SSHProfileStorage.shared.loadProfiles()
         if let id = connectionId,
             let existing = storage.loadConnections().first(where: { $0.id == id })
         {
+            connectionFormLog.debug(
+                "[trace] loadConnectionData found existing id=\(existing.id.uuidString, privacy: .public) name='\(existing.name, privacy: .public)' promptForPassword=\(existing.promptForPassword)"
+            )
             originalConnection = existing
             name = existing.name
             host = existing.host
@@ -162,6 +169,13 @@ extension ConnectionFormView {
             // Load connection password from Keychain
             if let savedPassword = storage.loadPassword(for: existing.id) {
                 password = savedPassword
+                connectionFormLog.debug(
+                    "[trace] loadConnectionData password populated length=\(savedPassword.count)"
+                )
+            } else {
+                connectionFormLog.debug(
+                    "[trace] loadConnectionData password NOT populated (loadPassword returned nil)"
+                )
             }
         }
         Task { @MainActor in
@@ -486,6 +500,10 @@ extension ConnectionFormView {
                     testSucceeded = false
                     if case PluginError.pluginNotInstalled = error {
                         pluginInstallConnection = testConn
+                    } else if let payload = oracleDiagnosticPayload(
+                        for: error, connection: testConn, username: finalUsername
+                    ) {
+                        oracleDiagnostic = payload
                     } else {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Connection Test Failed"),
@@ -496,6 +514,33 @@ extension ConnectionFormView {
                 }
             }
         }
+    }
+
+    private func oracleDiagnosticPayload(
+        for error: Error,
+        connection: DatabaseConnection,
+        username: String
+    ) -> OracleDiagnosticPayload? {
+        guard connection.type.pluginTypeId == "Oracle" else { return nil }
+        let message = error.localizedDescription
+        let category: OracleDiagnosticPayload.Category
+        if message.contains("password verifier") {
+            category = .unsupportedVerifier
+        } else if message.contains("dropped during the handshake") {
+            category = .uncleanShutdown
+        } else if message.contains("server version or auth scheme") {
+            category = .serverVersionNotSupported
+        } else {
+            return nil
+        }
+        return OracleDiagnosticPayload(
+            host: connection.host,
+            port: connection.port,
+            serviceOrDatabase: connection.database,
+            username: username,
+            errorMessage: message,
+            category: category
+        )
     }
 
     func browseForFile() {

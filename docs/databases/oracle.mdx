@@ -94,6 +94,28 @@ ORDER BY table_name;
 
 **Authentication**: Username/password only (no OS auth or wallet). Create user: `CREATE USER app_user IDENTIFIED BY "Password1!"; GRANT CREATE SESSION, SELECT ANY TABLE TO app_user;`
 
+## Auth Compatibility
+
+TablePro authenticates via `OracleNIO`, a pure-Swift implementation of the Oracle TNS wire protocol (no Oracle Instant Client needed).
+
+| `dba_users.password_versions` | Status |
+|---|---|
+| `12C` only (recommended) | ✓ Supported |
+| `11G 12C` | ✓ Supported |
+| `10G 11G 12C` | ✓ Supported |
+| `10G 11G` (legacy migration) | ✓ Supported |
+| `10G` only (deprecated) | ✓ Supported, but consider rotation |
+| External / Kerberos / LDAP-managed | ✗ Not supported. File an issue. |
+
+10G hash is supported for compatibility with legacy environments. It uses DES-based hashing without modern salting and is deprecated by Oracle. We recommend rotating affected accounts under modern auth so `password_versions` contains only `11G` or `12C`:
+
+```sql
+ALTER USER <USER> IDENTIFIED BY <new-secure-password>;
+SELECT username, password_versions FROM dba_users WHERE username = '<USER>';
+```
+
+If the connection fails with the dialog "Server Version Not Supported" or "Unsupported Password Verifier", check `password_versions` first.
+
 ## Column Type Support
 
 | Oracle type | Display |
