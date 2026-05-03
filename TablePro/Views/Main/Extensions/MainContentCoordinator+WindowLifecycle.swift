@@ -131,7 +131,17 @@ extension MainContentCoordinator {
             || tab.pendingChanges.hasChanges
         guard !hasPendingEdits else { return }
 
-        guard !tab.execution.isExecuting else { return }
+        // A previous load that was cancelled mid-flight (e.g. user rapidly
+        // switched away) leaves `isExecuting = true` with no rows and no
+        // `lastExecutedAt`. Clear the stale flag inline so the executor's
+        // own `!tab.execution.isExecuting` guard inside
+        // `executeTableTabQueryDirectly` doesn't suppress this re-fire.
+        if tab.execution.isExecuting && rows.rows.isEmpty && tab.execution.lastExecutedAt == nil,
+           let idx = tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
+            tabManager.tabs[idx].execution.isExecuting = false
+        } else if tab.execution.isExecuting {
+            return
+        }
 
         guard let session = DatabaseManager.shared.session(for: connectionId),
               session.isConnected else {

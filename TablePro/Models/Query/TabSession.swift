@@ -11,22 +11,24 @@ import Observation
 
 /// Per-tab state container for the editor tab/window subsystem.
 ///
-/// In the new architecture, one `TabSession` instance owns all per-tab state
-/// (filters, hidden columns, row data, sort, pagination, etc.). The
-/// `MainContentCoordinator` exposes per-tab mutation helpers; the legacy
-/// shared per-window managers (filters, columns, table rows) are gone.
-/// SwiftUI tracks mutations natively via the Observation framework, so views
-/// don't need explicit subscriptions or stored callbacks.
+/// `QueryTab` (struct) is the persistence shape and the canonical source of
+/// truth for per-tab state. `TabSession` (this class) is the @Observable
+/// reference-type mirror that SwiftUI views read from for fine-grained
+/// updates. They are kept in sync by the coordinator helpers in
+/// `MainContentCoordinator+FilterState`, `+ColumnVisibility`, and
+/// `QueryTabManager.tabs.didSet` (which registers a session on tab insert
+/// and unregisters on remove).
 ///
-/// PR1 (this PR) introduces the type as a parallel structure that mirrors
-/// `QueryTab`'s state shape. Consumers still use `QueryTab` and the legacy
-/// stores; subsequent PRs migrate field ownership into `TabSession` and
-/// retire the old stores via the strangler-fig pattern.
+/// **Invariant**: every `tabManager.tabs[index]` has exactly one `TabSession`
+/// in `TabSessionRegistry`, keyed by the same `id`. Mutations to per-tab
+/// state must go through the coordinator helpers — direct writes to
+/// `tabManager.tabs[index].field = …` will desync the session mirror until
+/// the next coordinator-driven mutation re-syncs.
 ///
-/// This is a class (not a struct) because `@Observable` requires a reference
-/// type. The mutation-by-array-index pattern that QueryTab uses
-/// (`tabManager.tabs[index].field = value`) becomes direct property assignment
-/// on a shared instance, which is what SwiftUI's Observation framework expects.
+/// Class (not struct) because `@Observable` requires a reference type;
+/// SwiftUI's Observation framework tracks property accesses on observed
+/// instances. Session-only fields (`tableRows`, `isEvicted`) are not part
+/// of the `QueryTab` ↔ `TabSession` mirror because they aren't persisted.
 @Observable @MainActor
 final class TabSession: Identifiable {
     // MARK: - Identity
@@ -176,6 +178,12 @@ final class TabSession: Identifiable {
     /// session's identity (`id`). Used when a tab's persisted state is
     /// reloaded from disk and the existing session must absorb the new state
     /// without observers losing track of the instance.
+    ///
+    /// Session-only fields (`tableRows`, `isEvicted`) are intentionally NOT
+    /// touched — they aren't part of the `QueryTab` shape and are repopulated
+    /// by the next lazy-load. Callers wanting to discard cached row data
+    /// should set `tabSessionRegistry.session(for: id)?.tableRows = .init()`
+    /// (or call `removeTableRows`) explicitly before `absorb`.
     func absorb(_ queryTab: QueryTab) {
         precondition(queryTab.id == id, "TabSession.absorb requires matching ids")
         self.title = queryTab.title

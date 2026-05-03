@@ -65,6 +65,14 @@ final class TabSessionRegistry {
         sessions[tabId]?.isEvicted ?? false
     }
 
+    /// Evict row data for a tab. Sets `isEvicted = true` and bumps `loadEpoch`
+    /// so SwiftUI's `.task(id:)` lazy-load re-fires.
+    ///
+    /// Returns early if the session has no rows to evict — calling `evict` on
+    /// a tab with empty rows is a no-op (no `isEvicted` change, no epoch bump),
+    /// matching the original `TableRowsStore.evict` semantics. Use
+    /// `tabSessionRegistry.session(for:)?.isEvicted = true` directly if you
+    /// need to mark a fresh-but-empty session as evicted.
     func evict(for tabId: UUID) {
         guard let session = sessions[tabId] else { return }
         guard !session.tableRows.rows.isEmpty else { return }

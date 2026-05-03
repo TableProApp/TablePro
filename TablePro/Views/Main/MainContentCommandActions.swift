@@ -500,7 +500,6 @@ final class MainContentCommandActions {
         let target = windows[number - 1]
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
-            context.allowsImplicitAnimation = false
             tabGroup.selectedWindow = target
         }
     }

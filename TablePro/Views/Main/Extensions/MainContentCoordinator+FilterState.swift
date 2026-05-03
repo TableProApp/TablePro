@@ -4,7 +4,10 @@
 //
 
 import Foundation
+import os
 import SwiftUI
+
+private let filterStateLog = Logger(subsystem: "com.TablePro", category: "FilterState")
 
 extension MainContentCoordinator {
     var selectedTabFilterState: TabFilterState {
@@ -299,6 +302,13 @@ extension MainContentCoordinator {
         mutate(&state)
         tabManager.tabs[index].filterState = state
         let tabId = tabManager.tabs[index].id
-        tabSessionRegistry.session(for: tabId)?.filterState = state
+        if let session = tabSessionRegistry.session(for: tabId) {
+            session.filterState = state
+        } else {
+            filterStateLog.error(
+                "TabSession missing for selected tab \(tabId, privacy: .public); QueryTab updated but session mirror skipped"
+            )
+            assertionFailure("TabSession missing for selected tab — registry sync regression")
+        }
     }
 }

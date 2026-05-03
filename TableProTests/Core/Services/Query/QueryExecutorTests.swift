@@ -218,4 +218,12 @@ struct QueryExecutorTests {
         #expect(parsed.columnEnumValues.isEmpty)
         #expect(parsed.approximateRowCount == nil)
     }
+
+    // TODO: integration test for `QueryExecutor.executeQuery` orchestration
+    // (parallel schema fetch, cancel-on-fetch-error, parameterised path).
+    // Requires either a `DatabaseDriver` mock registered with
+    // `DatabaseManager.shared` or a DI refactor of `QueryExecutor` to accept
+    // an injected driver. Static helpers above already cover SQL parsing,
+    // metadata parsing, parameter reconciliation, DDL detection, and row-cap
+    // policy.
 }

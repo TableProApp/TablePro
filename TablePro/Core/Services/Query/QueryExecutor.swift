@@ -101,10 +101,6 @@ final class QueryExecutor {
             throw error
         }
 
-        if Task.isCancelled {
-            parallelSchemaTask?.cancel()
-        }
-
         var schemaResult: SchemaResult?
         if fetchSchemaForTable, let tableName, !tableName.isEmpty {
             schemaResult = await Self.awaitSchemaResult(

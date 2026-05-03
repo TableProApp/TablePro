@@ -27,7 +27,6 @@ extension MainContentCoordinator {
             )
         }
 
-        // Phase: save outgoing tab state
         let saveStart = Date()
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
@@ -45,9 +44,9 @@ extension MainContentCoordinator {
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
-        // Phase: evict inactive tabs (deferred to next run-loop tick so the
-        // synchronous switch path stays cheap; the sort + budget calculation
-        // is non-trivial on connections with many open tabs).
+        // Defer to the next run-loop tick so the synchronous switch path
+        // stays cheap; the sort + budget calculation is non-trivial on
+        // connections with many open tabs.
         if tabManager.tabs.count > 2 {
             let activeIds: Set<UUID> = Set([oldTabId, newTabId].compactMap { $0 })
             Task { @MainActor [weak self] in
@@ -55,7 +54,6 @@ extension MainContentCoordinator {
             }
         }
 
-        // Phase: restore incoming tab state
         let restoreStart = Date()
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
@@ -103,19 +101,6 @@ extension MainContentCoordinator {
                         await switchDatabase(to: newTab.tableContext.databaseName)
                     }
                     return  // switchDatabase will re-execute the query
-                }
-            }
-
-            // If the tab shows isExecuting but has no results, the previous query was
-            // likely cancelled when the user rapidly switched away. Force-clear the
-            // stale flag so MainEditorContentView's `.task(id:)` lazy-load can fire.
-            if newTab.execution.isExecuting && newRows.rows.isEmpty && newTab.execution.lastExecutedAt == nil {
-                let tabId = newId
-                Task { [weak self] in
-                    guard let self,
-                          let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                          self.tabManager.tabs[idx].execution.isExecuting else { return }
-                    self.tabManager.tabs[idx].execution.isExecuting = false
                 }
             }
 
