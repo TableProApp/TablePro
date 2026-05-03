@@ -7,9 +7,15 @@ import SwiftUI
 
 struct ColumnVisibilityPopover: View {
     let columns: [String]
-    let columnVisibilityManager: ColumnVisibilityManager
+    let hiddenColumns: Set<String>
+    let onToggleColumn: (String) -> Void
+    let onShowAll: () -> Void
+    let onHideAll: ([String]) -> Void
 
     @State private var searchText = ""
+
+    private var hasHiddenColumns: Bool { !hiddenColumns.isEmpty }
+    private var hiddenCount: Int { hiddenColumns.count }
 
     private var filteredColumns: [String] {
         if searchText.isEmpty {
@@ -36,8 +42,8 @@ struct ColumnVisibilityPopover: View {
     }
 
     private var headerTitle: String {
-        let visible = columns.count - columnVisibilityManager.hiddenCount
-        if columnVisibilityManager.hasHiddenColumns {
+        let visible = columns.count - hiddenCount
+        if hasHiddenColumns {
             return "\(visible) of \(columns.count)"
         }
         return String(localized: "Columns")
@@ -52,20 +58,20 @@ struct ColumnVisibilityPopover: View {
             Spacer()
 
             Button("Show All") {
-                columnVisibilityManager.showAll()
+                onShowAll()
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.accentColor)
             .controlSize(.small)
-            .disabled(!columnVisibilityManager.hasHiddenColumns)
+            .disabled(!hasHiddenColumns)
 
             Button("Hide All") {
-                columnVisibilityManager.hideAll(columns)
+                onHideAll(columns)
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.accentColor)
             .controlSize(.small)
-            .disabled(columnVisibilityManager.hiddenCount == columns.count)
+            .disabled(hiddenCount == columns.count)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -91,8 +97,8 @@ struct ColumnVisibilityPopover: View {
 
     private func columnRow(_ column: String) -> some View {
         Toggle(isOn: Binding(
-            get: { !columnVisibilityManager.hiddenColumns.contains(column) },
-            set: { _ in columnVisibilityManager.toggleColumn(column) }
+            get: { !hiddenColumns.contains(column) },
+            set: { _ in onToggleColumn(column) }
         )) {
             Text(column)
                 .lineLimit(1)

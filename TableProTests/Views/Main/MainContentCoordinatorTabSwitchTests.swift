@@ -17,8 +17,6 @@ struct MainContentCoordinatorTabSwitchTests {
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         return (coordinator, tabManager)
@@ -69,29 +67,31 @@ struct MainContentCoordinatorTabSwitchTests {
 
     // MARK: - Save outgoing state
 
-    @Test("Switching saves outgoing tab filter state into the tab")
-    func savesOutgoingFilterState() {
+    @Test("Filter state set on the active tab survives a tab switch")
+    func outgoingTabFilterStatePersists() {
         let (coordinator, tabManager) = makeCoordinator()
         let oldId = addQueryTab(to: tabManager, title: "Old")
         let newId = addQueryTab(to: tabManager, title: "New")
         seedRows(coordinator, for: oldId)
         seedRows(coordinator, for: newId)
 
-        coordinator.filterStateManager.filters = [
-            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "42")
-        ]
-        coordinator.filterStateManager.appliedFilters = [
-            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "42")
-        ]
-        coordinator.filterStateManager.isVisible = true
+        guard let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId }) else {
+            Issue.record("Expected old tab to exist before switch")
+            return
+        }
+        var state = TabFilterState()
+        state.filters = [TestFixtures.makeTableFilter(column: "id", op: .equal, value: "42")]
+        state.appliedFilters = state.filters
+        state.isVisible = true
+        tabManager.tabs[oldIndex].filterState = state
 
         coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
 
-        guard let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId }) else {
+        guard let oldIndexAfter = tabManager.tabs.firstIndex(where: { $0.id == oldId }) else {
             Issue.record("Expected old tab to exist after switch")
             return
         }
-        let saved = tabManager.tabs[oldIndex].filterState
+        let saved = tabManager.tabs[oldIndexAfter].filterState
         #expect(saved.filters.count == 1)
         #expect(saved.appliedFilters.count == 1)
         #expect(saved.filters.first?.value == "42")
@@ -132,15 +132,16 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(tabManager.tabs[oldIndex].pendingChanges.hasChanges == true)
     }
 
-    @Test("Switching saves outgoing column visibility state to the tab layout")
-    func savesOutgoingColumnVisibility() {
+    @Test("Hiding a column persists into the active tab's column layout")
+    func hidingColumnPersistsToActiveTab() {
         let (coordinator, tabManager) = makeCoordinator()
         let oldId = addTableTab(to: tabManager, tableName: "users")
         let newId = addTableTab(to: tabManager, tableName: "orders")
         seedRows(coordinator, for: oldId)
         seedRows(coordinator, for: newId)
 
-        coordinator.columnVisibilityManager.hideColumn("name")
+        tabManager.selectedTabId = oldId
+        coordinator.hideColumn("name")
 
         coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
 
@@ -171,21 +172,18 @@ struct MainContentCoordinatorTabSwitchTests {
         savedFilter.isVisible = true
         tabManager.tabs[newIndex].filterState = savedFilter
 
-        coordinator.filterStateManager.filters = [
-            TestFixtures.makeTableFilter(column: "old_col", op: .equal, value: "old")
-        ]
-        coordinator.filterStateManager.isVisible = false
-
+        tabManager.selectedTabId = newId
         coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
 
-        #expect(coordinator.filterStateManager.filters.count == 1)
-        #expect(coordinator.filterStateManager.filters.first?.columnName == "name")
-        #expect(coordinator.filterStateManager.filters.first?.value == "Bob")
-        #expect(coordinator.filterStateManager.isVisible == true)
+        let exposed = coordinator.selectedTabFilterState
+        #expect(exposed.filters.count == 1)
+        #expect(exposed.filters.first?.columnName == "name")
+        #expect(exposed.filters.first?.value == "Bob")
+        #expect(exposed.isVisible == true)
     }
 
-    @Test("Switching restores hidden columns for the incoming tab")
-    func restoresIncomingColumnVisibility() {
+    @Test("Switching to a tab exposes that tab's hidden columns through the coordinator")
+    func incomingTabExposesHiddenColumns() {
         let (coordinator, tabManager) = makeCoordinator()
         let oldId = addTableTab(to: tabManager, tableName: "users")
         let newId = addTableTab(to: tabManager, tableName: "orders")
@@ -198,11 +196,10 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         tabManager.tabs[newIndex].columnLayout.hiddenColumns = ["email", "phone"]
 
-        coordinator.columnVisibilityManager.hideColumn("legacy_col")
-
+        tabManager.selectedTabId = newId
         coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
 
-        #expect(coordinator.columnVisibilityManager.hiddenColumns == ["email", "phone"])
+        #expect(coordinator.selectedTabHiddenColumns == ["email", "phone"])
     }
 
     @Test("Switching restores selected row indices for the incoming tab")
@@ -359,29 +356,24 @@ struct MainContentCoordinatorTabSwitchTests {
         tabManager.tabs[newIndex].filterState = savedFilter
         tabManager.tabs[newIndex].columnLayout.hiddenColumns = ["secret"]
 
+        tabManager.selectedTabId = newId
         coordinator.handleTabChange(from: nil, to: newId, tabs: tabManager.tabs)
 
-        #expect(coordinator.filterStateManager.filters.count == 1)
-        #expect(coordinator.columnVisibilityManager.hiddenColumns == ["secret"])
+        #expect(coordinator.selectedTabFilterState.filters.count == 1)
+        #expect(coordinator.selectedTabHiddenColumns == ["secret"])
     }
 
-    @Test("Switching to nil clears the filter state and toolbar flags")
+    @Test("Switching to nil resets toolbar flags")
     func clearsStateOnSwitchToNil() {
         let (coordinator, tabManager) = makeCoordinator()
         let oldId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: oldId)
 
-        coordinator.filterStateManager.filters = [
-            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
-        ]
-        coordinator.filterStateManager.isVisible = true
         coordinator.toolbarState.isTableTab = true
         coordinator.toolbarState.isResultsCollapsed = true
 
         coordinator.handleTabChange(from: oldId, to: nil, tabs: tabManager.tabs)
 
-        #expect(coordinator.filterStateManager.filters.isEmpty)
-        #expect(coordinator.filterStateManager.isVisible == false)
         #expect(coordinator.toolbarState.isTableTab == false)
         #expect(coordinator.toolbarState.isResultsCollapsed == false)
     }
@@ -406,14 +398,9 @@ struct MainContentCoordinatorTabSwitchTests {
         seedRows(coordinator, for: oldId)
 
         coordinator.toolbarState.isTableTab = true
-        coordinator.filterStateManager.filters = [
-            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
-        ]
-        coordinator.filterStateManager.isVisible = true
 
         coordinator.handleTabChange(from: oldId, to: UUID(), tabs: tabManager.tabs)
 
-        #expect(coordinator.filterStateManager.filters.isEmpty)
         #expect(coordinator.toolbarState.isTableTab == false)
     }
 
@@ -431,36 +418,38 @@ struct MainContentCoordinatorTabSwitchTests {
         savedFilter.filters = [TestFixtures.makeTableFilter(column: "id", op: .equal, value: "777")]
         tabManager.tabs[newIndex].filterState = savedFilter
 
+        tabManager.selectedTabId = newId
         coordinator.handleTabChange(from: UUID(), to: newId, tabs: tabManager.tabs)
 
-        #expect(coordinator.filterStateManager.filters.count == 1)
-        #expect(coordinator.filterStateManager.filters.first?.value == "777")
+        #expect(coordinator.selectedTabFilterState.filters.count == 1)
+        #expect(coordinator.selectedTabFilterState.filters.first?.value == "777")
     }
 
     // MARK: - FilterState round-trip seam
 
-    @Test("FilterStateManager save then restore round-trips all visible state")
-    func filterStateManagerRoundTrip() {
-        let manager = FilterStateManager()
-        manager.filters = [
-            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1"),
-            TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
-        ]
-        manager.appliedFilters = [manager.filters[0]]
-        manager.isVisible = true
-        manager.filterLogicMode = .or
+    @Test("Coordinator filter helpers round-trip through the active tab's filter state")
+    func filterStateRoundTripThroughActiveTab() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
 
-        let snapshot = manager.saveToTabState()
+        let f1 = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let f2 = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [f1, f2]
+        tabManager.tabs[index].filterState.filterLogicMode = .or
 
-        manager.clearAll()
-        #expect(manager.filters.isEmpty)
-        #expect(manager.isVisible == false)
+        coordinator.applySelectedFilters()
+        #expect(coordinator.selectedTabFilterState.appliedFilters.count == 2)
+        #expect(coordinator.selectedTabFilterState.filterLogicMode == .or)
 
-        manager.restoreFromTabState(snapshot)
-        #expect(manager.filters.count == 2)
-        #expect(manager.appliedFilters.count == 1)
-        #expect(manager.isVisible == true)
-        #expect(manager.filterLogicMode == .or)
+        coordinator.clearFilterState()
+        #expect(coordinator.selectedTabFilterState.filters.isEmpty)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+        #expect(coordinator.selectedTabFilterState.isVisible == false)
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")
@@ -495,19 +484,26 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(fresh.columns == ["id", "name"])
     }
 
-    @Test("ColumnVisibilityManager round-trips hidden columns through layout state")
-    func columnVisibilityManagerRoundTrip() {
-        let manager = ColumnVisibilityManager()
-        manager.hideColumn("email")
-        manager.hideColumn("phone")
+    @Test("Coordinator helpers round-trip hidden columns through the active tab's layout")
+    func columnVisibilityHelpersRoundTrip() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
 
-        let saved = manager.saveToColumnLayout()
-        #expect(saved == ["email", "phone"])
+        coordinator.hideColumn("email")
+        coordinator.hideColumn("phone")
+        #expect(coordinator.selectedTabHiddenColumns == ["email", "phone"])
 
-        manager.showAll()
-        #expect(manager.hiddenColumns.isEmpty)
+        coordinator.showAllColumns()
+        #expect(coordinator.selectedTabHiddenColumns.isEmpty)
 
-        manager.restoreFromColumnLayout(saved)
-        #expect(manager.hiddenColumns == ["email", "phone"])
+        coordinator.hideAllColumns(["email", "phone"])
+        #expect(coordinator.selectedTabHiddenColumns == ["email", "phone"])
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        #expect(tabManager.tabs[index].columnLayout.hiddenColumns == ["email", "phone"])
     }
 }

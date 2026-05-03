@@ -165,7 +165,7 @@ extension MainContentView {
             rightPanelState.editState.onFieldChanged = nil
             return
         }
-        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
+        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
 
         var allRows: [[String?]] = []
         for index in selectedIndices.sorted() {
@@ -225,7 +225,7 @@ extension MainContentView {
         let capturedEditState = rightPanelState.editState
         rightPanelState.editState.onFieldChanged = { columnIndex, newValue in
             guard let tab = capturedCoordinator.tabManager.selectedTab else { return }
-            let tableRows = capturedCoordinator.tableRowsStore.tableRows(for: tab.id)
+            let tableRows = capturedCoordinator.tabSessionRegistry.tableRows(for: tab.id)
             let columnName =
                 columnIndex < tableRows.columns.count ? tableRows.columns[columnIndex] : ""
 
@@ -268,7 +268,7 @@ extension MainContentView {
         let capturedCoordinator = coordinator
         let capturedEditState = rightPanelState.editState
 
-        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
+        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         if !excludedNames.isEmpty,
             selectedIndices.count == 1,
             let tableName = tab.tableContext.tableName,

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - MCP: support for protocol versions `2025-06-18` and `2025-11-25` in addition to `2025-03-26`. Clients on the latest spec no longer downgrade. The server advertises the latest version it supports (`2025-11-25`) and falls back when a client requests an unknown version.
 - MCP: structured tool output (`structuredContent`) on every tool. The serialized JSON still appears in `content[].text` for backward compatibility, while 2025-11-25 clients can read the parsed object directly.
 - MCP: tool annotations (`title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) on every tool, plus `serverInfo.title` in `initialize` responses. Read tools advertise `readOnlyHint=true`; `confirm_destructive_operation` advertises `destructiveHint=true`.
@@ -15,8 +16,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP: streaming progress notifications. Long-running tool calls (e.g. `execute_query`) now emit `notifications/progress` events to clients that pass a `_meta.progressToken` in their request.
 - MCP: pairing redirect carries an explicit `error=denied` parameter when the user clicks Deny so extensions can show a clear error instead of hanging.
 - MCP: re-pairing the same client name automatically revokes the previous token instead of leaving it active.
+- Oracle 10G password verifier authentication. Accounts whose `password_versions` includes a 10G hash now connect successfully, matching DBeaver/JDBC/sqlplus behavior. The 10G hash is documented as legacy; rotating to a modern verifier is still recommended (#483)
+- Oracle Test Connection now opens a focused diagnostic sheet for auth failures with copy-able diagnostic info, suggested actions, and a link to file an issue
+- Oracle connection negotiation now matches python-oracledb's 23ai compile-capability advertisement, including TTC4 explicit boundary, TTC5 token/pipelining/sessionless flags, OCI3 sync, dequeue selectors, and sparse vector features
+
+### Removed
+
+- Keychain: the legacy-keychain migration (`migrateFromLegacyKeychainIfNeeded`) and the password-sync-state migration (`migratePasswordSyncState`). The first violated Apple's Data Protection keychain contract on sandboxed macOS apps and corrupted user credentials; the second toggled `kSecAttrSynchronizable` at runtime, which Apple does not document as safe. The Sync Passwords settings toggle now applies to new saves only, existing keychain items keep their original sync state, matching Apple's documented behavior. Users with stale items in the legacy keychain can clean them via Keychain Access; the running app no longer touches them.
+
+### Changed
+
+- MCP: idle session timeout raised from 5 to 15 minutes.
+- MCP: complete internal rewrite of the server, stdio bridge, and protocol dispatcher for spec compliance. Public API of `MCPServerManager` and the on-disk handshake format are unchanged; clients do not need to re-pair.
+- Internal: introduce `TabSession` as the foundation type for the editor tab/window subsystem rewrite. Currently a parallel structure mirroring `QueryTab`; subsequent PRs migrate state ownership and lifecycle hooks per `docs/architecture/tab-subsystem-rewrite.md`. No user-visible behavior change in this PR.
+- Internal: row data and load epoch now live on `TabSession`. `TabSessionRegistry` exposes the row-access methods directly (`tableRows(for:)`, `setTableRows(_:for:)`, `evict(for:)`, etc.); the intermediate `TableRowsStore` facade is gone. All consumers (coordinator, extensions, views, command actions) now read row data from the registry. No user-visible behavior change.
+- Internal: hidden-column state moves from the per-window `ColumnVisibilityManager` into each tab's `columnLayout.hiddenColumns`. The shared manager is removed; `MainContentCoordinator` exposes `hideColumn`, `showColumn`, `toggleColumnVisibility`, `showAllColumns`, `hideAllColumns`, and `pruneHiddenColumns` that mutate the active tab directly. Per-table UserDefaults persistence moves into a small `ColumnVisibilityPersistence` service. Tab-switch save/restore swap is gone, each tab is its own source of truth. No user-visible behavior change.
+- Internal: filter state collapses from three places (the per-window `FilterStateManager`, the `TabFilterState` snapshot on `QueryTab`, and the per-table file-based restore) to a single source: `tab.filterState`. The shared manager is removed; `MainContentCoordinator` now exposes the full filter API (`addFilter`, `applyAllFilters`, `clearFilterState`, `toggleFilterPanel`, `setFKFilter`, `saveLastFilters(for:)`, `restoreLastFilters(for:)`, `saveFilterPreset`, `loadFilterPreset`, `generateFilterPreviewSQL`, etc.) that mutates the active tab. The file-based "restore last filters" persistence in `FilterSettingsStorage` is unchanged. `FilterPanelView`, `MainStatusBarView`, `MainContentCommandActions`, `MainContentView`, and `MainEditorContentView` read filter state directly off the active tab. No user-visible behavior change.
+- Internal: extract `QueryExecutor` service from `MainContentCoordinator`. Query data fetch, parallel schema fetch, schema parsing, parameter detection, row-cap policy, and DDL detection now live in `TablePro/Core/Services/Query/QueryExecutor.swift`. SQL parsing helpers (`extractTableName`, `stripTrailingOrderBy`, `parseSQLiteCheckConstraintValues`) move into `QuerySqlParser`. Coordinator methods become thin wrappers; behavior unchanged. No user-visible behavior change.
+- Security: non-syncing keychain items now use `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. This keeps local-only secrets out of unencrypted device backups (the pairing Apple recommends for local secrets). Syncing items still use `kSecAttrAccessibleAfterFirstUnlock` because iCloud Keychain requires it. Existing items keep their accessibility class until you save them again.
+- Internal: `KeychainHelper` API consolidated. `save(key:data:)`/`saveString(_:forKey:)` become `write(_:forKey:)`/`writeString(_:forKey:)`; `load(key:)`/`loadWithStatus(key:)`/`loadString(forKey:)`/`loadStringWithStatus(forKey:)` become `read(forKey:)`/`readString(forKey:)`/`readStringResult(forKey:)`, all returning a typed `KeychainResult`/`KeychainStringResult` enum with `.found`/`.notFound`/`.locked` cases. `delete(key:)` renamed to `delete(forKey:)`. All consumers (`ConnectionStorage`, `SSHProfileStorage`, `AIKeyStorage`, `LicenseStorage`) updated to log when the keychain is locked rather than silently returning nil. `KeychainHelper` is now `Sendable`. Failure logging uses `SecCopyErrorMessageString`.
+- Settings > Sync > Passwords shows a caption explaining the toggle only affects new saves. Existing passwords keep their current sync state until you re-save them.
 
 ### Fixed
+
 - MCP: GET `/mcp` now opens a real SSE notification stream. Previously the GET path was routed through the request dispatcher, which had no handler for it, so the connection was closed immediately and `notifications/progress` events were dropped.
 - MCP: concurrent tool calls no longer serialize at the dispatcher loop. Each exchange is dispatched in its own child task while session-state guards still serialize per-session work.
 - MCP: server validates the `protocolVersion` requested in `initialize` against a supported set and rejects unknown versions with `-32600 invalid_request` instead of silently echoing back whatever the client sent.
@@ -33,10 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP: SSE responses now stream incrementally instead of buffering the entire body before delivering events.
 - MCP: localhost auth-DoS surface closed. The rate limiter now keys on `(client_address, principal_fingerprint)` so failed attempts from one bridge can't lock out another.
 - MCP: in-app "Setup for Claude Desktop / Cursor" snippets now use the stdio command form pointing at the bundled `tablepro-mcp` binary. The previous `"url"` form was rejected by Claude Desktop entirely.
-
-### Changed
-- MCP: idle session timeout raised from 5 to 15 minutes.
-- MCP: complete internal rewrite of the server, stdio bridge, and protocol dispatcher for spec compliance. Public API of `MCPServerManager` and the on-disk handshake format are unchanged; clients do not need to re-pair.
+- Saved connection passwords no longer disappear after quitting and relaunching the app. The legacy-keychain migration that ran on every launch was destructive on sandboxed macOS configurations: queries without `kSecUseDataProtectionKeychain` returned items that had been written *with* the flag, and the migration's "delete legacy entry" step then removed the only copy. Removed the legacy keychain migration entirely; `KeychainHelper` now exclusively reads and writes through the Data Protection keychain on every launch.
+- Tab switching: rapid Cmd+Number presses no longer leave a tail of tab transitions playing after the user releases the keys. The tab-selection setter (`NSWindowTabGroup.selectedWindow`) is now wrapped in `NSAnimationContext.runAnimationGroup` with `duration = 0`, so AppKit applies each switch synchronously without queuing a CAAnimation. Lazy-load also moved out of `windowDidBecomeKey` into `.task(id:)` view-appearance lifecycle per Apple's documentation. Note: extreme Cmd+Number bursts (e.g. holding the key for key-repeat) still incur per-switch AppKit window-focus overhead; this is platform-inherent to native NSWindow tabs and documented in `docs/architecture/tab-subsystem-rewrite.md` D2
+- Oracle TIMESTAMP, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH LOCAL TIME ZONE, INTERVAL DAY TO SECOND, INTERVAL YEAR TO MONTH, DATE, RAW, and BLOB columns now render through typed decoders instead of garbled text. Tables containing INTERVAL YEAR TO MONTH or BFILE columns no longer crash the app on row fetch. Unknown column types display `<unsupported: type>` instead of crashing (#965)
+- Oracle connections to 23ai cloud and containerized deployments no longer fail with `uncleanShutdown` mid-handshake. OOB urgent-byte send now requires the server to advertise `TNS_ACCEPT_FLAG_CHECK_OOB`, matching python-oracledb behavior (#483)
 
 ## [0.37.0] - 2026-05-01
 

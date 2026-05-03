@@ -127,7 +127,7 @@ extension MainContentCoordinator {
         // opening new native window tabs (e.g. Redis database switching).
         if navigationModel == .inPlace {
             if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableContext.tableName {
-                filterStateManager.saveLastFilters(for: oldTableName)
+                saveLastFilters(for: oldTableName)
             }
             do {
                 let replaced = try tabManager.replaceTabContent(
@@ -137,7 +137,7 @@ extension MainContentCoordinator {
                     schemaName: currentSchema
                 )
                 if replaced {
-                    filterStateManager.clearAll()
+                    clearFilterState()
                     if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
                         setActiveTableRows(TableRows(), for: tab.id)
                         tabManager.tabs[tabIndex].pagination.reset()
@@ -157,7 +157,7 @@ extension MainContentCoordinator {
 
         // If current tab has unsaved changes, active filters, or sorting, open in a new native tab
         let hasActiveWork = changeManager.hasChanges
-            || filterStateManager.hasAppliedFilters
+            || selectedTabFilterState.hasAppliedFilters
             || (tabManager.selectedTab?.sortState.isSorting ?? false)
         if hasActiveWork {
             let payload = EditorTabPayload(
@@ -211,7 +211,7 @@ extension MainContentCoordinator {
                 }
                 if let oldTab = previewCoordinator.tabManager.selectedTab,
                    let oldTableName = oldTab.tableContext.tableName {
-                    previewCoordinator.filterStateManager.saveLastFilters(for: oldTableName)
+                    previewCoordinator.saveLastFilters(for: oldTableName)
                 }
                 do {
                     try previewCoordinator.tabManager.replaceTabContent(
@@ -226,7 +226,7 @@ extension MainContentCoordinator {
                     navigationLogger.error("openPreviewTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
                     return
                 }
-                previewCoordinator.filterStateManager.clearAll()
+                previewCoordinator.clearFilterState()
                 if let tabIndex = previewCoordinator.tabManager.selectedTabIndex {
                     let tabId = previewCoordinator.tabManager.tabs[tabIndex].id
                     previewCoordinator.setActiveTableRows(TableRows(), for: tabId)
@@ -250,7 +250,7 @@ extension MainContentCoordinator {
             if tab.isPreview { return true }
             // Table tab with no active work
             if tab.tabType == .table && !changeManager.hasChanges
-                && !filterStateManager.hasAppliedFilters && !tab.sortState.isSorting {
+                && !selectedTabFilterState.hasAppliedFilters && !tab.sortState.isSorting {
                 return true
             }
             // Empty/default query tab (no user content, no results, never executed)
@@ -270,7 +270,7 @@ extension MainContentCoordinator {
                 tab.tabType == .query && !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             } ?? false
             let previewHasWork = changeManager.hasChanges
-                || filterStateManager.hasAppliedFilters
+                || selectedTabFilterState.hasAppliedFilters
                 || selectedTab.sortState.isSorting
                 || hasUnsavedQuery
             if previewHasWork {
@@ -288,7 +288,7 @@ extension MainContentCoordinator {
                 return
             }
             if let oldTableName = selectedTab.tableContext.tableName {
-                filterStateManager.saveLastFilters(for: oldTableName)
+                saveLastFilters(for: oldTableName)
             }
             do {
                 try tabManager.replaceTabContent(
@@ -303,7 +303,7 @@ extension MainContentCoordinator {
                 navigationLogger.error("openPreviewTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
                 return
             }
-            filterStateManager.clearAll()
+            clearFilterState()
             if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
                 setActiveTableRows(TableRows(), for: tab.id)
                 tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
@@ -405,7 +405,7 @@ extension MainContentCoordinator {
 
     /// Switch to a different database (called from database switcher)
     func switchDatabase(to database: String) async {
-        filterStateManager.clearAll()
+        clearFilterState()
         let previousDatabase = toolbarState.databaseName
         toolbarState.databaseName = database
 
@@ -414,7 +414,7 @@ extension MainContentCoordinator {
 
             closeSiblingNativeWindows()
             persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            tableRowsStore.tearDown()
+            tabSessionRegistry.removeAll()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
             await SchemaService.shared.invalidate(connectionId: connectionId)
@@ -436,7 +436,7 @@ extension MainContentCoordinator {
     func switchSchema(to schema: String) async {
         guard PluginManager.shared.supportsSchemaSwitching(for: connection.type) else { return }
 
-        filterStateManager.clearAll()
+        clearFilterState()
         let previousSchema = toolbarState.databaseName
         toolbarState.databaseName = schema
 
@@ -445,7 +445,7 @@ extension MainContentCoordinator {
 
             closeSiblingNativeWindows()
             persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            tableRowsStore.tearDown()
+            tabSessionRegistry.removeAll()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
             await SchemaService.shared.invalidate(connectionId: connectionId)

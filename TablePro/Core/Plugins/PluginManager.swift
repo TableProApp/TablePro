@@ -473,6 +473,12 @@ final class PluginManager {
         return entry
     }
 
+    func diagnose(error: Error, for type: DatabaseType) -> PluginDiagnostic? {
+        guard let driver = driverPlugins[type.pluginTypeId] else { return nil }
+        guard let provider = driver as? PluginDiagnosticProvider else { return nil }
+        return provider.diagnose(error: error)
+    }
+
     func replaceExistingPlugin(bundleId: String) {
         guard let existingIndex = plugins.firstIndex(where: { $0.id == bundleId }) else { return }
         unregisterCapabilities(pluginId: bundleId)

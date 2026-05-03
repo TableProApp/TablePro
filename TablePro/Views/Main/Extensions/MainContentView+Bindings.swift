@@ -16,7 +16,7 @@ extension MainContentView {
         guard let tab = coordinator.tabManager.selectedTab,
               !coordinator.selectionState.indices.isEmpty,
               let firstIndex = coordinator.selectionState.indices.min() else { return nil }
-        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
+        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         guard firstIndex < tableRows.rows.count else { return nil }
 
         let row = tableRows.rows[firstIndex].values

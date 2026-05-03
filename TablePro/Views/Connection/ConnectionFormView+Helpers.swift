@@ -91,10 +91,17 @@ extension ConnectionFormView {
     }
 
     func loadConnectionData() {
+        let connectionFormLog = Logger(subsystem: "com.TablePro", category: "ConnectionForm")
+        connectionFormLog.debug(
+            "[trace] loadConnectionData connectionId=\(self.connectionId?.uuidString ?? "nil", privacy: .public) isNew=\(self.connectionId == nil)"
+        )
         sshState.profiles = SSHProfileStorage.shared.loadProfiles()
         if let id = connectionId,
             let existing = storage.loadConnections().first(where: { $0.id == id })
         {
+            connectionFormLog.debug(
+                "[trace] loadConnectionData found existing id=\(existing.id.uuidString, privacy: .public) name='\(existing.name, privacy: .public)' promptForPassword=\(existing.promptForPassword)"
+            )
             originalConnection = existing
             name = existing.name
             host = existing.host
@@ -162,6 +169,13 @@ extension ConnectionFormView {
             // Load connection password from Keychain
             if let savedPassword = storage.loadPassword(for: existing.id) {
                 password = savedPassword
+                connectionFormLog.debug(
+                    "[trace] loadConnectionData password populated length=\(savedPassword.count)"
+                )
+            } else {
+                connectionFormLog.debug(
+                    "[trace] loadConnectionData password NOT populated (loadPassword returned nil)"
+                )
             }
         }
         Task { @MainActor in
@@ -486,6 +500,10 @@ extension ConnectionFormView {
                     testSucceeded = false
                     if case PluginError.pluginNotInstalled = error {
                         pluginInstallConnection = testConn
+                    } else if let item = PluginDiagnosticItem.classify(
+                        error: error, connection: testConn, username: finalUsername
+                    ) {
+                        pluginDiagnostic = item
                     } else {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Connection Test Failed"),

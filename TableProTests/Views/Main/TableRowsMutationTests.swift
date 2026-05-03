@@ -10,8 +10,8 @@
 
 import AppKit
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @MainActor
 private final class FakeTableViewCoordinator: TableViewCoordinating {
@@ -55,8 +55,6 @@ struct TableRowsMutationTests {
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         let delegate = DataTabGridDelegate()
@@ -157,8 +155,6 @@ struct TableRowsMutationTests {
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         try tabManager.addTableTab(tableName: "users")
@@ -166,6 +162,6 @@ struct TableRowsMutationTests {
 
         coordinator.setActiveTableRows(makeTableRows(rowCount: 2), for: tabId)
 
-        #expect(coordinator.tableRowsStore.tableRows(for: tabId).count == 2)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).count == 2)
     }
 }

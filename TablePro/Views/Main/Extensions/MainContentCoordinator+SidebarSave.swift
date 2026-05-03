@@ -23,7 +23,7 @@ extension MainContentCoordinator {
         let editedFields = editState.getEditedFields()
         guard !editedFields.isEmpty else { return }
 
-        let tableRows = tableRowsStore.tableRows(for: tab.id)
+        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         let changes: [RowChange] = selectionState.indices.sorted().compactMap { rowIndex in
             guard rowIndex < tableRows.rows.count else { return nil }
             let originalRow = tableRows.rows[rowIndex].values

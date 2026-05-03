@@ -11,54 +11,74 @@ import Testing
 struct KeychainHelperTests {
     private let helper = KeychainHelper.shared
 
-    @Test("Save and load round trip")
-    func saveAndLoadRoundTrip() {
-        let key = "test.roundtrip.\(UUID().uuidString)"
-        defer { helper.delete(key: key) }
+    @Test("writeString and readString round trip")
+    func writeAndReadStringRoundTrip() {
+        let key = "test.string.roundtrip.\(UUID().uuidString)"
+        defer { helper.delete(forKey: key) }
 
-        let saved = helper.saveString("hello", forKey: key)
+        let saved = helper.writeString("hello", forKey: key)
         #expect(saved)
 
-        let loaded = helper.loadString(forKey: key)
+        let loaded = helper.readString(forKey: key)
         #expect(loaded == "hello")
     }
 
-    @Test("Delete removes item")
+    @Test("write and read Data round trip")
+    func writeAndReadDataRoundTrip() {
+        let key = "test.data.roundtrip.\(UUID().uuidString)"
+        defer { helper.delete(forKey: key) }
+
+        let payload = Data([0x00, 0x01, 0x02, 0xFF])
+        let saved = helper.write(payload, forKey: key)
+        #expect(saved)
+
+        let result = helper.read(forKey: key)
+        #expect(result == .found(payload))
+    }
+
+    @Test("delete removes item; subsequent read returns notFound")
     func deleteRemovesItem() {
         let key = "test.delete.\(UUID().uuidString)"
-        defer { helper.delete(key: key) }
+        defer { helper.delete(forKey: key) }
 
-        _ = helper.saveString("temporary", forKey: key)
-        helper.delete(key: key)
+        _ = helper.writeString("temporary", forKey: key)
+        helper.delete(forKey: key)
 
-        let loaded = helper.loadString(forKey: key)
-        #expect(loaded == nil)
+        #expect(helper.read(forKey: key) == .notFound)
+        #expect(helper.readString(forKey: key) == nil)
     }
 
-    @Test("Upsert overwrites existing value")
-    func upsertOverwritesExistingValue() {
+    @Test("write overwrites existing value")
+    func writeOverwritesExistingValue() {
         let key = "test.upsert.\(UUID().uuidString)"
-        defer { helper.delete(key: key) }
+        defer { helper.delete(forKey: key) }
 
-        _ = helper.saveString("first", forKey: key)
-        _ = helper.saveString("second", forKey: key)
+        _ = helper.writeString("first", forKey: key)
+        _ = helper.writeString("second", forKey: key)
 
-        let loaded = helper.loadString(forKey: key)
-        #expect(loaded == "second")
+        #expect(helper.readString(forKey: key) == "second")
     }
 
-    @Test("Load nonexistent returns nil")
-    func loadNonexistentReturnsNil() {
-        let key = "test.nonexistent.\(UUID().uuidString)"
-        defer { helper.delete(key: key) }
-
-        let loaded = helper.loadString(forKey: key)
-        #expect(loaded == nil)
+    @Test("read returns notFound for missing key")
+    func readReturnsNotFoundForMissingKey() {
+        let key = "test.missing.\(UUID().uuidString)"
+        #expect(helper.read(forKey: key) == .notFound)
+        #expect(helper.readString(forKey: key) == nil)
+        #expect(helper.readStringResult(forKey: key) == .notFound)
     }
 
-    @Test("Migration flag defaults to false")
-    func migrationFlagDefaultsFalse() {
-        let defaultsKey = "com.TablePro.keychainMigratedToDataProtection"
+    @Test("readStringResult exposes found case")
+    func readStringResultExposesFound() {
+        let key = "test.stringresult.\(UUID().uuidString)"
+        defer { helper.delete(forKey: key) }
+
+        _ = helper.writeString("payload", forKey: key)
+        #expect(helper.readStringResult(forKey: key) == .found("payload"))
+    }
+
+    @Test("password sync flag defaults to false when unset")
+    func passwordSyncFlagDefaultsFalse() {
+        let defaultsKey = KeychainHelper.passwordSyncEnabledKey
         let previous = UserDefaults.standard.object(forKey: defaultsKey)
         defer {
             if let previous {
@@ -69,7 +89,6 @@ struct KeychainHelperTests {
         }
 
         UserDefaults.standard.removeObject(forKey: defaultsKey)
-        let value = UserDefaults.standard.bool(forKey: defaultsKey)
-        #expect(value == false)
+        #expect(UserDefaults.standard.bool(forKey: defaultsKey) == false)
     }
 }

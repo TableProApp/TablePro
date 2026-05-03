@@ -17,8 +17,6 @@ struct MainContentCoordinatorSortTests {
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "Q1", query: "SELECT id, name, email FROM users", tabType: .query)

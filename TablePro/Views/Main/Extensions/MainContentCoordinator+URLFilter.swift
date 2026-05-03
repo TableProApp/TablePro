@@ -17,7 +17,7 @@ extension MainContentCoordinator {
                 isEnabled: true,
                 rawSQL: condition
             )
-            filterStateManager.applySingleFilter(filter)
+            applySingleFilter(filter)
             return
         }
 
@@ -32,7 +32,7 @@ extension MainContentCoordinator {
             isSelected: true,
             isEnabled: true
         )
-        filterStateManager.applySingleFilter(filter)
+        applySingleFilter(filter)
     }
 
     private func mapTablePlusOperation(_ operation: String) -> FilterOperator {

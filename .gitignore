@@ -150,3 +150,6 @@ Libs/*.a
 Libs/.downloaded
 Libs/dylibs/
 Libs/ios/
+
+# Local refactor scratchpad (per chore: untrack docs/refactor scratchpad)
+docs/refactor/

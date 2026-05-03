@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct FilterPanelView: View {
-    @Bindable var filterState: FilterStateManager
+    let coordinator: MainContentCoordinator
     let columns: [String]
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
@@ -23,6 +23,10 @@ struct FilterPanelView: View {
     private let estimatedFilterRowHeight: CGFloat = 32
     private let maxFilterListHeight: CGFloat = 200
 
+    private var filterState: TabFilterState {
+        coordinator.selectedTabFilterState
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             filterHeader
@@ -36,13 +40,13 @@ struct FilterPanelView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             if filterState.filters.isEmpty && !columns.isEmpty {
-                filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
+                coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
             }
             focusedFilterId = filterState.filters.last?.id
         }
         .onChange(of: columns) { _, newColumns in
             if filterState.filters.isEmpty && !newColumns.isEmpty && filterState.isVisible {
-                filterState.addFilter(columns: newColumns, primaryKeyColumn: primaryKeyColumn)
+                coordinator.addFilter(columns: newColumns, primaryKeyColumn: primaryKeyColumn)
                 focusedFilterId = filterState.filters.last?.id
             }
         }
@@ -57,7 +61,7 @@ struct FilterPanelView: View {
                 .font(.callout.weight(.medium))
 
             if filterState.filters.count > 1 {
-                Picker("", selection: $filterState.filterLogicMode) {
+                Picker("", selection: coordinator.filterLogicModeBinding()) {
                     Text("AND").tag(FilterLogicMode.and)
                     Text("OR").tag(FilterLogicMode.or)
                 }
@@ -72,7 +76,7 @@ struct FilterPanelView: View {
             filterOptionsMenu
 
             Button("Unset") {
-                filterState.clearAll()
+                coordinator.clearFilterState()
                 onUnset()
             }
             .buttonStyle(.bordered)
@@ -85,7 +89,7 @@ struct FilterPanelView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .disabled(filterState.validFilterCount == 0)
+            .disabled(validFilterCount == 0)
             .help(String(localized: "Apply filters"))
         }
         .padding(.horizontal, 12)
@@ -97,7 +101,7 @@ struct FilterPanelView: View {
             Button("Cancel", role: .cancel) {}
             Button("Save") {
                 guard !newPresetName.isEmpty else { return }
-                filterState.saveAsPreset(name: newPresetName)
+                coordinator.saveFilterPreset(name: newPresetName)
             }
         } message: {
             Text("Enter a name for this filter preset")
@@ -107,7 +111,7 @@ struct FilterPanelView: View {
     private var filterOptionsMenu: some View {
         Menu {
             Button {
-                generatedSQL = filterState.generatePreviewSQL(databaseType: databaseType)
+                generatedSQL = coordinator.generateFilterPreviewSQL(databaseType: databaseType)
                 showSQLSheet = true
             } label: {
                 Label(String(localized: "Preview Query"), systemImage: "text.magnifyingglass")
@@ -116,10 +120,10 @@ struct FilterPanelView: View {
 
             Divider()
 
-            let presets = filterState.loadAllPresets()
+            let presets = coordinator.loadAllFilterPresets()
             if !presets.isEmpty {
                 ForEach(presets) { preset in
-                    Button(action: { filterState.loadPreset(preset) }) {
+                    Button(action: { coordinator.loadFilterPreset(preset) }) {
                         HStack {
                             Text(preset.name)
                             if !presetColumnsMatch(preset) {
@@ -144,7 +148,7 @@ struct FilterPanelView: View {
                 Menu("Delete Preset") {
                     ForEach(presets) { preset in
                         Button(preset.name, role: .destructive) {
-                            filterState.deletePreset(preset)
+                            coordinator.deleteFilterPreset(preset)
                         }
                     }
                 }
@@ -173,26 +177,26 @@ struct FilterPanelView: View {
         VStack(spacing: 0) {
             ForEach(filterState.filters) { filter in
                 FilterRowView(
-                    filter: filterState.binding(for: filter),
+                    filter: coordinator.filterBinding(for: filter),
                     columns: columns,
                     completions: completionItems(),
                     onAdd: {
-                        filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
+                        coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
                         focusedFilterId = filterState.filters.last?.id
                     },
                     onDuplicate: {
-                        filterState.duplicateFilter(filter)
+                        coordinator.duplicateFilter(filter)
                         focusedFilterId = filterState.filters.last?.id
                     },
                     onRemove: {
                         let hadAppliedFilters = filterState.hasAppliedFilters
-                        filterState.removeFilter(filter)
+                        coordinator.removeFilter(filter)
                         if filterState.filters.isEmpty {
                             if hadAppliedFilters {
-                                filterState.clearAll()
+                                coordinator.clearFilterState()
                                 onUnset()
                             } else {
-                                filterState.close()
+                                coordinator.closeFilterPanel()
                             }
                         }
                     },
@@ -217,14 +221,18 @@ struct FilterPanelView: View {
         }
     }
 
+    private var validFilterCount: Int {
+        filterState.filters.count(where: \.isValid)
+    }
+
     private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
         let presetColumns = preset.filters.map(\.columnName).filter { $0 != TableFilter.rawSQLColumn }
         return presetColumns.allSatisfy { columns.contains($0) }
     }
 
     private func applyAllValidFilters() {
-        filterState.applyAllFilters()
-        onApply(filterState.appliedFilters)
+        coordinator.applyAllFilters()
+        onApply(coordinator.selectedTabFilterState.appliedFilters)
     }
 
     private func completionItems() -> [String] {
@@ -237,25 +245,4 @@ struct FilterPanelView: View {
         ]
         return isSQLDialect ? columns + sqlKeywords : columns
     }
-}
-
-#Preview("Filter Panel") {
-    FilterPanelView(
-        filterState: {
-            let state = FilterStateManager()
-            Task { @MainActor in
-                state.filters = [
-                    TableFilter(columnName: "name", filterOperator: .contains, value: "John"),
-                    TableFilter(columnName: "age", filterOperator: .greaterThan, value: "18")
-                ]
-            }
-            return state
-        }(),
-        columns: ["id", "name", "age", "email"],
-        primaryKeyColumn: "id",
-        databaseType: .mysql,
-        onApply: { _ in },
-        onUnset: { }
-    )
-    .frame(width: 600)
 }

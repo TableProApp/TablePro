@@ -264,80 +264,68 @@ final class ConnectionStorage {
 
     func savePassword(_ password: String, for connectionId: UUID) {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        KeychainHelper.shared.saveString(password, forKey: key)
+        KeychainHelper.shared.writeString(password, forKey: key)
     }
 
     func loadPassword(for connectionId: UUID) -> String? {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        let (value, isLocked) = KeychainHelper.shared.loadStringWithStatus(forKey: key)
-        if isLocked {
-            Self.logger.warning("Database password unavailable — Keychain locked (connId=\(connectionId.uuidString, privacy: .public))")
-        }
-        return value
+        return resolveString(.init(label: "Database password", connectionId: connectionId), forKey: key)
     }
 
     func deletePassword(for connectionId: UUID) {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        KeychainHelper.shared.delete(forKey: key)
     }
 
     // MARK: - SSH Password Storage
 
     func saveSSHPassword(_ password: String, for connectionId: UUID) {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        KeychainHelper.shared.saveString(password, forKey: key)
+        KeychainHelper.shared.writeString(password, forKey: key)
     }
 
     func loadSSHPassword(for connectionId: UUID) -> String? {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        let (value, isLocked) = KeychainHelper.shared.loadStringWithStatus(forKey: key)
-        if isLocked {
-            Self.logger.warning("SSH password unavailable — Keychain locked (connId=\(connectionId.uuidString, privacy: .public))")
-        }
-        return value
+        return resolveString(.init(label: "SSH password", connectionId: connectionId), forKey: key)
     }
 
     func deleteSSHPassword(for connectionId: UUID) {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        KeychainHelper.shared.delete(forKey: key)
     }
 
     // MARK: - Key Passphrase Storage
 
     func saveKeyPassphrase(_ passphrase: String, for connectionId: UUID) {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        KeychainHelper.shared.saveString(passphrase, forKey: key)
+        KeychainHelper.shared.writeString(passphrase, forKey: key)
     }
 
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        let (value, isLocked) = KeychainHelper.shared.loadStringWithStatus(forKey: key)
-        if isLocked {
-            Self.logger.warning("Key passphrase unavailable — Keychain locked (connId=\(connectionId.uuidString, privacy: .public))")
-        }
-        return value
+        return resolveString(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func deleteKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        KeychainHelper.shared.delete(forKey: key)
     }
 
     // MARK: - Plugin Secure Field Storage
 
     func savePluginSecureField(_ value: String, fieldId: String, for connectionId: UUID) {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
-        KeychainHelper.shared.saveString(value, forKey: key)
+        KeychainHelper.shared.writeString(value, forKey: key)
     }
 
     func loadPluginSecureField(fieldId: String, for connectionId: UUID) -> String? {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        return resolveString(.init(label: "Plugin field \(fieldId)", connectionId: connectionId), forKey: key)
     }
 
     func deletePluginSecureField(fieldId: String, for connectionId: UUID) {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        KeychainHelper.shared.delete(forKey: key)
     }
 
     func deleteAllPluginSecureFields(for connectionId: UUID, fieldIds: [String]) {
@@ -350,17 +338,36 @@ final class ConnectionStorage {
 
     func saveTOTPSecret(_ secret: String, for connectionId: UUID) {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
-        KeychainHelper.shared.saveString(secret, forKey: key)
+        KeychainHelper.shared.writeString(secret, forKey: key)
     }
 
     func loadTOTPSecret(for connectionId: UUID) -> String? {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        return resolveString(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
     }
 
     func deleteTOTPSecret(for connectionId: UUID) {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        KeychainHelper.shared.delete(forKey: key)
+    }
+
+    private struct SecretContext {
+        let label: String
+        let connectionId: UUID
+    }
+
+    private func resolveString(_ context: SecretContext, forKey key: String) -> String? {
+        switch KeychainHelper.shared.readStringResult(forKey: key) {
+        case .found(let value):
+            return value
+        case .locked:
+            Self.logger.warning(
+                "\(context.label, privacy: .public) unavailable — Keychain locked (connId=\(context.connectionId.uuidString, privacy: .public))"
+            )
+            return nil
+        case .notFound:
+            return nil
+        }
     }
 
     // MARK: - Plugin Secure Field Migration

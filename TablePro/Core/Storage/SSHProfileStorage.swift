@@ -97,50 +97,64 @@ final class SSHProfileStorage {
 
     func saveSSHPassword(_ password: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.password.\(profileId.uuidString)"
-        KeychainHelper.shared.saveString(password, forKey: key)
+        KeychainHelper.shared.writeString(password, forKey: key)
     }
 
     func loadSSHPassword(for profileId: UUID) -> String? {
         let key = "com.TablePro.sshprofile.password.\(profileId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        return resolveString(label: "SSH profile password", profileId: profileId, forKey: key)
     }
 
     func deleteSSHPassword(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.password.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        KeychainHelper.shared.delete(forKey: key)
     }
 
     // MARK: - Key Passphrase Storage
 
     func saveKeyPassphrase(_ passphrase: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-        KeychainHelper.shared.saveString(passphrase, forKey: key)
+        KeychainHelper.shared.writeString(passphrase, forKey: key)
     }
 
     func loadKeyPassphrase(for profileId: UUID) -> String? {
         let key = "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        return resolveString(label: "SSH profile key passphrase", profileId: profileId, forKey: key)
     }
 
     func deleteKeyPassphrase(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        KeychainHelper.shared.delete(forKey: key)
     }
 
     // MARK: - TOTP Secret Storage
 
     func saveTOTPSecret(_ secret: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-        KeychainHelper.shared.saveString(secret, forKey: key)
+        KeychainHelper.shared.writeString(secret, forKey: key)
     }
 
     func loadTOTPSecret(for profileId: UUID) -> String? {
         let key = "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        return resolveString(label: "SSH profile TOTP secret", profileId: profileId, forKey: key)
     }
 
     func deleteTOTPSecret(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        KeychainHelper.shared.delete(forKey: key)
+    }
+
+    private func resolveString(label: String, profileId: UUID, forKey key: String) -> String? {
+        switch KeychainHelper.shared.readStringResult(forKey: key) {
+        case .found(let value):
+            return value
+        case .locked:
+            Self.logger.warning(
+                "\(label, privacy: .public) unavailable — Keychain locked (profileId=\(profileId.uuidString, privacy: .public))"
+            )
+            return nil
+        case .notFound:
+            return nil
+        }
     }
 }

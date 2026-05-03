@@ -27,7 +27,6 @@ extension MainContentCoordinator {
             )
         }
 
-        // Phase: save outgoing tab state
         let saveStart = Date()
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
@@ -35,35 +34,31 @@ extension MainContentCoordinator {
             if changeManager.hasChanges {
                 tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
             }
-            tabManager.tabs[oldIndex].filterState = filterStateManager.saveToTabState()
             if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
-                filterStateManager.saveLastFilters(for: tableName)
+                FilterSettingsStorage.shared.saveLastFilters(
+                    tabManager.tabs[oldIndex].filterState.appliedFilters,
+                    for: tableName
+                )
             }
-            saveColumnVisibilityToTab()
-            saveColumnVisibilityForActiveTable()
+            persistOutgoingTabHiddenColumns(oldIndex: oldIndex)
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
-        // Phase: evict inactive tabs
-        let evictStart = Date()
+        // Defer to the next run-loop tick so the synchronous switch path
+        // stays cheap; the sort + budget calculation is non-trivial on
+        // connections with many open tabs.
         if tabManager.tabs.count > 2 {
             let activeIds: Set<UUID> = Set([oldTabId, newTabId].compactMap { $0 })
-            evictInactiveTabs(excluding: activeIds)
+            Task { @MainActor [weak self] in
+                self?.evictInactiveTabs(excluding: activeIds)
+            }
         }
-        let evictMs = Int(Date().timeIntervalSince(evictStart) * 1_000)
 
-        // Phase: restore incoming tab state
         let restoreStart = Date()
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
             let newTab = tabManager.tabs[newIndex]
-            let newRows = tableRowsStore.tableRows(for: newId)
-
-            // Restore filter state for new tab
-            filterStateManager.restoreFromTabState(newTab.filterState)
-
-            // Restore column visibility for new tab
-            columnVisibilityManager.restoreFromColumnLayout(newTab.columnLayout.hiddenColumns)
+            let newRows = tabSessionRegistry.tableRows(for: newId)
 
             selectionState.indices = newTab.selectedRowIndices
             toolbarState.isTableTab = newTab.tabType == .table
@@ -86,7 +81,7 @@ extension MainContentCoordinator {
 
             let restoreMs = Int(Date().timeIntervalSince(restoreStart) * 1_000)
             Self.lifecycleLogger.debug(
-                "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms evict=\(evictMs)ms restoreIncoming=\(restoreMs)ms"
+                "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms restoreIncoming=\(restoreMs)ms"
             )
 
             if !newTab.tableContext.databaseName.isEmpty {
@@ -109,46 +104,10 @@ extension MainContentCoordinator {
                 }
             }
 
-            // If the tab shows isExecuting but has no results, the previous query was
-            // likely cancelled when the user rapidly switched away. Force-clear the stale
-            // flag so the lazy-load check below can re-execute the query.
-            if newTab.execution.isExecuting && newRows.rows.isEmpty && newTab.execution.lastExecutedAt == nil {
-                let tabId = newId
-                Task { [weak self] in
-                    guard let self,
-                          let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                          self.tabManager.tabs[idx].execution.isExecuting else { return }
-                    self.tabManager.tabs[idx].execution.isExecuting = false
-                }
-            }
-
-            let isEvicted = tableRowsStore.isEvicted(newId)
-            let needsLazyQuery = newTab.tabType == .table
-                && (newRows.rows.isEmpty || isEvicted)
-                && (newTab.execution.lastExecutedAt == nil || isEvicted)
-                && newTab.execution.errorMessage == nil
-                && !newTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-            if needsLazyQuery {
-                if let session = DatabaseManager.shared.session(for: connectionId), session.isConnected {
-                    Self.lifecycleLogger.debug(
-                        "[switch] handleTabChange lazy query executing (eviction=\(isEvicted)) tabId=\(newId, privacy: .public)"
-                    )
-                    executeTableTabQueryDirectly()
-                } else {
-                    Self.lifecycleLogger.debug(
-                        "[switch] handleTabChange lazy query deferred (not connected) tabId=\(newId, privacy: .public)"
-                    )
-                    changeManager.reloadVersion += 1
-                    needsLazyLoad = true
-                }
-            } else {
-                changeManager.reloadVersion += 1
-            }
+            changeManager.reloadVersion += 1
         } else {
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false
-            filterStateManager.clearAll()
         }
     }
 
@@ -158,8 +117,8 @@ extension MainContentCoordinator {
             guard !activeTabIds.contains(tab.id),
                   tab.execution.lastExecutedAt != nil,
                   !tab.pendingChanges.hasChanges,
-                  let rows = tableRowsStore.existingTableRows(for: tab.id),
-                  !tableRowsStore.isEvicted(tab.id),
+                  let rows = tabSessionRegistry.existingTableRows(for: tab.id),
+                  !tabSessionRegistry.isEvicted(tab.id),
                   !rows.rows.isEmpty
             else { return nil }
             return (tab, rows)
@@ -190,7 +149,7 @@ extension MainContentCoordinator {
         let toEvict = sorted.dropLast(maxInactiveLoaded)
 
         for entry in toEvict {
-            tableRowsStore.evict(for: entry.tab.id)
+            tabSessionRegistry.evict(for: entry.tab.id)
         }
         Self.lifecycleLogger.debug(
             "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"

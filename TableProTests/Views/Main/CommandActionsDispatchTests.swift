@@ -28,7 +28,6 @@ struct CommandActionsDispatchTests {
 
         let actions = MainContentCommandActions(
             coordinator: coordinator,
-            filterStateManager: state.filterStateManager,
             connection: connection,
             selectionState: coordinator.selectionState,
             selectedTables: Binding(get: { selectedTables }, set: { selectedTables = $0 }),

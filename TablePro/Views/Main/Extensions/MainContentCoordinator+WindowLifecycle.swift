@@ -3,11 +3,9 @@
 //  TablePro
 //
 //  Window-lifecycle handlers invoked by TabWindowController's NSWindowDelegate
-//  methods. Replaces the global `NotificationCenter.default.publisher(for:
-//  NSWindow.didBecomeKeyNotification)` observers previously in MainContentView
-//  (one fired per ContentView instance, producing 10-14 handler invocations
-//  per focus change). Each window's TabWindowController now dispatches to the
-//  matching coordinator exactly once.
+//  methods. windowDidBecomeKey is intentionally lightweight (focus state +
+//  sidebar sync only) per Apple's documentation; visibility-scoped lazy-load
+//  lives in MainEditorContentView's `.task(id:)` modifier.
 //
 
 import AppKit
@@ -19,8 +17,9 @@ extension MainContentCoordinator {
     // MARK: - Window Delegate Dispatch
 
     /// Called from `TabWindowController.windowDidBecomeKey(_:)`.
-    /// Runs lazy-load + file-based schema refresh, then invokes the view-layer
-    /// sidebar-sync callback set by MainContentView.
+    /// Updates focus state, refreshes file-based schema if stale, and syncs the
+    /// sidebar selection to the active tab. No query work runs here — lazy-load
+    /// is owned by `MainEditorContentView`'s `.task(id:)` modifier.
     func handleWindowDidBecomeKey() {
         let t0 = Date()
         Self.lifecycleLogger.debug(
@@ -30,44 +29,16 @@ extension MainContentCoordinator {
         evictionTask?.cancel()
         evictionTask = nil
 
-        // Lazy-load: execute query for restored tabs that skipped auto-execute,
-        // or re-query tabs whose row data was evicted while inactive.
-        // Skip if the user has unsaved changes (in-memory or tab-level).
-        let hasPendingEdits =
-            changeManager.hasChanges
-            || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
         let isConnected =
             DatabaseManager.shared.activeSessions[connectionId]?.isConnected ?? false
-        let needsLazyLoad =
-            tabManager.selectedTab.map { tab in
-                let rows = tableRowsStore.tableRows(for: tab.id)
-                let isEvicted = tableRowsStore.isEvicted(tab.id)
-                return tab.tabType == .table
-                    && (rows.rows.isEmpty || isEvicted)
-                    && (tab.execution.lastExecutedAt == nil || isEvicted)
-                    && tab.execution.errorMessage == nil
-                    && !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            } ?? false
-        // Skip lazy-load if this is a menu-interaction bounce (resign+become within 200ms).
-        let isMenuBounce = Date().timeIntervalSince(lastResignKeyDate) < 0.2
-        if needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce {
-            Self.lifecycleLogger.debug(
-                "[switch] coordinator triggering lazy runQuery connId=\(self.connectionId, privacy: .public)"
-            )
-            runQuery()
-        }
-        let t1 = Date()
-
         if PluginManager.shared.connectionMode(for: connection.type) == .fileBased && isConnected {
             Task { await self.refreshTablesIfStale() }
         }
-        let t2 = Date()
 
-        onWindowBecameKey?()
-        let t3 = Date()
+        syncSidebarToSelectedTab()
 
         Self.lifecycleLogger.debug(
-            "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) lazyQuery=\(Int(t1.timeIntervalSince(t0) * 1_000))ms schemaRefresh=\(Int(t2.timeIntervalSince(t1) * 1_000))ms sidebarSync=\(Int(t3.timeIntervalSince(t2) * 1_000))ms totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000)) lazyLoad=\(needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce) menuBounce=\(isMenuBounce)"
+            "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
     }
 
@@ -79,7 +50,6 @@ extension MainContentCoordinator {
             "[switch] coordinator.handleWindowDidResignKey connId=\(self.connectionId, privacy: .public)"
         )
         isKeyWindow = false
-        lastResignKeyDate = Date()
 
         evictionTask?.cancel()
         evictionTask = Task { [weak self] in
@@ -94,36 +64,94 @@ extension MainContentCoordinator {
 
     /// Called from `TabWindowController.windowWillClose(_:)`.
     /// Synchronous teardown — no grace period, no delayed Task. Writes tab
-    /// state to disk, invokes view-layer teardown callback, then disconnects
-    /// the session if this was the last window for the connection.
+    /// state to disk, releases SwiftUI-scoped right-panel state, then
+    /// disconnects the session if this was the last window for the connection.
     func handleWindowWillClose() {
         let t0 = Date()
         Self.lifecycleLogger.info(
             "[close] coordinator.handleWindowWillClose connId=\(self.connectionId, privacy: .public) tabs=\(self.tabManager.tabs.count)"
         )
 
-        // Persist tabs aggregated across all windows for this connection.
-        // Writing this window's tabs in isolation can clobber sibling windows'
-        // state on disk — for example, closing an empty window would erase the
-        // saved tabs of an open sibling window.
         persistence.saveOrClearAggregatedSync()
 
-        // Cancel the pending eviction task before teardown drops it.
         evictionTask?.cancel()
         evictionTask = nil
 
-        // View-layer teardown (e.g. rightPanelState cleanup) before coordinator
-        // teardown so its SwiftUI state is released first.
-        onWindowWillClose?()
+        rightPanelState?.teardown()
 
         teardown()
-
-        // Disconnect is handled by WindowLifecycleMonitor.handleWindowClose,
-        // which fires after this delegate method. It removes the window entry
-        // first, then checks if any remain for the connection, then disconnects.
 
         Self.lifecycleLogger.info(
             "[close] coordinator.handleWindowWillClose done connId=\(self.connectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
+    }
+
+    // MARK: - Sidebar Sync
+
+    /// Update the connection-scoped sidebar selection so the active table tab
+    /// is highlighted. Reads tables fresh from the DatabaseManager because the
+    /// schema load is async and may complete after focus changes.
+    func syncSidebarToSelectedTab() {
+        let sidebarState = SharedSidebarState.forConnection(connectionId)
+        let liveTables = DatabaseManager.shared
+            .session(for: connectionId)?.tables ?? []
+        let target: Set<TableInfo>
+        if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
+           let match = liveTables.first(where: { $0.name == currentTableName }) {
+            target = [match]
+        } else {
+            target = []
+        }
+        if sidebarState.selectedTables != target {
+            if target.isEmpty && liveTables.isEmpty { return }
+            sidebarState.selectedTables = target
+        }
+    }
+
+    // MARK: - Lazy Load
+
+    /// Execute the current tab's query if it is a table tab whose row data is
+    /// missing or evicted. Apple-pattern guards in cheap-content-first order:
+    /// trivial content checks reject before the expensive connection probe.
+    /// Idempotent — repeated calls with the same state are no-ops.
+    func lazyLoadCurrentTabIfNeeded() {
+        guard let tab = tabManager.selectedTab else { return }
+        guard tab.tabType == .table else { return }
+        guard tab.execution.errorMessage == nil else { return }
+        guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        let rows = tabSessionRegistry.tableRows(for: tab.id)
+        let isEvicted = tabSessionRegistry.isEvicted(tab.id)
+        let hasFreshRows = !rows.rows.isEmpty && !isEvicted
+        let hasExecuted = tab.execution.lastExecutedAt != nil && !isEvicted
+        guard !hasFreshRows, !hasExecuted else { return }
+
+        let hasPendingEdits =
+            changeManager.hasChanges
+            || tab.pendingChanges.hasChanges
+        guard !hasPendingEdits else { return }
+
+        // A previous load that was cancelled mid-flight (e.g. user rapidly
+        // switched away) leaves `isExecuting = true` with no rows and no
+        // `lastExecutedAt`. Clear the stale flag inline so the executor's
+        // own `!tab.execution.isExecuting` guard inside
+        // `executeTableTabQueryDirectly` doesn't suppress this re-fire.
+        if tab.execution.isExecuting && rows.rows.isEmpty && tab.execution.lastExecutedAt == nil,
+           let idx = tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
+            tabManager.tabs[idx].execution.isExecuting = false
+        } else if tab.execution.isExecuting {
+            return
+        }
+
+        guard let session = DatabaseManager.shared.session(for: connectionId),
+              session.isConnected else {
+            needsLazyLoad = true
+            return
+        }
+
+        Self.lifecycleLogger.debug(
+            "[switch] coordinator.lazyLoadCurrentTabIfNeeded executing tabId=\(tab.id, privacy: .public) evicted=\(isEvicted)"
+        )
+        executeTableTabQueryDirectly()
     }
 }

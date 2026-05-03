@@ -46,9 +46,6 @@ extension MainContentCoordinator {
            current.tableContext.databaseName == currentDatabase,
            current.tableContext.schemaName == targetSchema {
             applyFKFilter(filter, for: referencedTable)
-            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
-                tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
-            }
             return
         }
 
@@ -100,7 +97,7 @@ extension MainContentCoordinator {
             NSApp.keyWindow?.title = referencedTable
 
             guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
-            let tableRows = tableRowsStore.tableRows(for: tab.id)
+            let tableRows = tabSessionRegistry.tableRows(for: tab.id)
             let filteredQuery = queryBuilder.buildFilteredQuery(
                 tableName: referencedTable,
                 schemaName: fkInfo.referencedSchema,
@@ -113,15 +110,9 @@ extension MainContentCoordinator {
 
             updateFilterState(filter, for: referencedTable)
 
-            // Persist FK filter to new tab so .onChange → handleTabChange restores it correctly
-            tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
-
             runQuery()
         } else {
             applyFKFilter(filter, for: referencedTable)
-            if let (_, tabIndex) = tabManager.selectedTabAndIndex {
-                tabManager.tabs[tabIndex].filterState = filterStateManager.saveToTabState()
-            }
         }
     }
 
@@ -147,6 +138,6 @@ extension MainContentCoordinator {
     }
 
     private func updateFilterState(_ filter: TableFilter, for tableName: String) {
-        filterStateManager.setFKFilter(filter)
+        setFKFilter(filter)
     }
 }

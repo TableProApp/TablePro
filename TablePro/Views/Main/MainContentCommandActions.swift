@@ -23,7 +23,6 @@ final class MainContentCommandActions {
     // MARK: - Dependencies
 
     @ObservationIgnored private weak var coordinator: MainContentCoordinator?
-    @ObservationIgnored private let filterStateManager: FilterStateManager
     @ObservationIgnored private let connection: DatabaseConnection
 
     // MARK: - Bindings
@@ -47,7 +46,6 @@ final class MainContentCommandActions {
 
     init(
         coordinator: MainContentCoordinator,
-        filterStateManager: FilterStateManager,
         connection: DatabaseConnection,
         selectionState: GridSelectionState,
         selectedTables: Binding<Set<TableInfo>>,
@@ -57,7 +55,6 @@ final class MainContentCommandActions {
         rightPanelState: RightPanelState
     ) {
         self.coordinator = coordinator
-        self.filterStateManager = filterStateManager
         self.connection = connection
         self.selectionState = selectionState
         self.selectedTables = selectedTables
@@ -369,7 +366,7 @@ final class MainContentCommandActions {
         } else {
             if let coordinator {
                 for tab in coordinator.tabManager.tabs {
-                    coordinator.tableRowsStore.removeTableRows(for: tab.id)
+                    coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
                 }
                 coordinator.tabManager.tabs.removeAll()
                 coordinator.tabManager.selectedTabId = nil
@@ -486,12 +483,25 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Navigation (Group A — Called Directly)
 
+    /// Selects the Nth native window tab. Wrapping the `selectedWindow`
+    /// assignment in `NSAnimationContext.runAnimationGroup` with `duration = 0`
+    /// suppresses AppKit's tab-transition animation, so rapid Cmd+Number
+    /// presses don't queue up CAAnimations that drain visibly after the user
+    /// releases the keys.
+    ///
+    /// Per-switch AppKit overhead (window-focus change, NSHostingView layout,
+    /// Window Server roundtrip) is platform-inherent to one-NSWindow-per-tab
+    /// and is intentionally not coalesced. See `docs/architecture/tab-subsystem-rewrite.md` D2.
     func selectTab(number: Int) {
         guard let keyWindow = NSApp.keyWindow,
-              let tabbedWindows = keyWindow.tabbedWindows,
-              tabbedWindows.indices.contains(number - 1) else { return }
-        let target = tabbedWindows[number - 1]
-        target.makeKeyAndOrderFront(nil)
+              let tabGroup = keyWindow.tabGroup else { return }
+        let windows = tabGroup.windows
+        guard windows.indices.contains(number - 1) else { return }
+        let target = windows[number - 1]
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            tabGroup.selectedWindow = target
+        }
     }
 
     // MARK: - Filter Operations (Group A — Called Directly)
@@ -499,7 +509,7 @@ final class MainContentCommandActions {
     func toggleFilterPanel() {
         guard let coordinator = coordinator,
               coordinator.tabManager.selectedTab?.tabType == .table else { return }
-        filterStateManager.toggle()
+        coordinator.toggleFilterPanel()
     }
 
     // MARK: - Data Operations (Group A — Called Directly)
