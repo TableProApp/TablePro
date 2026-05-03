@@ -121,20 +121,12 @@ struct SyncSection: View {
 
     private func onPasswordSyncChanged(_ enabled: Bool) {
         let effective = settingsManager.sync.enabled && settingsManager.sync.syncConnections && enabled
-        Task.detached {
-            KeychainHelper.shared.migratePasswordSyncState(synchronizable: effective)
-            UserDefaults.standard.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
-        }
+        UserDefaults.standard.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
     }
 
     private func updatePasswordSyncFlag() {
         let sync = settingsManager.sync
         let effective = sync.enabled && sync.syncConnections && sync.syncPasswords
-        let current = UserDefaults.standard.bool(forKey: KeychainHelper.passwordSyncEnabledKey)
-        guard effective != current else { return }
-        Task.detached {
-            KeychainHelper.shared.migratePasswordSyncState(synchronizable: effective)
-            UserDefaults.standard.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
-        }
+        UserDefaults.standard.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
     }
 }

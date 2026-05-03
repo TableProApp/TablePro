@@ -11949,6 +11949,9 @@
         }
       }
     },
+    "Copy Diagnostic Info" : {
+
+    },
     "Copy error message" : {
       "localizations" : {
         "tr" : {
@@ -15482,6 +15485,9 @@
           }
         }
       }
+    },
+    "Diagnostic Info" : {
+
     },
     "Diagram" : {
       "localizations" : {
@@ -31990,6 +31996,9 @@
         }
       }
     },
+    "Open Issue Tracker" : {
+
+    },
     "Open JSON Viewer" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -44100,6 +44109,9 @@
           }
         }
       }
+    },
+    "Suggested Actions" : {
+
     },
     "Suspended" : {
       "localizations" : {

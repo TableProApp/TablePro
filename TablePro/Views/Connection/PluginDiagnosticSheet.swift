@@ -13,6 +13,7 @@ struct PluginDiagnosticItem: Identifiable, Equatable {
     let connectionTarget: String
     let username: String
 
+    @MainActor
     static func classify(
         error: Error,
         connection: DatabaseConnection,
