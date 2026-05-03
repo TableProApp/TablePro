@@ -26,12 +26,11 @@ public struct MCPStreamableHttpClientConfiguration: Sendable {
 
 public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
     nonisolated public let inbound: AsyncThrowingStream<JsonRpcMessage, Error>
+    nonisolated private let continuation: AsyncThrowingStream<JsonRpcMessage, Error>.Continuation
 
-    nonisolated private let continuationBox: StreamContinuationBox
     private let configuration: MCPStreamableHttpClientConfiguration
     private let urlSession: URLSession
     private let errorLogger: (any MCPBridgeLogger)?
-    private let writer: HttpWriter
     private var sessionId: String?
     private var isClosed = false
     private var serverInitiatedStreamOpen = false
@@ -45,12 +44,9 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
         self.configuration = configuration
         self.errorLogger = errorLogger
 
-        let box = StreamContinuationBox()
-        let stream = AsyncThrowingStream<JsonRpcMessage, Error> { continuation in
-            box.set(continuation)
-        }
-        self.continuationBox = box
+        let (stream, continuation) = AsyncThrowingStream<JsonRpcMessage, Error>.makeStream()
         self.inbound = stream
+        self.continuation = continuation
 
         if let urlSession {
             self.urlSession = urlSession
@@ -65,8 +61,6 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
                 self.urlSession = URLSession(configuration: config)
             }
         }
-
-        writer = HttpWriter()
     }
 
     public func send(_ message: JsonRpcMessage) async throws {
@@ -116,7 +110,7 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
             task.cancel()
         }
         urlSession.invalidateAndCancel()
-        continuationBox.finish()
+        continuation.finish()
     }
 
     private func trackTask(_ task: Task<Void, Never>) {
@@ -134,9 +128,7 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
 
     private func dispatch(body: Data, requestId: JsonRpcId?) async {
         do {
-            try await writer.serialize {
-                try await self.performRequest(body: body, requestId: requestId)
-            }
+            try await performRequest(body: body, requestId: requestId)
         } catch {
             await handleSendError(error: error, requestId: requestId)
         }
@@ -271,7 +263,7 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
         }
         do {
             let message = try JsonRpcCodec.decode(payload)
-            continuationBox.yield(message)
+            continuation.yield(message)
         } catch {
             errorLogger?.log(.warning, "SSE: skipping malformed JSON-RPC frame: \(error)")
         }
@@ -280,12 +272,12 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
     private func pushJsonBody(_ data: Data, fallbackId: JsonRpcId?) {
         do {
             let message = try JsonRpcCodec.decode(data)
-            continuationBox.yield(message)
+            continuation.yield(message)
         } catch {
             errorLogger?.log(.warning, "HTTP: malformed JSON-RPC body: \(error)")
             let synthetic = MCPProtocolError.parseError(detail: String(describing: error))
                 .toJsonRpcErrorResponse(id: fallbackId)
-            continuationBox.yield(.errorResponse(synthetic))
+            continuation.yield(.errorResponse(synthetic))
         }
     }
 
@@ -302,11 +294,11 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
 
         if !body.isEmpty, let parsed = try? JsonRpcCodec.decode(body) {
             if case .errorResponse = parsed {
-                continuationBox.yield(parsed)
+                continuation.yield(parsed)
                 return
             }
             if case .successResponse = parsed {
-                continuationBox.yield(parsed)
+                continuation.yield(parsed)
                 return
             }
         }
@@ -314,7 +306,7 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
         let challenge = headerValue(headers, name: "WWW-Authenticate") ?? "Bearer realm=\"TablePro\""
         let protocolError = Self.protocolError(forStatus: status, body: body, challenge: challenge)
         let response = protocolError.toJsonRpcErrorResponse(id: requestId)
-        continuationBox.yield(.errorResponse(response))
+        continuation.yield(.errorResponse(response))
     }
 
     private func handleSendError(error: Error, requestId: JsonRpcId?) async {
@@ -327,7 +319,7 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
         }
         let protocolError = MCPProtocolError.internalError(detail: String(describing: error))
         let response = protocolError.toJsonRpcErrorResponse(id: requestId)
-        continuationBox.yield(.errorResponse(response))
+        continuation.yield(.errorResponse(response))
     }
 
     private func captureSessionIdIfPresent(from response: HTTPURLResponse) {
@@ -382,30 +374,6 @@ public actor MCPStreamableHttpClientTransport: MCPMessageTransport {
             return .serviceUnavailable()
         default:
             return .internalError(detail: detail)
-        }
-    }
-}
-
-private actor HttpWriter {
-    private var pending: Task<Void, Never>?
-
-    func serialize<T: Sendable>(_ work: @Sendable @escaping () async throws -> T) async throws -> T {
-        let previous = pending
-        let result: Result<T, Error> = await withCheckedContinuation { continuation in
-            let task = Task { [previous] in
-                _ = await previous?.value
-                do {
-                    let value = try await work()
-                    continuation.resume(returning: .success(value))
-                } catch {
-                    continuation.resume(returning: .failure(error))
-                }
-            }
-            self.pending = task
-        }
-        switch result {
-        case .success(let value): return value
-        case .failure(let error): throw error
         }
     }
 }

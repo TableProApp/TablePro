@@ -24,11 +24,11 @@ public actor MCPHttpServerTransport {
     private var sseConnectionsBySession: [MCPSessionId: UUID] = [:]
     private var sessionEventsTask: Task<Void, Never>?
 
-    private var exchangesContinuation: AsyncStream<MCPInboundExchange>.Continuation?
-    private let exchangesStorage: AsyncStream<MCPInboundExchange>
+    nonisolated public let exchanges: AsyncStream<MCPInboundExchange>
+    nonisolated private let exchangesContinuation: AsyncStream<MCPInboundExchange>.Continuation
 
-    private var stateContinuation: AsyncStream<MCPHttpServerState>.Continuation?
-    private let listenerStateStorage: AsyncStream<MCPHttpServerState>
+    nonisolated public let listenerState: AsyncStream<MCPHttpServerState>
+    nonisolated private let stateContinuation: AsyncStream<MCPHttpServerState>.Continuation
 
     private var currentState: MCPHttpServerState = .idle
 
@@ -43,25 +43,15 @@ public actor MCPHttpServerTransport {
         self.authenticator = authenticator
         self.clock = clock
 
-        var exchangeContinuation: AsyncStream<MCPInboundExchange>.Continuation?
-        self.exchangesStorage = AsyncStream<MCPInboundExchange> { continuation in
-            exchangeContinuation = continuation
-        }
-        self.exchangesContinuation = exchangeContinuation
+        let (exchanges, exchangesContinuation) = AsyncStream<MCPInboundExchange>.makeStream(
+            bufferingPolicy: .bufferingOldest(1024)
+        )
+        self.exchanges = exchanges
+        self.exchangesContinuation = exchangesContinuation
 
-        var stateCont: AsyncStream<MCPHttpServerState>.Continuation?
-        self.listenerStateStorage = AsyncStream<MCPHttpServerState> { continuation in
-            stateCont = continuation
-        }
-        self.stateContinuation = stateCont
-    }
-
-    nonisolated public var exchanges: AsyncStream<MCPInboundExchange> {
-        exchangesStorage
-    }
-
-    nonisolated public var listenerState: AsyncStream<MCPHttpServerState> {
-        listenerStateStorage
+        let (listenerState, stateContinuation) = AsyncStream<MCPHttpServerState>.makeStream()
+        self.listenerState = listenerState
+        self.stateContinuation = stateContinuation
     }
 
     public func start() async throws {
@@ -129,6 +119,8 @@ public actor MCPHttpServerTransport {
         }
 
         emitState(.stopped)
+        exchangesContinuation.finish()
+        stateContinuation.finish()
     }
 
     public func sendNotification(_ notification: JsonRpcNotification, toSession sessionId: MCPSessionId) async {
@@ -200,7 +192,7 @@ public actor MCPHttpServerTransport {
 
     private func emitState(_ state: MCPHttpServerState) {
         currentState = state
-        stateContinuation?.yield(state)
+        stateContinuation.yield(state)
     }
 
     private func startSessionEventListener() {
@@ -223,9 +215,20 @@ public actor MCPHttpServerTransport {
             return
         }
 
-        if reason == .idleTimeout {
-            await context.writeRaw(Data("\u{003A} idle-timeout\n\n".utf8))
+        let comment: String
+        switch reason {
+        case .idleTimeout:
+            comment = "idle-timeout"
+        case .tokenRevoked:
+            comment = "token-revoked"
+        case .serverShutdown:
+            comment = "server-shutdown"
+        case .clientRequested:
+            comment = "client-disconnect"
+        case .capacityEvicted:
+            comment = "capacity-evicted"
         }
+        await context.writeRaw(Data("\u{003A} \(comment)\n\n".utf8))
         await context.cancel()
         connections.removeValue(forKey: connectionId)
     }
@@ -352,6 +355,18 @@ public actor MCPHttpServerTransport {
                 details: "missing code or code_verifier"
             )
             await context.writePlainJsonError(status: .badRequest, message: "Missing code or code_verifier")
+            await context.cancel()
+            return
+        }
+
+        guard parsed.code.utf8.count <= 1024, parsed.codeVerifier.utf8.count <= 1024 else {
+            Self.logger.warning("Integrations exchange field exceeds size cap")
+            MCPAuditLogger.logPairingExchange(
+                outcome: .denied,
+                ip: ip,
+                details: "field exceeds 1024 bytes"
+            )
+            await context.writePlainJsonError(status: .badRequest, message: "Field exceeds size limit")
             await context.cancel()
             return
         }
@@ -579,7 +594,10 @@ public actor MCPHttpServerTransport {
             context: exchangeContext,
             responder: responder
         )
-        exchangesContinuation?.yield(exchange)
+        let yieldResult = exchangesContinuation.yield(exchange)
+        if case .dropped = yieldResult {
+            Self.logger.warning("exchanges buffer full, dropped inbound message — dispatcher is falling behind")
+        }
     }
 
     private func handleDeleteMcp(

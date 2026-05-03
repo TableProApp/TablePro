@@ -1,8 +1,3 @@
-//
-//  MCPTLSManager.swift
-//  TablePro
-//
-
 import CryptoKit
 import Foundation
 import os

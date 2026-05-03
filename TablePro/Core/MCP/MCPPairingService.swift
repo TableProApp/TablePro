@@ -1,8 +1,3 @@
-//
-//  MCPPairingService.swift
-//  TablePro
-//
-
 import AppKit
 import CryptoKit
 import Foundation

@@ -1,8 +1,3 @@
-//
-//  MCPPortAllocator.swift
-//  TablePro
-//
-
 import Darwin
 import Foundation
 import os

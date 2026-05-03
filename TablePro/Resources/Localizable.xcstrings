@@ -10566,6 +10566,9 @@
         }
       }
     },
+    "Confirm Destructive Operation" : {
+
+    },
     "Confirm passphrase" : {
       "localizations" : {
         "tr" : {
@@ -13842,6 +13845,9 @@
     "Database name (uses connection's current database if omitted)" : {
 
     },
+    "Database name (uses current if omitted)" : {
+
+    },
     "Database name to switch to" : {
 
     },
@@ -15322,6 +15328,9 @@
         }
       }
     },
+    "Describe Table" : {
+
+    },
     "Description" : {
       "localizations" : {
         "tr" : {
@@ -16609,6 +16618,9 @@
           }
         }
       }
+    },
+    "Earliest executed_at to include, Unix epoch seconds (inclusive, optional)" : {
+
     },
     "Edit" : {
       "localizations" : {
@@ -18941,7 +18953,6 @@
       }
     },
     "Export Data" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21455,6 +21466,9 @@
         }
       }
     },
+    "Focus Query Tab" : {
+
+    },
     "Focus the query editor to insert" : {
       "localizations" : {
         "tr" : {
@@ -22095,6 +22109,9 @@
         }
       }
     },
+    "Get Connection Status" : {
+
+    },
     "Get detailed status of a database connection" : {
 
     },
@@ -22166,6 +22183,9 @@
           }
         }
       }
+    },
+    "Get Table DDL" : {
+
     },
     "Get the CREATE TABLE DDL statement for a table" : {
 
@@ -23662,6 +23682,9 @@
           }
         }
       }
+    },
+    "Include approximate row counts (default false)" : {
+
     },
     "Include column headers" : {
       "extractionState" : "stale",
@@ -25994,6 +26017,9 @@
         }
       }
     },
+    "Latest executed_at to include, Unix epoch seconds (inclusive, optional)" : {
+
+    },
     "Layout" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -26556,13 +26582,28 @@
     "List all saved database connections with their status" : {
 
     },
+    "List Connections" : {
+
+    },
     "List currently open tabs across all TablePro windows. Returns connection, tab type, table name, and titles for each tab." : {
+
+    },
+    "List Databases" : {
 
     },
     "List of all saved database connections with metadata" : {
 
     },
+    "List Recent Tabs" : {
+
+    },
+    "List Schemas" : {
+
+    },
     "List schemas in a database" : {
+
+    },
+    "List Tables" : {
 
     },
     "List tables and views in a database" : {
@@ -27572,6 +27613,9 @@
           }
         }
       }
+    },
+    "Maximum number of entries to return (default 50, max 500)" : {
+
     },
     "Maximum row limit" : {
       "localizations" : {
@@ -31712,6 +31756,9 @@
         }
       }
     },
+    "Only affects new saves. Re-save a password to update its sync." : {
+
+    },
     "Open" : {
       "localizations" : {
         "tr" : {
@@ -31827,6 +31874,9 @@
           }
         }
       }
+    },
+    "Open Connection Window" : {
+
     },
     "Open containing folder" : {
       "localizations" : {
@@ -32253,6 +32303,9 @@
           }
         }
       }
+    },
+    "Open Table Tab" : {
+
     },
     "Open Terminal" : {
       "localizations" : {
@@ -37924,6 +37977,9 @@
         }
       }
     },
+    "Restrict to a specific connection (UUID, optional)" : {
+
+    },
     "Results" : {
       "localizations" : {
         "tr" : {
@@ -39467,6 +39523,9 @@
     "Schema name (for multi-schema databases)" : {
 
     },
+    "Schema name (uses current if omitted)" : {
+
+    },
     "Schema name to switch to" : {
 
     },
@@ -39758,6 +39817,9 @@
         }
       }
     },
+    "Search Query History" : {
+
+    },
     "Search saved query history. Returns matching entries with execution time, row count, and outcome." : {
 
     },
@@ -39826,6 +39888,9 @@
           }
         }
       }
+    },
+    "Search text (full-text matched against the query column)" : {
+
     },
     "Search..." : {
       "localizations" : {
@@ -44374,6 +44439,9 @@
         }
       }
     },
+    "Switch Schema" : {
+
+    },
     "Switch the active database on a connection" : {
 
     },
@@ -45042,6 +45110,9 @@
           }
         }
       }
+    },
+    "Table name" : {
+
     },
     "Table Name" : {
       "extractionState" : "stale",

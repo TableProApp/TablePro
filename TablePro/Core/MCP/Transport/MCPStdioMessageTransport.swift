@@ -2,8 +2,8 @@ import Foundation
 
 public actor MCPStdioMessageTransport: MCPMessageTransport {
     nonisolated public let inbound: AsyncThrowingStream<JsonRpcMessage, Error>
+    nonisolated private let continuation: AsyncThrowingStream<JsonRpcMessage, Error>.Continuation
 
-    nonisolated private let continuationBox: StreamContinuationBox
     private let writer: StdioWriter
     private let errorLogger: (any MCPBridgeLogger)?
     private var readerTask: Task<Void, Never>?
@@ -14,12 +14,9 @@ public actor MCPStdioMessageTransport: MCPMessageTransport {
         stdout: FileHandle = .standardOutput,
         errorLogger: (any MCPBridgeLogger)? = nil
     ) {
-        let box = StreamContinuationBox()
-        let stream = AsyncThrowingStream<JsonRpcMessage, Error> { continuation in
-            box.set(continuation)
-        }
-        self.continuationBox = box
+        let (stream, continuation) = AsyncThrowingStream<JsonRpcMessage, Error>.makeStream()
         self.inbound = stream
+        self.continuation = continuation
         self.writer = StdioWriter(handle: stdout)
         self.errorLogger = errorLogger
 
@@ -53,17 +50,17 @@ public actor MCPStdioMessageTransport: MCPMessageTransport {
         let task = readerTask
         readerTask = nil
         task?.cancel()
-        continuationBox.finish()
+        continuation.finish()
     }
 
     private func startReader(stdin: FileHandle) {
         if isClosed {
             return
         }
-        let box = continuationBox
+        let continuation = self.continuation
         let logger = errorLogger
         let task = Task.detached(priority: .userInitiated) { [weak self] in
-            await Self.readLoop(stdin: stdin, box: box, logger: logger)
+            await Self.readLoop(stdin: stdin, continuation: continuation, logger: logger)
             await self?.finishStream()
         }
         readerTask = task
@@ -75,12 +72,12 @@ public actor MCPStdioMessageTransport: MCPMessageTransport {
         }
         isClosed = true
         readerTask = nil
-        continuationBox.finish()
+        continuation.finish()
     }
 
     private static func readLoop(
         stdin: FileHandle,
-        box: StreamContinuationBox,
+        continuation: AsyncThrowingStream<JsonRpcMessage, Error>.Continuation,
         logger: (any MCPBridgeLogger)?
     ) async {
         var buffer = Data()
@@ -90,7 +87,7 @@ public actor MCPStdioMessageTransport: MCPMessageTransport {
                     return
                 }
                 if byte == 0x0A {
-                    processLine(buffer, box: box, logger: logger)
+                    processLine(buffer, continuation: continuation, logger: logger)
                     buffer.removeAll(keepingCapacity: true)
                     continue
                 }
@@ -98,18 +95,18 @@ public actor MCPStdioMessageTransport: MCPMessageTransport {
             }
         } catch {
             logger?.log(.error, "stdio read failed: \(error)")
-            box.finish(throwing: MCPTransportError.readFailed(detail: String(describing: error)))
+            continuation.finish(throwing: MCPTransportError.readFailed(detail: String(describing: error)))
             return
         }
 
         if !buffer.isEmpty {
-            processLine(buffer, box: box, logger: logger)
+            processLine(buffer, continuation: continuation, logger: logger)
         }
     }
 
     private static func processLine(
         _ raw: Data,
-        box: StreamContinuationBox,
+        continuation: AsyncThrowingStream<JsonRpcMessage, Error>.Continuation,
         logger: (any MCPBridgeLogger)?
     ) {
         var trimmed = raw
@@ -122,7 +119,7 @@ public actor MCPStdioMessageTransport: MCPMessageTransport {
 
         do {
             let message = try JsonRpcCodec.decode(trimmed)
-            box.yield(message)
+            continuation.yield(message)
         } catch {
             logger?.log(.warning, "stdio: skipping malformed JSON-RPC line: \(error)")
         }
@@ -139,33 +136,5 @@ private actor StdioWriter {
     func write(_ data: Data) throws {
         try handle.write(contentsOf: data)
         try? handle.synchronize()
-    }
-}
-
-final class StreamContinuationBox: Sendable {
-    nonisolated(unsafe) private var continuation: AsyncThrowingStream<JsonRpcMessage, Error>.Continuation?
-    private let lock = NSLock()
-
-    func set(_ continuation: AsyncThrowingStream<JsonRpcMessage, Error>.Continuation) {
-        lock.withLock {
-            self.continuation = continuation
-        }
-    }
-
-    func yield(_ message: JsonRpcMessage) {
-        lock.withLock {
-            continuation?.yield(message)
-        }
-    }
-
-    func finish(throwing error: Error? = nil) {
-        lock.withLock {
-            if let error {
-                continuation?.finish(throwing: error)
-            } else {
-                continuation?.finish()
-            }
-            continuation = nil
-        }
     }
 }

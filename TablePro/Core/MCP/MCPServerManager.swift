@@ -289,7 +289,7 @@ final class MCPServerManager {
         let extraSessions = await sessionStore.sessionIds(forPrincipalTokenId: tokenId)
         let toTerminate = Set(cancelledSessions + extraSessions)
         for sessionId in toTerminate {
-            await sessionStore.terminate(id: sessionId, reason: .clientRequested)
+            await sessionStore.terminate(id: sessionId, reason: .tokenRevoked)
         }
         if !toTerminate.isEmpty {
             Self.logger.info(

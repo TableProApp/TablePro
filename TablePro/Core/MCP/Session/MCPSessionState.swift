@@ -11,6 +11,7 @@ public enum MCPSessionTerminationReason: Sendable, Equatable, CustomStringConver
     case idleTimeout
     case capacityEvicted
     case serverShutdown
+    case tokenRevoked
 
     public var description: String {
         switch self {
@@ -22,6 +23,8 @@ public enum MCPSessionTerminationReason: Sendable, Equatable, CustomStringConver
             return "capacity_evicted"
         case .serverShutdown:
             return "server_shutdown"
+        case .tokenRevoked:
+            return "token_revoked"
         }
     }
 }

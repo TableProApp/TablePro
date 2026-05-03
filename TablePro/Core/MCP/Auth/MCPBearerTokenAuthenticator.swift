@@ -208,6 +208,6 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
         guard let data = token.data(using: .utf8) else { return "" }
         let digest = SHA256.hash(data: data)
         let hex = digest.map { String(format: "%02x", $0) }.joined()
-        return String(hex.prefix(8))
+        return String(hex.prefix(16))
     }
 }

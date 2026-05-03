@@ -1,8 +1,3 @@
-//
-//  MCPAuditLogStorage.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import SQLite3

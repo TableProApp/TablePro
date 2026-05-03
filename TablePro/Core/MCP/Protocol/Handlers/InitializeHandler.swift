@@ -55,7 +55,7 @@ public struct InitializeHandler: MCPMethodHandler {
             "serverInfo": .object([
                 "name": .string("tablepro"),
                 "title": .string("TablePro"),
-                "version": .string("1.0.0")
+                "version": .string(Self.serverVersion)
             ])
         ])
 
@@ -74,4 +74,8 @@ public struct InitializeHandler: MCPMethodHandler {
         }
         return supportedProtocolVersion
     }
+
+    private static let serverVersion: String = {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }()
 }
