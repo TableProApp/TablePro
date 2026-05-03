@@ -81,5 +81,5 @@ A write request from an external client clears three locks in this order:
 2. **Token scope** (per-integration, `readOnly` / `readWrite` / `fullAccess`). Issued by the [pairing flow](/external-api/pairing) and bounded by External Access: effective permission is `MIN(token.scope, connection.externalAccess)`.
 3. **Safe Mode** (per-query). The same rules on this page apply once the request has been routed to the connection. Touch ID prompts and confirmation dialogs still appear, even for queries originating from an external client.
 
-DROP and TRUNCATE always need an explicit confirmation phrase via the `confirm_destructive_operation` tool, regardless of token scope. See [External API security model](/external-api#security-model).
+DROP and TRUNCATE always need an explicit confirmation phrase via the `confirm_destructive_operation` tool, regardless of token scope. See [External API security model](/external-api/index#security-model).
 

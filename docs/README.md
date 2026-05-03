@@ -13,8 +13,8 @@ docs/
 ├── databases/               # Database connection guides
 ├── features/                # Feature documentation
 ├── customization/           # Settings and customization
-├── development/             # Developer documentation
-└── vi/                      # Vietnamese translation (full parity)
+├── external-api/            # URL scheme, MCP, pairing
+└── development/             # Developer documentation
 ```
 
 ## Local Development

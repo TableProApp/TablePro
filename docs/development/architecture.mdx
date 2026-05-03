@@ -118,6 +118,36 @@ flowchart LR
 - **SQLContextAnalyzer**: parses cursor position context (table ref, column ref, keyword)
 - **SQLSchemaProvider**: actor that caches and serves schema data
 
+### MCP Layer
+
+The MCP server lives under `Core/MCP/` and is split into five horizontal layers. Each layer talks only to the layer below it.
+
+```mermaid
+flowchart TD
+    Wire["Wire (Codable values)<br/>JsonRpcMessage, JsonRpcCodec, HttpRequestParser, SseDecoder"]
+    Transport["Transport (NWListener, URLSession, FileHandle)<br/>MCPHttpServerTransport, MCPStdioMessageTransport, MCPStreamableHttpClientTransport"]
+    Session["Session / Auth / RateLimit (actors)<br/>MCPSessionStore, MCPBearerTokenAuthenticator, MCPRateLimiter"]
+    Protocol["Protocol (dispatcher + handlers)<br/>MCPProtocolDispatcher, 19 tools, MCPProgressEmitter"]
+    Bridge["Bridge (tablepro-mcp CLI)<br/>BridgeProxy: stdio &lt;-&gt; HTTP"]
+
+    Bridge --> Wire
+    Transport --> Wire
+    Session --> Transport
+    Protocol --> Session
+```
+
+**Wire**: pure Codable types, no I/O. JSON-RPC 2.0, strict-CRLF HTTP, SSE encoder/decoder.
+
+**Transport**: HTTP server uses `NWListener` and binds to `127.0.0.1:<port>` by default. The stream endpoints (`exchanges`, `listenerState`) are bounded `AsyncStream`s consumed by `MCPServerManager`. The bridge's client-side transport uses `URLSession.bytes(for:)` for incremental SSE.
+
+**Session**: `MCPSessionStore` is an actor that owns session lifecycle. Idle timeout is 15 minutes. Token revocation marks sessions with `.tokenRevoked` and the SSE stream emits a typed terminate comment so clients can distinguish revoke from network blip.
+
+**Protocol**: `MCPProtocolDispatcher` spawns a child `Task` per inbound exchange, so two concurrent tool calls run in parallel instead of queueing on the dispatcher actor. Per-request cancellation flows through `MCPInflightRegistry`. Long-running tools emit `notifications/progress` to clients that pass `_meta.progressToken`.
+
+**Bridge**: `tablepro-mcp` is a 50-line composition root. `MCPStdioMessageTransport` host-side, `MCPStreamableHttpClientTransport` upstream. Errors land in os_log and stderr. The host-facing transport writes only validated `JsonRpcMessage` bytes to stdout.
+
+The server accepts protocol versions `2025-03-26`, `2025-06-18`, and `2025-11-25`. See [Versioning](/external-api/versioning) for the negotiation rules and the additive-within-major-version stability policy.
+
 ## Data Flow
 
 ### Connection

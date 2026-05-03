@@ -194,7 +194,7 @@ Set a per-connection AI policy in the connection form: **Use Default**, **Always
 
 ### External AI clients
 
-External clients (Raycast, Cursor, Claude Desktop, and other MCP clients) call the same AI tools through the [External API](/external-api). Two per-connection settings gate them:
+External clients (Raycast, Cursor, Claude Desktop, and other MCP clients) call the same AI tools through the [External API](/external-api/index). Two per-connection settings gate them:
 
 - **AI policy** decides whether the connection is reachable by AI clients at all. `Never` blocks every external AI tool call against this connection.
 - **External Access** caps the level: `blocked`, `readOnly` (default), or `readWrite`. A token's effective permission is `MIN(token.scope, connection.externalAccess)`. Set this in the connection form's **Advanced** tab.
