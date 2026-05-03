@@ -18,11 +18,36 @@ private let osLogger = Logger(subsystem: "com.TablePro", category: "OracleConnec
 // MARK: - Error Types
 
 struct OracleError: Error {
-    let message: String
+    enum Category: Sendable, Equatable {
+        case generic
+        case notConnected
+        case connectionFailed
+        case queryFailed
+        case authVerifierUnsupported(flag: String)
+        case authVersionNotSupported
+        case authConnectionDropped
+    }
 
-    static let notConnected = OracleError(message: String(localized: "Not connected to database"))
-    static let connectionFailed = OracleError(message: String(localized: "Failed to establish connection"))
-    static let queryFailed = OracleError(message: String(localized: "Query execution failed"))
+    let message: String
+    let category: Category
+
+    init(message: String, category: Category = .generic) {
+        self.message = message
+        self.category = category
+    }
+
+    static let notConnected = OracleError(
+        message: String(localized: "Not connected to database"),
+        category: .notConnected
+    )
+    static let connectionFailed = OracleError(
+        message: String(localized: "Failed to establish connection"),
+        category: .connectionFailed
+    )
+    static let queryFailed = OracleError(
+        message: String(localized: "Query execution failed"),
+        category: .queryFailed
+    )
 }
 
 extension OracleError: PluginDriverError {
@@ -147,46 +172,27 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         } catch let sqlError as OracleSQLError {
             let detail = sqlError.serverInfo?.message ?? sqlError.description
             osLogger.error("Oracle connection failed: \(detail)")
-            throw OracleError(message: friendlyConnectError(for: sqlError, fallback: detail))
+            throw OracleError(message: detail, category: classifyConnectError(sqlError))
         } catch {
             let detail = String(describing: error)
             osLogger.error("Oracle connection failed: \(detail)")
-            throw OracleError(message: "Failed to connect to \(host):\(port)/\(service): \(detail)")
+            throw OracleError(message: detail, category: .connectionFailed)
         }
     }
 
-    private func friendlyConnectError(for error: OracleSQLError, fallback: String) -> String {
-        let target = "\(host):\(port)/\(serviceName.isEmpty ? database : serviceName)"
+    private func classifyConnectError(_ error: OracleSQLError) -> OracleError.Category {
         let codeDescription = error.code.description
         if codeDescription.hasPrefix("unsupportedVerifierType") {
-            let template = String(localized: """
-                Failed to connect to %1$@. The database advertised a password verifier that \
-                TablePro does not recognize (%2$@). File an issue at \
-                github.com/TableProApp/TablePro/issues with the verifier flag.
-                """)
-            return String(format: template, target, codeDescription)
+            return .authVerifierUnsupported(flag: codeDescription)
         }
-        if codeDescription == "uncleanShutdown" {
-            let template = String(localized: """
-                Failed to connect to %@. The connection was dropped during the handshake. \
-                This is often an OOB compatibility issue with cloud-hosted or containerized \
-                Oracle. If the same connection works in DBeaver, please report at \
-                github.com/TableProApp/TablePro/issues/483.
-                """)
-            return String(format: template, target)
+        switch codeDescription {
+        case "uncleanShutdown":
+            return .authConnectionDropped
+        case "serverVersionNotSupported":
+            return .authVersionNotSupported
+        default:
+            return .connectionFailed
         }
-        if codeDescription == "serverVersionNotSupported" {
-            let template = String(localized: """
-                Failed to connect to %@. The database returned a server version or auth \
-                scheme TablePro cannot negotiate. Check that the user account has an 11G or \
-                12C password hash (SELECT password_versions FROM dba_users WHERE \
-                username = '<USER>'). Ask your DBA to rotate the password under modern auth \
-                if the result includes only 10G.
-                """)
-            return String(format: template, target)
-        }
-        let template = String(localized: "Failed to connect to %1$@: %2$@")
-        return String(format: template, target, fallback)
     }
 
     func disconnect() {

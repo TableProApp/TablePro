@@ -129,7 +129,7 @@ struct ConnectionFormView: View {
     @State var isInstallingPlugin: Bool = false
     @State var pluginInstallError: String?
 
-    @State var oracleDiagnostic: OracleDiagnosticPayload?
+    @State var pluginDiagnostic: PluginDiagnosticItem?
 
     // Tab selection
     @State var selectedTab: FormTab = .general
@@ -196,9 +196,9 @@ struct ConnectionFormView: View {
         .pluginInstallPrompt(connection: $pluginInstallConnection) { connection in
             connectAfterInstall(connection)
         }
-        .sheet(item: $oracleDiagnostic) { payload in
-            OracleDiagnosticSheet(payload: payload) {
-                oracleDiagnostic = nil
+        .sheet(item: $pluginDiagnostic) { item in
+            PluginDiagnosticSheet(item: item) {
+                pluginDiagnostic = nil
             }
         }
         .onChange(of: pgpassTrigger) { _, _ in updatePgpassStatus() }

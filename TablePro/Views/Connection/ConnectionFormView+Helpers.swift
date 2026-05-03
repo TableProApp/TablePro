@@ -500,10 +500,10 @@ extension ConnectionFormView {
                     testSucceeded = false
                     if case PluginError.pluginNotInstalled = error {
                         pluginInstallConnection = testConn
-                    } else if let payload = oracleDiagnosticPayload(
-                        for: error, connection: testConn, username: finalUsername
+                    } else if let item = PluginDiagnosticItem.classify(
+                        error: error, connection: testConn, username: finalUsername
                     ) {
-                        oracleDiagnostic = payload
+                        pluginDiagnostic = item
                     } else {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Connection Test Failed"),
@@ -514,33 +514,6 @@ extension ConnectionFormView {
                 }
             }
         }
-    }
-
-    private func oracleDiagnosticPayload(
-        for error: Error,
-        connection: DatabaseConnection,
-        username: String
-    ) -> OracleDiagnosticPayload? {
-        guard connection.type.pluginTypeId == "Oracle" else { return nil }
-        let message = error.localizedDescription
-        let category: OracleDiagnosticPayload.Category
-        if message.contains("password verifier") {
-            category = .unsupportedVerifier
-        } else if message.contains("dropped during the handshake") {
-            category = .uncleanShutdown
-        } else if message.contains("server version or auth scheme") {
-            category = .serverVersionNotSupported
-        } else {
-            return nil
-        }
-        return OracleDiagnosticPayload(
-            host: connection.host,
-            port: connection.port,
-            serviceOrDatabase: connection.database,
-            username: username,
-            errorMessage: message,
-            category: category
-        )
     }
 
     func browseForFile() {
