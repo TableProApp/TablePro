@@ -97,6 +97,51 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         OraclePluginDriver(config: config)
     }
+
+    func diagnose(error: Error) -> PluginDiagnostic? {
+        guard let oracleError = error as? OracleError else { return nil }
+        let issuesURL = URL(string: "https://github.com/TableProApp/TablePro/issues")
+        switch oracleError.category {
+        case .authVerifierUnsupported(let flag):
+            return PluginDiagnostic(
+                title: String(localized: "Unsupported Password Verifier"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "Verify the user account exists and the password is correct."),
+                    String(localized: "Ask your DBA to confirm the user has an 11G or 12C password verifier (SELECT password_versions FROM dba_users WHERE username = '<USER>')."),
+                    String(localized: "If the verifier is brand-new (e.g. 23ai), file an issue with the verifier flag below.")
+                ],
+                diagnosticInfo: [
+                    DiagnosticEntry(label: "Verifier flag", value: flag)
+                ],
+                supportURL: issuesURL
+            )
+        case .authConnectionDropped:
+            return PluginDiagnostic(
+                title: String(localized: "Connection Dropped During Handshake"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "If the same connection works in DBeaver or sqlplus, this is likely an OOB compatibility issue with cloud-hosted Oracle."),
+                    String(localized: "TablePro 1.2.0 already gates OOB on the server flag, so most cases are resolved. If you still hit this, file an issue."),
+                    String(localized: "Try disabling SSH tunnel or load balancer firewall rules between client and server.")
+                ],
+                supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
+            )
+        case .authVersionNotSupported:
+            return PluginDiagnostic(
+                title: String(localized: "Server Version Not Supported"),
+                message: oracleError.message,
+                suggestedActions: [
+                    String(localized: "TablePro requires Oracle 12c or later via the OracleNIO Swift driver."),
+                    String(localized: "Check the user account's password_versions; only 10G, 11G, and 12C are supported."),
+                    String(localized: "Rotate the password under modern auth if password_versions contains an unrecognized verifier.")
+                ],
+                supportURL: issuesURL
+            )
+        case .generic, .notConnected, .connectionFailed, .queryFailed:
+            return nil
+        }
+    }
 }
 
 final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -1102,51 +1147,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func effectiveSchemaEscaped(_ schema: String?) -> String {
         let raw = schema ?? _currentSchema ?? config.username.uppercased()
         return raw.replacingOccurrences(of: "'", with: "''")
-    }
-
-    func diagnose(error: Error) -> PluginDiagnostic? {
-        guard let oracleError = error as? OracleError else { return nil }
-        let issuesURL = URL(string: "https://github.com/TableProApp/TablePro/issues")
-        switch oracleError.category {
-        case .authVerifierUnsupported(let flag):
-            return PluginDiagnostic(
-                title: String(localized: "Unsupported Password Verifier"),
-                message: oracleError.message,
-                suggestedActions: [
-                    String(localized: "Verify the user account exists and the password is correct."),
-                    String(localized: "Ask your DBA to confirm the user has an 11G or 12C password verifier (SELECT password_versions FROM dba_users WHERE username = '<USER>')."),
-                    String(localized: "If the verifier is brand-new (e.g. 23ai), file an issue with the verifier flag below.")
-                ],
-                diagnosticInfo: [
-                    DiagnosticEntry(label: "Verifier flag", value: flag)
-                ],
-                supportURL: issuesURL
-            )
-        case .authConnectionDropped:
-            return PluginDiagnostic(
-                title: String(localized: "Connection Dropped During Handshake"),
-                message: oracleError.message,
-                suggestedActions: [
-                    String(localized: "If the same connection works in DBeaver or sqlplus, this is likely an OOB compatibility issue with cloud-hosted Oracle."),
-                    String(localized: "TablePro 1.2.0 already gates OOB on the server flag, so most cases are resolved. If you still hit this, file an issue."),
-                    String(localized: "Try disabling SSH tunnel or load balancer firewall rules between client and server.")
-                ],
-                supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
-            )
-        case .authVersionNotSupported:
-            return PluginDiagnostic(
-                title: String(localized: "Server Version Not Supported"),
-                message: oracleError.message,
-                suggestedActions: [
-                    String(localized: "TablePro requires Oracle 12c or later via the OracleNIO Swift driver."),
-                    String(localized: "Check the user account's password_versions; only 10G, 11G, and 12C are supported."),
-                    String(localized: "Rotate the password under modern auth if password_versions contains an unrecognized verifier.")
-                ],
-                supportURL: issuesURL
-            )
-        case .generic, .notConnected, .connectionFailed, .queryFailed:
-            return nil
-        }
     }
 
     private static let fromTableRegex = try? NSRegularExpression(

@@ -117,15 +117,16 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     private let database: String
     private let serviceName: String
 
-    private let lock = NSLock()
-    private var _isConnected = false
-    private var nioConnection: OracleNIO.OracleConnection?
+    private struct LockedState: Sendable {
+        var isConnected = false
+        var nioConnection: OracleNIO.OracleConnection?
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: LockedState())
     private let nioLogger = Logging.Logger(label: "com.TablePro.oracle-nio")
 
     var isConnected: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return _isConnected
+        state.withLock { $0.isConnected }
     }
 
     // MARK: - Initialization
@@ -163,10 +164,10 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                 logger: nioLogger
             )
 
-            lock.lock()
-            nioConnection = connection
-            _isConnected = true
-            lock.unlock()
+            state.withLock { current in
+                current.nioConnection = connection
+                current.isConnected = true
+            }
 
             osLogger.debug("Connected to Oracle \(self.host):\(self.port)/\(service)")
         } catch let sqlError as OracleSQLError {
@@ -196,18 +197,18 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     }
 
     func disconnect() {
-        lock.lock()
-        guard _isConnected else {
-            lock.unlock()
-            return
+        let connection = state.withLock { current -> OracleNIO.OracleConnection? in
+            guard current.isConnected else { return nil }
+            current.isConnected = false
+            let conn = current.nioConnection
+            current.nioConnection = nil
+            return conn
         }
-        _isConnected = false
-        let connection = nioConnection
-        nioConnection = nil
-        lock.unlock()
+
+        guard let connection else { return }
 
         Task {
-            try? await connection?.close()
+            try? await connection.close()
             osLogger.debug("Disconnected from Oracle \(self.host):\(self.port)")
         }
     }
@@ -215,12 +216,12 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     // MARK: - Query Execution
 
     func executeQuery(_ query: String) async throws -> OracleQueryResult {
-        lock.lock()
-        guard let connection = nioConnection, _isConnected else {
-            lock.unlock()
-            throw OracleError.notConnected
+        let connection = try state.withLock { current -> OracleNIO.OracleConnection in
+            guard let conn = current.nioConnection, current.isConnected else {
+                throw OracleError.notConnected
+            }
+            return conn
         }
-        lock.unlock()
 
         // OracleNIO does not support concurrent queries on a single connection.
         // Serialize all queries to prevent state-machine corruption.
@@ -296,12 +297,12 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         _ query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        lock.lock()
-        guard let connection = nioConnection, _isConnected else {
-            lock.unlock()
-            throw OracleError.notConnected
+        let connection = try state.withLock { current -> OracleNIO.OracleConnection in
+            guard let conn = current.nioConnection, current.isConnected else {
+                throw OracleError.notConnected
+            }
+            return conn
         }
-        lock.unlock()
 
         await queryGate.acquire()
 
