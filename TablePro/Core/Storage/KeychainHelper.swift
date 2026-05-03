@@ -7,20 +7,25 @@ import Foundation
 import os
 import Security
 
-enum KeychainLoadResult {
-    case success(Data)
+enum KeychainResult: Sendable, Equatable {
+    case found(Data)
     case notFound
     case locked
-    case error(OSStatus)
 }
 
-final class KeychainHelper {
+enum KeychainStringResult: Sendable, Equatable {
+    case found(String)
+    case notFound
+    case locked
+}
+
+final class KeychainHelper: Sendable {
     static let shared = KeychainHelper()
+    static let passwordSyncEnabledKey = "com.TablePro.keychainPasswordSyncEnabled"
 
     private let service = "com.TablePro"
     private let accessGroup = "D7HJ5TFYCU.com.TablePro.shared"
     private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainHelper")
-    static let passwordSyncEnabledKey = "com.TablePro.keychainPasswordSyncEnabled"
 
     private var isPasswordSyncEnabled: Bool {
         UserDefaults.standard.bool(forKey: Self.passwordSyncEnabledKey)
@@ -28,85 +33,45 @@ final class KeychainHelper {
 
     private init() {}
 
-    // MARK: - Core Methods
+    // MARK: - Data API
 
     @discardableResult
-    func save(key: String, data: Data) -> Bool {
-        var addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecValueData as String: data,
-            kSecUseDataProtectionKeychain as String: true,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-        ]
-        if isPasswordSyncEnabled {
+    func write(_ data: Data, forKey key: String) -> Bool {
+        let synchronizable = isPasswordSyncEnabled
+        let accessible = accessibility(forSync: synchronizable)
+
+        var addQuery = baseQuery(forKey: key)
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = accessible
+        if synchronizable {
             addQuery[kSecAttrSynchronizable as String] = true
         }
 
         var status = SecItemAdd(addQuery as CFDictionary, nil)
 
         if status == errSecDuplicateItem {
-            let synchronizable = isPasswordSyncEnabled
-            let searchQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: key,
-                kSecAttrAccessGroup as String: accessGroup,
-                kSecUseDataProtectionKeychain as String: true,
-                kSecAttrSynchronizable as String: kSecAttrSynchronizableAny
-            ]
-            let updateAttributes: [String: Any] = [
+            var search = baseQuery(forKey: key)
+            search[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+            let attributes: [String: Any] = [
                 kSecValueData as String: data,
-                kSecAttrSynchronizable as String: synchronizable
+                kSecAttrSynchronizable as String: synchronizable,
+                kSecAttrAccessible as String: accessible
             ]
-            status = SecItemUpdate(searchQuery as CFDictionary, updateAttributes as CFDictionary)
+            status = SecItemUpdate(search as CFDictionary, attributes as CFDictionary)
         }
 
         if status != errSecSuccess {
-            Self.logger.error("Failed to save keychain item for key '\(key, privacy: .public)': \(status)")
+            log(status: status, operation: "write", key: key)
+            return false
         }
-
-        return status == errSecSuccess
+        return true
     }
 
-    func load(key: String) -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecUseDataProtectionKeychain as String: true,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess else {
-            if status != errSecItemNotFound {
-                Self.logger.error("Failed to load keychain item for key '\(key, privacy: .public)': \(status)")
-            }
-            return nil
-        }
-
-        return result as? Data
-    }
-
-    func loadWithStatus(key: String) -> KeychainLoadResult {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecUseDataProtectionKeychain as String: true,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+    func read(forKey key: String) -> KeychainResult {
+        var query = baseQuery(forKey: key)
+        query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -114,63 +79,85 @@ final class KeychainHelper {
         switch status {
         case errSecSuccess:
             if let data = result as? Data {
-                return .success(data)
+                return .found(data)
             }
             return .notFound
         case errSecItemNotFound:
             return .notFound
         case errSecInteractionNotAllowed:
-            Self.logger.warning("Keychain locked (before first unlock) for key '\(key, privacy: .public)'")
+            Self.logger.warning("Keychain locked (before first unlock) for '\(key, privacy: .public)'")
             return .locked
         default:
-            Self.logger.error("Keychain error for key '\(key, privacy: .public)': \(status)")
-            return .error(status)
+            log(status: status, operation: "read", key: key)
+            return .notFound
         }
     }
 
-    func delete(key: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecUseDataProtectionKeychain as String: true,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny
-        ]
+    func delete(forKey key: String) {
+        var query = baseQuery(forKey: key)
+        query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
 
         let status = SecItemDelete(query as CFDictionary)
-
         if status != errSecSuccess, status != errSecItemNotFound {
-            Self.logger.error("Failed to delete keychain item for key '\(key, privacy: .public)': \(status)")
+            log(status: status, operation: "delete", key: key)
         }
     }
 
     // MARK: - String Convenience
 
     @discardableResult
-    func saveString(_ value: String, forKey key: String) -> Bool {
+    func writeString(_ value: String, forKey key: String) -> Bool {
         guard let data = value.data(using: .utf8) else {
-            Self.logger.error("Failed to encode string to UTF-8 for key '\(key, privacy: .public)'")
+            Self.logger.error("UTF-8 encode failed for '\(key, privacy: .public)'")
             return false
         }
-        return save(key: key, data: data)
+        return write(data, forKey: key)
     }
 
-    func loadString(forKey key: String) -> String? {
-        guard let data = load(key: key) else {
-            return nil
+    func readString(forKey key: String) -> String? {
+        if case .found(let value) = readStringResult(forKey: key) {
+            return value
         }
-        return String(data: data, encoding: .utf8)
+        return nil
     }
 
-    func loadStringWithStatus(forKey key: String) -> (value: String?, isLocked: Bool) {
-        switch loadWithStatus(key: key) {
-        case .success(let data):
-            return (String(data: data, encoding: .utf8), false)
+    func readStringResult(forKey key: String) -> KeychainStringResult {
+        switch read(forKey: key) {
+        case .found(let data):
+            guard let value = String(data: data, encoding: .utf8) else {
+                Self.logger.error("UTF-8 decode failed for '\(key, privacy: .public)'")
+                return .notFound
+            }
+            return .found(value)
+        case .notFound:
+            return .notFound
         case .locked:
-            return (nil, true)
-        case .notFound, .error:
-            return (nil, false)
+            return .locked
         }
+    }
+
+    // MARK: - Private
+
+    private func baseQuery(forKey key: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecAttrAccessGroup as String: accessGroup,
+            kSecUseDataProtectionKeychain as String: true
+        ]
+    }
+
+    private func accessibility(forSync synchronizable: Bool) -> CFString {
+        synchronizable
+            ? kSecAttrAccessibleAfterFirstUnlock
+            : kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    }
+
+    private func log(status: OSStatus, operation: String, key: String) {
+        let message = SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
+        Self.logger.error(
+            "Keychain \(operation, privacy: .public) failed for '\(key, privacy: .public)': \(message, privacy: .public)"
+        )
     }
 }

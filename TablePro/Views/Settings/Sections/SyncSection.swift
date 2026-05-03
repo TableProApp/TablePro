@@ -109,6 +109,12 @@ struct SyncSection: View {
                     }
                     .help("Syncs passwords via iCloud Keychain (end-to-end encrypted).")
                     .padding(.leading, 20)
+
+                Text("Only affects new saves. Re-save a password to update its sync.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 20)
             }
 
             Toggle("Groups & Tags:", isOn: $settingsManager.sync.syncGroupsAndTags)

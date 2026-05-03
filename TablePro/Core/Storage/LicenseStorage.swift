@@ -26,19 +26,24 @@ final class LicenseStorage {
 
     // MARK: - License Key (Keychain)
 
-    /// Save license key to Keychain
     func saveLicenseKey(_ key: String) {
-        KeychainHelper.shared.saveString(key, forKey: Keys.keychainLicenseKey)
+        KeychainHelper.shared.writeString(key, forKey: Keys.keychainLicenseKey)
     }
 
-    /// Load license key from Keychain
     func loadLicenseKey() -> String? {
-        KeychainHelper.shared.loadString(forKey: Keys.keychainLicenseKey)
+        switch KeychainHelper.shared.readStringResult(forKey: Keys.keychainLicenseKey) {
+        case .found(let value):
+            return value
+        case .locked:
+            Self.logger.warning("License key unavailable — Keychain locked")
+            return nil
+        case .notFound:
+            return nil
+        }
     }
 
-    /// Delete license key from Keychain
     func deleteLicenseKey() {
-        KeychainHelper.shared.delete(key: Keys.keychainLicenseKey)
+        KeychainHelper.shared.delete(forKey: Keys.keychainLicenseKey)
     }
 
     // MARK: - Signed Payload (UserDefaults)
