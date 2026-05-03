@@ -40,6 +40,7 @@ public final class AnalyticsHeartbeatService {
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.dateEncodingStrategy = .iso8601
         return encoder
     }()
 
@@ -127,8 +128,16 @@ public final class AnalyticsHeartbeatService {
             locale: provider.locale,
             databaseTypes: types.isEmpty ? nil : types,
             connectionCount: provider.activeConnectionCount,
-            hasLicense: provider.hasLicense
+            hasLicense: provider.hasLicense,
+            connectionAttemptedAt: provider.connectionAttemptedAt,
+            connectionSucceededAt: provider.connectionSucceededAt,
+            firstQueryExecutedAt: provider.firstQueryExecutedAt
         )
+    }
+
+    /// Exposed for tests so they can verify the encoded body without touching `sendHeartbeat()`.
+    public func makeEncodedBodyForTesting(payload: AnalyticsPayload) throws -> Data {
+        try encoder.encode(payload)
     }
 
     private func isCooldownElapsed() -> Bool {

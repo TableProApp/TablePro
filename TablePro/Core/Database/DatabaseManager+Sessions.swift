@@ -19,6 +19,8 @@ extension DatabaseManager {
             return
         }
 
+        MacAnalyticsProvider.shared.markConnectionAttempted()
+
         let resolvedConnection: DatabaseConnection
         if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
             resolvedConnection = EnvVarResolver.resolveConnection(connection)
@@ -136,7 +138,9 @@ extension DatabaseManager {
 
             appSettingsStorage.saveLastConnectionId(connection.id)
 
+            MacAnalyticsProvider.shared.markConnectionSucceeded()
             NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
+            NotificationCenter.default.post(name: .successfulConnectionRecorded, object: nil)
 
             let supportsHealth = PluginMetadataRegistry.shared.snapshot(
                 forTypeId: connection.type.pluginTypeId

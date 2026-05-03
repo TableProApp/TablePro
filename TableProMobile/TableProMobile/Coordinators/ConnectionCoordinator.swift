@@ -3,9 +3,9 @@
 //  TableProMobile
 //
 
-import os
 import Foundation
 import Observation
+import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -112,6 +112,8 @@ final class ConnectionCoordinator {
     private func connectFresh() async {
         await appState.sshProvider.setPendingConnectionId(connection.id)
 
+        IOSAnalyticsProvider.shared.markConnectionAttempted()
+
         do {
             let newSession = try await appState.connectionManager.connect(connection)
             self.session = newSession
@@ -119,6 +121,7 @@ final class ConnectionCoordinator {
             await loadDatabases()
             await loadSchemas()
             phase = .connected
+            IOSAnalyticsProvider.shared.markConnectionSucceeded()
             navigateToPendingTable()
         } catch {
             let context = ErrorContext(

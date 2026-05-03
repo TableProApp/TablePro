@@ -4,10 +4,29 @@
 //
 
 import Foundation
+import os
 import TableProAnalytics
 
 @MainActor
 final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
+    static let shared = MacAnalyticsProvider()
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MacAnalyticsProvider")
+
+    private let defaults: UserDefaults
+
+    enum Keys {
+        static let connectionAttemptedAt = "com.TablePro.analytics.connectionAttemptedAt"
+        static let connectionSucceededAt = "com.TablePro.analytics.connectionSucceededAt"
+        static let firstQueryExecutedAt = "com.TablePro.analytics.firstQueryExecutedAt"
+        static let successfulConnectionCount = "com.TablePro.analytics.successfulConnectionCount"
+        static let newsletterPromptShown = "com.TablePro.newsletter.promptShown"
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
     var machineId: String {
         LicenseStorage.shared.machineId
     }
@@ -58,5 +77,49 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
             return nil
         }
         return value
+    }
+
+    var connectionAttemptedAt: Date? {
+        defaults.object(forKey: Keys.connectionAttemptedAt) as? Date
+    }
+
+    var connectionSucceededAt: Date? {
+        defaults.object(forKey: Keys.connectionSucceededAt) as? Date
+    }
+
+    var firstQueryExecutedAt: Date? {
+        defaults.object(forKey: Keys.firstQueryExecutedAt) as? Date
+    }
+
+    var successfulConnectionCount: Int {
+        defaults.integer(forKey: Keys.successfulConnectionCount)
+    }
+
+    var newsletterPromptShown: Bool {
+        defaults.bool(forKey: Keys.newsletterPromptShown)
+    }
+
+    func markConnectionAttempted() {
+        writeOnceDate(Keys.connectionAttemptedAt, label: "connectionAttemptedAt")
+    }
+
+    func markConnectionSucceeded() {
+        writeOnceDate(Keys.connectionSucceededAt, label: "connectionSucceededAt")
+        let next = defaults.integer(forKey: Keys.successfulConnectionCount) + 1
+        defaults.set(next, forKey: Keys.successfulConnectionCount)
+    }
+
+    func markFirstQueryExecuted() {
+        writeOnceDate(Keys.firstQueryExecutedAt, label: "firstQueryExecutedAt")
+    }
+
+    func markNewsletterPromptShown() {
+        defaults.set(true, forKey: Keys.newsletterPromptShown)
+    }
+
+    private func writeOnceDate(_ key: String, label: String) {
+        guard defaults.object(forKey: key) == nil else { return }
+        defaults.set(Date(), forKey: key)
+        Self.logger.info("Recorded \(label, privacy: .public) for first time")
     }
 }

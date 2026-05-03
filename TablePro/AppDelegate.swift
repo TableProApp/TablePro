@@ -58,6 +58,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         AnalyticsService.shared.startPeriodicHeartbeat()
+        NewsletterPromptCoordinator.shared.start()
 
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()

@@ -61,6 +61,11 @@ let package = Package(
             name: "TableProQueryTests",
             dependencies: ["TableProQuery", "TableProModels", "TableProPluginKit"],
             path: "Tests/TableProQueryTests"
+        ),
+        .testTarget(
+            name: "TableProAnalyticsTests",
+            dependencies: ["TableProAnalytics"],
+            path: "Tests/TableProAnalyticsTests"
         )
     ]
 )

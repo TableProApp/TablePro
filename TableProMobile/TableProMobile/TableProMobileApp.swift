@@ -64,7 +64,8 @@ struct TableProMobileApp: App {
                     )
                 }
                 if heartbeatTask == nil {
-                    let provider = IOSAnalyticsProvider(appState: appState)
+                    let provider = IOSAnalyticsProvider.shared
+                    provider.attach(appState: appState)
                     let service = AnalyticsHeartbeatService(provider: provider)
                     heartbeatService = service
                     heartbeatTask = service.startPeriodicHeartbeat()

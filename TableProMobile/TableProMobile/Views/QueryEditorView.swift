@@ -143,7 +143,7 @@ struct QueryEditorView: View {
                         .foregroundStyle(.secondary)
                 }
             } else if let time = executionTime {
-                Text(String(format: "%.1fms", time * 1000))
+                Text(String(format: "%.1fms", time * 1_000))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -396,6 +396,8 @@ struct QueryEditorView: View {
             self.result = queryResult
             self.executionTime = queryResult.executionTime
             hapticSuccess.toggle()
+
+            IOSAnalyticsProvider.shared.markFirstQueryExecuted()
 
             let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
             coordinator.addHistoryItem(item)
