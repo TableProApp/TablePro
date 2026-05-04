@@ -146,7 +146,9 @@ extension PluginMetadataRegistry {
                             placeholder: "http://localhost:8000 (DynamoDB Local)",
                             section: .authentication
                         ),
-                    ]
+                    ],
+                    category: .cloud,
+                    tagline: String(localized: "AWS managed key-value/document store")
                 )
             )),
             ("BigQuery", PluginMetadataSnapshot(
@@ -333,7 +335,9 @@ extension PluginMetadataRegistry {
                             fieldType: .number,
                             section: .advanced
                         )
-                    ]
+                    ],
+                    category: .analytical,
+                    tagline: String(localized: "Google Cloud serverless data warehouse")
                 )
             ))
         ]

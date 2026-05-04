@@ -17,6 +17,8 @@ internal final class WindowOpener {
     @ObservationIgnored private var openWelcomeAction: (() -> Void)?
     @ObservationIgnored private var openConnectionFormAction: ((UUID?) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
+    @ObservationIgnored
+    private var presentTypeChooserAction: ((DatabaseType?, @escaping (DatabaseType) -> Void) -> Void)?
     @ObservationIgnored private var pendingCalls: [() -> Void] = []
     @ObservationIgnored private var isWired = false
 
@@ -39,7 +41,27 @@ internal final class WindowOpener {
     }
 
     internal func openConnectionForm(editing connectionId: UUID? = nil) {
+        guard connectionId == nil else {
+            run { $0.openConnectionFormAction?(connectionId) }
+            return
+        }
+        run { opener in
+            opener.presentTypeChooser(initialType: nil) { selected in
+                opener.openConnectionForm(editing: nil, withType: selected)
+            }
+        }
+    }
+
+    internal func openConnectionForm(editing connectionId: UUID?, withType type: DatabaseType) {
+        PendingNewConnectionType.shared.set(type)
         run { $0.openConnectionFormAction?(connectionId) }
+    }
+
+    internal func presentTypeChooser(
+        initialType: DatabaseType?,
+        onSelected: @escaping (DatabaseType) -> Void
+    ) {
+        run { $0.presentTypeChooserAction?(initialType, onSelected) }
     }
 
     internal func openIntegrationsActivity() {
@@ -49,11 +71,13 @@ internal final class WindowOpener {
     internal func wire(
         openWelcome: @escaping () -> Void,
         openConnectionForm: @escaping (UUID?) -> Void,
-        openIntegrationsActivity: @escaping () -> Void
+        openIntegrationsActivity: @escaping () -> Void,
+        presentTypeChooser: @escaping (DatabaseType?, @escaping (DatabaseType) -> Void) -> Void
     ) {
         openWelcomeAction = openWelcome
         openConnectionFormAction = openConnectionForm
         openIntegrationsActivityAction = openIntegrationsActivity
+        presentTypeChooserAction = presentTypeChooser
         isWired = true
         let drained = pendingCalls
         pendingCalls.removeAll()

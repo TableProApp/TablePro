@@ -15,6 +15,7 @@ struct WelcomeWindowView: View {
     }
 
     @State var vm = WelcomeViewModel()
+    @State private var welcomeChooserState: WelcomeChooserState?
     @FocusState private var focus: FocusField?
 
     var body: some View {
@@ -110,6 +111,29 @@ struct WelcomeWindowView: View {
                     vm.loadConnections()
                 }
             }
+        }
+        .sheet(item: $welcomeChooserState) { state in
+            DatabaseTypeChooserSheet(
+                initialType: state.initialType,
+                onSelected: { type in
+                    state.onSelected(type)
+                    welcomeChooserState = nil
+                },
+                onCancel: { welcomeChooserState = nil }
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .presentDatabaseTypeChooser)) { note in
+            guard
+                let payload = note.userInfo?[DatabaseTypeChooserPayload.userInfoKey]
+                    as? DatabaseTypeChooserPayload
+            else { return }
+            welcomeChooserState = WelcomeChooserState(
+                initialType: payload.initialType,
+                onSelected: { type in
+                    PendingNewConnectionType.shared.set(type)
+                    payload.onSelected(type)
+                }
+            )
         }
         .pluginInstallPrompt(connection: $vm.pluginInstallConnection) { connection in
             vm.connectAfterInstall(connection)
@@ -588,6 +612,14 @@ private struct TreeRowsView<ConnectionContent: View>: View {
             Label(String(localized: "Delete Group"), systemImage: "trash")
         }
     }
+}
+
+// MARK: - Welcome Chooser State
+
+private struct WelcomeChooserState: Identifiable {
+    let id = UUID()
+    let initialType: DatabaseType?
+    let onSelected: (DatabaseType) -> Void
 }
 
 // MARK: - Visual Effect Background

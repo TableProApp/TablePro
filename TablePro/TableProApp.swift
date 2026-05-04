@@ -665,7 +665,7 @@ struct TableProApp: App {
                 ))
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 560, height: 560)
+        .defaultSize(width: 820, height: 600)
         .commandsRemoved()
 
         Window("Integrations Activity", id: SceneId.integrationsActivity) {
