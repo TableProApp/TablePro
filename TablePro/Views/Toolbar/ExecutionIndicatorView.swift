@@ -17,7 +17,7 @@ struct ExecutionIndicatorView: View {
     var onCancel: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             if isExecuting {
                 ProgressView()
                     .controlSize(.small)

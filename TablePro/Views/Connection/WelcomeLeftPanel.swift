@@ -130,7 +130,7 @@ struct KeyboardHint: View {
         HStack(spacing: 4) {
             Text(keys)
                 .font(.system(.caption, design: .monospaced))
-                .padding(.horizontal, 5)
+                .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
                     RoundedRectangle(cornerRadius: 3)

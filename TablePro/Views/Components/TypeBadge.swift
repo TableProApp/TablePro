@@ -18,7 +18,7 @@ struct TypeBadge: View {
         Text(label)
             .font(.caption2.weight(.medium))
             .foregroundStyle(.tertiary)
-            .padding(.horizontal, 5)
+            .padding(.horizontal, 6)
             .padding(.vertical, 1)
             .background(.quaternary, in: Capsule())
             .accessibilityLabel(Text("Type: \(accessibilityDescription ?? label)"))

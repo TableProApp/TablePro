@@ -54,6 +54,7 @@ extension ConnectionFormView {
                 Button("Cancel") {
                     dismiss()
                 }
+                .keyboardShortcut(.cancelAction)
 
                 if isNew {
                     Button(String(localized: "Save")) {

@@ -111,7 +111,7 @@ internal struct FieldDetailView: View {
                 Text("truncated")
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(Color(nsColor: .systemOrange))
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(Color(nsColor: .systemOrange).opacity(0.15))
                     .clipShape(Capsule())

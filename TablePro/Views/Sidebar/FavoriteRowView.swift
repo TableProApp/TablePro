@@ -33,7 +33,7 @@ internal struct FavoriteRowView: View {
                 Text(keyword)
                     .font(.system(.caption, design: .monospaced).weight(.medium))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(
                         Capsule()

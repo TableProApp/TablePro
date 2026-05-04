@@ -227,7 +227,7 @@ struct ImportDialog: View {
     }
 
     private var optionsView: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Options")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.primary)
