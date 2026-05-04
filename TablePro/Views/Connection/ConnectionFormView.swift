@@ -152,39 +152,39 @@ struct ConnectionFormView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Tab picker
-            Picker("", selection: $selectedTab) {
-                ForEach(visibleTabs, id: \.rawValue) { tab in
-                    Text(tab.rawValue).tag(tab)
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Tab picker
+                Picker("", selection: $selectedTab) {
+                    ForEach(visibleTabs, id: \.rawValue) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+
+                clipboardConnectionBannerView
+                    .animation(.easeInOut(duration: 0.18), value: clipboardCandidate)
+
+                // Tab form content
+                tabForm
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-
-            clipboardConnectionBannerView
-                .animation(.easeInOut(duration: 0.18), value: clipboardCandidate)
-
-            // Tab form content
-            tabForm
-
-            Divider()
-
-            footer
+            .navigationTitle(
+                isNew ? String(localized: "New Connection") : String(localized: "Edit Connection")
+            )
+            .toolbar { connectionFormToolbar }
         }
         .frame(width: 480)
         .frame(minHeight: 520, idealHeight: 520)
-        .navigationTitle(
-            isNew ? String(localized: "New Connection") : String(localized: "Edit Connection")
-        )
         .onAppear {
             loadConnectionData()
             loadSSHConfig()
             detectClipboardConnectionStringIfNeeded()
         }
         .onChange(of: type) { _, newType in
+            testSucceeded = false
             if hasLoadedData {
                 port = String(newType.defaultPort)
                 additionalFieldValues = [:]
@@ -200,6 +200,18 @@ struct ConnectionFormView: View {
             isInstallingPlugin = false
             pluginInstallError = nil
         }
+        .onChange(of: host) { _, _ in testSucceeded = false }
+        .onChange(of: port) { _, _ in testSucceeded = false }
+        .onChange(of: username) { _, _ in testSucceeded = false }
+        .onChange(of: password) { _, _ in testSucceeded = false }
+        .onChange(of: database) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.enabled) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.host) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.port) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.username) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.authMethod) { _, _ in testSucceeded = false }
+        .onChange(of: sslMode) { _, _ in testSucceeded = false }
+        .onChange(of: additionalFieldValues) { _, _ in testSucceeded = false }
         .pluginInstallPrompt(connection: $pluginInstallConnection) { connection in
             connectAfterInstall(connection)
         }

@@ -8,88 +8,65 @@
 import SwiftUI
 import TableProPluginKit
 
-// MARK: - Footer
+// MARK: - Toolbar
 
 extension ConnectionFormView {
-    var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                // Test connection
-                Button(action: testConnection) {
-                    HStack(spacing: 6) {
-                        if isTesting {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else if testSucceeded {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color(nsColor: .systemGreen))
-                        } else {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(testSucceeded ? String(localized: "Connected") : String(localized: "Test Connection"))
+    @ToolbarContentBuilder
+    var connectionFormToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button(action: testConnection) {
+                HStack(spacing: 6) {
+                    if isTesting {
+                        ProgressView().controlSize(.small)
+                    } else if testSucceeded {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color(nsColor: .systemGreen))
+                    } else {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
                     }
+                    Text(testSucceeded ? String(localized: "Connected") : String(localized: "Test Connection"))
                 }
-                .disabled(isTesting || isInstallingPlugin || !isValid)
-
-                if !isNew {
-                    Button("Delete", role: .destructive) {
-                        Task {
-                            let confirmed = await AlertHelper.confirmDestructive(
-                                title: String(localized: "Delete Connection"),
-                                message: String(localized: "Are you sure you want to delete this connection? This cannot be undone."),
-                                confirmButton: String(localized: "Delete"),
-                                window: NSApp.keyWindow
-                            )
-                            if confirmed {
-                                deleteConnection()
-                            }
-                        }
-                    }
-                }
-
-                Spacer()
-
-                // Cancel
-                Button("Cancel") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                if isNew {
-                    Button(String(localized: "Save")) {
-                        saveConnection(connect: false)
-                    }
-                    .disabled(isInstallingPlugin || !isValid)
-                }
-
-                Button(isNew ? String(localized: "Save & Connect") : String(localized: "Save")) {
-                    saveConnection(connect: isNew)
-                }
-                .keyboardShortcut(.return)
-                .buttonStyle(.borderedProminent)
-                .disabled(isInstallingPlugin || !isValid)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .disabled(isTesting || isInstallingPlugin || !isValid)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onExitCommand {
-            dismiss()
+
+        if !isNew {
+            ToolbarItem(placement: .destructiveAction) {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    Task {
+                        let confirmed = await AlertHelper.confirmDestructive(
+                            title: String(localized: "Delete Connection"),
+                            message: String(localized: "Are you sure you want to delete this connection? This cannot be undone."),
+                            confirmButton: String(localized: "Delete"),
+                            window: NSApp.keyWindow
+                        )
+                        if confirmed {
+                            deleteConnection()
+                        }
+                    }
+                }
+            }
         }
-        .onChange(of: host) { _, _ in testSucceeded = false }
-        .onChange(of: port) { _, _ in testSucceeded = false }
-        .onChange(of: username) { _, _ in testSucceeded = false }
-        .onChange(of: password) { _, _ in testSucceeded = false }
-        .onChange(of: database) { _, _ in testSucceeded = false }
-        .onChange(of: type) { _, _ in testSucceeded = false }
-        .onChange(of: sshState.enabled) { _, _ in testSucceeded = false }
-        .onChange(of: sshState.host) { _, _ in testSucceeded = false }
-        .onChange(of: sshState.port) { _, _ in testSucceeded = false }
-        .onChange(of: sshState.username) { _, _ in testSucceeded = false }
-        .onChange(of: sshState.authMethod) { _, _ in testSucceeded = false }
-        .onChange(of: sslMode) { _, _ in testSucceeded = false }
-        .onChange(of: additionalFieldValues) { _, _ in testSucceeded = false }
+
+        ToolbarItem(placement: .cancellationAction) {
+            Button(String(localized: "Cancel")) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+
+        if isNew {
+            ToolbarItem(placement: .secondaryAction) {
+                Button(String(localized: "Save")) { saveConnection(connect: false) }
+                    .disabled(isInstallingPlugin || !isValid)
+            }
+        }
+
+        ToolbarItem(placement: .confirmationAction) {
+            Button(isNew ? String(localized: "Save & Connect") : String(localized: "Save")) {
+                saveConnection(connect: isNew)
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(isInstallingPlugin || !isValid)
+        }
     }
 
     // MARK: - Import from URL Sheet
