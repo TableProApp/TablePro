@@ -155,4 +155,48 @@ struct ConnectionStringParserTests {
             try ConnectionStringParser.parse("   ")
         }
     }
+
+    @Test("Empty host is rejected as malformedURL")
+    func rejects_empty_host() throws {
+        #expect(throws: ConnectionStringParserError.malformedURL) {
+            try ConnectionStringParser.parse("postgres://")
+        }
+        #expect(throws: ConnectionStringParserError.malformedURL) {
+            try ConnectionStringParser.parse("mysql:///dbonly")
+        }
+    }
+
+    @Test("Out-of-range port is rejected")
+    func rejects_invalid_port() throws {
+        #expect(throws: ConnectionStringParserError.malformedURL) {
+            try ConnectionStringParser.parse("postgres://host:0/db")
+        }
+        #expect(throws: ConnectionStringParserError.malformedURL) {
+            try ConnectionStringParser.parse("postgres://host:99999/db")
+        }
+    }
+
+    @Test("mongodb+srv:// reports port 0 so the driver resolves via DNS")
+    func srv_scheme_skips_default_port() throws {
+        let parsed = try ConnectionStringParser.parse("mongodb+srv://cluster.example.net/inventory")
+        #expect(parsed.type == .mongodb)
+        #expect(parsed.port == 0)
+        #expect(parsed.useSSL == true)
+        #expect(parsed.rawScheme == "mongodb+srv")
+    }
+
+    @Test("Postgres sslmode=allow and sslmode=prefer keep SSL off (libpq semantics)")
+    func sslmode_prefer_and_allow_disable_ssl() throws {
+        let allow = try ConnectionStringParser.parse("postgres://host/db?sslmode=allow")
+        #expect(allow.useSSL == false)
+
+        let prefer = try ConnectionStringParser.parse("postgres://host/db?sslmode=prefer")
+        #expect(prefer.useSSL == false)
+
+        let require = try ConnectionStringParser.parse("postgres://host/db?sslmode=require")
+        #expect(require.useSSL == true)
+
+        let verifyCa = try ConnectionStringParser.parse("postgres://host/db?sslmode=verify-ca")
+        #expect(verifyCa.useSSL == true)
+    }
 }

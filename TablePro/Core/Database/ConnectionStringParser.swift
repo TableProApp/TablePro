@@ -48,7 +48,20 @@ enum ConnectionStringParser {
         }
 
         let host = components.host ?? ""
-        let port = components.port ?? descriptor.defaultPort
+        guard !host.isEmpty else {
+            throw ConnectionStringParserError.malformedURL
+        }
+        let port: Int
+        if let explicit = components.port {
+            guard (1...65_535).contains(explicit) else {
+                throw ConnectionStringParserError.malformedURL
+            }
+            port = explicit
+        } else if rawScheme == "mongodb+srv" {
+            port = 0
+        } else {
+            port = descriptor.defaultPort
+        }
 
         let username = components.user.flatMap { $0.removingPercentEncoding ?? $0 }
         let password = components.password.flatMap { $0.removingPercentEncoding ?? $0 }
@@ -102,7 +115,7 @@ enum ConnectionStringParser {
 
         if descriptor.databaseType == .postgresql,
            let sslMode = queryParameters["sslmode"]?.lowercased() {
-            return sslMode != "disable"
+            return ["require", "verify-ca", "verify-full"].contains(sslMode)
         }
 
         if let sslParam = queryParameters["ssl"]?.lowercased() {

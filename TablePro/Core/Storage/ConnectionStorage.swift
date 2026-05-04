@@ -468,7 +468,6 @@ private struct StoredConnection: Codable {
     // Local-only (excluded from iCloud sync)
     let localOnly: Bool
 
-    // Sample database connection (Chinook) — visible badge, hidden from sync
     let isSample: Bool
 
     // TOTP configuration
