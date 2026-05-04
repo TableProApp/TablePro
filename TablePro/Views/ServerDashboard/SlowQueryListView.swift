@@ -6,51 +6,40 @@ struct SlowQueryListView: View {
     @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
-            } label: {
-                HStack {
-                    Label(String(localized: "Slow Queries"), systemImage: "tortoise")
-                        .font(.headline)
-                    Text("(\(queries.count))")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let error {
-                        Label(error, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(Color(nsColor: .systemRed))
+        DisclosureGroup(isExpanded: $isExpanded) {
+            if queries.isEmpty && error == nil {
+                Text(String(localized: "No slow queries"))
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .padding(.vertical, 4)
+            } else {
+                List {
+                    ForEach(queries) { query in
+                        slowQueryRow(query)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
                     }
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .frame(maxHeight: 200)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            if isExpanded {
-                if queries.isEmpty && error == nil {
-                    Text(String(localized: "No slow queries"))
-                        .foregroundStyle(.secondary)
+        } label: {
+            HStack {
+                Label(String(localized: "Slow Queries"), systemImage: "tortoise")
+                    .font(.headline)
+                Text("(\(queries.count))")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let error {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(queries) { query in
-                                slowQueryRow(query)
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                    }
-                    .frame(maxHeight: 200)
+                        .foregroundStyle(Color(nsColor: .systemOrange))
                 }
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private func slowQueryRow(_ query: DashboardSlowQuery) -> some View {
