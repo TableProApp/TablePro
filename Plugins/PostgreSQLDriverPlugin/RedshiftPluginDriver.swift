@@ -534,10 +534,11 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchSchemas() async throws -> [String] {
         let result = try await execute(query: """
-            SELECT schema_name FROM information_schema.schemata
-            WHERE schema_name NOT LIKE 'pg_%'
-              AND schema_name <> 'information_schema'
-            ORDER BY schema_name
+            SELECT nspname FROM pg_namespace
+            WHERE nspname NOT LIKE 'pg_%'
+              AND nspname <> 'information_schema'
+              AND has_schema_privilege(current_user, nspname, 'USAGE')
+            ORDER BY nspname
             """)
         return result.rows.compactMap { row in row.first.flatMap { $0 } }
     }
