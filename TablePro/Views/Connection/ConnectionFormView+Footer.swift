@@ -52,7 +52,7 @@ extension ConnectionFormView {
 
                 // Cancel
                 Button("Cancel") {
-                    ConnectionFormWindowFactory.closeAll()
+                    dismiss()
                 }
 
                 if isNew {
@@ -74,7 +74,7 @@ extension ConnectionFormView {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onExitCommand {
-            ConnectionFormWindowFactory.closeAll()
+            dismiss()
         }
         .onChange(of: host) { _, _ in testSucceeded = false }
         .onChange(of: port) { _, _ in testSucceeded = false }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Internal: Welcome, Connection Form, and Integrations Activity windows use SwiftUI `Window` scenes instead of imperative `NSWindow` factories. Window lifecycle, frame autosave, and toolbar registration are now SwiftUI-managed. Fixes a `NSWindowSectionController` assertion crash on Integrations Activity window deallocation. Window positions reset to defaults once after this update.
+
 ## [0.38.0] - 2026-05-04
 
 ### Added

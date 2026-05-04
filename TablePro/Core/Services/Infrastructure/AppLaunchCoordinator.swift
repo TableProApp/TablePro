@@ -212,15 +212,15 @@ internal final class AppLaunchCoordinator {
 
     internal static func isWelcomeWindow(_ window: NSWindow) -> Bool {
         guard let raw = window.identifier?.rawValue else { return false }
-        return raw == "welcome" || raw.hasPrefix("welcome-")
+        return raw == SceneId.welcome || raw.hasPrefix("\(SceneId.welcome)-")
     }
 
     internal static func isConnectionFormWindow(_ window: NSWindow) -> Bool {
         guard let raw = window.identifier?.rawValue else { return false }
-        return raw == "connection-form" || raw.hasPrefix("connection-form-")
+        return raw == SceneId.connectionForm || raw.hasPrefix("\(SceneId.connectionForm)-")
     }
 
     private func showWelcomeWindow() {
-        WelcomeWindowFactory.openOrFront()
+        WindowOpener.shared.openWelcome()
     }
 }

@@ -286,13 +286,13 @@ final class WelcomeViewModel {
     // MARK: - Connection Actions
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        WelcomeWindowFactory.close()
+        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
             } catch is CancellationError {
                 closeConnectionWindows(for: connection.id)
-                WelcomeWindowFactory.openOrFront()
+                WindowOpener.shared.openWelcome()
             } catch {
                 if case PluginError.pluginNotInstalled = error {
                     Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
@@ -307,13 +307,13 @@ final class WelcomeViewModel {
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        WelcomeWindowFactory.close()
+        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
             } catch is CancellationError {
                 closeConnectionWindows(for: connection.id)
-                WelcomeWindowFactory.openOrFront()
+                WindowOpener.shared.openWelcome()
             } catch {
                 Self.logger.error(
                     "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")
@@ -344,7 +344,7 @@ final class WelcomeViewModel {
     func duplicateConnection(_ connection: DatabaseConnection) {
         let duplicate = storage.duplicateConnection(connection)
         loadConnections()
-        ConnectionFormWindowFactory.openOrFront(connectionId: duplicate.id)
+        WindowOpener.shared.openConnectionForm(editing: duplicate.id)
     }
 
     // MARK: - Delete
@@ -595,12 +595,12 @@ final class WelcomeViewModel {
         closeConnectionWindows(for: connectionId)
         connectionError = error.localizedDescription
         showConnectionError = true
-        WelcomeWindowFactory.openOrFront()
+        WindowOpener.shared.openWelcome()
     }
 
     private func handleMissingPlugin(connection: DatabaseConnection) {
         closeConnectionWindows(for: connection.id)
-        WelcomeWindowFactory.openOrFront()
+        WindowOpener.shared.openWelcome()
         pluginInstallConnection = connection
     }
 

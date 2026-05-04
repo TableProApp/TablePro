@@ -97,7 +97,7 @@ internal enum SampleDatabaseLauncher {
         _ connection: DatabaseConnection,
         onError: @MainActor @escaping (Error) -> Void
     ) {
-        WelcomeWindowFactory.close()
+        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(
@@ -110,7 +110,7 @@ internal enum SampleDatabaseLauncher {
                     )
                 )
             } catch is CancellationError {
-                WelcomeWindowFactory.openOrFront()
+                WindowOpener.shared.openWelcome()
             } catch {
                 logger.error(
                     "Failed to open sample database: \(error.localizedDescription, privacy: .public)"
@@ -129,7 +129,7 @@ internal enum SampleDatabaseLauncher {
             window.close()
         }
         onError(error)
-        WelcomeWindowFactory.openOrFront()
+        WindowOpener.shared.openWelcome()
     }
 
     private static func bumpSampleOpenedCounter() {

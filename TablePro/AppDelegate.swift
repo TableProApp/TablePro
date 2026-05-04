@@ -182,7 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }.count
             if remaining == 0 {
                 NotificationCenter.default.post(name: .mainWindowWillClose, object: nil)
-                WelcomeWindowFactory.openOrFront()
+                WindowOpener.shared.openWelcome()
             }
         }
     }
@@ -248,7 +248,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showWelcomeFromDock() {
-        WelcomeWindowFactory.openOrFront()
+        WindowOpener.shared.openWelcome()
     }
 
     @objc func newWindowForTab(_ sender: Any?) {

@@ -65,6 +65,6 @@ internal final class WelcomeRouter {
     }
 
     private func showWelcomeWindow() {
-        WelcomeWindowFactory.openOrFront()
+        WindowOpener.shared.openWelcome()
     }
 }

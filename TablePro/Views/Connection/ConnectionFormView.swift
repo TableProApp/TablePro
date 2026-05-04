@@ -13,8 +13,9 @@ import UniformTypeIdentifiers
 struct ConnectionFormView: View {
     static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormView")
 
-    // Connection ID: nil = new connection, UUID = edit existing
     let connectionId: UUID?
+
+    @Environment(\.dismiss) var dismiss
 
     let storage = ConnectionStorage.shared
 

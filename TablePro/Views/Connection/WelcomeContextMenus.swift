@@ -91,7 +91,7 @@ extension WelcomeWindowView {
         Divider()
 
         Button {
-            ConnectionFormWindowFactory.openOrFront(connectionId: connection.id)
+            WindowOpener.shared.openConnectionForm(editing: connection.id)
             vm.focusConnectionFormWindow()
         } label: {
             Label(String(localized: "Edit"), systemImage: "pencil")
@@ -228,7 +228,7 @@ extension WelcomeWindowView {
 
     @ViewBuilder
     var newConnectionContextMenu: some View {
-        Button(action: { ConnectionFormWindowFactory.openOrFront() }) {
+        Button(action: { WindowOpener.shared.openConnectionForm() }) {
             Label("New Connection...", systemImage: "plus")
         }
 

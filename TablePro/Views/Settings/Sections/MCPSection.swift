@@ -121,7 +121,7 @@ struct MCPSection: View {
                 showSetupSheet = true
             }
             Button(String(localized: "View Activity…")) {
-                IntegrationsActivityWindowFactory.openOrFront()
+                WindowOpener.shared.openIntegrationsActivity()
             }
         }
         .sheet(isPresented: $showSetupSheet) {

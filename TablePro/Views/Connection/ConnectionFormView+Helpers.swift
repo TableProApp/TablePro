@@ -295,7 +295,7 @@ extension ConnectionFormView {
             if !connectionToSave.localOnly {
                 SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
-            ConnectionFormWindowFactory.closeAll()
+            dismiss()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
             if connect {
                 connectToDatabase(connectionToSave)
@@ -308,7 +308,7 @@ extension ConnectionFormView {
                     SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
                 }
             }
-            ConnectionFormWindowFactory.closeAll()
+            dismiss()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
         }
     }
@@ -317,12 +317,12 @@ extension ConnectionFormView {
         guard let id = connectionId,
               let connection = storage.loadConnections().first(where: { $0.id == id }) else { return }
         storage.deleteConnection(connection)
-        ConnectionFormWindowFactory.closeAll()
+        dismiss()
         NotificationCenter.default.post(name: .connectionUpdated, object: nil)
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        WelcomeWindowFactory.close()
+        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
@@ -338,7 +338,7 @@ extension ConnectionFormView {
             return
         }
         closeConnectionWindows(for: connection.id)
-        WelcomeWindowFactory.openOrFront()
+        WindowOpener.shared.openWelcome()
         guard !(error is CancellationError) else { return }
         Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
         AlertHelper.showErrorSheet(
@@ -349,7 +349,7 @@ extension ConnectionFormView {
 
     func handleMissingPlugin(connection: DatabaseConnection) {
         closeConnectionWindows(for: connection.id)
-        WelcomeWindowFactory.openOrFront()
+        WindowOpener.shared.openWelcome()
         pluginInstallConnection = connection
     }
 
@@ -360,7 +360,7 @@ extension ConnectionFormView {
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        WelcomeWindowFactory.close()
+        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))

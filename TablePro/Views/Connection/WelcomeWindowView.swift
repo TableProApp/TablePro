@@ -169,7 +169,7 @@ struct WelcomeWindowView: View {
         HStack(spacing: 0) {
             WelcomeLeftPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
-                onCreateConnection: { ConnectionFormWindowFactory.openOrFront() }
+                onCreateConnection: { WindowOpener.shared.openConnectionForm() }
             )
             Divider()
             rightPanel
@@ -188,7 +188,7 @@ struct WelcomeWindowView: View {
                         help: String(localized: "New Connection (⌘N)"),
                         accessibilityLabel: String(localized: "New Connection")
                     ) {
-                        ConnectionFormWindowFactory.openOrFront()
+                        WindowOpener.shared.openConnectionForm()
                     }
 
                     WelcomeToolbarButton(

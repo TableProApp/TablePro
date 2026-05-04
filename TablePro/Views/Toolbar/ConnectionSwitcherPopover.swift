@@ -122,7 +122,7 @@ struct ConnectionSwitcherPopover: View {
             // Manage connections button
             Button {
                 onDismiss?()
-                WelcomeWindowFactory.openOrFront()
+                WindowOpener.shared.openWelcome()
             } label: {
                 HStack {
                     Image(systemName: "gear")
