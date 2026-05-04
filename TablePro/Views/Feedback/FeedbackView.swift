@@ -305,8 +305,7 @@ struct FeedbackView: View {
                     NSApp.keyWindow?.close()
                 }
                 .font(.subheadline)
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .buttonStyle(.borderless)
             }
 
             Spacer()

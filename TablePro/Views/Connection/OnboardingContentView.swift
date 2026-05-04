@@ -172,8 +172,7 @@ struct OnboardingContentView: View {
             Button("Skip") {
                 completeOnboarding()
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .buttonStyle(.link)
             .opacity(currentPage == 2 ? 0 : 1)
             .frame(minWidth: 110, alignment: .leading)
 

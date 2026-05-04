@@ -117,8 +117,7 @@ struct MainStatusBarView: View {
                             Text("Fetch All")
                                 .font(.caption)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.tint)
+                        .buttonStyle(.link)
                     }
 
                     if let statusMessage = snapshot.statusMessage {
