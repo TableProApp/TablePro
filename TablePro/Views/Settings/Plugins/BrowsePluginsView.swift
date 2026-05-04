@@ -229,7 +229,7 @@ struct BrowsePluginsView: View {
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "puzzlepiece.extension")
-                    .font(.system(size: 32))
+                    .font(.title)
                     .foregroundStyle(.tertiary)
                 Text("Select a plugin to view details")
                     .font(.headline)

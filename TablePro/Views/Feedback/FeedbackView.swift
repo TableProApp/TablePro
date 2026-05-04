@@ -190,7 +190,7 @@ struct FeedbackView: View {
                     viewModel.removeAttachment(attachment)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.body)
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(.white, .black.opacity(0.5))
                 }

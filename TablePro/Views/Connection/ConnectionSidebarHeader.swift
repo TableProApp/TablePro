@@ -92,11 +92,11 @@ struct ConnectionSidebarHeader: View {
                     if let session = currentSession {
                         session.connection.type.iconImage
                             .renderingMode(.template)
-                            .font(.system(size: 16))
+                            .font(.title3)
                             .foregroundStyle(session.connection.displayColor)
                     } else {
                         Image(systemName: "cylinder")
-                            .font(.system(size: 16))
+                            .font(.title3)
                             .foregroundStyle(.secondary)
                     }
 
@@ -118,7 +118,7 @@ struct ConnectionSidebarHeader: View {
                         }
 
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
                     }
                 }

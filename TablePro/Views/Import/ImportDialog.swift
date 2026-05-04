@@ -146,13 +146,13 @@ struct ImportDialog: View {
     private var fileInfoView: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: currentPlugin.map { type(of: $0).iconName } ?? "doc.text.fill")
-                .font(.system(size: 32))
+                .font(.title)
                 .foregroundStyle(.blue)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(fileURL?.lastPathComponent ?? "")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.body.weight(.semibold))
 
                     Spacer()
 

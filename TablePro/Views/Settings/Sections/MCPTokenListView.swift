@@ -57,7 +57,7 @@ struct MCPTokenListView: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "key")
-                .font(.system(size: 28))
+                .font(.title)
                 .foregroundStyle(.tertiary)
             Text(String(localized: "No tokens created"))
                 .foregroundStyle(.secondary)

@@ -83,7 +83,7 @@ internal struct ThemeEditorView: View {
             Spacer()
 
             Image(systemName: "lock.fill")
-                .font(.system(size: 24))
+                .font(.title2)
                 .foregroundStyle(.secondary)
 
             Text(theme.isBuiltIn

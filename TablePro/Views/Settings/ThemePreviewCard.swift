@@ -50,7 +50,7 @@ struct ThemePreviewCard: View {
                     Text(theme.isBuiltIn
                         ? String(localized: "Built-in")
                         : String(localized: "Custom"))
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }

@@ -34,7 +34,7 @@ struct ResultTabBar: View {
             HStack(spacing: 4) {
                 if rs.isPinned {
                     Image(systemName: "pin.fill")
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 Text(rs.label)
@@ -43,7 +43,7 @@ struct ResultTabBar: View {
                 if !rs.isPinned {
                     Button { onClose?(rs.id) } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 8))
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)

@@ -224,17 +224,17 @@ struct DatabaseSwitcherSheet: View {
 
         return HStack(spacing: 10) {
             Image(systemName: database.icon)
-                .font(.system(size: 14))
+                .font(.body)
                 .foregroundStyle(database.isSystemDatabase ? Color(nsColor: .systemOrange) : Color(nsColor: .systemBlue))
 
             Text(database.name)
-                .font(.system(size: 13))
+                .font(.body)
 
             Spacer()
 
             if isCurrent {
                 Text("current")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -288,7 +288,7 @@ struct DatabaseSwitcherSheet: View {
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 24))
+                .font(.title2)
                 .foregroundStyle(.orange)
 
             Text(isSchemaMode
@@ -314,7 +314,7 @@ struct DatabaseSwitcherSheet: View {
     private var sqliteEmptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "doc.fill")
-                .font(.system(size: 24))
+                .font(.title2)
                 .foregroundStyle(.secondary)
 
             Text("SQLite is file-based")
@@ -334,7 +334,7 @@ struct DatabaseSwitcherSheet: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 24))
+                .font(.title2)
                 .foregroundStyle(.secondary)
 
             if viewModel.searchText.isEmpty {

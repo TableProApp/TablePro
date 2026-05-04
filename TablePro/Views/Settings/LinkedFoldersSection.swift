@@ -129,7 +129,7 @@ struct LinkedFoldersSection: View {
 struct ProBadge: View {
     var body: some View {
         Text("PRO")
-            .font(.system(size: 9, weight: .bold))
+            .font(.caption2.bold())
             .foregroundStyle(.white)
             .padding(.horizontal, 4)
             .padding(.vertical, 1)

@@ -126,7 +126,7 @@ struct SQLReviewPopover: View {
         VStack(spacing: 8) {
             Spacer()
             Image(systemName: "doc.plaintext")
-                .font(.system(size: 32))
+                .font(.title)
                 .foregroundStyle(.tertiary)
             Text(String(localized: "No pending changes"))
                 .font(.body)

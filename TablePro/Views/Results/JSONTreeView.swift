@@ -211,7 +211,7 @@ private struct JSONTreeRowView: View {
                 .lineLimit(1)
             Spacer(minLength: 4)
             Text(node.valueType.badgeLabel)
-                .font(.system(size: 9, weight: .medium))
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)

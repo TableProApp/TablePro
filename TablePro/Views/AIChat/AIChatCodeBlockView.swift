@@ -86,12 +86,12 @@ struct AIChatCodeBlockView: View {
                     .padding(10)
             } else if isRedis {
                 Text(code)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(10)
             } else {
                 Text(code)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(10)
             }

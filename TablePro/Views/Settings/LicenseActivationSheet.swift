@@ -19,7 +19,7 @@ struct LicenseActivationSheet: View {
             // Header
             VStack(spacing: 8) {
                 Image(systemName: "key.fill")
-                    .font(.system(size: 32))
+                    .font(.title)
                     .foregroundStyle(.secondary)
 
                 Text("Activate License")

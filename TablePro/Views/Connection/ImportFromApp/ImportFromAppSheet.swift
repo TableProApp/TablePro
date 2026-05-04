@@ -62,7 +62,7 @@ struct ImportFromAppSheet: View {
         VStack(spacing: 12) {
             Spacer()
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
+                .font(.title)
                 .foregroundStyle(.secondary)
             Text(message)
                 .foregroundStyle(.secondary)

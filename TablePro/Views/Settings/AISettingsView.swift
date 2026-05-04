@@ -162,7 +162,7 @@ struct AISettingsView: View {
             ZStack {
                 if provider.id == settings.activeProviderID {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.caption.bold())
                         .foregroundStyle(Color.accentColor)
                 }
             }

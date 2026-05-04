@@ -61,7 +61,7 @@ struct ConnectionImportSheet: View {
         VStack(spacing: 12) {
             Spacer()
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
+                .font(.title)
                 .foregroundStyle(.secondary)
             Text(message)
                 .foregroundStyle(.secondary)
@@ -122,7 +122,7 @@ struct ConnectionImportSheet: View {
             Spacer()
 
             Image(systemName: "lock.fill")
-                .font(.system(size: 32))
+                .font(.title)
                 .foregroundStyle(.secondary)
 
             Text("This file is encrypted")

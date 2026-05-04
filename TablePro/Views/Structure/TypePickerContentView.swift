@@ -54,7 +54,7 @@ struct TypePickerContentView: View {
         VStack(spacing: 0) {
             TextField("Search or type...", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 13))
+                .font(.body)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
                 .onSubmit { commitFreeform() }
@@ -88,13 +88,13 @@ struct TypePickerContentView: View {
     private func typeRow(_ type: String) -> some View {
         if type.caseInsensitiveCompare(currentValue) == .orderedSame {
             Text(type)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.tint)
                 .lineLimit(1)
                 .truncationMode(.tail)
         } else {
             Text(type)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)

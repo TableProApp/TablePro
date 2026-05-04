@@ -12,7 +12,7 @@ internal struct FavoriteRowView: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "star.fill")
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(Color(nsColor: .systemYellow))
                 .accessibilityHidden(true)
 
@@ -24,7 +24,7 @@ internal struct FavoriteRowView: View {
 
             if favorite.connectionId == nil {
                 Image(systemName: "globe")
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }

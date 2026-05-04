@@ -10,7 +10,7 @@ internal struct ClipboardConnectionBanner: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 11))
+                .font(.caption)
                 .foregroundStyle(.secondary)
 
             Text(String(localized: "Use clipboard URL"))
@@ -18,7 +18,7 @@ internal struct ClipboardConnectionBanner: View {
                 .foregroundStyle(.primary)
 
             Text(summary)
-                .font(.system(size: 12).monospaced())
+                .font(.callout.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -34,7 +34,7 @@ internal struct ClipboardConnectionBanner: View {
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())

@@ -409,7 +409,7 @@ private struct HistoryRowSwiftUI: View {
         HStack(spacing: 8) {
             Image(systemName: entry.wasSuccessful ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(entry.wasSuccessful ? Color(nsColor: .systemGreen) : Color(nsColor: .systemRed))
-                .font(.system(size: 14))
+                .font(.body)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.queryPreview)

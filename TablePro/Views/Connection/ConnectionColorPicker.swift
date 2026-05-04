@@ -41,7 +41,7 @@ private struct ColorDot: View {
                     .stroke(Color.secondary, lineWidth: 1)
                     .frame(width: 20, height: 20)
                 Image(systemName: "circle.slash")
-                    .font(.system(size: 12))
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
                 Circle()

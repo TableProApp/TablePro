@@ -135,7 +135,7 @@ internal struct QuickSwitcherSheet: View {
     private func itemRow(_ item: QuickSwitcherItem) -> some View {
         HStack(spacing: 10) {
             Image(systemName: item.iconName)
-                .font(.system(size: 14))
+                .font(.body)
                 .foregroundStyle(.secondary)
 
             Text(item.name)
@@ -191,7 +191,7 @@ internal struct QuickSwitcherSheet: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 24))
+                .font(.title2)
                 .foregroundStyle(.secondary)
 
             if viewModel.searchText.isEmpty {

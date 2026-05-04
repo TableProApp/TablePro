@@ -167,7 +167,7 @@ struct RightSidebarView: View {
                 .help(String(localized: "Open in Window"))
 
                 Text(field.columnTypeEnum.badgeLabel)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
