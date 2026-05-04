@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 
+@MainActor
 enum PluginFieldRendering {
     static func visibleFields(
         for type: DatabaseType,
