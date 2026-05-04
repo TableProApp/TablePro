@@ -86,7 +86,7 @@ extension DatabaseType {
     }
 
     var iconName: String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.iconName ?? "database-icon"
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.iconName ?? "database-icon"
     }
 
     /// Returns the correct SwiftUI Image for this database type, handling both
@@ -104,11 +104,11 @@ extension DatabaseType {
     }
 
     var category: DatabaseCategory {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.connection.category ?? .other
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.category ?? .other
     }
 
     var tagline: String? {
-        let raw = PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.connection.tagline ?? ""
+        let raw = PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.tagline ?? ""
         return raw.isEmpty ? nil : raw
     }
 

@@ -21,7 +21,7 @@ struct ConnectionFormView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(minWidth: 720, idealWidth: 820, maxWidth: 1_000)
+        .frame(minWidth: 720, idealWidth: 820)
         .frame(minHeight: 560, idealHeight: 600)
         .task {
             if coordinator == nil {
