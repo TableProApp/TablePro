@@ -17,13 +17,13 @@ internal final class WindowOpener {
     @ObservationIgnored private var openWelcomeAction: (() -> Void)?
     @ObservationIgnored private var openConnectionFormAction: ((UUID?) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
+    @ObservationIgnored private var pendingCalls: [() -> Void] = []
+    @ObservationIgnored private var isWired = false
 
     private init() {}
 
     internal func openWelcome() {
-        invoke(openWelcomeAction, label: "openWelcome") { [weak self] in
-            self?.openWelcomeAction
-        }
+        run { $0.openWelcomeAction?() }
     }
 
     internal func orderOutWelcome() {
@@ -39,21 +39,11 @@ internal final class WindowOpener {
     }
 
     internal func openConnectionForm(editing connectionId: UUID? = nil) {
-        if let action = openConnectionFormAction {
-            action(connectionId)
-            return
-        }
-        Self.logger.notice("openConnectionForm called before bridge wired; retrying on next runloop tick")
-        Task { @MainActor [weak self] in
-            await Task.yield()
-            self?.openConnectionFormAction?(connectionId)
-        }
+        run { $0.openConnectionFormAction?(connectionId) }
     }
 
     internal func openIntegrationsActivity() {
-        invoke(openIntegrationsActivityAction, label: "openIntegrationsActivity") { [weak self] in
-            self?.openIntegrationsActivityAction
-        }
+        run { $0.openIntegrationsActivityAction?() }
     }
 
     internal func wire(
@@ -64,21 +54,23 @@ internal final class WindowOpener {
         openWelcomeAction = openWelcome
         openConnectionFormAction = openConnectionForm
         openIntegrationsActivityAction = openIntegrationsActivity
+        isWired = true
+        let drained = pendingCalls
+        pendingCalls.removeAll()
+        for call in drained {
+            call()
+        }
     }
 
-    private func invoke(
-        _ action: (() -> Void)?,
-        label: StaticString,
-        retry: @escaping () -> (() -> Void)?
-    ) {
-        if let action {
-            action()
+    private func run(_ block: @escaping (WindowOpener) -> Void) {
+        if isWired {
+            block(self)
             return
         }
-        Self.logger.notice("\(label, privacy: .public) called before bridge wired; retrying on next runloop tick")
-        Task { @MainActor in
-            await Task.yield()
-            retry()?()
+        Self.logger.notice("WindowOpener call queued; bridge not yet wired")
+        pendingCalls.append { [weak self] in
+            guard let self else { return }
+            block(self)
         }
     }
 }

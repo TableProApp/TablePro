@@ -644,7 +644,12 @@ struct TableProApp: App {
         Window("Welcome to TablePro", id: SceneId.welcome) {
             WelcomeWindowView()
                 .frame(width: 700, height: 450)
-                .background(WelcomeWindowConfigurator())
+                .background(WindowChromeConfigurator(
+                    restorable: false,
+                    fullScreenable: false,
+                    hideMiniaturizeButton: true,
+                    hideZoomButton: true
+                ))
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
@@ -652,7 +657,12 @@ struct TableProApp: App {
 
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
             ConnectionFormView(connectionId: editingId ?? nil)
-                .background(WindowRestorationDisabler())
+                .background(WindowChromeConfigurator(
+                    restorable: false,
+                    fullScreenable: false,
+                    hideMiniaturizeButton: true,
+                    hideZoomButton: true
+                ))
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 640, height: 500)
