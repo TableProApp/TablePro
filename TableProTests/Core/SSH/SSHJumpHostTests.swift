@@ -53,10 +53,10 @@ struct SSHJumpHostTests {
         #expect(jumpHost.isValid == false)
     }
 
-    @Test("isValid fails with empty username")
-    func testIsInvalidWithEmptyUsername() {
+    @Test("isValid allows empty username (filled by runtime resolver)")
+    func testValidWithEmptyUsername() {
         let jumpHost = SSHJumpHost(host: "bastion.example.com", username: "")
-        #expect(jumpHost.isValid == false)
+        #expect(jumpHost.isValid == true)
     }
 
     @Test("Codable round-trip preserves all fields")

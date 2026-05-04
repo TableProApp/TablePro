@@ -68,13 +68,13 @@ struct SSHConfigurationTests {
         #expect(config.isValid == false)
     }
 
-    @Test("Missing username makes config invalid")
-    func testMissingUsernameInvalid() {
+    @Test("Empty username is allowed (runtime resolver fills it from ssh config)")
+    func testEmptyUsernameAllowed() {
         let config = SSHConfiguration(
             enabled: true, host: "example.com", username: "",
             authMethod: .sshAgent
         )
-        #expect(config.isValid == false)
+        #expect(config.isValid == true)
     }
 
     @Test("Agent socket path defaults to empty string")

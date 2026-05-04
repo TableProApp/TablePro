@@ -94,8 +94,9 @@ struct SSHJumpHost: Codable, Hashable, Identifiable {
     var privateKeyPath: String = ""
 
     var isValid: Bool {
-        !host.isEmpty && !username.isEmpty &&
-        (authMethod == .sshAgent || !privateKeyPath.isEmpty)
+        // Username and port may be empty: the runtime resolver fills them
+        // from ~/.ssh/config (User, Port directives) when the alias matches.
+        !host.isEmpty && (authMethod == .sshAgent || !privateKeyPath.isEmpty)
     }
 
     var proxyJumpString: String {
@@ -118,24 +119,12 @@ struct SSHConfiguration: Codable, Hashable {
     var totpDigits: Int = 6
     var totpPeriod: Int = 30
 
-    /// Check if SSH configuration is complete enough for connection
+    /// Username may be empty: the runtime resolver supplies `User` from
+    /// `~/.ssh/config` when the host is an alias.
     var isValid: Bool {
-        guard enabled else { return true }  // Not enabled = valid (skip SSH)
-        guard !host.isEmpty, !username.isEmpty else { return false }
-
-        let authValid: Bool
-        switch authMethod {
-        case .password:
-            authValid = true
-        case .privateKey:
-            authValid = true
-        case .sshAgent:
-            authValid = true
-        case .keyboardInteractive:
-            authValid = true
-        }
-
-        return authValid && jumpHosts.allSatisfy(\.isValid)
+        guard enabled else { return true }
+        guard !host.isEmpty else { return false }
+        return jumpHosts.allSatisfy(\.isValid)
     }
 }
 

@@ -125,6 +125,12 @@ internal enum LibSSH2TunnelFactory {
         let resolvedJumps: [ResolvedSSHTarget] = (formJumps.isEmpty ? resolvedPrimary.proxyJump : formJumps)
             .map { SSHConfigResolver.resolve($0, document: document) }
 
+        if resolvedPrimary.username.isEmpty {
+            throw SSHTunnelError.tunnelCreationFailed(
+                "SSH username not set. Add it to the form or set `User` for `\(config.host)` in ~/.ssh/config."
+            )
+        }
+
         let firstHop = resolvedJumps.first ?? resolvedPrimary
         let socketFD = try connectTCP(host: firstHop.host, port: firstHop.port)
 
