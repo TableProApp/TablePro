@@ -26,7 +26,6 @@ struct IntegrationsConnectedClientsPane: View {
                     clients: sortedClients,
                     selection: $selection,
                     sortOrder: $sortOrder,
-                    tokenLabel: displayTokenName,
                     onDisconnect: { client in disconnectCandidate = client }
                 )
             }
@@ -83,11 +82,6 @@ struct IntegrationsConnectedClientsPane: View {
         return String(format: String(localized: "%d connected"), count)
     }
 
-    private func displayTokenName(_ name: String?) -> String? {
-        guard let name else { return nil }
-        return name == MCPTokenStore.stdioBridgeTokenName ? String(localized: "Built-in CLI") : name
-    }
-
     private var disconnectAlertBinding: Binding<Bool> {
         Binding(
             get: { disconnectCandidate != nil },
@@ -104,7 +98,6 @@ private struct ConnectedClientsTable: View {
     let clients: [MCPServerManager.SessionSnapshot]
     @Binding var selection: MCPServerManager.SessionSnapshot.ID?
     @Binding var sortOrder: [KeyPathComparator<MCPServerManager.SessionSnapshot>]
-    let tokenLabel: (String?) -> String?
     let onDisconnect: (MCPServerManager.SessionSnapshot) -> Void
 
     var body: some View {
@@ -169,8 +162,8 @@ private struct ConnectedClientsTable: View {
 
     @ViewBuilder
     private func tokenCell(for client: MCPServerManager.SessionSnapshot) -> some View {
-        if let label = tokenLabel(client.tokenName) {
-            Text(label)
+        if let name = client.tokenName {
+            Text(IntegrationsFormatting.displayTokenName(name))
         } else {
             Text(verbatim: "—").foregroundStyle(.tertiary)
         }

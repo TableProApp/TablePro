@@ -31,14 +31,12 @@ struct IntegrationsActivityLogPane: View {
             entries: filteredEntries,
             selection: $selection,
             sortOrder: $sortOrder,
-            tokenLabel: displayTokenName,
             connectionLabel: connectionName
         )
         .overlay(alignment: .center) { overlay }
         .searchable(text: $searchText, placement: .toolbar, prompt: Text(String(localized: "Search activity")))
         .inspector(isPresented: $showInspector) {
             ActivityLogInspector(entry: selectedEntry,
-                                 tokenLabel: displayTokenName,
                                  connectionLabel: connectionName)
                 .inspectorColumnWidth(min: 260, ideal: 320, max: 480)
         }
@@ -115,7 +113,7 @@ struct IntegrationsActivityLogPane: View {
             Picker(String(localized: "Token"), selection: $selectedTokenId) {
                 Text(String(localized: "All tokens")).tag(UUID?.none)
                 ForEach(tokens) { token in
-                    Text(displayTokenName(token.name) ?? token.name).tag(Optional(token.id))
+                    Text(IntegrationsFormatting.displayTokenName(token.name)).tag(Optional(token.id))
                 }
             }
             if hasActiveFilters {
@@ -182,7 +180,7 @@ struct IntegrationsActivityLogPane: View {
     }
 
     private var retentionSubtitle: String {
-        String(localized: "Activity is retained for 90 days")
+        String(localized: "Activity is retained for 90 days.")
     }
 
     private var filteredEntries: [AuditEntry] {
@@ -199,11 +197,6 @@ struct IntegrationsActivityLogPane: View {
             if let details = entry.details?.lowercased(), details.contains(needle) { return true }
             return false
         }
-    }
-
-    private func displayTokenName(_ name: String?) -> String? {
-        guard let name else { return nil }
-        return name == MCPTokenStore.stdioBridgeTokenName ? String(localized: "Built-in CLI") : name
     }
 
     private func connectionName(for id: UUID?) -> String? {
@@ -261,9 +254,10 @@ struct IntegrationsActivityLogPane: View {
     private func csvString(for entries: [AuditEntry]) -> String {
         let header = ["Timestamp", "Category", "Action", "Connection", "Token", "Outcome", "Details"]
             .joined(separator: ",")
+        let timestampFormatter = ISO8601DateFormatter()
         let rows = entries.map { entry -> String in
             let cells = [
-                ISO8601DateFormatter().string(from: entry.timestamp),
+                timestampFormatter.string(from: entry.timestamp),
                 entry.category.rawValue,
                 entry.action,
                 connectionName(for: entry.connectionId) ?? "",
@@ -293,12 +287,11 @@ private struct ActivityLogTable: View {
     let entries: [AuditEntry]
     @Binding var selection: AuditEntry.ID?
     @Binding var sortOrder: [KeyPathComparator<AuditEntry>]
-    let tokenLabel: (String?) -> String?
     let connectionLabel: (UUID?) -> String?
 
     var body: some View {
         Table(of: AuditEntry.self, selection: $selection, sortOrder: $sortOrder) {
-            TableColumn(String(localized: "Outcome"), value: \.outcome) { entry in
+            TableColumn(String(localized: "Outcome"), sortUsing: AuditOutcomeComparator()) { entry in
                 outcomeCell(for: entry)
             }
             .width(min: 96, ideal: 110)
@@ -308,7 +301,7 @@ private struct ActivityLogTable: View {
             }
             .width(min: 110, ideal: 130)
 
-            TableColumn(String(localized: "Category"), value: \.category.rawValue) { entry in
+            TableColumn(String(localized: "Category")) { entry in
                 Text(entry.category.displayName)
             }
             .width(min: 100, ideal: 120)
@@ -341,8 +334,8 @@ private struct ActivityLogTable: View {
         Label {
             Text(outcome?.displayName ?? entry.outcome)
         } icon: {
-            Image(systemName: outcomeSymbol(outcome))
-                .foregroundStyle(outcomeTint(outcome))
+            Image(systemName: IntegrationsFormatting.outcomeSymbol(outcome))
+                .foregroundStyle(IntegrationsFormatting.outcomeTint(outcome))
         }
     }
 
@@ -360,8 +353,8 @@ private struct ActivityLogTable: View {
 
     @ViewBuilder
     private func tokenCell(for entry: AuditEntry) -> some View {
-        if let label = tokenLabel(entry.tokenName) {
-            Text(label)
+        if let name = entry.tokenName {
+            Text(IntegrationsFormatting.displayTokenName(name))
         } else {
             Text(verbatim: "—").foregroundStyle(.tertiary)
         }
@@ -393,41 +386,48 @@ private struct ActivityLogTable: View {
 
     private func copyDetails(for entry: AuditEntry) {
         let outcome = AuditOutcome(rawValue: entry.outcome)?.displayName ?? entry.outcome
+        let tokenLine = entry.tokenName.map {
+            String(format: String(localized: "Token: %@"), IntegrationsFormatting.displayTokenName($0))
+        }
         let lines = [
             String(format: String(localized: "Time: %@"), entry.timestamp.formatted(date: .complete, time: .standard)),
             String(format: String(localized: "Category: %@"), entry.category.displayName),
             String(format: String(localized: "Action: %@"), entry.action),
             String(format: String(localized: "Outcome: %@"), outcome),
-            tokenLabel(entry.tokenName).map { String(format: String(localized: "Token: %@"), $0) },
+            tokenLine,
             connectionLabel(entry.connectionId).map { String(format: String(localized: "Connection: %@"), $0) },
             entry.details.map { String(format: String(localized: "Details: %@"), $0) }
         ].compactMap { $0 }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
     }
+}
 
-    private func outcomeSymbol(_ outcome: AuditOutcome?) -> String {
-        switch outcome {
-        case .success: "checkmark.circle.fill"
-        case .denied, .rateLimited: "exclamationmark.triangle.fill"
-        case .error: "xmark.octagon.fill"
-        case .none: "circle.fill"
-        }
+private struct AuditOutcomeComparator: SortComparator {
+    var order: SortOrder = .forward
+
+    func compare(_ lhs: AuditEntry, _ rhs: AuditEntry) -> ComparisonResult {
+        let lhsRank = IntegrationsFormatting.outcomeSeverity(AuditOutcome(rawValue: lhs.outcome))
+        let rhsRank = IntegrationsFormatting.outcomeSeverity(AuditOutcome(rawValue: rhs.outcome))
+        let ascending: ComparisonResult = lhsRank == rhsRank
+            ? .orderedSame
+            : (lhsRank < rhsRank ? .orderedAscending : .orderedDescending)
+        return order == .forward ? ascending : ascending.reversed
     }
+}
 
-    private func outcomeTint(_ outcome: AuditOutcome?) -> Color {
-        switch outcome {
-        case .success: Color(nsColor: .systemGreen)
-        case .denied, .rateLimited: Color(nsColor: .systemOrange)
-        case .error: Color(nsColor: .systemRed)
-        case .none: Color(nsColor: .secondaryLabelColor)
+private extension ComparisonResult {
+    var reversed: ComparisonResult {
+        switch self {
+        case .orderedAscending: .orderedDescending
+        case .orderedDescending: .orderedAscending
+        case .orderedSame: .orderedSame
         }
     }
 }
 
 private struct ActivityLogInspector: View {
     let entry: AuditEntry?
-    let tokenLabel: (String?) -> String?
     let connectionLabel: (UUID?) -> String?
 
     var body: some View {
@@ -462,7 +462,8 @@ private struct ActivityLogInspector: View {
 
             Section(String(localized: "Source")) {
                 LabeledContent(String(localized: "Token")) {
-                    Text(tokenLabel(entry.tokenName) ?? "—")
+                    let tokenText = entry.tokenName.map(IntegrationsFormatting.displayTokenName) ?? "—"
+                    Text(tokenText)
                         .foregroundStyle(entry.tokenName == nil ? .tertiary : .primary)
                         .textSelection(.enabled)
                 }
@@ -500,26 +501,8 @@ private struct ActivityLogInspector: View {
         return Label {
             Text(outcome?.displayName ?? entry.outcome)
         } icon: {
-            Image(systemName: outcomeSymbol(outcome))
-                .foregroundStyle(outcomeTint(outcome))
-        }
-    }
-
-    private func outcomeSymbol(_ outcome: AuditOutcome?) -> String {
-        switch outcome {
-        case .success: "checkmark.circle.fill"
-        case .denied, .rateLimited: "exclamationmark.triangle.fill"
-        case .error: "xmark.octagon.fill"
-        case .none: "circle.fill"
-        }
-    }
-
-    private func outcomeTint(_ outcome: AuditOutcome?) -> Color {
-        switch outcome {
-        case .success: Color(nsColor: .systemGreen)
-        case .denied, .rateLimited: Color(nsColor: .systemOrange)
-        case .error: Color(nsColor: .systemRed)
-        case .none: Color(nsColor: .secondaryLabelColor)
+            Image(systemName: IntegrationsFormatting.outcomeSymbol(outcome))
+                .foregroundStyle(IntegrationsFormatting.outcomeTint(outcome))
         }
     }
 }
