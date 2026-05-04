@@ -103,6 +103,15 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.defaultPort ?? 0
     }
 
+    var category: DatabaseCategory {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.connection.category ?? .other
+    }
+
+    var tagline: String? {
+        let raw = PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.connection.tagline ?? ""
+        return raw.isEmpty ? nil : raw
+    }
+
     var requiresAuthentication: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.requiresAuthentication ?? true
     }
