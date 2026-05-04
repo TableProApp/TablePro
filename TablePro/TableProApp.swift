@@ -643,19 +643,19 @@ struct TableProApp: App {
 
         Window("Welcome to TablePro", id: SceneId.welcome) {
             WelcomeWindowView()
+                .background(WindowRestorationDisabler())
         }
         .windowResizability(.contentMinSize)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 700, height: 450)
-        .restorationBehavior(.disabled)
         .commandsRemoved()
 
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
             ConnectionFormView(connectionId: editingId ?? nil)
+                .background(WindowRestorationDisabler())
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 640, height: 500)
-        .restorationBehavior(.disabled)
         .commandsRemoved()
 
         Window("Integrations Activity", id: SceneId.integrationsActivity) {
