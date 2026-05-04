@@ -56,6 +56,14 @@ struct WelcomeConnectionRow: View {
                             .help(String(localized: "Bundled sample database"))
                     }
 
+                    if connection.resolvedSSHConfig.enabled {
+                        Image(systemName: "lock.shield")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .help(sshTunnelTooltip)
+                            .accessibilityLabel(String(localized: "SSH tunnel"))
+                    }
+
                     if connection.localOnly && !connection.isSample {
                         Image(systemName: "icloud.slash")
                             .font(.system(size: 9))
@@ -81,10 +89,6 @@ struct WelcomeConnectionRow: View {
     }
 
     private var connectionSubtitle: String {
-        let ssh = connection.resolvedSSHConfig
-        if ssh.enabled {
-            return "SSH : \(ssh.username)@\(ssh.host)"
-        }
         if connection.host.isEmpty {
             return connection.database.isEmpty ? connection.type.rawValue : connection.database
         }
@@ -92,9 +96,29 @@ struct WelcomeConnectionRow: View {
             let count = mongoHosts.split(separator: ",").count
             return String(
                 format: String(localized: "%@ (+%d more)"),
-                "\(connection.host):\(connection.port)", count - 1
+                hostWithOptionalPort, count - 1
             )
         }
-        return connection.host
+        return hostWithOptionalPort
+    }
+
+    private var hostWithOptionalPort: String {
+        if connection.port == connection.type.defaultPort {
+            return connection.host
+        }
+        return "\(connection.host):\(connection.port)"
+    }
+
+    private var sshTunnelTooltip: String {
+        let ssh = connection.resolvedSSHConfig
+        let userPrefix = ssh.username.isEmpty ? "" : "\(ssh.username)@"
+        let portSuffix: String
+        if let port = ssh.port, port != 22 {
+            portSuffix = ":\(port)"
+        } else {
+            portSuffix = ""
+        }
+        let target = "\(userPrefix)\(ssh.host)\(portSuffix)"
+        return String(format: String(localized: "Connects via SSH tunnel: %@"), target)
     }
 }
