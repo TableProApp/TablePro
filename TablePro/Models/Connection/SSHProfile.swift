@@ -9,11 +9,10 @@ struct SSHProfile: Identifiable, Hashable, Codable, Sendable {
     let id: UUID
     var name: String
     var host: String
-    var port: Int
+    var port: Int?
     var username: String
     var authMethod: SSHAuthMethod
     var privateKeyPath: String
-    var useSSHConfig: Bool
     var agentSocketPath: String
     var jumpHosts: [SSHJumpHost]
     var totpMode: TOTPMode
@@ -25,11 +24,10 @@ struct SSHProfile: Identifiable, Hashable, Codable, Sendable {
         id: UUID = UUID(),
         name: String,
         host: String = "",
-        port: Int = 22,
+        port: Int? = nil,
         username: String = "",
         authMethod: SSHAuthMethod = .password,
         privateKeyPath: String = "",
-        useSSHConfig: Bool = true,
         agentSocketPath: String = "",
         jumpHosts: [SSHJumpHost] = [],
         totpMode: TOTPMode = .none,
@@ -44,13 +42,17 @@ struct SSHProfile: Identifiable, Hashable, Codable, Sendable {
         self.username = username
         self.authMethod = authMethod
         self.privateKeyPath = privateKeyPath
-        self.useSSHConfig = useSSHConfig
         self.agentSocketPath = agentSocketPath
         self.jumpHosts = jumpHosts
         self.totpMode = totpMode
         self.totpAlgorithm = totpAlgorithm
         self.totpDigits = totpDigits
         self.totpPeriod = totpPeriod
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, host, port, username, authMethod, privateKeyPath, agentSocketPath, jumpHosts
+        case totpMode, totpAlgorithm, totpDigits, totpPeriod
     }
 
     func toSSHConfiguration() -> SSHConfiguration {
@@ -61,7 +63,6 @@ struct SSHProfile: Identifiable, Hashable, Codable, Sendable {
         config.username = username
         config.authMethod = authMethod
         config.privateKeyPath = privateKeyPath
-        config.useSSHConfig = useSSHConfig
         config.agentSocketPath = agentSocketPath
         config.jumpHosts = jumpHosts
         config.totpMode = totpMode
@@ -79,7 +80,6 @@ struct SSHProfile: Identifiable, Hashable, Codable, Sendable {
             username: config.username,
             authMethod: config.authMethod,
             privateKeyPath: config.privateKeyPath,
-            useSSHConfig: config.useSSHConfig,
             agentSocketPath: config.agentSocketPath,
             jumpHosts: config.jumpHosts,
             totpMode: config.totpMode,

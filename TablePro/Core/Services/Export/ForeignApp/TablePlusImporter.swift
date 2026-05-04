@@ -176,8 +176,7 @@ struct TablePlusImporter: ForeignAppImporter {
     private func parseSSHConfig(_ entry: [String: Any]) -> ExportableSSHConfig? {
         guard entry["isOverSSH"] as? Bool == true else { return nil }
         let host = entry["ServerAddress"] as? String ?? ""
-        let portString = entry["ServerPort"] as? String ?? "22"
-        let port = Int(portString) ?? 22
+        let port = (entry["ServerPort"] as? String).flatMap(Int.init)
         let username = entry["ServerUser"] as? String ?? ""
         let useKey = entry["isUsePrivateKey"] as? Bool ?? false
         let rawKeyPath = entry["ServerPrivateKeyName"] as? String ?? ""
@@ -190,7 +189,6 @@ struct TablePlusImporter: ForeignAppImporter {
             username: username,
             authMethod: useKey ? "Private Key" : "Password",
             privateKeyPath: useKey ? keyPath : "",
-            useSSHConfig: true,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,

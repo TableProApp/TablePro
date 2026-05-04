@@ -88,18 +88,18 @@ enum SSHJumpAuthMethod: String, CaseIterable, Identifiable, Codable {
 struct SSHJumpHost: Codable, Hashable, Identifiable {
     var id = UUID()
     var host: String = ""
-    var port: Int = 22
+    var port: Int?
     var username: String = ""
     var authMethod: SSHJumpAuthMethod = .sshAgent
     var privateKeyPath: String = ""
 
     var isValid: Bool {
         !host.isEmpty && !username.isEmpty &&
-        (authMethod == .sshAgent || authMethod == .privateKey || !privateKeyPath.isEmpty)
+        (authMethod == .sshAgent || !privateKeyPath.isEmpty)
     }
 
     var proxyJumpString: String {
-        "\(username)@\(host):\(port)"
+        "\(username)@\(host):\(port ?? 22)"
     }
 }
 
@@ -107,12 +107,11 @@ struct SSHJumpHost: Codable, Hashable, Identifiable {
 struct SSHConfiguration: Codable, Hashable {
     var enabled: Bool = false
     var host: String = ""
-    var port: Int = 22
+    var port: Int?
     var username: String = ""
     var authMethod: SSHAuthMethod = .password
-    var privateKeyPath: String = ""  // Path to identity file (e.g., ~/.ssh/id_rsa)
-    var useSSHConfig: Bool = true  // Auto-fill from ~/.ssh/config when selecting host
-    var agentSocketPath: String = ""  // Custom SSH_AUTH_SOCK path (empty = use system default)
+    var privateKeyPath: String = ""
+    var agentSocketPath: String = ""
     var jumpHosts: [SSHJumpHost] = []
     var totpMode: TOTPMode = .none
     var totpAlgorithm: TOTPAlgorithm = .sha1
@@ -142,7 +141,7 @@ struct SSHConfiguration: Codable, Hashable {
 
 extension SSHConfiguration {
     enum CodingKeys: String, CodingKey {
-        case enabled, host, port, username, authMethod, privateKeyPath, useSSHConfig, agentSocketPath, jumpHosts
+        case enabled, host, port, username, authMethod, privateKeyPath, agentSocketPath, jumpHosts
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
     }
 
@@ -150,11 +149,10 @@ extension SSHConfiguration {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decode(Bool.self, forKey: .enabled)
         host = try container.decode(String.self, forKey: .host)
-        port = try container.decode(Int.self, forKey: .port)
+        port = try container.decodeIfPresent(Int.self, forKey: .port)
         username = try container.decode(String.self, forKey: .username)
         authMethod = try container.decode(SSHAuthMethod.self, forKey: .authMethod)
         privateKeyPath = try container.decode(String.self, forKey: .privateKeyPath)
-        useSSHConfig = try container.decode(Bool.self, forKey: .useSSHConfig)
         agentSocketPath = try container.decode(String.self, forKey: .agentSocketPath)
         jumpHosts = try container.decodeIfPresent([SSHJumpHost].self, forKey: .jumpHosts) ?? []
         totpMode = try container.decodeIfPresent(TOTPMode.self, forKey: .totpMode) ?? .none

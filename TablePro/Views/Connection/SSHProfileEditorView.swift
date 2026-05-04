@@ -154,13 +154,17 @@ struct SSHProfileEditorView: View {
             if authMethod == .password {
                 SecureField(String(localized: "Password"), text: $sshPassword)
             } else if authMethod == .sshAgent {
-                Picker("Agent Socket", selection: $agentSocketOption) {
+                Picker(String(localized: "Agent Socket"), selection: $agentSocketOption) {
                     ForEach(SSHAgentSocketOption.allCases) { option in
                         Text(option.displayName).tag(option)
                     }
                 }
                 if agentSocketOption == .custom {
-                    TextField("Custom Path", text: $customAgentSocketPath, prompt: Text("/path/to/agent.sock"))
+                    TextField(
+                        String(localized: "Custom Path"),
+                        text: $customAgentSocketPath,
+                        prompt: Text("/path/to/agent.sock")
+                    )
                 }
                 Text("Keys are provided by the SSH agent (e.g. 1Password, ssh-agent).")
                     .font(.caption)
@@ -233,8 +237,8 @@ struct SSHProfileEditorView: View {
                             TextField(
                                 String(localized: "Port"),
                                 text: Binding(
-                                    get: { String(jumpHostBinding.wrappedValue.port) },
-                                    set: { jumpHostBinding.wrappedValue.port = Int($0) ?? 22 }
+                                    get: { jumpHostBinding.wrappedValue.port.map(String.init) ?? "" },
+                                    set: { jumpHostBinding.wrappedValue.port = Int($0) }
                                 ),
                                 prompt: Text("22")
                             )
@@ -373,7 +377,7 @@ struct SSHProfileEditorView: View {
         guard let profile = existingProfile else { return }
         profileName = profile.name
         host = profile.host
-        port = String(profile.port)
+        port = profile.port.map(String.init) ?? ""
         username = profile.username
         authMethod = profile.authMethod
         privateKeyPath = profile.privateKeyPath
@@ -402,11 +406,10 @@ struct SSHProfileEditorView: View {
             id: profileId,
             name: profileName.trimmingCharacters(in: .whitespaces),
             host: host,
-            port: Int(port) ?? 22,
+            port: Int(port),
             username: username,
             authMethod: authMethod,
             privateKeyPath: privateKeyPath,
-            useSSHConfig: !selectedSSHConfigHost.isEmpty,
             agentSocketPath: resolvedAgentSocketPath,
             jumpHosts: jumpHosts,
             totpMode: totpMode,
@@ -454,7 +457,7 @@ struct SSHProfileEditorView: View {
         let config = SSHConfiguration(
             enabled: true,
             host: host,
-            port: Int(port) ?? 22,
+            port: Int(port),
             username: username,
             authMethod: authMethod,
             privateKeyPath: privateKeyPath,
@@ -504,29 +507,8 @@ struct SSHProfileEditorView: View {
     // MARK: - SSH Config Helpers
 
     private func applySSHConfigEntry(_ configHost: String) {
-        guard let entry = sshConfigEntries.first(where: { $0.host == configHost }) else { return }
-
-        host = entry.hostname ?? entry.host
-        if let entryPort = entry.port {
-            port = String(entryPort)
-        }
-        if let user = entry.user {
-            username = user
-        }
-        if let agentPath = entry.identityAgent {
-            let option = SSHAgentSocketOption(socketPath: agentPath)
-            agentSocketOption = option
-            if option == .custom {
-                customAgentSocketPath = agentPath.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            authMethod = .sshAgent
-        } else if let keyPath = entry.identityFiles.first {
-            privateKeyPath = keyPath
-            authMethod = .privateKey
-        }
-        if let proxyJump = entry.proxyJump {
-            jumpHosts = SSHConfigParser.parseProxyJump(proxyJump)
-        }
+        guard !configHost.isEmpty else { return }
+        host = configHost
     }
 
     private func browseForPrivateKey() {

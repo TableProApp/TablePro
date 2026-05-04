@@ -420,11 +420,10 @@ private struct StoredConnection: Codable {
     // SSH Configuration
     let sshEnabled: Bool
     let sshHost: String
-    let sshPort: Int
+    let sshPort: Int?
     let sshUsername: String
     let sshAuthMethod: String
     let sshPrivateKeyPath: String
-    let sshUseSSHConfig: Bool
     let sshAgentSocketPath: String
 
     // SSL Configuration
@@ -498,7 +497,6 @@ private struct StoredConnection: Codable {
         self.sshUsername = connection.sshConfig.username
         self.sshAuthMethod = connection.sshConfig.authMethod.rawValue
         self.sshPrivateKeyPath = connection.sshConfig.privateKeyPath
-        self.sshUseSSHConfig = connection.sshConfig.useSSHConfig
         self.sshAgentSocketPath = connection.sshConfig.agentSocketPath
 
         // TOTP configuration
@@ -561,7 +559,7 @@ private struct StoredConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
         case sshEnabled, sshHost, sshPort, sshUsername, sshAuthMethod, sshPrivateKeyPath
-        case sshUseSSHConfig, sshAgentSocketPath
+        case sshAgentSocketPath
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
         case sslMode, sslCaCertificatePath, sslClientCertificatePath, sslClientKeyPath
         case color, tagId, groupId, sshProfileId
@@ -587,11 +585,10 @@ private struct StoredConnection: Codable {
         try container.encode(type, forKey: .type)
         try container.encode(sshEnabled, forKey: .sshEnabled)
         try container.encode(sshHost, forKey: .sshHost)
-        try container.encode(sshPort, forKey: .sshPort)
+        try container.encodeIfPresent(sshPort, forKey: .sshPort)
         try container.encode(sshUsername, forKey: .sshUsername)
         try container.encode(sshAuthMethod, forKey: .sshAuthMethod)
         try container.encode(sshPrivateKeyPath, forKey: .sshPrivateKeyPath)
-        try container.encode(sshUseSSHConfig, forKey: .sshUseSSHConfig)
         try container.encode(sshAgentSocketPath, forKey: .sshAgentSocketPath)
         try container.encode(totpMode, forKey: .totpMode)
         try container.encode(totpAlgorithm, forKey: .totpAlgorithm)
@@ -630,11 +627,10 @@ private struct StoredConnection: Codable {
 
         sshEnabled = try container.decode(Bool.self, forKey: .sshEnabled)
         sshHost = try container.decode(String.self, forKey: .sshHost)
-        sshPort = try container.decode(Int.self, forKey: .sshPort)
+        sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort)
         sshUsername = try container.decode(String.self, forKey: .sshUsername)
         sshAuthMethod = try container.decode(String.self, forKey: .sshAuthMethod)
         sshPrivateKeyPath = try container.decode(String.self, forKey: .sshPrivateKeyPath)
-        sshUseSSHConfig = try container.decode(Bool.self, forKey: .sshUseSSHConfig)
         sshAgentSocketPath = try container.decodeIfPresent(String.self, forKey: .sshAgentSocketPath) ?? ""
 
         // TOTP configuration (migration: use defaults if missing)
@@ -690,7 +686,6 @@ private struct StoredConnection: Codable {
             username: sshUsername,
             authMethod: SSHAuthMethod(rawValue: sshAuthMethod) ?? .password,
             privateKeyPath: sshPrivateKeyPath,
-            useSSHConfig: sshUseSSHConfig,
             agentSocketPath: sshAgentSocketPath
         )
         sshConfig.totpMode = TOTPMode(rawValue: totpMode) ?? .none

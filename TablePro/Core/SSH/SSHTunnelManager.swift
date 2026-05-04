@@ -60,7 +60,7 @@ actor SSHTunnelManager {
     func createTunnel(
         connectionId: UUID,
         sshHost: String,
-        sshPort: Int = 22,
+        sshPort: Int? = nil,
         sshUsername: String,
         authMethod: SSHAuthMethod,
         privateKeyPath: String? = nil,

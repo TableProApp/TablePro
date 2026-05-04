@@ -269,11 +269,10 @@ internal enum DeeplinkParser {
             sshConfig = ExportableSSHConfig(
                 enabled: true,
                 host: value("sshHost") ?? "",
-                port: value("sshPort").flatMap(Int.init) ?? 22,
+                port: value("sshPort").flatMap(Int.init),
                 username: value("sshUsername") ?? "",
                 authMethod: value("sshAuthMethod") ?? "password",
                 privateKeyPath: value("sshPrivateKeyPath") ?? "",
-                useSSHConfig: value("sshUseSSHConfig") == "1",
                 agentSocketPath: value("sshAgentSocketPath") ?? "",
                 jumpHosts: jumpHosts,
                 totpMode: value("sshTotpMode"),

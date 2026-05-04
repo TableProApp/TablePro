@@ -69,8 +69,8 @@ struct ConnectionURLFormatter {
             result += "@"
         }
         result += ssh.host
-        if ssh.port != 22 {
-            result += ":\(ssh.port)"
+        if let port = ssh.port, port != 22 {
+            result += ":\(port)"
         }
 
         result += "/"

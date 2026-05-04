@@ -195,13 +195,13 @@ struct SequelAceImporter: ForeignAppImporter {
         guard connectionType == 2 else { return nil }
         let host = entry["sshHost"] as? String ?? ""
         let user = entry["sshUser"] as? String ?? ""
-        let port: Int
+        let port: Int?
         if let intPort = entry["sshPort"] as? Int {
             port = intPort
         } else if let strPort = entry["sshPort"] as? String, let parsed = Int(strPort) {
             port = parsed
         } else {
-            port = 22
+            port = nil
         }
         let keyEnabled = (entry["sshKeyLocationEnabled"] as? Int ?? 0) != 0
         let rawKeyPath = entry["sshKeyLocation"] as? String ?? ""
@@ -214,7 +214,6 @@ struct SequelAceImporter: ForeignAppImporter {
             username: user,
             authMethod: keyEnabled ? "Private Key" : "Password",
             privateKeyPath: keyEnabled ? keyPath : "",
-            useSSHConfig: true,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,

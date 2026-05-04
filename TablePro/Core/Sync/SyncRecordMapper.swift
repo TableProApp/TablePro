@@ -289,11 +289,12 @@ struct SyncRecordMapper {
         record["profileId"] = profile.id.uuidString as CKRecordValue
         record["name"] = profile.name as CKRecordValue
         record["host"] = profile.host as CKRecordValue
-        record["port"] = Int64(profile.port) as CKRecordValue
+        if let port = profile.port {
+            record["port"] = Int64(port) as CKRecordValue
+        }
         record["username"] = profile.username as CKRecordValue
         record["authMethod"] = profile.authMethod.rawValue as CKRecordValue
         record["privateKeyPath"] = PathPortability.contractHome(profile.privateKeyPath) as CKRecordValue
-        record["useSSHConfig"] = Int64(profile.useSSHConfig ? 1 : 0) as CKRecordValue
         record["agentSocketPath"] = PathPortability.contractHome(profile.agentSocketPath) as CKRecordValue
         record["totpMode"] = profile.totpMode.rawValue as CKRecordValue
         record["totpAlgorithm"] = profile.totpAlgorithm.rawValue as CKRecordValue
@@ -325,11 +326,10 @@ struct SyncRecordMapper {
         }
 
         let host = record["host"] as? String ?? ""
-        let port = (record["port"] as? Int64).map { Int($0) } ?? 22
+        let port = (record["port"] as? Int64).map { Int($0) }
         let username = record["username"] as? String ?? ""
         let authMethodRaw = record["authMethod"] as? String ?? SSHAuthMethod.password.rawValue
         let privateKeyPath = PathPortability.expandHome(record["privateKeyPath"] as? String ?? "")
-        let useSSHConfig = (record["useSSHConfig"] as? Int64 ?? 1) != 0
         let agentSocketPath = PathPortability.expandHome(record["agentSocketPath"] as? String ?? "")
         let totpModeRaw = record["totpMode"] as? String ?? TOTPMode.none.rawValue
         let totpAlgorithmRaw = record["totpAlgorithm"] as? String ?? TOTPAlgorithm.sha1.rawValue
@@ -350,7 +350,6 @@ struct SyncRecordMapper {
             username: username,
             authMethod: SSHAuthMethod(rawValue: authMethodRaw) ?? .password,
             privateKeyPath: privateKeyPath,
-            useSSHConfig: useSSHConfig,
             agentSocketPath: agentSocketPath,
             jumpHosts: jumpHosts,
             totpMode: TOTPMode(rawValue: totpModeRaw) ?? .none,

@@ -126,7 +126,6 @@ enum ConnectionExportService {
                     username: sshConfig.username,
                     authMethod: sshConfig.authMethod.rawValue,
                     privateKeyPath: PathPortability.contractHome(sshConfig.privateKeyPath),
-                    useSSHConfig: sshConfig.useSSHConfig,
                     agentSocketPath: PathPortability.contractHome(sshConfig.agentSocketPath),
                     jumpHosts: jumpHosts,
                     totpMode: sshConfig.totpMode == .none ? nil : sshConfig.totpMode.rawValue,
@@ -600,8 +599,8 @@ enum ConnectionExportService {
         if let ssh = exportable.sshConfig {
             queryItems.append(URLQueryItem(name: "ssh", value: "1"))
             queryItems.append(URLQueryItem(name: "sshHost", value: ssh.host))
-            if ssh.port != 22 {
-                queryItems.append(URLQueryItem(name: "sshPort", value: String(ssh.port)))
+            if let port = ssh.port, port != 22 {
+                queryItems.append(URLQueryItem(name: "sshPort", value: String(port)))
             }
             if !ssh.username.isEmpty {
                 queryItems.append(URLQueryItem(name: "sshUsername", value: ssh.username))
@@ -609,9 +608,6 @@ enum ConnectionExportService {
             queryItems.append(URLQueryItem(name: "sshAuthMethod", value: ssh.authMethod))
             if !ssh.privateKeyPath.isEmpty {
                 queryItems.append(URLQueryItem(name: "sshPrivateKeyPath", value: ssh.privateKeyPath))
-            }
-            if ssh.useSSHConfig {
-                queryItems.append(URLQueryItem(name: "sshUseSSHConfig", value: "1"))
             }
             if !ssh.agentSocketPath.isEmpty {
                 queryItems.append(URLQueryItem(name: "sshAgentSocketPath", value: ssh.agentSocketPath))
@@ -717,7 +713,6 @@ enum ConnectionExportService {
             config.username = ssh.username
             config.authMethod = SSHAuthMethod(rawValue: ssh.authMethod) ?? .password
             config.privateKeyPath = PathPortability.expandHome(ssh.privateKeyPath)
-            config.useSSHConfig = ssh.useSSHConfig
             config.agentSocketPath = PathPortability.expandHome(ssh.agentSocketPath)
             config.jumpHosts = (ssh.jumpHosts ?? []).map { jump in
                 SSHJumpHost(

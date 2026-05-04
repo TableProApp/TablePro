@@ -20,7 +20,7 @@ struct SSHTunnelFormState {
 
     // Inline config fields
     var host: String = ""
-    var port: String = "22"
+    var port: String = ""
     var username: String = ""
     var password: String = ""
     var authMethod: SSHAuthMethod = .password
@@ -54,11 +54,10 @@ struct SSHTunnelFormState {
         SSHConfiguration(
             enabled: enabled,
             host: host,
-            port: Int(port) ?? 22,
+            port: Int(port),
             username: username,
             authMethod: authMethod,
             privateKeyPath: privateKeyPath,
-            useSSHConfig: !selectedConfigHost.isEmpty,
             agentSocketPath: resolvedAgentSocketPath,
             jumpHosts: jumpHosts,
             totpMode: totpMode,
@@ -123,7 +122,7 @@ struct SSHTunnelFormState {
         enabled = false
         profileId = nil
         host = ""
-        port = "22"
+        port = ""
         username = ""
         password = ""
         authMethod = .password
@@ -143,7 +142,7 @@ struct SSHTunnelFormState {
     mutating func switchToInline(fromProfile profile: SSHProfile) {
         profileId = nil
         host = profile.host
-        port = String(profile.port)
+        port = profile.port.map(String.init) ?? ""
         username = profile.username
         authMethod = profile.authMethod
         privateKeyPath = profile.privateKeyPath
@@ -157,7 +156,7 @@ struct SSHTunnelFormState {
 
     mutating func populateFields(from config: SSHConfiguration) {
         host = config.host
-        port = String(config.port)
+        port = config.port.map(String.init) ?? ""
         username = config.username
         authMethod = config.authMethod
         privateKeyPath = config.privateKeyPath
@@ -168,12 +167,7 @@ struct SSHTunnelFormState {
         totpDigits = config.totpDigits
         totpPeriod = config.totpPeriod
 
-        // Restore config host picker state if a config entry was used
-        if config.useSSHConfig {
-            selectedConfigHost = configEntries.first { $0.hostname == config.host || $0.host == config.host }?.host ?? ""
-        } else {
-            selectedConfigHost = ""
-        }
+        selectedConfigHost = configEntries.first { $0.host == config.host }?.host ?? ""
     }
 
     mutating func applyAgentSocketPath(_ socketPath: String) {

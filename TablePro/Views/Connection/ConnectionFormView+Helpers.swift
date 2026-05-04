@@ -569,7 +569,7 @@ extension ConnectionFormView {
             if let sshHostValue = parsed.sshHost {
                 sshState.enabled = true
                 sshState.host = sshHostValue
-                sshState.port = parsed.sshPort.map(String.init) ?? "22"
+                sshState.port = parsed.sshPort.map(String.init) ?? ""
                 sshState.username = parsed.sshUsername ?? ""
                 if let sshPass = parsed.sshPassword, !sshPass.isEmpty {
                     sshState.password = sshPass

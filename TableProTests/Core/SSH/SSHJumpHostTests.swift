@@ -80,7 +80,7 @@ struct SSHJumpHostTests {
     func testDefaultValues() {
         let jumpHost = SSHJumpHost()
         #expect(jumpHost.host == "")
-        #expect(jumpHost.port == 22)
+        #expect(jumpHost.port == nil)
         #expect(jumpHost.username == "")
         #expect(jumpHost.authMethod == .sshAgent)
         #expect(jumpHost.privateKeyPath == "")

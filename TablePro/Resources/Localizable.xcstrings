@@ -22162,6 +22162,9 @@
         }
       }
     },
+    "Get release notes and database tips by email. No spam, unsubscribe anytime." : {
+
+    },
     "Get Started" : {
       "localizations" : {
         "tr" : {
@@ -27666,6 +27669,9 @@
           }
         }
       }
+    },
+    "Maybe later" : {
+
     },
     "MCP Access Request" : {
       "localizations" : {
@@ -43949,6 +43955,9 @@
         }
       }
     },
+    "Stay updated on TablePro releases" : {
+
+    },
     "Steps to Reproduce" : {
       "localizations" : {
         "tr" : {
@@ -44257,6 +44266,9 @@
           }
         }
       }
+    },
+    "Subscribe in Browser" : {
+
     },
     "Success" : {
       "localizations" : {

@@ -134,24 +134,22 @@ enum CLICommandResolver {
         // Build ssh args
         var sshArgs: [String] = []
 
-        // SSH port
-        if sshConfig.port != 22 {
-            sshArgs += ["-p", String(sshConfig.port)]
+        if let port = sshConfig.port, port != 22 {
+            sshArgs += ["-p", String(port)]
         }
 
-        // Private key
         if sshConfig.authMethod == .privateKey, !sshConfig.privateKeyPath.isEmpty {
             let expanded = (sshConfig.privateKeyPath as NSString).expandingTildeInPath
             sshArgs += ["-i", expanded]
         }
 
-        // Jump hosts
         if !sshConfig.jumpHosts.isEmpty {
             let jumpSpec = sshConfig.jumpHosts.map { jump -> String in
-                if jump.port != 22 {
-                    return "\(jump.username.isEmpty ? "" : "\(jump.username)@")\(jump.host):\(jump.port)"
+                let userPrefix = jump.username.isEmpty ? "" : "\(jump.username)@"
+                if let port = jump.port, port != 22 {
+                    return "\(userPrefix)\(jump.host):\(port)"
                 }
-                return "\(jump.username.isEmpty ? "" : "\(jump.username)@")\(jump.host)"
+                return "\(userPrefix)\(jump.host)"
             }.joined(separator: ",")
             sshArgs += ["-J", jumpSpec]
         }

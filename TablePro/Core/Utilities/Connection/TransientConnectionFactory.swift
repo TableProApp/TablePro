@@ -12,7 +12,7 @@ internal enum TransientConnectionFactory {
         if let sshHost = parsed.sshHost {
             sshConfig.enabled = true
             sshConfig.host = sshHost
-            sshConfig.port = parsed.sshPort ?? 22
+            sshConfig.port = parsed.sshPort
             sshConfig.username = parsed.sshUsername ?? ""
             if parsed.usePrivateKey == true {
                 sshConfig.authMethod = .privateKey
