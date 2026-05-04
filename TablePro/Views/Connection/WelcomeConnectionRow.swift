@@ -43,7 +43,20 @@ struct WelcomeConnectionRow: View {
                                     tag.color.color.opacity(0.15)))
                     }
 
-                    if connection.localOnly {
+                    if connection.isSample {
+                        Text(String(localized: "Sample"))
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.accentColor.opacity(0.15))
+                            )
+                            .help(String(localized: "Bundled sample database"))
+                    }
+
+                    if connection.localOnly && !connection.isSample {
                         Image(systemName: "icloud.slash")
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)

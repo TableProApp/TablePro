@@ -400,46 +400,30 @@ struct WelcomeWindowView: View {
 
     // MARK: - Empty State
 
+    @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-
-            Image(systemName: "cylinder.split.1x2")
-                .font(.system(size: 32))
-                .foregroundStyle(.tertiary)
-
-            if vm.searchText.isEmpty {
-                Text("No Connections")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Text("Create a connection to get started")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-
-                Button(action: { ConnectionFormWindowFactory.openOrFront() }) {
-                    Label("New Connection", systemImage: "plus")
-                }
-                .controlSize(.large)
-                .padding(.top, 4)
-
-                Button(action: { vm.importConnectionsFromApp() }) {
-                    Label("Import from Other App...", systemImage: "square.and.arrow.down.on.square")
-                }
-                .controlSize(.large)
-            } else {
-                Text("No Matching Connections")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Text("Try a different search term")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
+        if vm.searchText.isEmpty {
+            EmptyStateView(
+                icon: "square.stack.3d.up",
+                title: String(localized: "Welcome to TablePro"),
+                description: String(localized: "Open a sample database to explore, or add your own connection."),
+                actionTitle: String(localized: "Open Sample Database"),
+                actionSystemImage: "cylinder.split.1x2",
+                action: { vm.openSampleDatabase() },
+                secondaryActionTitle: String(localized: "Add New Connection"),
+                secondaryActionSystemImage: "plus.circle",
+                secondaryAction: { ConnectionFormWindowFactory.openOrFront() },
+                footerText: String(localized: "The sample is a real SQLite database with 11 tables (Chinook music store). Edit it to learn the app.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            EmptyStateView(
+                icon: "magnifyingglass",
+                title: String(localized: "No Matching Connections"),
+                description: String(localized: "Try a different search term.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Helpers

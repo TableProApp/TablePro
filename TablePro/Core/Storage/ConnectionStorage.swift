@@ -126,7 +126,7 @@ final class ConnectionStorage {
         var connections = loadConnections()
         connections.append(connection)
         saveConnections(connections)
-        if !connection.localOnly {
+        if !connection.localOnly && !connection.isSample {
             syncTracker.markDirty(.connection, id: connection.id.uuidString)
         }
 
@@ -141,7 +141,7 @@ final class ConnectionStorage {
         if let index = connections.firstIndex(where: { $0.id == connection.id }) {
             connections[index] = connection
             saveConnections(connections)
-            if !connection.localOnly {
+            if !connection.localOnly && !connection.isSample {
                 syncTracker.markDirty(.connection, id: connection.id.uuidString)
             }
 
@@ -160,7 +160,7 @@ final class ConnectionStorage {
         var connections = loadConnections()
         connections.removeAll { $0.id == connection.id }
         saveConnections(connections)
-        if !connection.localOnly {
+        if !connection.localOnly && !connection.isSample {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
         }
         deletePassword(for: connection.id)
@@ -182,7 +182,7 @@ final class ConnectionStorage {
         var all = loadConnections()
         all.removeAll { idsToDelete.contains($0.id) }
         saveConnections(all)
-        for conn in connectionsToDelete where !conn.localOnly {
+        for conn in connectionsToDelete where !conn.localOnly && !conn.isSample {
             syncTracker.markDeleted(.connection, id: conn.id.uuidString)
         }
         for conn in connectionsToDelete {
@@ -468,6 +468,9 @@ private struct StoredConnection: Codable {
     // Local-only (excluded from iCloud sync)
     let localOnly: Bool
 
+    // Sample database connection (Chinook) — visible badge, hidden from sync
+    let isSample: Bool
+
     // TOTP configuration
     let totpMode: String
     let totpAlgorithm: String
@@ -546,6 +549,9 @@ private struct StoredConnection: Codable {
         // Local-only
         self.localOnly = connection.localOnly
 
+        // Sample marker
+        self.isSample = connection.isSample
+
         // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
         self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
 
@@ -568,6 +574,7 @@ private struct StoredConnection: Codable {
         case sshTunnelModeJson
         case additionalFields
         case localOnly
+        case isSample
     }
 
     func encode(to encoder: Encoder) throws {
@@ -607,6 +614,7 @@ private struct StoredConnection: Codable {
         try container.encodeIfPresent(sshTunnelModeJson, forKey: .sshTunnelModeJson)
         try container.encodeIfPresent(additionalFields, forKey: .additionalFields)
         try container.encode(localOnly, forKey: .localOnly)
+        try container.encode(isSample, forKey: .isSample)
     }
 
     // Custom decoder to handle migration from old format
@@ -672,6 +680,7 @@ private struct StoredConnection: Codable {
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
+        isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
     }
 
     func toConnection() -> DatabaseConnection {
@@ -758,6 +767,7 @@ private struct StoredConnection: Codable {
             startupCommands: startupCommands,
             sortOrder: sortOrder,
             localOnly: localOnly,
+            isSample: isSample,
             additionalFields: mergedFields
         )
     }

@@ -249,6 +249,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var startupCommands: String?
     var sortOrder: Int
     var localOnly: Bool = false
+    var isSample: Bool = false
 
     var mongoAuthSource: String? {
         get { additionalFields["mongoAuthSource"]?.nilIfEmpty }
@@ -335,6 +336,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         startupCommands: String? = nil,
         sortOrder: Int = 0,
         localOnly: Bool = false,
+        isSample: Bool = false,
         additionalFields: [String: String]? = nil
     ) {
         self.id = id
@@ -372,6 +374,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.startupCommands = startupCommands
         self.sortOrder = sortOrder
         self.localOnly = localOnly
+        self.isSample = isSample
         if let additionalFields {
             self.additionalFields = additionalFields
         } else {
@@ -419,7 +422,7 @@ extension DatabaseConnection: Codable {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, groupId, sshProfileId
         case sshTunnelMode, safeModeLevel, aiPolicy, externalAccess, additionalFields
-        case redisDatabase, startupCommands, sortOrder, localOnly
+        case redisDatabase, startupCommands, sortOrder, localOnly, isSample
     }
 
     init(from decoder: Decoder) throws {
@@ -445,6 +448,7 @@ extension DatabaseConnection: Codable {
         startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
+        isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
 
         // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
@@ -486,6 +490,7 @@ extension DatabaseConnection: Codable {
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encode(localOnly, forKey: .localOnly)
+        try container.encode(isSample, forKey: .isSample)
     }
 }
 

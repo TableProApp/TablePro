@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sample database (Chinook) bundled — open from welcome screen with one click; reset via File menu
+- Connection string detection — paste a `postgres://`, `mysql://`, `redis://`, or `mongodb://` URL, then click Use to auto-fill the connection form
 - Activation telemetry: the daily heartbeat now reports three write-once timestamps per device (first connection attempt, first successful connection, first executed query), so we can see where new users drop off during activation. The values are stored locally in UserDefaults, set once and never overwritten, and the server also refuses to overwrite them once received. Both Mac and iOS send the same fields.
 - Newsletter prompt on Mac: after the third successful database connection, a one-time native NSAlert offers to subscribe to release notes. "Subscribe in Browser" opens `https://tablepro.app/?subscribe=true&source=mac`, "Maybe later" dismisses. The prompt never reappears once shown.
 - MCP: support for protocol versions `2025-06-18` and `2025-11-25` in addition to `2025-03-26`. Clients on the latest spec no longer downgrade. The server advertises the latest version it supports (`2025-11-25`) and falls back when a client requests an unknown version.

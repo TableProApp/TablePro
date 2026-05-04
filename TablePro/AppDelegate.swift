@@ -87,6 +87,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(handleFocusConnectionForm),
             name: .focusConnectionFormWindowRequested, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleOpenSampleDatabase(_:)),
+            name: .openSampleDatabaseRequested, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleResetSampleDatabase(_:)),
+            name: .resetSampleDatabaseRequested, object: nil
+        )
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -184,6 +192,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = NSApp.windows.first(where: { AppLaunchCoordinator.isConnectionFormWindow($0) }) {
             window.makeKeyAndOrderFront(nil)
         }
+    }
+
+    @objc func handleOpenSampleDatabase(_ notification: Notification) {
+        SampleDatabaseLauncher.open()
+    }
+
+    @objc func handleResetSampleDatabase(_ notification: Notification) {
+        SampleDatabaseLauncher.reset()
     }
 
     // MARK: - Dock Menu

@@ -75,6 +75,8 @@ struct ConnectionFormView: View {
     @State var connectionURL: String = ""
     @State var urlParseError: String?
     @State var showURLImport = false
+    @State var clipboardCandidate: ParsedConnection?
+    @State var clipboardBannerDismissed = false
     @State var promptForPassword: Bool = false
     @State var hasLoadedData = false
 
@@ -161,6 +163,9 @@ struct ConnectionFormView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 8)
 
+            clipboardConnectionBannerView
+                .animation(.easeInOut(duration: 0.18), value: clipboardCandidate)
+
             // Tab form content
             tabForm
 
@@ -176,6 +181,7 @@ struct ConnectionFormView: View {
         .onAppear {
             loadConnectionData()
             loadSSHConfig()
+            detectClipboardConnectionStringIfNeeded()
         }
         .onChange(of: type) { _, newType in
             if hasLoadedData {

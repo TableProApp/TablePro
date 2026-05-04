@@ -25,6 +25,8 @@ extension Notification.Name {
     static let importConnectionsFromApp = Notification.Name("importConnectionsFromApp")
     static let linkedFoldersDidUpdate = Notification.Name("linkedFoldersDidUpdate")
     static let focusConnectionFormWindowRequested = Notification.Name("focusConnectionFormWindowRequested")
+    static let openSampleDatabaseRequested = Notification.Name("openSampleDatabaseRequested")
+    static let resetSampleDatabaseRequested = Notification.Name("resetSampleDatabaseRequested")
 
     // MARK: - License
 

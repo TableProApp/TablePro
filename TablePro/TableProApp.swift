@@ -199,6 +199,14 @@ struct AppMenuCommands: Commands {
                 WelcomeWindowFactory.openOrFront()
             }
             .optionalKeyboardShortcut(shortcut(for: .manageConnections))
+
+            Button(String(localized: "Open Sample Database")) {
+                NotificationCenter.default.post(name: .openSampleDatabaseRequested, object: nil)
+            }
+
+            Button(String(localized: "Reset Sample Database...")) {
+                NotificationCenter.default.post(name: .resetSampleDatabaseRequested, object: nil)
+            }
         }
 
         CommandGroup(after: .newItem) {
