@@ -15,7 +15,9 @@ struct ImportErrorView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 48))
+                .font(.largeTitle)
+                .imageScale(.large)
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Color(nsColor: .systemRed))
 
             VStack(spacing: 6) {

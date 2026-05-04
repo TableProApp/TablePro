@@ -21,11 +21,15 @@ struct ImportSuccessView: View {
         VStack(spacing: 20) {
             if hasErrors {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 48))
+                    .font(.largeTitle)
+                    .imageScale(.large)
+                    .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Color(nsColor: .systemYellow))
             } else {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 48))
+                    .font(.largeTitle)
+                    .imageScale(.large)
+                    .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Color(nsColor: .systemGreen))
             }
 

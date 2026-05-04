@@ -744,9 +744,10 @@ struct MainEditorContentView: View {
         VStack(spacing: 20) {
             // Icon
             Image(systemName: "tablecells")
-                .font(.system(size: 56))
-                .foregroundStyle(.quaternary)
+                .font(.largeTitle)
+                .imageScale(.large)
                 .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.quaternary)
 
             // Title
             Text("No tabs open")

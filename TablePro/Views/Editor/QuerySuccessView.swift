@@ -19,7 +19,9 @@ struct QuerySuccessView: View {
 
             // Success icon
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 64))
+                .font(.largeTitle)
+                .imageScale(.large)
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Color(nsColor: .systemGreen))
 
             // Success message

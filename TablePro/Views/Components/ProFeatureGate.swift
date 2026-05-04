@@ -40,7 +40,9 @@ struct ProFeatureGateModifier: ViewModifier {
 
             VStack(spacing: 12) {
                 Image(systemName: feature.systemImage)
-                    .font(.system(size: 40))
+                    .font(.largeTitle)
+                    .imageScale(.large)
+                    .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
 
                 switch access {

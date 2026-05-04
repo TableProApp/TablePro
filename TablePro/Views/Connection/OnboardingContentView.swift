@@ -150,7 +150,9 @@ struct OnboardingContentView: View {
     private var getStartedPage: some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 48))
+                .font(.largeTitle)
+                .imageScale(.large)
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Color(nsColor: .systemGreen))
 
             Text("You're all set!")
