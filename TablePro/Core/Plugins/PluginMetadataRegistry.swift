@@ -152,6 +152,23 @@ struct PluginMetadataSnapshot: Sendable {
             capabilities: capabilities, schema: schema, editor: editor, connection: connection
         )
     }
+
+    func withIsDownloadable(_ newIsDownloadable: Bool) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: newIsDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
+            capabilities: capabilities, schema: schema, editor: editor, connection: connection
+        )
+    }
 }
 
 final class PluginMetadataRegistry: @unchecked Sendable {
@@ -159,6 +176,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
 
     private let lock = NSLock()
     private var snapshots: [String: PluginMetadataSnapshot] = [:]
+    private var defaultSnapshots: [String: PluginMetadataSnapshot] = [:]
     private var schemeIndex: [String: String] = [:]
     private var reverseTypeIndex: [String: String] = [:]
 
@@ -577,6 +595,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let allDefaults = defaults + registryPluginDefaults()
         for entry in allDefaults {
             snapshots[entry.typeId] = entry.snapshot
+            defaultSnapshots[entry.typeId] = entry.snapshot
             for scheme in entry.snapshot.urlSchemes {
                 schemeIndex[scheme.lowercased()] = entry.typeId
             }
@@ -594,7 +613,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         defer { lock.unlock() }
         var resolved = snapshot
         if preserveIcon, let existingIcon = snapshots[typeId]?.iconName {
-            resolved = snapshot.withIconName(existingIcon)
+            resolved = resolved.withIconName(existingIcon)
+        }
+        if let registryDefault = defaultSnapshots[typeId] {
+            resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
         }
         snapshots[typeId] = resolved
         for scheme in resolved.urlSchemes {
@@ -605,8 +627,16 @@ final class PluginMetadataRegistry: @unchecked Sendable {
     func unregister(typeId: String) {
         lock.lock()
         defer { lock.unlock() }
-        if let snapshot = snapshots.removeValue(forKey: typeId) {
-            for scheme in snapshot.urlSchemes {
+        let previous = snapshots.removeValue(forKey: typeId)
+        if let registryDefault = defaultSnapshots[typeId] {
+            snapshots[typeId] = registryDefault
+            for scheme in registryDefault.urlSchemes {
+                schemeIndex[scheme.lowercased()] = typeId
+            }
+            return
+        }
+        if let previous {
+            for scheme in previous.urlSchemes {
                 schemeIndex.removeValue(forKey: scheme.lowercased())
             }
         }
