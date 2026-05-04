@@ -404,16 +404,11 @@ struct WelcomeWindowView: View {
     private var emptyState: some View {
         if vm.searchText.isEmpty {
             EmptyStateView(
-                icon: "square.stack.3d.up",
-                title: String(localized: "Welcome to TablePro"),
-                description: String(localized: "Open a sample database to explore, or add your own connection."),
-                actionTitle: String(localized: "Open Sample Database"),
-                actionSystemImage: "cylinder.split.1x2",
-                action: { vm.openSampleDatabase() },
-                secondaryActionTitle: String(localized: "Add New Connection"),
-                secondaryActionSystemImage: "plus.circle",
-                secondaryAction: { ConnectionFormWindowFactory.openOrFront() },
-                footerText: String(localized: "The sample is a real SQLite database with 11 tables (Chinook music store). Edit it to learn the app.")
+                icon: "cylinder.split.1x2",
+                title: String(localized: "No Connections"),
+                description: String(localized: "Try the sample database, or click + above to add your own."),
+                actionTitle: String(localized: "Try Sample Database"),
+                action: { vm.openSampleDatabase() }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

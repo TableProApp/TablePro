@@ -52,20 +52,17 @@ struct EmptyStateView: View {
                 Text(description)
             }
         } actions: {
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 if let actionTitle, let action {
                     Button(action: action) {
                         primaryButtonLabel(title: actionTitle)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
                 }
                 if let secondaryActionTitle, let secondaryAction {
                     Button(action: secondaryAction) {
                         secondaryButtonLabel(title: secondaryActionTitle)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+                    .buttonStyle(.borderless)
                 }
                 if let footerText {
                     Text(footerText)
