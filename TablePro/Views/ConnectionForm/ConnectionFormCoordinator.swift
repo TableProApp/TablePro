@@ -25,12 +25,12 @@ final class ConnectionFormCoordinator {
     let connectionId: UUID?
     private(set) var originalConnection: DatabaseConnection?
 
-    let network: NetworkPaneViewModel
-    let auth: AuthPaneViewModel
-    let ssh: SSHPaneViewModel
-    let ssl: SSLPaneViewModel
-    let customization: CustomizationPaneViewModel
-    let advanced: AdvancedPaneViewModel
+    var network: NetworkPaneViewModel
+    var auth: AuthPaneViewModel
+    var ssh: SSHPaneViewModel
+    var ssl: SSLPaneViewModel
+    var customization: CustomizationPaneViewModel
+    var advanced: AdvancedPaneViewModel
 
     var selectedPane: ConnectionFormPane = .general
     var hasLoadedData: Bool = false
