@@ -110,7 +110,12 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableRowsProvider = tableRowsProvider
         context.coordinator.tableRowsMutator = tableRowsMutator
         context.coordinator.sortedIDs = sortedIDs
-        context.coordinator.updateCache()
+        // Intentionally do not prime cachedRowCount/cachedColumnCount here.
+        // They represent what NSTableView has actually rendered. Leaving them
+        // at 0 ensures the first `updateNSView` detects a structure change
+        // and triggers `reloadData()` — without this, a recreated grid (e.g.
+        // after a Structure/JSON tab toggle) finds the cache already matching
+        // the registry rows and skips the reload, leaving the table empty.
         context.coordinator.syncDisplayFormats(displayFormats)
         context.coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)

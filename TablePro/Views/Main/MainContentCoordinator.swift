@@ -290,8 +290,13 @@ final class MainContentCoordinator {
     /// Background tabs are re-fetched automatically when selected.
     func evictInactiveRowData() {
         let selectedId = tabManager.selectedTabId
-        for tab in tabManager.tabs where tab.id != selectedId && !tab.pendingChanges.hasChanges {
+        for (index, tab) in tabManager.tabs.enumerated()
+        where tab.id != selectedId && !tab.pendingChanges.hasChanges {
             tabSessionRegistry.evict(for: tab.id)
+            // Mirror the session's epoch bump back to the QueryTab so the
+            // `.task(id:)` in MainEditorContentView re-fires lazy-load on
+            // re-selection. The session bump alone is not observed by SwiftUI.
+            tabManager.tabs[index].loadEpoch &+= 1
         }
     }
 

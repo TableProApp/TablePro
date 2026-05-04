@@ -65,8 +65,11 @@ final class TabSessionRegistry {
         sessions[tabId]?.isEvicted ?? false
     }
 
-    /// Evict row data for a tab. Sets `isEvicted = true` and bumps `loadEpoch`
-    /// so SwiftUI's `.task(id:)` lazy-load re-fires.
+    /// Evict row data for a tab. Sets `isEvicted = true`, clears rows, and
+    /// bumps the session's `loadEpoch`. Note that SwiftUI's `.task(id:)` keys
+    /// on `QueryTab.loadEpoch` (the value-type tab in `tabManager.tabs`), not
+    /// on `TabSession.loadEpoch` — so callers that need lazy-load to re-fire
+    /// must also bump `tabManager.tabs[i].loadEpoch` separately.
     ///
     /// Returns early if the session has no rows to evict — calling `evict` on
     /// a tab with empty rows is a no-op (no `isEvicted` change, no epoch bump),
