@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- HIG sweep across the UI: 61 hardcoded `.font(.system(size: N))` callsites moved to Dynamic Type styles (`.title`, `.body`, `.caption2`, etc.) so text scales with the user's accessibility settings; 23 named-color foreground styles (`.orange`, `.red`, etc.) replaced with semantic `Color(nsColor: .systemX)` equivalents that adapt to Increase Contrast; 8 `TextField` search inputs migrated to a wrapped `NSSearchField` (gains lens icon, cancel "x", recent searches, and assistive-tech cues); redundant `.textFieldStyle(.roundedBorder)` removed inside `Form { }` to let macOS render the standard grouped-form chrome; deleted ~250 lines of dead SwiftUI toolbar code already replaced by the native `NSToolbar` configuration.
 - Internal: Welcome, Connection Form, and Integrations Activity windows use SwiftUI scenes instead of imperative `NSWindow` factories. Fixes a `NSWindowSectionController` assertion crash on Integrations Activity deallocation. Integrations Activity now reopens on next launch if it was open at quit (matches Console.app). Welcome and Connection Form positions reset to defaults once after this update; both windows continue to ignore session restoration since they are flow windows.
 
 ## [0.38.0] - 2026-05-04
