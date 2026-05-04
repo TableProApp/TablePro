@@ -112,7 +112,7 @@ struct GeneralSettingsView: View {
         settings: .constant(.default),
         tabSettings: .constant(.default),
         historySettings: .constant(.default),
-        updaterBridge: UpdaterBridge(),
+        updaterBridge: UpdaterBridge.shared,
         onResetAll: {}
     )
     .frame(width: 450, height: 500)

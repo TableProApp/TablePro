@@ -67,5 +67,5 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
-        .environment(UpdaterBridge())
+        .environment(UpdaterBridge.shared)
 }

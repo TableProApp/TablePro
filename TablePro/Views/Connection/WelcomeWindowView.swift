@@ -31,9 +31,8 @@ struct WelcomeWindowView: View {
                     .transition(.move(edge: .trailing))
             }
         }
-        .background(.background)
+        .background(VisualEffectBackground(material: .underWindowBackground, blendingMode: .behindWindow))
         .ignoresSafeArea()
-        .frame(minWidth: 600, idealWidth: 700, minHeight: 400, idealHeight: 450)
         .onAppear {
             vm.setUp()
             focus = .search
@@ -182,32 +181,26 @@ struct WelcomeWindowView: View {
 
     private var rightPanel: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button(action: { ConnectionFormWindowFactory.openOrFront() }) {
-                    Image(systemName: "plus")
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(
-                            width: 24,
-                            height: 24
-                        )
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "New Connection (⌘N)"))
-                .accessibilityLabel(String(localized: "New Connection"))
+            HStack(spacing: 0) {
+                HStack(spacing: 4) {
+                    WelcomeToolbarButton(
+                        systemImage: "plus",
+                        help: String(localized: "New Connection (⌘N)"),
+                        accessibilityLabel: String(localized: "New Connection")
+                    ) {
+                        ConnectionFormWindowFactory.openOrFront()
+                    }
 
-                Button(action: { vm.pendingMoveToNewGroup = []; vm.activeSheet = .newGroup(parentId: nil) }) {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(
-                            width: 24,
-                            height: 24
-                        )
+                    WelcomeToolbarButton(
+                        systemImage: "folder.badge.plus",
+                        help: String(localized: "New Group"),
+                        accessibilityLabel: String(localized: "New Group")
+                    ) {
+                        vm.pendingMoveToNewGroup = []
+                        vm.activeSheet = .newGroup(parentId: nil)
+                    }
                 }
-                .buttonStyle(.borderless)
-                .help(String(localized: "New Group"))
-                .accessibilityLabel(String(localized: "New Group"))
+                .padding(.trailing, 12)
 
                 NativeSearchField(
                     text: $vm.searchText,
@@ -370,7 +363,7 @@ struct WelcomeWindowView: View {
                 DatabaseType(rawValue: linked.connection.type).iconImage
                     .frame(width: 28, height: 28)
                 Image(systemName: "folder.fill")
-                    .font(.system(size: 8))
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .offset(x: 2, y: 2)
             }
@@ -493,7 +486,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
                 .foregroundStyle(.secondary)
 
             Text("\(vm.connectionCountByGroup[group.id] ?? 0)")
-                .font(.system(size: 9))
+                .font(.caption2)
                 .foregroundStyle(.tertiary)
 
             Spacer()
@@ -594,6 +587,56 @@ private struct TreeRowsView<ConnectionContent: View>: View {
         } label: {
             Label(String(localized: "Delete Group"), systemImage: "trash")
         }
+    }
+}
+
+// MARK: - Visual Effect Background
+
+private struct VisualEffectBackground: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = .followsWindowActiveState
+        view.isEmphasized = true
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
+        view.blendingMode = blendingMode
+    }
+}
+
+// MARK: - Toolbar Button
+
+private struct WelcomeToolbarButton: View {
+    let systemImage: String
+    let help: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .onHover { isHovering = $0 }
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 

@@ -9,6 +9,8 @@ struct WelcomeLeftPanel: View {
     let onActivateLicense: () -> Void
     let onCreateConnection: () -> Void
 
+    private let updaterBridge = UpdaterBridge.shared
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -16,53 +18,28 @@ struct WelcomeLeftPanel: View {
             VStack(spacing: 16) {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
-                    .frame(width: 80, height: 80)
-                    .shadow(color: Color.accentColor.opacity(0.4), radius: 20, x: 0, y: 0)
+                    .frame(width: 96, height: 96)
+                    .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
 
                 VStack(spacing: 6) {
                     Text("TablePro")
-                        .font(.system(size: 24, weight: .semibold))
+                        .font(.title2.weight(.semibold))
 
-                    Text("Version \(Bundle.main.appVersion)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    versionLine
 
-                    if LicenseManager.shared.status.isValid {
-                        Label("Pro", systemImage: "checkmark.seal.fill")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color(nsColor: .systemGreen))
-                    } else {
-                        Button(action: onActivateLicense) {
-                            Text("Activate License")
-                                .font(.subheadline)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                    }
+                    licenseLine
                 }
             }
 
             Spacer()
-                .frame(height: 48)
+                .frame(height: 32)
 
-            VStack(spacing: 12) {
-                Button {
-                    if let url = URL(string: "https://github.com/sponsors/datlechin") {
-                        NSWorkspace.shared.open(url)
-                    }
-                } label: {
-                    Label("Sponsor TablePro", systemImage: "heart")
-                }
-                .buttonStyle(.plain)
-                .font(.subheadline)
-                .foregroundStyle(.pink)
-
-                Button(action: onCreateConnection) {
-                    Label("Create connection...", systemImage: "plus.circle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(WelcomeButtonStyle())
+            Button(action: onCreateConnection) {
+                Label("Create connection...", systemImage: "plus.circle")
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
             .padding(.horizontal, 32)
 
             Spacer()
@@ -79,30 +56,69 @@ struct WelcomeLeftPanel: View {
                     KeyboardHint(keys: "⌘,", label: nil)
                 }
             }
-            .font(.subheadline)
+            .font(.caption)
             .foregroundStyle(.tertiary)
             .padding(.horizontal, 12)
             .padding(.bottom, 20)
         }
         .frame(width: 260)
     }
+
+    private var versionLine: some View {
+        HStack(spacing: 6) {
+            Text("Version \(Bundle.main.appVersion)")
+                .foregroundStyle(.secondary)
+            Text(verbatim: "·")
+                .foregroundStyle(.tertiary)
+            Button {
+                updaterBridge.checkForUpdates()
+            } label: {
+                Text("Check for Updates...")
+            }
+            .buttonStyle(.link)
+            .disabled(!updaterBridge.canCheckForUpdates)
+        }
+        .font(.callout)
+    }
+
+    @ViewBuilder
+    private var licenseLine: some View {
+        if LicenseManager.shared.status.isValid {
+            Label("Pro", systemImage: "checkmark.seal.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color(nsColor: .systemGreen))
+        } else {
+            HoverAccentButton(action: onActivateLicense) {
+                Text("Activate License")
+                    .font(.subheadline)
+            }
+        }
+    }
 }
 
-struct WelcomeButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.body)
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        Color(
-                            nsColor: configuration.isPressed
-                                ? .controlBackgroundColor : .quaternaryLabelColor))
-            )
+private struct HoverAccentButton<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            label()
+                .foregroundStyle(isHovering
+                    ? AnyShapeStyle(Color.accentColor)
+                    : AnyShapeStyle(HierarchicalShapeStyle.secondary))
+                .underline(isHovering, color: .accentColor)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
     }
 }
 
@@ -118,7 +134,7 @@ struct KeyboardHint: View {
                 .padding(.vertical, 2)
                 .background(
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color(nsColor: .quaternaryLabelColor))
+                        .fill(.tertiary.opacity(0.4))
                 )
             if let label {
                 Text(label)

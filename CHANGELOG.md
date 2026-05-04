@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Welcome window: "Check for Updates" link next to the version number triggers Sparkle without leaving the screen
 - Window menu: "Integrations Activity" opens a dedicated, resizable window for the MCP activity log and connected clients. The window has a sidebar (Activity Log / Connected Clients) and a unified toolbar with native search, filter menu, refresh, and export. Window size is remembered across launches.
 - Sample database (Chinook) bundled — open from welcome screen with one click; reset via File menu
 - Connection string detection — paste a `postgres://`, `mysql://`, `redis://`, or `mongodb://` URL, then click Use to auto-fill the connection form
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Welcome window UI tightened to macOS HIG: app icon shows a subtle drop shadow instead of an accent-color glow, version line uses dynamic text styles, the "Sponsor" button is removed, the "Create connection" button uses the bordered control style, and toolbar icon buttons (+ / new group) gain a hover background. Activate License now uses the link button style.
 - Settings > Integrations is now a flat preferences pane per macOS HIG. The activity log, the connected-clients list, and the setup instructions have moved out of Settings: activity and connections live in the new Integrations Activity window (Window menu), and setup instructions open in a "Connect a Client…" sheet from the Settings pane. Settings keeps only configuration: server toggle, status, port, row limits, query timeout, authentication tokens, and network options.
 - MCP: idle session timeout raised from 5 to 15 minutes.
 - MCP: complete internal rewrite of the server, stdio bridge, and protocol dispatcher for spec compliance. Public API of `MCPServerManager` and the on-disk handshake format are unchanged; clients do not need to re-pair.

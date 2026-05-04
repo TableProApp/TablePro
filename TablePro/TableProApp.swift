@@ -627,7 +627,7 @@ struct TableProApp: App {
     var appDelegate
 
     @State private var settingsManager = AppSettingsManager.shared
-    @State private var updaterBridge = UpdaterBridge()
+    @State private var updaterBridge = UpdaterBridge.shared
     @State private var commandRegistry = CommandActionsRegistry.shared
 
     init() {
