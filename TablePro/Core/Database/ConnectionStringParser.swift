@@ -1,27 +1,22 @@
-//
-//  ConnectionStringParser.swift
-//  TablePro
-//
-
 import Foundation
 
-public struct ParsedConnection: Equatable {
-    public let type: DatabaseType
-    public let host: String
-    public let port: Int
-    public let username: String?
-    public let password: String?
-    public let database: String?
-    public let useSSL: Bool
-    public let rawScheme: String
-    public let queryParameters: [String: String]
+struct ParsedConnection: Equatable {
+    let type: DatabaseType
+    let host: String
+    let port: Int
+    let username: String?
+    let password: String?
+    let database: String?
+    let useSSL: Bool
+    let rawScheme: String
+    let queryParameters: [String: String]
 }
 
-public enum ConnectionStringParserError: Error, LocalizedError, Equatable {
+enum ConnectionStringParserError: Error, LocalizedError, Equatable {
     case unsupportedScheme(String)
     case malformedURL
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .unsupportedScheme(let scheme):
             return String(format: String(localized: "Unsupported connection scheme: %@"), scheme)
@@ -31,8 +26,8 @@ public enum ConnectionStringParserError: Error, LocalizedError, Equatable {
     }
 }
 
-public enum ConnectionStringParser {
-    public static func parse(_ string: String) throws -> ParsedConnection {
+enum ConnectionStringParser {
+    static func parse(_ string: String) throws -> ParsedConnection {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw ConnectionStringParserError.malformedURL
