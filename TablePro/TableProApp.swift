@@ -580,6 +580,12 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Button(String(localized: "Integrations Activity")) {
+                IntegrationsActivityWindowFactory.openOrFront()
+            }
+
+            Divider()
+
             Button("Bring All to Front") {
                 NSApp.arrangeInFront(nil)
             }

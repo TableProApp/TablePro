@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Window menu: "Integrations Activity" opens a dedicated, resizable window for the MCP activity log and connected clients. The window has a sidebar (Activity Log / Connected Clients) and a unified toolbar with native search, filter menu, refresh, and export. Window size is remembered across launches.
 - Sample database (Chinook) bundled — open from welcome screen with one click; reset via File menu
 - Connection string detection — paste a `postgres://`, `mysql://`, `redis://`, or `mongodb://` URL, then click Use to auto-fill the connection form
 - Activation telemetry: the daily heartbeat now reports three write-once timestamps per device (first connection attempt, first successful connection, first executed query), so we can see where new users drop off during activation. The values are stored locally in UserDefaults, set once and never overwritten, and the server also refuses to overwrite them once received. Both Mac and iOS send the same fields.
@@ -31,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Settings > Integrations is now a flat preferences pane per macOS HIG. The activity log, the connected-clients list, and the setup instructions have moved out of Settings: activity and connections live in the new Integrations Activity window (Window menu), and setup instructions open in a "Connect a Client…" sheet from the Settings pane. Settings keeps only configuration: server toggle, status, port, row limits, query timeout, authentication tokens, and network options.
 - MCP: idle session timeout raised from 5 to 15 minutes.
 - MCP: complete internal rewrite of the server, stdio bridge, and protocol dispatcher for spec compliance. Public API of `MCPServerManager` and the on-disk handshake format are unchanged; clients do not need to re-pair.
 - Internal: introduce `TabSession` as the foundation type for the editor tab/window subsystem rewrite. Currently a parallel structure mirroring `QueryTab`; subsequent PRs migrate state ownership and lifecycle hooks per `docs/architecture/tab-subsystem-rewrite.md`. No user-visible behavior change in this PR.

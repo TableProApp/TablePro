@@ -1481,6 +1481,9 @@
     "%1$@, %2$@" : {
       "shouldTranslate" : false
     },
+    "%d connected" : {
+
+    },
     "%d connections found" : {
       "localizations" : {
         "tr" : {
@@ -3854,6 +3857,9 @@
         }
       }
     },
+    "Active %@" : {
+
+    },
     "Active Connections" : {
       "localizations" : {
         "tr" : {
@@ -3986,7 +3992,14 @@
         }
       }
     },
+    "Activity" : {
+
+    },
+    "Activity is retained for 90 days" : {
+
+    },
     "Activity is retained for 90 days." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7837,9 +7850,6 @@
         }
       }
     },
-    "Bundled sample database" : {
-
-    },
     "Bytes Received" : {
       "localizations" : {
         "tr" : {
@@ -8846,6 +8856,12 @@
         }
       }
     },
+    "Choose a section from the sidebar." : {
+
+    },
+    "Choose your client and follow the steps to connect it to TablePro." : {
+
+    },
     "Claude Code" : {
       "localizations" : {
         "tr" : {
@@ -9045,6 +9061,9 @@
         }
       }
     },
+    "Clear Filters" : {
+
+    },
     "Clear History..." : {
       "localizations" : {
         "tr" : {
@@ -9135,6 +9154,7 @@
       }
     },
     "Clear search" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -9557,6 +9577,9 @@
           }
         }
       }
+    },
+    "Clients will appear here while they have an active MCP session." : {
+
     },
     "Clipboard is empty or contains no text data." : {
       "localizations" : {
@@ -10706,6 +10729,9 @@
           }
         }
       }
+    },
+    "Connect a Client…" : {
+
     },
     "Connect Anyway" : {
       "localizations" : {
@@ -15731,6 +15757,9 @@
     "Disconnect from a database" : {
 
     },
+    "Disconnect the selected client" : {
+
+    },
     "Disconnected" : {
       "localizations" : {
         "tr" : {
@@ -18839,6 +18868,7 @@
       }
     },
     "Export activity to CSV" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -19374,6 +19404,7 @@
       }
     },
     "Export…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21035,6 +21066,9 @@
           }
         }
       }
+    },
+    "Filter activity" : {
+
     },
     "Filter column" : {
       "localizations" : {
@@ -24620,6 +24654,9 @@
         }
       }
     },
+    "Integrations Activity" : {
+
+    },
     "Integrations: Failed" : {
       "localizations" : {
         "tr" : {
@@ -27009,6 +27046,7 @@
       }
     },
     "Local only - not synced to iCloud" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27029,6 +27067,9 @@
           }
         }
       }
+    },
+    "Local only, not synced to iCloud" : {
+
     },
     "localhost" : {
       "localizations" : {
@@ -29463,6 +29504,9 @@
         }
       }
     },
+    "No activity matches the current filters." : {
+
+    },
     "No activity yet" : {
       "localizations" : {
         "tr" : {
@@ -30043,6 +30087,9 @@
           }
         }
       }
+    },
+    "No matching activity" : {
+
     },
     "No matching connections" : {
       "extractionState" : "stale",
@@ -41089,6 +41136,7 @@
       }
     },
     "Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -50335,6 +50383,9 @@
         }
       }
     },
+    "via %@" : {
+
+    },
     "View" : {
       "localizations" : {
         "tr" : {
@@ -50356,6 +50407,9 @@
           }
         }
       }
+    },
+    "View Activity…" : {
+
     },
     "View ER Diagram" : {
       "localizations" : {

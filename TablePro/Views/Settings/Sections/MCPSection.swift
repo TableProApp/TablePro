@@ -4,13 +4,12 @@ import SwiftUI
 struct MCPSection: View {
     @Binding var settings: MCPSettings
     @State private var manager = MCPServerManager.shared
-    @State private var selectedTool: IntegrationClient = .claudeDesktop
     @State private var tokenList: [MCPAuthToken] = []
+    @State private var showSetupSheet = false
     @State private var showCreateSheet = false
     @State private var showRevealSheet = false
     @State private var revealedToken: MCPAuthToken?
     @State private var revealedPlaintext: String = ""
-    @State private var disconnectCandidate: MCPServerManager.SessionSnapshot?
 
     var body: some View {
         Section(String(localized: "Integrations")) {
@@ -27,8 +26,7 @@ struct MCPSection: View {
             configurationSection
             authenticationSection
             networkSection
-            connectedClientsSection
-            setupSection
+            helpSection
 
             Section {
                 Text(String(localized: "AI access policies are configured per-connection in each connection's settings."))
@@ -117,80 +115,18 @@ struct MCPSection: View {
         }
     }
 
-    private var setupSection: some View {
-        Section(String(localized: "Connect a Client")) {
-            DisclosureGroup(String(localized: "Setup Instructions")) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Picker(String(localized: "Client"), selection: $selectedTool) {
-                        ForEach(IntegrationClient.allCases) { tool in
-                            Text(tool.displayName).tag(tool)
-                        }
-                    }
-
-                    MCPSetupInstructions(tool: selectedTool, port: settings.port)
-                }
-                .padding(.top, 4)
+    private var helpSection: some View {
+        Section {
+            Button(String(localized: "Connect a Client…")) {
+                showSetupSheet = true
+            }
+            Button(String(localized: "View Activity…")) {
+                IntegrationsActivityWindowFactory.openOrFront()
             }
         }
-    }
-
-    private var connectedClientsSection: some View {
-        Section(String(localized: "Connected Clients")) {
-            if manager.connectedClients.isEmpty {
-                Text(String(localized: "No clients connected"))
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(manager.connectedClients) { client in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 4) {
-                                Text(client.clientName)
-                                if let version = client.clientVersion {
-                                    Text(version)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Text(client.connectedSince, style: .relative)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button(role: .destructive) {
-                            disconnectCandidate = client
-                        } label: {
-                            Text(String(localized: "Disconnect"))
-                        }
-                        .controlSize(.small)
-                    }
-                }
-            }
+        .sheet(isPresented: $showSetupSheet) {
+            IntegrationsSetupSheet(port: settings.port)
         }
-        .alert(
-            String(localized: "Disconnect client?"),
-            isPresented: disconnectAlertBinding,
-            presenting: disconnectCandidate
-        ) { client in
-            Button(String(localized: "Cancel"), role: .cancel) {
-                disconnectCandidate = nil
-            }
-            Button(String(localized: "Disconnect"), role: .destructive) {
-                Task { await manager.disconnectClient(client.id) }
-                disconnectCandidate = nil
-            }
-        } message: { client in
-            Text(String(format: String(localized: "“%@” will be disconnected and any in-flight requests will be cancelled."), client.clientName))
-        }
-    }
-
-    private var disconnectAlertBinding: Binding<Bool> {
-        Binding(
-            get: { disconnectCandidate != nil },
-            set: { isPresented in
-                if !isPresented {
-                    disconnectCandidate = nil
-                }
-            }
-        )
     }
 
     private func handleGenerate(name: String, permissions: TokenPermissions, connectionIds: Set<UUID>?, expiresAt: Date?) {
@@ -214,82 +150,6 @@ struct MCPSection: View {
     private func refreshTokens() async {
         guard let store = MCPServerManager.shared.tokenStore else { return }
         tokenList = await store.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
-    }
-}
-
-private struct MCPSetupInstructions: View {
-    let tool: IntegrationClient
-    let port: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(index + 1).")
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .frame(width: 20, alignment: .trailing)
-                    Text(step)
-                        .textSelection(.enabled)
-                }
-            }
-
-            if let snippet = configSnippet {
-                CopyableCodeBlock(text: snippet)
-            }
-            if let command {
-                CopyableCodeBlock(text: command)
-            }
-        }
-        .font(.callout)
-    }
-
-    private var bridgeBinaryPath: String {
-        Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/tablepro-mcp").path
-    }
-
-    private var steps: [String] {
-        switch tool {
-        case .claudeDesktop:
-            return [
-                String(localized: "Open Claude Desktop, go to Settings > Developer"),
-                String(localized: "Click \"Edit Config\" to open claude_desktop_config.json"),
-                String(localized: "Add the JSON below inside the file and save"),
-                String(localized: "Restart Claude Desktop")
-            ]
-        case .claudeCode:
-            return [String(localized: "Run the command below in your terminal")]
-        case .cursor:
-            return [
-                String(localized: "Open Cursor, go to Settings > MCP"),
-                String(localized: "Click \"+ Add new global MCP server\""),
-                String(localized: "Paste the JSON below and save")
-            ]
-        }
-    }
-
-    private var configSnippet: String? {
-        switch tool {
-        case .claudeDesktop, .cursor:
-            return """
-            {
-              "mcpServers": {
-                "tablepro": {
-                  "command": "\(bridgeBinaryPath)"
-                }
-              }
-            }
-            """
-        case .claudeCode:
-            return nil
-        }
-    }
-
-    private var command: String? {
-        switch tool {
-        case .claudeCode: "claude mcp add tablepro -- \(bridgeBinaryPath)"
-        default: nil
-        }
     }
 }
 
