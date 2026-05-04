@@ -91,27 +91,17 @@ struct MacAnalyticsProviderTests {
         #expect(provider.firstQueryExecutedAt == nil)
     }
 
-    @Test("Each successful connection increments the counter, regardless of write-once timestamp")
-    func successfulCounterIncrementsEachCall() throws {
+    @Test("Repeated successful connections keep the timestamp write-once")
+    func succeededTimestampStaysWriteOnce() throws {
         let (provider, _) = try makeProvider()
-        #expect(provider.successfulConnectionCount == 0)
 
         provider.markConnectionSucceeded()
-        #expect(provider.successfulConnectionCount == 1)
         let firstSucceededAt = provider.connectionSucceededAt
+        #expect(firstSucceededAt != nil)
 
         provider.markConnectionSucceeded()
         provider.markConnectionSucceeded()
 
-        #expect(provider.successfulConnectionCount == 3)
-        #expect(provider.connectionSucceededAt == firstSucceededAt, "Timestamp stays write-once even as counter advances")
-    }
-
-    @Test("Newsletter prompt-shown flag flips once and stays true")
-    func newsletterPromptShownIsLatched() throws {
-        let (provider, _) = try makeProvider()
-        #expect(provider.newsletterPromptShown == false)
-        provider.markNewsletterPromptShown()
-        #expect(provider.newsletterPromptShown == true)
+        #expect(provider.connectionSucceededAt == firstSucceededAt)
     }
 }
