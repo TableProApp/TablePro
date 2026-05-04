@@ -9,6 +9,7 @@ import SwiftUI
 @MainActor
 internal enum WelcomeWindowFactory {
     private static let identifier = NSUserInterfaceItemIdentifier("welcome")
+    private static let autosaveName: NSWindow.FrameAutosaveName = "WelcomeWindow"
     private static let contentSize = NSSize(width: 700, height: 450)
 
     internal static func openOrFront() {
@@ -48,8 +49,8 @@ internal enum WelcomeWindowFactory {
         window.standardWindowButton(.zoomButton)?.isHidden = true
         window.collectionBehavior.insert(.fullScreenNone)
         window.setContentSize(contentSize)
-        window.center()
         window.isReleasedWhenClosed = false
+        window.applyAutosaveName(autosaveName)
         return window
     }
 }

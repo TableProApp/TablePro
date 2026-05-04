@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Welcome window, connection form, and feedback panel now remember their position and size across launches. Previously these always reopened centered on screen because `setFrameAutosaveName` was never set on the underlying `NSWindow`/`NSPanel`. They now use the same native AppKit frame autosave mechanism the main editor and Settings windows already used.
 - MCP: GET `/mcp` now opens a real SSE notification stream. Previously the GET path was routed through the request dispatcher, which had no handler for it, so the connection was closed immediately and `notifications/progress` events were dropped.
 - MCP: concurrent tool calls no longer serialize at the dispatcher loop. Each exchange is dispatched in its own child task while session-state guards still serialize per-session work.
 - MCP: server validates the `protocolVersion` requested in `initialize` against a supported set and rejects unknown versions with `-32600 invalid_request` instead of silently echoing back whatever the client sent.

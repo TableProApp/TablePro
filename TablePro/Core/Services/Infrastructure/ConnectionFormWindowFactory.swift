@@ -9,6 +9,7 @@ import SwiftUI
 @MainActor
 internal enum ConnectionFormWindowFactory {
     private static let baseIdentifier = "connection-form"
+    private static let autosaveName: NSWindow.FrameAutosaveName = "ConnectionFormWindow"
 
     internal static func openOrFront(connectionId: UUID? = nil) {
         if let existing = existingWindow(for: connectionId) {
@@ -53,8 +54,8 @@ internal enum ConnectionFormWindowFactory {
         window.standardWindowButton(.zoomButton)?.isEnabled = false
         window.styleMask.remove(.miniaturizable)
         window.collectionBehavior.insert(.fullScreenNone)
-        window.center()
         window.isReleasedWhenClosed = false
+        window.applyAutosaveName(autosaveName)
         return window
     }
 }
