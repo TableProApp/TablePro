@@ -619,22 +619,13 @@ private struct WelcomeToolbarButton: View {
     let accessibilityLabel: String
     let action: () -> Void
 
-    @State private var isHovering = false
-
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.body)
-                .foregroundStyle(.primary)
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
-                )
-                .contentShape(Rectangle())
+                .frame(width: 16, height: 16)
         }
-        .buttonStyle(.borderless)
-        .onHover { isHovering = $0 }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
         .help(help)
         .accessibilityLabel(accessibilityLabel)
     }
