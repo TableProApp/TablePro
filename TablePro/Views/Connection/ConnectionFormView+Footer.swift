@@ -13,23 +13,6 @@ import TableProPluginKit
 extension ConnectionFormView {
     @ToolbarContentBuilder
     var connectionFormToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            Button(action: testConnection) {
-                HStack(spacing: 6) {
-                    if isTesting {
-                        ProgressView().controlSize(.small)
-                    } else if testSucceeded {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color(nsColor: .systemGreen))
-                    } else {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                    }
-                    Text(testSucceeded ? String(localized: "Connected") : String(localized: "Test Connection"))
-                }
-            }
-            .disabled(isTesting || isInstallingPlugin || !isValid)
-        }
-
         if !isNew {
             ToolbarItem(placement: .destructiveAction) {
                 Button(String(localized: "Delete"), role: .destructive) {
@@ -48,25 +31,49 @@ extension ConnectionFormView {
             }
         }
 
-        ToolbarItem(placement: .cancellationAction) {
+        ToolbarItemGroup(placement: .confirmationAction) {
             Button(String(localized: "Cancel")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
-        }
 
-        if isNew {
-            ToolbarItem(placement: .secondaryAction) {
+            if isNew {
                 Button(String(localized: "Save")) { saveConnection(connect: false) }
                     .disabled(isInstallingPlugin || !isValid)
             }
-        }
 
-        ToolbarItem(placement: .confirmationAction) {
             Button(isNew ? String(localized: "Save & Connect") : String(localized: "Save")) {
                 saveConnection(connect: isNew)
             }
             .keyboardShortcut(.defaultAction)
+            .buttonStyle(.borderedProminent)
             .disabled(isInstallingPlugin || !isValid)
         }
+    }
+
+    // MARK: - Test Connection Strip
+
+    var testConnectionStrip: some View {
+        HStack(spacing: 8) {
+            Button(action: testConnection) {
+                HStack(spacing: 6) {
+                    if isTesting {
+                        ProgressView().controlSize(.small)
+                    } else if testSucceeded {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color(nsColor: .systemGreen))
+                    } else {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(testSucceeded ? String(localized: "Connected") : String(localized: "Test Connection"))
+                }
+            }
+            .controlSize(.small)
+            .disabled(isTesting || isInstallingPlugin || !isValid)
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Import from URL Sheet

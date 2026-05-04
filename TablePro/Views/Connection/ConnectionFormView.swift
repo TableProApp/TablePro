@@ -170,6 +170,10 @@ struct ConnectionFormView: View {
 
                 // Tab form content
                 tabForm
+
+                Divider()
+
+                testConnectionStrip
             }
             .navigationTitle(
                 isNew ? String(localized: "New Connection") : String(localized: "Edit Connection")
