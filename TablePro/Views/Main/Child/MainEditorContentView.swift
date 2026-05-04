@@ -129,7 +129,6 @@ struct MainEditorContentView: View {
         }
         .onDisappear {
             cachedChangeManager = nil
-            coordinator.dataTabDelegate = nil
         }
         .task(id: TabLoadKey(
             tabId: tabManager.selectedTabId,
