@@ -71,10 +71,9 @@ struct ERDiagramToolbar: View {
             .accessibilityLabel(String(localized: "Export as PNG"))
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+        .padding(.vertical, 6)
+        .background(.thinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 0.5))
         .padding(12)
     }
 }
