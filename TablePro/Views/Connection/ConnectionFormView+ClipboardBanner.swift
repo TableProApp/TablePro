@@ -1,8 +1,3 @@
-//
-//  ConnectionFormView+ClipboardBanner.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import TableProPluginKit
@@ -13,39 +8,33 @@ internal struct ClipboardConnectionBanner: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 22, height: 22)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.accentColor.opacity(0.15))
-                )
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "Connection URL detected on the clipboard"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text(summary)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+            Text(String(localized: "Use clipboard URL"))
+                .font(.callout)
+                .foregroundStyle(.primary)
+
+            Text(summary)
+                .font(.system(size: 12).monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(0)
 
             Spacer(minLength: 8)
 
             Button(action: onUse) {
                 Text(String(localized: "Use"))
-                    .font(.caption.weight(.medium))
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.link)
             .controlSize(.small)
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
@@ -53,16 +42,15 @@ internal struct ClipboardConnectionBanner: View {
             .buttonStyle(.borderless)
             .accessibilityLabel(String(localized: "Dismiss"))
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
-                )
-        )
+        .frame(maxWidth: .infinity)
+        .background(.quaternary.opacity(0.4))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundStyle(.separator)
+        }
     }
 }
 
@@ -75,9 +63,6 @@ extension ConnectionFormView {
                 onUse: { applyClipboardCandidate(parsed) },
                 onDismiss: dismissClipboardCandidate
             )
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 0)
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
@@ -144,6 +129,8 @@ extension ConnectionFormView {
                 additionalFieldValues["mongoUseSrv"] = "true"
             }
         }
+
+        clipboardCandidate = nil
     }
 
     func dismissClipboardCandidate() {
