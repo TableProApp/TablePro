@@ -66,9 +66,9 @@ struct CreateDatabaseSheet: View {
             }
 
             if let error = errorMessage {
-                Text(error)
+                Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline)
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .foregroundStyle(Color(nsColor: .systemOrange))
             }
         }
         .padding(20)

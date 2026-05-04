@@ -64,9 +64,9 @@ struct ConnectionExportOptionsSheet: View {
                         .textFieldStyle(.roundedBorder)
 
                     if !passphrase.isEmpty && !confirmPassphrase.isEmpty && passphrase != confirmPassphrase {
-                        Text("Passphrases do not match")
+                        Label(String(localized: "Passphrases do not match"), systemImage: "exclamationmark.triangle.fill")
                             .font(.subheadline)
-                            .foregroundStyle(Color(nsColor: .systemRed))
+                            .foregroundStyle(Color(nsColor: .systemOrange))
                     }
                 }
             }

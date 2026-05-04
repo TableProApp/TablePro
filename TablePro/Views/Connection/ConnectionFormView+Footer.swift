@@ -139,9 +139,9 @@ extension ConnectionFormView {
             .textFieldStyle(.roundedBorder)
 
             if let urlParseError {
-                Text(urlParseError)
+                Label(urlParseError, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .foregroundStyle(Color(nsColor: .systemOrange))
             } else if let preview = parsedPreview {
                 urlPreviewView(preview)
             }

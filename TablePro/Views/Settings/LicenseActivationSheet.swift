@@ -43,9 +43,9 @@ struct LicenseActivationSheet: View {
                     .onSubmit { Task { await activate() } }
 
                 if let errorMessage {
-                    Text(errorMessage)
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemRed))
+                        .foregroundStyle(Color(nsColor: .systemOrange))
                 }
             }
             .padding(.horizontal, 32)

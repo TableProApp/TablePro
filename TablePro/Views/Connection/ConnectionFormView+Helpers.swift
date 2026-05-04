@@ -752,9 +752,9 @@ extension ConnectionFormView {
         case .badPermissions:
             Label(
                 String(localized: "~/.pgpass has incorrect permissions (needs chmod 0600)"),
-                systemImage: "xmark.circle.fill"
+                systemImage: "exclamationmark.triangle.fill"
             )
-            .foregroundStyle(Color(nsColor: .systemRed))
+            .foregroundStyle(Color(nsColor: .systemOrange))
             .font(.caption)
         case .matchFound:
             Label(

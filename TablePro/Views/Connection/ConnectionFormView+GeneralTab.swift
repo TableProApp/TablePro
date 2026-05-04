@@ -62,8 +62,8 @@ extension ConnectionFormView {
                             }
                         } else if let error = pluginInstallError {
                             HStack(spacing: 6) {
-                                Text(error)
-                                    .foregroundStyle(Color(nsColor: .systemRed))
+                                Label(error, systemImage: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(Color(nsColor: .systemOrange))
                                     .font(.caption)
                                     .lineLimit(2)
                                 Button("Retry") {

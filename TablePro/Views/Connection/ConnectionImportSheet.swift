@@ -139,9 +139,9 @@ struct ConnectionImportSheet: View {
                 .onSubmit { decryptFile() }
 
             if let passphraseError {
-                Text(passphraseError)
+                Label(passphraseError, systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline)
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .foregroundStyle(Color(nsColor: .systemOrange))
             }
 
             Spacer()

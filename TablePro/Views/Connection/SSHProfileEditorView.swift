@@ -352,9 +352,9 @@ struct SSHProfileEditorView: View {
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .systemGreen))
             } else if let testError {
-                Text(testError)
+                Label(testError, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .foregroundStyle(Color(nsColor: .systemOrange))
                     .lineLimit(2)
                     .truncationMode(.tail)
             }
