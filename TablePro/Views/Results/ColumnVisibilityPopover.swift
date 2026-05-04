@@ -38,7 +38,6 @@ struct ColumnVisibilityPopover: View {
             columnList
         }
         .frame(width: 260)
-        .frame(maxHeight: 420)
     }
 
     private var headerTitle: String {
@@ -87,6 +86,7 @@ struct ColumnVisibilityPopover: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .frame(minHeight: 120, maxHeight: 320)
     }
 
     private func columnRow(_ column: String) -> some View {
