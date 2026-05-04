@@ -94,49 +94,41 @@ struct PaginationControlsView: View {
     // MARK: - Settings Popover
 
     private var settingsPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Limit field
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Limit")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("Limit", text: $limitText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 120)
-                    .focused($isLimitFocused)
-                    .onSubmit {
-                        applyLimitChange()
+        VStack(spacing: 0) {
+            Form {
+                Section {
+                    LabeledContent(String(localized: "Limit")) {
+                        TextField("", text: $limitText)
+                            .multilineTextAlignment(.trailing)
+                            .focused($isLimitFocused)
+                            .onSubmit { applyLimitChange() }
                     }
-            }
-
-            // Offset field
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Offset")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("Offset", text: $offsetText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 120)
-                    .focused($isOffsetFocused)
-                    .onSubmit {
-                        applyOffsetChange()
+                    LabeledContent(String(localized: "Offset")) {
+                        TextField("", text: $offsetText)
+                            .multilineTextAlignment(.trailing)
+                            .focused($isOffsetFocused)
+                            .onSubmit { applyOffsetChange() }
                     }
+                }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
 
-            // Go button
-            Button(action: {
+            Divider()
+
+            Button {
                 applyLimitChange()
                 applyOffsetChange()
                 showSettings = false
-            }) {
-                Text("Go")
-                    .frame(maxWidth: .infinity)
+            } label: {
+                Text("Go").frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .controlSize(.regular)
+            .keyboardShortcut(.defaultAction)
+            .padding(12)
         }
-        .padding(12)
-        .frame(width: 160)
+        .frame(width: 220)
     }
 
     // MARK: - Helpers

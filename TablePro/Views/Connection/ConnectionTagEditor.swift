@@ -133,26 +133,31 @@ private struct CreateTagSheet: View {
     let onSave: (String, ConnectionColor) -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             Text("Create New Tag")
                 .font(.headline)
+                .padding(.vertical, 12)
 
-            TextField("Tag name", text: $tagName)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 200)
+            Divider()
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Color")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                ColorPaletteView(selectedColor: $tagColor, includesNone: false, size: .compact)
+            Form {
+                Section {
+                    LabeledContent("Name") {
+                        TextField("Tag name", text: $tagName)
+                    }
+                    LabeledContent("Color") {
+                        ColorPaletteView(selectedColor: $tagColor, includesNone: false, size: .compact)
+                    }
+                }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+
+            Divider()
 
             HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-
+                Button("Cancel") { dismiss() }
+                Spacer()
                 Button("Create") {
                     onSave(tagName, tagColor)
                     dismiss()
@@ -161,9 +166,9 @@ private struct CreateTagSheet: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(tagName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+            .padding(12)
         }
-        .padding(20)
-        .frame(width: 300)
+        .frame(width: 360)
         .onExitCommand {
             dismiss()
         }
