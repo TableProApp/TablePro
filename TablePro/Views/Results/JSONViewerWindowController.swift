@@ -9,10 +9,9 @@ import SwiftUI
 @MainActor
 final class JSONViewerWindowController {
     private static var activeWindows: [ObjectIdentifier: JSONViewerWindowController] = [:]
-    private static var lastCascadePoint: NSPoint = .zero
     private static let defaultSize = NSSize(width: 640, height: 500)
     private static let minSize = NSSize(width: 400, height: 300)
-    private static let sizeKey = "JSONViewerWindow.size"
+    private static let autosaveName: NSWindow.FrameAutosaveName = "JSONViewerWindow"
 
     private var window: NSWindow?
     private var closeObserver: NSObjectProtocol?
@@ -33,10 +32,8 @@ final class JSONViewerWindowController {
         isEditable: Bool,
         onCommit: ((String) -> Void)?
     ) {
-        let savedSize = UserDefaults.standard.size(forKey: Self.sizeKey) ?? Self.defaultSize
-
         let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: savedSize),
+            contentRect: NSRect(origin: .zero, size: Self.defaultSize),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -65,11 +62,8 @@ final class JSONViewerWindowController {
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
-        ) { [weak self] notification in
+        ) { [weak self] _ in
             Task { @MainActor in
-                if let closingWindow = notification.object as? NSWindow {
-                    UserDefaults.standard.set(closingWindow.frame.size, forKey: Self.sizeKey)
-                }
                 Self.activeWindows.removeValue(forKey: key)
                 self?.closeObserver.map { NotificationCenter.default.removeObserver($0) }
                 self?.closeObserver = nil
@@ -77,7 +71,7 @@ final class JSONViewerWindowController {
             }
         }
 
-        Self.lastCascadePoint = window.cascadeTopLeft(from: Self.lastCascadePoint)
+        window.applyAutosaveName(Self.autosaveName)
         window.makeKeyAndOrderFront(nil)
     }
 }
@@ -119,20 +113,5 @@ private struct JSONViewerWindowContent: View {
                 }
             } : nil
         )
-    }
-}
-
-// MARK: - UserDefaults + NSSize
-
-private extension UserDefaults {
-    func size(forKey key: String) -> NSSize? {
-        guard let string = string(forKey: key) else { return nil }
-        let size = NSSizeFromString(string)
-        guard size.width > 0, size.height > 0 else { return nil }
-        return size
-    }
-
-    func set(_ size: NSSize, forKey key: String) {
-        set(NSStringFromSize(size), forKey: key)
     }
 }
