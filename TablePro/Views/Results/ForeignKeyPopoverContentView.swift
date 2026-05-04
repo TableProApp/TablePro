@@ -41,9 +41,7 @@ struct ForeignKeyPopoverContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TextField("Search...", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .font(.body)
+            NativeSearchField(text: $searchText, placeholder: String(localized: "Search..."))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
 

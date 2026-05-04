@@ -94,9 +94,7 @@ private extension HistoryPanelView {
                     .frame(width: 120)
                 }
 
-                TextField(String(localized: "Search queries..."), text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
+                NativeSearchField(text: $searchText, placeholder: String(localized: "Search queries..."), controlSize: .small)
             }
             .padding(12)
 

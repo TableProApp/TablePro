@@ -57,8 +57,7 @@ struct BrowsePluginsView: View {
             HSplitView {
                 VStack(spacing: 0) {
                     HStack(spacing: 6) {
-                        TextField("Search...", text: $searchText)
-                            .textFieldStyle(.roundedBorder)
+                        NativeSearchField(text: $searchText, placeholder: String(localized: "Search..."))
                         Picker("", selection: $selectedCategory) {
                             Text("All").tag(RegistryCategory?.none)
                             ForEach(RegistryCategory.allCases) { category in

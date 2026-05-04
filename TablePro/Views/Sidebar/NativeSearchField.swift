@@ -14,6 +14,7 @@ struct NativeSearchField: NSViewRepresentable {
     var controlSize: NSControl.ControlSize = .regular
     var onMoveUp: (() -> Void)?
     var onMoveDown: (() -> Void)?
+    var onSubmit: (() -> Void)?
     var focusOnAppear: Bool = false
 
     func makeNSView(context: Context) -> NSSearchField {
@@ -38,6 +39,7 @@ struct NativeSearchField: NSViewRepresentable {
         field.placeholderString = placeholder
         context.coordinator.onMoveUp = onMoveUp
         context.coordinator.onMoveDown = onMoveDown
+        context.coordinator.onSubmit = onSubmit
     }
 
     func makeCoordinator() -> Coordinator {
@@ -48,6 +50,7 @@ struct NativeSearchField: NSViewRepresentable {
         var text: Binding<String>
         var onMoveUp: (() -> Void)?
         var onMoveDown: (() -> Void)?
+        var onSubmit: (() -> Void)?
 
         init(text: Binding<String>) {
             self.text = text
@@ -69,6 +72,10 @@ struct NativeSearchField: NSViewRepresentable {
             }
             if commandSelector == #selector(NSResponder.moveDown(_:)), let onMoveDown {
                 onMoveDown()
+                return true
+            }
+            if commandSelector == #selector(NSResponder.insertNewline(_:)), let onSubmit {
+                onSubmit()
                 return true
             }
             return false

@@ -152,8 +152,7 @@ struct PairingApprovalSheet: View {
                 .foregroundStyle(.secondary)
         } else {
             HStack {
-                TextField(String(localized: "Search connections"), text: $connectionSearch)
-                    .textFieldStyle(.roundedBorder)
+                NativeSearchField(text: $connectionSearch, placeholder: String(localized: "Search connections"))
                 Spacer()
                 Button(String(localized: "Select All")) {
                     selectedConnectionIds.formUnion(filteredConnections.map(\.id))

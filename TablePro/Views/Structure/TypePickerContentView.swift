@@ -52,12 +52,13 @@ struct TypePickerContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TextField("Search or type...", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .font(.body)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 8)
-                .onSubmit { commitFreeform() }
+            NativeSearchField(
+                text: $searchText,
+                placeholder: String(localized: "Search or type..."),
+                onSubmit: { commitFreeform() }
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
 
             Divider()
 

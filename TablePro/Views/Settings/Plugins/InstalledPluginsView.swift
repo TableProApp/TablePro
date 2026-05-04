@@ -87,8 +87,7 @@ struct InstalledPluginsView: View {
 
     private var pluginList: some View {
         VStack(spacing: 0) {
-            TextField("Filter...", text: $searchText)
-                .textFieldStyle(.roundedBorder)
+            NativeSearchField(text: $searchText, placeholder: String(localized: "Filter..."))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
