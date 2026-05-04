@@ -10,12 +10,10 @@ import AppKit
 import SwiftUI
 import TableProPluginKit
 
-/// Popover content for quick connection switching
 struct ConnectionSwitcherPopover: View {
     @State private var savedConnections: [DatabaseConnection] = []
-    @State private var selectedIndex: Int = 0
+    @State private var selectedConnectionId: UUID?
 
-    /// Callback when the popover should dismiss
     var onDismiss: (() -> Void)?
 
     private var activeSessions: [UUID: ConnectionSession] {
@@ -26,53 +24,26 @@ struct ConnectionSwitcherPopover: View {
         DatabaseManager.shared.currentSessionId
     }
 
-    /// All items in display order for keyboard navigation
-    private var allItems: [ConnectionItem] {
-        var items: [ConnectionItem] = []
+    private var sortedSessions: [ConnectionSession] {
+        Array(activeSessions.values).sorted { $0.lastActiveAt > $1.lastActiveAt }
+    }
 
-        let sorted = Array(activeSessions.values).sorted { $0.lastActiveAt > $1.lastActiveAt }
-        for session in sorted {
-            items.append(.session(session))
-        }
-
-        let inactive = savedConnections.filter { activeSessions[$0.id] == nil }
-        for connection in inactive {
-            items.append(.saved(connection))
-        }
-
-        return items
+    private var inactiveSaved: [DatabaseConnection] {
+        savedConnections.filter { activeSessions[$0.id] == nil }
     }
 
     var body: some View {
-        let sortedSessions = Array(activeSessions.values).sorted { $0.lastActiveAt > $1.lastActiveAt }
-        let inactiveSaved = savedConnections.filter { activeSessions[$0.id] == nil }
-
         VStack(spacing: 0) {
-            List {
-                // Active connections section
+            List(selection: $selectedConnectionId) {
                 if !sortedSessions.isEmpty {
                     Section {
-                        ForEach(Array(sortedSessions.enumerated()), id: \.element.id) { index, session in
-                            Button(action: { switchToSession(session.id) }) {
-                                connectionRow(
-                                    connection: session.connection,
-                                    isActive: session.id == currentSessionId,
-                                    isConnected: session.status.isConnected,
-                                    isHighlighted: index == selectedIndex
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .listRowBackground(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(
-                                        index == selectedIndex
-                                            ? Color(nsColor: .selectedContentBackgroundColor)
-                                            : Color.clear
-                                    )
-                                    .padding(.horizontal, 4)
+                        ForEach(sortedSessions) { session in
+                            connectionRow(
+                                connection: session.connection,
+                                isActive: session.id == currentSessionId,
+                                isConnected: session.status.isConnected
                             )
-                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-                            .listRowSeparator(.hidden)
+                            .tag(session.id)
                         }
                     } header: {
                         Text("ACTIVE CONNECTIONS")
@@ -81,31 +52,11 @@ struct ConnectionSwitcherPopover: View {
                     }
                 }
 
-                // Saved connections (not currently active)
                 if !inactiveSaved.isEmpty {
                     Section {
-                        ForEach(Array(inactiveSaved.enumerated()), id: \.element.id) { index, connection in
-                            let itemIndex = sortedSessions.count + index
-                            Button(action: { connectToSaved(connection) }) {
-                                connectionRow(
-                                    connection: connection,
-                                    isActive: false,
-                                    isConnected: false,
-                                    isHighlighted: itemIndex == selectedIndex
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .listRowBackground(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(
-                                        itemIndex == selectedIndex
-                                            ? Color(nsColor: .selectedContentBackgroundColor)
-                                            : Color.clear
-                                    )
-                                    .padding(.horizontal, 4)
-                            )
-                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-                            .listRowSeparator(.hidden)
+                        ForEach(inactiveSaved) { connection in
+                            connectionRow(connection: connection, isActive: false, isConnected: false)
+                                .tag(connection.id)
                         }
                     } header: {
                         Text("SAVED CONNECTIONS")
@@ -119,7 +70,6 @@ struct ConnectionSwitcherPopover: View {
 
             Divider()
 
-            // Manage connections button
             Button {
                 onDismiss?()
                 WindowOpener.shared.openWelcome()
@@ -133,164 +83,106 @@ struct ConnectionSwitcherPopover: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .contentShape(Rectangle())
         }
         .frame(
             width: 280,
-            height: listHeight(
-                sessions: sortedSessions.count,
-                saved: inactiveSaved.count
-            )
+            height: listHeight(sessions: sortedSessions.count, saved: inactiveSaved.count)
         )
         .onAppear {
             savedConnections = ConnectionStorage.shared.loadConnections()
-            if let currentId = currentSessionId {
-                let sorted = Array(activeSessions.values).sorted { $0.lastActiveAt > $1.lastActiveAt }
-                if let idx = sorted.firstIndex(where: { $0.id == currentId }) {
-                    selectedIndex = idx
-                }
+            if selectedConnectionId == nil {
+                selectedConnectionId = currentSessionId ?? sortedSessions.first?.id ?? inactiveSaved.first?.id
             }
         }
         .onExitCommand { onDismiss?() }
         .onKeyPress(.return) {
-            let items = allItems
-            guard selectedIndex >= 0, selectedIndex < items.count else { return .ignored }
-            switch items[selectedIndex] {
-            case .session(let session): switchToSession(session.id)
-            case .saved(let connection): connectToSaved(connection)
-            }
+            activateSelected()
             return .handled
-        }
-        .onKeyPress(.upArrow) {
-            moveSelection(by: -1)
-        }
-        .onKeyPress(.downArrow) {
-            moveSelection(by: 1)
         }
         .onKeyPress(characters: .init(charactersIn: "j"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
-            return moveSelection(by: 1)
+            moveSelection(by: 1)
+            return .handled
         }
         .onKeyPress(characters: .init(charactersIn: "k"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
-            return moveSelection(by: -1)
+            moveSelection(by: -1)
+            return .handled
         }
     }
-
-    // MARK: - Item Type
-
-    private enum ConnectionItem {
-        case session(ConnectionSession)
-        case saved(DatabaseConnection)
-    }
-
-    private func moveSelection(by offset: Int) -> KeyPress.Result {
-        let newIndex = selectedIndex + offset
-        guard newIndex >= 0, newIndex < allItems.count else { return .handled }
-        selectedIndex = newIndex
-        return .handled
-    }
-
-    // MARK: - Subviews
 
     private func connectionRow(
         connection: DatabaseConnection,
         isActive: Bool,
-        isConnected: Bool,
-        isHighlighted: Bool = false
+        isConnected: Bool
     ) -> some View {
         HStack(spacing: 8) {
-            // Color indicator
             Circle()
-                .fill(isHighlighted ? Color(nsColor: .alternateSelectedControlTextColor) : connection.displayColor)
+                .fill(connection.displayColor)
                 .frame(width: 8, height: 8)
 
-            // Connection info
             VStack(alignment: .leading, spacing: 1) {
                 Text(connection.name)
                     .font(.body.weight(isActive ? .semibold : .regular))
-                    .foregroundStyle(isHighlighted ? Color(nsColor: .alternateSelectedControlTextColor) : .primary)
                     .lineLimit(1)
 
                 Text(connectionSubtitle(connection))
                     .font(.caption)
-                    .foregroundStyle(isHighlighted ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.7) : .secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
             Spacer()
 
-            // Status indicator
             if isActive {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(isHighlighted ? Color(nsColor: .alternateSelectedControlTextColor) : Color(nsColor: .systemGreen))
+                    .foregroundStyle(Color(nsColor: .systemGreen))
                     .font(.body)
             } else if isConnected {
                 Circle()
-                    .fill(isHighlighted ? Color(nsColor: .alternateSelectedControlTextColor) : Color(nsColor: .systemGreen))
+                    .fill(Color(nsColor: .systemGreen))
                     .frame(width: 6, height: 6)
             }
 
-            // Database type badge
             Text(connection.type.rawValue.uppercased())
                 .font(.system(.caption2, design: .monospaced).weight(.medium))
-                .foregroundStyle(isHighlighted ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(isHighlighted ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.2) : Color(nsColor: .separatorColor))
-                )
+                .background(Color(nsColor: .separatorColor), in: RoundedRectangle(cornerRadius: 3))
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
+        .onTapGesture { activate(connectionId: connection.id) }
     }
 
-    // MARK: - Layout
+    // MARK: - Selection
 
-    /// Calculates popover height based on content to avoid excess whitespace
-    private func listHeight(sessions: Int, saved: Int) -> CGFloat {
-        let rowHeight: CGFloat = 44
-        let sectionHeaderHeight: CGFloat = 28
-        let buttonHeight: CGFloat = 44 // Manage Connections + divider
-        var height: CGFloat = buttonHeight
-
-        if sessions > 0 {
-            height += sectionHeaderHeight + CGFloat(sessions) * rowHeight
-        }
-        if saved > 0 {
-            height += sectionHeaderHeight + CGFloat(saved) * rowHeight
-        }
-
-        // Cap at reasonable max so it scrolls with many connections
-        return min(height, 400)
+    private var allConnectionIds: [UUID] {
+        sortedSessions.map(\.id) + inactiveSaved.map(\.id)
     }
 
-    // MARK: - Helpers
-
-    private func connectionSubtitle(_ connection: DatabaseConnection) -> String {
-        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
-            return connection.database
-        }
-        let port = connection.port != connection.type.defaultPort ? ":\(connection.port)" : ""
-        return "\(connection.host)\(port)/\(connection.database)"
+    private func moveSelection(by offset: Int) {
+        let ids = allConnectionIds
+        guard !ids.isEmpty else { return }
+        let currentIndex = ids.firstIndex(of: selectedConnectionId ?? UUID()) ?? 0
+        let newIndex = max(0, min(ids.count - 1, currentIndex + offset))
+        selectedConnectionId = ids[newIndex]
     }
 
-    private func switchToSession(_ sessionId: UUID) {
-        openConnection(sessionId)
+    private func activateSelected() {
+        guard let id = selectedConnectionId else { return }
+        activate(connectionId: id)
     }
 
-    private func connectToSaved(_ connection: DatabaseConnection) {
-        openConnection(connection.id)
-    }
-
-    private func openConnection(_ id: UUID) {
+    private func activate(connectionId: UUID) {
         onDismiss?()
         Task {
             do {
-                try await TabRouter.shared.route(.openConnection(id))
+                try await TabRouter.shared.route(.openConnection(connectionId))
             } catch {
                 await MainActor.run {
                     AlertHelper.showErrorSheet(
@@ -301,5 +193,29 @@ struct ConnectionSwitcherPopover: View {
                 }
             }
         }
+    }
+
+    // MARK: - Layout
+
+    private func listHeight(sessions: Int, saved: Int) -> CGFloat {
+        let rowHeight: CGFloat = 44
+        let sectionHeaderHeight: CGFloat = 28
+        let buttonHeight: CGFloat = 44
+        var height: CGFloat = buttonHeight
+        if sessions > 0 {
+            height += sectionHeaderHeight + CGFloat(sessions) * rowHeight
+        }
+        if saved > 0 {
+            height += sectionHeaderHeight + CGFloat(saved) * rowHeight
+        }
+        return min(height, 400)
+    }
+
+    private func connectionSubtitle(_ connection: DatabaseConnection) -> String {
+        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
+            return connection.database
+        }
+        let port = connection.port != connection.type.defaultPort ? ":\(connection.port)" : ""
+        return "\(connection.host)\(port)/\(connection.database)"
     }
 }
