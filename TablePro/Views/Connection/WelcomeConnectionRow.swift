@@ -15,10 +15,6 @@ struct WelcomeConnectionRow: View {
         return TagStorage.shared.tag(for: tagId)
     }
 
-    private var sshEnabled: Bool {
-        connection.resolvedSSHConfig.enabled
-    }
-
     private var showsLocalOnly: Bool {
         connection.localOnly && !connection.isSample
     }
@@ -56,14 +52,6 @@ struct WelcomeConnectionRow: View {
     @ViewBuilder
     private var trailingAccessories: some View {
         HStack(spacing: 8) {
-            if sshEnabled {
-                Image(systemName: "lock.fill")
-                    .imageScale(.small)
-                    .foregroundStyle(.tertiary)
-                    .help(sshTunnelTooltip)
-                    .accessibilityLabel(String(localized: "SSH tunnel"))
-            }
-
             if showsLocalOnly {
                 Image(systemName: "icloud.slash")
                     .imageScale(.small)
@@ -90,6 +78,9 @@ struct WelcomeConnectionRow: View {
 
     private var subtitleText: String {
         var components: [String] = [primaryEndpoint]
+        if let viaText = sshViaText {
+            components.append(viaText)
+        }
         if connection.isSample {
             components.append(String(localized: "Sample"))
         }
@@ -114,16 +105,12 @@ struct WelcomeConnectionRow: View {
         return "\(connection.host):\(connection.port)"
     }
 
-    private var sshTunnelTooltip: String {
+    /// Apple's semantic convention for routed/relayed connections is the
+    /// "via X" suffix (AirDrop, Mail forwarded threads, Network preferences).
+    /// Returns nil when SSH is not enabled or the bastion host is empty.
+    private var sshViaText: String? {
         let ssh = connection.resolvedSSHConfig
-        let userPrefix = ssh.username.isEmpty ? "" : "\(ssh.username)@"
-        let portSuffix: String
-        if let port = ssh.port, port != 22 {
-            portSuffix = ":\(port)"
-        } else {
-            portSuffix = ""
-        }
-        let target = "\(userPrefix)\(ssh.host)\(portSuffix)"
-        return String(format: String(localized: "Connects via SSH tunnel: %@"), target)
+        guard ssh.enabled, !ssh.host.isEmpty else { return nil }
+        return String(format: String(localized: "via %@"), ssh.host)
     }
 }
