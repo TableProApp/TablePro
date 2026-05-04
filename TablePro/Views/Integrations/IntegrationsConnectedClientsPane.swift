@@ -9,6 +9,9 @@ struct IntegrationsConnectedClientsPane: View {
     @State private var manager = MCPServerManager.shared
     @State private var selection: MCPServerManager.SessionSnapshot.ID?
     @State private var disconnectCandidate: MCPServerManager.SessionSnapshot?
+    @State private var sortOrder: [KeyPathComparator<MCPServerManager.SessionSnapshot>] = [
+        KeyPathComparator(\MCPServerManager.SessionSnapshot.connectedSince, order: .reverse)
+    ]
 
     var body: some View {
         Group {
@@ -19,7 +22,13 @@ struct IntegrationsConnectedClientsPane: View {
                     description: Text(String(localized: "Clients will appear here while they have an active MCP session."))
                 )
             } else {
-                clientList
+                ConnectedClientsTable(
+                    clients: sortedClients,
+                    selection: $selection,
+                    sortOrder: $sortOrder,
+                    tokenLabel: displayTokenName,
+                    onDisconnect: { client in disconnectCandidate = client }
+                )
             }
         }
         .navigationTitle(IntegrationsActivitySection.connectedClients.title)
@@ -34,18 +43,8 @@ struct IntegrationsConnectedClientsPane: View {
         )
     }
 
-    private var clientList: some View {
-        List(manager.connectedClients, selection: $selection) { client in
-            ConnectedClientRow(client: client, tokenLabel: displayTokenName(client.tokenName))
-                .contextMenu {
-                    Button(role: .destructive) {
-                        disconnectCandidate = client
-                    } label: {
-                        Label(String(localized: "Disconnect"), systemImage: "xmark.circle")
-                    }
-                }
-        }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
+    private var sortedClients: [MCPServerManager.SessionSnapshot] {
+        manager.connectedClients.sorted(using: sortOrder)
     }
 
     @ToolbarContentBuilder
@@ -101,59 +100,109 @@ struct IntegrationsConnectedClientsPane: View {
     }
 }
 
-private struct ConnectedClientRow: View {
-    let client: MCPServerManager.SessionSnapshot
-    let tokenLabel: String?
+private struct ConnectedClientsTable: View {
+    let clients: [MCPServerManager.SessionSnapshot]
+    @Binding var selection: MCPServerManager.SessionSnapshot.ID?
+    @Binding var sortOrder: [KeyPathComparator<MCPServerManager.SessionSnapshot>]
+    let tokenLabel: (String?) -> String?
+    let onDisconnect: (MCPServerManager.SessionSnapshot) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            IntegrationStatusIndicator(status: .running)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                primaryLine
-                metadataLine
+        Table(of: MCPServerManager.SessionSnapshot.self,
+              selection: $selection,
+              sortOrder: $sortOrder) {
+            TableColumn(String(localized: "Client"), value: \.clientName) { client in
+                clientCell(for: client)
             }
-            Spacer(minLength: 12)
-            timestamp
-        }
-        .padding(.vertical, 4)
-    }
+            .width(min: 160, ideal: 200)
 
-    private var primaryLine: some View {
-        HStack(spacing: 6) {
-            Text(client.clientName)
-                .font(.callout.weight(.medium))
-            if let version = client.clientVersion {
-                Text(version)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            TableColumn(String(localized: "Version")) { client in
+                versionCell(for: client)
+            }
+            .width(min: 70, ideal: 90)
+
+            TableColumn(String(localized: "Token")) { client in
+                tokenCell(for: client)
+            }
+            .width(min: 110, ideal: 140)
+
+            TableColumn(String(localized: "Address")) { client in
+                addressCell(for: client)
+            }
+            .width(min: 120, ideal: 160)
+
+            TableColumn(String(localized: "Connected"), value: \.connectedSince) { client in
+                connectedCell(for: client)
+            }
+            .width(min: 110, ideal: 130)
+
+            TableColumn(String(localized: "Last Activity"), value: \.lastActivityAt) { client in
+                lastActivityCell(for: client)
+            }
+            .width(min: 110, ideal: 130)
+        } rows: {
+            ForEach(clients) { client in
+                SwiftUI.TableRow(client)
+                    .contextMenu { contextMenu(for: client) }
             }
         }
     }
 
     @ViewBuilder
-    private var metadataLine: some View {
-        let parts: [String] = [
-            tokenLabel,
-            client.remoteAddress
-        ].compactMap { $0 }
-        if !parts.isEmpty {
-            Text(parts.joined(separator: " · "))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func clientCell(for client: MCPServerManager.SessionSnapshot) -> some View {
+        Label {
+            Text(client.clientName)
+        } icon: {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Color(nsColor: .systemGreen))
         }
     }
 
-    private var timestamp: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Text(client.connectedSince, format: .relative(presentation: .named))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(String(format: String(localized: "Active %@"),
-                        client.lastActivityAt.formatted(.relative(presentation: .named))))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+    @ViewBuilder
+    private func versionCell(for client: MCPServerManager.SessionSnapshot) -> some View {
+        if let version = client.clientVersion {
+            Text(version).foregroundStyle(.secondary)
+        } else {
+            Text(verbatim: "—").foregroundStyle(.tertiary)
         }
-        .help(client.connectedSince.formatted(date: .complete, time: .standard))
+    }
+
+    @ViewBuilder
+    private func tokenCell(for client: MCPServerManager.SessionSnapshot) -> some View {
+        if let label = tokenLabel(client.tokenName) {
+            Text(label)
+        } else {
+            Text(verbatim: "—").foregroundStyle(.tertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func addressCell(for client: MCPServerManager.SessionSnapshot) -> some View {
+        if let address = client.remoteAddress {
+            Text(address).font(.system(.body, design: .monospaced))
+        } else {
+            Text(verbatim: "—").foregroundStyle(.tertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func connectedCell(for client: MCPServerManager.SessionSnapshot) -> some View {
+        Text(client.connectedSince, format: .relative(presentation: .named))
+            .help(client.connectedSince.formatted(date: .complete, time: .standard))
+    }
+
+    @ViewBuilder
+    private func lastActivityCell(for client: MCPServerManager.SessionSnapshot) -> some View {
+        Text(client.lastActivityAt, format: .relative(presentation: .named))
+            .help(client.lastActivityAt.formatted(date: .complete, time: .standard))
+    }
+
+    @ViewBuilder
+    private func contextMenu(for client: MCPServerManager.SessionSnapshot) -> some View {
+        Button(role: .destructive) {
+            onDisconnect(client)
+        } label: {
+            Label(String(localized: "Disconnect"), systemImage: "xmark.circle")
+        }
     }
 }

@@ -15,9 +15,13 @@ struct IntegrationsActivityLogPane: View {
     @State private var selectedCategory: AuditCategory?
     @State private var selectedRange: ActivityTimeRange = .last7Days
     @State private var searchText: String = ""
+    @State private var sortOrder: [KeyPathComparator<AuditEntry>] = [
+        KeyPathComparator(\AuditEntry.timestamp, order: .reverse)
+    ]
     @State private var selection: AuditEntry.ID?
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var showInspector = false
 
     private let auditChanges = NotificationCenter.default
         .publisher(for: .mcpAuditLogChanged)
@@ -26,16 +30,18 @@ struct IntegrationsActivityLogPane: View {
         ActivityLogTable(
             entries: filteredEntries,
             selection: $selection,
-            row: { entry in
-                ActivityLogRow(
-                    entry: entry,
-                    connectionName: connectionName(for: entry.connectionId),
-                    tokenLabel: displayTokenName(entry.tokenName)
-                )
-            }
+            sortOrder: $sortOrder,
+            tokenLabel: displayTokenName,
+            connectionLabel: connectionName
         )
         .overlay(alignment: .center) { overlay }
         .searchable(text: $searchText, placement: .toolbar, prompt: Text(String(localized: "Search activity")))
+        .inspector(isPresented: $showInspector) {
+            ActivityLogInspector(entry: selectedEntry,
+                                 tokenLabel: displayTokenName,
+                                 connectionLabel: connectionName)
+                .inspectorColumnWidth(min: 260, ideal: 320, max: 480)
+        }
         .toolbar(content: toolbar)
         .navigationTitle(IntegrationsActivitySection.activityLog.title)
         .navigationSubtitle(retentionSubtitle)
@@ -46,6 +52,14 @@ struct IntegrationsActivityLogPane: View {
         .onChange(of: selectedTokenId) { _, _ in Task { await reload() } }
         .onChange(of: selectedCategory) { _, _ in Task { await reload() } }
         .onChange(of: selectedRange) { _, _ in Task { await reload() } }
+        .onChange(of: sortOrder) { _, newValue in
+            entries.sort(using: newValue)
+        }
+    }
+
+    private var selectedEntry: AuditEntry? {
+        guard let selection else { return nil }
+        return filteredEntries.first { $0.id == selection }
     }
 
     @ViewBuilder
@@ -79,15 +93,10 @@ struct IntegrationsActivityLogPane: View {
 
     @ToolbarContentBuilder
     private func toolbar() -> some ToolbarContent {
-        ToolbarItem {
-            filterMenu
-        }
-        ToolbarItem {
-            exportButton
-        }
-        ToolbarItem {
-            refreshButton
-        }
+        ToolbarItem { filterMenu }
+        ToolbarItem { exportButton }
+        ToolbarItem { refreshButton }
+        ToolbarItem(placement: .primaryAction) { inspectorToggle }
     }
 
     private var filterMenu: some View {
@@ -150,6 +159,15 @@ struct IntegrationsActivityLogPane: View {
         }
         .help(String(localized: "Refresh"))
         .disabled(isLoading)
+    }
+
+    private var inspectorToggle: some View {
+        Button {
+            showInspector.toggle()
+        } label: {
+            Label(String(localized: "Details"), systemImage: "sidebar.right")
+        }
+        .help(String(localized: "Show details"))
     }
 
     private var hasActiveFilters: Bool {
@@ -215,7 +233,7 @@ struct IntegrationsActivityLogPane: View {
             since: selectedRange.startDate,
             limit: 1_000
         )
-        entries = result.sorted { $0.timestamp > $1.timestamp }
+        entries = result.sorted(using: sortOrder)
     }
 
     private func exportCSV() {
@@ -271,118 +289,237 @@ struct IntegrationsActivityLogPane: View {
     }
 }
 
-private struct ActivityLogTable<Row: View>: View {
+private struct ActivityLogTable: View {
     let entries: [AuditEntry]
     @Binding var selection: AuditEntry.ID?
-    let row: (AuditEntry) -> Row
+    @Binding var sortOrder: [KeyPathComparator<AuditEntry>]
+    let tokenLabel: (String?) -> String?
+    let connectionLabel: (UUID?) -> String?
 
     var body: some View {
-        List(entries, selection: $selection) { entry in
-            row(entry)
-        }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
-    }
-}
-
-private struct ActivityLogRow: View {
-    let entry: AuditEntry
-    let connectionName: String?
-    let tokenLabel: String?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            IntegrationStatusIndicator(status: rowStatus)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                primaryLine
-                metadataLine
-                if let details = entry.details {
-                    Text(details)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
-                }
+        Table(of: AuditEntry.self, selection: $selection, sortOrder: $sortOrder) {
+            TableColumn(String(localized: "Outcome"), value: \.outcome) { entry in
+                outcomeCell(for: entry)
             }
-            Spacer(minLength: 12)
-            timestamp
-        }
-        .padding(.vertical, 4)
-    }
+            .width(min: 96, ideal: 110)
 
-    private var primaryLine: some View {
-        HStack(spacing: 8) {
-            Text(displayActionName)
-                .font(.callout.weight(.medium))
-            categoryBadge
-            outcomeBadge
+            TableColumn(String(localized: "Time"), value: \.timestamp) { entry in
+                timeCell(for: entry)
+            }
+            .width(min: 110, ideal: 130)
+
+            TableColumn(String(localized: "Category"), value: \.category.rawValue) { entry in
+                Text(entry.category.displayName)
+            }
+            .width(min: 100, ideal: 120)
+
+            TableColumn(String(localized: "Action"), value: \.action) { entry in
+                actionCell(for: entry)
+            }
+            .width(min: 160, ideal: 220)
+
+            TableColumn(String(localized: "Token")) { entry in
+                tokenCell(for: entry)
+            }
+            .width(min: 100, ideal: 140)
+
+            TableColumn(String(localized: "Connection")) { entry in
+                connectionCell(for: entry)
+            }
+            .width(min: 120, ideal: 160)
+        } rows: {
+            ForEach(entries) { entry in
+                SwiftUI.TableRow(entry)
+                    .contextMenu { contextMenu(for: entry) }
+            }
         }
     }
 
     @ViewBuilder
-    private var metadataLine: some View {
-        let parts: [String] = [
-            tokenLabel,
-            connectionName.map { String(format: String(localized: "Connection: %@"), $0) }
-        ].compactMap { $0 }
-        if !parts.isEmpty {
-            Text(parts.joined(separator: " · "))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func outcomeCell(for entry: AuditEntry) -> some View {
+        let outcome = AuditOutcome(rawValue: entry.outcome)
+        Label {
+            Text(outcome?.displayName ?? entry.outcome)
+        } icon: {
+            Image(systemName: outcomeSymbol(outcome))
+                .foregroundStyle(outcomeTint(outcome))
         }
-    }
-
-    private var categoryBadge: some View {
-        Text(entry.category.displayName)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(nsColor: .quaternaryLabelColor))
-            )
     }
 
     @ViewBuilder
-    private var outcomeBadge: some View {
-        if let outcome = AuditOutcome(rawValue: entry.outcome), outcome != .success {
-            Text(outcome.displayName)
-                .font(.caption)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(outcomeBackground(outcome).opacity(0.15))
-                )
-                .foregroundStyle(outcomeBackground(outcome))
-        }
-    }
-
-    private var timestamp: some View {
+    private func timeCell(for entry: AuditEntry) -> some View {
         Text(entry.timestamp, format: .relative(presentation: .named))
-            .font(.caption)
-            .foregroundStyle(.secondary)
             .help(entry.timestamp.formatted(date: .complete, time: .standard))
     }
 
-    private var displayActionName: String {
-        entry.action.split(separator: ".").map { $0.capitalized }.joined(separator: " ")
+    @ViewBuilder
+    private func actionCell(for entry: AuditEntry) -> some View {
+        Text(entry.action)
+            .font(.system(.body, design: .monospaced))
     }
 
-    private var rowStatus: IntegrationStatus {
-        switch entry.outcome {
-        case AuditOutcome.success.rawValue: .success
-        case AuditOutcome.denied.rawValue, AuditOutcome.rateLimited.rawValue: .warning
-        case AuditOutcome.error.rawValue: .error
-        default: .stopped
+    @ViewBuilder
+    private func tokenCell(for entry: AuditEntry) -> some View {
+        if let label = tokenLabel(entry.tokenName) {
+            Text(label)
+        } else {
+            Text(verbatim: "—").foregroundStyle(.tertiary)
         }
     }
 
-    private func outcomeBackground(_ outcome: AuditOutcome) -> Color {
+    @ViewBuilder
+    private func connectionCell(for entry: AuditEntry) -> some View {
+        if let label = connectionLabel(entry.connectionId) {
+            Text(label)
+        } else {
+            Text(verbatim: "—").foregroundStyle(.tertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenu(for entry: AuditEntry) -> some View {
+        Button(String(localized: "Copy Details")) {
+            copyDetails(for: entry)
+        }
+        if entry.connectionId != nil {
+            Button(String(localized: "Copy Connection ID")) {
+                if let id = entry.connectionId {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(id.uuidString, forType: .string)
+                }
+            }
+        }
+    }
+
+    private func copyDetails(for entry: AuditEntry) {
+        let outcome = AuditOutcome(rawValue: entry.outcome)?.displayName ?? entry.outcome
+        let lines = [
+            String(format: String(localized: "Time: %@"), entry.timestamp.formatted(date: .complete, time: .standard)),
+            String(format: String(localized: "Category: %@"), entry.category.displayName),
+            String(format: String(localized: "Action: %@"), entry.action),
+            String(format: String(localized: "Outcome: %@"), outcome),
+            tokenLabel(entry.tokenName).map { String(format: String(localized: "Token: %@"), $0) },
+            connectionLabel(entry.connectionId).map { String(format: String(localized: "Connection: %@"), $0) },
+            entry.details.map { String(format: String(localized: "Details: %@"), $0) }
+        ].compactMap { $0 }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+
+    private func outcomeSymbol(_ outcome: AuditOutcome?) -> String {
+        switch outcome {
+        case .success: "checkmark.circle.fill"
+        case .denied, .rateLimited: "exclamationmark.triangle.fill"
+        case .error: "xmark.octagon.fill"
+        case .none: "circle.fill"
+        }
+    }
+
+    private func outcomeTint(_ outcome: AuditOutcome?) -> Color {
         switch outcome {
         case .success: Color(nsColor: .systemGreen)
         case .denied, .rateLimited: Color(nsColor: .systemOrange)
         case .error: Color(nsColor: .systemRed)
+        case .none: Color(nsColor: .secondaryLabelColor)
+        }
+    }
+}
+
+private struct ActivityLogInspector: View {
+    let entry: AuditEntry?
+    let tokenLabel: (String?) -> String?
+    let connectionLabel: (UUID?) -> String?
+
+    var body: some View {
+        Group {
+            if let entry {
+                detailForm(for: entry)
+            } else {
+                ContentUnavailableView(
+                    String(localized: "No Selection"),
+                    systemImage: "list.bullet.rectangle",
+                    description: Text(String(localized: "Select an activity entry to see its details."))
+                )
+            }
+        }
+        .navigationTitle(String(localized: "Activity Details"))
+    }
+
+    private func detailForm(for entry: AuditEntry) -> some View {
+        Form {
+            Section {
+                LabeledContent(String(localized: "Time")) {
+                    Text(entry.timestamp.formatted(date: .complete, time: .standard))
+                        .textSelection(.enabled)
+                }
+                LabeledContent(String(localized: "Outcome")) {
+                    outcomeLabel(for: entry)
+                }
+                LabeledContent(String(localized: "Category")) {
+                    Text(entry.category.displayName)
+                }
+            }
+
+            Section(String(localized: "Source")) {
+                LabeledContent(String(localized: "Token")) {
+                    Text(tokenLabel(entry.tokenName) ?? "—")
+                        .foregroundStyle(entry.tokenName == nil ? .tertiary : .primary)
+                        .textSelection(.enabled)
+                }
+                LabeledContent(String(localized: "Connection")) {
+                    Text(connectionLabel(entry.connectionId) ?? "—")
+                        .foregroundStyle(entry.connectionId == nil ? .tertiary : .primary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Section(String(localized: "Action")) {
+                Text(entry.action)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let details = entry.details, !details.isEmpty {
+                Section(String(localized: "Details")) {
+                    ScrollView {
+                        Text(details)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(minHeight: 80, maxHeight: 200)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func outcomeLabel(for entry: AuditEntry) -> some View {
+        let outcome = AuditOutcome(rawValue: entry.outcome)
+        return Label {
+            Text(outcome?.displayName ?? entry.outcome)
+        } icon: {
+            Image(systemName: outcomeSymbol(outcome))
+                .foregroundStyle(outcomeTint(outcome))
+        }
+    }
+
+    private func outcomeSymbol(_ outcome: AuditOutcome?) -> String {
+        switch outcome {
+        case .success: "checkmark.circle.fill"
+        case .denied, .rateLimited: "exclamationmark.triangle.fill"
+        case .error: "xmark.octagon.fill"
+        case .none: "circle.fill"
+        }
+    }
+
+    private func outcomeTint(_ outcome: AuditOutcome?) -> Color {
+        switch outcome {
+        case .success: Color(nsColor: .systemGreen)
+        case .denied, .rateLimited: Color(nsColor: .systemOrange)
+        case .error: Color(nsColor: .systemRed)
+        case .none: Color(nsColor: .secondaryLabelColor)
         }
     }
 }
