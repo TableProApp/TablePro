@@ -643,11 +643,11 @@ struct TableProApp: App {
 
         Window("Welcome to TablePro", id: SceneId.welcome) {
             WelcomeWindowView()
-                .background(WindowRestorationDisabler())
+                .frame(width: 700, height: 450)
+                .background(WelcomeWindowConfigurator())
         }
-        .windowResizability(.contentMinSize)
+        .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 700, height: 450)
         .commandsRemoved()
 
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
