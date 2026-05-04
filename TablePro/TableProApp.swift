@@ -661,11 +661,11 @@ struct TableProApp: App {
                     restorable: false,
                     fullScreenable: false,
                     hideMiniaturizeButton: true,
-                    hideZoomButton: true
+                    hideZoomButton: false
                 ))
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 640, height: 500)
+        .defaultSize(width: 560, height: 560)
         .commandsRemoved()
 
         Window("Integrations Activity", id: SceneId.integrationsActivity) {

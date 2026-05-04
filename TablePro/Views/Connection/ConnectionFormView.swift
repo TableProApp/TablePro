@@ -180,8 +180,8 @@ struct ConnectionFormView: View {
             )
             .toolbar { connectionFormToolbar }
         }
-        .frame(width: 480)
-        .frame(minHeight: 520, idealHeight: 520)
+        .frame(minWidth: 480, idealWidth: 560, maxWidth: 800)
+        .frame(minHeight: 520, idealHeight: 560)
         .onAppear {
             loadConnectionData()
             loadSSHConfig()
