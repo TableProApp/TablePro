@@ -15,89 +15,94 @@ struct WelcomeConnectionRow: View {
         return TagStorage.shared.tag(for: tagId)
     }
 
+    private var sshEnabled: Bool {
+        connection.resolvedSSHConfig.enabled
+    }
+
+    private var showsLocalOnly: Bool {
+        connection.localOnly && !connection.isSample
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack {
             connection.type.iconImage
                 .renderingMode(.template)
-                .font(.system(size: 16))
+                .font(.title3)
                 .foregroundStyle(connection.displayColor)
-                .frame(
-                    width: 16,
-                    height: 16
-                )
+                .frame(width: 18, height: 18)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(connection.name)
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(connection.name)
+                    .font(.body)
+                    .foregroundStyle(.primary)
 
-                    if let tag = displayTag {
-                        Text(tag.name)
-                            .font(.system(size: 9))
-                            .foregroundStyle(tag.color.color)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4).fill(
-                                    tag.color.color.opacity(0.15)))
-                    }
-
-                    if connection.isSample {
-                        Text(String(localized: "Sample"))
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.accentColor.opacity(0.15))
-                            )
-                            .help(String(localized: "Bundled sample database"))
-                    }
-
-                    if connection.resolvedSSHConfig.enabled {
-                        Image(systemName: "lock.shield")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            .help(sshTunnelTooltip)
-                            .accessibilityLabel(String(localized: "SSH tunnel"))
-                    }
-
-                    if connection.localOnly && !connection.isSample {
-                        Image(systemName: "icloud.slash")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                            .help(String(localized: "Local only - not synced to iCloud"))
-                    }
-                }
-
-                Text(connectionSubtitle)
+                Text(subtitleText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .help(connectionSubtitle)
+                    .truncationMode(.middle)
+                    .help(subtitleText)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
+
+            trailingAccessories
         }
-        .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .overlay(
-            DoubleClickDetector { onConnect?() }
-        )
+        .overlay(DoubleClickDetector { onConnect?() })
+        .accessibilityElement(children: .combine)
     }
 
-    private var connectionSubtitle: String {
+    @ViewBuilder
+    private var trailingAccessories: some View {
+        HStack(spacing: 8) {
+            if sshEnabled {
+                Image(systemName: "lock.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.tertiary)
+                    .help(sshTunnelTooltip)
+                    .accessibilityLabel(String(localized: "SSH tunnel"))
+            }
+
+            if showsLocalOnly {
+                Image(systemName: "icloud.slash")
+                    .imageScale(.small)
+                    .foregroundStyle(.tertiary)
+                    .help(String(localized: "Local only, not synced to iCloud"))
+                    .accessibilityLabel(String(localized: "Local only"))
+            }
+
+            if let tag = displayTag {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(tag.color.color)
+                        .frame(width: 8, height: 8)
+                    Text(tag.name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(String(format: String(localized: "Tag: %@"), tag.name))
+            }
+        }
+    }
+
+    private var subtitleText: String {
+        var components: [String] = [primaryEndpoint]
+        if connection.isSample {
+            components.append(String(localized: "Sample"))
+        }
+        return components.joined(separator: " · ")
+    }
+
+    private var primaryEndpoint: String {
         if connection.host.isEmpty {
             return connection.database.isEmpty ? connection.type.rawValue : connection.database
         }
         if let mongoHosts = connection.additionalFields["mongoHosts"], mongoHosts.contains(",") {
             let count = mongoHosts.split(separator: ",").count
-            return String(
-                format: String(localized: "%@ (+%d more)"),
-                hostWithOptionalPort, count - 1
-            )
+            return String(format: String(localized: "%@ (+%d more)"), hostWithOptionalPort, count - 1)
         }
         return hostWithOptionalPort
     }
