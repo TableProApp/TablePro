@@ -19,8 +19,6 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
         static let connectionAttemptedAt = "com.TablePro.analytics.connectionAttemptedAt"
         static let connectionSucceededAt = "com.TablePro.analytics.connectionSucceededAt"
         static let firstQueryExecutedAt = "com.TablePro.analytics.firstQueryExecutedAt"
-        static let successfulConnectionCount = "com.TablePro.analytics.successfulConnectionCount"
-        static let newsletterPromptShown = "com.TablePro.newsletter.promptShown"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -91,30 +89,16 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
         defaults.object(forKey: Keys.firstQueryExecutedAt) as? Date
     }
 
-    var successfulConnectionCount: Int {
-        defaults.integer(forKey: Keys.successfulConnectionCount)
-    }
-
-    var newsletterPromptShown: Bool {
-        defaults.bool(forKey: Keys.newsletterPromptShown)
-    }
-
     func markConnectionAttempted() {
         writeOnceDate(Keys.connectionAttemptedAt, label: "connectionAttemptedAt")
     }
 
     func markConnectionSucceeded() {
         writeOnceDate(Keys.connectionSucceededAt, label: "connectionSucceededAt")
-        let next = defaults.integer(forKey: Keys.successfulConnectionCount) + 1
-        defaults.set(next, forKey: Keys.successfulConnectionCount)
     }
 
     func markFirstQueryExecuted() {
         writeOnceDate(Keys.firstQueryExecutedAt, label: "firstQueryExecutedAt")
-    }
-
-    func markNewsletterPromptShown() {
-        defaults.set(true, forKey: Keys.newsletterPromptShown)
     }
 
     private func writeOnceDate(_ key: String, label: String) {

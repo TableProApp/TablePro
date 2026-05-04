@@ -7837,6 +7837,9 @@
         }
       }
     },
+    "Bundled sample database" : {
+
+    },
     "Bytes Received" : {
       "localizations" : {
         "tr" : {
@@ -8707,6 +8710,9 @@
           }
         }
       }
+    },
+    "Chinook (Sample)" : {
+
     },
     "Choose a certificate or key file" : {
       "localizations" : {
@@ -9751,6 +9757,9 @@
           }
         }
       }
+    },
+    "Close the open Sample connection before resetting it." : {
+
     },
     "Closing this tab will discard all unsaved changes." : {
       "extractionState" : "stale",
@@ -12467,6 +12476,9 @@
         }
       }
     },
+    "Could not install the sample database: %@" : {
+
+    },
     "Could Not Open File" : {
       "localizations" : {
         "tr" : {
@@ -12488,6 +12500,9 @@
           }
         }
       }
+    },
+    "Could Not Open Sample" : {
+
     },
     "Could not parse database URL: %@" : {
       "localizations" : {
@@ -12554,6 +12569,9 @@
           }
         }
       }
+    },
+    "Could Not Reset Sample" : {
+
     },
     "Count all rows" : {
       "localizations" : {
@@ -12644,6 +12662,7 @@
       }
     },
     "Create a connection to get started" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -22162,9 +22181,6 @@
         }
       }
     },
-    "Get release notes and database tips by email. No spam, unsubscribe anytime." : {
-
-    },
     "Get Started" : {
       "localizations" : {
         "tr" : {
@@ -27670,9 +27686,6 @@
         }
       }
     },
-    "Maybe later" : {
-
-    },
     "MCP Access Request" : {
       "localizations" : {
         "tr" : {
@@ -32264,6 +32277,9 @@
           }
         }
       }
+    },
+    "Open Sample Database" : {
+
     },
     "Open Schema" : {
       "localizations" : {
@@ -37807,6 +37823,15 @@
         }
       }
     },
+    "Reset Sample" : {
+
+    },
+    "Reset Sample Database?" : {
+
+    },
+    "Reset Sample Database..." : {
+
+    },
     "Reset to Defaults" : {
       "localizations" : {
         "tr" : {
@@ -38893,6 +38918,9 @@
           }
         }
       }
+    },
+    "Sample" : {
+
     },
     "Sanitize formula-like values" : {
       "extractionState" : "stale",
@@ -43955,9 +43983,6 @@
         }
       }
     },
-    "Stay updated on TablePro releases" : {
-
-    },
     "Steps to Reproduce" : {
       "localizations" : {
         "tr" : {
@@ -44266,9 +44291,6 @@
           }
         }
       }
-    },
-    "Subscribe in Browser" : {
-
     },
     "Success" : {
       "localizations" : {
@@ -45810,6 +45832,9 @@
         }
       }
     },
+    "The bundled sample database is missing from the app." : {
+
+    },
     "The code expires in 15 minutes." : {
       "localizations" : {
         "tr" : {
@@ -46157,6 +46182,9 @@
         }
       }
     },
+    "The text doesn't look like a connection URL." : {
+
+    },
     "The text is not valid JSON. Save anyway?" : {
       "localizations" : {
         "tr" : {
@@ -46333,6 +46361,9 @@
           }
         }
       }
+    },
+    "This discards your edits to the Chinook sample and restores the original copy." : {
+
     },
     "This DROP query will permanently remove database objects. This action cannot be undone." : {
       "localizations" : {
@@ -48449,6 +48480,7 @@
       }
     },
     "Try a different search term" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48469,6 +48501,9 @@
           }
         }
       }
+    },
+    "Try a different search term." : {
+
     },
     "Try adjusting your search terms\nor date filter." : {
       "localizations" : {
@@ -48513,6 +48548,12 @@
           }
         }
       }
+    },
+    "Try Sample Database" : {
+
+    },
+    "Try the sample database, or click + above to add your own." : {
+
     },
     "Two-Factor Authentication" : {
       "localizations" : {
@@ -49111,6 +49152,9 @@
         }
       }
     },
+    "Unsupported connection scheme: %@" : {
+
+    },
     "Unsupported database scheme: %@" : {
       "localizations" : {
         "tr" : {
@@ -49509,6 +49553,9 @@
         }
       }
     },
+    "Use" : {
+
+    },
     "Use ~/.pgpass" : {
       "localizations" : {
         "tr" : {
@@ -49530,6 +49577,9 @@
           }
         }
       }
+    },
+    "Use clipboard URL" : {
+
     },
     "Use Default" : {
       "localizations" : {

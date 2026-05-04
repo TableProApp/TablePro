@@ -19,7 +19,6 @@ extension Notification.Name {
     static let connectionUpdated = Notification.Name("connectionUpdated")
     static let connectionStatusDidChange = Notification.Name("connectionStatusDidChange")
     static let databaseDidConnect = Notification.Name("databaseDidConnect")
-    static let successfulConnectionRecorded = Notification.Name("successfulConnectionRecorded")
     static let exportConnections = Notification.Name("exportConnections")
     static let importConnections = Notification.Name("importConnections")
     static let importConnectionsFromApp = Notification.Name("importConnectionsFromApp")
