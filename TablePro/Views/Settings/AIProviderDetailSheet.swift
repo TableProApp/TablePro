@@ -130,7 +130,6 @@ struct AIProviderDetailSheet: View {
     private var apiKeyAuthSection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .textFieldStyle(.roundedBorder)
                 .onChange(of: apiKey) {
                     testResult = nil
                 }
@@ -263,11 +262,9 @@ struct AIProviderDetailSheet: View {
             Section {
                 if draft.type == .custom {
                     TextField(String(localized: "Name"), text: $draft.name)
-                        .textFieldStyle(.roundedBorder)
                 }
                 if draft.type != .copilot {
                     TextField(String(localized: "Endpoint"), text: $draft.endpoint)
-                        .textFieldStyle(.roundedBorder)
                         .onChange(of: draft.endpoint) {
                             scheduleFetchModels()
                             testResult = nil
@@ -315,7 +312,6 @@ struct AIProviderDetailSheet: View {
     private var modelControl: some View {
         HStack(spacing: 8) {
             TextField(String(localized: "Model name"), text: $draft.model)
-                .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
 
             if isFetchingModels {
@@ -351,7 +347,6 @@ struct AIProviderDetailSheet: View {
                 Text("Max output tokens")
                 Spacer()
                 TextField("", text: maxOutputTokensBinding)
-                    .textFieldStyle(.roundedBorder)
                     .frame(width: 100)
                     .multilineTextAlignment(.trailing)
             }
