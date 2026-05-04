@@ -55,34 +55,12 @@ final class AuthPaneViewModel {
     }
 
     var validationIssues: [String] {
-        guard let coordinator = coordinator?.value else { return [] }
-        let type = coordinator.network.type
-        let mode = PluginManager.shared.connectionMode(for: type)
         var issues: [String] = []
 
         for field in authFields where field.isRequired && isFieldVisible(field) {
             let value = additionalFieldValues[field.id] ?? field.defaultValue ?? ""
             if value.trimmingCharacters(in: .whitespaces).isEmpty {
                 issues.append(String(format: String(localized: "%@ is required"), field.label))
-            }
-        }
-
-        if mode != .fileBased,
-           !hidesPassword,
-           !promptForPassword,
-           !usePgpass,
-           PluginManager.shared.requiresAuthentication(for: type),
-           password.isEmpty
-        {
-            issues.append(String(localized: "Password is required"))
-        }
-
-        if hidesPassword && additionalFieldValues["awsAuthMethod"] == "credentials" {
-            if (additionalFieldValues["awsAccessKeyId"] ?? "").isEmpty {
-                issues.append(String(localized: "AWS Access Key ID is required"))
-            }
-            if (additionalFieldValues["awsSecretAccessKey"] ?? "").isEmpty {
-                issues.append(String(localized: "AWS Secret Access Key is required"))
             }
         }
 

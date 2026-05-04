@@ -16,6 +16,8 @@ struct WelcomeWindowView: View {
 
     @State var vm = WelcomeViewModel()
     @State private var welcomeChooserState: WelcomeChooserState?
+    @State private var pendingInstallType: DatabaseType?
+    @State private var pendingInstallPayload: DatabaseTypeChooserPayload?
     @FocusState private var focus: FocusField?
 
     var body: some View {
@@ -130,10 +132,22 @@ struct WelcomeWindowView: View {
             welcomeChooserState = WelcomeChooserState(
                 initialType: payload.initialType,
                 onSelected: { type in
-                    PendingNewConnectionType.shared.set(type)
-                    payload.onSelected(type)
+                    if PluginManager.shared.isDriverLoaded(for: type) {
+                        PendingNewConnectionType.shared.set(type)
+                        payload.onSelected(type)
+                    } else {
+                        pendingInstallPayload = payload
+                        pendingInstallType = type
+                    }
                 }
             )
+        }
+        .pluginInstallPromptForType(type: $pendingInstallType) { type in
+            if let payload = pendingInstallPayload {
+                PendingNewConnectionType.shared.set(type)
+                payload.onSelected(type)
+                pendingInstallPayload = nil
+            }
         }
         .pluginInstallPrompt(connection: $vm.pluginInstallConnection) { connection in
             vm.connectAfterInstall(connection)

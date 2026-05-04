@@ -51,7 +51,6 @@ final class ConnectionFormCoordinator {
     var clipboardCandidate: ParsedConnection?
     var clipboardBannerDismissed: Bool = false
 
-    var showTypeChooser: Bool = false
 
     private var temporaryTestIds: Set<UUID> = []
 
@@ -577,10 +576,6 @@ final class ConnectionFormCoordinator {
 
     func openImportSheet() {
         showURLImport = true
-    }
-
-    func openTypeChooser() {
-        showTypeChooser = true
     }
 
     func parseURL() {

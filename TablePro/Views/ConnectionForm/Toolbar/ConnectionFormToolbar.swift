@@ -10,20 +10,12 @@ struct ConnectionFormToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            Menu {
-                Button(String(localized: "Import from URL…")) {
-                    coordinator.openImportSheet()
-                }
-                Button(String(localized: "Choose Database Type…")) {
-                    coordinator.openTypeChooser()
-                }
+            Button {
+                coordinator.openImportSheet()
             } label: {
-                Label(String(localized: "Import"), systemImage: "square.and.arrow.down")
+                Label(String(localized: "Import from URL"), systemImage: "square.and.arrow.down")
             }
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            TestConnectionStatusButton(coordinator: coordinator)
+            .help(String(localized: "Import from URL"))
         }
 
         ToolbarItem(placement: .cancellationAction) {

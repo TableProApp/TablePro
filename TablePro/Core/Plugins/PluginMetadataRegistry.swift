@@ -163,6 +163,23 @@ struct PluginMetadataSnapshot: Sendable {
         )
     }
 
+    func withBranding(from source: PluginMetadataSnapshot) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: source.displayName, iconName: source.iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: source.brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
+            capabilities: capabilities, schema: schema, editor: editor, connection: source.connection
+        )
+    }
+
     func withIsDownloadable(_ newIsDownloadable: Bool) -> PluginMetadataSnapshot {
         PluginMetadataSnapshot(
             displayName: displayName, iconName: iconName, defaultPort: defaultPort,
@@ -635,8 +652,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         var resolved = snapshot
-        if preserveIcon, let existingIcon = snapshots[typeId]?.iconName {
-            resolved = resolved.withIconName(existingIcon)
+        if preserveIcon, let existing = snapshots[typeId] {
+            resolved = resolved.withBranding(from: existing)
         }
         if let registryDefault = defaultSnapshots[typeId] {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)

@@ -16,10 +16,6 @@ struct GeneralPaneView: View {
         PluginManager.shared.connectionMode(for: type)
     }
 
-    private var needsPluginInstall: Bool {
-        type.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: type)
-    }
-
     var body: some View {
         Form {
             if let parsed = coordinator.clipboardCandidate {
@@ -34,7 +30,6 @@ struct GeneralPaneView: View {
             }
 
             Section {
-                typeRow
                 TextField(
                     String(localized: "Name"),
                     text: $coordinator.network.name,
@@ -42,42 +37,18 @@ struct GeneralPaneView: View {
                 )
             }
 
-            if needsPluginInstall {
-                Section {
-                    PluginInstallStatusRow(coordinator: coordinator)
-                }
-            } else {
-                connectionSection
-                authenticationSection
-            }
+            connectionSection
+            authenticationSection
+            testConnectionSection
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 
-    private var typeRow: some View {
-        LabeledContent(String(localized: "Type")) {
-            HStack(spacing: 8) {
-                type.iconImage
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 20, height: 20)
-                Text(type.rawValue)
-                if type.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: type) {
-                    Text(String(localized: "Not Installed"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 3))
-                }
-                Spacer(minLength: 8)
-                Button(String(localized: "Change…")) {
-                    coordinator.openTypeChooser()
-                }
-                .controlSize(.small)
-                .disabled(coordinator.isInstallingPlugin)
-            }
+    @ViewBuilder
+    private var testConnectionSection: some View {
+        Section {
+            TestConnectionStatusButton(coordinator: coordinator)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 

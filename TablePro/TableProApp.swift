@@ -639,6 +639,7 @@ struct TableProApp: App {
                 .environment(updaterBridge)
                 .background(SettingsNotificationBridge())
                 .background(WindowOpenerBridge())
+                .background(WindowChromeConfigurator(restorable: false))
         }
 
         Window("Welcome to TablePro", id: SceneId.welcome) {
@@ -659,9 +660,8 @@ struct TableProApp: App {
             ConnectionFormView(connectionId: editingId ?? nil)
                 .background(WindowChromeConfigurator(
                     restorable: false,
-                    fullScreenable: false,
                     hideMiniaturizeButton: true,
-                    hideZoomButton: false
+                    hideZoomButton: true
                 ))
         }
         .windowResizability(.contentMinSize)

@@ -51,23 +51,14 @@ struct ConnectionFormView: View {
         }
         .navigationTitle(
             coordinator.isNew
-                ? String(localized: "New Connection")
-                : String(localized: "Edit Connection")
+                ? String(format: String(localized: "New %@ Connection"), coordinator.network.type.rawValue)
+                : String(format: String(localized: "Edit %@ Connection"), coordinator.network.type.rawValue)
         )
         .toolbar {
             ConnectionFormToolbar(coordinator: coordinator)
         }
         .sheet(isPresented: $bindable.showURLImport) {
             ImportFromURLSheet(coordinator: coordinator)
-        }
-        .sheet(isPresented: $bindable.showTypeChooser) {
-            DatabaseTypeChooserSheet(
-                initialType: coordinator.network.type,
-                onSelected: { newType in
-                    coordinator.network.setType(newType)
-                },
-                onCancel: {}
-            )
         }
         .sheet(item: $bindable.pluginDiagnostic) { item in
             PluginDiagnosticSheet(item: item) {

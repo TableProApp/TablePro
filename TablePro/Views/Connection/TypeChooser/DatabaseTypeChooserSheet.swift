@@ -31,23 +31,28 @@ struct DatabaseTypeChooserSheet: View {
             Divider()
             footer
         }
-        .frame(width: 480, height: 560)
+        .frame(width: 560, height: 460)
         .onAppear {
             model.preselect(initialType)
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(String(localized: "Choose a Database"))
-                .font(.headline)
-            Text(String(localized: "Pick the type of database you want to connect to."))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(localized: "Choose a Database"))
+                    .font(.headline)
+                Text(String(localized: "Pick the type of database you want to connect to."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            NativeSearchField(text: $model.searchText, placeholder: String(localized: "Search"))
+                .frame(width: 180)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(20)
     }
 
     @ViewBuilder
@@ -56,54 +61,55 @@ struct DatabaseTypeChooserSheet: View {
             ContentUnavailableView.search(text: model.searchText)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(selection: Binding(
-                get: { model.highlightedType },
-                set: { model.highlightedType = $0 }
-            )) {
-                ForEach(model.groupedTypes, id: \.category) { section in
-                    Section {
-                        ForEach(section.types, id: \.self) { type in
-                            DatabaseTypeChooserRow(type: type)
+            ScrollViewReader { proxy in
+                List(selection: $model.highlightedType) {
+                    ForEach(model.groupedTypes, id: \.category) { section in
+                        Section {
+                            ForEach(section.types, id: \.self) { type in
+                                DatabaseTypeChooserRow(
+                                    type: type,
+                                    isCurrent: type == initialType
+                                )
                                 .tag(type)
                                 .contentShape(Rectangle())
-                                .onTapGesture(count: 2) {
-                                    commit(type)
-                                }
+                                .background { DoubleClickDetector { commit(type) } }
+                                .id(type)
+                                .listRowSeparator(.hidden)
+                            }
+                        } header: {
+                            Text(section.category.displayName)
                         }
-                    } header: {
-                        Text(section.category.displayName)
+                    }
+                }
+                .listStyle(.inset)
+                .onAppear {
+                    if let initialType {
+                        proxy.scrollTo(initialType, anchor: .center)
                     }
                 }
             }
-            .listStyle(.inset)
-            .searchable(text: $model.searchText, placement: .toolbar)
         }
     }
 
     private var footer: some View {
         HStack {
             Spacer()
-            Button(role: .cancel) {
+            Button(String(localized: "Cancel")) {
                 onCancel()
                 dismiss()
-            } label: {
-                Text(String(localized: "Cancel"))
             }
             .keyboardShortcut(.cancelAction)
 
-            Button {
+            Button(String(localized: "Continue")) {
                 if let type = model.highlightedType {
                     commit(type)
                 }
-            } label: {
-                Text(String(localized: "Continue"))
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .disabled(model.highlightedType == nil)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(20)
     }
 
     private func commit(_ type: DatabaseType) {
@@ -114,11 +120,14 @@ struct DatabaseTypeChooserSheet: View {
 
 private struct DatabaseTypeChooserRow: View {
     let type: DatabaseType
+    let isCurrent: Bool
 
     var body: some View {
         HStack(spacing: 12) {
             type.iconImage
-                .frame(width: 32, height: 32)
+                .renderingMode(.template)
+                .foregroundStyle(type.brandColor)
+                .frame(width: 26, height: 26)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(type.rawValue)
@@ -133,18 +142,17 @@ private struct DatabaseTypeChooserRow: View {
 
             Spacer()
 
+            if isCurrent {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(.tint)
+            }
+
             if shouldShowNotInstalledBadge {
                 Text(String(localized: "Not Installed"))
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule().fill(Color.secondary.opacity(0.15))
-                    )
             }
         }
-        .padding(.vertical, 4)
     }
 
     private var shouldShowNotInstalledBadge: Bool {

@@ -992,6 +992,9 @@
         }
       }
     },
+    "%@ is required" : {
+
+    },
     "%@ ms" : {
       "localizations" : {
         "tr" : {
@@ -3112,6 +3115,9 @@
         }
       }
     },
+    "8+ characters" : {
+
+    },
     "10,000" : {
       "localizations" : {
         "tr" : {
@@ -3697,6 +3703,9 @@
         }
       }
     },
+    "Action" : {
+
+    },
     "Action Failed" : {
       "localizations" : {
         "tr" : {
@@ -3718,6 +3727,9 @@
           }
         }
       }
+    },
+    "Action: %@" : {
+
     },
     "Activate" : {
       "localizations" : {
@@ -3857,9 +3869,6 @@
         }
       }
     },
-    "Active %@" : {
-
-    },
     "Active Connections" : {
       "localizations" : {
         "tr" : {
@@ -3995,11 +4004,10 @@
     "Activity" : {
 
     },
-    "Activity is retained for 90 days" : {
+    "Activity Details" : {
 
     },
     "Activity is retained for 90 days." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4619,6 +4627,9 @@
         }
       }
     },
+    "Address" : {
+
+    },
     "admin" : {
       "localizations" : {
         "tr" : {
@@ -4684,6 +4695,9 @@
           }
         }
       }
+    },
+    "Advanced object-relational SQL" : {
+
     },
     "Agent Socket" : {
       "localizations" : {
@@ -5639,6 +5653,9 @@
         }
       }
     },
+    "Amazon's columnar warehouse on Postgres" : {
+
+    },
     "An external app is asking for an API token. Review the permissions before approving." : {
       "localizations" : {
         "tr" : {
@@ -5812,6 +5829,9 @@
           }
         }
       }
+    },
+    "Analytical" : {
+
     },
     "ANALYZE (update statistics after vacuum)" : {
       "localizations" : {
@@ -6441,6 +6461,7 @@
       }
     },
     "Are you sure you want to delete this connection? This cannot be undone." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7198,6 +7219,9 @@
         }
       }
     },
+    "AWS managed key-value/document store" : {
+
+    },
     "AWS Region" : {
       "localizations" : {
         "en" : {
@@ -7894,6 +7918,9 @@
         }
       }
     },
+    "C++ rewrite of Cassandra, faster" : {
+
+    },
     "CA Cert" : {
       "localizations" : {
         "tr" : {
@@ -7937,6 +7964,9 @@
           }
         }
       }
+    },
+    "CA certificate is required for verification modes" : {
+
     },
     "Cache Hit Ratio" : {
       "localizations" : {
@@ -8402,6 +8432,9 @@
         }
       }
     },
+    "Category: %@" : {
+
+    },
     "Cell Renderer" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8745,6 +8778,9 @@
           }
         }
       }
+    },
+    "Choose a Database" : {
+
     },
     "Choose a fetched model" : {
       "localizations" : {
@@ -9555,6 +9591,9 @@
         }
       }
     },
+    "Client key is required when client certificate is set" : {
+
+    },
     "Client:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9806,6 +9845,9 @@
           }
         }
       }
+    },
+    "Cloud Native" : {
+
     },
     "CMD" : {
       "extractionState" : "stale",
@@ -10243,6 +10285,9 @@
         }
       }
     },
+    "Column-oriented OLAP for big data" : {
+
+    },
     "Column: %@" : {
       "localizations" : {
         "tr" : {
@@ -10598,10 +10643,14 @@
         }
       }
     },
+    "Confirm" : {
+
+    },
     "Confirm Destructive Operation" : {
 
     },
     "Confirm passphrase" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -11077,6 +11126,9 @@
           }
         }
       }
+    },
+    "Connection name is required" : {
+
     },
     "Connection not found" : {
       "localizations" : {
@@ -11614,6 +11666,9 @@
         }
       }
     },
+    "Coordination & Config" : {
+
+    },
     "Copied" : {
       "localizations" : {
         "tr" : {
@@ -11946,6 +12001,9 @@
         }
       }
     },
+    "Copy Connection ID" : {
+
+    },
     "Copy Connection String" : {
       "localizations" : {
         "tr" : {
@@ -11989,6 +12047,9 @@
           }
         }
       }
+    },
+    "Copy Details" : {
+
     },
     "Copy Diagnostic Info" : {
 
@@ -13489,6 +13550,9 @@
         }
       }
     },
+    "Customization" : {
+
+    },
     "Cut" : {
       "localizations" : {
         "tr" : {
@@ -13820,6 +13884,9 @@
         }
       }
     },
+    "Database file path is required" : {
+
+    },
     "Database Index" : {
       "localizations" : {
         "tr" : {
@@ -13866,6 +13933,7 @@
       }
     },
     "Database Name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13891,6 +13959,9 @@
 
     },
     "Database name (uses current if omitted)" : {
+
+    },
+    "Database name is required" : {
 
     },
     "Database name to switch to" : {
@@ -15552,6 +15623,9 @@
         }
       }
     },
+    "Details: %@" : {
+
+    },
     "Diagnostic Info" : {
 
     },
@@ -15892,6 +15966,15 @@
         }
       }
     },
+    "Distributed key-value store for service discovery" : {
+
+    },
+    "Distributed SQLite by Turso" : {
+
+    },
+    "Distributed wide-column store" : {
+
+    },
     "Do you want to save changes?" : {
       "localizations" : {
         "tr" : {
@@ -15913,6 +15996,9 @@
           }
         }
       }
+    },
+    "Document" : {
+
     },
     "Documentation" : {
       "localizations" : {
@@ -16692,6 +16778,9 @@
         }
       }
     },
+    "Edit %@ Connection" : {
+
+    },
     "Edit Cell" : {
       "localizations" : {
         "tr" : {
@@ -16737,6 +16826,7 @@
       }
     },
     "Edit Connection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -17142,6 +17232,12 @@
           }
         }
       }
+    },
+    "Embedded analytical SQL" : {
+
+    },
+    "Embedded zero-config SQL database" : {
+
     },
     "Empty" : {
       "localizations" : {
@@ -17746,6 +17842,9 @@
           }
         }
       }
+    },
+    "Enterprise SQL with PL/SQL" : {
+
     },
     "Environment Variables" : {
       "localizations" : {
@@ -22376,6 +22475,9 @@
         }
       }
     },
+    "Google Cloud serverless data warehouse" : {
+
+    },
     "Graphite" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -23735,6 +23837,9 @@
           }
         }
       }
+    },
+    "In-memory data store and cache" : {
+
     },
     "Include approximate row counts (default false)" : {
 
@@ -25409,6 +25514,12 @@
         }
       }
     },
+    "JSON-style document database" : {
+
+    },
+    "Jump host configuration is invalid" : {
+
+    },
     "Jump Hosts" : {
       "localizations" : {
         "tr" : {
@@ -25607,6 +25718,9 @@
           }
         }
       }
+    },
+    "Key-Value" : {
+
     },
     "Keyboard" : {
       "localizations" : {
@@ -25895,6 +26009,9 @@
           }
         }
       }
+    },
+    "Last Activity" : {
+
     },
     "Last query execution summary" : {
       "localizations" : {
@@ -28088,6 +28205,9 @@
         }
       }
     },
+    "Microsoft's enterprise SQL database" : {
+
+    },
     "Missing argument: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -28331,6 +28451,9 @@
           }
         }
       }
+    },
+    "Most popular open-source SQL database" : {
+
     },
     "Move Down" : {
       "extractionState" : "stale",
@@ -28877,6 +29000,9 @@
           }
         }
       }
+    },
+    "New %@ Connection" : {
+
     },
     "New Chat" : {
       "localizations" : {
@@ -32398,6 +32524,9 @@
         }
       }
     },
+    "Open-source fork of MySQL" : {
+
+    },
     "Operation cancelled by user" : {
       "localizations" : {
         "tr" : {
@@ -32731,6 +32860,12 @@
           }
         }
       }
+    },
+    "Outcome" : {
+
+    },
+    "Outcome: %@" : {
+
     },
     "Override auto-detected CLI paths per database type." : {
       "localizations" : {
@@ -33091,6 +33226,7 @@
       }
     },
     "Passphrase (8+ characters)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33536,6 +33672,9 @@
           }
         }
       }
+    },
+    "Pick the type of database you want to connect to." : {
+
     },
     "PID" : {
       "localizations" : {
@@ -35141,6 +35280,9 @@
         }
       }
     },
+    "Pro feature" : {
+
+    },
     "Pro License Required" : {
       "localizations" : {
         "tr" : {
@@ -36229,6 +36371,9 @@
         }
       }
     },
+    "Re-enter passphrase" : {
+
+    },
     "Read & Write" : {
       "localizations" : {
         "tr" : {
@@ -37085,6 +37230,9 @@
           }
         }
       }
+    },
+    "Relational" : {
+
     },
     "Reload" : {
       "localizations" : {
@@ -38944,6 +39092,9 @@
         }
       }
     },
+    "Safety" : {
+
+    },
     "Same options will be applied to all selected tables." : {
       "localizations" : {
         "tr" : {
@@ -39676,6 +39827,9 @@
         }
       }
     },
+    "Search" : {
+
+    },
     "Search activity" : {
       "localizations" : {
         "tr" : {
@@ -40379,6 +40533,9 @@
         }
       }
     },
+    "Select an activity entry to see its details." : {
+
+    },
     "Select Connections" : {
       "localizations" : {
         "tr" : {
@@ -40861,6 +41018,9 @@
           }
         }
       }
+    },
+    "Serverless SQLite at the edge" : {
+
     },
     "Service" : {
       "localizations" : {
@@ -41534,6 +41694,9 @@
           }
         }
       }
+    },
+    "Show details" : {
+
     },
     "Show line numbers" : {
       "localizations" : {
@@ -42487,6 +42650,9 @@
         }
       }
     },
+    "Source" : {
+
+    },
     "Source:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -42578,6 +42744,7 @@
       }
     },
     "Sponsor TablePro" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -43078,6 +43245,9 @@
         }
       }
     },
+    "SSH host is required" : {
+
+    },
     "SSH Host Key Changed" : {
       "localizations" : {
         "tr" : {
@@ -43166,6 +43336,9 @@
         }
       }
     },
+    "SSH port must be between 1 and 65535" : {
+
+    },
     "SSH Profile" : {
       "localizations" : {
         "en" : {
@@ -43223,7 +43396,6 @@
       }
     },
     "SSH Tunnel" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -43444,7 +43616,6 @@
       }
     },
     "SSL/TLS" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -47275,6 +47446,12 @@
         }
       }
     },
+    "Time" : {
+
+    },
+    "Time: %@" : {
+
+    },
     "TIMESTAMPS" : {
       "localizations" : {
         "tr" : {
@@ -47748,6 +47925,7 @@
       }
     },
     "Toggle Inspector (⌘⌥I)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48018,6 +48196,9 @@
           }
         }
       }
+    },
+    "Token: %@" : {
+
     },
     "Too many pending pairing codes. Try again later." : {
       "localizations" : {
@@ -48668,6 +48849,9 @@
           }
         }
       }
+    },
+    "Type: %@" : {
+
     },
     "Typography" : {
       "extractionState" : "stale",
@@ -50861,6 +51045,9 @@
           }
         }
       }
+    },
+    "Wide-Column" : {
+
     },
     "Window Background" : {
       "localizations" : {
