@@ -20,15 +20,12 @@ struct TagBadgeView: View {
 
     var body: some View {
         Text(displayName)
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(tag.color.color)
-            .lineLimit(1)  // Prevent overflow from very long tag names
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
             .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(tag.color.color.opacity(0.2))
-            )
+            .padding(.vertical, 3)
+            .background(tag.color.color, in: Capsule())
             .padding(.leading, 8)
             .help(String(format: String(localized: "Tag: %@"), tag.name))
             .accessibilityLabel(String(format: String(localized: "Tag: %@"), tag.name))

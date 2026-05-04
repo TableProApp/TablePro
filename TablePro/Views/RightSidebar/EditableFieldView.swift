@@ -105,13 +105,7 @@ internal struct FieldDetailView: View {
 
             Spacer()
 
-            Text(context.columnType.badgeLabel)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(.quaternary)
-                .clipShape(Capsule())
+            TypeBadge(context.columnType.badgeLabel)
 
             if isTruncated && !isLoadingFullValue {
                 Text("truncated")

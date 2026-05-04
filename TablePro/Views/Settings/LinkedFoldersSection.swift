@@ -123,16 +123,3 @@ struct LinkedFoldersSection: View {
         LinkedFolderWatcher.shared.reload()
     }
 }
-
-// MARK: - Pro Badge
-
-struct ProBadge: View {
-    var body: some View {
-        Text("PRO")
-            .font(.caption2.bold())
-            .foregroundStyle(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(Color(nsColor: .systemOrange), in: RoundedRectangle(cornerRadius: 3))
-    }
-}

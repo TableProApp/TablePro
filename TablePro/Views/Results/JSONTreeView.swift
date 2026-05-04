@@ -210,13 +210,7 @@ private struct JSONTreeRowView: View {
                 .foregroundStyle(Color(nsColor: node.valueType.color))
                 .lineLimit(1)
             Spacer(minLength: 4)
-            Text(node.valueType.badgeLabel)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(.quaternary)
-                .clipShape(Capsule())
+            TypeBadge(node.valueType.badgeLabel)
         }
         .padding(.vertical, 1)
     }

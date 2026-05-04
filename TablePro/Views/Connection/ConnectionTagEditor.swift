@@ -145,7 +145,7 @@ private struct CreateTagSheet: View {
                 Text("Color")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TagColorPicker(selectedColor: $tagColor)
+                ColorPaletteView(selectedColor: $tagColor, includesNone: false, size: .compact)
             }
 
             HStack {
@@ -166,39 +166,6 @@ private struct CreateTagSheet: View {
         .frame(width: 300)
         .onExitCommand {
             dismiss()
-        }
-    }
-}
-
-// MARK: - Tag Color Picker
-
-/// Color picker for tags (excludes "none" option)
-private struct TagColorPicker: View {
-    @Binding var selectedColor: ConnectionColor
-
-    private var availableColors: [ConnectionColor] {
-        ConnectionColor.allCases.filter { $0 != .none }
-    }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(availableColors) { color in
-                Button(action: { selectedColor = color }) {
-                    Circle()
-                        .fill(color.color)
-                        .frame(width: 16, height: 16)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.primary, lineWidth: selectedColor == color ? 2 : 0)
-                                .frame(
-                                    width: 20,
-                                    height: 20
-                                )
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(format: String(localized: "Color %@"), color.rawValue))
-            }
         }
     }
 }
