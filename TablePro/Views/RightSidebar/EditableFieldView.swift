@@ -92,7 +92,7 @@ internal struct FieldDetailView: View {
             if isPrimaryKey {
                 Image(systemName: "key.fill")
                     .font(.caption2)
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(Color(nsColor: .systemYellow))
             } else if isForeignKey {
                 Image(systemName: "arrow.right.arrow.left")
                     .font(.caption2)

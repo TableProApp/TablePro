@@ -72,7 +72,7 @@ struct DeeplinkImportSheet: View {
                             String(localized: "A connection with this name, host, and type already exists."),
                             systemImage: "exclamationmark.triangle.fill"
                         )
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color(nsColor: .systemOrange))
                         .font(.callout)
                     }
                 }

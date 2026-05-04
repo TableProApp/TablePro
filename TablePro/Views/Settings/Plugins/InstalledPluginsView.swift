@@ -178,7 +178,7 @@ struct InstalledPluginsView: View {
 
             if pluginManager.registryUpdate(for: plugin.id) != nil {
                 Image(systemName: "arrow.up.circle.fill")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color(nsColor: .systemBlue))
                     .font(.caption)
             }
 
@@ -342,7 +342,7 @@ struct InstalledPluginsView: View {
             HStack(spacing: 8) {
                 Text(String(format: String(localized: "v%@ available"), registryPlugin.version))
                     .font(.callout)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color(nsColor: .systemBlue))
                 Button(String(localized: "Update")) { updatePlugin(registryPlugin) }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)

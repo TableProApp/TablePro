@@ -147,7 +147,7 @@ struct ImportDialog: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: currentPlugin.map { type(of: $0).iconName } ?? "doc.text.fill")
                 .font(.title)
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color(nsColor: .systemBlue))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {

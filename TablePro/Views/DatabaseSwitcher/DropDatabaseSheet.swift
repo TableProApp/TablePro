@@ -24,7 +24,7 @@ struct DropDatabaseSheet: View {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.largeTitle)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color(nsColor: .systemRed))
 
                         Text(String(format: String(localized: "Drop database '%@'?"), databaseName))
                             .font(.body.weight(.medium))

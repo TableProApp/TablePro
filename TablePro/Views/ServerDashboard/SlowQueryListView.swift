@@ -58,7 +58,7 @@ struct SlowQueryListView: View {
             Text(query.duration)
                 .font(.system(.caption, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color(nsColor: .systemOrange))
                 .frame(width: 50, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 2) {

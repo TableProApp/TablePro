@@ -146,7 +146,7 @@ struct SidebarView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.title)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color(nsColor: .systemOrange))
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)

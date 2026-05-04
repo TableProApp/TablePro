@@ -67,7 +67,7 @@ struct HexEditorContentView: View {
                     if isTruncated {
                         Text(String(localized: "Truncated — read only"))
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color(nsColor: .systemOrange))
                     } else if !isValid, !editableHex.isEmpty {
                         Text(String(localized: "Invalid hex"))
                             .font(.caption)

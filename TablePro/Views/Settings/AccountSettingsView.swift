@@ -27,7 +27,7 @@ struct AccountSettingsView: View {
         VStack {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color(nsColor: .systemOrange))
                 Text(String(localized: "Sync paused — Pro license expired"))
                     .font(.callout)
                 Spacer()

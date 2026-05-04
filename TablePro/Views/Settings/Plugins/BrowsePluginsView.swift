@@ -122,7 +122,7 @@ struct BrowsePluginsView: View {
                         .lineLimit(1)
                     if plugin.isVerified {
                         Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(Color(nsColor: .systemBlue))
                             .font(.caption2)
                     }
                 }

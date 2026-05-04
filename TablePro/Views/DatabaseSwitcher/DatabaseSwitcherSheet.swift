@@ -289,7 +289,7 @@ struct DatabaseSwitcherSheet: View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.title2)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color(nsColor: .systemOrange))
 
             Text(isSchemaMode
                 ? String(localized: "Failed to load schemas")

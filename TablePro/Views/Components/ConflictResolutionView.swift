@@ -32,7 +32,7 @@ struct ConflictResolutionView: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.title2)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color(nsColor: .systemOrange))
             Text(String(localized: "Sync Conflict"))
                 .font(.headline)
         }

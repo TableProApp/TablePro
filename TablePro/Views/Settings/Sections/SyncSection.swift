@@ -62,7 +62,7 @@ struct SyncSection: View {
 
                 Text("Sign in to iCloud in System Settings to enable sync.")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color(nsColor: .systemOrange))
             }
 
             if let lastSync = syncCoordinator.lastSyncDate {
