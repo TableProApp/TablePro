@@ -16,48 +16,26 @@ struct ResultTabBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
+            HStack(spacing: 2) {
                 ForEach(resultSets) { rs in
                     resultTab(rs)
                 }
             }
+            .padding(.horizontal, 4)
         }
         .frame(height: 32)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
     }
 
     private func resultTab(_ rs: ResultSet) -> some View {
         let isActive = rs.id == (activeResultSetId ?? resultSets.last?.id)
-        return Button {
-            activeResultSetId = rs.id
-        } label: {
-            HStack(spacing: 4) {
-                if rs.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Text(rs.label)
-                    .font(.subheadline)
-                    .lineLimit(1)
-                if !rs.isPinned {
-                    Button { onClose?(rs.id) } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "Close result tab"))
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isActive ? Color(nsColor: .selectedControlColor) : Color.clear)
-            )
-        }
-        .buttonStyle(.plain)
+        return ResultTab(
+            label: rs.label,
+            isPinned: rs.isPinned,
+            isActive: isActive,
+            onActivate: { activeResultSetId = rs.id },
+            onClose: rs.isPinned ? nil : { onClose?(rs.id) }
+        )
         .contextMenu {
             Button(rs.isPinned ? String(localized: "Unpin") : String(localized: "Pin Result")) {
                 onPin?(rs.id)
@@ -70,6 +48,57 @@ struct ResultTabBar: View {
                     onClose?(other.id)
                 }
             }
+        }
+    }
+}
+
+private struct ResultTab: View {
+    let label: String
+    let isPinned: Bool
+    let isActive: Bool
+    let onActivate: () -> Void
+    let onClose: (() -> Void)?
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onActivate) {
+            HStack(spacing: 4) {
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
+                        .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                }
+                Text(label)
+                    .font(.callout)
+                    .lineLimit(1)
+                    .foregroundStyle(isActive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                if let onClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Close result tab"))
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(background, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+
+    private var background: AnyShapeStyle {
+        if isActive {
+            AnyShapeStyle(.tint.opacity(0.18))
+        } else if isHovering {
+            AnyShapeStyle(.quaternary)
+        } else {
+            AnyShapeStyle(.clear)
         }
     }
 }
