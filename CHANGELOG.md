@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Filter value autocomplete popover stole keyboard focus from the text field after the first keystroke when Full Keyboard Access was enabled (System Settings → Keyboard → Keyboard Navigation). The popover content used SwiftUI `Button` rows, which become focus targets under FKA, so SwiftUI auto-focused the first row when the popover appeared. Replaced the rows with `Text` + `.onTapGesture` (non-focusable) and marked the dropdown as `.focusable(false)`.
 - Toolbar database name was empty after relaunching with a connection that had no database configured but a last-used database restored via `selectDatabaseFromLastSession`. The window opened (and the toolbar resolved its initial name) before the post-connect actions populated `session.currentDatabase`, so the toolbar fell back to the empty `connection.database`. Sidebar and Cmd+K both worked because they read the session directly. The toolbar now re-syncs its database name on every `connectionStatusDidChange`, picking up the restored value once the session settles.
 
 ### Changed

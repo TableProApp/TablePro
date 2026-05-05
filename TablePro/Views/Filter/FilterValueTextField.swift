@@ -306,28 +306,26 @@ struct FilterValueTextField: NSViewRepresentable {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(state.items.enumerated()), id: \.offset) { index, item in
-                            Button {
-                                onSelect(item)
-                            } label: {
-                                Text(item)
-                                    .font(.callout)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(
-                                        state.selectedIndex == index
-                                            ? Color.accentColor.opacity(0.18)
-                                            : Color.clear
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                            }
-                            .buttonStyle(.plain)
-                            .id(index)
+                            Text(item)
+                                .font(.callout)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    state.selectedIndex == index
+                                        ? Color.accentColor.opacity(0.18)
+                                        : Color.clear
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .contentShape(Rectangle())
+                                .onTapGesture { onSelect(item) }
+                                .id(index)
                         }
                     }
                     .padding(4)
                 }
+                .focusable(false)
                 .onChange(of: state.selectedIndex) { _, newIndex in
                     withAnimation(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(newIndex, anchor: .center)
