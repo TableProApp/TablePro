@@ -9,26 +9,30 @@ struct PluginsSettingsView: View {
     @State private var selectedTab: PluginsSubTab = .installed
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("", selection: $selectedTab) {
-                Text("Installed").tag(PluginsSubTab.installed)
-                Text("Browse").tag(PluginsSubTab.browse)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-
-            Group {
-                switch selectedTab {
-                case .installed:
-                    InstalledPluginsView()
-                case .browse:
-                    BrowsePluginsView()
+        NavigationStack {
+            content
+                .navigationTitle(String(localized: "Plugins"))
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Picker("", selection: $selectedTab) {
+                            Text(String(localized: "Installed")).tag(PluginsSubTab.installed)
+                            Text(String(localized: "Browse")).tag(PluginsSubTab.browse)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(maxWidth: 240)
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch selectedTab {
+        case .installed:
+            InstalledPluginsView()
+        case .browse:
+            BrowsePluginsView()
         }
     }
 }
@@ -40,5 +44,5 @@ private enum PluginsSubTab: Hashable {
 
 #Preview {
     PluginsSettingsView()
-        .frame(width: 550, height: 500)
+        .frame(width: 720, height: 500)
 }
