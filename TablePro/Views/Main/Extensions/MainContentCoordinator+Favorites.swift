@@ -42,8 +42,9 @@ extension MainContentCoordinator {
         guard let loaded = FileTextLoader.load(favorite.fileURL) else { return }
         let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
 
-        if let existingIndex = tabManager.tabs.firstIndex(where: { $0.content.sourceFileURL == favorite.fileURL }) {
-            tabManager.selectedTabId = tabManager.tabs[existingIndex].id
+        if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: favorite.fileURL) {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
             return
         }
 
@@ -69,11 +70,15 @@ extension MainContentCoordinator {
             return
         }
 
-        tabManager.addTab(
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .query,
+            databaseName: connection.database,
             initialQuery: loaded.content,
-            title: favorite.name,
-            sourceFileURL: favorite.fileURL
+            sourceFileURL: favorite.fileURL,
+            tabTitle: favorite.name
         )
+        WindowManager.shared.openTab(payload: payload)
     }
 
     func trashLinkedFavorite(_ favorite: LinkedSQLFavorite) {
