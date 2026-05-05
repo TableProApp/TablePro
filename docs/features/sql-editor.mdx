@@ -294,3 +294,17 @@ The title bar shows the filename for file-backed tabs. A dot appears on the clos
 When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the data grid changes first. Save the file after the grid save completes.
 </Note>
 
+### External modifications
+
+If a file changes on disk while it's open in TablePro (a `git pull`, an edit in VS Code, etc.), a yellow banner appears above the editor with a one-click **Reload from Disk**. Reload pulls the new content in and discards your tab edits.
+
+If you save (`Cmd+S`) while the file has changed externally, TablePro shows a side-by-side diff sheet with line-level highlighting and three actions:
+
+- **Keep My Changes** writes your tab content back, overwriting the external edits.
+- **Reload from Disk** drops your edits and loads the external version.
+- **Cancel** closes the sheet without saving so you can copy parts out manually.
+
+### Linked folders
+
+For watching a whole folder of `.sql` files (e.g., a Git repo of team queries), use [Linked SQL Folders](/features/sql-favorites#linked-sql-folders) instead of opening each file by hand. Linked folders update the sidebar within a second of any on-disk change.
+

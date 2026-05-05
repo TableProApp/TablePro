@@ -72,21 +72,30 @@ Set the scope when creating or editing a favorite.
 
 ## Linked SQL Folders
 
-Point TablePro at a folder of `.sql` files on disk and they appear in the Favorites sidebar as read-from-disk items. Useful for teams sharing a Git repo of queries: anyone with the repo cloned can add the folder, and edits are picked up live.
+Link a folder of `.sql` files on disk and they show up in the Favorites sidebar live. Useful for a Git repo of shared queries: clone the repo, link the folder, the team's queries appear next to your DB-stored favorites.
 
-**Adding a folder**: in the Favorites sidebar, click the **+** button at the bottom and pick **Add Linked SQL Folder...** Pick any folder containing `.sql` files. Subfolders are watched recursively. You can add as many folders as you want.
+### Adding a folder
 
-**Managing folders**: right-click on a linked folder root in the sidebar to disable, reload, copy its path, show in Finder, or remove it from the sidebar. Removing only unlinks the folder. Files on disk are not deleted.
+In the Favorites sidebar, click the `+` at the bottom and choose **Add Linked SQL Folder...** Pick any folder. Subfolders nest in the sidebar in the same shape as on disk. Add as many folders as you want, and assign each one to a specific connection or leave it global.
 
-**Live updates**: Drop a new file into the folder and it appears within a second. Edit a file outside TablePro (vim, VS Code, `git pull`) and the sidebar refreshes automatically.
+To set the scope, right-click an existing linked folder and use **Add Another SQL Folder...** to add more, or open Settings > Editor > Linked SQL Folders to toggle which connection each folder belongs to. Global folders show in every connection's Favorites tab. Per-connection folders show only when that connection is active.
 
-**Editing**: Click a linked file to open it as a regular editor tab. ⌘S writes back to disk. If the file was modified externally since you opened it, ⌘S shows a prompt with **Keep My Changes** / **Reload from Disk** / **Cancel**.
+### Editing files
 
-**Deleting**: Press Delete on a linked file or right-click > **Move File to Trash**. The file goes to macOS Trash, recoverable from Finder.
+Click a linked file to open it as a regular editor tab. `Cmd+S` writes back to disk in the file's original encoding. UTF-8, UTF-16, ISO Latin-1 and a few others are auto-detected on load and preserved on save.
+
+If the file was modified outside TablePro since you opened it, two things happen:
+
+- A yellow banner appears above the editor with a one-click **Reload from Disk**.
+- If you save anyway, TablePro shows a side-by-side diff sheet with **Keep My Changes**, **Reload from Disk**, and **Cancel**.
+
+External edits propagate to the sidebar within about a second via FSEvents. Drop a new file into the folder and it appears. Delete a file in Finder and the row disappears. `git pull` triggers the same refresh.
+
+Non-UTF-8 files show a yellow warning triangle in the sidebar. Saving works in their native encoding. If you type a character that doesn't fit (e.g., an emoji into ISO Latin-1), the save fails with a clear error so you don't silently lose data.
 
 ### Frontmatter
 
-Add metadata as leading SQL comments. The parser stops at the first non-matching line, so put frontmatter at the very top:
+Top-of-file SQL comments set the display name, autocomplete keyword, and tooltip:
 
 ```sql
 -- @name: Active Users (24h)
@@ -97,21 +106,31 @@ FROM users
 WHERE last_seen > NOW() - INTERVAL 24 HOUR;
 ```
 
-| Key | Description |
-|-----|-------------|
-| `@name` | Display name in the sidebar. Falls back to filename without `.sql`. |
-| `@keyword` | Autocomplete keyword. Type it in the editor to expand the file content as a query. |
-| `@description` | Optional description, shown in tooltips. |
+| Key | Effect |
+|-----|--------|
+| `@name` | Display name in the sidebar. Falls back to the filename without `.sql`. |
+| `@keyword` | Autocomplete trigger. Type the keyword in the editor and the file content expands as a query. |
+| `@description` | Optional. Shown in tooltips. |
 
-Files without frontmatter still show up. The filename becomes the display name and no keyword is registered.
+The parser stops at the first non-frontmatter line, so put these at the very top of the file. UTF-8 BOM at the start of the file is handled. Files without frontmatter still appear, with the filename as the display name and no keyword registered.
 
-### Folder scope
+To edit frontmatter without opening the file, right-click a linked row and choose **Edit Metadata...** The dialog rewrites only the leading comment block and preserves the rest of the file plus its original encoding.
 
-In the future, linked folders can be scoped per-connection (so each project repo is only visible when its database is selected). Today all linked folders are global.
+### Drag and drop
+
+Drag a row from the Favorites sidebar (linked or DB-stored) onto the SQL editor to insert its content at the cursor.
+
+### Removing files and folders
+
+Press Delete on a linked file or right-click > **Move File to Trash**. The file goes to the macOS Trash and stays recoverable from Finder.
+
+Right-click a linked folder root for **Disable**, **Reload**, **Copy Path**, **Show in Finder**, **Add Another SQL Folder...**, or **Remove from Sidebar**. Removing only unlinks the folder from TablePro. Files on disk stay where they are.
 
 ### Storage
 
-Linked folder paths are stored in UserDefaults (key `com.TablePro.linkedSQLFolders`). Parsed file metadata (name, keyword, mtime, size, encoding) is cached in `linked_sql_index.db` in `~/Library/Application Support/TablePro/` for fast sidebar rendering. The actual file content always lives on disk.
+Linked folder paths live in UserDefaults under `com.TablePro.linkedSQLFolders`. Parsed metadata (name, keyword, mtime, size, encoding) is cached in `linked_sql_index.db` under `~/Library/Application Support/TablePro/` so the sidebar renders without re-reading every file. File content always lives on disk.
+
+Linked folder paths are not part of iCloud Sync. Each Mac links its own copy of a shared repo.
 
 ## Storage
 
