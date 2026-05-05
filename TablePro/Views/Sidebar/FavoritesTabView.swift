@@ -6,8 +6,8 @@
 import SwiftUI
 
 internal struct FavoritesTabView: View {
+
     @State private var viewModel: FavoritesSidebarViewModel
-    @State private var selectedNodeId: String?
     @State private var folderToDelete: SQLFavoriteFolder?
     @State private var showDeleteFolderAlert = false
     @State private var linkedFileToTrash: LinkedSQLFavorite?
@@ -17,13 +17,17 @@ internal struct FavoritesTabView: View {
     @State private var showRemoveLinkedFolderAlert = false
     @FocusState private var isRenameFocused: Bool
     let connectionId: UUID
-    let searchText: String
+    let windowState: WindowSidebarState
+    @Bindable private var sidebarState: ConnectionSidebarState
     private var coordinator: MainContentCoordinator?
 
-    init(connectionId: UUID, searchText: String, coordinator: MainContentCoordinator?) {
+    private var searchText: String { windowState.favoritesSearchText }
+
+    init(connectionId: UUID, windowState: WindowSidebarState, coordinator: MainContentCoordinator?) {
         self.connectionId = connectionId
+        self.windowState = windowState
+        self.sidebarState = ConnectionSidebarState.shared(for: connectionId)
         _viewModel = State(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
-        self.searchText = searchText
         self.coordinator = coordinator
     }
 
@@ -31,7 +35,7 @@ internal struct FavoritesTabView: View {
         Group {
             let items = viewModel.filteredNodes(searchText: searchText)
 
-            if viewModel.isLoading && viewModel.nodes.isEmpty {
+            if !viewModel.isInitialLoadComplete && viewModel.nodes.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.nodes.isEmpty && searchText.isEmpty {
@@ -47,9 +51,6 @@ internal struct FavoritesTabView: View {
                 Divider()
                 bottomToolbar
             }
-        }
-        .onAppear {
-            Task { await viewModel.loadFavorites() }
         }
         .sheet(item: $viewModel.editDialogItem) { item in
             FavoriteEditDialog(
@@ -76,9 +77,7 @@ internal struct FavoritesTabView: View {
             LinkedFavoriteMetadataDialog(
                 favorite: file,
                 connectionId: connectionId,
-                onSaved: {
-                    Task { await viewModel.loadFavorites() }
-                }
+                onSaved: {}
             )
         }
         .alert(
@@ -133,7 +132,7 @@ internal struct FavoritesTabView: View {
     // MARK: - List
 
     private func favoritesList(_ items: [FavoriteNode]) -> some View {
-        List(selection: $selectedNodeId) {
+        List(selection: $sidebarState.selectedFavoriteNodeId) {
             nodeRows(items)
         }
         .listStyle(.sidebar)
@@ -259,7 +258,7 @@ internal struct FavoritesTabView: View {
     }
 
     private func deleteSelectedNode() {
-        guard let nodeId = selectedNodeId else { return }
+        guard let nodeId = sidebarState.selectedFavoriteNodeId else { return }
         if let fav = viewModel.favoriteForNodeId(nodeId) {
             viewModel.deleteFavorite(fav)
             return

@@ -81,11 +81,15 @@ struct SidebarView: View {
             case .tables:
                 tablesContent
             case .favorites:
-                FavoritesTabView(
-                    connectionId: connectionId,
-                    searchText: viewModel.searchText,
-                    coordinator: coordinator
-                )
+                if let coordinator {
+                    FavoritesTabView(
+                        connectionId: connectionId,
+                        windowState: coordinator.windowSidebarState,
+                        coordinator: coordinator
+                    )
+                } else {
+                    Color.clear
+                }
             }
         }
         .onChange(of: sidebarState.searchText) { _, newValue in

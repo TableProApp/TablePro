@@ -139,9 +139,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
         if currentSession == nil {
             sidebarSplitItem.isCollapsed = true
-        } else {
+        } else if let session = currentSession, let coordinator = sessionState?.coordinator {
             sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(currentSession!.connection.id) // swiftlint:disable:this force_unwrapping
+                SharedSidebarState.forConnection(session.connection.id),
+                windowState: coordinator.windowSidebarState
             )
         }
         inspectorSplitItem.isCollapsed = !UserDefaults.standard.bool(forKey: Self.inspectorPresentedKey)
@@ -171,11 +172,15 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             installToolbar(coordinator: sessionState.coordinator)
         }
 
-        if let currentSession {
+        if let currentSession, let coordinator = sessionState?.coordinator {
             sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(currentSession.connection.id)
+                SharedSidebarState.forConnection(currentSession.connection.id),
+                windowState: coordinator.windowSidebarState
             )
         }
+
+        sidebarContainer.view.layoutSubtreeIfNeeded()
+        sidebarContainer.view.display()
 
         installObservers()
     }
@@ -249,7 +254,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 sessionState?.coordinator.teardown()
                 sessionState = nil
                 currentSession = nil
-                sidebarContainer.updateSidebarState(nil)
+                sidebarContainer.updateSidebarState(nil, windowState: nil)
                 if view.window?.isVisible == true {
                     sidebarSplitItem.animator().isCollapsed = true
                 } else {
@@ -293,9 +298,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private func rebuildPanes() {
         sidebarContainer.rootView = AnyView(buildSidebarView())
-        if let currentSession {
+        if let currentSession, let coordinator = sessionState?.coordinator {
             sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(currentSession.connection.id)
+                SharedSidebarState.forConnection(currentSession.connection.id),
+                windowState: coordinator.windowSidebarState
             )
         }
         detailHosting.rootView = AnyView(buildDetailView())
@@ -305,7 +311,19 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     @ViewBuilder
     private func buildSidebarView() -> some View {
         if let currentSession, let sessionState {
-            SidebarView(
+            sidebarBody(currentSession: currentSession, sessionState: sessionState)
+                .transaction { $0.animation = nil }
+        } else {
+            Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private func sidebarBody(
+        currentSession: ConnectionSession,
+        sessionState: SessionStateFactory.SessionState
+    ) -> some View {
+        SidebarView(
                 sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
                 onDoubleClick: { [weak self] table in
                     guard let coordinator = self?.sessionState?.coordinator else { return }
@@ -331,9 +349,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 connectionId: currentSession.connection.id,
                 coordinator: sessionState.coordinator
             )
-        } else {
-            Color.clear
-        }
     }
 
     @ViewBuilder

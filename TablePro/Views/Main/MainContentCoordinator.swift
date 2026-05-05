@@ -88,6 +88,7 @@ final class MainContentCoordinator {
     let toolbarState: ConnectionToolbarState
     let tabSessionRegistry: TabSessionRegistry
     let queryExecutor: QueryExecutor
+    let windowSidebarState = WindowSidebarState()
 
     // MARK: - Services
 
@@ -352,6 +353,7 @@ final class MainContentCoordinator {
 
         _ = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
         SchemaProviderRegistry.shared.retain(for: connection.id)
+        ConnectionDataCache.shared(for: connection.id).ensureLoaded()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
 

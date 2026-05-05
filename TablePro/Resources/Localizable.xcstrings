@@ -322,6 +322,9 @@
         }
       }
     },
+    "\"%@\" will be removed from the sidebar. Files on disk will not be deleted." : {
+
+    },
     "\"%@\" will be removed from your system. This action cannot be undone." : {
       "localizations" : {
         "tr" : {
@@ -4135,6 +4138,9 @@
         }
       }
     },
+    "Add Another SQL Folder..." : {
+
+    },
     "Add as Copy" : {
       "localizations" : {
         "tr" : {
@@ -4511,6 +4517,9 @@
         }
       }
     },
+    "Add Linked SQL Folder..." : {
+
+    },
     "Add provider" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4600,9 +4609,6 @@
           }
         }
       }
-    },
-    "Add SQL Folder..." : {
-
     },
     "Add the JSON below inside the file and save" : {
       "localizations" : {
@@ -12284,6 +12290,9 @@
         }
       }
     },
+    "Copy Path" : {
+
+    },
     "Copy Query" : {
       "localizations" : {
         "tr" : {
@@ -15737,6 +15746,9 @@
         }
       }
     },
+    "Disable" : {
+
+    },
     "Disable foreign key checks" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -17356,6 +17368,9 @@
           }
         }
       }
+    },
+    "Enable" : {
+
     },
     "Enable %@" : {
       "localizations" : {
@@ -26793,6 +26808,9 @@
         }
       }
     },
+    "Link a Folder..." : {
+
+    },
     "Linked" : {
       "localizations" : {
         "tr" : {
@@ -26839,9 +26857,6 @@
           }
         }
       }
-    },
-    "Linked SQL Folders" : {
-
     },
     "List all databases on the server" : {
 
@@ -30293,9 +30308,6 @@
           }
         }
       }
-    },
-    "No linked SQL folders. Add a folder containing .sql files to load them as favorites." : {
-
     },
     "No matching %@" : {
       "extractionState" : "stale",
@@ -37598,6 +37610,9 @@
         }
       }
     },
+    "Remove from Sidebar" : {
+
+    },
     "Remove jump host" : {
       "localizations" : {
         "tr" : {
@@ -37641,6 +37656,9 @@
           }
         }
       }
+    },
+    "Remove Linked Folder?" : {
+
     },
     "Remove provider" : {
       "extractionState" : "stale",
@@ -38536,9 +38554,6 @@
           }
         }
       }
-    },
-    "Reveal in Settings" : {
-
     },
     "Reveal token" : {
       "localizations" : {
@@ -39678,6 +39693,7 @@
       }
     },
     "Save frequently used queries for quick access." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -39698,6 +39714,9 @@
           }
         }
       }
+    },
+    "Save frequently used queries, or link a folder of .sql files to share with your team." : {
+
     },
     "Save passphrase in Keychain" : {
       "localizations" : {
@@ -50961,9 +50980,6 @@
           }
         }
       }
-    },
-    "Watched folders are scanned for .sql files. Add metadata via leading comments: `-- @name:`, `-- @keyword:`, `-- @description:`." : {
-
     },
     "Watched folders are scanned for .tablepro files. Connections appear read only in the sidebar." : {
 
