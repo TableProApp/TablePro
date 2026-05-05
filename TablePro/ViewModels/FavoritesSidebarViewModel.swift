@@ -122,8 +122,19 @@ internal final class FavoritesSidebarViewModel {
     var editDialogItem: FavoriteEditItem?
     var renamingFolderId: UUID?
     var renamingFolderName: String = ""
-    var expandedFolderIds: Set<UUID> = []
-    var expandedLinkedNodeIds: Set<String> = []
+    var expandedFolderIds: Set<UUID> = [] {
+        didSet {
+            guard !isApplyingExpansion else { return }
+            syncExpandedFolders(oldValue: oldValue)
+        }
+    }
+    var expandedLinkedNodeIds: Set<String> = [] {
+        didSet {
+            guard !isApplyingExpansion else { return }
+            syncExpandedLinkedNodes(oldValue: oldValue)
+        }
+    }
+    @ObservationIgnored private var isApplyingExpansion = false
     var showDeleteConfirmation = false
     var favoritesToDelete: [SQLFavorite] = []
 
@@ -133,9 +144,11 @@ internal final class FavoritesSidebarViewModel {
     private let manager = SQLFavoriteManager.shared
     @ObservationIgnored private var favoritesObserver: NSObjectProtocol?
     @ObservationIgnored private var linkedFoldersObserver: NSObjectProtocol?
+    @ObservationIgnored private var expansionObserver: NSObjectProtocol?
 
     init(connectionId: UUID) {
         self.connectionId = connectionId
+        loadExpansionFromSharedState()
 
         let reload: @Sendable (Notification) -> Void = { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -149,6 +162,13 @@ internal final class FavoritesSidebarViewModel {
         linkedFoldersObserver = NotificationCenter.default.addObserver(
             forName: .linkedSQLFoldersDidUpdate, object: nil, queue: .main, using: reload
         )
+        expansionObserver = NotificationCenter.default.addObserver(
+            forName: .favoritesExpansionDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.loadExpansionFromSharedState()
+            }
+        }
     }
 
     deinit {
@@ -157,6 +177,34 @@ internal final class FavoritesSidebarViewModel {
         }
         if let observer = linkedFoldersObserver {
             NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = expansionObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    private func loadExpansionFromSharedState() {
+        isApplyingExpansion = true
+        defer { isApplyingExpansion = false }
+        expandedFolderIds = FavoritesExpansionState.shared.expandedFolders(for: connectionId)
+        expandedLinkedNodeIds = FavoritesExpansionState.shared.expandedLinkedNodes(for: connectionId)
+    }
+
+    private func syncExpandedFolders(oldValue: Set<UUID>) {
+        for folderId in expandedFolderIds.subtracting(oldValue) {
+            FavoritesExpansionState.shared.setFolderExpanded(folderId, expanded: true, for: connectionId)
+        }
+        for folderId in oldValue.subtracting(expandedFolderIds) {
+            FavoritesExpansionState.shared.setFolderExpanded(folderId, expanded: false, for: connectionId)
+        }
+    }
+
+    private func syncExpandedLinkedNodes(oldValue: Set<String>) {
+        for nodeId in expandedLinkedNodeIds.subtracting(oldValue) {
+            FavoritesExpansionState.shared.setLinkedNodeExpanded(nodeId, expanded: true, for: connectionId)
+        }
+        for nodeId in oldValue.subtracting(expandedLinkedNodeIds) {
+            FavoritesExpansionState.shared.setLinkedNodeExpanded(nodeId, expanded: false, for: connectionId)
         }
     }
 

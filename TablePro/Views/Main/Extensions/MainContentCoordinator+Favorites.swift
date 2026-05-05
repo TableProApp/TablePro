@@ -39,6 +39,21 @@ extension MainContentCoordinator {
     }
 
     func openLinkedFavorite(_ favorite: LinkedSQLFavorite) {
+        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+           tab.tabType == .query,
+           tab.content.sourceFileURL == nil,
+           tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !tab.pendingChanges.hasChanges,
+           let loaded = FileTextLoader.load(favorite.fileURL) {
+            let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
+            tabManager.tabs[tabIndex].content.sourceFileURL = favorite.fileURL
+            tabManager.tabs[tabIndex].content.query = loaded.content
+            tabManager.tabs[tabIndex].content.savedFileContent = loaded.content
+            tabManager.tabs[tabIndex].content.loadMtime = mtime
+            tabManager.tabs[tabIndex].title = favorite.fileURL.deletingPathExtension().lastPathComponent
+            return
+        }
+
         NotificationCenter.default.post(
             name: .openSQLFiles,
             object: [favorite.fileURL] as [URL]
