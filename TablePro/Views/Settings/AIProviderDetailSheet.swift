@@ -284,23 +284,21 @@ struct AIProviderDetailSheet: View {
 
     private var modelSection: some View {
         Section {
-            HStack {
-                Text("Model")
-                Spacer()
+            LabeledContent(String(localized: "Model")) {
                 modelControl
             }
             if let modelFetchError {
-                HStack {
-                    Text(modelFetchError)
-                        .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemRed))
-                        .lineLimit(2)
-                    Spacer()
+                LabeledContent {
                     Button(String(localized: "Reload")) {
                         fetchModels()
                     }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
+                } label: {
+                    Text(modelFetchError)
+                        .font(.caption)
+                        .foregroundStyle(Color(nsColor: .systemRed))
+                        .lineLimit(2)
                 }
             }
         } header: {
@@ -312,7 +310,6 @@ struct AIProviderDetailSheet: View {
     private var modelControl: some View {
         HStack(spacing: 8) {
             TextField(String(localized: "Model name"), text: $draft.model)
-                .frame(width: 260)
 
             if isFetchingModels {
                 ProgressView().controlSize(.small)
@@ -336,7 +333,6 @@ struct AIProviderDetailSheet: View {
                 .help(String(localized: "Choose a fetched model"))
             }
         }
-        .fixedSize()
     }
 
     // MARK: - Advanced

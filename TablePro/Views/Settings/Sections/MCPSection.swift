@@ -38,29 +38,31 @@ struct MCPSection: View {
 
     private var configurationSection: some View {
         Section(String(localized: "Server Configuration")) {
-            LabeledContent(String(localized: "Port")) {
-                TextField("", value: $settings.port, format: .number.grouping(.never))
-                    .frame(width: 80)
-                    .multilineTextAlignment(.trailing)
-            }
+            TextField(
+                String(localized: "Port"),
+                value: $settings.port,
+                format: .number.grouping(.never)
+            )
 
-            LabeledContent(String(localized: "Default row limit")) {
-                TextField("", value: $settings.defaultRowLimit, format: .number.grouping(.never))
-                    .frame(width: 80)
-                    .multilineTextAlignment(.trailing)
-            }
+            TextField(
+                String(localized: "Default row limit"),
+                value: $settings.defaultRowLimit,
+                format: .number.grouping(.never)
+            )
 
-            LabeledContent(String(localized: "Maximum row limit")) {
-                TextField("", value: $settings.maxRowLimit, format: .number.grouping(.never))
-                    .frame(width: 80)
-                    .multilineTextAlignment(.trailing)
-            }
+            TextField(
+                String(localized: "Maximum row limit"),
+                value: $settings.maxRowLimit,
+                format: .number.grouping(.never)
+            )
 
             LabeledContent(String(localized: "Query timeout")) {
                 HStack(spacing: 4) {
-                    TextField("", value: $settings.queryTimeoutSeconds, format: .number.grouping(.never))
-                        .frame(width: 80)
-                        .multilineTextAlignment(.trailing)
+                    TextField(
+                        "",
+                        value: $settings.queryTimeoutSeconds,
+                        format: .number.grouping(.never)
+                    )
                     Text(String(localized: "seconds"))
                         .foregroundStyle(.secondary)
                 }

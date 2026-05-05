@@ -51,22 +51,34 @@ struct LinkedFoldersSection: View {
     // MARK: - Folder Row
 
     private func folderRow(_ folder: LinkedFolder) -> some View {
-        HStack(spacing: 8) {
-            Toggle(isOn: Binding(
-                get: { folder.isEnabled },
-                set: { newValue in
-                    guard let index = folders.firstIndex(where: { $0.id == folder.id }) else { return }
-                    folders[index].isEnabled = newValue
-                    LinkedFolderStorage.shared.saveFolders(folders)
-                    LinkedFolderWatcher.shared.reload()
-                }
-            )) {
-                EmptyView()
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .labelsHidden()
+        LabeledContent {
+            HStack(spacing: 8) {
+                Toggle("", isOn: Binding(
+                    get: { folder.isEnabled },
+                    set: { newValue in
+                        guard let index = folders.firstIndex(where: { $0.id == folder.id }) else { return }
+                        folders[index].isEnabled = newValue
+                        LinkedFolderStorage.shared.saveFolders(folders)
+                        LinkedFolderWatcher.shared.reload()
+                    }
+                ))
+                .labelsHidden()
 
+                Menu {
+                    Button(role: .destructive) {
+                        removeFolder(folder)
+                    } label: {
+                        Label(String(localized: "Remove Folder"), systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuIndicator(.hidden)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel(String(localized: "Folder actions"))
+            }
+        } label: {
             VStack(alignment: .leading, spacing: 1) {
                 Text(folder.name)
                     .font(.body)
@@ -78,19 +90,6 @@ struct LinkedFoldersSection: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-
-            Spacer()
-
-            Button(role: .destructive) {
-                removeFolder(folder)
-            } label: {
-                Image(systemName: "trash")
-                    .frame(width: 24, height: 24)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help(String(localized: "Remove Folder"))
-            .accessibilityLabel(String(localized: "Remove folder"))
         }
     }
 

@@ -96,10 +96,7 @@ struct KeyboardSettingsView: View {
 
     @ViewBuilder
     private func shortcutRow(for action: ShortcutAction) -> some View {
-        HStack {
-            Text(action.displayName)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
+        LabeledContent(action.displayName) {
             ShortcutRecorderView(
                 combo: Binding(
                     get: { settings.shortcut(for: action) },

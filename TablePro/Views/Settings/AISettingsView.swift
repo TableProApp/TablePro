@@ -93,20 +93,14 @@ struct AISettingsView: View {
 
     private var activeProviderSection: some View {
         Section {
-            HStack {
-                Text("Active Provider")
-                Spacer()
-                Picker("", selection: $settings.activeProviderID) {
-                    Text("None").tag(UUID?.none)
-                    ForEach(settings.providers) { provider in
-                        Text(provider.displayName).tag(UUID?.some(provider.id))
-                    }
+            Picker("Active Provider", selection: $settings.activeProviderID) {
+                Text("None").tag(UUID?.none)
+                ForEach(settings.providers) { provider in
+                    Text(provider.displayName).tag(UUID?.some(provider.id))
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
-                .disabled(settings.providers.isEmpty)
             }
+            .pickerStyle(.menu)
+            .disabled(settings.providers.isEmpty)
         }
     }
 
