@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Linked SQL Folders. Point TablePro at a folder of `.sql` files (e.g. a Git repo of shared queries) and they appear in the Favorites sidebar live. Recursive subfolder watching via `FSEventStreamCreate`; nested directory hierarchy preserved. Add a folder in Settings > Editor > Linked SQL Folders. Files keep their on-disk identity: clicking a linked file opens it as a regular editor tab, ⌘S writes back to disk. External modifications detected at save time, with a Keep My Changes / Reload from Disk / Cancel prompt. Per-connection scope or global (visible across all connections). Frontmatter convention `-- @name:`, `-- @keyword:`, `-- @description:` at the top of a file feeds the favorites sidebar and autocomplete keyword expansion. No Pro license required.
+
 ### Changed
 
 - Connection Form rebuilt around macOS HIG sidebar navigation. The old segmented-tab form (~2200 lines across five files) is replaced by a `NavigationSplitView` with five sidebar panes (General, SSH Tunnel, SSL/TLS, Customization, Advanced). State previously held in 30+ flat `@State` vars is now split across six `@Observable` per-pane view models behind a `ConnectionFormCoordinator`. Plugin-driven additional fields auto-route to the right pane by their declared `FieldSection`. The toolbar exposes Cancel, Save, and Save & Connect natively; Test Connection lives inline in the General pane as a Status row. Each sidebar item shows a red warning triangle when its pane has missing required fields.

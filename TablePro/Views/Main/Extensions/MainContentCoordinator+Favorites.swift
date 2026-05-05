@@ -3,11 +3,10 @@
 //  TablePro
 //
 
+import AppKit
 import Foundation
 
 extension MainContentCoordinator {
-    /// Insert a favorite's query into the current editor tab.
-    /// Creates a new tab if none exists, or opens a new tab if current is not a query tab.
     func insertFavorite(_ favorite: SQLFavorite) {
         if tabManager.tabs.isEmpty {
             tabManager.addTab(initialQuery: favorite.query)
@@ -39,7 +38,22 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Run a favorite's query: uses current tab if empty, otherwise opens a new tab.
+    func openLinkedFavorite(_ favorite: LinkedSQLFavorite) {
+        NotificationCenter.default.post(
+            name: .openSQLFiles,
+            object: [favorite.fileURL] as [URL]
+        )
+    }
+
+    func trashLinkedFavorite(_ favorite: LinkedSQLFavorite) {
+        var trashedURL: NSURL?
+        try? FileManager.default.trashItem(at: favorite.fileURL, resultingItemURL: &trashedURL)
+    }
+
+    func revealLinkedFavoriteInFinder(_ favorite: LinkedSQLFavorite) {
+        NSWorkspace.shared.activateFileViewerSelecting([favorite.fileURL])
+    }
+
     func runFavoriteInNewTab(_ favorite: SQLFavorite) {
         if tabManager.tabs.isEmpty {
             tabManager.addTab(initialQuery: favorite.query)

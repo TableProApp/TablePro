@@ -2,17 +2,16 @@
 //  FavoritesTabView.swift
 //  TablePro
 //
-//  Full-tab view for SQL favorites in the sidebar.
-//
 
 import SwiftUI
 
-/// Full-tab favorites view with folder hierarchy and bottom toolbar
 internal struct FavoritesTabView: View {
     @State private var viewModel: FavoritesSidebarViewModel
     @State private var selectedNodeId: String?
     @State private var folderToDelete: SQLFavoriteFolder?
     @State private var showDeleteFolderAlert = false
+    @State private var linkedFileToTrash: LinkedSQLFavorite?
+    @State private var showTrashLinkedFileAlert = false
     @FocusState private var isRenameFocused: Bool
     let connectionId: UUID
     let searchText: String
@@ -70,6 +69,22 @@ internal struct FavoritesTabView: View {
         } message: { folder in
             Text(String(format: String(localized: "The folder \"%@\" will be deleted. Items inside will be moved to the parent level."), folder.name))
         }
+        .alert(
+            String(localized: "Move File to Trash?"),
+            isPresented: $showTrashLinkedFileAlert,
+            presenting: linkedFileToTrash
+        ) { file in
+            Button(String(localized: "Cancel"), role: .cancel) {
+                linkedFileToTrash = nil
+            }
+            Button(String(localized: "Move to Trash"), role: .destructive) {
+                coordinator?.trashLinkedFavorite(file)
+                SQLFolderWatcher.shared.reload()
+                linkedFileToTrash = nil
+            }
+        } message: { file in
+            Text(String(format: String(localized: "\"%@\" will be moved to Trash. You can recover it from there."), file.name))
+        }
         .alert(String(localized: "Delete Favorite?"), isPresented: $viewModel.showDeleteConfirmation) {
             Button(String(localized: "Cancel"), role: .cancel) {
                 viewModel.favoritesToDelete = []
@@ -96,14 +111,19 @@ internal struct FavoritesTabView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .onDeleteCommand {
-            deleteSelectedFavorite()
+            deleteSelectedNode()
         }
         .onKeyPress(.return) {
-            guard viewModel.renamingFolderId == nil,
-                  let nodeId = selectedNodeId,
-                  let fav = viewModel.favoriteForNodeId(nodeId) else { return .ignored }
-            coordinator?.insertFavorite(fav)
-            return .handled
+            guard viewModel.renamingFolderId == nil, let nodeId = selectedNodeId else { return .ignored }
+            if let fav = viewModel.favoriteForNodeId(nodeId) {
+                coordinator?.insertFavorite(fav)
+                return .handled
+            }
+            if let linked = viewModel.linkedFavoriteForNodeId(nodeId) {
+                coordinator?.openLinkedFavorite(linked)
+                return .handled
+            }
+            return .ignored
         }
     }
 
@@ -134,8 +154,48 @@ internal struct FavoritesTabView: View {
                     folderLabel(folder)
                 }
                 .tag(node.id)
+            case .linkedFolder(let linkedFolder):
+                DisclosureGroup(isExpanded: linkedSubtreeBinding(node.id)) {
+                    if let children = node.children {
+                        nodeRows(children)
+                    }
+                } label: {
+                    LinkedFolderRowLabel(folder: linkedFolder)
+                        .contextMenu {
+                            linkedFolderContextMenu(linkedFolder)
+                        }
+                }
+                .tag(node.id)
+            case .linkedSubfolder(_, let displayName, _):
+                DisclosureGroup(isExpanded: linkedSubtreeBinding(node.id)) {
+                    if let children = node.children {
+                        nodeRows(children)
+                    }
+                } label: {
+                    LinkedSubfolderRowLabel(displayName: displayName)
+                }
+                .tag(node.id)
+            case .linkedFavorite(let linked):
+                LinkedFavoriteRowView(favorite: linked)
+                    .tag(node.id)
+                    .contextMenu {
+                        linkedFavoriteContextMenu(linked)
+                    }
             }
         })
+    }
+
+    private func linkedSubtreeBinding(_ nodeId: String) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.expandedLinkedNodeIds.contains(nodeId) },
+            set: { expanded in
+                if expanded {
+                    viewModel.expandedLinkedNodeIds.insert(nodeId)
+                } else {
+                    viewModel.expandedLinkedNodeIds.remove(nodeId)
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -171,10 +231,16 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func deleteSelectedFavorite() {
-        guard let nodeId = selectedNodeId,
-              let fav = viewModel.favoriteForNodeId(nodeId) else { return }
-        viewModel.deleteFavorite(fav)
+    private func deleteSelectedNode() {
+        guard let nodeId = selectedNodeId else { return }
+        if let fav = viewModel.favoriteForNodeId(nodeId) {
+            viewModel.deleteFavorite(fav)
+            return
+        }
+        if let linked = viewModel.linkedFavoriteForNodeId(nodeId) {
+            linkedFileToTrash = linked
+            showTrashLinkedFileAlert = true
+        }
     }
 
     // MARK: - Context Menus
@@ -230,6 +296,50 @@ internal struct FavoritesTabView: View {
             viewModel.deleteFavorite(favorite)
         } label: {
             Text(String(localized: "Delete"))
+        }
+    }
+
+    @ViewBuilder
+    private func linkedFavoriteContextMenu(_ favorite: LinkedSQLFavorite) -> some View {
+        Button(String(localized: "Open in Editor")) {
+            coordinator?.openLinkedFavorite(favorite)
+        }
+
+        Divider()
+
+        Button {
+            NSPasteboard.general.clearContents()
+            if let content = try? String(contentsOf: favorite.fileURL, encoding: .utf8) {
+                NSPasteboard.general.setString(content, forType: .string)
+            }
+        } label: {
+            Label(String(localized: "Copy Query"), systemImage: "doc.on.doc")
+        }
+
+        Button(String(localized: "Show in Finder")) {
+            coordinator?.revealLinkedFavoriteInFinder(favorite)
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            linkedFileToTrash = favorite
+            showTrashLinkedFileAlert = true
+        } label: {
+            Text(String(localized: "Move File to Trash"))
+        }
+    }
+
+    @ViewBuilder
+    private func linkedFolderContextMenu(_ folder: LinkedSQLFolder) -> some View {
+        Button(String(localized: "Show in Finder")) {
+            NSWorkspace.shared.activateFileViewerSelecting([folder.expandedURL])
+        }
+
+        Divider()
+
+        Button(String(localized: "Reveal in Settings")) {
+            NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
         }
     }
 

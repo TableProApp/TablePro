@@ -95,7 +95,48 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     // MARK: - Keyword Support
 
     func fetchKeywordMap(connectionId: UUID? = nil) async -> [String: (name: String, query: String)] {
-        await storage.fetchKeywordMap(connectionId: connectionId)
+        var map = await storage.fetchKeywordMap(connectionId: connectionId)
+        let linked = await fetchLinkedKeywordMap(connectionId: connectionId)
+        for (keyword, value) in linked where map[keyword] == nil {
+            map[keyword] = value
+        }
+        return map
+    }
+
+    private func fetchLinkedKeywordMap(connectionId: UUID?) async -> [String: (name: String, query: String)] {
+        let folders = LinkedSQLFolderStorage.shared.loadFolders()
+            .filter { $0.isEnabled }
+            .filter { $0.connectionId == nil || $0.connectionId == connectionId }
+        guard !folders.isEmpty else { return [:] }
+
+        let folderIds = Set(folders.map(\.id))
+        let folderURLsById = Dictionary(uniqueKeysWithValues: folders.map { ($0.id, $0.expandedURL) })
+
+        let rows = await LinkedSQLIndex.shared.fetchKeywordRows(folderIds: folderIds)
+        guard !rows.isEmpty else { return [:] }
+
+        return await Task.detached(priority: .utility) {
+            await withTaskGroup(of: (String, (name: String, query: String))?.self) { group in
+                for row in rows {
+                    guard let folderURL = folderURLsById[row.folderId] else { continue }
+                    let fileURL = folderURL.appendingPathComponent(row.relativePath)
+                    let keyword = row.keyword
+                    let name = row.name
+                    group.addTask {
+                        guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { return nil }
+                        return (keyword, (name: name, query: content))
+                    }
+                }
+
+                var map: [String: (name: String, query: String)] = [:]
+                for await result in group {
+                    if let (keyword, value) = result, map[keyword] == nil {
+                        map[keyword] = value
+                    }
+                }
+                return map
+            }
+        }.value
     }
 
     func isKeywordAvailable(

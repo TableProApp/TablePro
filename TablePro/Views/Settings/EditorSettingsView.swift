@@ -33,6 +33,8 @@ struct EditorSettingsView: View {
             }
 
             DataGridSection(settings: $dataGridSettings)
+
+            LinkedSQLFavoritesSection()
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

@@ -70,6 +70,47 @@ Each favorite is either **global** or **connection-scoped**:
 
 Set the scope when creating or editing a favorite.
 
+## Linked SQL Folders
+
+Point TablePro at a folder of `.sql` files on disk and they appear in the Favorites sidebar as read-from-disk items. Useful for teams sharing a Git repo of queries: anyone with the repo cloned can add the folder, and edits are picked up live.
+
+**Adding a folder**: Settings > Editor > **Linked SQL Folders** > **Add SQL Folder...** Pick any folder containing `.sql` files. Subfolders are watched recursively.
+
+**Live updates**: Drop a new file into the folder and it appears within a second. Edit a file outside TablePro (vim, VS Code, `git pull`) and the sidebar refreshes automatically.
+
+**Editing**: Click a linked file to open it as a regular editor tab. ⌘S writes back to disk. If the file was modified externally since you opened it, ⌘S shows a prompt with **Keep My Changes** / **Reload from Disk** / **Cancel**.
+
+**Deleting**: Press Delete on a linked file or right-click > **Move File to Trash**. The file goes to macOS Trash, recoverable from Finder.
+
+### Frontmatter
+
+Add metadata as leading SQL comments. The parser stops at the first non-matching line, so put frontmatter at the very top:
+
+```sql
+-- @name: Active Users (24h)
+-- @keyword: dau
+-- @description: Daily active users from the last 24 hours
+SELECT user_id, last_seen
+FROM users
+WHERE last_seen > NOW() - INTERVAL 24 HOUR;
+```
+
+| Key | Description |
+|-----|-------------|
+| `@name` | Display name in the sidebar. Falls back to filename without `.sql`. |
+| `@keyword` | Autocomplete keyword. Type it in the editor to expand the file content as a query. |
+| `@description` | Optional description, shown in tooltips. |
+
+Files without frontmatter still show up. The filename becomes the display name and no keyword is registered.
+
+### Folder scope
+
+In the future, linked folders can be scoped per-connection (so each project repo is only visible when its database is selected). Today all linked folders are global.
+
+### Storage
+
+Linked folder paths are stored in UserDefaults (key `com.TablePro.linkedSQLFolders`). Parsed file metadata (name, keyword, mtime, size) is cached in `linked_sql_index.db` in `~/Library/Application Support/TablePro/` for fast sidebar rendering. The actual file content always lives on disk.
+
 ## Storage
 
 Favorites live in a SQLite database (`sql_favorites.db`) in `~/Library/Application Support/TablePro/`. Search covers name, keyword, and query text.

@@ -61,6 +61,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
+        SQLFolderWatcher.shared.start()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(handleSystemDidWake),
+            name: NSWorkspace.didWakeNotification, object: nil
+        )
 
         if AppSettingsManager.shared.mcp.enabled {
             Task {
@@ -123,8 +129,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         LinkedFolderWatcher.shared.stop()
+        SQLFolderWatcher.shared.stop()
         TerminalProcessManager.registry.terminateAllSync()
         SSHTunnelManager.shared.terminateAllProcessesSync()
+    }
+
+    @objc func handleSystemDidWake(_ notification: Notification) {
+        SQLFolderWatcher.shared.reload()
     }
 
     @objc func showHelp(_ sender: Any?) {
@@ -279,5 +290,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     nonisolated deinit {
         NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 }

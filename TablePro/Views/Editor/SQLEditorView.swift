@@ -36,6 +36,7 @@ struct SQLEditorView: View {
     @State private var editorReady = false
     @State private var editorConfiguration = makeConfiguration()
     @State private var favoritesObserver: NSObjectProtocol?
+    @State private var linkedFoldersObserver: NSObjectProtocol?
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -150,16 +151,18 @@ struct SQLEditorView: View {
         refreshFavoriteKeywords()
         let adapter = completionAdapter
         let connId = connectionId
-        favoritesObserver = NotificationCenter.default.addObserver(
-            forName: .sqlFavoritesDidUpdate,
-            object: nil,
-            queue: .main
-        ) { _ in
+        let refresh: @Sendable (Notification) -> Void = { _ in
             Task { @MainActor in
                 let keywords = await SQLFavoriteManager.shared.fetchKeywordMap(connectionId: connId)
                 adapter?.updateFavoriteKeywords(keywords)
             }
         }
+        favoritesObserver = NotificationCenter.default.addObserver(
+            forName: .sqlFavoritesDidUpdate, object: nil, queue: .main, using: refresh
+        )
+        linkedFoldersObserver = NotificationCenter.default.addObserver(
+            forName: .linkedSQLFoldersDidUpdate, object: nil, queue: .main, using: refresh
+        )
     }
 
     private func refreshFavoriteKeywords() {
@@ -174,6 +177,10 @@ struct SQLEditorView: View {
         if let observer = favoritesObserver {
             NotificationCenter.default.removeObserver(observer)
             favoritesObserver = nil
+        }
+        if let observer = linkedFoldersObserver {
+            NotificationCenter.default.removeObserver(observer)
+            linkedFoldersObserver = nil
         }
     }
 
