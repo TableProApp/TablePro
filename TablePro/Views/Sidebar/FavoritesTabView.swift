@@ -161,19 +161,18 @@ internal struct FavoritesTabView: View {
             case .favorite(let favorite):
                 FavoriteRowView(favorite: favorite)
                     .tag(node.id)
-                    .background { DoubleClickDetector { coordinator?.insertFavorite(favorite) } }
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        coordinator?.insertFavorite(favorite)
+                    }
                     .contextMenu {
                         favoriteContextMenu(favorite)
                     }
             case .folder(let folder):
                 DisclosureGroup(isExpanded: Binding(
-                    get: { viewModel.expandedFolderIds.contains(folder.id) },
+                    get: { FavoritesExpansionState.shared.isFolderExpanded(folder.id, for: connectionId) },
                     set: { expanded in
-                        if expanded {
-                            viewModel.expandedFolderIds.insert(folder.id)
-                        } else {
-                            viewModel.expandedFolderIds.remove(folder.id)
-                        }
+                        FavoritesExpansionState.shared.setFolderExpanded(folder.id, expanded: expanded, for: connectionId)
                     }
                 )) {
                     if let children = node.children {
@@ -207,7 +206,10 @@ internal struct FavoritesTabView: View {
             case .linkedFavorite(let linked):
                 LinkedFavoriteRowView(favorite: linked)
                     .tag(node.id)
-                    .background { DoubleClickDetector { coordinator?.openLinkedFavorite(linked) } }
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        coordinator?.openLinkedFavorite(linked)
+                    }
                     .contextMenu {
                         linkedFavoriteContextMenu(linked)
                     }
@@ -217,13 +219,9 @@ internal struct FavoritesTabView: View {
 
     private func linkedSubtreeBinding(_ nodeId: String) -> Binding<Bool> {
         Binding(
-            get: { viewModel.expandedLinkedNodeIds.contains(nodeId) },
+            get: { FavoritesExpansionState.shared.isLinkedNodeExpanded(nodeId, for: connectionId) },
             set: { expanded in
-                if expanded {
-                    viewModel.expandedLinkedNodeIds.insert(nodeId)
-                } else {
-                    viewModel.expandedLinkedNodeIds.remove(nodeId)
-                }
+                FavoritesExpansionState.shared.setLinkedNodeExpanded(nodeId, expanded: expanded, for: connectionId)
             }
         )
     }
@@ -313,7 +311,7 @@ internal struct FavoritesTabView: View {
                     if folder.id != favorite.folderId {
                         Button(folder.name) {
                             viewModel.moveFavorite(id: favorite.id, toFolder: folder.id)
-                            viewModel.expandedFolderIds.insert(folder.id)
+                            FavoritesExpansionState.shared.setFolderExpanded(folder.id, expanded: true, for: connectionId)
                         }
                     }
                 }

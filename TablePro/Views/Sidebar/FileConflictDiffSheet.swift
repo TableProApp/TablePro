@@ -48,15 +48,39 @@ internal struct FileConflictDiffSheet: View {
         HSplitView {
             DiffColumnView(
                 title: String(localized: "Your Changes"),
-                lines: diffLines.map { ($0.mine, $0.kind == .removed || $0.kind == .changed) }
+                lines: diffLines.map {
+                    DiffColumnLine(
+                        text: $0.mine,
+                        tint: tint(for: $0.kind, side: .mine)
+                    )
+                }
             )
             .frame(minWidth: 200)
 
             DiffColumnView(
                 title: String(localized: "On Disk"),
-                lines: diffLines.map { ($0.disk, $0.kind == .added || $0.kind == .changed) }
+                lines: diffLines.map {
+                    DiffColumnLine(
+                        text: $0.disk,
+                        tint: tint(for: $0.kind, side: .disk)
+                    )
+                }
             )
             .frame(minWidth: 200)
+        }
+    }
+
+    private enum Side { case mine, disk }
+
+    private func tint(for kind: DiffPair.Kind, side: Side) -> Color? {
+        switch (kind, side) {
+        case (.unchanged, _): return nil
+        case (.removed, .mine): return Color(nsColor: .systemRed).opacity(0.18)
+        case (.removed, .disk): return Color.gray.opacity(0.06)
+        case (.added, .mine): return Color.gray.opacity(0.06)
+        case (.added, .disk): return Color(nsColor: .systemGreen).opacity(0.18)
+        case (.changed, .mine): return Color(nsColor: .systemRed).opacity(0.18)
+        case (.changed, .disk): return Color(nsColor: .systemGreen).opacity(0.18)
         }
     }
 
@@ -86,9 +110,14 @@ internal struct FileConflictDiffSheet: View {
     }
 }
 
+internal struct DiffColumnLine {
+    let text: String?
+    let tint: Color?
+}
+
 private struct DiffColumnView: View {
     let title: String
-    let lines: [(text: String?, highlight: Bool)]
+    let lines: [DiffColumnLine]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -111,15 +140,13 @@ private struct DiffColumnView: View {
                                 .foregroundStyle(.tertiary)
                                 .frame(width: 32, alignment: .trailing)
 
-                            Text(line.text ?? "")
+                            Text(line.text ?? " ")
                                 .font(.system(.body, design: .monospaced))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 1)
-                        .background(line.highlight
-                                    ? Color(nsColor: .systemYellow).opacity(0.15)
-                                    : Color.clear)
+                        .background(line.tint ?? Color.clear)
                     }
                 }
             }
@@ -138,38 +165,45 @@ internal struct DiffPair {
 internal enum DiffComputer {
     static func compute(mine: [String], disk: [String]) -> [DiffPair] {
         let difference = disk.difference(from: mine)
+
+        var removals: [Int: String] = [:]
+        var insertions: [Int: String] = [:]
+        for change in difference {
+            switch change {
+            case .remove(let offset, let element, _):
+                removals[offset] = element
+            case .insert(let offset, let element, _):
+                insertions[offset] = element
+            }
+        }
+
         var pairs: [DiffPair] = []
         var mineIndex = 0
         var diskIndex = 0
 
-        var insertions: [Int: String] = [:]
-        var removals: [Int: String] = [:]
-        for change in difference {
-            switch change {
-            case .insert(let offset, let element, _):
-                insertions[offset] = element
-            case .remove(let offset, let element, _):
-                removals[offset] = element
-            }
-        }
-
         while mineIndex < mine.count || diskIndex < disk.count {
-            if let removed = removals[mineIndex] {
+            let removed = removals[mineIndex]
+            let inserted = insertions[diskIndex]
+
+            switch (removed, inserted) {
+            case (let removed?, let inserted?):
+                pairs.append(DiffPair(mine: removed, disk: inserted, kind: .changed))
+                mineIndex += 1
+                diskIndex += 1
+            case (let removed?, nil):
                 pairs.append(DiffPair(mine: removed, disk: nil, kind: .removed))
                 mineIndex += 1
-                continue
-            }
-            if let added = insertions[diskIndex] {
-                pairs.append(DiffPair(mine: nil, disk: added, kind: .added))
+            case (nil, let inserted?):
+                pairs.append(DiffPair(mine: nil, disk: inserted, kind: .added))
                 diskIndex += 1
-                continue
-            }
-            if mineIndex < mine.count, diskIndex < disk.count {
-                pairs.append(DiffPair(mine: mine[mineIndex], disk: disk[diskIndex], kind: .unchanged))
-                mineIndex += 1
-                diskIndex += 1
-            } else {
-                break
+            case (nil, nil):
+                if mineIndex < mine.count, diskIndex < disk.count {
+                    pairs.append(DiffPair(mine: mine[mineIndex], disk: disk[diskIndex], kind: .unchanged))
+                    mineIndex += 1
+                    diskIndex += 1
+                } else {
+                    return pairs
+                }
             }
         }
 

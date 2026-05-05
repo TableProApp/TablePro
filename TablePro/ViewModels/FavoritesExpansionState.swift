@@ -6,17 +6,14 @@
 import Foundation
 import Observation
 
-internal extension Notification.Name {
-    static let favoritesExpansionDidChange = Notification.Name("com.TablePro.favoritesExpansionDidChange")
-}
-
 @MainActor
 @Observable
 internal final class FavoritesExpansionState {
     static let shared = FavoritesExpansionState()
 
-    @ObservationIgnored private var foldersByConnection: [UUID: Set<UUID>] = [:]
-    @ObservationIgnored private var linkedNodesByConnection: [UUID: Set<String>] = [:]
+    private(set) var foldersByConnection: [UUID: Set<UUID>] = [:]
+    private(set) var linkedNodesByConnection: [UUID: Set<String>] = [:]
+
     @ObservationIgnored private let foldersKey = "com.TablePro.favoritesExpandedFolders"
     @ObservationIgnored private let linkedKey = "com.TablePro.favoritesExpandedLinkedNodes"
 
@@ -24,40 +21,38 @@ internal final class FavoritesExpansionState {
         load()
     }
 
-    func expandedFolders(for connectionId: UUID) -> Set<UUID> {
-        foldersByConnection[connectionId] ?? []
+    func isFolderExpanded(_ folderId: UUID, for connectionId: UUID) -> Bool {
+        foldersByConnection[connectionId, default: []].contains(folderId)
     }
 
-    func expandedLinkedNodes(for connectionId: UUID) -> Set<String> {
-        linkedNodesByConnection[connectionId] ?? []
+    func isLinkedNodeExpanded(_ nodeId: String, for connectionId: UUID) -> Bool {
+        linkedNodesByConnection[connectionId, default: []].contains(nodeId)
     }
 
     func setFolderExpanded(_ folderId: UUID, expanded: Bool, for connectionId: UUID) {
         var ids = foldersByConnection[connectionId] ?? []
         if expanded {
+            guard !ids.contains(folderId) else { return }
             ids.insert(folderId)
         } else {
+            guard ids.contains(folderId) else { return }
             ids.remove(folderId)
         }
         foldersByConnection[connectionId] = ids
-        persist()
-        notify()
+        persistFolders()
     }
 
     func setLinkedNodeExpanded(_ nodeId: String, expanded: Bool, for connectionId: UUID) {
         var ids = linkedNodesByConnection[connectionId] ?? []
         if expanded {
+            guard !ids.contains(nodeId) else { return }
             ids.insert(nodeId)
         } else {
+            guard ids.contains(nodeId) else { return }
             ids.remove(nodeId)
         }
         linkedNodesByConnection[connectionId] = ids
-        persist()
-        notify()
-    }
-
-    private func notify() {
-        NotificationCenter.default.post(name: .favoritesExpansionDidChange, object: nil)
+        persistLinkedNodes()
     }
 
     private func load() {
@@ -71,10 +66,13 @@ internal final class FavoritesExpansionState {
         }
     }
 
-    private func persist() {
+    private func persistFolders() {
         if let data = try? JSONEncoder().encode(foldersByConnection) {
             UserDefaults.standard.set(data, forKey: foldersKey)
         }
+    }
+
+    private func persistLinkedNodes() {
         if let data = try? JSONEncoder().encode(linkedNodesByConnection) {
             UserDefaults.standard.set(data, forKey: linkedKey)
         }
