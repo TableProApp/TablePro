@@ -161,10 +161,7 @@ internal struct FavoritesTabView: View {
             case .favorite(let favorite):
                 FavoriteRowView(favorite: favorite)
                     .tag(node.id)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        coordinator?.insertFavorite(favorite)
-                    }
+                    .background { DoubleClickDetector { coordinator?.insertFavorite(favorite) } }
                     .contextMenu {
                         favoriteContextMenu(favorite)
                     }
@@ -206,10 +203,7 @@ internal struct FavoritesTabView: View {
             case .linkedFavorite(let linked):
                 LinkedFavoriteRowView(favorite: linked)
                     .tag(node.id)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        coordinator?.openLinkedFavorite(linked)
-                    }
+                    .background { DoubleClickDetector { coordinator?.openLinkedFavorite(linked) } }
                     .contextMenu {
                         linkedFavoriteContextMenu(linked)
                     }
