@@ -268,7 +268,7 @@ public actor MCPAuthPolicy {
     ) -> String? {
         if MCPToolName.requiresReadWrite.contains(tool) || MCPToolName.requiresFullAccess.contains(tool) {
             if externalAccess != .readWrite {
-                return String(localized: "Connection is read-only for external clients")
+                return String(localized: "Connection is read only for external clients")
             }
             return nil
         }
@@ -282,7 +282,7 @@ public actor MCPAuthPolicy {
             return nil
         }
         if externalAccess != .readWrite {
-            return String(localized: "Connection is read-only for external clients")
+            return String(localized: "Connection is read only for external clients")
         }
         return nil
     }

@@ -22,17 +22,18 @@ struct ConnectionSSLView: View {
                         Text(mode.displayLabel).tag(mode)
                     }
                 }
+            } footer: {
+                if sslMode != .disabled {
+                    Text(sslMode.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if sslMode != .disabled {
-                Section {
-                    Text(sslMode.description)
-                        .foregroundStyle(.secondary)
-                }
-
                 if sslMode == .verifyCa || sslMode == .verifyIdentity {
                     Section(String(localized: "CA Certificate")) {
-                        LabeledContent(String(localized: "CA Cert")) {
+                        LabeledContent(String(localized: "Certificate")) {
                             HStack {
                                 TextField(
                                     "", text: $sslCaCertPath, prompt: Text("/path/to/ca-cert.pem"))
@@ -45,12 +46,12 @@ struct ConnectionSSLView: View {
                     }
                 }
 
-                Section(String(localized: "Client Certificates (Optional)")) {
-                    LabeledContent(String(localized: "Client Cert")) {
+                Section {
+                    LabeledContent(String(localized: "Client Certificate")) {
                         HStack {
                             TextField(
                                 "", text: $sslClientCertPath,
-                                prompt: Text(String(localized: "(optional)")))
+                                prompt: Text(String(localized: "Optional")))
                             Button(String(localized: "Browse")) {
                                 browseForCertificate(binding: $sslClientCertPath)
                             }
@@ -61,13 +62,19 @@ struct ConnectionSSLView: View {
                         HStack {
                             TextField(
                                 "", text: $sslClientKeyPath,
-                                prompt: Text(String(localized: "(optional)")))
+                                prompt: Text(String(localized: "Optional")))
                             Button(String(localized: "Browse")) {
                                 browseForCertificate(binding: $sslClientKeyPath)
                             }
                             .controlSize(.small)
                         }
                     }
+                } header: {
+                    Text(String(localized: "Client Certificates"))
+                } footer: {
+                    Text(String(localized: "Required only when the server enforces mutual TLS authentication."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }

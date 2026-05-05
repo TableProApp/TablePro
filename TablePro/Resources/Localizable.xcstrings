@@ -482,6 +482,7 @@
       }
     },
     "(optional)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6661,6 +6662,7 @@
       }
     },
     "Ask for API token on every connection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6683,6 +6685,7 @@
       }
     },
     "Ask for password on every connection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6863,6 +6866,9 @@
           }
         }
       }
+    },
+    "Authentication Method" : {
+
     },
     "Authentication required" : {
       "localizations" : {
@@ -7922,6 +7928,7 @@
 
     },
     "CA Cert" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8144,7 +8151,11 @@
         }
       }
     },
+    "Cannot execute write queries: connection is read only" : {
+
+    },
     "Cannot execute write queries: connection is read-only" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8188,7 +8199,11 @@
         }
       }
     },
+    "Cannot save changes: connection is read only" : {
+
+    },
     "Cannot save changes: connection is read-only" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8210,7 +8225,11 @@
         }
       }
     },
+    "Cannot save schema changes: connection is read only." : {
+
+    },
     "Cannot save schema changes: connection is read-only." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8479,6 +8498,9 @@
           }
         }
       }
+    },
+    "Certificate" : {
+
     },
     "Change Color" : {
       "localizations" : {
@@ -9504,6 +9526,7 @@
       }
     },
     "Client Cert" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -9547,7 +9570,11 @@
         }
       }
     },
+    "Client Certificates" : {
+
+    },
     "Client Certificates (Optional)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -11061,7 +11088,11 @@
         }
       }
     },
+    "Connection is read only for external clients" : {
+
+    },
     "Connection is read-only for external clients" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13219,7 +13250,11 @@
         }
       }
     },
+    "Current database: %@ (read only, ⌘K to switch)" : {
+
+    },
     "Current database: %@ (read-only, ⌘K to switch)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -23705,6 +23740,9 @@
         }
       }
     },
+    "Import from URL..." : {
+
+    },
     "Import Not Supported" : {
       "localizations" : {
         "tr" : {
@@ -32705,6 +32743,9 @@
         }
       }
     },
+    "Optional" : {
+
+    },
     "Optional description" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -33431,6 +33472,7 @@
       }
     },
     "Paste a connection URL to auto-fill the form fields." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33451,6 +33493,12 @@
           }
         }
       }
+    },
+    "Paste a connection URL to detect type and pre-fill fields" : {
+
+    },
+    "Paste a connection URL. We'll detect the database type and pre-fill the form." : {
+
     },
     "Paste Cells" : {
       "localizations" : {
@@ -35377,6 +35425,9 @@
         }
       }
     },
+    "Profile Details" : {
+
+    },
     "Profile Name" : {
       "localizations" : {
         "en" : {
@@ -35406,6 +35457,7 @@
       }
     },
     "Profile Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -35498,6 +35550,12 @@
           }
         }
       }
+    },
+    "Prompt for API token" : {
+
+    },
+    "Prompt for password" : {
+
     },
     "Providers" : {
       "localizations" : {
@@ -35638,6 +35696,9 @@
           }
         }
       }
+    },
+    "Query Behavior" : {
+
     },
     "Query cancelled" : {
       "extractionState" : "stale",
@@ -36418,6 +36479,9 @@
         }
       }
     },
+    "Read Only Connection" : {
+
+    },
     "Read Preference" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -36531,6 +36595,7 @@
       }
     },
     "Read-Only" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -36576,6 +36641,7 @@
       }
     },
     "Read-Only Connection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -36598,6 +36664,7 @@
       }
     },
     "Read-Write" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -37908,6 +37975,9 @@
         }
       }
     },
+    "Required only when the server enforces mutual TLS authentication." : {
+
+    },
     "Requires" : {
       "localizations" : {
         "tr" : {
@@ -39048,7 +39118,11 @@
         }
       }
     },
+    "Safe Mode, Safe Mode (Full), and Read Only require a Pro license." : {
+
+    },
     "Safe Mode, Safe Mode (Full), and Read-Only require a Pro license." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -39091,9 +39165,6 @@
           }
         }
       }
-    },
-    "Safety" : {
-
     },
     "Same options will be applied to all selected tables." : {
       "localizations" : {
@@ -43340,6 +43411,7 @@
 
     },
     "SSH Profile" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -49789,6 +49861,7 @@
 
     },
     "Use ~/.pgpass" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -49856,6 +49929,9 @@
           }
         }
       }
+    },
+    "Use Password File" : {
+
     },
     "Use SSL if available" : {
       "localizations" : {
@@ -50800,7 +50876,11 @@
         }
       }
     },
+    "Watched folders are scanned for .tablepro files. Connections appear read only in the sidebar." : {
+
+    },
     "Watched folders are scanned for .tablepro files. Connections appear read-only in the sidebar." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

@@ -18,6 +18,7 @@ struct WelcomeWindowView: View {
     @State private var welcomeChooserState: WelcomeChooserState?
     @State private var pendingInstallType: DatabaseType?
     @State private var pendingInstallPayload: DatabaseTypeChooserPayload?
+    @State private var urlImportPresented: Bool = false
     @FocusState private var focus: FocusField?
 
     var body: some View {
@@ -114,16 +115,10 @@ struct WelcomeWindowView: View {
                 }
             }
         }
-        .sheet(item: $welcomeChooserState) { state in
-            DatabaseTypeChooserSheet(
-                initialType: state.initialType,
-                onSelected: { type in
-                    state.onSelected(type)
-                    welcomeChooserState = nil
-                },
-                onCancel: { welcomeChooserState = nil }
-            )
-        }
+        .modifier(ConnectionCreationOverlays(
+            chooserState: $welcomeChooserState,
+            urlImportPresented: $urlImportPresented
+        ))
         .onReceive(NotificationCenter.default.publisher(for: .presentDatabaseTypeChooser)) { note in
             guard
                 let payload = note.userInfo?[DatabaseTypeChooserPayload.userInfoKey]
@@ -634,6 +629,42 @@ private struct WelcomeChooserState: Identifiable {
     let id = UUID()
     let initialType: DatabaseType?
     let onSelected: (DatabaseType) -> Void
+}
+
+// MARK: - Connection Creation Overlays
+
+private struct ConnectionCreationOverlays: ViewModifier {
+    @Binding var chooserState: WelcomeChooserState?
+    @Binding var urlImportPresented: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $chooserState) { state in
+                DatabaseTypeChooserSheet(
+                    initialType: state.initialType,
+                    onSelected: { type in
+                        state.onSelected(type)
+                        chooserState = nil
+                    },
+                    onImportFromURL: {
+                        chooserState = nil
+                        urlImportPresented = true
+                    },
+                    onCancel: { chooserState = nil }
+                )
+            }
+            .sheet(isPresented: $urlImportPresented) {
+                ImportFromURLSheet(
+                    onImported: { parsed in
+                        urlImportPresented = false
+                        WindowOpener.shared.openConnectionFormFromURL(parsed)
+                    },
+                    onCancel: {
+                        urlImportPresented = false
+                    }
+                )
+            }
+    }
 }
 
 // MARK: - Visual Effect Background

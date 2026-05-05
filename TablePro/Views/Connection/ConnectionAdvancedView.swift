@@ -41,36 +41,26 @@ struct ConnectionAdvancedView: View {
                 }
             }
 
-            Section(String(localized: "Startup Commands")) {
+            Section {
                 StartupCommandsEditor(text: $startupCommands)
                     .frame(height: 80)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                    )
-                Text(
-                    "SQL commands to run after connecting, e.g. SET time_zone = 'Asia/Ho_Chi_Minh'. One per line or separated by semicolons."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            } header: {
+                Text(String(localized: "Startup Commands"))
+            } footer: {
+                Text("SQL commands to run after connecting, e.g. SET time_zone = 'Asia/Ho_Chi_Minh'. One per line or separated by semicolons.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            Section(String(localized: "Pre-Connect Script")) {
+            Section {
                 StartupCommandsEditor(text: $preConnectScript)
                     .frame(height: 80)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                    )
-                Text(
-                    "Shell script to run before connecting. Non-zero exit aborts connection."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            } header: {
+                Text(String(localized: "Pre-Connect Script"))
+            } footer: {
+                Text("Shell script to run before connecting. Non-zero exit aborts connection.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -147,13 +137,11 @@ struct StartupCommandsEditor: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isRichText = false
         textView.string = text
-        textView.textContainerInset = NSSize(width: 2, height: 6)
-        textView.drawsBackground = false
+        textView.textContainerInset = NSSize(width: 4, height: 6)
         textView.delegate = context.coordinator
 
-        scrollView.borderType = .noBorder
+        scrollView.borderType = .bezelBorder
         scrollView.hasVerticalScroller = true
-        scrollView.drawsBackground = false
 
         return scrollView
     }

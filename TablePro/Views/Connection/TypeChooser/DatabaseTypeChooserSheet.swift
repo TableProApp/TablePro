@@ -8,6 +8,7 @@ import SwiftUI
 struct DatabaseTypeChooserSheet: View {
     let initialType: DatabaseType?
     let onSelected: (DatabaseType) -> Void
+    let onImportFromURL: (() -> Void)?
     let onCancel: () -> Void
 
     @State private var model = DatabaseTypeChooserModel()
@@ -16,10 +17,12 @@ struct DatabaseTypeChooserSheet: View {
     init(
         initialType: DatabaseType? = nil,
         onSelected: @escaping (DatabaseType) -> Void,
+        onImportFromURL: (() -> Void)? = nil,
         onCancel: @escaping () -> Void = {}
     ) {
         self.initialType = initialType
         self.onSelected = onSelected
+        self.onImportFromURL = onImportFromURL
         self.onCancel = onCancel
     }
 
@@ -93,7 +96,18 @@ struct DatabaseTypeChooserSheet: View {
 
     private var footer: some View {
         HStack {
+            if let onImportFromURL {
+                Button {
+                    onImportFromURL()
+                    dismiss()
+                } label: {
+                    Label(String(localized: "Import from URL..."), systemImage: "link")
+                }
+                .help(String(localized: "Paste a connection URL to detect type and pre-fill fields"))
+            }
+
             Spacer()
+
             Button(String(localized: "Cancel")) {
                 onCancel()
                 dismiss()

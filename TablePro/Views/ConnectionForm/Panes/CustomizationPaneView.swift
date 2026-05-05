@@ -22,7 +22,7 @@ struct CustomizationPaneView: View {
                 }
             }
 
-            Section(String(localized: "Safety")) {
+            Section(String(localized: "Query Behavior")) {
                 let isProUnlocked = LicenseManager.shared.isFeatureAvailable(.safeMode)
                 Picker(String(localized: "Safe Mode"), selection: $coordinator.customization.safeModeLevel) {
                     ForEach(SafeModeLevel.allCases) { level in
@@ -52,7 +52,7 @@ struct CustomizationPaneView: View {
             }
             Button(String(localized: "OK"), role: .cancel) {}
         } message: {
-            Text(String(localized: "Safe Mode, Safe Mode (Full), and Read-Only require a Pro license."))
+            Text(String(localized: "Safe Mode, Safe Mode (Full), and Read Only require a Pro license."))
         }
         .sheet(isPresented: $coordinator.customization.showActivationSheet) {
             LicenseActivationSheet()

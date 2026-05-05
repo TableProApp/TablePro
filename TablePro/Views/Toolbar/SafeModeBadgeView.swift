@@ -66,7 +66,7 @@ struct SafeModeBadgeView: View {
             }
             Button(String(localized: "OK"), role: .cancel) {}
         } message: {
-            Text(String(localized: "Safe Mode, Safe Mode (Full), and Read-Only require a Pro license."))
+            Text(String(localized: "Safe Mode, Safe Mode (Full), and Read Only require a Pro license."))
         }
         .sheet(isPresented: $showActivationSheet) {
             LicenseActivationSheet()

@@ -9,46 +9,34 @@ import TableProPluginKit
 struct ConnectionFormView: View {
     let connectionId: UUID?
 
+    @State private var coordinator: ConnectionFormCoordinator
     @Environment(\.dismiss) private var dismiss
-    @State private var coordinator: ConnectionFormCoordinator?
 
-    var body: some View {
-        Group {
-            if let coordinator {
-                contentView(coordinator: coordinator)
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .frame(minWidth: 720, idealWidth: 820)
-        .frame(minHeight: 560, idealHeight: 600)
-        .task {
-            if coordinator == nil {
-                let pendingType = connectionId == nil
-                    ? PendingNewConnectionType.shared.consume()
-                    : nil
-                let newCoordinator = ConnectionFormCoordinator(
-                    connectionId: connectionId,
-                    initialType: pendingType
-                )
-                newCoordinator.dismissAction = { dismiss() }
-                newCoordinator.load()
-                newCoordinator.detectClipboardConnectionStringIfNeeded()
-                coordinator = newCoordinator
-            }
-        }
+    init(connectionId: UUID?) {
+        self.connectionId = connectionId
+        let pendingImport = connectionId == nil
+            ? PendingNewConnectionImport.shared.consume()
+            : nil
+        let pendingType = connectionId == nil
+            ? PendingNewConnectionType.shared.consume()
+            : nil
+        _coordinator = State(initialValue: ConnectionFormCoordinator(
+            connectionId: connectionId,
+            initialType: pendingType,
+            initialParsedURL: pendingImport
+        ))
     }
 
-    @ViewBuilder
-    private func contentView(coordinator: ConnectionFormCoordinator) -> some View {
+    var body: some View {
         @Bindable var bindable = coordinator
 
-        NavigationSplitView {
+        return NavigationSplitView {
             ConnectionFormSidebar(coordinator: coordinator)
         } detail: {
             ConnectionFormDetail(coordinator: coordinator)
         }
+        .frame(minWidth: 720, idealWidth: 820)
+        .frame(minHeight: 560, idealHeight: 600)
         .navigationTitle(
             coordinator.isNew
                 ? String(format: String(localized: "New %@ Connection"), coordinator.network.type.rawValue)
@@ -57,9 +45,6 @@ struct ConnectionFormView: View {
         .toolbar {
             ConnectionFormToolbar(coordinator: coordinator)
         }
-        .sheet(isPresented: $bindable.showURLImport) {
-            ImportFromURLSheet(coordinator: coordinator)
-        }
         .sheet(item: $bindable.pluginDiagnostic) { item in
             PluginDiagnosticSheet(item: item) {
                 coordinator.pluginDiagnostic = nil
@@ -67,6 +52,24 @@ struct ConnectionFormView: View {
         }
         .pluginInstallPrompt(connection: $bindable.pluginInstallConnection) { connection in
             coordinator.connectAfterInstall(connection)
+        }
+        .alert(
+            String(localized: "Save Failed"),
+            isPresented: Binding(
+                get: { coordinator.saveError != nil },
+                set: { if !$0 { coordinator.saveError = nil } }
+            ),
+            presenting: coordinator.saveError
+        ) { _ in
+            Button(String(localized: "OK"), role: .cancel) {
+                coordinator.saveError = nil
+            }
+        } message: { error in
+            Text(error)
+        }
+        .task {
+            coordinator.dismissAction = { dismiss() }
+            coordinator.detectClipboardConnectionStringIfNeeded()
         }
     }
 }

@@ -8,105 +8,95 @@ import SwiftUI
 import TableProPluginKit
 
 struct ImportFromURLSheet: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    let onImported: (ParsedConnectionURL) -> Void
+    let onCancel: () -> Void
+
+    @State private var urlString: String = ""
+    @State private var parseError: String?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text(String(localized: "Paste a connection URL to auto-fill the form fields."))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(localized: "Import from URL"))
+                    .font(.headline)
+                Text(String(localized: "Paste a connection URL. We'll detect the database type and pre-fill the form."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             TextField(
                 String(localized: "Connection URL"),
-                text: $coordinator.connectionURL,
-                prompt: Text(urlPlaceholder)
+                text: $urlString,
+                prompt: Text(verbatim: "mysql://user:password@host:3306/database")
             )
             .textFieldStyle(.roundedBorder)
+            .onSubmit(submit)
 
-            if let error = coordinator.urlParseError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
+            if let parseError {
+                Label(parseError, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .systemOrange))
-            } else if let preview = parsedPreview {
-                urlPreviewView(preview)
+            } else if let parsed = parsedURL {
+                previewView(parsed)
             }
 
+            Spacer(minLength: 0)
+
             HStack {
+                Spacer()
                 Button(String(localized: "Cancel")) {
-                    coordinator.connectionURL = ""
-                    coordinator.urlParseError = nil
+                    onCancel()
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Spacer()
-
                 Button(String(localized: "Import")) {
-                    coordinator.parseURL()
-                    if coordinator.urlParseError == nil
-                        && !coordinator.connectionURL.isEmpty {
-                        coordinator.connectionURL = ""
-                        coordinator.urlParseError = nil
-                        dismiss()
-                    }
+                    submit()
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(coordinator.connectionURL
-                          .trimmingCharacters(in: .whitespacesAndNewlines)
-                          .isEmpty)
+                .disabled(trimmedURL.isEmpty)
             }
         }
-        .navigationTitle(String(localized: "Import from URL"))
         .padding(20)
-        .frame(width: 420)
-        .onAppear {
-            if coordinator.connectionURL.isEmpty,
-               let clipString = NSPasteboard.general.string(forType: .string),
-               let firstLine = clipString.components(separatedBy: .newlines).first,
-               firstLine.contains("://") {
-                coordinator.connectionURL = firstLine
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
+        .frame(width: 460, height: 260)
+        .onAppear(perform: prefillFromClipboard)
     }
 
-    private var urlPlaceholder: String {
-        let type = coordinator.network.type
-        let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)
-        let scheme = snapshot?.primaryUrlScheme ?? type.rawValue.lowercased()
-        let mode = snapshot?.connectionMode ?? .network
-
-        switch mode {
-        case .fileBased:
-            return "\(scheme):///path/to/database"
-        case .apiOnly:
-            if type.pluginTypeId == "libSQL" {
-                return "libsql://your-database.turso.io"
-            }
-            if type.pluginTypeId == "Cloudflare D1" {
-                return "d1://account-id/database-name"
-            }
-            return "\(scheme)://host/database"
-        case .network:
-            let port = snapshot?.defaultPort ?? 0
-            let portStr = port > 0 ? ":\(port)" : ""
-            return "\(scheme)://user:password@host\(portStr)/database"
-        }
+    private var trimmedURL: String {
+        urlString.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var parsedPreview: ParsedConnectionURL? {
-        let trimmed = coordinator.connectionURL
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        if case .success(let parsed) = ConnectionURLParser.parse(trimmed) {
+    private var parsedURL: ParsedConnectionURL? {
+        guard !trimmedURL.isEmpty else { return nil }
+        if case .success(let parsed) = ConnectionURLParser.parse(trimmedURL) {
             return parsed
         }
         return nil
     }
 
-    private func urlPreviewView(_ parsed: ParsedConnectionURL) -> some View {
+    private func submit() {
+        guard !trimmedURL.isEmpty else { return }
+        switch ConnectionURLParser.parse(trimmedURL) {
+        case .success(let parsed):
+            parseError = nil
+            onImported(parsed)
+            dismiss()
+        case .failure(let error):
+            parseError = error.localizedDescription
+        }
+    }
+
+    private func prefillFromClipboard() {
+        guard urlString.isEmpty,
+              let clipString = NSPasteboard.general.string(forType: .string),
+              let firstLine = clipString.components(separatedBy: .newlines).first,
+              firstLine.contains("://") else { return }
+        urlString = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func previewView(_ parsed: ParsedConnectionURL) -> some View {
         let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: parsed.type.pluginTypeId)
         let mode = snapshot?.connectionMode ?? .network
 

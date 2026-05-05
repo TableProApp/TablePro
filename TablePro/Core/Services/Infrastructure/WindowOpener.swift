@@ -57,6 +57,11 @@ internal final class WindowOpener {
         run { $0.openConnectionFormAction?(connectionId) }
     }
 
+    internal func openConnectionFormFromURL(_ parsed: ParsedConnectionURL) {
+        PendingNewConnectionImport.shared.set(parsed)
+        run { $0.openConnectionFormAction?(nil) }
+    }
+
     internal func presentTypeChooser(
         initialType: DatabaseType?,
         onSelected: @escaping (DatabaseType) -> Void

@@ -45,7 +45,7 @@ internal final class SafeModeGuard {
 
         case .readOnly:
             if effectiveIsWrite {
-                return .blocked(String(localized: "Cannot execute write queries: connection is read-only"))
+                return .blocked(String(localized: "Cannot execute write queries: connection is read only"))
             }
             return .allowed
 

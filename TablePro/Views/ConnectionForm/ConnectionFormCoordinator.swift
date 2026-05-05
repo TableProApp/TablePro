@@ -44,9 +44,7 @@ final class ConnectionFormCoordinator {
     var pluginInstallConnection: DatabaseConnection?
     var pluginDiagnostic: PluginDiagnosticItem?
 
-    var showURLImport: Bool = false
-    var connectionURL: String = ""
-    var urlParseError: String?
+    var saveError: String?
 
     var clipboardCandidate: ParsedConnection?
     var clipboardBannerDismissed: Bool = false
@@ -81,7 +79,11 @@ final class ConnectionFormCoordinator {
             && advanced.validationIssues.isEmpty
     }
 
-    init(connectionId: UUID?, initialType: DatabaseType? = nil) {
+    init(
+        connectionId: UUID?,
+        initialType: DatabaseType? = nil,
+        initialParsedURL: ParsedConnectionURL? = nil
+    ) {
         self.connectionId = connectionId
         self.network = NetworkPaneViewModel()
         self.auth = AuthPaneViewModel()
@@ -98,16 +100,23 @@ final class ConnectionFormCoordinator {
         customization.coordinator = ref
         advanced.coordinator = ref
 
-        if let initialType {
-            network.type = initialType
-            network.port = String(initialType.defaultPort)
-            applyTypeDefaults(initialType, includeNetwork: true)
+        let resolvedInitialType = initialParsedURL?.type ?? initialType
+        if let resolvedInitialType {
+            network.type = resolvedInitialType
+            network.port = String(resolvedInitialType.defaultPort)
+            applyTypeDefaults(resolvedInitialType, includeNetwork: true)
+        }
+
+        loadInitialData()
+
+        if let initialParsedURL {
+            applyParsed(initialParsedURL)
         }
     }
 
     // MARK: - Lifecycle
 
-    func load() {
+    private func loadInitialData() {
         Self.logger.debug(
             "[trace] load connectionId=\(self.connectionId?.uuidString ?? "nil", privacy: .public) isNew=\(self.isNew)"
         )
@@ -288,12 +297,14 @@ final class ConnectionFormCoordinator {
                 connectToDatabase(connectionToSave)
             }
         } else {
-            if let index = savedConnections.firstIndex(where: { $0.id == connectionToSave.id }) {
-                savedConnections[index] = connectionToSave
-                storage.saveConnections(savedConnections)
-                if !connectionToSave.localOnly {
-                    SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
-                }
+            guard let index = savedConnections.firstIndex(where: { $0.id == connectionToSave.id }) else {
+                saveError = String(localized: "This connection was deleted on another device or window. Your changes were not saved.")
+                return
+            }
+            savedConnections[index] = connectionToSave
+            storage.saveConnections(savedConnections)
+            if !connectionToSave.localOnly {
+                SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
@@ -573,26 +584,6 @@ final class ConnectionFormCoordinator {
     }
 
     // MARK: - URL import
-
-    func openImportSheet() {
-        showURLImport = true
-    }
-
-    func parseURL() {
-        let trimmed = connectionURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            urlParseError = nil
-            return
-        }
-
-        switch ConnectionURLParser.parse(trimmed) {
-        case .success(let parsed):
-            urlParseError = nil
-            applyParsed(parsed)
-        case .failure(let error):
-            urlParseError = error.localizedDescription
-        }
-    }
 
     private func applyParsed(_ parsed: ParsedConnectionURL) {
         let oldType = network.type

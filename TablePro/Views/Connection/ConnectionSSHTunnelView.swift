@@ -26,9 +26,7 @@ struct ConnectionSSHTunnelView: View {
             if sshState.enabled {
                 sshProfileSection
 
-                if let profile = sshState.selectedProfile {
-                    sshProfileSummarySection(profile)
-                } else if sshState.profileId != nil {
+                if sshState.selectedProfile == nil, sshState.profileId != nil {
                     Section {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -39,7 +37,7 @@ struct ConnectionSSHTunnelView: View {
                             sshState.profileId = nil
                         }
                     }
-                } else {
+                } else if sshState.selectedProfile == nil {
                     sshInlineFields
                 }
             }
@@ -51,7 +49,7 @@ struct ConnectionSSHTunnelView: View {
     // MARK: - SSH Profile Section
 
     private var sshProfileSection: some View {
-        Section(String(localized: "SSH Profile")) {
+        Section(String(localized: "Profile")) {
             Picker(String(localized: "Profile"), selection: $sshState.profileId) {
                 Text("Inline Configuration").tag(UUID?.none)
                 ForEach(sshState.profiles) { profile in
@@ -79,6 +77,21 @@ struct ConnectionSSHTunnelView: View {
                 }
             }
             .controlSize(.small)
+
+            if let profile = sshState.selectedProfile {
+                DisclosureGroup(String(localized: "Profile Details")) {
+                    LabeledContent(String(localized: "Host"), value: profile.host)
+                    LabeledContent(String(localized: "Port"), value: profile.port.map(String.init) ?? "22")
+                    LabeledContent(String(localized: "Username"), value: profile.username)
+                    LabeledContent(String(localized: "Authentication Method"), value: profile.authMethod.rawValue)
+                    if !profile.privateKeyPath.isEmpty {
+                        LabeledContent(String(localized: "Key File"), value: profile.privateKeyPath)
+                    }
+                    if !profile.jumpHosts.isEmpty {
+                        LabeledContent(String(localized: "Jump Hosts"), value: "\(profile.jumpHosts.count)")
+                    }
+                }
+            }
         }
         .sheet(isPresented: $sshState.showingCreateProfile) {
             SSHProfileEditorView(existingProfile: nil, onSave: { _ in
@@ -130,21 +143,6 @@ struct ConnectionSSHTunnelView: View {
             totpDigits: sshState.totpDigits,
             totpPeriod: sshState.totpPeriod
         )
-    }
-
-    private func sshProfileSummarySection(_ profile: SSHProfile) -> some View {
-        Section(String(localized: "Profile Settings")) {
-            LabeledContent(String(localized: "Host"), value: profile.host)
-            LabeledContent(String(localized: "Port"), value: profile.port.map(String.init) ?? "22")
-            LabeledContent(String(localized: "Username"), value: profile.username)
-            LabeledContent(String(localized: "Auth Method"), value: profile.authMethod.rawValue)
-            if !profile.privateKeyPath.isEmpty {
-                LabeledContent(String(localized: "Key File"), value: profile.privateKeyPath)
-            }
-            if !profile.jumpHosts.isEmpty {
-                LabeledContent(String(localized: "Jump Hosts"), value: "\(profile.jumpHosts.count)")
-            }
-        }
     }
 
     // MARK: - SSH Inline Fields

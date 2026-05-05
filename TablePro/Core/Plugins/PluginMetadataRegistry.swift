@@ -387,7 +387,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
 
         let pgpassField = ConnectionField(
             id: "usePgpass",
-            label: String(localized: "Use ~/.pgpass"),
+            label: String(localized: "Use Password File"),
             defaultValue: "false",
             fieldType: .toggle,
             section: .authentication,

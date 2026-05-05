@@ -658,11 +658,7 @@ struct TableProApp: App {
 
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
             ConnectionFormView(connectionId: editingId ?? nil)
-                .background(WindowChromeConfigurator(
-                    restorable: false,
-                    hideMiniaturizeButton: true,
-                    hideZoomButton: true
-                ))
+                .background(WindowChromeConfigurator(restorable: false))
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 820, height: 600)

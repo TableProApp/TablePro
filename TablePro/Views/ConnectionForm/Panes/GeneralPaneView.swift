@@ -47,8 +47,11 @@ struct GeneralPaneView: View {
     @ViewBuilder
     private var testConnectionSection: some View {
         Section {
-            TestConnectionStatusButton(coordinator: coordinator)
-                .frame(maxWidth: .infinity, alignment: .center)
+            LabeledContent {
+                TestConnectionStatusButton(coordinator: coordinator)
+            } label: {
+                Text(String(localized: "Status"))
+            }
         }
     }
 
@@ -157,14 +160,6 @@ struct GeneralPaneView: View {
                         prompt: Text("root")
                     )
                 }
-                ForEach(coordinator.auth.authFields, id: \.id) { field in
-                    if coordinator.auth.isFieldVisible(field) {
-                        ConnectionFieldRow(
-                            field: field,
-                            value: authFieldBinding(for: field)
-                        )
-                    }
-                }
                 if !coordinator.auth.hidesPassword {
                     PasswordPromptToggle(
                         type: type,
@@ -172,6 +167,14 @@ struct GeneralPaneView: View {
                         password: $coordinator.auth.password,
                         additionalFieldValues: $coordinator.auth.additionalFieldValues
                     )
+                }
+                ForEach(coordinator.auth.authFields, id: \.id) { field in
+                    if coordinator.auth.isFieldVisible(field) {
+                        ConnectionFieldRow(
+                            field: field,
+                            value: authFieldBinding(for: field)
+                        )
+                    }
                 }
                 if coordinator.auth.usePgpass {
                     pgpassStatusView
@@ -201,14 +204,14 @@ struct GeneralPaneView: View {
             .font(.caption)
         case .matchFound:
             Label(
-                String(localized: "~/.pgpass found — matching entry exists"),
+                String(localized: "~/.pgpass found, matching entry exists"),
                 systemImage: "checkmark.circle.fill"
             )
             .foregroundStyle(Color(nsColor: .systemGreen))
             .font(.caption)
         case .noMatch:
             Label(
-                String(localized: "~/.pgpass found — no matching entry"),
+                String(localized: "~/.pgpass found, no matching entry"),
                 systemImage: "exclamationmark.triangle.fill"
             )
             .foregroundStyle(Color(nsColor: .systemYellow))

@@ -66,7 +66,7 @@ struct ConnectionStatusView: View {
             }
             .buttonStyle(.plain)
             .help(safeModeLevel == .readOnly
-                ? String(format: String(localized: "Current database: %@ (read-only, ⌘K to switch)"), databaseName)
+                ? String(format: String(localized: "Current database: %@ (read only, ⌘K to switch)"), databaseName)
                 : String(format: String(localized: "Current database: %@ (⌘K to switch)"), databaseName))
         }
     }

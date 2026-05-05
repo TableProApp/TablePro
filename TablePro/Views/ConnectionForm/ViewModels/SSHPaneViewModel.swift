@@ -18,12 +18,9 @@ final class SSHPaneViewModel {
         if state.host.trimmingCharacters(in: .whitespaces).isEmpty {
             issues.append(String(localized: "SSH host is required"))
         }
-        if !state.port.isEmpty {
-            if let portValue = Int(state.port), (1...65_535).contains(portValue) {
-                // valid
-            } else {
-                issues.append(String(localized: "SSH port must be between 1 and 65535"))
-            }
+        if !state.port.isEmpty,
+           Int(state.port).map({ !(1...65_535).contains($0) }) ?? true {
+            issues.append(String(localized: "SSH port must be between 1 and 65535"))
         }
         if !state.jumpHosts.allSatisfy(\.isValid) {
             issues.append(String(localized: "Jump host configuration is invalid"))

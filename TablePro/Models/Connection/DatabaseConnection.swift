@@ -189,8 +189,8 @@ enum ExternalAccessLevel: String, Codable, Sendable, CaseIterable, Identifiable 
     var displayName: String {
         switch self {
         case .blocked: return String(localized: "Blocked")
-        case .readOnly: return String(localized: "Read-Only")
-        case .readWrite: return String(localized: "Read-Write")
+        case .readOnly: return String(localized: "Read Only")
+        case .readWrite: return String(localized: "Read & Write")
         }
     }
 

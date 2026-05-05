@@ -42,7 +42,7 @@ struct LinkedFoldersSection: View {
                 }
             }
         } footer: {
-            Text("Watched folders are scanned for .tablepro files. Connections appear read-only in the sidebar.")
+            Text("Watched folders are scanned for .tablepro files. Connections appear read only in the sidebar.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

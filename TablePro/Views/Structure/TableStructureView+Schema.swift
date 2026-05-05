@@ -52,8 +52,8 @@ extension TableStructureView {
     func executeSchemaChanges() async {
         guard !connection.safeModeLevel.blocksAllWrites else {
             AlertHelper.showErrorSheet(
-                title: String(localized: "Read-Only Connection"),
-                message: String(localized: "Cannot save schema changes: connection is read-only."),
+                title: String(localized: "Read Only Connection"),
+                message: String(localized: "Cannot save schema changes: connection is read only."),
                 window: coordinator?.contentWindow
             )
             return

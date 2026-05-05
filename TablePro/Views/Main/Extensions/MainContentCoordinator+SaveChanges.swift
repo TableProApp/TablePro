@@ -19,7 +19,7 @@ extension MainContentCoordinator {
     ) {
         guard !safeModeLevel.blocksAllWrites else {
             if let index = tabManager.selectedTabIndex {
-                tabManager.tabs[index].execution.errorMessage = String(localized: "Cannot save changes: connection is read-only")
+                tabManager.tabs[index].execution.errorMessage = String(localized: "Cannot save changes: connection is read only")
             }
             saveCompletionContinuation?.resume(returning: false)
             saveCompletionContinuation = nil
