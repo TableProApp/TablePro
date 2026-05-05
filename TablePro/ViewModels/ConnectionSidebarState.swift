@@ -18,10 +18,6 @@ internal final class ConnectionSidebarState {
         return state
     }
 
-    static func removeConnection(_ connectionId: UUID) {
-        instances.removeValue(forKey: connectionId)
-    }
-
     let connectionId: UUID
 
     var selectedFavoriteNodeId: String? {

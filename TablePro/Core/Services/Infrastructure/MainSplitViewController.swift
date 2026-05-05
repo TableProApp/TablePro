@@ -324,31 +324,31 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         sessionState: SessionStateFactory.SessionState
     ) -> some View {
         SidebarView(
-                sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
-                onDoubleClick: { [weak self] table in
-                    guard let coordinator = self?.sessionState?.coordinator else { return }
-                    let connectionId = coordinator.connectionId
-                    let isView = table.type == .view
-                    if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId),
-                       let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
-                        if previewCoordinator.tabManager.selectedTab?.tableContext.tableName == table.name {
-                            previewCoordinator.promotePreviewTab()
-                        } else {
-                            previewCoordinator.promotePreviewTab()
-                            coordinator.openTableTab(table.name, isView: isView)
-                        }
+            sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
+            onDoubleClick: { [weak self] table in
+                guard let coordinator = self?.sessionState?.coordinator else { return }
+                let connectionId = coordinator.connectionId
+                let isView = table.type == .view
+                if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId),
+                   let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
+                    if previewCoordinator.tabManager.selectedTab?.tableContext.tableName == table.name {
+                        previewCoordinator.promotePreviewTab()
                     } else {
-                        coordinator.promotePreviewTab()
+                        previewCoordinator.promotePreviewTab()
                         coordinator.openTableTab(table.name, isView: isView)
                     }
-                },
-                pendingTruncates: sessionPendingTruncatesBinding,
-                pendingDeletes: sessionPendingDeletesBinding,
-                tableOperationOptions: sessionTableOperationOptionsBinding,
-                databaseType: currentSession.connection.type,
-                connectionId: currentSession.connection.id,
-                coordinator: sessionState.coordinator
-            )
+                } else {
+                    coordinator.promotePreviewTab()
+                    coordinator.openTableTab(table.name, isView: isView)
+                }
+            },
+            pendingTruncates: sessionPendingTruncatesBinding,
+            pendingDeletes: sessionPendingDeletesBinding,
+            tableOperationOptions: sessionTableOperationOptionsBinding,
+            databaseType: currentSession.connection.type,
+            connectionId: currentSession.connection.id,
+            coordinator: sessionState.coordinator
+        )
     }
 
     @ViewBuilder

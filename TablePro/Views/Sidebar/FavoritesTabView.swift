@@ -6,7 +6,6 @@
 import SwiftUI
 
 internal struct FavoritesTabView: View {
-
     @State private var viewModel: FavoritesSidebarViewModel
     @State private var folderToDelete: SQLFavoriteFolder?
     @State private var showDeleteFolderAlert = false

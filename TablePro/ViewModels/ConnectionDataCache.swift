@@ -18,10 +18,6 @@ internal final class ConnectionDataCache {
         return cache
     }
 
-    static func removeConnection(_ connectionId: UUID) {
-        instances.removeValue(forKey: connectionId)
-    }
-
     let connectionId: UUID
 
     private(set) var folders: [SQLFavoriteFolder] = []
@@ -70,11 +66,6 @@ internal final class ConnectionDataCache {
     func ensureLoaded() {
         guard !isInitialLoadComplete, refreshTask == nil else { return }
         scheduleRefresh()
-    }
-
-    func refresh() async {
-        scheduleRefresh()
-        await refreshTask?.value
     }
 
     private func scheduleRefresh() {
