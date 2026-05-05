@@ -293,13 +293,17 @@ Click the connection button again to dismiss the popover.
 
 ## Switching Databases
 
-To switch databases on the same connection:
+One connection covers every database on the server. Switch with **Cmd+K**, or click the database name in the toolbar.
 
-1. Click the database name in the toolbar (next to the connection name)
-2. Select a different database from the dropdown
-3. The sidebar updates to show the new database's tables
+### Service-level connections
 
-No need to create separate connections for each database on the same server.
+Leave the **Database** field empty when creating the connection. Works for MySQL, MariaDB, MongoDB, SQL Server, and ClickHouse. The sidebar lists every database your user can access.
+
+PostgreSQL and Redshift need an initial database. Connect to `postgres` (Redshift: `dev`), then use **Cmd+K** to switch.
+
+<Tip>
+With a restricted user, the switcher only shows databases that user has been granted access to.
+</Tip>
 
 {/* Screenshot: Database switcher */}
 <Frame caption="Database switcher in toolbar">

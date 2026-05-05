@@ -18,7 +18,7 @@ Click **New Connection**, select **ClickHouse**, enter host/port/credentials/dat
 | **Host** | `localhost` | |
 | **Port** | `8123` | HTTP port (not 9000 native TCP) |
 | **Username** | `default` | Set password in production |
-| **Database** | `default` | |
+| **Database** | `default` | Leave empty to browse all databases. Switch with **Cmd+K** |
 
 Uses HTTP API (HTTPS on port 8443 with SSL/TLS enabled). Cloud providers typically expose HTTP(S) only.
 
@@ -43,7 +43,7 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 ### Database Browsing
 
-After connecting, the sidebar lists all databases on the server. Expand a database to see its tables and views. Switch databases using the database switcher in the toolbar.
+After connecting, the sidebar lists all databases on the server. Expand a database to see its tables and views. Press **Cmd+K** or click the database name in the toolbar to switch.
 
 ### Table Browsing
 
