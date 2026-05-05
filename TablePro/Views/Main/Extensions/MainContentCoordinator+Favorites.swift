@@ -43,9 +43,14 @@ extension MainContentCoordinator {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
 
         if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: favorite.fileURL) {
-            existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
+            let stillHasTab = MainContentCoordinator.coordinator(forWindow: existing)?
+                .tabManager.tabs.contains { $0.content.sourceFileURL == favorite.fileURL } ?? false
+            if stillHasTab {
+                existing.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
+            WindowLifecycleMonitor.shared.unregisterSourceFile(favorite.fileURL)
         }
 
         if tabManager.tabs.isEmpty {

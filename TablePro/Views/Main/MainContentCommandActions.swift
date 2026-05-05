@@ -367,6 +367,9 @@ final class MainContentCommandActions {
             if let coordinator {
                 for tab in coordinator.tabManager.tabs {
                     coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
+                    if let url = tab.content.sourceFileURL {
+                        WindowLifecycleMonitor.shared.unregisterSourceFile(url)
+                    }
                 }
                 coordinator.tabManager.tabs.removeAll()
                 coordinator.tabManager.selectedTabId = nil
