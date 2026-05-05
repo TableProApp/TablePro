@@ -54,6 +54,7 @@ extension MainContentCoordinator {
                 title: favorite.name,
                 sourceFileURL: favorite.fileURL
             )
+            registerWindowForSourceFile(favorite.fileURL)
             return
         }
 
@@ -67,6 +68,7 @@ extension MainContentCoordinator {
             tabManager.tabs[tabIndex].content.savedFileContent = loaded.content
             tabManager.tabs[tabIndex].content.loadMtime = mtime
             tabManager.tabs[tabIndex].title = favorite.name
+            registerWindowForSourceFile(favorite.fileURL)
             return
         }
 
@@ -79,6 +81,11 @@ extension MainContentCoordinator {
             tabTitle: favorite.name
         )
         WindowManager.shared.openTab(payload: payload)
+    }
+
+    private func registerWindowForSourceFile(_ url: URL) {
+        guard let windowId else { return }
+        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
     }
 
     func trashLinkedFavorite(_ favorite: LinkedSQLFavorite) {
