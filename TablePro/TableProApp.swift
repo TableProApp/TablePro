@@ -641,6 +641,8 @@ struct TableProApp: App {
                 .background(WindowOpenerBridge())
                 .background(WindowChromeConfigurator(restorable: false))
         }
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 820, height: 600)
 
         Window("Welcome to TablePro", id: SceneId.welcome) {
             WelcomeWindowView()
