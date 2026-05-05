@@ -141,17 +141,36 @@ internal struct FavoritesTabView: View {
         .onDeleteCommand {
             deleteSelectedNode()
         }
-        .onKeyPress(.return) {
-            guard viewModel.renamingFolderId == nil, let nodeId = selectedNodeId else { return .ignored }
-            if let fav = viewModel.favoriteForNodeId(nodeId) {
-                coordinator?.insertFavorite(fav)
-                return .handled
+        .contextMenu(forSelectionType: String.self) { selection in
+            if let nodeId = selection.first {
+                contextMenuFor(nodeId: nodeId)
             }
-            if let linked = viewModel.linkedFavoriteForNodeId(nodeId) {
-                coordinator?.openLinkedFavorite(linked)
-                return .handled
-            }
-            return .ignored
+        } primaryAction: { selection in
+            guard let nodeId = selection.first else { return }
+            handlePrimaryAction(nodeId: nodeId)
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenuFor(nodeId: String) -> some View {
+        if let fav = viewModel.favoriteForNodeId(nodeId) {
+            favoriteContextMenu(fav)
+        } else if let linked = viewModel.linkedFavoriteForNodeId(nodeId) {
+            linkedFavoriteContextMenu(linked)
+        } else if let folder = viewModel.folderForNodeId(nodeId) {
+            folderContextMenu(folder)
+        } else if let linkedFolder = viewModel.linkedFolderForNodeId(nodeId) {
+            linkedFolderContextMenu(linkedFolder)
+        }
+    }
+
+    private func handlePrimaryAction(nodeId: String) {
+        if let fav = viewModel.favoriteForNodeId(nodeId) {
+            coordinator?.insertFavorite(fav)
+            return
+        }
+        if let linked = viewModel.linkedFavoriteForNodeId(nodeId) {
+            coordinator?.openLinkedFavorite(linked)
         }
     }
 
@@ -161,10 +180,6 @@ internal struct FavoritesTabView: View {
             case .favorite(let favorite):
                 FavoriteRowView(favorite: favorite)
                     .tag(node.id)
-                    .background { DoubleClickDetector { coordinator?.insertFavorite(favorite) } }
-                    .contextMenu {
-                        favoriteContextMenu(favorite)
-                    }
             case .folder(let folder):
                 DisclosureGroup(isExpanded: Binding(
                     get: { FavoritesExpansionState.shared.isFolderExpanded(folder.id, for: connectionId) },
@@ -186,9 +201,6 @@ internal struct FavoritesTabView: View {
                     }
                 } label: {
                     LinkedFolderRowLabel(folder: linkedFolder)
-                        .contextMenu {
-                            linkedFolderContextMenu(linkedFolder)
-                        }
                 }
                 .tag(node.id)
             case .linkedSubfolder(_, let displayName, _):
@@ -203,10 +215,6 @@ internal struct FavoritesTabView: View {
             case .linkedFavorite(let linked):
                 LinkedFavoriteRowView(favorite: linked)
                     .tag(node.id)
-                    .background { DoubleClickDetector { coordinator?.openLinkedFavorite(linked) } }
-                    .contextMenu {
-                        linkedFavoriteContextMenu(linked)
-                    }
             }
         })
     }
@@ -247,9 +255,6 @@ internal struct FavoritesTabView: View {
             }
         } else {
             Label(folder.name, systemImage: "folder")
-                .contextMenu {
-                    folderContextMenu(folder)
-                }
         }
     }
 

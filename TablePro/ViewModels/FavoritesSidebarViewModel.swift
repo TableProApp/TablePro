@@ -418,6 +418,14 @@ internal final class FavoritesSidebarViewModel {
         findNode(nodes, id: id, extract: \.asLinkedFavorite)
     }
 
+    func folderForNodeId(_ id: String) -> SQLFavoriteFolder? {
+        findNode(nodes, id: id, extract: \.asFolder)
+    }
+
+    func linkedFolderForNodeId(_ id: String) -> LinkedSQLFolder? {
+        findNode(nodes, id: id, extract: \.asLinkedFolder)
+    }
+
     private func findNode<T>(
         _ items: [FavoriteNode],
         id: String,
