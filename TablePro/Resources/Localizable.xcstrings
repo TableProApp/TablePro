@@ -225,6 +225,9 @@
         }
       }
     },
+    "\"%@\" was changed since you opened it. Review the diff and choose how to resolve." : {
+
+    },
     "\"%@\" was modified on both this Mac and another device." : {
       "localizations" : {
         "tr" : {
@@ -247,6 +250,9 @@
         }
       }
     },
+    "\"%@\" was modified on disk." : {
+
+    },
     "“%@” will be disconnected and any in-flight requests will be cancelled." : {
       "localizations" : {
         "tr" : {
@@ -268,6 +274,9 @@
           }
         }
       }
+    },
+    "\"%@\" will be moved to Trash. You can recover it from there." : {
+
     },
     "\"%@\" will be permanently deleted." : {
       "localizations" : {
@@ -2473,6 +2482,7 @@
       }
     },
     "~/.pgpass found — matching entry exists" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -2495,6 +2505,7 @@
       }
     },
     "~/.pgpass found — no matching entry" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -2515,6 +2526,12 @@
           }
         }
       }
+    },
+    "~/.pgpass found, matching entry exists" : {
+
+    },
+    "~/.pgpass found, no matching entry" : {
+
     },
     "~/.pgpass has incorrect permissions (needs chmod 0600)" : {
       "localizations" : {
@@ -4583,6 +4600,9 @@
           }
         }
       }
+    },
+    "Add SQL Folder..." : {
+
     },
     "Add the JSON below inside the file and save" : {
       "localizations" : {
@@ -8826,6 +8846,9 @@
         }
       }
     },
+    "Choose a folder containing .sql files" : {
+
+    },
     "Choose a folder to watch for .tablepro connection files" : {
       "localizations" : {
         "tr" : {
@@ -12666,6 +12689,9 @@
         }
       }
     },
+    "Could not read the file. It may have been deleted or moved." : {
+
+    },
     "Could not read the server response. Try again in a moment." : {
       "localizations" : {
         "tr" : {
@@ -12689,6 +12715,9 @@
       }
     },
     "Could Not Reset Sample" : {
+
+    },
+    "Could not write to file. Check that the file is writable." : {
 
     },
     "Count all rows" : {
@@ -15731,6 +15760,9 @@
         }
       }
     },
+    "disabled" : {
+
+    },
     "Disabled" : {
       "localizations" : {
         "tr" : {
@@ -16994,6 +17026,12 @@
         }
       }
     },
+    "Edit Metadata" : {
+
+    },
+    "Edit Metadata..." : {
+
+    },
     "Edit Profile..." : {
       "localizations" : {
         "en" : {
@@ -17518,6 +17556,9 @@
           }
         }
       }
+    },
+    "encoding: %@" : {
+
     },
     "Encrypted Export" : {
       "localizations" : {
@@ -21020,6 +21061,12 @@
           }
         }
       }
+    },
+    "File encoding (%@) cannot represent these characters. Convert the file to UTF-8 to save." : {
+
+    },
+    "File Modified Externally" : {
+
     },
     "File name" : {
       "localizations" : {
@@ -25647,6 +25694,9 @@
         }
       }
     },
+    "Keep My Changes" : {
+
+    },
     "Keep Other Version" : {
       "localizations" : {
         "tr" : {
@@ -26765,6 +26815,9 @@
         }
       }
     },
+    "linked file" : {
+
+    },
     "Linked Folders" : {
       "localizations" : {
         "tr" : {
@@ -26786,6 +26839,9 @@
           }
         }
       }
+    },
+    "Linked SQL Folders" : {
+
     },
     "List all databases on the server" : {
 
@@ -28539,6 +28595,12 @@
         }
       }
     },
+    "Move File to Trash" : {
+
+    },
+    "Move File to Trash?" : {
+
+    },
     "Move Group to..." : {
       "localizations" : {
         "tr" : {
@@ -28604,6 +28666,9 @@
           }
         }
       }
+    },
+    "Move to Trash" : {
+
     },
     "Move Up" : {
       "extractionState" : "stale",
@@ -30229,6 +30294,9 @@
         }
       }
     },
+    "No linked SQL folders. Add a folder containing .sql files to load them as favorites." : {
+
+    },
     "No matching %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -31123,6 +31191,9 @@
         }
       }
     },
+    "Non-UTF-8 file (%@). Saving may change the encoding." : {
+
+    },
     "None" : {
       "localizations" : {
         "tr" : {
@@ -31963,6 +32034,9 @@
           }
         }
       }
+    },
+    "On Disk" : {
+
     },
     "On Update" : {
       "localizations" : {
@@ -37323,6 +37397,9 @@
         }
       }
     },
+    "Reload from Disk" : {
+
+    },
     "Remove" : {
       "localizations" : {
         "tr" : {
@@ -38459,6 +38536,9 @@
           }
         }
       }
+    },
+    "Reveal in Settings" : {
+
     },
     "Reveal token" : {
       "localizations" : {
@@ -41767,6 +41847,9 @@
       }
     },
     "Show details" : {
+
+    },
+    "Show in Finder" : {
 
     },
     "Show line numbers" : {
@@ -46564,6 +46647,9 @@
         }
       }
     },
+    "This connection was deleted on another device or window. Your changes were not saved." : {
+
+    },
     "This connection won't sync to other devices via iCloud." : {
       "localizations" : {
         "tr" : {
@@ -50876,6 +50962,9 @@
         }
       }
     },
+    "Watched folders are scanned for .sql files. Add metadata via leading comments: `-- @name:`, `-- @keyword:`, `-- @description:`." : {
+
+    },
     "Watched folders are scanned for .tablepro files. Connections appear read only in the sidebar." : {
 
     },
@@ -51461,6 +51550,9 @@
           }
         }
       }
+    },
+    "Your Changes" : {
+
     },
     "Your changes will be lost if you don't save them." : {
       "localizations" : {

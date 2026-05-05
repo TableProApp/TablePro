@@ -13,6 +13,8 @@ internal struct FavoritesTabView: View {
     @State private var linkedFileToTrash: LinkedSQLFavorite?
     @State private var showTrashLinkedFileAlert = false
     @State private var linkedMetadataTarget: LinkedSQLFavorite?
+    @State private var linkedFolderToRemove: LinkedSQLFolder?
+    @State private var showRemoveLinkedFolderAlert = false
     @FocusState private var isRenameFocused: Bool
     let connectionId: UUID
     let searchText: String
@@ -78,6 +80,22 @@ internal struct FavoritesTabView: View {
                     Task { await viewModel.loadFavorites() }
                 }
             )
+        }
+        .alert(
+            String(localized: "Remove Linked Folder?"),
+            isPresented: $showRemoveLinkedFolderAlert,
+            presenting: linkedFolderToRemove
+        ) { folder in
+            Button(String(localized: "Cancel"), role: .cancel) {
+                linkedFolderToRemove = nil
+            }
+            Button(String(localized: "Remove"), role: .destructive) {
+                LinkedSQLFolderStorage.shared.removeFolder(folder)
+                SQLFolderWatcher.shared.reload()
+                linkedFolderToRemove = nil
+            }
+        } message: { folder in
+            Text(String(format: String(localized: "\"%@\" will be removed from the sidebar. Files on disk will not be deleted."), folder.name))
         }
         .alert(
             String(localized: "Move File to Trash?"),
@@ -350,11 +368,46 @@ internal struct FavoritesTabView: View {
             NSWorkspace.shared.activateFileViewerSelecting([folder.expandedURL])
         }
 
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(folder.expandedURL.path, forType: .string)
+        } label: {
+            Label(String(localized: "Copy Path"), systemImage: "doc.on.doc")
+        }
+
         Divider()
 
-        Button(String(localized: "Reveal in Settings")) {
-            NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
+        Button(folder.isEnabled
+               ? String(localized: "Disable")
+               : String(localized: "Enable")) {
+            toggleLinkedFolder(folder)
         }
+
+        Button(String(localized: "Reload")) {
+            SQLFolderWatcher.shared.reload()
+        }
+
+        Divider()
+
+        Button(String(localized: "Add Another SQL Folder...")) {
+            addLinkedFolder()
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            linkedFolderToRemove = folder
+            showRemoveLinkedFolderAlert = true
+        } label: {
+            Text(String(localized: "Remove from Sidebar"))
+        }
+    }
+
+    private func toggleLinkedFolder(_ folder: LinkedSQLFolder) {
+        var updated = folder
+        updated.isEnabled.toggle()
+        LinkedSQLFolderStorage.shared.updateFolder(updated)
+        SQLFolderWatcher.shared.reload()
     }
 
     @ViewBuilder
@@ -384,11 +437,15 @@ internal struct FavoritesTabView: View {
     // MARK: - Empty States
 
     private var emptyState: some View {
-        ContentUnavailableView(
-            String(localized: "No Favorites"),
-            systemImage: "star",
-            description: Text("Save frequently used queries for quick access.")
-        )
+        ContentUnavailableView {
+            Label(String(localized: "No Favorites"), systemImage: "star")
+        } description: {
+            Text("Save frequently used queries, or link a folder of .sql files to share with your team.")
+        } actions: {
+            Button(String(localized: "Link a Folder...")) {
+                addLinkedFolder()
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -401,25 +458,46 @@ internal struct FavoritesTabView: View {
 
     private var bottomToolbar: some View {
         HStack(spacing: 8) {
-            Button {
-                viewModel.createFavorite()
+            Menu {
+                Button(String(localized: "New Favorite")) {
+                    viewModel.createFavorite()
+                }
+                Button(String(localized: "New Folder")) {
+                    viewModel.createFolder()
+                }
+                Divider()
+                Button(String(localized: "Add Linked SQL Folder...")) {
+                    addLinkedFolder()
+                }
             } label: {
                 Image(systemName: "plus")
             }
-            .buttonStyle(.borderless)
-            .help(String(localized: "New Favorite"))
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(String(localized: "Add"))
 
             Spacer()
-
-            Button {
-                viewModel.createFolder()
-            } label: {
-                Image(systemName: "folder.badge.plus")
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "New Folder"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    private func addLinkedFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = String(localized: "Choose a folder containing .sql files")
+
+        guard let window = NSApp.keyWindow else { return }
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            let path = PathPortability.contractHome(url.path)
+            let existing = LinkedSQLFolderStorage.shared.loadFolders()
+            guard !existing.contains(where: { $0.path == path }) else { return }
+            LinkedSQLFolderStorage.shared.addFolder(LinkedSQLFolder(path: path))
+            SQLFolderWatcher.shared.reload()
+        }
     }
 }
