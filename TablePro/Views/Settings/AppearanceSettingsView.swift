@@ -12,7 +12,12 @@ struct AppearanceSettingsView: View {
 
     private var engine: ThemeEngine { ThemeEngine.shared }
 
+    @State private var editingTheme: EditingTheme?
     @State private var pendingDeleteThemeId: String?
+
+    private struct EditingTheme: Identifiable {
+        let id: String
+    }
     @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
     @State private var showError = false
@@ -50,33 +55,19 @@ struct AppearanceSettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                appearanceSection
-                themesSection(builtInThemes, title: String(localized: "Built-in"))
-                if !registryThemes.isEmpty {
-                    themesSection(registryThemes, title: String(localized: "Registry"))
-                }
-                if !customThemes.isEmpty {
-                    themesSection(customThemes, title: String(localized: "Custom"))
-                }
+        Form {
+            appearanceSection
+            themesSection(builtInThemes, title: String(localized: "Built-in"), showAddMenu: true)
+            if !registryThemes.isEmpty {
+                themesSection(registryThemes, title: String(localized: "Registry"), showAddMenu: false)
             }
-            .formStyle(.grouped)
-            .navigationTitle(String(localized: "Appearance"))
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    addMenu
-                }
+            if !customThemes.isEmpty {
+                themesSection(customThemes, title: String(localized: "Custom"), showAddMenu: false)
             }
-            .navigationDestination(for: String.self) { themeId in
-                if let theme = engine.availableThemes.first(where: { $0.id == themeId }) {
-                    ThemeEditorView(selectedThemeId: .constant(themeId))
-                        .navigationTitle(theme.name)
-                        .onAppear {
-                            effectiveThemeIdBinding.wrappedValue = themeId
-                        }
-                }
-            }
+        }
+        .formStyle(.grouped)
+        .sheet(item: $editingTheme) { item in
+            themeEditorSheet(themeId: item.id)
         }
         .alert(String(localized: "Delete Theme"), isPresented: $showDeleteConfirmation) {
             Button(String(localized: "Delete"), role: .destructive) {
@@ -116,15 +107,24 @@ struct AppearanceSettingsView: View {
         }
     }
 
-    private func themesSection(_ themes: [ThemeDefinition], title: String) -> some View {
-        Section(title) {
+    @ViewBuilder
+    private func themesSection(_ themes: [ThemeDefinition], title: String, showAddMenu: Bool) -> some View {
+        Section {
             ForEach(themes) { theme in
-                NavigationLink(value: theme.id) {
+                Button {
+                    effectiveThemeIdBinding.wrappedValue = theme.id
+                    editingTheme = EditingTheme(id: theme.id)
+                } label: {
                     ThemeListRowView(theme: theme)
                 }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .contextMenu {
                     Button(String(localized: "Apply")) {
                         effectiveThemeIdBinding.wrappedValue = theme.id
+                    }
+                    Button(String(localized: "Edit…")) {
+                        editingTheme = EditingTheme(id: theme.id)
                     }
                     Button(String(localized: "Duplicate")) {
                         duplicate(theme: theme)
@@ -147,6 +147,14 @@ struct AppearanceSettingsView: View {
                     }
                 }
             }
+        } header: {
+            HStack {
+                Text(title)
+                Spacer()
+                if showAddMenu {
+                    addMenu
+                }
+            }
         }
     }
 
@@ -155,12 +163,34 @@ struct AppearanceSettingsView: View {
             Button(String(localized: "New Theme")) {
                 duplicate(theme: engine.activeTheme)
             }
-            Divider()
             Button(String(localized: "Import…")) {
                 importTheme()
             }
         } label: {
-            Image(systemName: "plus")
+            Label(String(localized: "Add Theme"), systemImage: "plus")
+                .labelStyle(.iconOnly)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    // MARK: - Theme editor sheet
+
+    @ViewBuilder
+    private func themeEditorSheet(themeId: String) -> some View {
+        if engine.availableThemes.contains(where: { $0.id == themeId }) {
+            NavigationStack {
+                ThemeEditorView(selectedThemeId: .constant(themeId))
+                    .frame(minWidth: 540, minHeight: 480)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(String(localized: "Done")) {
+                                editingTheme = nil
+                            }
+                        }
+                    }
+            }
+            .frame(width: 600, height: 540)
         }
     }
 

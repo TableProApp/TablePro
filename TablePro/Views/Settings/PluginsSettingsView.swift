@@ -9,30 +9,27 @@ struct PluginsSettingsView: View {
     @State private var selectedTab: PluginsSubTab = .installed
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle(String(localized: "Plugins"))
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        Picker("", selection: $selectedTab) {
-                            Text(String(localized: "Installed")).tag(PluginsSubTab.installed)
-                            Text(String(localized: "Browse")).tag(PluginsSubTab.browse)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(maxWidth: 240)
-                    }
-                }
-        }
-    }
+        VStack(spacing: 0) {
+            Picker("", selection: $selectedTab) {
+                Text(String(localized: "Installed")).tag(PluginsSubTab.installed)
+                Text(String(localized: "Browse")).tag(PluginsSubTab.browse)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 280)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
 
-    @ViewBuilder
-    private var content: some View {
-        switch selectedTab {
-        case .installed:
-            InstalledPluginsView()
-        case .browse:
-            BrowsePluginsView()
+            Group {
+                switch selectedTab {
+                case .installed:
+                    InstalledPluginsView()
+                case .browse:
+                    BrowsePluginsView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

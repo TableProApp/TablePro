@@ -15,10 +15,9 @@ struct SettingsSidebar: View {
                 text: $searchText,
                 placeholder: String(localized: "Search")
             )
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            Divider()
+            .padding(.horizontal, 10)
+            .padding(.top, 6)
+            .padding(.bottom, 6)
 
             content
         }
