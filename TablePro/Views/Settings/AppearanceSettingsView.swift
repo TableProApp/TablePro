@@ -2,18 +2,21 @@
 //  AppearanceSettingsView.swift
 //  TablePro
 //
-//  Settings for theme browsing, customization, and accent color.
-//
 
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AppearanceSettingsView: View {
     @Binding var settings: AppearanceSettings
 
-    /// Computed binding that reads/writes the correct preferred theme slot.
-    /// On read: returns the theme for the current effective appearance.
-    /// On write: uses the selected theme's appearance metadata to determine the correct slot,
-    /// and switches the appearance mode so the user sees the change immediately.
+    private var engine: ThemeEngine { ThemeEngine.shared }
+
+    @State private var pendingDeleteThemeId: String?
+    @State private var showDeleteConfirmation = false
+    @State private var errorMessage: String?
+    @State private var showError = false
+
     private var effectiveThemeIdBinding: Binding<String> {
         Binding(
             get: {
@@ -25,9 +28,6 @@ struct AppearanceSettingsView: View {
                 guard let theme = ThemeEngine.shared.availableThemes
                     .first(where: { $0.id == newId }) else { return }
 
-                // Assign to the correct slot based on the theme's appearance and
-                // switch mode to match so the user sees the change immediately.
-                // Mutate a local copy so didSet fires only once.
                 var updated = settings
                 switch theme.appearance {
                 case .dark:
@@ -50,33 +50,195 @@ struct AppearanceSettingsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("Appearance")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+        NavigationStack {
+            Form {
+                appearanceSection
+                themesSection(builtInThemes, title: String(localized: "Built-in"))
+                if !registryThemes.isEmpty {
+                    themesSection(registryThemes, title: String(localized: "Registry"))
+                }
+                if !customThemes.isEmpty {
+                    themesSection(customThemes, title: String(localized: "Custom"))
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle(String(localized: "Appearance"))
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    addMenu
+                }
+            }
+            .navigationDestination(for: String.self) { themeId in
+                if let theme = engine.availableThemes.first(where: { $0.id == themeId }) {
+                    ThemeEditorView(selectedThemeId: .constant(themeId))
+                        .navigationTitle(theme.name)
+                        .onAppear {
+                            effectiveThemeIdBinding.wrappedValue = themeId
+                        }
+                }
+            }
+        }
+        .alert(String(localized: "Delete Theme"), isPresented: $showDeleteConfirmation) {
+            Button(String(localized: "Delete"), role: .destructive) {
+                if let id = pendingDeleteThemeId {
+                    deleteTheme(id: id)
+                }
+                pendingDeleteThemeId = nil
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                pendingDeleteThemeId = nil
+            }
+        } message: {
+            if let id = pendingDeleteThemeId,
+               let name = engine.availableThemes.first(where: { $0.id == id })?.name {
+                Text(String(format: String(localized: "Are you sure you want to delete \"%@\"?"), name))
+            }
+        }
+        .alert(String(localized: "Error"), isPresented: $showError) {
+            Button(String(localized: "OK")) {}
+        } message: {
+            if let errorMessage {
+                Text(errorMessage)
+            }
+        }
+    }
 
-                Picker("", selection: $settings.appearanceMode) {
-                    ForEach(AppAppearanceMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
+    // MARK: - Sections
+
+    private var appearanceSection: some View {
+        Section {
+            Picker(String(localized: "Mode"), selection: $settings.appearanceMode) {
+                ForEach(AppAppearanceMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private func themesSection(_ themes: [ThemeDefinition], title: String) -> some View {
+        Section(title) {
+            ForEach(themes) { theme in
+                NavigationLink(value: theme.id) {
+                    ThemeListRowView(theme: theme)
+                }
+                .contextMenu {
+                    Button(String(localized: "Apply")) {
+                        effectiveThemeIdBinding.wrappedValue = theme.id
+                    }
+                    Button(String(localized: "Duplicate")) {
+                        duplicate(theme: theme)
+                    }
+                    Button(String(localized: "Export…")) {
+                        export(theme: theme)
+                    }
+                    if theme.isEditable {
+                        Divider()
+                        Button(String(localized: "Delete"), role: .destructive) {
+                            pendingDeleteThemeId = theme.id
+                            showDeleteConfirmation = true
+                        }
+                    }
+                    if theme.isRegistry {
+                        Divider()
+                        Button(String(localized: "Uninstall"), role: .destructive) {
+                            uninstallRegistryTheme(theme: theme)
+                        }
                     }
                 }
-                .pickerStyle(.segmented)
-                .fixedSize()
-
-                Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+        }
+    }
 
+    private var addMenu: some View {
+        Menu {
+            Button(String(localized: "New Theme")) {
+                duplicate(theme: engine.activeTheme)
+            }
             Divider()
+            Button(String(localized: "Import…")) {
+                importTheme()
+            }
+        } label: {
+            Image(systemName: "plus")
+        }
+    }
 
-            HSplitView {
-                ThemeListView(selectedThemeId: effectiveThemeIdBinding)
-                    .frame(minWidth: 180, idealWidth: 210, maxWidth: 250)
+    // MARK: - Theme groups
 
-                ThemeEditorView(selectedThemeId: effectiveThemeIdBinding)
-                    .frame(minWidth: 400)
+    private var builtInThemes: [ThemeDefinition] {
+        engine.availableThemes.filter(\.isBuiltIn)
+    }
+
+    private var registryThemes: [ThemeDefinition] {
+        engine.registryThemes
+    }
+
+    private var customThemes: [ThemeDefinition] {
+        engine.availableThemes.filter(\.isEditable)
+    }
+
+    // MARK: - Actions
+
+    private func duplicate(theme: ThemeDefinition) {
+        let copy = engine.duplicateTheme(theme, newName: theme.name + " (Copy)")
+        do {
+            try engine.saveUserTheme(copy)
+            effectiveThemeIdBinding.wrappedValue = copy.id
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func deleteTheme(id: String) {
+        do {
+            try engine.deleteUserTheme(id: id)
+            effectiveThemeIdBinding.wrappedValue = engine.activeTheme.id
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func uninstallRegistryTheme(theme: ThemeDefinition) {
+        let meta = ThemeStorage.loadRegistryMeta()
+        guard let entry = meta.installed.first(where: { $0.id == theme.id }) else { return }
+        do {
+            try engine.uninstallRegistryTheme(registryPluginId: entry.registryPluginId)
+            effectiveThemeIdBinding.wrappedValue = engine.activeTheme.id
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func export(theme: ThemeDefinition) {
+        guard let window = NSApp.keyWindow else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = theme.name + ".json"
+        panel.canCreateDirectories = true
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? engine.exportTheme(theme, to: url)
+        }
+    }
+
+    private func importTheme() {
+        guard let window = NSApp.keyWindow else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let imported = try self.engine.importTheme(from: url)
+                self.effectiveThemeIdBinding.wrappedValue = imported.id
+            } catch {
+                self.errorMessage = error.localizedDescription
+                self.showError = true
             }
         }
     }
