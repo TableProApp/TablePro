@@ -1,13 +1,13 @@
 ---
 title: Safe Mode
-description: Per-connection query execution controls - from no restrictions to full read-only lockdown
+description: Per-connection query execution controls, from no restrictions to full read only lockdown
 ---
 
 # Safe Mode
 
 Safe Mode is a per-connection setting that controls how TablePro handles query execution. Each connection can have its own level, from unrestricted access to complete write protection.
 
-Set the Safe Mode level when creating or editing a connection in the connection form.
+Set the Safe Mode level in the **Customization** pane of the connection form.
 
 ## Levels
 
@@ -20,12 +20,12 @@ TablePro provides 6 graduated Safe Mode levels:
 | **Alert (Full)** | `exclamationmark.triangle.fill` | Confirmation dialog | Confirmation dialog | None |
 | **Safe Mode** | `lock.shield` | Confirmation + Touch ID | Execute immediately | Touch ID / password |
 | **Safe Mode (Full)** | `lock.shield.fill` | Confirmation + Touch ID | Confirmation + Touch ID | Touch ID / password |
-| **Read-Only** | `lock.fill` | Blocked entirely | Execute immediately | None |
+| **Read Only** | `lock.fill` | Blocked entirely | Execute immediately | None |
 
 New connections default to **Silent**.
 
 <Note>
-**Safe Mode** (Touch ID), **Safe Mode (Full)**, and **Read-Only** levels require a **Pro license**. The **Silent**, **Alert**, and **Alert (Full)** levels are available in the free version.
+**Safe Mode** (Touch ID), **Safe Mode (Full)**, and **Read Only** levels require a **Pro license**. The **Silent**, **Alert**, and **Alert (Full)** levels are available in the free version.
 </Note>
 
 ## How It Works
@@ -50,7 +50,7 @@ Like Alert, but after confirming the dialog, you must also authenticate with Tou
 
 Combines Alert (Full) and Safe Mode: every query requires both a confirmation dialog and Touch ID/password authentication.
 
-### Read-Only
+### Read Only
 
 All write operations are blocked. The UI disables:
 
@@ -63,11 +63,11 @@ Read queries (SELECT) execute normally.
 
 ## NoSQL Databases
 
-MongoDB, Redis, and other NoSQL databases can't be parsed for read vs. write operations. All operations are treated as writes. In Alert/Safe Mode, every query triggers a confirmation. Read-Only blocks everything.
+MongoDB, Redis, and other NoSQL databases can't be parsed for read vs. write operations. All operations are treated as writes. In Alert/Safe Mode, every query triggers a confirmation. Read Only blocks everything.
 
 ## Toolbar Badge
 
-The current Safe Mode level appears as a badge in the toolbar (orange for Alert levels, red for Safe Mode/Read-Only). Click it to change levels.
+The current Safe Mode level appears as a badge in the toolbar (orange for Alert levels, red for Safe Mode/Read Only). Click it to change levels.
 
 Safe Mode gates apply to query execution, saving cell edits, table operations, and sidebar changes.
 
@@ -77,7 +77,7 @@ Safe Mode runs inside the app on every query you execute. External clients (Rayc
 
 A write request from an external client clears three locks in this order:
 
-1. **External Access** (per-connection, `blocked` / `readOnly` / `readWrite`). Set in the connection form's **Advanced** tab. A `readOnly` connection rejects any write before the request reaches the database.
+1. **External Clients** (per-connection: **Blocked** / **Read Only** / **Read & Write**). Set in the connection form's **Advanced** pane. A Read Only connection rejects any write before the request reaches the database.
 2. **Token scope** (per-integration, `readOnly` / `readWrite` / `fullAccess`). Issued by the [pairing flow](/external-api/pairing) and bounded by External Access: effective permission is `MIN(token.scope, connection.externalAccess)`.
 3. **Safe Mode** (per-query). The same rules on this page apply once the request has been routed to the connection. Touch ID prompts and confirmation dialogs still appear, even for queries originating from an external client.
 

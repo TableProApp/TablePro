@@ -41,35 +41,53 @@ Or manually: Download from [GitHub Releases](https://github.com/TableProApp/Tabl
 
 ## Step 3: Create Your First Connection
 
-Click **New Connection** and fill in your database details. Common examples:
+Click **New Connection** on the welcome screen. A chooser sheet appears with all supported database types grouped by category. Pick one and click **Continue**.
 
-**MySQL**: Host `localhost`, port `3306`, username/password
-**PostgreSQL**: Host `localhost`, port `5432`, username/password
-**SQLite**: Browse to `.sqlite` or `.db` file (no auth required)
-**MongoDB**: Host `localhost`, port `27017`, optional username/password
-
-{/* Screenshot: Connection form with MySQL selected and fields filled in */}
-<Frame caption="Creating a MySQL connection">
+{/* Screenshot: Database type chooser sheet */}
+<Frame caption="Pick a database type">
   <img
     className="block dark:hidden"
-    src="/images/mysql-connection.png"
-    alt="MySQL connection form"
+    src="/images/database-type-chooser.png"
+    alt="Database type chooser"
   />
   <img
     className="hidden dark:block"
-    src="/images/mysql-connection-dark.png"
-    alt="MySQL connection form"
+    src="/images/database-type-chooser-dark.png"
+    alt="Database type chooser"
   />
 </Frame>
 
-## Step 4: Test and Connect
+The connection form opens, pre-filled with sensible defaults. Common examples:
 
-1. Click **Test Connection** to verify your settings
-2. A green checkmark confirms the connection works
-3. Click **Create** to save and connect
+**MySQL**: host `localhost`, port `3306`, username `root`
+**PostgreSQL**: host `localhost`, port `5432`, username `postgres`
+**SQLite**: browse to a `.sqlite` or `.db` file, no auth needed
+**MongoDB**: host `localhost`, port `27017`, optional username/password
 
-{/* Screenshot: Successful connection test showing green checkmark */}
-<Frame caption="Successful connection test">
+{/* Screenshot: PostgreSQL connection form with fields filled in */}
+<Frame caption="PostgreSQL connection form">
+  <img
+    className="block dark:hidden"
+    src="/images/connection-form-general.png"
+    alt="Connection form"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/connection-form-general-dark.png"
+    alt="Connection form"
+  />
+</Frame>
+
+<Tip>
+Already have a connection URL? Click **Import from URL...** in the chooser footer. TablePro detects the database type and pre-fills the form for you.
+</Tip>
+
+## Step 4: Test and Save
+
+The General pane has a **Status** row at the bottom with a Test Connection button. Click it to verify your settings. Once it shows a green checkmark, click **Save & Connect** in the toolbar.
+
+{/* Screenshot: Test Connection status row showing success */}
+<Frame caption="Test Connection succeeded">
   <img
     className="block dark:hidden"
     src="/images/connection-test.png"

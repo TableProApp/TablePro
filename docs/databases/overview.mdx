@@ -67,9 +67,12 @@ Natively supported:
 The Welcome screen appears on first launch or when no connections are active.
 
 1. Click **New Connection**
-2. Fill in the connection details
-3. Click **Test Connection** to verify
-4. Click **Create** to save and connect
+2. Pick a database type from the chooser sheet
+3. Fill in connection details in the form
+4. Click **Test Connection** in the General pane
+5. Click **Save & Connect** in the toolbar
+
+The chooser sheet groups drivers by category (Relational, Document, Key-Value, Analytical, Wide-Column, Cloud Native, Coordination). Each row shows the driver icon, name, and a one-line description. Use the search field to filter, or just click and **Continue**. Drivers that aren't installed yet show a "Not Installed" badge; selecting one prompts to install before the form opens.
 
 {/* Screenshot: Welcome screen with New Connection button highlighted */}
 <Frame caption="Welcome screen">
@@ -85,6 +88,20 @@ The Welcome screen appears on first launch or when no connections are active.
   />
 </Frame>
 
+{/* Screenshot: Database type chooser sheet */}
+<Frame caption="Database type chooser">
+  <img
+    className="block dark:hidden"
+    src="/images/database-type-chooser.png"
+    alt="Database type chooser"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/database-type-chooser-dark.png"
+    alt="Database type chooser"
+  />
+</Frame>
+
 ### From the Menu Bar
 
 Create a new connection at any time:
@@ -93,18 +110,32 @@ Create a new connection at any time:
 
 ### From a Connection URL
 
-Paste a connection string directly into the form:
+Paste a connection string and let TablePro fill in the form:
 
-1. Open the **New Connection** form
-2. Click **Import from URL** in the General tab
-3. Paste your connection URL into the dialog and click **Import**
-4. All fields (type, host, port, database, username, password) are filled in automatically
-5. Review the auto-filled values and click **Create**
+1. Click **New Connection** on the welcome screen
+2. In the chooser sheet footer, click **Import from URL...**
+3. Paste your URL. The sheet detects the database type and previews host, user, and database
+4. Click **Import**. The form opens with everything pre-filled
+5. Review and click **Save & Connect**
+
+{/* Screenshot: Import from URL sheet */}
+<Frame caption="Import from URL sheet with parsed preview">
+  <img
+    className="block dark:hidden"
+    src="/images/import-from-url.png"
+    alt="Import from URL"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/import-from-url-dark.png"
+    alt="Import from URL"
+  />
+</Frame>
 
 See [Connection URL Reference](/databases/connection-urls) for all supported schemes and formats.
 
 <Tip>
-Connection URLs with special characters in the password (like `@`, `#`, or `%`) should use percent-encoding. For example, `p@ssword` becomes `p%40ssword`.
+Special characters in passwords (`@`, `#`, `%`) need percent-encoding. `p@ssword` becomes `p%40ssword`.
 </Tip>
 
 ### Connect Directly from a URL
@@ -134,125 +165,135 @@ You can also target a specific table, schema, or apply a filter via query parame
 See [Connection URL Reference](/databases/connection-urls) for all supported query parameters.
 
 <Note>
-This is different from **Import from URL**, which fills in the connection form so you can review and save. Direct URL opening skips the form entirely and connects right away.
+This is different from **Import from URL...**, which opens the form so you can review and save. Direct URL opening skips the form entirely.
 </Note>
 
-### Connection Form Fields
+### Connection Form Layout
 
-#### General Section
+The form is a sidebar with five panes. Drivers without networking (SQLite, DuckDB) hide the SSH and SSL panes.
 
-| Field | Description |
-|-------|-------------|
-| **Name** | A friendly name to identify this connection |
-| **Type** | Database type: MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redis, Redshift, SQL Server, Oracle, ClickHouse, Cassandra, or ScyllaDB |
+| Pane | Contents |
+|------|----------|
+| **General** | Name, host/port/database, username, password, Test Connection |
+| **SSH Tunnel** | Reach databases behind a bastion host |
+| **SSL/TLS** | Encryption mode and certificates |
+| **Customization** | Color, tag, group, Safe Mode |
+| **Advanced** | Startup commands, pre-connect script, external access, plugin-specific fields |
 
-#### Appearance Section
+A red triangle on a sidebar item marks panes with missing required fields.
 
-| Field | Description |
-|-------|-------------|
-| **Color** | Color-code your connection for quick identification |
-| **Tag** | Organize connections with custom tags |
-| **Group** | Assign connection to a group (folder) for organization |
-| **Read-Only** | Toggle to prevent all write operations on this connection |
-
-<Tip>
-Use colors to distinguish environments: red for production, green for development. Enable **Read-Only** mode for production databases to prevent accidental writes.
-</Tip>
-
-#### Connection Section
-
-| Field | Description |
-|-------|-------------|
-| **Host** | Server address (default: `localhost`) |
-| **Port** | Server port (auto-filled based on database type) |
-| **Database** | Default database to connect to (optional for MySQL/MariaDB) |
-
-For SQLite, this section shows a file browser instead:
-
-| Field | Description |
-|-------|-------------|
-| **File Path** | Path to the SQLite database file |
-
-#### Authentication Section
-
-For MySQL, MariaDB, and PostgreSQL:
-
-| Field | Description |
-|-------|-------------|
-| **Username** | Database username (default: `root` for MySQL) |
-| **Password** | Database password (stored securely in Keychain) |
-
-<Note>
-SQLite databases don't require authentication.
-</Note>
-
-{/* Screenshot: Connection form */}
-<Frame caption="Connection form with all configuration fields">
+{/* Screenshot: Connection form sidebar layout */}
+<Frame caption="Connection form with sidebar navigation">
   <img
     className="block dark:hidden"
     src="/images/connection-form-fields.png"
-    alt="Connection form fields"
+    alt="Connection form"
   />
   <img
     className="hidden dark:block"
     src="/images/connection-form-fields-dark.png"
-    alt="Connection form fields"
+    alt="Connection form"
   />
 </Frame>
 
-#### SSL/TLS Section
-
-For MySQL, MariaDB, and PostgreSQL connections, configure SSL/TLS encryption:
+#### General
 
 | Field | Description |
 |-------|-------------|
-| **SSL Mode** | Encryption mode (see table below) |
-| **CA Certificate** | Path to Certificate Authority file (for Verify CA/Verify Identity modes) |
-| **Client Certificate** | Path to client certificate file (optional) |
-| **Client Key** | Path to client private key file (optional) |
+| **Name** | A friendly name shown in the connection list |
+| **Host** | Server address. Defaults to `localhost` |
+| **Port** | Server port. Pre-filled per database type |
+| **Database** | Default database. Optional for MySQL/MariaDB; leave empty for service-level access |
+| **Username** | Database username. Defaults to `root` (MySQL), `postgres` (PostgreSQL) |
+| **Password** | Stored in Keychain |
+| **Prompt for password** | Skip saving the password. TablePro asks for it on every connect |
+| **Use Password File** | PostgreSQL only. Reads credentials from `~/.pgpass` |
+| **Status** | Test Connection button. Turns into a green "Connected" pill on success |
 
-**Available SSL Modes:**
+For SQLite and DuckDB, the host/port/database section is replaced with a file browser:
+
+| Field | Description |
+|-------|-------------|
+| **File Path** | Path to the database file |
+
+#### SSL/TLS
+
+Available for network drivers that support encryption (MySQL, MariaDB, PostgreSQL, ClickHouse, MongoDB, etc.).
+
+| Field | Description |
+|-------|-------------|
+| **SSL Mode** | Encryption level (see table below) |
+| **CA Certificate** | CA file for Verify CA / Verify Identity |
+| **Client Certificate** | Client cert. Required only for mutual TLS |
+| **Client Key** | Client private key. Required only for mutual TLS |
+
+**SSL modes:**
 
 | Mode | Description |
 |------|-------------|
-| **Disabled** | No SSL encryption (default) |
-| **Preferred** | Use SSL if available, fall back to unencrypted |
-| **Required** | Require SSL encryption, but don't verify certificates |
-| **Verify CA** | Require SSL and verify the server certificate against a CA |
-| **Verify Identity** | Require SSL, verify CA, and verify the server hostname matches the certificate |
+| **Disabled** | No encryption |
+| **Preferred** | Use SSL if the server supports it, otherwise fall back |
+| **Required** | Require SSL but don't verify certificates |
+| **Verify CA** | Require SSL and verify the server cert against a CA |
+| **Verify Identity** | Require SSL, verify CA, and verify the hostname matches |
 
 <Tip>
-For production databases, use **Verify CA** or **Verify Identity** for maximum security. For dev servers, **Required** gives you encryption without needing certificate files.
+For production, use **Verify CA** or **Verify Identity**. **Required** gives you encryption without certificate files for quick dev setups.
 </Tip>
 
-<Note>
-SSL/TLS is not available for SQLite connections (file-based, no network involved).
-</Note>
-
-{/* Screenshot: SSL/TLS settings */}
-<Frame caption="SSL/TLS connection settings">
+{/* Screenshot: SSL/TLS pane */}
+<Frame caption="SSL/TLS pane">
   <img
     className="block dark:hidden"
     src="/images/connection-ssl-settings.png"
-    alt="SSL/TLS connection settings"
+    alt="SSL/TLS pane"
   />
   <img
     className="hidden dark:block"
     src="/images/connection-ssl-settings-dark.png"
-    alt="SSL/TLS connection settings"
+    alt="SSL/TLS pane"
   />
 </Frame>
 
-#### Advanced Section
-
-Open the **Advanced** tab on the connection form for the following settings:
+#### Customization
 
 | Field | Description |
 |-------|-------------|
-| **Startup Commands** | SQL statements that run automatically on every connection. See [Startup Commands](#startup-commands). |
-| **External Access** | Controls how external clients (Raycast, Cursor, Claude Desktop) reach this connection: `blocked`, `readOnly` (default), or `readWrite`. Tokens cannot exceed this level. See [External API](/external-api/index). |
-| **Local only** | Excludes this connection from iCloud Sync. See [iCloud Sync](/features/icloud-sync). |
-| **Plugin fields** | Driver-specific options (for example, MongoDB `replicaSet`, ClickHouse `Secure`). |
+| **Color** | Tints the toolbar when connected. Useful for spotting prod vs. dev |
+| **Tag** | A label that groups connections in the sidebar |
+| **Group** | Folder for organizing connections. Supports nesting up to 3 levels |
+| **Safe Mode** | Per-connection query gate. See [Safe Mode](/features/safe-mode) |
+
+<Tip>
+Red for production, green for development. Set Safe Mode to **Read Only** on production to block accidental writes.
+</Tip>
+
+{/* Screenshot: Customization pane */}
+<Frame caption="Customization pane">
+  <img
+    className="block dark:hidden"
+    src="/images/connection-customization.png"
+    alt="Customization pane"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/connection-customization-dark.png"
+    alt="Customization pane"
+  />
+</Frame>
+
+#### Advanced
+
+Open the **Advanced** pane for less common settings:
+
+| Field | Description |
+|-------|-------------|
+| **Startup Commands** | SQL that runs after every connect. See [Startup Commands](#startup-commands) |
+| **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts |
+| **AI Policy** | Per-connection override for in-app AI agents |
+| **External Clients** | Controls Raycast, Cursor, Claude Desktop, and other MCP clients: **Blocked**, **Read Only** (default), or **Read & Write**. Tokens can never exceed this level. See [External API](/external-api/index) |
+| **Local only** | Excludes this connection from iCloud Sync. See [iCloud Sync](/features/icloud-sync) |
+| **Plugin fields** | Driver-specific options like MongoDB `replicaSet`, ClickHouse `Secure` |
 
 ## Organizing Connections
 
@@ -413,7 +454,7 @@ SQLite connections are file-based and don't require health monitoring or auto-re
 
 SQL statements that run automatically on every connection.
 
-Configure startup commands in the **Advanced** tab of the connection form. Enter one SQL statement per line.
+Configure startup commands in the **Advanced** pane of the connection form. Enter one SQL statement per line.
 
 ### Common Examples
 
