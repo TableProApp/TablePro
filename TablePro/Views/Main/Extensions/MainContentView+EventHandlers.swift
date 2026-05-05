@@ -32,8 +32,9 @@ extension MainContentView {
         let t3 = Date()
 
         guard !coordinator.isTearingDown else { return }
+        let aggregated = MainContentCoordinator.aggregatedTabs(for: coordinator.connectionId)
         coordinator.persistence.saveNow(
-            tabs: tabManager.tabs,
+            tabs: aggregated,
             selectedTabId: newTabId
         )
         MainContentView.lifecycleLogger.debug(

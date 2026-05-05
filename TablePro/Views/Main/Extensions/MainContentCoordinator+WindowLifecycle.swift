@@ -72,7 +72,9 @@ extension MainContentCoordinator {
             "[close] coordinator.handleWindowWillClose connId=\(self.connectionId, privacy: .public) tabs=\(self.tabManager.tabs.count)"
         )
 
-        persistence.saveOrClearAggregatedSync()
+        if !MainContentCoordinator.isAppTerminating {
+            persistence.saveOrClearAggregatedSync()
+        }
 
         evictionTask?.cancel()
         evictionTask = nil

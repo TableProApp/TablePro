@@ -841,10 +841,8 @@ final class MainContentCommandActions {
     private func setupWindowObservers() {
         observe(.mainWindowWillClose) { [weak self] _ in
             guard let coordinator = self?.coordinator else { return }
-            coordinator.persistence.saveNow(
-                tabs: coordinator.tabManager.tabs,
-                selectedTabId: coordinator.tabManager.selectedTabId
-            )
+            guard !MainContentCoordinator.isAppTerminating else { return }
+            coordinator.persistence.saveOrClearAggregated()
         }
     }
 
