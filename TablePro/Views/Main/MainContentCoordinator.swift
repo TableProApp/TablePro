@@ -160,6 +160,17 @@ final class MainContentCoordinator {
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var pluginDriverObserver: NSObjectProtocol?
+    @ObservationIgnored private var externalFileModObserver: NSObjectProtocol?
+
+    var fileConflictRequest: FileConflictRequest?
+
+    struct FileConflictRequest: Identifiable {
+        let id = UUID()
+        let tabId: UUID
+        let url: URL
+        let mineContent: String
+        let diskContent: String
+    }
     @ObservationIgnored private var fileWatcher: DatabaseFileWatcher?
 
     /// Set during handleTabChange to suppress redundant column-change reconfiguration
@@ -371,9 +382,32 @@ final class MainContentCoordinator {
         }
 
         _ = Self.registerTerminationObserver
+
+        externalFileModObserver = NotificationCenter.default.addObserver(
+            forName: .linkedSQLFoldersDidUpdate, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.checkOpenTabsForExternalModification()
+            }
+        }
+
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
         )
+    }
+
+    private func checkOpenTabsForExternalModification() {
+        for index in tabManager.tabs.indices {
+            guard let url = tabManager.tabs[index].content.sourceFileURL,
+                  let loadMtime = tabManager.tabs[index].content.loadMtime,
+                  let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+            else { continue }
+
+            let modified = currentMtime > loadMtime.addingTimeInterval(0.5)
+            if modified != tabManager.tabs[index].content.externalModificationDetected {
+                tabManager.tabs[index].content.externalModificationDetected = modified
+            }
+        }
     }
 
     func markActivated() {
@@ -510,6 +544,10 @@ final class MainContentCoordinator {
         if let observer = pluginDriverObserver {
             NotificationCenter.default.removeObserver(observer)
             pluginDriverObserver = nil
+        }
+        if let observer = externalFileModObserver {
+            NotificationCenter.default.removeObserver(observer)
+            externalFileModObserver = nil
         }
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil

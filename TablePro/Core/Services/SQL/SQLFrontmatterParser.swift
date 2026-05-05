@@ -12,11 +12,23 @@ internal enum SQLFrontmatter {
         var description: String?
     }
 
+    struct Parsed: Equatable {
+        var metadata: Metadata
+        var bodyCharOffset: Int
+    }
+
     static func parse(_ content: String) -> Metadata {
+        parseWithBody(content).metadata
+    }
+
+    static func parseWithBody(_ content: String) -> Parsed {
         var metadata = Metadata()
-        let nsContent = content as NSString
+        let bomLength = content.first == "\u{FEFF}" ? 1 : 0
+        let stripped = bomLength > 0 ? String(content.dropFirst()) : content
+        let nsContent = stripped as NSString
         let length = nsContent.length
         var lineStart = 0
+        var bodyOffset = 0
 
         while lineStart < length {
             var lineEnd = lineStart
@@ -30,7 +42,10 @@ internal enum SQLFrontmatter {
                 .substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
                 .trimmingCharacters(in: .whitespaces)
 
-            guard let entry = parseLine(line) else { break }
+            guard let entry = parseLine(line) else {
+                bodyOffset = lineStart
+                return Parsed(metadata: metadata, bodyCharOffset: bodyOffset + bomLength)
+            }
             switch entry.key {
             case "name": metadata.name = entry.value
             case "keyword": metadata.keyword = entry.value.isEmpty ? nil : entry.value
@@ -38,14 +53,20 @@ internal enum SQLFrontmatter {
             default: break
             }
 
-            lineStart = lineEnd + 1
-            if lineStart < length, nsContent.character(at: lineEnd) == 0x0D,
-               lineStart < length, nsContent.character(at: lineStart) == 0x0A {
-                lineStart += 1
+            var nextLineStart = lineEnd
+            if nextLineStart < length, nsContent.character(at: nextLineStart) == 0x0D {
+                nextLineStart += 1
+                if nextLineStart < length, nsContent.character(at: nextLineStart) == 0x0A {
+                    nextLineStart += 1
+                }
+            } else if nextLineStart < length, nsContent.character(at: nextLineStart) == 0x0A {
+                nextLineStart += 1
             }
+            lineStart = nextLineStart
+            bodyOffset = lineStart
         }
 
-        return metadata
+        return Parsed(metadata: metadata, bodyCharOffset: bodyOffset + bomLength)
     }
 
     private static func parseLine(_ line: String) -> (key: String, value: String)? {

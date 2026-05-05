@@ -161,7 +161,9 @@ internal final class SQLFolderWatcher {
             let fileSize = Int64(resourceValues?.fileSize ?? 0)
 
             guard let relativePath = relativePathFor(url: url, base: folderURL) else { continue }
-            let metadata = parseHeader(at: url)
+            let header = FileTextLoader.loadHeader(url)
+            let metadata = header.map { SQLFrontmatter.parse($0.content) } ?? SQLFrontmatter.Metadata()
+            let encoding = header?.encoding ?? .utf8
 
             let baseName = (url.lastPathComponent as NSString).deletingPathExtension
             let displayName = metadata.name?.trimmingCharacters(in: .whitespaces).nonEmpty
@@ -173,7 +175,8 @@ internal final class SQLFolderWatcher {
                 keyword: metadata.keyword,
                 description: metadata.description,
                 mtime: mtime,
-                fileSize: fileSize
+                fileSize: fileSize,
+                encoding: encoding
             ))
         }
 
@@ -186,18 +189,6 @@ internal final class SQLFolderWatcher {
         for id in stale {
             await LinkedSQLIndex.shared.removeFolder(folderId: id)
         }
-    }
-
-    private static func parseHeader(at url: URL) -> SQLFrontmatter.Metadata {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return SQLFrontmatter.Metadata()
-        }
-        defer { try? handle.close() }
-        let data = (try? handle.read(upToCount: 4_096)) ?? Data()
-        guard let text = String(data: data, encoding: .utf8) else {
-            return SQLFrontmatter.Metadata()
-        }
-        return SQLFrontmatter.parse(text)
     }
 
     private static func relativePathFor(url: URL, base: URL) -> String? {

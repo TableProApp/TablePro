@@ -69,6 +69,7 @@ internal actor LinkedSQLIndex {
                 description TEXT,
                 mtime REAL NOT NULL,
                 file_size INTEGER NOT NULL,
+                encoding TEXT NOT NULL DEFAULT 'utf-8',
                 PRIMARY KEY (folder_id, relative_path)
             );
         """)
@@ -80,6 +81,25 @@ internal actor LinkedSQLIndex {
             CREATE INDEX IF NOT EXISTS idx_linked_folder
             ON linked_sql_files(folder_id);
         """)
+        ensureEncodingColumn()
+    }
+
+    private func ensureEncodingColumn() {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, "PRAGMA table_info(linked_sql_files);", -1, &statement, nil) == SQLITE_OK else { return }
+        var hasEncoding = false
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let cName = sqlite3_column_text(statement, 1) {
+                if String(cString: cName) == "encoding" {
+                    hasEncoding = true
+                    break
+                }
+            }
+        }
+        if !hasEncoding {
+            execute("ALTER TABLE linked_sql_files ADD COLUMN encoding TEXT NOT NULL DEFAULT 'utf-8';")
+        }
     }
 
     private func execute(_ sql: String) {
@@ -111,8 +131,8 @@ internal actor LinkedSQLIndex {
 
         let insertSQL = """
             INSERT INTO linked_sql_files
-            (folder_id, relative_path, name, keyword, description, mtime, file_size)
-            VALUES (?, ?, ?, ?, ?, ?, ?);
+            (folder_id, relative_path, name, keyword, description, mtime, file_size, encoding)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """
         var insertStatement: OpaquePointer?
         guard sqlite3_prepare_v2(db, insertSQL, -1, &insertStatement, nil) == SQLITE_OK else {
@@ -138,6 +158,7 @@ internal actor LinkedSQLIndex {
             }
             sqlite3_bind_double(insertStatement, 6, file.mtime.timeIntervalSince1970)
             sqlite3_bind_int64(insertStatement, 7, file.fileSize)
+            sqlite3_bind_text(insertStatement, 8, file.encoding.ianaName, -1, Self.transient)
 
             if sqlite3_step(insertStatement) != SQLITE_DONE {
                 Self.logger.error("Failed to insert linked file: \(String(cString: sqlite3_errmsg(self.db)))")
@@ -177,7 +198,7 @@ internal actor LinkedSQLIndex {
 
     func fetchAll(folderId: UUID, folderURL: URL) -> [LinkedSQLFavorite] {
         let sql = """
-            SELECT relative_path, name, keyword, description, mtime, file_size
+            SELECT relative_path, name, keyword, description, mtime, file_size, encoding
             FROM linked_sql_files
             WHERE folder_id = ?
             ORDER BY relative_path ASC;
@@ -198,6 +219,7 @@ internal actor LinkedSQLIndex {
             let description = sqlite3_column_text(statement, 3).map { String(cString: $0) }
             let mtime = Date(timeIntervalSince1970: sqlite3_column_double(statement, 4))
             let fileSize = sqlite3_column_int64(statement, 5)
+            let encodingName = sqlite3_column_text(statement, 6).map { String(cString: $0) } ?? "utf-8"
 
             results.append(LinkedSQLFavorite(
                 folderId: folderId,
@@ -207,7 +229,8 @@ internal actor LinkedSQLIndex {
                 keyword: keyword,
                 fileDescription: description,
                 mtime: mtime,
-                fileSize: fileSize
+                fileSize: fileSize,
+                encodingName: encodingName
             ))
         }
         return results
@@ -255,5 +278,6 @@ internal extension LinkedSQLIndex {
         let description: String?
         let mtime: Date
         let fileSize: Int64
+        let encoding: String.Encoding
     }
 }

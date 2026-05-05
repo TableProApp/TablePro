@@ -9,6 +9,11 @@ internal struct LinkedFavoriteRowView: View {
     let favorite: LinkedSQLFavorite
 
     var body: some View {
+        rowContent
+            .draggable(LinkedFavoriteTransfer(fileURL: favorite.fileURL))
+    }
+
+    private var rowContent: some View {
         HStack(spacing: 6) {
             Image(systemName: "doc.text")
                 .font(.callout)
@@ -20,6 +25,14 @@ internal struct LinkedFavoriteRowView: View {
                 .help(favorite.relativePath)
 
             Spacer()
+
+            if !favorite.isUTF8 {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .systemYellow))
+                    .help(String(format: String(localized: "Non-UTF-8 file (%@). Saving may change the encoding."), favorite.encodingName))
+                    .accessibilityHidden(true)
+            }
 
             if let keyword = favorite.keyword, !keyword.isEmpty {
                 Text(keyword)
@@ -40,6 +53,9 @@ internal struct LinkedFavoriteRowView: View {
 
     private var accessibilityDescription: String {
         var desc = favorite.name + ", " + String(localized: "linked file")
+        if !favorite.isUTF8 {
+            desc += ", " + String(format: String(localized: "encoding: %@"), favorite.encodingName)
+        }
         if let keyword = favorite.keyword, !keyword.isEmpty {
             desc += ", " + String(format: String(localized: "keyword: %@"), keyword)
         }

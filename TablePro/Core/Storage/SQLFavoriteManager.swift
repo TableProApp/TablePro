@@ -123,8 +123,8 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
                     let keyword = row.keyword
                     let name = row.name
                     group.addTask {
-                        guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { return nil }
-                        return (keyword, (name: name, query: content))
+                        guard let loaded = FileTextLoader.load(fileURL) else { return nil }
+                        return (keyword, (name: name, query: loaded.content))
                     }
                 }
 

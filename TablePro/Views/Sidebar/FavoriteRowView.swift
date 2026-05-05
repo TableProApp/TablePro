@@ -10,6 +10,11 @@ internal struct FavoriteRowView: View {
     let favorite: SQLFavorite
 
     var body: some View {
+        rowContent
+            .draggable(favorite.query)
+    }
+
+    private var rowContent: some View {
         HStack(spacing: 6) {
             Image(systemName: "star.fill")
                 .font(.callout)

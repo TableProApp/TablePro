@@ -16,6 +16,11 @@ internal struct LinkedSQLFavorite: Identifiable, Hashable {
     var fileDescription: String?
     var mtime: Date
     var fileSize: Int64
+    var encodingName: String
+
+    var isUTF8: Bool {
+        encodingName.lowercased() == "utf-8"
+    }
 
     init(
         folderId: UUID,
@@ -25,7 +30,8 @@ internal struct LinkedSQLFavorite: Identifiable, Hashable {
         keyword: String? = nil,
         fileDescription: String? = nil,
         mtime: Date,
-        fileSize: Int64
+        fileSize: Int64,
+        encodingName: String = "utf-8"
     ) {
         self.id = Self.stableId(folderId: folderId, relativePath: relativePath)
         self.folderId = folderId
@@ -36,6 +42,7 @@ internal struct LinkedSQLFavorite: Identifiable, Hashable {
         self.fileDescription = fileDescription
         self.mtime = mtime
         self.fileSize = fileSize
+        self.encodingName = encodingName
     }
 
     static func stableId(folderId: UUID, relativePath: String) -> UUID {

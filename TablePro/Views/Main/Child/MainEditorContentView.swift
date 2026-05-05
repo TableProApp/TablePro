@@ -107,6 +107,31 @@ struct MainEditorContentView: View {
                 folders: []
             )
         }
+        .sheet(item: Binding(
+            get: { coordinator.fileConflictRequest },
+            set: { coordinator.fileConflictRequest = $0 }
+        )) { request in
+            FileConflictDiffSheet(
+                fileName: request.url.lastPathComponent,
+                mineContent: request.mineContent,
+                diskContent: request.diskContent,
+                onKeepMine: {
+                    coordinator.commandActions?.writeTabContent(
+                        tabId: request.tabId,
+                        content: request.mineContent,
+                        to: request.url
+                    )
+                    coordinator.fileConflictRequest = nil
+                },
+                onReload: {
+                    coordinator.commandActions?.reloadFileFromDisk(tabId: request.tabId, url: request.url)
+                    coordinator.fileConflictRequest = nil
+                },
+                onCancel: {
+                    coordinator.fileConflictRequest = nil
+                }
+            )
+        }
         .onReceive(NotificationCenter.default.publisher(for: .saveAsFavoriteRequested)) { notification in
             guard let query = notification.userInfo?["query"] as? String else { return }
             favoriteDialogQuery = FavoriteDialogQuery(query: query)
@@ -268,6 +293,15 @@ struct MainEditorContentView: View {
             autosaveName: "QuerySplit-\(connectionId)-\(tab.id)",
             topContent: {
                 VStack(spacing: 0) {
+                    if tab.content.externalModificationDetected,
+                       let url = tab.content.sourceFileURL {
+                        FileModifiedOnDiskBanner(
+                            fileName: url.lastPathComponent,
+                            onReload: { reloadFileForTab(tabId: tab.id, url: url) },
+                            onDismiss: { dismissExternalModBanner(tabId: tab.id) }
+                        )
+                        Divider()
+                    }
                     QueryEditorView(
                         queryText: queryTextBinding(for: tab),
                         cursorPositions: $bindableCoordinator.cursorPositions,
@@ -314,6 +348,25 @@ struct MainEditorContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         )
+    }
+
+    private func reloadFileForTab(tabId: UUID, url: URL) {
+        Task {
+            guard let loaded = FileTextLoader.load(url) else { return }
+            let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+            await MainActor.run {
+                guard let index = coordinator.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+                coordinator.tabManager.tabs[index].content.query = loaded.content
+                coordinator.tabManager.tabs[index].content.savedFileContent = loaded.content
+                coordinator.tabManager.tabs[index].content.loadMtime = mtime
+                coordinator.tabManager.tabs[index].content.externalModificationDetected = false
+            }
+        }
+    }
+
+    private func dismissExternalModBanner(tabId: UUID) {
+        guard let index = coordinator.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        coordinator.tabManager.tabs[index].content.externalModificationDetected = false
     }
 
     private func updateHasQueryText() {

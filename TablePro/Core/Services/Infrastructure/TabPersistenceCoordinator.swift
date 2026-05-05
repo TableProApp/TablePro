@@ -105,8 +105,8 @@ internal final class TabPersistenceCoordinator {
         var restoredTabs = state.tabs.map { QueryTab(from: $0) }
         for index in restoredTabs.indices {
             guard let url = restoredTabs[index].content.sourceFileURL else { continue }
-            if let content = try? String(contentsOf: url, encoding: .utf8) {
-                restoredTabs[index].content.savedFileContent = content
+            if let loaded = FileTextLoader.load(url) {
+                restoredTabs[index].content.savedFileContent = loaded.content
                 restoredTabs[index].content.loadMtime = (try? FileManager.default
                     .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
             }

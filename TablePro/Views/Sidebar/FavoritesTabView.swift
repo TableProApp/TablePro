@@ -12,6 +12,7 @@ internal struct FavoritesTabView: View {
     @State private var showDeleteFolderAlert = false
     @State private var linkedFileToTrash: LinkedSQLFavorite?
     @State private var showTrashLinkedFileAlert = false
+    @State private var linkedMetadataTarget: LinkedSQLFavorite?
     @FocusState private var isRenameFocused: Bool
     let connectionId: UUID
     let searchText: String
@@ -68,6 +69,15 @@ internal struct FavoritesTabView: View {
             }
         } message: { folder in
             Text(String(format: String(localized: "The folder \"%@\" will be deleted. Items inside will be moved to the parent level."), folder.name))
+        }
+        .sheet(item: $linkedMetadataTarget) { file in
+            LinkedFavoriteMetadataDialog(
+                favorite: file,
+                connectionId: connectionId,
+                onSaved: {
+                    Task { await viewModel.loadFavorites() }
+                }
+            )
         }
         .alert(
             String(localized: "Move File to Trash?"),
@@ -305,12 +315,16 @@ internal struct FavoritesTabView: View {
             coordinator?.openLinkedFavorite(favorite)
         }
 
+        Button(String(localized: "Edit Metadata...")) {
+            linkedMetadataTarget = favorite
+        }
+
         Divider()
 
         Button {
             NSPasteboard.general.clearContents()
-            if let content = try? String(contentsOf: favorite.fileURL, encoding: .utf8) {
-                NSPasteboard.general.setString(content, forType: .string)
+            if let loaded = FileTextLoader.load(favorite.fileURL) {
+                NSPasteboard.general.setString(loaded.content, forType: .string)
             }
         } label: {
             Label(String(localized: "Copy Query"), systemImage: "doc.on.doc")

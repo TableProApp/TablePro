@@ -425,26 +425,23 @@ final class MainContentCommandActions {
         guard let tab = coordinator?.tabManager.selectedTab,
               let url = tab.content.sourceFileURL else { return }
 
-        if let resolution = resolveExternalModification(tab: tab, url: url) {
-            switch resolution {
-            case .cancel:
-                return
-            case .reload:
-                reloadFileFromDisk(tabId: tab.id, url: url)
-                return
-            case .keepMine:
-                break
-            }
+        if isExternallyModified(tab: tab, url: url) {
+            requestConflictResolution(tab: tab, url: url)
+            return
         }
 
-        let content = tab.content.query
+        writeTabContent(tabId: tab.id, content: tab.content.query, to: url)
+    }
+
+    func writeTabContent(tabId: UUID, content: String, to url: URL) {
         Task {
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
-                if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
+                if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                     coordinator?.tabManager.tabs[index].content.savedFileContent = content
                     coordinator?.tabManager.tabs[index].content.loadMtime = (try? FileManager.default
                         .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+                    coordinator?.tabManager.tabs[index].content.externalModificationDetected = false
                 }
             } catch {
                 Self.logger.error("Failed to save file: \(error.localizedDescription)")
@@ -453,48 +450,39 @@ final class MainContentCommandActions {
         }
     }
 
-    private enum ExternalConflictResolution {
-        case keepMine
-        case reload
-        case cancel
-    }
-
-    private func resolveExternalModification(tab: QueryTab, url: URL) -> ExternalConflictResolution? {
+    private func isExternallyModified(tab: QueryTab, url: URL) -> Bool {
         guard let loadMtime = tab.content.loadMtime,
-              let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date,
-              currentMtime > loadMtime.addingTimeInterval(0.5) else {
-            return nil
+              let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date else {
+            return false
         }
-
-        let alert = NSAlert()
-        alert.messageText = String(localized: "File Modified Externally")
-        alert.informativeText = String(format: String(localized: "\"%@\" was modified by another app since you opened it. Saving now will overwrite the external changes."),
-                                       url.lastPathComponent)
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Keep My Changes"))
-        alert.addButton(withTitle: String(localized: "Reload from Disk"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: return .keepMine
-        case .alertSecondButtonReturn: return .reload
-        default: return .cancel
-        }
+        return currentMtime > loadMtime.addingTimeInterval(0.5)
     }
 
-    private func reloadFileFromDisk(tabId: UUID, url: URL) {
+    private func requestConflictResolution(tab: QueryTab, url: URL) {
+        let mineContent = tab.content.query
+        let diskContent = FileTextLoader.load(url)?.content ?? ""
+        coordinator?.fileConflictRequest = MainContentCoordinator.FileConflictRequest(
+            tabId: tab.id,
+            url: url,
+            mineContent: mineContent,
+            diskContent: diskContent
+        )
+    }
+
+    func reloadFileFromDisk(tabId: UUID, url: URL) {
         guard let beforeIndex = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let queryAtRequestTime = coordinator?.tabManager.tabs[beforeIndex].content.query
         Task {
-            guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+            guard let loaded = FileTextLoader.load(url) else { return }
             let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
             await MainActor.run {
                 guard let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
                 let liveQuery = coordinator?.tabManager.tabs[index].content.query
                 guard liveQuery == queryAtRequestTime else { return }
-                coordinator?.tabManager.tabs[index].content.query = content
-                coordinator?.tabManager.tabs[index].content.savedFileContent = content
+                coordinator?.tabManager.tabs[index].content.query = loaded.content
+                coordinator?.tabManager.tabs[index].content.savedFileContent = loaded.content
                 coordinator?.tabManager.tabs[index].content.loadMtime = mtime
+                coordinator?.tabManager.tabs[index].content.externalModificationDetected = false
             }
         }
     }
