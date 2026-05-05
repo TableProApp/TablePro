@@ -49,6 +49,7 @@ extension MainContentView {
         if mappedState != toolbarState.connectionState {
             toolbarState.connectionState = mappedState
         }
+        toolbarState.syncDatabaseName(for: connection)
     }
 
     private func mapSessionStatus(_ status: ConnectionStatus) -> ToolbarConnectionState {

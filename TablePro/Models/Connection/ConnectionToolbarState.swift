@@ -250,18 +250,27 @@ final class ConnectionToolbarState {
     /// Update state from a DatabaseConnection model
     func update(from connection: DatabaseConnection) {
         connectionName = connection.name
-        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
-            databaseName = (connection.database as NSString).lastPathComponent
-        } else if let session = DatabaseManager.shared.session(for: connection.id),
-                  let database = session.currentDatabase {
-            databaseName = database
-        } else {
-            databaseName = connection.database
-        }
         databaseType = connection.type
         displayColor = connection.displayColor
         tagId = connection.tagId
         safeModeLevel = connection.safeModeLevel
+        syncDatabaseName(for: connection)
+    }
+
+    /// Resolve `databaseName` from the active session, falling back to the connection's configured value.
+    func syncDatabaseName(for connection: DatabaseConnection) {
+        let resolved: String
+        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
+            resolved = (connection.database as NSString).lastPathComponent
+        } else if let session = DatabaseManager.shared.session(for: connection.id),
+                  let database = session.currentDatabase {
+            resolved = database
+        } else {
+            resolved = connection.database
+        }
+        if databaseName != resolved {
+            databaseName = resolved
+        }
     }
 
     /// Update connection state from ConnectionStatus
