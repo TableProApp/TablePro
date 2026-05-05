@@ -195,7 +195,7 @@ extension MainContentView {
         } else if selectedTab?.tabType == .terminal {
             windowTitle = String(localized: "Terminal")
         } else if let fileURL = selectedTab?.content.sourceFileURL {
-            windowTitle = fileURL.deletingPathExtension().lastPathComponent
+            windowTitle = selectedTab?.title ?? fileURL.deletingPathExtension().lastPathComponent
         } else {
             let langName = PluginManager.shared.queryLanguageName(for: connection.type)
             let queryLabel = String(format: String(localized: "%@ Query"), langName)

@@ -106,7 +106,14 @@ final class QueryTabManager {
             return
         }
 
-        let tabTitle = title ?? nextTitle()
+        let tabTitle: String
+        if let title {
+            tabTitle = title
+        } else if let sourceFileURL {
+            tabTitle = sourceFileURL.deletingPathExtension().lastPathComponent
+        } else {
+            tabTitle = nextTitle()
+        }
         var newTab = QueryTab(title: tabTitle, tabType: .query)
 
         if let query = initialQuery {

@@ -39,24 +39,40 @@ extension MainContentCoordinator {
     }
 
     func openLinkedFavorite(_ favorite: LinkedSQLFavorite) {
+        guard let loaded = FileTextLoader.load(favorite.fileURL) else { return }
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
+
+        if let existingIndex = tabManager.tabs.firstIndex(where: { $0.content.sourceFileURL == favorite.fileURL }) {
+            tabManager.selectedTabId = tabManager.tabs[existingIndex].id
+            return
+        }
+
+        if tabManager.tabs.isEmpty {
+            tabManager.addTab(
+                initialQuery: loaded.content,
+                title: favorite.name,
+                sourceFileURL: favorite.fileURL
+            )
+            return
+        }
+
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query,
            tab.content.sourceFileURL == nil,
            tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !tab.pendingChanges.hasChanges,
-           let loaded = FileTextLoader.load(favorite.fileURL) {
-            let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
+           !tab.pendingChanges.hasChanges {
             tabManager.tabs[tabIndex].content.sourceFileURL = favorite.fileURL
             tabManager.tabs[tabIndex].content.query = loaded.content
             tabManager.tabs[tabIndex].content.savedFileContent = loaded.content
             tabManager.tabs[tabIndex].content.loadMtime = mtime
-            tabManager.tabs[tabIndex].title = favorite.fileURL.deletingPathExtension().lastPathComponent
+            tabManager.tabs[tabIndex].title = favorite.name
             return
         }
 
-        NotificationCenter.default.post(
-            name: .openSQLFiles,
-            object: [favorite.fileURL] as [URL]
+        tabManager.addTab(
+            initialQuery: loaded.content,
+            title: favorite.name,
+            sourceFileURL: favorite.fileURL
         )
     }
 
