@@ -37,6 +37,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var sidebarContainer: SidebarContainerViewController!
     private var detailHosting: NSHostingController<AnyView>!
     private var inspectorHosting: NSHostingController<AnyView>!
+    private var hasMaterializedInspector = false
 
     // MARK: - Toolbar
 
@@ -130,7 +131,15 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         detailSplitItem.holdingPriority = .defaultLow
         addSplitViewItem(detailSplitItem)
 
-        inspectorHosting = NSHostingController(rootView: AnyView(buildInspectorView()))
+        let inspectorPresented = UserDefaults.standard.bool(forKey: Self.inspectorPresentedKey)
+        let initialInspectorContent: AnyView
+        if inspectorPresented {
+            initialInspectorContent = AnyView(buildInspectorView())
+            hasMaterializedInspector = true
+        } else {
+            initialInspectorContent = AnyView(Color.clear)
+        }
+        inspectorHosting = NSHostingController(rootView: initialInspectorContent)
         inspectorSplitItem = NSSplitViewItem(inspectorWithViewController: inspectorHosting)
         inspectorSplitItem.canCollapse = true
         inspectorSplitItem.minimumThickness = 270
@@ -145,7 +154,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 windowState: coordinator.windowSidebarState
             )
         }
-        inspectorSplitItem.isCollapsed = !UserDefaults.standard.bool(forKey: Self.inspectorPresentedKey)
+        inspectorSplitItem.isCollapsed = !inspectorPresented
+    }
+
+    private func materializeInspectorIfNeeded() {
+        guard !hasMaterializedInspector, let inspectorHosting else { return }
+        hasMaterializedInspector = true
+        inspectorHosting.rootView = AnyView(buildInspectorView())
     }
 
     override func viewWillAppear() {
@@ -441,6 +456,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     func showInspector() {
+        materializeInspectorIfNeeded()
         inspectorSplitItem?.animator().isCollapsed = false
         UserDefaults.standard.set(true, forKey: Self.inspectorPresentedKey)
     }
