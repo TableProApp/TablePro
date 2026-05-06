@@ -86,6 +86,37 @@ struct BuildAuthenticatorTests {
         #expect(kbdint.totpProvider != nil)
     }
 
+    @Test("Password without TOTP still falls through to keyboard-interactive with the SSH password")
+    func passwordWithoutTotpFallsThroughToKeyboardInteractive() throws {
+        var config = SSHConfiguration(
+            enabled: true,
+            host: "ssh.example.com",
+            username: "alice",
+            authMethod: .password
+        )
+        config.totpMode = .none
+        let credentials = SSHTunnelCredentials(
+            sshPassword: "hunter2",
+            keyPassphrase: nil,
+            totpSecret: nil,
+            totpProvider: nil
+        )
+
+        let authenticator = try LibSSH2TunnelFactory.buildAuthenticator(
+            config: config,
+            resolved: resolved(),
+            credentials: credentials
+        )
+        let composite = try #require(authenticator as? CompositeAuthenticator)
+
+        #expect(composite.authenticators.count == 2)
+        #expect(composite.authenticators.first is PasswordAuthenticator)
+
+        let kbdint = try #require(composite.authenticators.last as? KeyboardInteractiveAuthenticator)
+        #expect(kbdint.password == "hunter2")
+        #expect(kbdint.totpProvider == nil)
+    }
+
     @Test("Keyboard-Interactive auth method passes the password through directly")
     func keyboardInteractivePassesPassword() throws {
         var config = SSHConfiguration(
