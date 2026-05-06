@@ -96,10 +96,13 @@ class DataGridBaseCellView: NSTableCellView {
         textField = cellTextField
         addSubview(cellTextField)
 
-        textFieldTrailingConstraint = cellTextField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
+        textFieldTrailingConstraint = cellTextField.trailingAnchor.constraint(
+            equalTo: trailingAnchor,
+            constant: -DataGridMetrics.cellHorizontalInset
+        )
 
         NSLayoutConstraint.activate([
-            cellTextField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            cellTextField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: DataGridMetrics.cellHorizontalInset),
             textFieldTrailingConstraint,
             cellTextField.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])

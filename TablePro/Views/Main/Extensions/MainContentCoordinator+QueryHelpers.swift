@@ -156,7 +156,7 @@ extension MainContentCoordinator {
         // Cache column types for selective queries on subsequent page/filter/sort reloads.
         // Only cache from schema-backed table loads (not arbitrary SELECTs which may have partial columns).
         if let tbl = tableName, !tbl.isEmpty, hasSchema {
-            let cacheKey = "\(conn.id):\(conn.database):\(tbl)"
+            let cacheKey = "\(conn.id):\(activeDatabaseName):\(tbl)"
             cachedTableColumnTypes[cacheKey] = columnTypes
             cachedTableColumnNames[cacheKey] = columns
         }
@@ -187,7 +187,7 @@ extension MainContentCoordinator {
         QueryHistoryManager.shared.recordQuery(
             query: sql,
             connectionId: conn.id,
-            databaseName: conn.database,
+            databaseName: activeDatabaseName,
             executionTime: executionTime,
             rowCount: rows.count,
             wasSuccessful: true,
@@ -405,7 +405,7 @@ extension MainContentCoordinator {
         QueryHistoryManager.shared.recordQuery(
             query: sql,
             connectionId: conn.id,
-            databaseName: conn.database,
+            databaseName: activeDatabaseName,
             executionTime: 0,
             rowCount: 0,
             wasSuccessful: false,
@@ -463,7 +463,7 @@ extension MainContentCoordinator {
     /// Build column exclusions for a table using cached column type info.
     /// Returns empty if no cached types exist (first load uses SELECT *).
     func columnExclusions(for tableName: String) -> [ColumnExclusion] {
-        let cacheKey = "\(connectionId):\(connection.database):\(tableName)"
+        let cacheKey = "\(connectionId):\(activeDatabaseName):\(tableName)"
         guard let cachedTypes = cachedTableColumnTypes[cacheKey],
               let cachedCols = cachedTableColumnNames[cacheKey] else {
             return []

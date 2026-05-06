@@ -288,7 +288,7 @@ extension MainContentCoordinator {
                         QueryHistoryManager.shared.recordQuery(
                             query: historySQL,
                             connectionId: conn.id,
-                            databaseName: conn.database,
+                            databaseName: activeDatabaseName,
                             executionTime: result.executionTime,
                             rowCount: result.rows.count,
                             wasSuccessful: true,
@@ -449,7 +449,7 @@ extension MainContentCoordinator {
             QueryHistoryManager.shared.recordQuery(
                 query: recordSQL,
                 connectionId: connection.id,
-                databaseName: connection.database,
+                databaseName: activeDatabaseName,
                 executionTime: cumulativeTime,
                 rowCount: 0,
                 wasSuccessful: false,

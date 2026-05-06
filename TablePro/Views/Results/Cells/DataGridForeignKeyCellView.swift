@@ -15,7 +15,10 @@ final class DataGridForeignKeyCellView: DataGridBaseCellView {
     override func installAccessory() {
         addSubview(fkButton)
         NSLayoutConstraint.activate([
-            fkButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            fkButton.trailingAnchor.constraint(
+                equalTo: trailingAnchor,
+                constant: -DataGridMetrics.cellHorizontalInset
+            ),
             fkButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             fkButton.widthAnchor.constraint(equalToConstant: 16),
             fkButton.heightAnchor.constraint(equalToConstant: 16),

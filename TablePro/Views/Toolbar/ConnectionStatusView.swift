@@ -14,23 +14,20 @@ struct ConnectionStatusView: View {
     let databaseVersion: String?
     let databaseName: String
     let connectionName: String
-    let connectionState: ToolbarConnectionState
     let displayColor: Color
-    let tagName: String?
     var safeModeLevel: SafeModeLevel = .silent
     var onSwitchDatabase: (() -> Void)?
 
+    @ScaledMetric private var engineIconSize: CGFloat = 14
+
     var body: some View {
         HStack(spacing: 10) {
-            // Database type icon + version
-            databaseInfoSection
+            connectionIdentitySection
 
-            // Vertical separator
-            Divider()
-                .frame(height: 12)
-
-            // Database name (clickable to switch databases)
             if !databaseName.isEmpty {
+                Divider()
+                    .frame(height: 12)
+
                 databaseNameSection
             }
         }
@@ -38,21 +35,25 @@ struct ConnectionStatusView: View {
 
     // MARK: - Subviews
 
-    /// Database type and version info
-    private var databaseInfoSection: some View {
-        Text(formattedDatabaseInfo)
-            .font(.system(.subheadline, design: .monospaced))
-            .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .frame(maxWidth: 280)
-            .accessibilityLabel(
-                String(format: String(localized: "Database type: %@"), formattedDatabaseInfo)
-            )
-            .help("Database: \(formattedDatabaseInfo)")
+    private var connectionIdentitySection: some View {
+        HStack(spacing: 6) {
+            databaseType.iconImage
+                .renderingMode(.template)
+                .foregroundStyle(displayColor)
+                .frame(width: engineIconSize, height: engineIconSize)
+
+            Text(connectionName)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .help(connectionTooltip)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(connectionAccessibilityLabel)
     }
 
-    /// Database name (clickable to open database switcher, plain label for SQLite)
     @ViewBuilder
     private var databaseNameSection: some View {
         if !PluginManager.shared.supportsDatabaseSwitching(for: databaseType) {
@@ -80,6 +81,8 @@ struct ConnectionStatusView: View {
             Text(databaseName)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 
@@ -91,62 +94,62 @@ struct ConnectionStatusView: View {
         }
         return databaseType.rawValue
     }
+
+    private var connectionTooltip: String {
+        String(format: String(localized: "%@ • %@"), connectionName, formattedDatabaseInfo)
+    }
+
+    private var connectionAccessibilityLabel: String {
+        String(format: String(localized: "Connection: %@, %@"), connectionName, formattedDatabaseInfo)
+    }
 }
 
 // MARK: - Preview
 
-#Preview("Connected") {
+#Preview("MariaDB") {
     ConnectionStatusView(
         databaseType: .mariadb,
         databaseVersion: "11.1.2",
         databaseName: "production_db",
         connectionName: "Production Database",
-        connectionState: .connected,
-        displayColor: .cyan,
-        tagName: "production"
+        displayColor: .cyan
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
 }
 
-#Preview("Executing - No Duplicate") {
+#Preview("MySQL") {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "8.0.35",
         databaseName: "dev_db",
         connectionName: "Development",
-        connectionState: .executing,
-        displayColor: .orange,
-        tagName: "local"
+        displayColor: .orange
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
 }
 
-#Preview("No Tag") {
+#Preview("PostgreSQL Dark") {
     ConnectionStatusView(
         databaseType: .postgresql,
         databaseVersion: "16.1",
         databaseName: "analytics",
         connectionName: "Analytics DB",
-        connectionState: .connected,
-        displayColor: .blue,
-        tagName: nil
+        displayColor: .blue
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
     .preferredColorScheme(.dark)
 }
 
-#Preview("Duplicate Name") {
+#Preview("Empty Database") {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "9.5.0",
-        databaseName: "laravel",
+        databaseName: "",
         connectionName: "Local",
-        connectionState: .connected,
-        displayColor: .green,
-        tagName: "local"
+        displayColor: .green
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))

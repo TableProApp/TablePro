@@ -13,7 +13,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
     private static let priorityFontSize: CGFloat = 9
-    private static let titleHorizontalPadding: CGFloat = 4
+    private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
 
     override init(textCell string: String) {
         super.init(textCell: string)
@@ -30,27 +30,12 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
-        guard let direction = sortDirection else {
-            super.drawInterior(withFrame: cellFrame, in: controlView)
-            return
-        }
+        drawTitle(in: titleRect(forBounds: cellFrame), font: titleFont(isSorted: sortDirection != nil))
+
+        guard let direction = sortDirection else { return }
 
         let indicatorImage = Self.indicatorImage(for: direction)
-        let indicatorSize = indicatorImage?.size ?? NSSize(width: 9, height: 6)
-        let priorityText = priorityNumberString()
-        let priorityWidth = priorityText.map { Self.measureWidth(of: $0) } ?? 0
-        let reservedWidth = indicatorSize.width
-            + Self.indicatorPadding * 2
-            + (priorityText == nil ? 0 : priorityWidth + Self.indicatorSpacing)
-
-        let titleFrame = NSRect(
-            x: cellFrame.minX,
-            y: cellFrame.minY,
-            width: max(0, cellFrame.width - reservedWidth),
-            height: cellFrame.height
-        )
-        drawSortedTitle(in: titleFrame)
-
+        let indicatorSize = indicatorImage?.size ?? Self.defaultIndicatorSize
         let indicatorOriginX = cellFrame.maxX - Self.indicatorPadding - indicatorSize.width
         let indicatorOriginY = cellFrame.midY - indicatorSize.height / 2
         let indicatorRect = NSRect(
@@ -61,7 +46,8 @@ final class SortableHeaderCell: NSTableHeaderCell {
         )
         Self.drawIndicator(image: indicatorImage, in: indicatorRect)
 
-        if let priorityText {
+        if let priorityText = priorityNumberString() {
+            let priorityWidth = Self.measureWidth(of: priorityText)
             let textOriginX = indicatorOriginX - Self.indicatorSpacing - priorityWidth
             let textRect = NSRect(
                 x: textOriginX,
@@ -73,16 +59,39 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
     }
 
-    private func drawSortedTitle(in rect: NSRect) {
-        let baseFont = font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        let inset = min(DataGridMetrics.cellHorizontalInset, rect.width / 2)
+        let availableWidth = max(0, rect.width - inset * 2 - reservedTrailingWidth())
+        return NSRect(
+            x: rect.minX + inset,
+            y: rect.minY,
+            width: availableWidth,
+            height: rect.height
+        )
+    }
 
+    private func reservedTrailingWidth() -> CGFloat {
+        guard let direction = sortDirection else { return 0 }
+        let indicatorWidth = Self.indicatorImage(for: direction)?.size.width
+            ?? Self.defaultIndicatorSize.width
+        let priorityText = priorityNumberString()
+        let priorityComponent = priorityText.map { Self.measureWidth(of: $0) + Self.indicatorSpacing } ?? 0
+        return indicatorWidth + Self.indicatorPadding * 2 + priorityComponent
+    }
+
+    private func titleFont(isSorted: Bool) -> NSFont {
+        let baseFont = font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        guard isSorted else { return baseFont }
+        return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+    }
+
+    private func drawTitle(in rect: NSRect, font titleFont: NSFont) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = .byTruncatingTail
 
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: boldFont,
+            .font: titleFont,
             .foregroundColor: NSColor.headerTextColor,
             .paragraphStyle: paragraph
         ]
@@ -90,9 +99,9 @@ final class SortableHeaderCell: NSTableHeaderCell {
         let title = NSAttributedString(string: stringValue, attributes: attributes)
         let textHeight = title.size().height
         let drawRect = NSRect(
-            x: rect.minX + Self.titleHorizontalPadding,
+            x: rect.minX,
             y: rect.midY - textHeight / 2,
-            width: max(0, rect.width - Self.titleHorizontalPadding),
+            width: rect.width,
             height: textHeight
         )
         title.draw(in: drawRect)

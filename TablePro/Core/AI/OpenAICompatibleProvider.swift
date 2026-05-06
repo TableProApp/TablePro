@@ -18,15 +18,27 @@ final class OpenAICompatibleProvider: AIProvider {
     private let endpoint: String
     private let apiKey: String?
     private let providerType: AIProviderType
+    private let model: String
     private let maxOutputTokens: Int?
     private let session: URLSession
+    private var testConnectionModel: String {
+        model.isEmpty ? "test" : model
+    }
 
-    init(endpoint: String, apiKey: String?, providerType: AIProviderType, maxOutputTokens: Int? = nil) {
+    init(
+        endpoint: String,
+        apiKey: String?,
+        providerType: AIProviderType,
+        model: String = "",
+        maxOutputTokens: Int? = nil,
+        session: URLSession = URLSession(configuration: .ephemeral)
+    ) {
         self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.providerType = providerType
+        self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
-        self.session = URLSession(configuration: .ephemeral)
+        self.session = session
     }
 
     // MARK: - AIProvider
@@ -183,14 +195,14 @@ final class OpenAICompatibleProvider: AIProvider {
             }
 
             let body: [String: Any] = [
-                "model": "test",
+                "model": testConnectionModel,
                 "messages": [["role": "user", "content": "Hi"]],
                 "max_tokens": 1,
                 "stream": false,
             ]
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-            let (_, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 return false
@@ -199,6 +211,7 @@ final class OpenAICompatibleProvider: AIProvider {
             // Check response is JSON (confirms we reached an API, not a random web page)
             let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? ""
             let isJSON = contentType.contains("application/json")
+                || (try? JSONSerialization.jsonObject(with: data)) != nil
 
             if httpResponse.statusCode == 401 {
                 throw AIProviderError.authenticationFailed("")

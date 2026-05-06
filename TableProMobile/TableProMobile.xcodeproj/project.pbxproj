@@ -458,18 +458,14 @@
 		5A87EEAD2F7F88F200D028D0 /* RegistryPluginDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistryPluginDetailView.swift; sourceTree = "<group>"; };
 		5A87EEAF2F7F88F200D028D0 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
 		5A87EEB02F7F88F200D028D0 /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
-
 		5A87EEB22F7F88F200D028D0 /* EditorSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorSettingsView.swift; sourceTree = "<group>"; };
 		5A87EEB32F7F88F200D028D0 /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
-
 		5A87EEB52F7F88F200D028D0 /* KeyboardSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardSettingsView.swift; sourceTree = "<group>"; };
 		5A87EEB62F7F88F200D028D0 /* LicenseActivationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseActivationSheet.swift; sourceTree = "<group>"; };
-
 		5A87EEB82F7F88F200D028D0 /* LinkedFoldersSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkedFoldersSection.swift; sourceTree = "<group>"; };
 		5A87EEB92F7F88F200D028D0 /* PluginsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsSettingsView.swift; sourceTree = "<group>"; };
 		5A87EEBA2F7F88F200D028D0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5A87EEBB2F7F88F200D028D0 /* ShortcutRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderView.swift; sourceTree = "<group>"; };
-
 		5A87EEBD2F7F88F200D028D0 /* ThemePreviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePreviewCard.swift; sourceTree = "<group>"; };
 		5A87EEBF2F7F88F200D028D0 /* DoubleClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleClickDetector.swift; sourceTree = "<group>"; };
 		5A87EEC02F7F88F200D028D0 /* FavoriteEditDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteEditDialog.swift; sourceTree = "<group>"; };
@@ -1488,18 +1484,14 @@
 				5A87EEAE2F7F88F200D028D0 /* Plugins */,
 				5A87EEAF2F7F88F200D028D0 /* AISettingsView.swift */,
 				5A87EEB02F7F88F200D028D0 /* AppearanceSettingsView.swift */,
-
 				5A87EEB22F7F88F200D028D0 /* EditorSettingsView.swift */,
 				5A87EEB32F7F88F200D028D0 /* GeneralSettingsView.swift */,
-
 				5A87EEB52F7F88F200D028D0 /* KeyboardSettingsView.swift */,
 				5A87EEB62F7F88F200D028D0 /* LicenseActivationSheet.swift */,
-
 				5A87EEB82F7F88F200D028D0 /* LinkedFoldersSection.swift */,
 				5A87EEB92F7F88F200D028D0 /* PluginsSettingsView.swift */,
 				5A87EEBA2F7F88F200D028D0 /* SettingsView.swift */,
 				5A87EEBB2F7F88F200D028D0 /* ShortcutRecorderView.swift */,
-
 				5A87EEBD2F7F88F200D028D0 /* ThemePreviewCard.swift */,
 			);
 			path = Settings;
@@ -1798,7 +1790,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TableProWidgetExtension.entitlements;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TableProWidget;
@@ -1829,7 +1821,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TableProWidgetExtension.entitlements;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TableProWidget;
@@ -1889,6 +1881,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -1954,6 +1947,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -1984,7 +1978,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = TableProMobile/TableProMobileRelease.entitlements;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProMobile/Info.plist;
@@ -2026,7 +2020,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = TableProMobile/TableProMobileRelease.entitlements;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProMobile/Info.plist;

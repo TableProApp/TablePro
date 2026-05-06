@@ -74,6 +74,55 @@ final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
         await actor.interrupt()
     }
 
+    func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        let actor = self.actor
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let beginResult = try await actor.beginStream(query: query)
+                    switch beginResult {
+                    case .commandOk(let affectedRows):
+                        if affectedRows != 0 {
+                            continuation.yield(.rowsAffected(affectedRows))
+                        }
+                        continuation.finish()
+                        return
+                    case .rowSet(let columns):
+                        continuation.yield(.columns(columns))
+                        var emitted = 0
+                        while !Task.isCancelled, emitted < options.maxRows {
+                            guard let cells = try await actor.fetchNextRow(options: options, columns: columns) else {
+                                break
+                            }
+                            continuation.yield(.row(Row(cells: cells)))
+                            emitted += 1
+                        }
+                        if Task.isCancelled {
+                            continuation.yield(.truncated(reason: .cancelled))
+                        } else if emitted >= options.maxRows {
+                            continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
+                        }
+                        await actor.endStream()
+                        continuation.finish()
+                    }
+                } catch is CancellationError {
+                    await actor.endStream()
+                    continuation.yield(.truncated(reason: .cancelled))
+                    continuation.finish()
+                } catch {
+                    await actor.endStream()
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { reason in
+                task.cancel()
+                if case .cancelled = reason {
+                    Task { await actor.interrupt() }
+                }
+            }
+        }
+    }
+
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
@@ -273,6 +322,120 @@ private actor SQLiteActor {
         return RawResult(columns: columns, columnTypes: columnTypes, rows: rows,
                          rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: false)
     }
+
+    // MARK: - Streaming
+
+    private var streamingStmt: OpaquePointer?
+    private var streamingColumns: [ColumnInfo] = []
+
+    func beginStream(query: String) throws -> SQLiteBeginStreamResult {
+        guard let db else { throw SQLiteError.notConnected }
+        if streamingStmt != nil {
+            endStream()
+        }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else {
+            throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        guard let stmt else {
+            throw SQLiteError.queryFailed("Failed to prepare statement")
+        }
+
+        let colCount = Int(sqlite3_column_count(stmt))
+        if colCount == 0 {
+            let stepResult = sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+            if stepResult == SQLITE_DONE || stepResult == SQLITE_ROW {
+                let affected = Int(sqlite3_changes(db))
+                return .commandOk(affectedRows: affected)
+            } else {
+                throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
+            }
+        }
+
+        var columns: [ColumnInfo] = []
+        for i in 0..<colCount {
+            let name = sqlite3_column_name(stmt, Int32(i)).map { String(cString: $0) } ?? "col_\(i)"
+            let typeName = sqlite3_column_decltype(stmt, Int32(i)).map { String(cString: $0) } ?? ""
+            columns.append(ColumnInfo(
+                name: name,
+                typeName: typeName,
+                isPrimaryKey: false,
+                isNullable: true,
+                defaultValue: nil,
+                comment: nil,
+                characterMaxLength: nil,
+                ordinalPosition: i
+            ))
+        }
+        streamingStmt = stmt
+        streamingColumns = columns
+        return .rowSet(columns)
+    }
+
+    func fetchNextRow(options: StreamOptions, columns: [ColumnInfo]) -> [Cell]? {
+        guard let stmt = streamingStmt else { return nil }
+        let stepResult = sqlite3_step(stmt)
+        guard stepResult == SQLITE_ROW else { return nil }
+
+        var cells: [Cell] = []
+        cells.reserveCapacity(columns.count)
+        for i in 0..<columns.count {
+            let columnIndex = Int32(i)
+            let columnType = sqlite3_column_type(stmt, columnIndex)
+            switch columnType {
+            case SQLITE_NULL:
+                cells.append(.null)
+            case SQLITE_BLOB:
+                let bytes = Int(sqlite3_column_bytes(stmt, columnIndex))
+                let ref = makeCellRef(column: columns[i].name, columns: columns, statement: stmt, options: options)
+                cells.append(.binary(byteCount: bytes, ref: ref))
+            default:
+                if let text = sqlite3_column_text(stmt, columnIndex) {
+                    let str = String(cString: text)
+                    let ref = makeCellRef(column: columns[i].name, columns: columns, statement: stmt, options: options)
+                    cells.append(Cell.from(
+                        legacyValue: str,
+                        columnTypeName: columns[i].typeName,
+                        options: options,
+                        ref: ref
+                    ))
+                } else {
+                    cells.append(.null)
+                }
+            }
+        }
+        return cells
+    }
+
+    func endStream() {
+        if let stmt = streamingStmt {
+            sqlite3_finalize(stmt)
+            streamingStmt = nil
+            streamingColumns = []
+        }
+    }
+
+    private func makeCellRef(column: String, columns: [ColumnInfo], statement: OpaquePointer, options: StreamOptions) -> CellRef? {
+        guard let lazyContext = options.lazyContext, !lazyContext.primaryKeyColumns.isEmpty else { return nil }
+        var pkComponents: [PrimaryKeyComponent] = []
+        for pkColumn in lazyContext.primaryKeyColumns {
+            guard let columnIndex = columns.firstIndex(where: { $0.name == pkColumn }) else { return nil }
+            let idx = Int32(columnIndex)
+            if sqlite3_column_type(statement, idx) == SQLITE_NULL {
+                return nil
+            }
+            guard let text = sqlite3_column_text(statement, idx) else { return nil }
+            pkComponents.append(PrimaryKeyComponent(column: pkColumn, value: String(cString: text)))
+        }
+        return CellRef(table: lazyContext.table, column: column, primaryKey: pkComponents)
+    }
+}
+
+enum SQLiteBeginStreamResult: Sendable {
+    case rowSet([ColumnInfo])
+    case commandOk(affectedRows: Int)
 }
 
 private struct RawResult: Sendable {

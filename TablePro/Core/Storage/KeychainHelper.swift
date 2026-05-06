@@ -24,8 +24,22 @@ final class KeychainHelper: Sendable {
     static let passwordSyncEnabledKey = "com.TablePro.keychainPasswordSyncEnabled"
 
     private let service = "com.TablePro"
-    private let accessGroup = "D7HJ5TFYCU.com.TablePro.shared"
+    private let accessGroup: String? = KeychainHelper.resolveAccessGroup()
     private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainHelper")
+
+    private static let accessGroupSuffix = ".com.TablePro.shared"
+    private static let teamPrefixedGroupPattern = #"^[A-Z0-9]{10}\..+"#
+
+    private static func resolveAccessGroup() -> String? {
+        guard let task = SecTaskCreateFromSelf(nil),
+              let groups = SecTaskCopyValueForEntitlement(task, "keychain-access-groups" as CFString, nil) as? [String]
+        else { return nil }
+        let candidate = groups.first { $0.hasSuffix(accessGroupSuffix) } ?? groups.first
+        guard let candidate,
+              candidate.range(of: teamPrefixedGroupPattern, options: .regularExpression) != nil
+        else { return nil }
+        return candidate
+    }
 
     private var isPasswordSyncEnabled: Bool {
         UserDefaults.standard.bool(forKey: Self.passwordSyncEnabledKey)
@@ -139,13 +153,16 @@ final class KeychainHelper: Sendable {
     // MARK: - Private
 
     private func baseQuery(forKey key: String) -> [String: Any] {
-        [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
             kSecUseDataProtectionKeychain as String: true
         ]
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
+        return query
     }
 
     private func accessibility(forSync synchronizable: Bool) -> CFString {

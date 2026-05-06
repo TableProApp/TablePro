@@ -34,9 +34,7 @@ struct ToolbarPrincipalContent: View {
                 databaseVersion: state.databaseVersion,
                 databaseName: state.databaseName,
                 connectionName: state.connectionName,
-                connectionState: state.connectionState,
                 displayColor: state.displayColor,
-                tagName: tag?.name,
                 safeModeLevel: state.safeModeLevel,
                 onSwitchDatabase: onSwitchDatabase
             )

@@ -85,12 +85,7 @@ extension MainContentCoordinator {
             )
 
             if !newTab.tableContext.databaseName.isEmpty {
-                let currentDatabase: String
-                if let session = DatabaseManager.shared.session(for: connectionId) {
-                    currentDatabase = session.activeDatabase
-                } else {
-                    currentDatabase = connection.database
-                }
+                let currentDatabase = activeDatabaseName
 
                 if newTab.tableContext.databaseName != currentDatabase {
                     Self.lifecycleLogger.debug(

@@ -132,16 +132,14 @@ struct TerminalTabContentView: View {
         self.sessionState = state
 
         let password = ConnectionStorage.shared.loadPassword(for: connectionId)
-        let activeDatabase = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
-            ?? connection.database
+        let activeDatabase = DatabaseManager.shared.activeDatabaseName(for: connection)
 
         state.connect(connection: connection, password: password, activeDatabase: activeDatabase)
     }
 
     private func reconnect(state: TerminalSessionState) {
         let password = ConnectionStorage.shared.loadPassword(for: connectionId)
-        let activeDatabase = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
-            ?? connection.database
+        let activeDatabase = DatabaseManager.shared.activeDatabaseName(for: connection)
 
         state.reconnect(connection: connection, password: password, activeDatabase: activeDatabase)
     }

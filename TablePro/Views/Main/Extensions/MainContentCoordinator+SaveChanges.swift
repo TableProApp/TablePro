@@ -208,7 +208,7 @@ extension MainContentCoordinator {
                         QueryHistoryManager.shared.recordQuery(
                             query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
                             connectionId: conn.id,
-                            databaseName: conn.database,
+                            databaseName: activeDatabaseName,
                             executionTime: executionTime,
                             rowCount: 0,
                             wasSuccessful: true,
@@ -288,7 +288,7 @@ extension MainContentCoordinator {
                 QueryHistoryManager.shared.recordQuery(
                     query: allSQL,
                     connectionId: conn.id,
-                    databaseName: conn.database,
+                    databaseName: activeDatabaseName,
                     executionTime: executionTime,
                     rowCount: 0,
                     wasSuccessful: false,

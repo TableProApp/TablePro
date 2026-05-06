@@ -11,7 +11,10 @@ class DataGridChevronCellView: DataGridBaseCellView {
     override func installAccessory() {
         addSubview(chevronButton)
         NSLayoutConstraint.activate([
-            chevronButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            chevronButton.trailingAnchor.constraint(
+                equalTo: trailingAnchor,
+                constant: -DataGridMetrics.cellHorizontalInset
+            ),
             chevronButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             chevronButton.widthAnchor.constraint(equalToConstant: 10),
             chevronButton.heightAnchor.constraint(equalToConstant: 12),
@@ -34,7 +37,7 @@ class DataGridChevronCellView: DataGridBaseCellView {
 
     override func textFieldTrailingInset(for content: DataGridCellContent, state: DataGridCellState) -> CGFloat {
         let show = state.isEditable && !state.visualState.isDeleted
-        return show ? -18 : -4
+        return show ? -18 : -DataGridMetrics.cellHorizontalInset
     }
 
     @objc

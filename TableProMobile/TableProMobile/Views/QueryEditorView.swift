@@ -14,11 +14,19 @@ struct QueryEditorView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
     @State private var query = ""
-    @State private var result: QueryResult?
+    @State private var viewModel = QueryEditorViewModel()
     @State private var appError: AppError?
     @State private var isExecuting = false
     @State private var executionTime: TimeInterval?
     @State private var executeTask: Task<Void, Never>?
+
+    private var hasResult: Bool {
+        !viewModel.columns.isEmpty || viewModel.rowsAffected != nil
+    }
+
+    private var resultRowCount: Int {
+        viewModel.legacyRows.count
+    }
     @State private var saveQueryTask: Task<Void, Never>?
     @State private var executionStartTime: Date?
     @State private var showWriteConfirmation = false
@@ -91,7 +99,7 @@ struct QueryEditorView: View {
         ) {
             Button(String(localized: "Clear"), role: .destructive) {
                 query = ""
-                result = nil
+                viewModel.reset()
                 appError = nil
                 executionTime = nil
             }
@@ -105,7 +113,7 @@ struct QueryEditorView: View {
     private var editorSection: some View {
         VStack(spacing: 0) {
             SQLHighlightTextView(text: $query)
-                .frame(minHeight: 80, maxHeight: result != nil || appError != nil ? 120 : 250)
+                .frame(minHeight: 80, maxHeight: hasResult || appError != nil ? 120 : 250)
 
             actionBar
         }
@@ -148,8 +156,8 @@ struct QueryEditorView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let result, !result.rows.isEmpty {
-                Text(verbatim: "\(result.rows.count) rows")
+            if resultRowCount > 0 {
+                Text(verbatim: "\(resultRowCount) rows")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -192,21 +200,21 @@ struct QueryEditorView: View {
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            } else if let result {
-                if result.columns.isEmpty {
+            } else if hasResult {
+                if viewModel.columns.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.largeTitle)
                             .foregroundStyle(.green)
-                        Text(String(format: String(localized: "%d row(s) affected"), result.rowsAffected))
+                        Text(String(format: String(localized: "%d row(s) affected"), viewModel.rowsAffected ?? 0))
                             .font(.body)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if result.rows.isEmpty {
+                } else if viewModel.legacyRows.isEmpty {
                     ContentUnavailableView("No Results", systemImage: "tray")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    resultList(result)
+                    resultList
                 }
             } else {
                 ContentUnavailableView {
@@ -219,20 +227,21 @@ struct QueryEditorView: View {
         }
     }
 
-    private func resultList(_ result: QueryResult) -> some View {
+    private var resultList: some View {
         List {
-            ForEach(Array(result.rows.enumerated()), id: \.offset) { rowIndex, row in
+            ForEach(viewModel.legacyRows.indices, id: \.self) { rowIndex in
+                let row = viewModel.legacyRows[rowIndex]
                 NavigationLink {
                     RowDetailView(
-                        columns: result.columns,
-                        rows: result.rows,
+                        columns: viewModel.columns,
+                        rows: viewModel.window.rows,
                         initialIndex: rowIndex
                     )
                 } label: {
-                    resultRowCard(columns: result.columns, row: row)
+                    resultRowCard(columns: viewModel.columns, row: row)
                 }
                 .contextMenu {
-                    resultRowContextMenu(columns: result.columns, row: row)
+                    resultRowContextMenu(columns: viewModel.columns, row: row)
                 }
             }
         }
@@ -308,12 +317,12 @@ struct QueryEditorView: View {
                 }
             }
 
-            if let result, !result.rows.isEmpty {
+            if !viewModel.legacyRows.isEmpty {
                 Section("Share Results") {
                     ForEach(ExportFormat.allCases) { format in
                         Button {
                             shareText = ClipboardExporter.exportRows(
-                                columns: result.columns, rows: result.rows,
+                                columns: viewModel.columns, rows: viewModel.legacyRows,
                                 format: format
                             )
                             showShareSheet = true
@@ -326,7 +335,7 @@ struct QueryEditorView: View {
                     ForEach(ExportFormat.allCases) { format in
                         Button {
                             let text = ClipboardExporter.exportRows(
-                                columns: result.columns, rows: result.rows,
+                                columns: viewModel.columns, rows: viewModel.legacyRows,
                                 format: format
                             )
                             ClipboardExporter.copyToClipboard(text)
@@ -389,22 +398,21 @@ struct QueryEditorView: View {
             executionStartTime = nil
         }
         appError = nil
-        result = nil
 
-        do {
-            let queryResult = try await session.driver.execute(query: trimmed)
-            self.result = queryResult
-            self.executionTime = queryResult.executionTime
-            hapticSuccess.toggle()
+        await viewModel.run(driver: session.driver, query: trimmed)
 
-            IOSAnalyticsProvider.shared.markFirstQueryExecuted()
-
-            let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
-            coordinator.addHistoryItem(item)
-        } catch {
-            let context = ErrorContext(operation: "executeQuery")
-            self.appError = ErrorClassifier.classify(error, context: context)
+        if case .error(let err) = viewModel.phase {
+            appError = err
             hapticError.toggle()
+            return
         }
+
+        executionTime = viewModel.executionTime
+        hapticSuccess.toggle()
+
+        IOSAnalyticsProvider.shared.markFirstQueryExecuted()
+
+        let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
+        coordinator.addHistoryItem(item)
     }
 }

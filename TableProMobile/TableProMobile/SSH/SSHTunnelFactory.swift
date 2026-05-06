@@ -5,8 +5,8 @@
 //  Stateless factory that creates fully-connected, authenticated SSH tunnels.
 //
 
-import Foundation
 import CLibSSH2
+import Foundation
 import TableProModels
 
 enum SSHTunnelFactory {
@@ -23,6 +23,8 @@ enum SSHTunnelFactory {
         keyPassphrase: String?
     ) async throws -> SSHTunnel {
         _ = initialized
+
+        try await LocalNetworkPermission.shared.ensureAccess(for: config.host)
 
         let tunnel = SSHTunnel()
 

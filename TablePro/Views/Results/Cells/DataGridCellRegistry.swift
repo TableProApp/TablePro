@@ -122,8 +122,14 @@ final class DataGridCellRegistry {
             cellView.addSubview(cell)
 
             NSLayoutConstraint.activate([
-                cell.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 4),
-                cell.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -4),
+                cell.leadingAnchor.constraint(
+                    equalTo: cellView.leadingAnchor,
+                    constant: DataGridMetrics.cellHorizontalInset
+                ),
+                cell.trailingAnchor.constraint(
+                    equalTo: cellView.trailingAnchor,
+                    constant: -DataGridMetrics.cellHorizontalInset
+                ),
                 cell.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
             ])
         }

@@ -640,9 +640,7 @@ final class SyncCoordinator {
     }
 
     private func currentAccountId() async throws -> String? {
-        let container = CKContainer(identifier: "iCloud.com.TablePro")
-        let userRecordID = try await container.userRecordID()
-        return userRecordID.recordName
+        try await engine.currentAccountId()
     }
 
     // MARK: - Conflict Handling

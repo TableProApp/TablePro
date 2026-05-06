@@ -500,8 +500,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
             for i in 0..<numFields {
                 if let fieldPtr = rowPtr[i] {
-                    let lengthValue: UInt = lengths?[i] ?? 0
-                    let length = Int(lengthValue)
+                    let length = Int(clamping: lengths?[i] ?? 0)
                     let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
 
                     if columnTypes[i] == 255 {
@@ -914,8 +913,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
                     for i in 0..<numFields {
                         if let fieldPtr = rowPtr[i] {
-                            let lengthValue: UInt = lengths?[i] ?? 0
-                            let length = Int(lengthValue)
+                            let length = Int(clamping: lengths?[i] ?? 0)
                             let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
 
                             if columnTypes[i] == 255 {

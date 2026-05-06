@@ -237,7 +237,7 @@ struct TableStructureView: View {
                         QueryHistoryManager.shared.recordQuery(
                             query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
                             connectionId: connection.id,
-                            databaseName: connection.database,
+                            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
                             executionTime: 0,
                             rowCount: 0,
                             wasSuccessful: true

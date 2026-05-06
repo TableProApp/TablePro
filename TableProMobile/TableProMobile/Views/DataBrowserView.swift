@@ -18,9 +18,8 @@ struct DataBrowserView: View {
     private var connection: DatabaseConnection { coordinator.connection }
     private var session: ConnectionSession? { coordinator.session }
 
-    @State private var columns: [ColumnInfo] = []
+    @State private var viewModel = DataBrowserViewModel()
     @State private var columnDetails: [ColumnInfo] = []
-    @State private var rows: [[String?]] = []
     @State private var isLoading = true
     @State private var isPageLoading = false
     @State private var appError: AppError?
@@ -57,14 +56,17 @@ struct DataBrowserView: View {
         columnDetails.contains(where: \.isPrimaryKey)
     }
 
+    private var columns: [ColumnInfo] { viewModel.columns }
+    private var rows: [[String?]] { viewModel.legacyRows }
+
     private var paginationLabel: String {
         guard !rows.isEmpty else { return "" }
         let start = pagination.currentOffset + 1
         let end = pagination.currentOffset + rows.count
         if let total = pagination.totalRows {
-            return "\(start)–\(end) of \(total)"
+            return "\(start)-\(end) of \(total)"
         }
-        return "\(start)–\(end)"
+        return "\(start)-\(end)"
     }
 
     private var hasActiveSearch: Bool {
@@ -157,9 +159,12 @@ struct DataBrowserView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                 guard !rows.isEmpty else { return }
-                Self.logger.warning("Memory warning received — clearing \(rows.count) rows")
-                rows = []
-                memoryWarningMessage = String(localized: "Results cleared due to memory pressure.")
+                Self.logger.warning("Memory warning received: shrinking window from \(rows.count) rows")
+                Task { await viewModel.handlePressure(.warning) }
+                memoryWarningMessage = String(localized: "Results trimmed due to memory pressure.")
+            }
+            .onChange(of: MemoryPressureMonitor.shared.currentLevel) { _, level in
+                Task { await viewModel.handlePressure(level) }
             }
             .overlay(alignment: .center) {
                 if let message = memoryWarningMessage, rows.isEmpty, !isLoading, appError == nil {
@@ -250,11 +255,12 @@ struct DataBrowserView: View {
 
     private var rowList: some View {
         List {
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+            ForEach(rows.indices, id: \.self) { index in
+                let row = rows[index]
                 NavigationLink {
                     RowDetailView(
                         columns: columns,
-                        rows: rows,
+                        rows: viewModel.window.rows,
                         initialIndex: index,
                         table: table,
                         session: session,
@@ -262,7 +268,11 @@ struct DataBrowserView: View {
                         databaseType: connection.type,
                         safeModeLevel: connection.safeModeLevel,
                         foreignKeys: foreignKeys,
-                        onSaved: { Task { await loadData() } }
+                        onSaved: { Task { await loadData() } },
+                        loadFullValue: { ref in
+                            guard let session else { return nil }
+                            return try await viewModel.loadFullValue(driver: session.driver, ref: ref)
+                        }
                     )
                 } label: {
                     RowCard(
@@ -523,14 +533,27 @@ struct DataBrowserView: View {
                     limit: pagination.pageSize, offset: pagination.currentOffset
                 )
             }
-            let result = try await session.driver.execute(query: query)
-            columns = result.columns
-            rows = result.rows
-            if rows.count < pagination.pageSize, pagination.totalRows == nil {
-                pagination.totalRows = pagination.currentOffset + rows.count
-            }
             if columnDetails.isEmpty || isInitial {
                 columnDetails = try await session.driver.fetchColumns(table: table.name, schema: nil)
+            }
+            let pkColumns = columnDetails.filter(\.isPrimaryKey).map(\.name)
+            let lazyContext = pkColumns.isEmpty ? nil : LazyContext(table: table.name, primaryKeyColumns: pkColumns)
+
+            await viewModel.loadPage(
+                driver: session.driver,
+                query: query,
+                lazyContext: lazyContext,
+                pageSize: pagination.pageSize
+            )
+
+            if case .error(let err) = viewModel.phase {
+                appError = err
+                isLoading = false
+                return
+            }
+
+            if rows.count < pagination.pageSize, pagination.totalRows == nil {
+                pagination.totalRows = pagination.currentOffset + rows.count
             }
             if foreignKeys.isEmpty || isInitial {
                 do {
@@ -687,4 +710,3 @@ struct DataBrowserView: View {
         Task { await loadData() }
     }
 }
-

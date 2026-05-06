@@ -316,7 +316,7 @@ final class MainContentCommandActions {
         if let coordinator, coordinator.tabManager.tabs.isEmpty {
             coordinator.tabManager.addTab(
                 initialQuery: initialQuery,
-                databaseName: connection.database
+                databaseName: coordinator.activeDatabaseName
             )
             return
         }

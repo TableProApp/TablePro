@@ -342,7 +342,7 @@ struct CreateTableView: View {
                 QueryHistoryManager.shared.recordQuery(
                     query: sql,
                     connectionId: connection.id,
-                    databaseName: connection.database,
+                    databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
                     executionTime: 0,
                     rowCount: 0,
                     wasSuccessful: true
