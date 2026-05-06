@@ -295,7 +295,8 @@ private actor MySQLActor {
             if mysql_field_count(mysql) != 0 {
                 throw MySQLError.queryFailed(String(cString: mysql_error(mysql)))
             }
-            let affected = Int(mysql_affected_rows(mysql))
+            let raw = mysql_affected_rows(mysql)
+            let affected = raw == .max ? 0 : Int(clamping: raw)
             return RawMySQLResult(
                 columns: [], columnTypes: [], rows: [],
                 rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: false
@@ -327,7 +328,7 @@ private actor MySQLActor {
             var rowData: [String?] = []
             for i in 0..<fieldCount {
                 if let value = row[i] {
-                    let len = Int(lengths?[i] ?? 0)
+                    let len = Int(clamping: lengths?[i] ?? 0)
                     let data = Data(bytes: value, count: len)
                     rowData.append(String(data: data, encoding: .utf8) ?? String(cString: value))
                 } else {
@@ -338,7 +339,13 @@ private actor MySQLActor {
         }
 
         let isTruncated = rows.count >= maxRows
-        let affected = columns.isEmpty ? Int(mysql_affected_rows(mysql)) : 0
+        let affected: Int
+        if columns.isEmpty {
+            let raw = mysql_affected_rows(mysql)
+            affected = raw == .max ? 0 : Int(clamping: raw)
+        } else {
+            affected = 0
+        }
         return RawMySQLResult(
             columns: columns, columnTypes: columnTypes, rows: rows,
             rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: isTruncated
