@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct SyncStatusIndicator: View {
-    @Environment(\.openSettings) private var openSettings
     private let syncCoordinator = SyncCoordinator.shared
     @State private var showActivationSheet = false
 
@@ -124,8 +123,7 @@ struct SyncStatusIndicator: View {
         case .disabled(.licenseRequired), .disabled(.licenseExpired):
             showActivationSheet = true
         default:
-            UserDefaults.standard.set(SettingsTab.account.rawValue, forKey: "selectedSettingsTab")
-            openSettings()
+            WindowOpener.shared.openSettings(tab: .account)
         }
     }
 }

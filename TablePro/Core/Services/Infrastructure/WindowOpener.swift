@@ -17,6 +17,7 @@ internal final class WindowOpener {
     @ObservationIgnored private var openWelcomeAction: (() -> Void)?
     @ObservationIgnored private var openConnectionFormAction: ((UUID?) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
+    @ObservationIgnored private var openSettingsAction: (() -> Void)?
     @ObservationIgnored
     private var presentTypeChooserAction: ((DatabaseType?, @escaping (DatabaseType) -> Void) -> Void)?
     @ObservationIgnored private var pendingCalls: [() -> Void] = []
@@ -26,6 +27,13 @@ internal final class WindowOpener {
 
     internal func openWelcome() {
         run { $0.openWelcomeAction?() }
+    }
+
+    internal func openSettings(tab: SettingsTab? = nil) {
+        if let tab {
+            UserDefaults.standard.set(tab.rawValue, forKey: "selectedSettingsTab")
+        }
+        run { $0.openSettingsAction?() }
     }
 
     internal func orderOutWelcome() {
@@ -77,11 +85,13 @@ internal final class WindowOpener {
         openWelcome: @escaping () -> Void,
         openConnectionForm: @escaping (UUID?) -> Void,
         openIntegrationsActivity: @escaping () -> Void,
+        openSettings: @escaping () -> Void,
         presentTypeChooser: @escaping (DatabaseType?, @escaping (DatabaseType) -> Void) -> Void
     ) {
         openWelcomeAction = openWelcome
         openConnectionFormAction = openConnectionForm
         openIntegrationsActivityAction = openIntegrationsActivity
+        openSettingsAction = openSettings
         presentTypeChooserAction = presentTypeChooser
         isWired = true
         let drained = pendingCalls

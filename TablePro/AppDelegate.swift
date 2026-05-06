@@ -176,8 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             if response == .alertFirstButtonReturn {
-                UserDefaults.standard.set(SettingsTab.plugins.rawValue, forKey: "selectedSettingsTab")
-                NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
+                WindowOpener.shared.openSettings(tab: .plugins)
             }
         }
     }

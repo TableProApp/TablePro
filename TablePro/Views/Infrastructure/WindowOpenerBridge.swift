@@ -7,6 +7,7 @@ import SwiftUI
 
 internal struct WindowOpenerBridge: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Color.clear
@@ -19,6 +20,7 @@ internal struct WindowOpenerBridge: View {
             openWelcome: { openWindow(id: SceneId.welcome) },
             openConnectionForm: { id in openWindow(id: SceneId.connectionForm, value: id) },
             openIntegrationsActivity: { openWindow(id: SceneId.integrationsActivity) },
+            openSettings: { openSettings() },
             presentTypeChooser: { initialType, onSelected in
                 let payload = DatabaseTypeChooserPayload(
                     initialType: initialType,

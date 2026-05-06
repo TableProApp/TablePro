@@ -13,26 +13,42 @@ internal struct WindowChromeConfigurator: NSViewRepresentable {
     var hideZoomButton: Bool = false
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        let restorable = self.restorable
-        let fullScreenable = self.fullScreenable
-        let hideMiniaturizeButton = self.hideMiniaturizeButton
-        let hideZoomButton = self.hideZoomButton
-        Task { @MainActor [weak view] in
-            guard let window = view?.window else { return }
-            window.isRestorable = restorable
-            if !fullScreenable {
-                window.collectionBehavior.insert(.fullScreenNone)
-            }
-            if hideMiniaturizeButton {
-                window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-            }
-            if hideZoomButton {
-                window.standardWindowButton(.zoomButton)?.isHidden = true
-            }
-        }
+        let view = ChromeHostView()
+        view.apply(configuration: self)
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let host = nsView as? ChromeHostView else { return }
+        host.apply(configuration: self)
+    }
+}
+
+private final class ChromeHostView: NSView {
+    private var pending: WindowChromeConfigurator?
+
+    func apply(configuration: WindowChromeConfigurator) {
+        pending = configuration
+        applyToCurrentWindow()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyToCurrentWindow()
+    }
+
+    private func applyToCurrentWindow() {
+        guard let window, let config = pending else { return }
+
+        window.isRestorable = config.restorable
+
+        if config.fullScreenable {
+            window.collectionBehavior.remove(.fullScreenNone)
+        } else {
+            window.collectionBehavior.insert(.fullScreenNone)
+        }
+
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = config.hideMiniaturizeButton
+        window.standardWindowButton(.zoomButton)?.isHidden = config.hideZoomButton
+    }
 }

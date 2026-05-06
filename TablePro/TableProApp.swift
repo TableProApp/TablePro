@@ -634,17 +634,10 @@ struct TableProApp: App {
     }
 
     var body: some Scene {
-        Settings {
-            SettingsView()
-                .environment(updaterBridge)
-                .background(SettingsNotificationBridge())
-                .background(WindowOpenerBridge())
-                .background(WindowChromeConfigurator(restorable: false))
-        }
-
         Window("Welcome to TablePro", id: SceneId.welcome) {
             WelcomeWindowView()
                 .frame(width: 700, height: 450)
+                .background(WindowOpenerBridge())
                 .background(WindowChromeConfigurator(
                     restorable: false,
                     fullScreenable: false,
@@ -675,6 +668,11 @@ struct TableProApp: App {
                 updaterBridge: updaterBridge,
                 commandRegistry: commandRegistry
             )
+        }
+
+        Settings {
+            SettingsView()
+                .environment(updaterBridge)
         }
     }
 }
@@ -720,7 +718,7 @@ private struct MCPServerMenuItem: View {
 
     var body: some View {
         Button(menuTitle) {
-            NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
+            WindowOpener.shared.openSettings()
         }
     }
 
@@ -739,23 +737,5 @@ private struct MCPServerMenuItem: View {
         case .starting:
             return String(localized: "Integrations: Starting...")
         }
-    }
-}
-
-// MARK: - Settings Notification Bridge
-
-/// Forwards `.openSettingsWindow` notifications to SwiftUI's `openSettings`
-/// action. Lives inside the Settings scene because `\.openSettings` is only
-/// available there.
-private struct SettingsNotificationBridge: View {
-    @Environment(\.openSettings)
-    private var openSettings
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onReceive(NotificationCenter.default.publisher(for: .openSettingsWindow)) { _ in
-                openSettings()
-            }
     }
 }

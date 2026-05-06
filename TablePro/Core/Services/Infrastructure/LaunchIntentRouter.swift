@@ -56,8 +56,7 @@ internal final class LaunchIntentRouter {
     private func installPlugin(_ url: URL) async throws {
         let entry = try await PluginManager.shared.installPlugin(from: url)
         Self.logger.info("Installed plugin '\(entry.name, privacy: .public)' from Finder")
-        UserDefaults.standard.set(SettingsTab.plugins.rawValue, forKey: "selectedSettingsTab")
-        NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
+        WindowOpener.shared.openSettings(tab: .plugins)
     }
 
     private func presentError(_ error: Error, for intent: LaunchIntent) async {

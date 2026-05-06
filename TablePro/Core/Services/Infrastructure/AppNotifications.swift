@@ -44,10 +44,6 @@ extension Notification.Name {
 
     static let pluginsRejected = Notification.Name("pluginsRejected")
 
-    // MARK: - Settings Window
-
-    static let openSettingsWindow = Notification.Name("com.TablePro.openSettingsWindow")
-
     // MARK: - Feedback
 
     static let showFeedbackWindow = Notification.Name("com.TablePro.showFeedbackWindow")
