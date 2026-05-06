@@ -51,6 +51,9 @@ internal struct FavoritesTabView: View {
                 bottomToolbar
             }
         }
+        .onAppear {
+            SQLFolderWatcher.shared.start()
+        }
         .sheet(item: $viewModel.editDialogItem) { item in
             FavoriteEditDialog(
                 connectionId: connectionId,

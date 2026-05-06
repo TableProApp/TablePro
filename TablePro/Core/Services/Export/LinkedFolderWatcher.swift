@@ -26,11 +26,14 @@ final class LinkedFolderWatcher {
     private(set) var linkedConnections: [LinkedConnection] = []
     private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
     private var debounceTask: Task<Void, Never>?
+    private var hasStarted = false
 
     private init() {}
 
     func start() {
+        guard !hasStarted else { return }
         guard LicenseManager.shared.isFeatureAvailable(.linkedFolders) else { return }
+        hasStarted = true
         let folders = LinkedFolderStorage.shared.loadFolders()
         scheduleScan(folders)
         setupWatchers(for: folders)
@@ -40,6 +43,7 @@ final class LinkedFolderWatcher {
         cancelAllWatchers()
         debounceTask?.cancel()
         debounceTask = nil
+        hasStarted = false
     }
 
     func reload() {

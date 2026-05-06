@@ -12,6 +12,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
+    private var hasRunPostLaunchActivation = false
+
     // MARK: - URL & File Open
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -51,17 +53,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         MemoryPressureAdvisor.startMonitoring()
         PluginManager.shared.loadPlugins()
-        ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
-
-        Task {
-            LicenseManager.shared.startPeriodicValidation()
-        }
-
-        AnalyticsService.shared.startPeriodicHeartbeat()
-
-        SyncCoordinator.shared.start()
-        LinkedFolderWatcher.shared.start()
-        SQLFolderWatcher.shared.start()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleSystemDidWake),
@@ -103,7 +94,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
+        runPostLaunchActivationIfNeeded()
         SyncCoordinator.shared.syncIfNeeded()
+    }
+
+    private func runPostLaunchActivationIfNeeded() {
+        guard !hasRunPostLaunchActivation else { return }
+        hasRunPostLaunchActivation = true
+
+        ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
+        AnalyticsService.shared.startPeriodicHeartbeat()
+        SyncCoordinator.shared.start()
+        LinkedFolderWatcher.shared.start()
+
+        Task {
+            LicenseManager.shared.startPeriodicValidation()
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

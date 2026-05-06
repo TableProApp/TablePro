@@ -28,6 +28,7 @@ final class SyncCoordinator {
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
     @ObservationIgnored private var licenseObserver: NSObjectProtocol?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
+    @ObservationIgnored private var hasStarted = false
 
     private init() {
         lastSyncDate = metadataStorage.lastSyncDate
@@ -44,6 +45,9 @@ final class SyncCoordinator {
 
     /// Call from AppDelegate at launch
     func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
+
         observeAccountChanges()
         observeLocalChanges()
         observeLicenseChanges()

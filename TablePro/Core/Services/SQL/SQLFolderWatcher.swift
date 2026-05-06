@@ -21,10 +21,13 @@ internal final class SQLFolderWatcher {
 
     @ObservationIgnored private var eventStream: FSEventStreamRef?
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
+    @ObservationIgnored private var hasStarted = false
 
     private init() {}
 
     func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
         let folders = LinkedSQLFolderStorage.shared.loadFolders().filter(\.isEnabled)
         scheduleFullRescan(folders: folders)
         setupEventStream(for: folders)
@@ -34,6 +37,7 @@ internal final class SQLFolderWatcher {
         cancelEventStream()
         debounceTask?.cancel()
         debounceTask = nil
+        hasStarted = false
     }
 
     func reload() {
