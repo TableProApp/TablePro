@@ -15,6 +15,7 @@ internal struct MainEditorRootView: View {
         } detail: {
             detailColumn
         }
+        .navigationSplitViewStyle(.balanced)
         .inspector(isPresented: $windowState.inspectorPresented) {
             inspectorColumn
                 .inspectorColumnWidth(min: 270, ideal: 320, max: 400)

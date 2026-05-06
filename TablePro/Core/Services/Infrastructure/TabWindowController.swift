@@ -86,6 +86,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         windowState.attachWindow(window)
         windowState.wireCoordinatorIfNeeded()
 
+        applyDefaultWindowSizeIfNeeded(window)
         installToolbarIfPossible()
         startSessionObservation()
 
@@ -97,6 +98,22 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("TabWindowController does not support NSCoder init")
+    }
+
+    // MARK: - Window Sizing
+
+    /// Enforce a 1200x800 minimum content size when the autosaved frame is
+    /// smaller. Mirrors the previous `MainSplitViewController.viewWillAppear`
+    /// behavior so connection windows don't open at a tiny restored size.
+    private func applyDefaultWindowSizeIfNeeded(_ window: NSWindow) {
+        let defaultSize = NSSize(width: 1_200, height: 800)
+        if window.frame.width < defaultSize.width || window.frame.height < defaultSize.height {
+            window.setContentSize(NSSize(
+                width: max(window.frame.width, defaultSize.width),
+                height: max(window.frame.height, defaultSize.height)
+            ))
+            window.center()
+        }
     }
 
     // MARK: - Toolbar
