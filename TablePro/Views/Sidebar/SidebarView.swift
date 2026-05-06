@@ -92,6 +92,8 @@ struct SidebarView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial)
         .onChange(of: sidebarState.searchText) { _, newValue in
             viewModel.searchText = newValue
         }
@@ -126,18 +128,24 @@ struct SidebarView: View {
     @ViewBuilder
     private var tablesContent: some View {
         switch schemaService.state(for: connectionId) {
-        case .loading where tables.isEmpty:
-            loadingState
         case .failed(let message):
             errorState(message: message)
         case .loaded where !viewModel.searchText.isEmpty && filteredTables.isEmpty:
             noMatchState
         case .loaded(let allTables) where allTables.isEmpty:
             emptyState
-        case .loaded, .loading:
+        case .loaded:
             tableList
-        case .idle:
-            emptyState
+        case .loading, .idle:
+            // Both states mean "we don't yet have a confirmed table list".
+            // Show the loading indicator only when there are no cached
+            // tables to display; otherwise keep the existing tableList
+            // visible so a refresh doesn't flash empty content.
+            if tables.isEmpty {
+                loadingState
+            } else {
+                tableList
+            }
         }
     }
 
