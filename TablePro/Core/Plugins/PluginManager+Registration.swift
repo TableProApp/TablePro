@@ -188,12 +188,9 @@ extension PluginManager {
 
     // MARK: - Driver Availability
 
-    func isDriverAvailable(for databaseType: DatabaseType) -> Bool {
-        driverPlugins[databaseType.pluginTypeId] != nil
-    }
-
-    func isDriverLoaded(for databaseType: DatabaseType) -> Bool {
-        driverPlugins[databaseType.pluginTypeId] != nil
+    func isDriverInstalled(for databaseType: DatabaseType) -> Bool {
+        let typeId = databaseType.pluginTypeId
+        return driverPlugins[typeId] != nil || lazyDriverURLs[typeId] != nil
     }
 
     func sqlDialect(for databaseType: DatabaseType) -> SQLDialectDescriptor? {

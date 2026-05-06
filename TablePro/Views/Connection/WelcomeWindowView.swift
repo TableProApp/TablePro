@@ -123,7 +123,7 @@ struct WelcomeWindowView: View {
             welcomeChooserState = WelcomeChooserState(
                 initialType: payload.initialType,
                 onSelected: { type in
-                    if PluginManager.shared.isDriverLoaded(for: type) {
+                    if PluginManager.shared.isDriverInstalled(for: type) {
                         PendingNewConnectionType.shared.set(type)
                         payload.onSelected(type)
                     } else {

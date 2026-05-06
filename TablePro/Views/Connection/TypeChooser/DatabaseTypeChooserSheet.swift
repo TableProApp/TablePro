@@ -170,6 +170,6 @@ private struct DatabaseTypeChooserRow: View {
     }
 
     private var shouldShowNotInstalledBadge: Bool {
-        type.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: type)
+        type.isDownloadablePlugin && !PluginManager.shared.isDriverInstalled(for: type)
     }
 }

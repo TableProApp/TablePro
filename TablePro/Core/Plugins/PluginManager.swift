@@ -84,7 +84,7 @@ final class PluginManager {
 
     private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
 
-    @ObservationIgnored private var lazyDriverURLs: [String: URL] = [:]
+    @ObservationIgnored private(set) var lazyDriverURLs: [String: URL] = [:]
     @ObservationIgnored private var lazyExportURLs: [String: URL] = [:]
     @ObservationIgnored private var lazyImportURLs: [String: URL] = [:]
     @ObservationIgnored private var activatedBundleIds: Set<String> = []
