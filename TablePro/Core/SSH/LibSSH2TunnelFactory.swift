@@ -454,7 +454,7 @@ internal enum LibSSH2TunnelFactory {
 
     // MARK: - Authentication
 
-    private static func buildAuthenticator(
+    internal static func buildAuthenticator(
         config: SSHConfiguration,
         resolved: ResolvedSSHTarget,
         credentials: SSHTunnelCredentials
@@ -468,7 +468,7 @@ internal enum LibSSH2TunnelFactory {
             let totpProvider = buildTOTPProvider(config: config, credentials: credentials)
             return CompositeAuthenticator(authenticators: [
                 PasswordAuthenticator(password: sshPassword),
-                KeyboardInteractiveAuthenticator(password: nil, totpProvider: totpProvider),
+                KeyboardInteractiveAuthenticator(password: sshPassword, totpProvider: totpProvider),
             ])
 
         case .password:
