@@ -9,8 +9,8 @@ import Foundation
 import os
 
 /// Why an SSH authentication attempt failed. Drives the user-facing error string so the
-/// alert points at the actual cause (wrong OTP, missing key, agent rejection, …) instead
-/// of the catch-all "credentials or private key" message.
+/// alert points at the actual cause (wrong OTP, missing key, agent rejection) instead of
+/// the catch-all "credentials or private key" message.
 enum AuthFailureReason: Sendable, Equatable {
     case password
     case verificationCode
@@ -40,13 +40,13 @@ enum SSHTunnelError: Error, LocalizedError, Equatable {
         case .authenticationFailed(let reason):
             switch reason {
             case .password:
-                return String(localized: "SSH password rejected. Check the password for this connection.")
+                return String(localized: "SSH password rejected. Check the password and try again.")
             case .verificationCode:
-                return String(localized: "Verification code rejected. The code may be wrong or expired — try a fresh code from your authenticator.")
+                return String(localized: "Verification code rejected. Get a new code from your authenticator app and try again.")
             case .privateKey:
-                return String(localized: "SSH private key rejected. Check the key file, passphrase, or pick a different identity.")
+                return String(localized: "SSH private key rejected. Check the key file or passphrase.")
             case .agentRejected:
-                return String(localized: "SSH agent did not authenticate. Make sure the right key is loaded (try ssh-add -l).")
+                return String(localized: "SSH agent did not authenticate. Run ssh-add -l to check loaded keys.")
             case .generic:
                 return String(localized: "SSH authentication failed. Check your credentials or private key.")
             }

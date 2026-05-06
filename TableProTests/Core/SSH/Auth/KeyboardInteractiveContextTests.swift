@@ -84,7 +84,7 @@ struct PromptTOTPProviderShapeTests {
     @Test("Conformance covers the attempt-bearing protocol method")
     func providerConformsToProtocol() {
         let provider: any TOTPProvider = PromptTOTPProvider()
-        // Just verify the protocol witness compiles — the alert UI path is not exercised
+        // Just verify the protocol witness compiles. The alert UI path is not exercised
         // here because runModal would block the test runner.
         _ = provider
     }

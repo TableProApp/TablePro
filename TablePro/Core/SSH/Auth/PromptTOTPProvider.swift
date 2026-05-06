@@ -27,7 +27,7 @@ internal final class PromptTOTPProvider: TOTPProvider, @unchecked Sendable {
             : String(localized: "Verification Code Rejected")
         alert.informativeText = attempt == 0
             ? String(localized: "Enter the TOTP verification code for SSH authentication.")
-            : String(localized: "The previous code wasn't accepted. Wait for your authenticator to roll over and enter the new code.")
+            : String(localized: "The previous code wasn't accepted. Wait for your authenticator to refresh, then enter the new code.")
         alert.alertStyle = .informational
         alert.addButton(withTitle: String(localized: "Connect"))
         alert.addButton(withTitle: String(localized: "Cancel"))
