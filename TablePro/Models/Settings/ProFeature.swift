@@ -10,7 +10,6 @@ import Foundation
 /// Features that require a Pro (active) license
 internal enum ProFeature: String, CaseIterable {
     case iCloudSync
-    case xlsxExport
     case encryptedExport
     case envVarReferences
     case linkedFolders
@@ -19,8 +18,6 @@ internal enum ProFeature: String, CaseIterable {
         switch self {
         case .iCloudSync:
             return String(localized: "iCloud Sync")
-        case .xlsxExport:
-            return String(localized: "XLSX Export")
         case .encryptedExport:
             return String(localized: "Encrypted Export")
         case .envVarReferences:
@@ -34,8 +31,6 @@ internal enum ProFeature: String, CaseIterable {
         switch self {
         case .iCloudSync:
             return "icloud"
-        case .xlsxExport:
-            return "tablecells"
         case .encryptedExport:
             return "lock.doc"
         case .envVarReferences:
@@ -49,8 +44,6 @@ internal enum ProFeature: String, CaseIterable {
         switch self {
         case .iCloudSync:
             return String(localized: "Sync connections, settings, and history across your Macs.")
-        case .xlsxExport:
-            return String(localized: "Export query results and tables to Excel format.")
         case .encryptedExport:
             return String(localized: "Export connections with encrypted credentials.")
         case .envVarReferences:

@@ -26,7 +26,6 @@ struct ExportDialog: View {
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
-    @State private var showActivationSheet = false
 
     // MARK: - User Preferences
 
@@ -94,9 +93,6 @@ struct ExportDialog: View {
         }
         .frame(width: dialogWidth)
         .background(Color(nsColor: .windowBackgroundColor))
-        .sheet(isPresented: $showActivationSheet) {
-            LicenseActivationSheet()
-        }
         .onAppear {
             let available = availableFormats
             if !available.contains(where: { type(of: $0).formatId == config.formatId }) {
@@ -281,11 +277,7 @@ struct ExportDialog: View {
                         Picker("", selection: $config.formatId) {
                             ForEach(availableFormatIds, id: \.self) { formatId in
                                 if let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) {
-                                    if isProGatedFormat(formatId) {
-                                        Text("\(type(of: plugin).formatDisplayName) (Pro)").tag(formatId)
-                                    } else {
-                                        Text(type(of: plugin).formatDisplayName).tag(formatId)
-                                    }
+                                    Text(type(of: plugin).formatDisplayName).tag(formatId)
                                 }
                             }
                         }
@@ -302,18 +294,8 @@ struct ExportDialog: View {
                     }
                 }
 
-                // Selection count or Pro gate message
                 VStack(spacing: 2) {
-                    if isProGatedFormat(config.formatId) {
-                        Text(String(localized: "XLSX export requires a Pro license."))
-                            .font(.subheadline)
-                            .foregroundStyle(Color(nsColor: .systemOrange))
-                        Button(String(localized: "Activate License...")) {
-                            showActivationSheet = true
-                        }
-                        .font(.subheadline)
-                        .buttonStyle(.link)
-                    } else if case .streamingQuery = mode {
+                    if case .streamingQuery = mode {
                         Text("All rows")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -450,7 +432,7 @@ struct ExportDialog: View {
     }
 
     private var isExportDisabled: Bool {
-        if isExporting || !isFileNameValid || availableFormats.isEmpty || isProGatedFormat(config.formatId) {
+        if isExporting || !isFileNameValid || availableFormats.isEmpty {
             return true
         }
         if case .streamingQuery = mode {
@@ -463,7 +445,6 @@ struct ExportDialog: View {
     }
 
     private static let formatDisplayOrder = ["csv", "json", "sql", "xlsx", "mql"]
-    private static let proFormatIds: Set<String> = ["xlsx"]
 
     private func formatDescription(for formatId: String) -> String {
         switch formatId {
@@ -474,10 +455,6 @@ struct ExportDialog: View {
         case "mql": return String(localized: "MongoDB query language. Use to import into MongoDB.")
         default: return ""
         }
-    }
-
-    private func isProGatedFormat(_ formatId: String) -> Bool {
-        Self.proFormatIds.contains(formatId) && !LicenseManager.shared.isFeatureAvailable(.xlsxExport)
     }
 
     /// Windows reserved device names (case-insensitive)

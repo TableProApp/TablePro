@@ -51363,50 +51363,6 @@
         }
       }
     },
-    "XLSX Export" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "XLSX Dışa Aktarma"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xuất XLSX"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "XLSX 导出"
-          }
-        }
-      }
-    },
-    "XLSX export requires a Pro license." : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "XLSX dışa aktarma için Pro lisans gereklidir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xuất XLSX yêu cầu giấy phép Pro."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "XLSX 导出需要 Pro 许可证。"
-          }
-        }
-      }
-    },
     "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" : {
       "localizations" : {
         "tr" : {
