@@ -150,15 +150,21 @@ package extension TextSelectionManager {
     ///   - delta: The direction the selection should be extended. `1` for forwards, `-1` for backwards.
     /// - Returns: The range of the extended selection.
     private func extendSelectionVisualLine(string: NSString, from offset: Int, delta: Int) -> NSRange {
-        guard let line = layoutManager?.textLineForOffset(offset),
-              let lineFragment = line.data.typesetter.lineFragments.getLine(atOffset: offset - line.range.location)
-        else {
+        guard let line = layoutManager?.textLineForOffset(offset) else {
             return NSRange(location: offset, length: 0)
         }
+        let positionInLine = offset - line.range.location
+        let fragments = line.data.typesetter.lineFragments
+        guard let lineFragment = fragments.getLine(atOffset: positionInLine) ?? fragments.last else {
+            return NSRange(location: offset, length: 0)
+        }
+        let lineEndingLength = textStorage
+            .flatMap { $0.substring(from: line.range) }
+            .flatMap(LineEnding.init(line:))?.length ?? 0
         let lineBound = delta > 0
         ? line.range.location + min(
             lineFragment.range.max,
-            line.range.max - line.range.location - (layoutManager?.detectedLineEnding.length ?? 1)
+            line.range.max - line.range.location - lineEndingLength
         )
         : line.range.location + lineFragment.range.location
 
