@@ -22,15 +22,12 @@ struct ConnectionStatusView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Database type icon + version
-            databaseInfoSection
+            connectionIdentitySection
 
-            // Vertical separator
-            Divider()
-                .frame(height: 12)
-
-            // Database name (clickable to switch databases)
             if !databaseName.isEmpty {
+                Divider()
+                    .frame(height: 12)
+
                 databaseNameSection
             }
         }
@@ -38,18 +35,26 @@ struct ConnectionStatusView: View {
 
     // MARK: - Subviews
 
-    /// Database type and version info
-    private var databaseInfoSection: some View {
-        Text(formattedDatabaseInfo)
-            .font(.system(.subheadline, design: .monospaced))
-            .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .frame(maxWidth: 280)
-            .accessibilityLabel(
-                String(format: String(localized: "Database type: %@"), formattedDatabaseInfo)
-            )
-            .help("Database: \(formattedDatabaseInfo)")
+    private var connectionIdentitySection: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(displayColor)
+                .frame(width: 8, height: 8)
+                .overlay(
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                )
+
+            Text(connectionName)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 280, alignment: .leading)
+        }
+        .help(connectionTooltip)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(connectionAccessibilityLabel)
     }
 
     /// Database name (clickable to open database switcher, plain label for SQLite)
@@ -90,6 +95,14 @@ struct ConnectionStatusView: View {
             return "\(databaseType.rawValue) \(version)"
         }
         return databaseType.rawValue
+    }
+
+    private var connectionTooltip: String {
+        String(format: String(localized: "%@ • %@"), connectionName, formattedDatabaseInfo)
+    }
+
+    private var connectionAccessibilityLabel: String {
+        String(format: String(localized: "Connection: %@, %@"), connectionName, formattedDatabaseInfo)
     }
 }
 
