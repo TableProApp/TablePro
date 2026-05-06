@@ -460,7 +460,12 @@ internal enum LibSSH2TunnelFactory {
         credentials: SSHTunnelCredentials
     ) throws -> any SSHAuthenticator {
         switch config.authMethod {
-        case .password where config.totpMode != .none:
+        case .password:
+            // Always pair password with a keyboard-interactive fallback that reuses the same
+            // password. Servers that only advertise `keyboard-interactive` (e.g. PAM stacks
+            // using google-authenticator, which prompt `Password:` over kbd-int) reject the
+            // bare `password` method, and falling through here matches OpenSSH's and
+            // Sequel Ace's behavior.
             guard let sshPassword = credentials.sshPassword else {
                 logger.error("SSH password is nil (Keychain lookup may have failed) for \(resolved.host)")
                 throw SSHTunnelError.authenticationFailed
@@ -470,13 +475,6 @@ internal enum LibSSH2TunnelFactory {
                 PasswordAuthenticator(password: sshPassword),
                 KeyboardInteractiveAuthenticator(password: sshPassword, totpProvider: totpProvider),
             ])
-
-        case .password:
-            guard let sshPassword = credentials.sshPassword else {
-                logger.error("SSH password is nil (Keychain lookup may have failed) for \(resolved.host)")
-                throw SSHTunnelError.authenticationFailed
-            }
-            return PasswordAuthenticator(password: sshPassword)
 
         case .privateKey:
             let keyPaths = effectiveKeyPaths(for: resolved)
