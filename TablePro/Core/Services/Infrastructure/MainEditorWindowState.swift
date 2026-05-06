@@ -52,16 +52,15 @@ internal final class MainEditorWindowState {
             } else {
                 resolvedState = SessionStateFactory.create(connection: session.connection, payload: payload)
             }
+            resolvedVisibility = .all
         } else {
             resolvedRightPanel = nil
             resolvedState = nil
+            // Hide sidebar until session connects. Mirrors the original
+            // `sidebarSplitItem.isCollapsed = true when currentSession == nil`
+            // behavior. Sidebar uncollapses in handleConnectionStatusChange.
+            resolvedVisibility = .detailOnly
         }
-        // Always start with the sidebar column visible. Content swap from
-        // empty placeholder to populated SidebarView is instant, but a
-        // visibility transition from .detailOnly → .all triggers SwiftUI's
-        // column-slide animation, which exposes the underlying window
-        // background as a black flash during connect.
-        resolvedVisibility = .all
 
         self.rightPanelState = resolvedRightPanel
         self.sessionState = resolvedState
@@ -181,6 +180,7 @@ internal final class MainEditorWindowState {
                 sessionState?.coordinator.teardown()
                 sessionState = nil
                 currentSession = nil
+                sidebarColumnVisibility = .detailOnly
             }
             return
         }
@@ -204,6 +204,7 @@ internal final class MainEditorWindowState {
             sessionState = state
             state.coordinator.editorWindowState = self
         }
+        sidebarColumnVisibility = .all
     }
 
     // MARK: - Static helpers
