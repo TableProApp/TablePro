@@ -26,6 +26,8 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let isDownloadable = true
     static let pathFieldRole: PathFieldRole = .serviceName
     static let supportsForeignKeyDisable = false
+    static let supportsSchemaSwitching = true
+    static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
     static let brandColorHex = "#C3160B"
     static let systemDatabaseNames: [String] = ["SYS", "SYSTEM", "OUTLN", "DBSNMP", "APPQOSSYS", "WMSYS", "XDB"]
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
