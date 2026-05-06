@@ -15,17 +15,21 @@ brew install swiftlint swiftformat
 
 ### Building with a personal Apple team
 
-To Debug-build under your own team, open `TablePro.xcodeproj`, select the `TablePro` target, then **Signing & Capabilities → Debug** sub-tab:
-
-1. **Team**: pick your personal team. If another target fails to sign later, repeat there.
-2. **Bundle Identifier**: change `com.TablePro` to something unique (e.g. `com.<yourhandle>.TablePro`).
-3. **Code Signing Entitlements** (Build Settings tab): switch Debug to `TablePro/TablePro.Debug.entitlements`. It ships in the repo and drops iCloud, which free teams don't support. Sync auto-disables at runtime.
-
-Don't commit the resulting `pbxproj` changes. They break official Release signing. Skip them locally:
+The project's signing settings are read from `Configurations/Shared.xcconfig`, which optionally includes a gitignored `Local.xcconfig` for per-developer overrides. To Debug-build under your own team, copy the example file and edit:
 
 ```bash
-git update-index --skip-worktree TablePro.xcodeproj/project.pbxproj
+cp Local.xcconfig.example Local.xcconfig
 ```
+
+In `Local.xcconfig`, uncomment and set the values you need:
+
+- `DEVELOPMENT_TEAM`: your team ID (Xcode > Settings > Accounts > Manage Certificates).
+- `PRODUCT_BUNDLE_IDENTIFIER`: make it unique under your team (e.g. `com.yourhandle.TablePro`).
+- `CODE_SIGN_ENTITLEMENTS = TablePro/TablePro.Debug.entitlements`: only if your team is free (no iCloud capability). Sync auto-disables at runtime.
+
+That's it. No pbxproj edits. `Local.xcconfig` is gitignored so your overrides stay local; the project file keeps signing for the official team.
+
+Note: free personal teams hit Apple's 10-bundle-IDs-per-7-days limit because the project signs around a dozen plugin bundles. Expect occasional waits if you re-create your team's signing identity often.
 
 To verify: save a connection password, relaunch, reopen. The password should still be there.
 

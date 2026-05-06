@@ -1,0 +1,14 @@
+// Copy this file to Local.xcconfig and uncomment the lines you want to override.
+// Local.xcconfig is gitignored. See CONTRIBUTING.md for details.
+
+// Your Apple Developer team ID.
+// Find it in Xcode > Settings > Accounts > select account > Manage Certificates,
+// or System Settings > Apple ID > Sign in with your Apple ID > Developer.
+// DEVELOPMENT_TEAM = ABCD123456
+
+// Your bundle identifier. Must be unique under your team.
+// PRODUCT_BUNDLE_IDENTIFIER = com.yourhandle.TablePro
+
+// Path to a custom entitlements file (relative to project root).
+// Free personal teams cannot sign the iCloud capability; point at the iCloud-free variant.
+// CODE_SIGN_ENTITLEMENTS = TablePro/TablePro.Debug.entitlements

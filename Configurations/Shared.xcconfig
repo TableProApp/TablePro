@@ -1,0 +1,13 @@
+// TablePro shared build settings.
+//
+// Wired as the project-level Configuration File for both Debug and Release
+// (Project Editor > Project > Info > Configurations).
+//
+// Defaults below match the official D7HJ5TFYCU team. Contributors override
+// per-developer values in Local.xcconfig (gitignored). See CONTRIBUTING.md.
+
+DEVELOPMENT_TEAM = D7HJ5TFYCU
+PRODUCT_BUNDLE_IDENTIFIER = com.TablePro
+CODE_SIGN_ENTITLEMENTS = TablePro/TablePro.entitlements
+
+#include? "../Local.xcconfig"

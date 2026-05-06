@@ -125,6 +125,7 @@ Thumbs.db
 *.p12
 *.mobileprovision
 Secrets.xcconfig
+Local.xcconfig
 
 # Debug
 *.log
