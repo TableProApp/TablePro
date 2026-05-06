@@ -14,9 +14,7 @@ struct ConnectionStatusView: View {
     let databaseVersion: String?
     let databaseName: String
     let connectionName: String
-    let connectionState: ToolbarConnectionState
     let displayColor: Color
-    let tagName: String?
     var safeModeLevel: SafeModeLevel = .silent
     var onSwitchDatabase: (() -> Void)?
 
@@ -56,7 +54,6 @@ struct ConnectionStatusView: View {
         .accessibilityLabel(connectionAccessibilityLabel)
     }
 
-    /// Database name (clickable to open database switcher, plain label for SQLite)
     @ViewBuilder
     private var databaseNameSection: some View {
         if !PluginManager.shared.supportsDatabaseSwitching(for: databaseType) {
@@ -109,58 +106,50 @@ struct ConnectionStatusView: View {
 
 // MARK: - Preview
 
-#Preview("Connected") {
+#Preview("MariaDB") {
     ConnectionStatusView(
         databaseType: .mariadb,
         databaseVersion: "11.1.2",
         databaseName: "production_db",
         connectionName: "Production Database",
-        connectionState: .connected,
-        displayColor: .cyan,
-        tagName: "production"
+        displayColor: .cyan
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
 }
 
-#Preview("Executing - No Duplicate") {
+#Preview("MySQL") {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "8.0.35",
         databaseName: "dev_db",
         connectionName: "Development",
-        connectionState: .executing,
-        displayColor: .orange,
-        tagName: "local"
+        displayColor: .orange
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
 }
 
-#Preview("No Tag") {
+#Preview("PostgreSQL Dark") {
     ConnectionStatusView(
         databaseType: .postgresql,
         databaseVersion: "16.1",
         databaseName: "analytics",
         connectionName: "Analytics DB",
-        connectionState: .connected,
-        displayColor: .blue,
-        tagName: nil
+        displayColor: .blue
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
     .preferredColorScheme(.dark)
 }
 
-#Preview("Duplicate Name") {
+#Preview("Empty Database") {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "9.5.0",
-        databaseName: "laravel",
+        databaseName: "",
         connectionName: "Local",
-        connectionState: .connected,
-        displayColor: .green,
-        tagName: "local"
+        displayColor: .green
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
