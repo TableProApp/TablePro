@@ -29,8 +29,14 @@ final class QueryEditorViewModel {
     private(set) var statusMessage: String?
     private(set) var executionTime: TimeInterval = 0
 
-    private var fetchTask: Task<Void, Never>?
-    private var startedAt: Date?
+    @ObservationIgnored private var pendingRows: [Row] = []
+    @ObservationIgnored private var pendingRowsReceived: Int = 0
+    @ObservationIgnored private var flushTask: Task<Void, Never>?
+    @ObservationIgnored private var fetchTask: Task<Void, Never>?
+    @ObservationIgnored private var startedAt: Date?
+
+    private static let flushBatchSize = 200
+    private static let flushIntervalNanos: UInt64 = 50_000_000
 
     init(windowCapacity: Int = 200) {
         self.window = RowWindow(capacity: windowCapacity)
@@ -56,6 +62,8 @@ final class QueryEditorViewModel {
         rowsAffected = nil
         statusMessage = nil
         executionTime = 0
+        pendingRows.removeAll(keepingCapacity: true)
+        pendingRowsReceived = 0
         startedAt = Date()
 
         let task = Task { [weak self] in
@@ -65,14 +73,17 @@ final class QueryEditorViewModel {
                     if Task.isCancelled { break }
                     self.apply(element: element)
                 }
+                self.flushPendingRows()
                 self.finalizeTiming()
                 if case .running = self.phase {
                     self.phase = .finished
                 }
             } catch is CancellationError {
+                self.flushPendingRows()
                 self.finalizeTiming()
                 self.phase = .truncated(reason: .cancelled)
             } catch {
+                self.flushPendingRows()
                 self.finalizeTiming()
                 self.phase = .error(self.classify(error: error))
             }
@@ -87,12 +98,16 @@ final class QueryEditorViewModel {
 
     func reset() {
         fetchTask?.cancel()
+        flushTask?.cancel()
+        flushTask = nil
         columns = []
         window.clear()
         rowsReceived = 0
         rowsAffected = nil
         statusMessage = nil
         executionTime = 0
+        pendingRows.removeAll(keepingCapacity: true)
+        pendingRowsReceived = 0
         phase = .idle
     }
 
@@ -117,15 +132,42 @@ final class QueryEditorViewModel {
         case .columns(let cols):
             columns = cols
         case .row(let row):
-            window.append(row)
-            rowsReceived += 1
+            pendingRows.append(row)
+            pendingRowsReceived += 1
+            scheduleFlushIfNeeded()
         case .rowsAffected(let count):
+            flushPendingRows()
             rowsAffected = count
         case .statusMessage(let message):
+            flushPendingRows()
             statusMessage = message
         case .truncated(let reason):
+            flushPendingRows()
             phase = .truncated(reason: reason)
         }
+    }
+
+    private func scheduleFlushIfNeeded() {
+        if pendingRows.count >= Self.flushBatchSize {
+            flushPendingRows()
+            return
+        }
+        if flushTask == nil {
+            flushTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: Self.flushIntervalNanos)
+                guard !Task.isCancelled else { return }
+                self?.flushPendingRows()
+            }
+        }
+    }
+
+    private func flushPendingRows() {
+        flushTask?.cancel()
+        flushTask = nil
+        guard !pendingRows.isEmpty else { return }
+        window.append(contentsOf: pendingRows)
+        rowsReceived = pendingRowsReceived
+        pendingRows.removeAll(keepingCapacity: true)
     }
 
     private func finalizeTiming() {

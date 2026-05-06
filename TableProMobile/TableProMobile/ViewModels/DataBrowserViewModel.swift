@@ -29,7 +29,12 @@ final class DataBrowserViewModel {
     private(set) var statusMessage: String?
     private(set) var executionTime: TimeInterval = 0
 
-    private var fetchTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingRows: [Row] = []
+    @ObservationIgnored private var flushTask: Task<Void, Never>?
+    @ObservationIgnored private var fetchTask: Task<Void, Never>?
+
+    private static let flushBatchSize = 200
+    private static let flushIntervalNanos: UInt64 = 50_000_000
 
     init(windowCapacity: Int = 200) {
         self.window = RowWindow(capacity: windowCapacity)
@@ -53,6 +58,7 @@ final class DataBrowserViewModel {
         window.clear()
         rowsAffected = nil
         statusMessage = nil
+        pendingRows.removeAll(keepingCapacity: true)
 
         let start = Date()
         let task = Task { [weak self] in
@@ -62,11 +68,13 @@ final class DataBrowserViewModel {
                     if Task.isCancelled { break }
                     self.apply(element: element)
                 }
+                self.flushPendingRows()
                 self.executionTime = Date().timeIntervalSince(start)
                 if case .loading = self.phase {
                     self.phase = .loaded
                 }
             } catch {
+                self.flushPendingRows()
                 self.phase = .error(self.classify(error: error))
             }
         }
@@ -76,6 +84,8 @@ final class DataBrowserViewModel {
 
     func cancel() {
         fetchTask?.cancel()
+        flushTask?.cancel()
+        flushTask = nil
     }
 
     func loadFullValue(driver: DatabaseDriver, ref: CellRef) async throws -> String? {
@@ -112,14 +122,40 @@ final class DataBrowserViewModel {
         case .columns(let cols):
             columns = cols
         case .row(let row):
-            window.append(row)
+            pendingRows.append(row)
+            scheduleFlushIfNeeded()
         case .rowsAffected(let count):
+            flushPendingRows()
             rowsAffected = count
         case .statusMessage(let message):
+            flushPendingRows()
             statusMessage = message
         case .truncated(let reason):
+            flushPendingRows()
             phase = .truncated(reason: reason)
         }
+    }
+
+    private func scheduleFlushIfNeeded() {
+        if pendingRows.count >= Self.flushBatchSize {
+            flushPendingRows()
+            return
+        }
+        if flushTask == nil {
+            flushTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: Self.flushIntervalNanos)
+                guard !Task.isCancelled else { return }
+                self?.flushPendingRows()
+            }
+        }
+    }
+
+    private func flushPendingRows() {
+        flushTask?.cancel()
+        flushTask = nil
+        guard !pendingRows.isEmpty else { return }
+        window.append(contentsOf: pendingRows)
+        pendingRows.removeAll(keepingCapacity: true)
     }
 
     private func classify(error: Error) -> AppError {
