@@ -3,14 +3,12 @@
 //  TablePro
 //
 
-import AppKit
 import os
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct WelcomeWindowView: View {
     private enum FocusField {
-        case search
         case connectionList
     }
 
@@ -35,11 +33,9 @@ struct WelcomeWindowView: View {
                     .transition(.move(edge: .trailing))
             }
         }
-        .background(VisualEffectBackground(material: .underWindowBackground, blendingMode: .behindWindow))
-        .ignoresSafeArea()
         .onAppear {
             vm.setUp()
-            focus = .search
+            focus = .connectionList
         }
         .alert(
             vm.connectionsToDelete.count == 1
@@ -127,7 +123,7 @@ struct WelcomeWindowView: View {
             welcomeChooserState = WelcomeChooserState(
                 initialType: payload.initialType,
                 onSelected: { type in
-                    if PluginManager.shared.isDriverLoaded(for: type) {
+                    if PluginManager.shared.isDriverInstalled(for: type) {
                         PendingNewConnectionType.shared.set(type)
                         payload.onSelected(type)
                     } else {
@@ -199,95 +195,24 @@ struct WelcomeWindowView: View {
     // MARK: - Layout
 
     private var welcomeContent: some View {
-        HStack(spacing: 0) {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             WelcomeLeftPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
                 onCreateConnection: { WindowOpener.shared.openConnectionForm() }
             )
-            Divider()
-            rightPanel
+            .navigationSplitViewColumnWidth(240)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            connectionsDetail
         }
+        .navigationSplitViewStyle(.balanced)
         .transition(.opacity)
     }
 
-    // MARK: - Right Panel
+    // MARK: - Detail (Connections)
 
-    private var rightPanel: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                HStack(spacing: 4) {
-                    WelcomeToolbarButton(
-                        systemImage: "plus",
-                        help: String(localized: "New Connection (⌘N)"),
-                        accessibilityLabel: String(localized: "New Connection")
-                    ) {
-                        WindowOpener.shared.openConnectionForm()
-                    }
-
-                    WelcomeToolbarButton(
-                        systemImage: "folder.badge.plus",
-                        help: String(localized: "New Group"),
-                        accessibilityLabel: String(localized: "New Group")
-                    ) {
-                        vm.pendingMoveToNewGroup = []
-                        vm.activeSheet = .newGroup(parentId: nil)
-                    }
-                }
-                .padding(.trailing, 12)
-
-                NativeSearchField(
-                    text: $vm.searchText,
-                    placeholder: String(localized: "Search for connection..."),
-                    controlSize: .regular
-                )
-                .focused($focus, equals: .search)
-                .onKeyPress(.return) {
-                    vm.connectSelectedConnections()
-                    return .handled
-                }
-                .onKeyPress(.escape) {
-                    if !vm.searchText.isEmpty {
-                        vm.searchText = ""
-                    }
-                    focus = .connectionList
-                    return .handled
-                }
-                .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
-                    guard keyPress.modifiers.contains(.command) else { return .ignored }
-                    let toDelete = vm.selectedConnections
-                    guard !toDelete.isEmpty else { return .ignored }
-                    vm.connectionsToDelete = toDelete
-                    vm.showDeleteConfirmation = true
-                    return .handled
-                }
-                .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
-                    guard keyPress.modifiers.contains(.control) else { return .ignored }
-                    vm.moveToNextConnection()
-                    focus = .connectionList
-                    return .handled
-                }
-                .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
-                    guard keyPress.modifiers.contains(.control) else { return .ignored }
-                    vm.moveToPreviousConnection()
-                    focus = .connectionList
-                    return .handled
-                }
-                .onKeyPress(.downArrow) {
-                    vm.moveToNextConnection()
-                    focus = .connectionList
-                    return .handled
-                }
-                .onKeyPress(.upArrow) {
-                    vm.moveToPreviousConnection()
-                    focus = .connectionList
-                    return .handled
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            Divider()
-
+    private var connectionsDetail: some View {
+        Group {
             if vm.treeItems.isEmpty && vm.filteredConnections.isEmpty {
                 emptyState
             } else {
@@ -297,6 +222,34 @@ struct WelcomeWindowView: View {
         .frame(minWidth: 350)
         .contentShape(Rectangle())
         .contextMenu { newConnectionContextMenu }
+        .searchable(
+            text: $vm.searchText,
+            placement: .toolbar,
+            prompt: Text("Search for connection...")
+        )
+        .onSubmit(of: .search) {
+            vm.connectSelectedConnections()
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    WindowOpener.shared.openConnectionForm()
+                } label: {
+                    Label(String(localized: "New Connection"), systemImage: "plus")
+                }
+                .help(String(localized: "New Connection (⌘N)"))
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    vm.pendingMoveToNewGroup = []
+                    vm.activeSheet = .newGroup(parentId: nil)
+                } label: {
+                    Label(String(localized: "New Group"), systemImage: "folder.badge.plus")
+                }
+                .help(String(localized: "New Group"))
+            }
+        }
     }
 
     // MARK: - Connection List
@@ -664,47 +617,6 @@ private struct ConnectionCreationOverlays: ViewModifier {
                     }
                 )
             }
-    }
-}
-
-// MARK: - Visual Effect Background
-
-private struct VisualEffectBackground: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .followsWindowActiveState
-        view.isEmphasized = true
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {
-        view.material = material
-        view.blendingMode = blendingMode
-    }
-}
-
-// MARK: - Toolbar Button
-
-private struct WelcomeToolbarButton: View {
-    let systemImage: String
-    let help: String
-    let accessibilityLabel: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .frame(width: 16, height: 16)
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.large)
-        .help(help)
-        .accessibilityLabel(accessibilityLabel)
     }
 }
 

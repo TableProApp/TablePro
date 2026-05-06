@@ -61,7 +61,7 @@ struct WelcomeLeftPanel: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 20)
         }
-        .frame(width: 260)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var versionLine: some View {

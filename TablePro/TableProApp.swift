@@ -636,7 +636,7 @@ struct TableProApp: App {
     var body: some Scene {
         Window("Welcome to TablePro", id: SceneId.welcome) {
             WelcomeWindowView()
-                .frame(width: 700, height: 450)
+                .frame(width: 820, height: 500)
                 .background(WindowOpenerBridge())
                 .background(WindowChromeConfigurator(
                     restorable: false,
@@ -646,7 +646,6 @@ struct TableProApp: App {
                 ))
         }
         .windowResizability(.contentSize)
-        .windowStyle(.hiddenTitleBar)
         .commandsRemoved()
 
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
