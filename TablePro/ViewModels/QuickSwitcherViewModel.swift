@@ -86,9 +86,7 @@ internal final class QuickSwitcherViewModel {
                 Self.logger.warning("Failed to fetch databases for quick switcher: \(error.localizedDescription, privacy: .public)")
             }
 
-            // Schemas (only for databases that support them)
-            let supportsSchemas = [DatabaseType.postgresql, .redshift, .oracle, .mssql]
-            if supportsSchemas.contains(databaseType) {
+            if PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
                 do {
                     let schemas = try await driver.fetchSchemas()
                     for schema in schemas {

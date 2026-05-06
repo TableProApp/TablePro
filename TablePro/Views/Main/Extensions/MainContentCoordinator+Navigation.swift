@@ -428,9 +428,21 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Switch to a different PostgreSQL schema (used for URL-based schema selection)
     func switchSchema(to schema: String) async {
-        guard PluginManager.shared.supportsSchemaSwitching(for: connection.type) else { return }
+        guard PluginManager.shared.supportsSchemaSwitching(for: connection.type) else {
+            navigationLogger.warning(
+                "switchSchema(to: \(schema, privacy: .public)) ignored: \(connection.type.rawValue, privacy: .public) does not support schema switching"
+            )
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Schema Switching Not Supported"),
+                message: String(
+                    format: String(localized: "%@ does not support switching schemas in TablePro."),
+                    connection.type.rawValue
+                ),
+                window: contentWindow
+            )
+            return
+        }
 
         clearFilterState()
         let previousSchema = toolbarState.databaseName
