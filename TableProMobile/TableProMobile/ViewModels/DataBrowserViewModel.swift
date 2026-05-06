@@ -36,7 +36,7 @@ final class DataBrowserViewModel {
     private static let flushBatchSize = 200
     private static let flushIntervalNanos: UInt64 = 50_000_000
 
-    init(windowCapacity: Int = 200) {
+    init(windowCapacity: Int = 1_000) {
         self.window = RowWindow(capacity: windowCapacity)
     }
 
