@@ -39,7 +39,7 @@ struct ConnectionStatusView: View {
         HStack(spacing: 6) {
             Circle()
                 .fill(displayColor)
-                .frame(width: 8, height: 8)
+                .frame(width: 10, height: 10)
                 .overlay(
                     Circle()
                         .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
@@ -50,7 +50,7 @@ struct ConnectionStatusView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: 280, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .help(connectionTooltip)
         .accessibilityElement(children: .combine)
@@ -85,6 +85,8 @@ struct ConnectionStatusView: View {
             Text(databaseName)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 
