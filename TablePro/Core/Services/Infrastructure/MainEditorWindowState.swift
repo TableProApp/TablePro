@@ -27,6 +27,7 @@ internal final class MainEditorWindowState {
     @ObservationIgnored private var closingSessionId: UUID?
     @ObservationIgnored private var connectionStatusObserver: NSObjectProtocol?
     @ObservationIgnored private weak var hostWindow: NSWindow?
+    @ObservationIgnored private var schemaObservationTask: Task<Void, Never>?
 
     init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?) {
         self.payload = payload
@@ -75,6 +76,7 @@ internal final class MainEditorWindowState {
         if let observer = connectionStatusObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        schemaObservationTask?.cancel()
     }
 
     // MARK: - Lifecycle
@@ -86,6 +88,48 @@ internal final class MainEditorWindowState {
             window.subtitle = session.connection.name
         }
         installObservers()
+        startSchemaObservation()
+    }
+
+    /// Bind sidebar column visibility to schema-loaded state. The sidebar
+    /// appears only after `SchemaService` reports `.loaded` for the current
+    /// connection, mirroring the original behavior where the sidebar's table
+    /// list was hidden until the first fetch completed.
+    private func startSchemaObservation() {
+        schemaObservationTask?.cancel()
+        schemaObservationTask = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.applyVisibilityForSchemaState()
+                await withCheckedContinuation { continuation in
+                    withObservationTracking {
+                        guard let cid = self?.currentSession?.connection.id else { return }
+                        _ = SchemaService.shared.state(for: cid)
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+            }
+        }
+    }
+
+    private func applyVisibilityForSchemaState() {
+        guard let connectionId = currentSession?.connection.id else {
+            if sidebarColumnVisibility != .detailOnly {
+                sidebarColumnVisibility = .detailOnly
+            }
+            return
+        }
+        let shouldShow: Bool
+        switch SchemaService.shared.state(for: connectionId) {
+        case .loaded:
+            shouldShow = true
+        default:
+            shouldShow = false
+        }
+        let target: NavigationSplitViewVisibility = shouldShow ? .all : .detailOnly
+        if sidebarColumnVisibility != target {
+            sidebarColumnVisibility = target
+        }
     }
 
     func wireCoordinatorIfNeeded() {
@@ -204,7 +248,9 @@ internal final class MainEditorWindowState {
             sessionState = state
             state.coordinator.editorWindowState = self
         }
-        sidebarColumnVisibility = .all
+        // Sidebar visibility is driven by `SchemaService` state via
+        // `startSchemaObservation` — it appears after schema is loaded,
+        // not when session is merely connected.
     }
 
     // MARK: - Static helpers
