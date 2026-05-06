@@ -172,10 +172,7 @@ internal final class AppLaunchCoordinator {
             showWelcomeWindow()
             return
         }
-        for window in NSApp.windows where Self.isWelcomeWindow(window) {
-            window.orderOut(nil)
-        }
-        Task { [weak self] in
+        Task {
             for connection in valid {
                 let payload = EditorTabPayload(
                     connectionId: connection.id, intent: .restoreOrDefault
@@ -194,11 +191,13 @@ internal final class AppLaunchCoordinator {
                     }
                 }
             }
-            for window in NSApp.windows where Self.isWelcomeWindow(window) {
-                window.close()
+            let hasVisibleMain = NSApp.windows.contains {
+                Self.isMainWindow($0) && $0.isVisible
             }
-            if !NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) {
-                self?.showWelcomeWindow()
+            if hasVisibleMain {
+                for window in NSApp.windows where Self.isWelcomeWindow(window) {
+                    window.close()
+                }
             }
         }
     }
