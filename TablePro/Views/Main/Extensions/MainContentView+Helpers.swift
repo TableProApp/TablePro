@@ -25,25 +25,28 @@ extension MainContentView {
             let hasPendingEdits =
                 changeManager.hasChanges
                 || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
-            guard !hasPendingEdits else { return }
-            coordinator.needsLazyLoad = false
-            if let selectedTab = tabManager.selectedTab,
-                !selectedTab.tableContext.databaseName.isEmpty,
-                selectedTab.tableContext.databaseName != session.activeDatabase
-            {
-                Task { await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName) }
-            } else if let selectedTab = tabManager.selectedTab,
-                let tabSchema = selectedTab.tableContext.schemaName,
-                !tabSchema.isEmpty,
-                tabSchema != session.currentSchema
-            {
-                // Restore schema on the driver without clearing tabs (unlike switchSchema which resets UI)
-                Task {
-                    await coordinator.restoreSchemaAndRunQuery(tabSchema)
+            if !hasPendingEdits {
+                coordinator.needsLazyLoad = false
+                if let selectedTab = tabManager.selectedTab,
+                    !selectedTab.tableContext.databaseName.isEmpty,
+                    selectedTab.tableContext.databaseName != session.activeDatabase
+                {
+                    Task { await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName) }
+                } else if let selectedTab = tabManager.selectedTab,
+                    let tabSchema = selectedTab.tableContext.schemaName,
+                    !tabSchema.isEmpty,
+                    tabSchema != session.currentSchema
+                {
+                    Task {
+                        await coordinator.restoreSchemaAndRunQuery(tabSchema)
+                    }
+                } else {
+                    coordinator.runQuery()
                 }
-            } else {
-                coordinator.runQuery()
             }
+        }
+        if session.isConnected {
+            coordinator.lazyLoadCurrentTabIfNeeded()
         }
         let mappedState = mapSessionStatus(session.status)
         if mappedState != toolbarState.connectionState {
