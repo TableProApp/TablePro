@@ -179,9 +179,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             )
         }
 
-        sidebarContainer.view.layoutSubtreeIfNeeded()
-        sidebarContainer.view.display()
-
         installObservers()
     }
 
