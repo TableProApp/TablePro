@@ -23,6 +23,7 @@ final class QueryEditorViewModel {
 
     private(set) var columns: [ColumnInfo] = []
     private(set) var window: RowWindow
+    private(set) var legacyRows: [[String?]] = []
     private(set) var rowsReceived: Int = 0
     private(set) var phase: Phase = .idle
     private(set) var rowsAffected: Int?
@@ -58,6 +59,7 @@ final class QueryEditorViewModel {
         phase = .running
         columns = []
         window.clear()
+        legacyRows.removeAll(keepingCapacity: true)
         rowsReceived = 0
         rowsAffected = nil
         statusMessage = nil
@@ -102,6 +104,7 @@ final class QueryEditorViewModel {
         flushTask = nil
         columns = []
         window.clear()
+        legacyRows.removeAll(keepingCapacity: true)
         rowsReceived = 0
         rowsAffected = nil
         statusMessage = nil
@@ -119,12 +122,19 @@ final class QueryEditorViewModel {
             case .warning:
                 Self.logger.warning("Memory pressure warning: shrinking editor window to 100 rows")
                 self.window.shrink(to: 100)
+                self.shrinkLegacyRows(to: 100)
             case .critical:
                 Self.logger.error("Memory pressure critical: cancelling editor stream and shrinking to 50 rows")
                 self.window.shrink(to: 50)
+                self.shrinkLegacyRows(to: 50)
                 self.fetchTask?.cancel()
             }
         }
+    }
+
+    private func shrinkLegacyRows(to count: Int) {
+        guard legacyRows.count > count else { return }
+        legacyRows.removeFirst(legacyRows.count - count)
     }
 
     private func apply(element: StreamElement) {
@@ -165,7 +175,13 @@ final class QueryEditorViewModel {
         flushTask?.cancel()
         flushTask = nil
         guard !pendingRows.isEmpty else { return }
+        let legacyBatch = pendingRows.map(\.legacyValues)
         window.append(contentsOf: pendingRows)
+        legacyRows.append(contentsOf: legacyBatch)
+        if legacyRows.count > window.count {
+            let drop = legacyRows.count - window.count
+            legacyRows.removeFirst(drop)
+        }
         rowsReceived = pendingRowsReceived
         pendingRows.removeAll(keepingCapacity: true)
     }

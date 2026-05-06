@@ -57,7 +57,7 @@ struct DataBrowserView: View {
     }
 
     private var columns: [ColumnInfo] { viewModel.columns }
-    private var rows: [[String?]] { viewModel.window.rows.map(\.legacyValues) }
+    private var rows: [[String?]] { viewModel.legacyRows }
 
     private var paginationLabel: String {
         guard !rows.isEmpty else { return "" }

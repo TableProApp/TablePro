@@ -28,7 +28,7 @@ struct QueryEditorView: View {
         }()
         return QueryResult(
             columns: viewModel.columns,
-            rows: viewModel.window.rows.map(\.legacyValues),
+            rows: viewModel.legacyRows,
             rowsAffected: viewModel.rowsAffected ?? 0,
             executionTime: viewModel.executionTime,
             isTruncated: isTruncated,

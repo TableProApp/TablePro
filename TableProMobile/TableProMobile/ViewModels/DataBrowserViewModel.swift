@@ -23,6 +23,7 @@ final class DataBrowserViewModel {
 
     private(set) var columns: [ColumnInfo] = []
     private(set) var window: RowWindow
+    private(set) var legacyRows: [[String?]] = []
     private(set) var totalRows: Int?
     private(set) var phase: Phase = .idle
     private(set) var rowsAffected: Int?
@@ -56,6 +57,7 @@ final class DataBrowserViewModel {
         phase = .loading
         columns = []
         window.clear()
+        legacyRows.removeAll(keepingCapacity: true)
         rowsAffected = nil
         statusMessage = nil
         pendingRows.removeAll(keepingCapacity: true)
@@ -109,9 +111,11 @@ final class DataBrowserViewModel {
             case .warning:
                 Self.logger.warning("Memory pressure warning: shrinking window to 100 rows")
                 self.window.shrink(to: 100)
+                self.shrinkLegacyRows(to: 100)
             case .critical:
                 Self.logger.error("Memory pressure critical: shrinking window to 50 rows and cancelling")
                 self.window.shrink(to: 50)
+                self.shrinkLegacyRows(to: 50)
                 self.fetchTask?.cancel()
             }
         }
@@ -154,8 +158,18 @@ final class DataBrowserViewModel {
         flushTask?.cancel()
         flushTask = nil
         guard !pendingRows.isEmpty else { return }
+        let legacyBatch = pendingRows.map(\.legacyValues)
         window.append(contentsOf: pendingRows)
+        legacyRows.append(contentsOf: legacyBatch)
+        if legacyRows.count > window.count {
+            legacyRows.removeFirst(legacyRows.count - window.count)
+        }
         pendingRows.removeAll(keepingCapacity: true)
+    }
+
+    private func shrinkLegacyRows(to count: Int) {
+        guard legacyRows.count > count else { return }
+        legacyRows.removeFirst(legacyRows.count - count)
     }
 
     private func classify(error: Error) -> AppError {
