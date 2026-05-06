@@ -10,6 +10,10 @@
 import SwiftUI
 import TableProPluginKit
 
+private enum ToolbarPrincipalLayout {
+    static let edgePadding: CGFloat = 8
+}
+
 /// Content for the principal (center) toolbar area.
 /// Displays environment badge, connection status, safe-mode badge, and execution indicator.
 struct ToolbarPrincipalContent: View {
@@ -47,6 +51,6 @@ struct ToolbarPrincipalContent: View {
                 onCancel: onCancelQuery
             )
         }
-        .padding(.leading, tag == nil ? 8 : 0)
+        .padding(.horizontal, ToolbarPrincipalLayout.edgePadding)
     }
 }
