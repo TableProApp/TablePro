@@ -8,12 +8,12 @@ import os
 import TableProDatabase
 import TableProModels
 
-public actor StreamingExporter {
+actor StreamingExporter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "StreamingExporter")
 
-    public init() {}
+    init() {}
 
-    public func exportToFile(
+    func exportToFile(
         driver: DatabaseDriver,
         query: String,
         format: ExportFormat,
@@ -124,7 +124,7 @@ public actor StreamingExporter {
     }
 }
 
-public extension ExportFormat {
+extension ExportFormat {
     var fileExtension: String {
         switch self {
         case .csv: return "csv"

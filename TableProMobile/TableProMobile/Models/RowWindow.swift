@@ -6,57 +6,57 @@
 import Foundation
 import TableProModels
 
-public struct RowWindow: Sendable {
-    public private(set) var rows: [Row]
-    public private(set) var firstAbsoluteIndex: Int
-    public private(set) var totalAppended: Int
-    public let capacity: Int
+struct RowWindow: Sendable {
+    private(set) var rows: [Row]
+    private(set) var firstAbsoluteIndex: Int
+    private(set) var totalAppended: Int
+    let capacity: Int
 
-    public init(capacity: Int = 200) {
+    init(capacity: Int = 200) {
         self.rows = []
         self.firstAbsoluteIndex = 0
         self.totalAppended = 0
         self.capacity = max(1, capacity)
     }
 
-    public mutating func append(_ row: Row) {
+    mutating func append(_ row: Row) {
         rows.append(row)
         totalAppended += 1
         slideForwardIfOverCapacity()
     }
 
-    public mutating func append(contentsOf newRows: [Row]) {
+    mutating func append(contentsOf newRows: [Row]) {
         for row in newRows {
             append(row)
         }
     }
 
-    public mutating func shrink(to maxCount: Int) {
+    mutating func shrink(to maxCount: Int) {
         guard maxCount >= 0, rows.count > maxCount else { return }
         let dropCount = rows.count - maxCount
         rows.removeFirst(dropCount)
         firstAbsoluteIndex += dropCount
     }
 
-    public mutating func clear() {
+    mutating func clear() {
         rows = []
         firstAbsoluteIndex = 0
         totalAppended = 0
     }
 
-    public var lastAbsoluteIndex: Int {
+    var lastAbsoluteIndex: Int {
         firstAbsoluteIndex + rows.count - 1
     }
 
-    public var isEmpty: Bool {
+    var isEmpty: Bool {
         rows.isEmpty
     }
 
-    public var count: Int {
+    var count: Int {
         rows.count
     }
 
-    public func row(atAbsolute absoluteIndex: Int) -> Row? {
+    func row(atAbsolute absoluteIndex: Int) -> Row? {
         let relative = absoluteIndex - firstAbsoluteIndex
         guard rows.indices.contains(relative) else { return nil }
         return rows[relative]

@@ -8,23 +8,23 @@ import os
 
 @MainActor
 @Observable
-public final class MemoryPressureMonitor {
-    public static let shared = MemoryPressureMonitor()
+final class MemoryPressureMonitor {
+    static let shared = MemoryPressureMonitor()
 
-    public enum Level: Sendable {
+    enum Level: Sendable {
         case normal
         case warning
         case critical
     }
 
-    public private(set) var currentLevel: Level = .normal
+    private(set) var currentLevel: Level = .normal
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MemoryPressureMonitor")
     private var source: DispatchSourceMemoryPressure?
 
     private init() {}
 
-    public func start() {
+    func start() {
         guard source == nil else { return }
 
         let newSource = DispatchSource.makeMemoryPressureSource(
@@ -45,15 +45,15 @@ public final class MemoryPressureMonitor {
         source = newSource
     }
 
-    public func reset() {
+    func reset() {
         currentLevel = .normal
     }
 
-    nonisolated public func availableMemoryBytes() -> Int {
+    nonisolated func availableMemoryBytes() -> Int {
         Int(os_proc_available_memory())
     }
 
-    nonisolated public func hasHeadroom(forBytes requiredBytes: Int) -> Bool {
+    nonisolated func hasHeadroom(forBytes requiredBytes: Int) -> Bool {
         let available = availableMemoryBytes()
         guard available > 0 else { return true }
         return available > requiredBytes
