@@ -26,7 +26,6 @@ struct TagBadgeView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(tag.color.color, in: Capsule())
-            .padding(.leading, 8)
             .help(String(format: String(localized: "Tag: %@"), tag.name))
             .accessibilityLabel(String(format: String(localized: "Tag: %@"), tag.name))
     }

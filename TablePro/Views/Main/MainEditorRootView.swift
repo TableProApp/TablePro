@@ -113,7 +113,8 @@ internal struct MainEditorRootView: View {
 
     @ViewBuilder
     private var inspectorColumn: some View {
-        if let session = windowState.currentSession,
+        if windowState.inspectorPresented,
+           let session = windowState.currentSession,
            let rightPanelState = windowState.rightPanelState {
             UnifiedRightPanelView(
                 state: rightPanelState,

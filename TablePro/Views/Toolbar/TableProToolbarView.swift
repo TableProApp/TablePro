@@ -10,6 +10,10 @@
 import SwiftUI
 import TableProPluginKit
 
+private enum ToolbarPrincipalLayout {
+    static let edgePadding: CGFloat = 8
+}
+
 /// Content for the principal (center) toolbar area.
 /// Displays environment badge, connection status, safe-mode badge, and execution indicator.
 struct ToolbarPrincipalContent: View {
@@ -18,10 +22,10 @@ struct ToolbarPrincipalContent: View {
     var onCancelQuery: (() -> Void)?
 
     var body: some View {
+        let tag = state.tagId.flatMap { TagStorage.shared.tag(for: $0) }
+
         HStack(spacing: 10) {
-            if let tagId = state.tagId,
-               let tag = TagStorage.shared.tag(for: tagId)
-            {
+            if let tag {
                 TagBadgeView(tag: tag)
             }
 
@@ -32,7 +36,7 @@ struct ToolbarPrincipalContent: View {
                 connectionName: state.connectionName,
                 connectionState: state.connectionState,
                 displayColor: state.displayColor,
-                tagName: state.tagId.flatMap { TagStorage.shared.tag(for: $0)?.name },
+                tagName: tag?.name,
                 safeModeLevel: state.safeModeLevel,
                 onSwitchDatabase: onSwitchDatabase
             )
@@ -47,5 +51,6 @@ struct ToolbarPrincipalContent: View {
                 onCancel: onCancelQuery
             )
         }
+        .padding(.horizontal, ToolbarPrincipalLayout.edgePadding)
     }
 }
