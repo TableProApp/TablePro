@@ -38,7 +38,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
     private var sidebarButtons: [NSButton] = []
     private var sidebarObservationTask: Task<Void, Never>?
-    private var splitViewObserver: NSObjectProtocol?
 
     internal init(coordinator: MainContentCoordinator) {
         self.coordinator = coordinator
@@ -70,10 +69,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     func invalidate() {
         sidebarObservationTask?.cancel()
         sidebarObservationTask = nil
-        if let observer = splitViewObserver {
-            NotificationCenter.default.removeObserver(observer)
-            splitViewObserver = nil
-        }
         sidebarButtons = []
         hostingControllers.removeAll()
         coordinator = nil
@@ -548,7 +543,7 @@ extension MainWindowToolbar {
         guard let coordinator else { return }
         let tabs: [SidebarTab] = [.tables, .favorites]
         guard sender.tag >= 0, sender.tag < tabs.count else { return }
-        coordinator.splitViewController?.setSidebarTab(tabs[sender.tag])
+        coordinator.editorWindowState?.setSidebarTab(tabs[sender.tag])
     }
 
     fileprivate func syncSidebarButtonState(coordinator: MainContentCoordinator) {
@@ -556,7 +551,7 @@ extension MainWindowToolbar {
         let state = coordinator.toolbarState
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
         let isConnected = state.connectionState == .connected || state.connectionState == .executing
-        let sidebarVisible = !(coordinator.splitViewController?.isSidebarCollapsed ?? true)
+        let sidebarVisible = !(coordinator.editorWindowState?.isSidebarCollapsed ?? true)
         let icons = ["list.bullet", "star"]
         let activeIcons = ["list.bullet", "star.fill"]
 
@@ -573,7 +568,9 @@ extension MainWindowToolbar {
     fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
         sidebarObservationTask?.cancel()
 
-        // Observe @Observable state changes (selected tab, connection state)
+        // Observe @Observable state changes (selected tab, connection state,
+        // sidebar column visibility). Replaces the NSSplitView resize KVO that
+        // was previously scoped to NSSplitViewController.
         sidebarObservationTask = Task { [weak self, weak coordinator] in
             guard let coordinator else { return }
             while !Task.isCancelled {
@@ -582,6 +579,7 @@ extension MainWindowToolbar {
                     withObservationTracking {
                         _ = coordinator.toolbarState.connectionState
                         _ = sidebarState.selectedSidebarTab
+                        _ = coordinator.editorWindowState?.sidebarColumnVisibility
                     } onChange: {
                         continuation.resume()
                     }
@@ -590,19 +588,6 @@ extension MainWindowToolbar {
                 await MainActor.run {
                     self.syncSidebarButtonState(coordinator: coordinator)
                 }
-            }
-        }
-
-        // Observe NSSplitView resize to catch sidebar collapse/expand from
-        // keyboard shortcut, drag, or any non-button path.
-        splitViewObserver = NotificationCenter.default.addObserver(
-            forName: NSSplitView.didResizeSubviewsNotification,
-            object: coordinator.splitViewController?.splitView,
-            queue: .main
-        ) { [weak self, weak coordinator] _ in
-            MainActor.assumeIsolated {
-                guard let self, let coordinator else { return }
-                self.syncSidebarButtonState(coordinator: coordinator)
             }
         }
     }

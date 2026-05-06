@@ -117,11 +117,10 @@ final class MainContentCoordinator {
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 
-    /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
-    @ObservationIgnored weak var inspectorProxy: InspectorVisibilityProxy?
-
-    /// Direct reference to split view controller for sidebar toggle
-    @ObservationIgnored weak var splitViewController: MainSplitViewController?
+    /// Window-level UI state (sidebar collapse, inspector presented, window title).
+    /// Replaces the old `inspectorProxy` + `splitViewController` weak references.
+    /// This is the SwiftUI-side state object owned by `TabWindowController`.
+    @ObservationIgnored weak var editorWindowState: MainEditorWindowState?
 
     /// Direct reference to this coordinator's content window, used for presenting alerts.
     /// Avoids NSApp.keyWindow which may return a sheet window, causing stuck dialogs.
@@ -462,7 +461,7 @@ final class MainContentCoordinator {
     }
 
     func showAIChatPanel() {
-        inspectorProxy?.showInspector()
+        editorWindowState?.showInspector()
         rightPanelState?.activeTab = .aiChat
     }
 

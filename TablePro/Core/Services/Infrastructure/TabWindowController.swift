@@ -2,18 +2,10 @@
 //  TabWindowController.swift
 //  TablePro
 //
-//  NSWindowController for an editor-tab-window. Replaces the SwiftUI
-//  `WindowGroup(id: "main", for: EditorTabPayload.self)` scene.
-//
-//  Phase 1 scope: window creation, NSHostingView installation, tabbing
-//  configuration. Existing MainContentView lifecycle hooks (.onAppear,
-//  .onDisappear, NSWindow notification observers, .userActivity) continue to
-//  work unchanged — this controller's job in Phase 1 is limited to replacing
-//  SwiftUI scene-driven window construction.
-//
-//  Phase 2 will migrate lifecycle responsibilities (markActivated, teardown,
-//  userActivity, didBecomeKey/didResignKey) into NSWindowDelegate methods
-//  on this controller.
+//  NSWindowController for an editor-tab-window. Hosts a SwiftUI
+//  `MainEditorRootView` (NavigationSplitView + .inspector) inside a single
+//  NSHostingController, replacing the previous NSSplitViewController + 3
+//  separate NSHostingControllers (sidebar, detail, inspector).
 //
 
 import AppKit
@@ -46,24 +38,26 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     }()
 
     internal let payload: EditorTabPayload
-
-    /// Stable identifier for this controller. Distinct from the
-    /// `MainContentView.@State windowId` used inside WindowLifecycleMonitor —
-    /// that one remains the authoritative per-view UUID in Phase 1. Phase 2
-    /// will unify them on this controller's identifier.
     internal let controllerId: UUID
 
-    /// NSUserActivity published while this window is key, so Handoff and
-    /// other continuity flows can pick up the connection (and table, if
-    /// viewing one). Replaces the SwiftUI `.userActivity(...)` modifier we
-    /// removed in Phase 2 — `.userActivity` requires a Scene context and
-    /// emitted `Cannot use Scene methods for URL, NSUserActivity...` warnings
-    /// when used inside an `NSHostingView`.
+    /// Owns the SwiftUI scene's session state. Lives as long as the window.
+    private let windowState: MainEditorWindowState
+
+    /// NSToolbar owner. Installed once per window when a coordinator becomes
+    /// available, invalidated on window close.
+    private var toolbarOwner: MainWindowToolbar?
+
+    /// Observes `windowState.sessionState` so the toolbar can be installed
+    /// when a connection completes after window opening (e.g. cold launch
+    /// reconnect).
+    private var sessionObservationTask: Task<Void, Never>?
+
     private var activity: NSUserActivity?
 
     internal init(payload: EditorTabPayload, sessionState: SessionStateFactory.SessionState? = nil) {
         self.payload = payload
         self.controllerId = UUID()
+        self.windowState = MainEditorWindowState(payload: payload, sessionState: sessionState)
 
         let window = EditorWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
@@ -76,38 +70,24 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isRestorable = false
         window.applyAutosaveName("MainEditorWindow")
         window.toolbarStyle = .unified
-        // Hide the window title ("Query 1 / TablePro") embedded in the unified
-        // toolbar — otherwise it claims leading space and pushes our navigation
-        // items to the right of it. Tab group's tab bar already shows the same
-        // "Query N" label, so no information is lost. The Principal toolbar item
-        // continues to show connection name + DB version.
         window.titleVisibility = .hidden
         window.tabbingMode = .preferred
         window.tabbingIdentifier = WindowManager.tabbingIdentifier(for: payload.connectionId)
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
 
-        // NSSplitViewController as contentViewController so .toggleSidebar and
-        // .sidebarTrackingSeparator find the split view via the responder chain.
-        let splitVC = MainSplitViewController(payload: payload, sessionState: sessionState)
-        window.contentViewController = splitVC
+        let hosting = NSHostingController(rootView: MainEditorRootView(windowState: self.windowState))
+        window.contentViewController = hosting
 
         super.init(window: window)
 
-        // Keep the controller alive after the window closes so NSWindowDelegate
-        // hooks have time to run teardown. WindowManager drops its strong
-        // reference on willClose, which triggers dealloc.
         window.isReleasedWhenClosed = false
-
-        // Become the window's delegate so didBecomeKey/didResignKey/willClose
-        // dispatch to methods on this controller — eliminates the global
-        // NotificationCenter fan-out that previously ran every ContentView
-        // instance's observer per focus change.
         window.delegate = self
 
-        // Toolbar is installed by MainSplitViewController.viewWillAppear when
-        // the session state is available. NSSplitViewController does not
-        // overwrite window.toolbar (unlike NavigationSplitView), so no KVO
-        // workaround is needed.
+        windowState.attachWindow(window)
+        windowState.wireCoordinatorIfNeeded()
+
+        installToolbarIfPossible()
+        startSessionObservation()
 
         Self.lifecycleLogger.info(
             "[open] TabWindowController.init payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) controllerId=\(self.controllerId, privacy: .public) eagerToolbar=\(sessionState != nil)"
@@ -117,6 +97,43 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("TabWindowController does not support NSCoder init")
+    }
+
+    // MARK: - Toolbar
+
+    /// Install the NSToolbar when a coordinator is available. Idempotent.
+    /// Replaces the old `MainSplitViewController.installToolbar`.
+    private func installToolbarIfPossible() {
+        guard let window, let coordinator = windowState.sessionState?.coordinator else { return }
+        if toolbarOwner == nil {
+            toolbarOwner = MainWindowToolbar(coordinator: coordinator)
+        }
+        if let owner = toolbarOwner, window.toolbar !== owner.managedToolbar {
+            window.toolbar = owner.managedToolbar
+        }
+    }
+
+    /// Watch `windowState.sessionState` for the case where the connection
+    /// completes after the window has opened (cold launch + reconnect, dock
+    /// menu open). Installs the toolbar once the coordinator is available.
+    private func startSessionObservation() {
+        sessionObservationTask?.cancel()
+        let state = windowState
+        sessionObservationTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let hasCoordinator = state.sessionState?.coordinator != nil
+                if hasCoordinator {
+                    self?.installToolbarIfPossible()
+                }
+                await withCheckedContinuation { continuation in
+                    withObservationTracking {
+                        _ = state.sessionState?.coordinator
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - NSWindowDelegate
@@ -135,9 +152,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         Self.lifecycleLogger.debug(
             "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
         )
-        if let splitVC = window.contentViewController as? MainSplitViewController {
-            splitVC.installToolbar(coordinator: coordinator)
-        }
+        installToolbarIfPossible()
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) installToolbar ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         CommandActionsRegistry.shared.current = coordinator.commandActions
         updateUserActivity(coordinator: coordinator)
@@ -170,9 +185,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow else { return }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
 
-        if let splitVC = window.contentViewController as? MainSplitViewController {
-            splitVC.invalidateToolbar()
-        }
+        toolbarOwner?.invalidate()
+        toolbarOwner = nil
+        sessionObservationTask?.cancel()
+        sessionObservationTask = nil
 
         let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         coordinator?.handleWindowWillClose()
@@ -188,10 +204,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - NSUserActivity
 
-    /// Publish (or refresh) this window's NSUserActivity. Called by
-    /// `windowDidBecomeKey` and by `MainContentView` when the selected tab
-    /// changes — only the second case is a no-op when the window isn't key
-    /// (Handoff only cares about the active activity).
     internal func refreshUserActivity() {
         guard let window, window.isKeyWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
@@ -205,8 +217,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let tableName: String? = (selectedTab?.tabType == .table) ? selectedTab?.tableContext.tableName : nil
         let activityType = tableName != nil ? "com.TablePro.viewTable" : "com.TablePro.viewConnection"
 
-        // Recreate when the activity type flips between viewConnection and
-        // viewTable — NSUserActivity.activityType is immutable.
         if activity?.activityType != activityType {
             activity?.invalidate()
             let newActivity = NSUserActivity(activityType: activityType)
@@ -221,14 +231,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             info["tableName"] = tableName
         }
         activity.userInfo = info
-
-        // Always promote to current. Both call sites (`windowDidBecomeKey` and
-        // `refreshUserActivity` which guards on `window.isKeyWindow`) only
-        // invoke this method when the window owns Handoff. The previous
-        // `becomeCurrent: Bool` parameter dropped Continuity mid-session
-        // whenever the user switched between table and query tabs in the
-        // same window — the type-flip branch above invalidated the old
-        // activity but never promoted the replacement.
         activity.becomeCurrent()
     }
 }

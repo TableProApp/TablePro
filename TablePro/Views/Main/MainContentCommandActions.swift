@@ -718,7 +718,7 @@ final class MainContentCommandActions {
     }
 
     func toggleRightSidebar() {
-        coordinator?.inspectorProxy?.toggleInspector()
+        coordinator?.editorWindowState?.toggleInspector()
     }
 
     func toggleResults() {

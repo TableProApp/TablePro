@@ -389,7 +389,7 @@ struct MainContentView: View {
                     AppSettingsManager.shared.dataGrid.autoShowInspector,
                     tabManager.selectedTab?.tabType == .table
                 {
-                    coordinator.inspectorProxy?.showInspector()
+                    coordinator.editorWindowState?.showInspector()
                 }
                 scheduleInspectorUpdate(lazyLoadExcludedColumns: true)
             },

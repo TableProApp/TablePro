@@ -260,9 +260,10 @@ extension MainContentView {
             CommandActionsRegistry.shared.current = actions
         }
 
-        if let splitVC = window.contentViewController as? MainSplitViewController {
-            splitVC.installToolbar(coordinator: coordinator)
-        }
+        // Toolbar installation is owned by `TabWindowController` now.
+        // It observes the coordinator's session state and installs the
+        // NSToolbar when one becomes available, then re-installs on every
+        // windowDidBecomeKey. No manual hookup needed here.
         MainContentView.lifecycleLogger.info(
             "[open] configureWindow done windowId=\(windowId, privacy: .public) tabbingId=\(resolvedId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
