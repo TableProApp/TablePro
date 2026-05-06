@@ -123,7 +123,7 @@ struct WelcomeWindowView: View {
             welcomeChooserState = WelcomeChooserState(
                 initialType: payload.initialType,
                 onSelected: { type in
-                    if PluginManager.shared.isDriverInstalled(for: type) {
+                    if PluginManager.shared.isDriverLoaded(for: type) {
                         PendingNewConnectionType.shared.set(type)
                         payload.onSelected(type)
                     } else {
@@ -219,7 +219,6 @@ struct WelcomeWindowView: View {
                 connectionList
             }
         }
-        .frame(minWidth: 350)
         .contentShape(Rectangle())
         .contextMenu { newConnectionContextMenu }
         .searchable(
