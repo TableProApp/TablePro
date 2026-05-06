@@ -12,8 +12,6 @@ final class CustomizationPaneViewModel {
     var tagId: UUID?
     var groupId: UUID?
     var safeModeLevel: SafeModeLevel = .silent
-    var showSafeModeProAlert: Bool = false
-    var showActivationSheet: Bool = false
 
     var coordinator: WeakCoordinatorRef?
 

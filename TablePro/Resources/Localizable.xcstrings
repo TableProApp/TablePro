@@ -35418,6 +35418,7 @@
 
     },
     "Pro License Required" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -38005,6 +38006,7 @@
       }
     },
     "Require confirmation or Touch ID before executing queries." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -39212,9 +39214,6 @@
           }
         }
       }
-    },
-    "Safe Mode, Safe Mode (Full), and Read Only require a Pro license." : {
-
     },
     "Safe Mode, Safe Mode (Full), and Read-Only require a Pro license." : {
       "extractionState" : "stale",

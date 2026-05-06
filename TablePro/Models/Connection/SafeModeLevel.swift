@@ -28,13 +28,6 @@ internal extension SafeModeLevel {
         }
     }
 
-    var requiresPro: Bool {
-        switch self {
-        case .safeMode, .safeModeFull, .readOnly: return true
-        case .silent, .alert, .alertFull: return false
-        }
-    }
-
     var blocksAllWrites: Bool {
         self == .readOnly
     }

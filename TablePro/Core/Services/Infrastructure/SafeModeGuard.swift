@@ -24,14 +24,6 @@ internal final class SafeModeGuard {
         window: NSWindow?,
         databaseType: DatabaseType? = nil
     ) async -> Permission {
-        let effectiveLevel: SafeModeLevel
-        if level.requiresPro && !LicenseManager.shared.isFeatureAvailable(.safeMode) {
-            logger.info("Safe mode \(level.rawValue) requires Pro license; downgrading to silent")
-            effectiveLevel = .silent
-        } else {
-            effectiveLevel = level
-        }
-
         let effectiveIsWrite: Bool
         if let dbType = databaseType, !PluginManager.shared.supportsReadOnlyMode(for: dbType) {
             effectiveIsWrite = true
@@ -39,7 +31,7 @@ internal final class SafeModeGuard {
             effectiveIsWrite = isWriteOperation
         }
 
-        switch effectiveLevel {
+        switch level {
         case .silent:
             return .allowed
 
