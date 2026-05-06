@@ -31,7 +31,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
         guard let direction = sortDirection else {
-            super.drawInterior(withFrame: cellFrame, in: controlView)
+            drawTitle(in: titleRect(forBounds: cellFrame), font: titleFont(isSorted: false))
             return
         }
 
@@ -49,7 +49,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
             width: max(0, cellFrame.width - reservedWidth),
             height: cellFrame.height
         )
-        drawSortedTitle(in: titleFrame)
+        drawTitle(in: titleRect(forBounds: titleFrame), font: titleFont(isSorted: true))
 
         let indicatorOriginX = cellFrame.maxX - Self.indicatorPadding - indicatorSize.width
         let indicatorOriginY = cellFrame.midY - indicatorSize.height / 2
@@ -73,16 +73,29 @@ final class SortableHeaderCell: NSTableHeaderCell {
         }
     }
 
-    private func drawSortedTitle(in rect: NSRect) {
-        let baseFont = font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        let inset = min(Self.titleHorizontalPadding, rect.width / 2)
+        return NSRect(
+            x: rect.minX + inset,
+            y: rect.minY,
+            width: max(0, rect.width - inset * 2),
+            height: rect.height
+        )
+    }
 
+    private func titleFont(isSorted: Bool) -> NSFont {
+        let baseFont = font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        guard isSorted else { return baseFont }
+        return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+    }
+
+    private func drawTitle(in rect: NSRect, font titleFont: NSFont) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = .byTruncatingTail
 
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: boldFont,
+            .font: titleFont,
             .foregroundColor: NSColor.headerTextColor,
             .paragraphStyle: paragraph
         ]
@@ -90,9 +103,9 @@ final class SortableHeaderCell: NSTableHeaderCell {
         let title = NSAttributedString(string: stringValue, attributes: attributes)
         let textHeight = title.size().height
         let drawRect = NSRect(
-            x: rect.minX + Self.titleHorizontalPadding,
+            x: rect.minX,
             y: rect.midY - textHeight / 2,
-            width: max(0, rect.width - Self.titleHorizontalPadding),
+            width: rect.width,
             height: textHeight
         )
         title.draw(in: drawRect)

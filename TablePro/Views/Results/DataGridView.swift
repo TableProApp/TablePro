@@ -74,6 +74,10 @@ struct DataGridView: NSViewRepresentable {
         rowNumberColumn.maxWidth = 60
         rowNumberColumn.isEditable = false
         rowNumberColumn.resizingMask = []
+        let rowNumberHeaderCell = SortableHeaderCell(textCell: "#")
+        rowNumberHeaderCell.font = rowNumberColumn.headerCell.font
+        rowNumberHeaderCell.alignment = .right
+        rowNumberColumn.headerCell = rowNumberHeaderCell
         rowNumberColumn.headerCell.setAccessibilityLabel(String(localized: "Row number"))
         tableView.addTableColumn(rowNumberColumn)
         rowNumberColumn.isHidden = !configuration.showRowNumbers
