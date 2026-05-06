@@ -67,18 +67,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.action = #selector(TableViewCoordinator.handleClick(_:))
         tableView.doubleAction = #selector(TableViewCoordinator.handleDoubleClick(_:))
 
-        let rowNumberColumn = NSTableColumn(identifier: ColumnIdentitySchema.rowNumberIdentifier)
-        rowNumberColumn.title = "#"
-        rowNumberColumn.width = 40
-        rowNumberColumn.minWidth = 40
-        rowNumberColumn.maxWidth = 60
-        rowNumberColumn.isEditable = false
-        rowNumberColumn.resizingMask = []
-        let rowNumberHeaderCell = SortableHeaderCell(textCell: "#")
-        rowNumberHeaderCell.font = rowNumberColumn.headerCell.font
-        rowNumberHeaderCell.alignment = .right
-        rowNumberColumn.headerCell = rowNumberHeaderCell
-        rowNumberColumn.headerCell.setAccessibilityLabel(String(localized: "Row number"))
+        let rowNumberColumn = Self.makeRowNumberColumn()
         tableView.addTableColumn(rowNumberColumn)
         rowNumberColumn.isHidden = !configuration.showRowNumbers
 
@@ -322,6 +311,24 @@ struct DataGridView: NSViewRepresentable {
     }
 
     // MARK: - Column Layout Helpers
+
+    @MainActor
+    static func makeRowNumberColumn() -> NSTableColumn {
+        let column = NSTableColumn(identifier: ColumnIdentitySchema.rowNumberIdentifier)
+        column.title = "#"
+        column.width = 40
+        column.minWidth = 40
+        column.maxWidth = 60
+        column.isEditable = false
+        column.resizingMask = []
+        let defaultHeaderFont = column.headerCell.font
+        let headerCell = SortableHeaderCell(textCell: "#")
+        headerCell.font = defaultHeaderFont
+        headerCell.alignment = .right
+        headerCell.setAccessibilityLabel(String(localized: "Row number"))
+        column.headerCell = headerCell
+        return column
+    }
 
     static let firstDataTableColumnIndex: Int = 1
 

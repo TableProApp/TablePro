@@ -13,7 +13,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
     private static let priorityFontSize: CGFloat = 9
-    private static let titleHorizontalPadding: CGFloat = 4
+    private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
 
     override init(textCell string: String) {
         super.init(textCell: string)
@@ -30,27 +30,12 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
-        guard let direction = sortDirection else {
-            drawTitle(in: titleRect(forBounds: cellFrame), font: titleFont(isSorted: false))
-            return
-        }
+        drawTitle(in: titleRect(forBounds: cellFrame), font: titleFont(isSorted: sortDirection != nil))
+
+        guard let direction = sortDirection else { return }
 
         let indicatorImage = Self.indicatorImage(for: direction)
-        let indicatorSize = indicatorImage?.size ?? NSSize(width: 9, height: 6)
-        let priorityText = priorityNumberString()
-        let priorityWidth = priorityText.map { Self.measureWidth(of: $0) } ?? 0
-        let reservedWidth = indicatorSize.width
-            + Self.indicatorPadding * 2
-            + (priorityText == nil ? 0 : priorityWidth + Self.indicatorSpacing)
-
-        let titleFrame = NSRect(
-            x: cellFrame.minX,
-            y: cellFrame.minY,
-            width: max(0, cellFrame.width - reservedWidth),
-            height: cellFrame.height
-        )
-        drawTitle(in: titleRect(forBounds: titleFrame), font: titleFont(isSorted: true))
-
+        let indicatorSize = indicatorImage?.size ?? Self.defaultIndicatorSize
         let indicatorOriginX = cellFrame.maxX - Self.indicatorPadding - indicatorSize.width
         let indicatorOriginY = cellFrame.midY - indicatorSize.height / 2
         let indicatorRect = NSRect(
@@ -61,7 +46,8 @@ final class SortableHeaderCell: NSTableHeaderCell {
         )
         Self.drawIndicator(image: indicatorImage, in: indicatorRect)
 
-        if let priorityText {
+        if let priorityText = priorityNumberString() {
+            let priorityWidth = Self.measureWidth(of: priorityText)
             let textOriginX = indicatorOriginX - Self.indicatorSpacing - priorityWidth
             let textRect = NSRect(
                 x: textOriginX,
@@ -74,13 +60,23 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     override func titleRect(forBounds rect: NSRect) -> NSRect {
-        let inset = min(Self.titleHorizontalPadding, rect.width / 2)
+        let inset = min(DataGridMetrics.cellHorizontalInset, rect.width / 2)
+        let availableWidth = max(0, rect.width - inset * 2 - reservedTrailingWidth())
         return NSRect(
             x: rect.minX + inset,
             y: rect.minY,
-            width: max(0, rect.width - inset * 2),
+            width: availableWidth,
             height: rect.height
         )
+    }
+
+    private func reservedTrailingWidth() -> CGFloat {
+        guard let direction = sortDirection else { return 0 }
+        let indicatorWidth = Self.indicatorImage(for: direction)?.size.width
+            ?? Self.defaultIndicatorSize.width
+        let priorityText = priorityNumberString()
+        let priorityComponent = priorityText.map { Self.measureWidth(of: $0) + Self.indicatorSpacing } ?? 0
+        return indicatorWidth + Self.indicatorPadding * 2 + priorityComponent
     }
 
     private func titleFont(isSorted: Bool) -> NSFont {
