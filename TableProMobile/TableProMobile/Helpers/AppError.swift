@@ -54,10 +54,25 @@ enum ErrorClassifier {
     static func classify(_ error: Error, context: ErrorContext) -> AppError {
         let message = error.localizedDescription.lowercased()
 
-        // Log the error
         logger.error("[\(context.operation)] \(error.localizedDescription, privacy: .public)")
 
-        // SSH errors
+        if error is LocalNetworkPermissionError {
+            return AppError(
+                category: .network,
+                title: String(localized: "Local Network Access Required"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Open Settings > Privacy & Security > Local Network and turn TablePro on, then try again."),
+                underlying: error
+            )
+        }
+
+        let host = context.host ?? ""
+        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.isLocalNetworkHost(host)
+        let timedOut = message.contains("timeout") || message.contains("timed out") || message.contains("operation timed out") || message.contains("system error: 60")
+        if mayUseLocalNetwork && timedOut {
+            return network(error, context: context)
+        }
+
         if message.contains("ssh") || message.contains("tunnel") || message.contains("handshake") {
             return ssh(error, context: context)
         }
@@ -142,11 +157,18 @@ enum ErrorClassifier {
 
     private static func network(_ error: Error, context: ErrorContext) -> AppError {
         let msg = error.localizedDescription
+        let lowered = msg.lowercased()
         let recovery: String
 
-        if msg.lowercased().contains("timeout") || msg.lowercased().contains("timed out") {
+        let isTimeout = lowered.contains("timeout") || lowered.contains("timed out") || lowered.contains("operation timed out") || lowered.contains("system error: 60")
+        let host = context.host ?? ""
+        let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.isLocalNetworkHost(host)
+
+        if isTimeout && mayUseLocalNetwork {
+            recovery = String(localized: "Local Network access may be blocked. Open Settings > Privacy & Security > Local Network and turn TablePro on.")
+        } else if isTimeout {
             recovery = String(localized: "The server is not responding. Check the host and port.")
-        } else if msg.lowercased().contains("refused") {
+        } else if lowered.contains("refused") {
             recovery = String(localized: "Connection refused. The server may not be running or the port is incorrect.")
         } else {
             recovery = String(localized: "Check your network connection and server availability.")
@@ -185,7 +207,7 @@ enum ErrorClassifier {
     }
 
     private static func config(_ error: Error, context: ErrorContext) -> AppError {
-        return AppError(
+        AppError(
             category: .config,
             title: String(localized: "Configuration Error"),
             message: error.localizedDescription,

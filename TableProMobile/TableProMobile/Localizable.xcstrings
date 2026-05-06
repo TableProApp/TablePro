@@ -86,6 +86,9 @@
         }
       }
     },
+    "%d row(s) affected" : {
+
+    },
     "%lld" : {
       "localizations" : {
         "vi" : {
@@ -2006,6 +2009,12 @@
         }
       }
     },
+    "Local Network access is required. Open Settings > Privacy & Security > Local Network and turn TablePro on." : {
+
+    },
+    "Local Network Access Required" : {
+
+    },
     "Logic" : {
       "localizations" : {
         "vi" : {
@@ -2519,6 +2528,9 @@
         }
       }
     },
+    "Open Settings > Privacy & Security > Local Network and turn TablePro on, then try again." : {
+
+    },
     "Opens a database connection in TablePro" : {
       "localizations" : {
         "vi" : {
@@ -2967,6 +2979,9 @@
           }
         }
       }
+    },
+    "Run" : {
+
     },
     "Run a Query" : {
       "localizations" : {
@@ -3432,6 +3447,9 @@
           }
         }
       }
+    },
+    "Stop" : {
+
     },
     "Switching..." : {
       "extractionState" : "stale",

@@ -38,6 +38,7 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, sslEnabled: sslEnabled)
         serverVersion = await actor.serverVersion()
     }

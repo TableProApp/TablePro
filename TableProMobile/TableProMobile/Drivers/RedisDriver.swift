@@ -38,6 +38,7 @@ final class RedisDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, password: password, database: database, sslEnabled: sslEnabled)
         serverVersion = try? await actor.fetchServerVersion()
     }
