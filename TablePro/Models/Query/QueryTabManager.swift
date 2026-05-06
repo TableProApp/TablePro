@@ -38,6 +38,14 @@ final class QueryTabManager {
         self.tabSessionRegistry = tabSessionRegistry
     }
 
+    func attachSessionRegistryIfNeeded(_ registry: TabSessionRegistry) {
+        guard tabSessionRegistry == nil else { return }
+        tabSessionRegistry = registry
+        for tab in tabs where registry.session(for: tab.id) == nil {
+            registry.register(TabSession(queryTab: tab))
+        }
+    }
+
     private func syncTabSessionRegistry(oldTabs: [QueryTab], newTabs: [QueryTab]) {
         guard let registry = tabSessionRegistry else { return }
         let oldIds = Set(oldTabs.map(\.id))
