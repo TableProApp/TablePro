@@ -81,6 +81,9 @@ final class MainContentCoordinator {
 
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
+    var activeDatabaseName: String {
+        DatabaseManager.shared.activeDatabaseName(for: connection)
+    }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
@@ -824,7 +827,7 @@ final class MainContentCoordinator {
             }
             tabManager.tabs[tabIndex].hasUserInteraction = true
         } else if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: connection.database)
+            tabManager.addTab(initialQuery: query, databaseName: activeDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,

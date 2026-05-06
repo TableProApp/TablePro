@@ -537,7 +537,7 @@ final class AIChatViewModel {
         guard let connection else { return nil }
         return PromptContext(
             databaseType: connection.type,
-            databaseName: connection.database,
+            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
             tables: tables,
             columnsByTable: columnsByTable,
             foreignKeys: foreignKeysByTable,

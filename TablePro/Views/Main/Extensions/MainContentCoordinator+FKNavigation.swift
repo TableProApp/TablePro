@@ -29,13 +29,7 @@ extension MainContentCoordinator {
             value: value
         )
 
-        // Get current database context
-        let currentDatabase: String
-        if let session = DatabaseManager.shared.session(for: connectionId) {
-            currentDatabase = session.activeDatabase
-        } else {
-            currentDatabase = connection.database
-        }
+        let currentDatabase = activeDatabaseName
 
         let targetSchema = fkInfo.referencedSchema ?? DatabaseManager.shared.session(for: connectionId)?.currentSchema
 

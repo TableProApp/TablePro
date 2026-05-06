@@ -77,7 +77,7 @@ extension DatabaseManager {
 
                 // Record each statement in query history
                 let connId = connectionId
-                let dbName = self.activeSessions[connectionId]?.connection.database ?? ""
+                let dbName = self.activeSessions[connectionId]?.activeDatabase ?? ""
                 for stmt in statements {
                     QueryHistoryManager.shared.recordQuery(
                         query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",

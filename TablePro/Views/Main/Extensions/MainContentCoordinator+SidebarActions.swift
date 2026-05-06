@@ -41,12 +41,12 @@ extension MainContentCoordinator {
         guard !safeModeLevel.blocksAllWrites else { return }
 
         if tabManager.tabs.isEmpty {
-            tabManager.addCreateTableTab(databaseName: connection.database)
+            tabManager.addCreateTableTab(databaseName: activeDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
                 tabType: .createTable,
-                databaseName: connection.database
+                databaseName: activeDatabaseName
             )
             WindowManager.shared.openTab(payload: payload)
         }
@@ -64,7 +64,7 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: connection.database,
+            databaseName: activeDatabaseName,
             initialQuery: template
         )
         WindowManager.shared.openTab(payload: payload)

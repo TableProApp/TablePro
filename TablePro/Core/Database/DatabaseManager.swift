@@ -83,6 +83,13 @@ final class DatabaseManager {
         activeSessions[connectionId]
     }
 
+    /// Authoritative active database for this connection. Use for tab payloads,
+    /// query history, schema cache keys, and AI prompt context. Reading
+    /// `connection.database` (the saved default) is wrong after Cmd+K.
+    func activeDatabaseName(for connection: DatabaseConnection) -> String {
+        activeSessions[connection.id]?.activeDatabase ?? connection.database
+    }
+
     /// Current connection status
     var status: ConnectionStatus {
         currentSession?.status ?? .disconnected

@@ -228,13 +228,14 @@ actor SQLSchemaProvider {
         }
 
         let dbType = connection.type
-        let dbName = connection.database
+        let capturedConnection = connection
         let capturedTables = tables
-        let (idQuote, editorLanguage, queryLanguageName) = await MainActor.run {
+        let (dbName, idQuote, editorLanguage, queryLanguageName) = await MainActor.run {
+            let resolvedName = DatabaseManager.shared.activeDatabaseName(for: capturedConnection)
             let quote = PluginManager.shared.sqlDialect(for: dbType)?.identifierQuote ?? "\""
             let lang = PluginManager.shared.editorLanguage(for: dbType)
             let langName = PluginManager.shared.queryLanguageName(for: dbType)
-            return (quote, lang, langName)
+            return (resolvedName, quote, lang, langName)
         }
 
         return AISchemaContext.buildSystemPrompt(

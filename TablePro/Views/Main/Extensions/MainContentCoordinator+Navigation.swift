@@ -20,18 +20,14 @@ extension MainContentCoordinator {
             forTypeId: connection.type.pluginTypeId
         )?.navigationModel ?? .standard
 
-        // Get current database name from active session (may differ from connection default after Cmd+K switch)
         let currentDatabase: String
         if navigationModel == .inPlace {
-            // In-place navigation: extract db index from table name "db3" → "3"
             guard tableName.hasPrefix("db"), Int(String(tableName.dropFirst(2))) != nil else {
                 return
             }
             currentDatabase = String(tableName.dropFirst(2))
-        } else if let session = DatabaseManager.shared.session(for: connectionId) {
-            currentDatabase = session.activeDatabase
         } else {
-            currentDatabase = connection.database
+            currentDatabase = activeDatabaseName
         }
 
         let currentSchema = DatabaseManager.shared.session(for: connectionId)?.currentSchema
@@ -366,14 +362,14 @@ extension MainContentCoordinator {
         if editorLang == .javascript {
             tabManager.addTab(
                 initialQuery: "db.runCommand({\"listCollections\": 1, \"nameOnly\": false})",
-                databaseName: connection.database
+                databaseName: activeDatabaseName
             )
             runQuery()
             return nil
         } else if editorLang == .bash {
             tabManager.addTab(
                 initialQuery: "SCAN 0 MATCH * COUNT 100",
-                databaseName: connection.database
+                databaseName: activeDatabaseName
             )
             runQuery()
             return nil
