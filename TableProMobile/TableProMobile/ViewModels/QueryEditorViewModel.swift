@@ -85,6 +85,17 @@ final class QueryEditorViewModel {
         fetchTask?.cancel()
     }
 
+    func reset() {
+        fetchTask?.cancel()
+        columns = []
+        window.clear()
+        rowsReceived = 0
+        rowsAffected = nil
+        statusMessage = nil
+        executionTime = 0
+        phase = .idle
+    }
+
     nonisolated func handlePressure(_ level: MemoryPressureMonitor.Level) async {
         await MainActor.run {
             switch level {

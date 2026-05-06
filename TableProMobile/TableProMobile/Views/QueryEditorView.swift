@@ -107,7 +107,7 @@ struct QueryEditorView: View {
         ) {
             Button(String(localized: "Clear"), role: .destructive) {
                 query = ""
-                result = nil
+                viewModel.reset()
                 appError = nil
                 executionTime = nil
             }
