@@ -14,11 +14,27 @@ struct QueryEditorView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
     @State private var query = ""
-    @State private var result: QueryResult?
+    @State private var viewModel = QueryEditorViewModel()
     @State private var appError: AppError?
     @State private var isExecuting = false
     @State private var executionTime: TimeInterval?
     @State private var executeTask: Task<Void, Never>?
+
+    private var result: QueryResult? {
+        guard !viewModel.columns.isEmpty || viewModel.rowsAffected != nil else { return nil }
+        let isTruncated: Bool = {
+            if case .truncated = viewModel.phase { return true }
+            return false
+        }()
+        return QueryResult(
+            columns: viewModel.columns,
+            rows: viewModel.window.rows.map(\.legacyValues),
+            rowsAffected: viewModel.rowsAffected ?? 0,
+            executionTime: viewModel.executionTime,
+            isTruncated: isTruncated,
+            statusMessage: viewModel.statusMessage
+        )
+    }
     @State private var saveQueryTask: Task<Void, Never>?
     @State private var executionStartTime: Date?
     @State private var showWriteConfirmation = false
@@ -389,22 +405,21 @@ struct QueryEditorView: View {
             executionStartTime = nil
         }
         appError = nil
-        result = nil
 
-        do {
-            let queryResult = try await session.driver.execute(query: trimmed)
-            self.result = queryResult
-            self.executionTime = queryResult.executionTime
-            hapticSuccess.toggle()
+        await viewModel.run(driver: session.driver, query: trimmed)
 
-            IOSAnalyticsProvider.shared.markFirstQueryExecuted()
-
-            let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
-            coordinator.addHistoryItem(item)
-        } catch {
-            let context = ErrorContext(operation: "executeQuery")
-            self.appError = ErrorClassifier.classify(error, context: context)
+        if case .error(let err) = viewModel.phase {
+            appError = err
             hapticError.toggle()
+            return
         }
+
+        executionTime = viewModel.executionTime
+        hapticSuccess.toggle()
+
+        IOSAnalyticsProvider.shared.markFirstQueryExecuted()
+
+        let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
+        coordinator.addHistoryItem(item)
     }
 }

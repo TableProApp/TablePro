@@ -81,6 +81,55 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         await actor.cancel()
     }
 
+    func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        let actor = self.actor
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let beginResult = try await actor.beginStream(query: query)
+                    switch beginResult {
+                    case .commandOk(let affectedRows):
+                        if affectedRows != 0 {
+                            continuation.yield(.rowsAffected(affectedRows))
+                        }
+                        continuation.finish()
+                        return
+                    case .tuples(let columns):
+                        continuation.yield(.columns(columns))
+                        var emitted = 0
+                        while !Task.isCancelled, emitted < options.maxRows {
+                            guard let cells = try await actor.fetchNextRow(options: options, columns: columns) else {
+                                break
+                            }
+                            continuation.yield(.row(Row(cells: cells)))
+                            emitted += 1
+                        }
+                        if Task.isCancelled {
+                            continuation.yield(.truncated(reason: .cancelled))
+                        } else if emitted >= options.maxRows {
+                            continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
+                        }
+                        await actor.endStream()
+                        continuation.finish()
+                    }
+                } catch is CancellationError {
+                    await actor.endStream()
+                    continuation.yield(.truncated(reason: .cancelled))
+                    continuation.finish()
+                } catch {
+                    await actor.endStream()
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { reason in
+                task.cancel()
+                if case .cancelled = reason {
+                    Task { await actor.cancel() }
+                }
+            }
+        }
+    }
+
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
@@ -411,6 +460,161 @@ private actor PostgreSQLActor {
             rowsAffected: 0, executionTime: Date().timeIntervalSince(start), isTruncated: isTruncated
         )
     }
+
+    // MARK: - Streaming
+
+    private var pendingResult: OpaquePointer?
+    private var streamingFinished = true
+
+    func beginStream(query: String) throws -> PGBeginStreamResult {
+        guard let conn else { throw PostgreSQLError.notConnected }
+        endStream()
+
+        guard PQsendQuery(conn, query) == 1 else {
+            throw PostgreSQLError.queryFailed(String(cString: PQerrorMessage(conn)))
+        }
+        guard PQsetSingleRowMode(conn) == 1 else {
+            drainResults()
+            throw PostgreSQLError.queryFailed("Failed to enter single-row streaming mode")
+        }
+        streamingFinished = false
+
+        guard let firstResult = PQgetResult(conn) else {
+            streamingFinished = true
+            return .commandOk(affectedRows: 0)
+        }
+
+        let status = PQresultStatus(firstResult)
+        switch status {
+        case PGRES_COMMAND_OK:
+            let affectedStr = String(cString: PQcmdTuples(firstResult))
+            let affected = Int(affectedStr) ?? 0
+            PQclear(firstResult)
+            drainResults()
+            return .commandOk(affectedRows: affected)
+        case PGRES_TUPLES_OK:
+            let columns = parseColumns(firstResult)
+            PQclear(firstResult)
+            drainResults()
+            return .tuples(columns)
+        case PGRES_SINGLE_TUPLE:
+            let columns = parseColumns(firstResult)
+            pendingResult = firstResult
+            return .tuples(columns)
+        default:
+            let msg = String(cString: PQresultErrorMessage(firstResult))
+            PQclear(firstResult)
+            drainResults()
+            throw PostgreSQLError.queryFailed(msg)
+        }
+    }
+
+    func fetchNextRow(options: StreamOptions, columns: [ColumnInfo]) -> [Cell]? {
+        guard !streamingFinished else { return nil }
+
+        let result: OpaquePointer?
+        if let pending = pendingResult {
+            result = pending
+            pendingResult = nil
+        } else {
+            guard let conn else { streamingFinished = true; return nil }
+            result = PQgetResult(conn)
+        }
+
+        guard let result else {
+            streamingFinished = true
+            return nil
+        }
+
+        let status = PQresultStatus(result)
+        if status == PGRES_TUPLES_OK {
+            PQclear(result)
+            drainResults()
+            return nil
+        }
+
+        guard status == PGRES_SINGLE_TUPLE else {
+            PQclear(result)
+            drainResults()
+            return nil
+        }
+
+        var cells: [Cell] = []
+        cells.reserveCapacity(columns.count)
+        for c in 0..<columns.count {
+            let col = Int32(c)
+            if PQgetisnull(result, 0, col) == 1 {
+                cells.append(.null)
+            } else if let value = PQgetvalue(result, 0, col) {
+                let str = String(cString: value)
+                let ref = makeCellRef(column: columns[c].name, columns: columns, result: result, options: options)
+                cells.append(Cell.from(
+                    legacyValue: str,
+                    columnTypeName: columns[c].typeName,
+                    options: options,
+                    ref: ref
+                ))
+            } else {
+                cells.append(.null)
+            }
+        }
+        PQclear(result)
+        return cells
+    }
+
+    func endStream() {
+        drainResults()
+        streamingFinished = true
+    }
+
+    private func drainResults() {
+        if let pending = pendingResult {
+            PQclear(pending)
+            pendingResult = nil
+        }
+        guard let conn else { return }
+        while let extra = PQgetResult(conn) {
+            PQclear(extra)
+        }
+    }
+
+    private func parseColumns(_ result: OpaquePointer) -> [ColumnInfo] {
+        let colCount = Int(PQnfields(result))
+        var cols: [ColumnInfo] = []
+        for i in 0..<colCount {
+            let name = PQfname(result, Int32(i)).map { String(cString: $0) } ?? "col_\(i)"
+            let oid = PQftype(result, Int32(i))
+            cols.append(ColumnInfo(
+                name: name,
+                typeName: pgOidToTypeName(oid),
+                isPrimaryKey: false,
+                isNullable: true,
+                defaultValue: nil,
+                comment: nil,
+                characterMaxLength: nil,
+                ordinalPosition: i
+            ))
+        }
+        return cols
+    }
+
+    private func makeCellRef(column: String, columns: [ColumnInfo], result: OpaquePointer, options: StreamOptions) -> CellRef? {
+        guard let lazyContext = options.lazyContext, !lazyContext.primaryKeyColumns.isEmpty else { return nil }
+        var pkComponents: [PrimaryKeyComponent] = []
+        for pkColumn in lazyContext.primaryKeyColumns {
+            guard let columnIndex = columns.firstIndex(where: { $0.name == pkColumn }) else { return nil }
+            let col = Int32(columnIndex)
+            guard PQgetisnull(result, 0, col) == 0 else { return nil }
+            guard let cValue = PQgetvalue(result, 0, col) else { return nil }
+            pkComponents.append(PrimaryKeyComponent(column: pkColumn, value: String(cString: cValue)))
+        }
+        return CellRef(table: lazyContext.table, column: column, primaryKey: pkComponents)
+    }
+}
+
+enum PGBeginStreamResult: Sendable {
+    case tuples([ColumnInfo])
+    case commandOk(affectedRows: Int)
 }
 
 // MARK: - PostgreSQL OID Type Names

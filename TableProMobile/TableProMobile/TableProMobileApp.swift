@@ -55,6 +55,7 @@ struct TableProMobileApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
+                MemoryPressureMonitor.shared.start()
                 syncTask?.cancel()
                 syncTask = Task {
                     await appState.syncCoordinator.sync(

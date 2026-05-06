@@ -81,6 +81,50 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         // No-op for mobile.
     }
 
+    func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        let actor = self.actor
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let beginResult = try await actor.beginStream(query: query)
+                    switch beginResult {
+                    case .noResult(let affectedRows):
+                        if affectedRows != 0 {
+                            continuation.yield(.rowsAffected(affectedRows))
+                        }
+                        continuation.finish()
+                        return
+                    case .rowSet(let columns):
+                        continuation.yield(.columns(columns))
+                        var emitted = 0
+                        while !Task.isCancelled, emitted < options.maxRows {
+                            guard let cells = try await actor.fetchNextRow(options: options, columns: columns) else {
+                                break
+                            }
+                            continuation.yield(.row(Row(cells: cells)))
+                            emitted += 1
+                        }
+                        if Task.isCancelled {
+                            continuation.yield(.truncated(reason: .cancelled))
+                        } else if emitted >= options.maxRows {
+                            continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
+                        }
+                        await actor.endStream()
+                        continuation.finish()
+                    }
+                } catch is CancellationError {
+                    await actor.endStream()
+                    continuation.yield(.truncated(reason: .cancelled))
+                    continuation.finish()
+                } catch {
+                    await actor.endStream()
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
@@ -351,6 +395,106 @@ private actor MySQLActor {
             rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: isTruncated
         )
     }
+
+    // MARK: - Streaming
+
+    private var streamingResult: OpaquePointer?
+    private var streamingColumns: [ColumnInfo] = []
+
+    func beginStream(query: String) throws -> MySQLBeginStreamResult {
+        guard let mysql else { throw MySQLError.notConnected }
+        if streamingResult != nil {
+            endStream()
+        }
+
+        guard mysql_real_query(mysql, query, UInt(query.utf8.count)) == 0 else {
+            throw MySQLError.queryFailed(String(cString: mysql_error(mysql)))
+        }
+
+        guard let result = mysql_use_result(mysql) else {
+            if mysql_field_count(mysql) != 0 {
+                throw MySQLError.queryFailed(String(cString: mysql_error(mysql)))
+            }
+            let raw = mysql_affected_rows(mysql)
+            let affected = raw == .max ? 0 : Int(clamping: raw)
+            return .noResult(affectedRows: affected)
+        }
+
+        streamingResult = result
+
+        let fieldCount = Int(mysql_num_fields(result))
+        var columns: [ColumnInfo] = []
+        if let fields = mysql_fetch_fields(result) {
+            for i in 0..<fieldCount {
+                let field = fields[i]
+                let name = field.name.map { String(cString: $0) } ?? ""
+                columns.append(ColumnInfo(
+                    name: name,
+                    typeName: mysqlFieldTypeName(field.type.rawValue),
+                    isPrimaryKey: false,
+                    isNullable: true,
+                    defaultValue: nil,
+                    comment: nil,
+                    characterMaxLength: nil,
+                    ordinalPosition: i
+                ))
+            }
+        }
+        streamingColumns = columns
+        return .rowSet(columns)
+    }
+
+    func fetchNextRow(options: StreamOptions, columns: [ColumnInfo]) -> [Cell]? {
+        guard let result = streamingResult else { return nil }
+        guard let row = mysql_fetch_row(result) else { return nil }
+
+        let lengths = mysql_fetch_lengths(result)
+        var cells: [Cell] = []
+        cells.reserveCapacity(columns.count)
+
+        for i in 0..<columns.count {
+            if let value = row[i] {
+                let len = Int(clamping: lengths?[i] ?? 0)
+                let buffer = UnsafeBufferPointer(start: value, count: len)
+                let str = String(bytes: buffer, encoding: .utf8) ?? String(cString: value)
+                let cell = Cell.from(
+                    legacyValue: str,
+                    columnTypeName: columns[i].typeName,
+                    options: options,
+                    ref: makeCellRef(column: columns[i].name, row: row, options: options, columns: columns)
+                )
+                cells.append(cell)
+            } else {
+                cells.append(.null)
+            }
+        }
+        return cells
+    }
+
+    func endStream() {
+        guard let result = streamingResult else { return }
+        while mysql_fetch_row(result) != nil {}
+        mysql_free_result(result)
+        streamingResult = nil
+        streamingColumns = []
+    }
+
+    private func makeCellRef(column: String, row: MYSQL_ROW, options: StreamOptions, columns: [ColumnInfo]) -> CellRef? {
+        guard let lazyContext = options.lazyContext, !lazyContext.primaryKeyColumns.isEmpty else { return nil }
+
+        var pkComponents: [PrimaryKeyComponent] = []
+        for pkColumn in lazyContext.primaryKeyColumns {
+            guard let columnIndex = columns.firstIndex(where: { $0.name == pkColumn }) else { return nil }
+            guard let cValue = row[columnIndex] else { return nil }
+            pkComponents.append(PrimaryKeyComponent(column: pkColumn, value: String(cString: cValue)))
+        }
+        return CellRef(table: lazyContext.table, column: column, primaryKey: pkComponents)
+    }
+}
+
+enum MySQLBeginStreamResult: Sendable {
+    case rowSet([ColumnInfo])
+    case noResult(affectedRows: Int)
 }
 
 // MARK: - MySQL Field Type Names

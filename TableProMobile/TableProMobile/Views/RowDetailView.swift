@@ -75,19 +75,18 @@ struct RowDetailView: View {
     }
 
     var body: some View {
-        Group {
-            if isEditing {
-                rowContent(at: currentIndex)
-            } else {
-                TabView(selection: $currentIndex) {
-                    ForEach(Array(rows.indices), id: \.self) { index in
-                        rowContent(at: index)
-                            .tag(index)
+        rowContent(at: currentIndex)
+            .gesture(
+                DragGesture(minimumDistance: 30)
+                    .onEnded { value in
+                        guard !isEditing else { return }
+                        if value.translation.width < -50, currentIndex < rows.count - 1 {
+                            currentIndex += 1
+                        } else if value.translation.width > 50, currentIndex > 0 {
+                            currentIndex -= 1
+                        }
                     }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-            }
-        }
+            )
         .background(Color(.systemGroupedBackground))
         .onDisappear {
             dismissSuccessTask?.cancel()
