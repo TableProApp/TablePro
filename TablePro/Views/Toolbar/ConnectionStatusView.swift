@@ -21,7 +21,6 @@ struct ConnectionStatusView: View {
     var onSwitchDatabase: (() -> Void)?
 
     @ScaledMetric private var engineIconSize: CGFloat = 14
-    @ScaledMetric private var connectionDotSize: CGFloat = 10
 
     var body: some View {
         HStack(spacing: 10) {
@@ -42,12 +41,8 @@ struct ConnectionStatusView: View {
         HStack(spacing: 6) {
             databaseType.iconImage
                 .renderingMode(.template)
-                .foregroundStyle(databaseType.themeColor)
+                .foregroundStyle(displayColor)
                 .frame(width: engineIconSize, height: engineIconSize)
-
-            Circle()
-                .fill(displayColor)
-                .frame(width: connectionDotSize, height: connectionDotSize)
 
             Text(connectionName)
                 .font(.callout.weight(.medium))
