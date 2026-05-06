@@ -398,7 +398,7 @@ private actor MySQLActor {
 
     // MARK: - Streaming
 
-    private var streamingResult: OpaquePointer?
+    private var streamingResult: UnsafeMutablePointer<MYSQL_RES>?
     private var streamingColumns: [ColumnInfo] = []
 
     func beginStream(query: String) throws -> MySQLBeginStreamResult {
@@ -455,8 +455,8 @@ private actor MySQLActor {
         for i in 0..<columns.count {
             if let value = row[i] {
                 let len = Int(clamping: lengths?[i] ?? 0)
-                let buffer = UnsafeBufferPointer(start: value, count: len)
-                let str = String(bytes: buffer, encoding: .utf8) ?? String(cString: value)
+                let data = Data(bytes: value, count: len)
+                let str = String(data: data, encoding: .utf8) ?? String(cString: value)
                 let cell = Cell.from(
                     legacyValue: str,
                     columnTypeName: columns[i].typeName,
