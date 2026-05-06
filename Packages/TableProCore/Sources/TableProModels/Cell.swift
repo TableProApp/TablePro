@@ -14,8 +14,8 @@ public extension Cell {
             return "NULL"
         case .text(let value):
             return value
-        case .truncatedText(let prefix, let total, _):
-            return prefix + "… (\(byteCountFormatter.string(fromByteCount: Int64(total))))"
+        case .truncatedText(let head, let total, _):
+            return head + "... (\(byteCountFormatter.string(fromByteCount: Int64(total))))"
         case .binary(let count, _):
             return "[BLOB \(byteCountFormatter.string(fromByteCount: Int64(count)))]"
         }
@@ -78,8 +78,8 @@ public extension Row {
                 return nil
             case .text(let value):
                 return value
-            case .truncatedText(let prefix, _, _):
-                return prefix
+            case .truncatedText(let head, _, _):
+                return head
             case .binary:
                 return nil
             }
