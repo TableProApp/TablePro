@@ -96,6 +96,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         runPostLaunchActivationIfNeeded()
         SyncCoordinator.shared.syncIfNeeded()
+        ensureAtLeastOneVisibleWindow()
+    }
+
+    private func ensureAtLeastOneVisibleWindow() {
+        let hasVisibleWindow = NSApp.windows.contains { window in
+            guard window.isVisible else { return false }
+            return AppLaunchCoordinator.isMainWindow(window)
+                || AppLaunchCoordinator.isWelcomeWindow(window)
+        }
+        guard !hasVisibleWindow else { return }
+        WindowOpener.shared.openWelcome()
     }
 
     private func runPostLaunchActivationIfNeeded() {
