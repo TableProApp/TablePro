@@ -55,7 +55,7 @@ actor CloudKitSyncEngine {
     }
 
     func currentAccountId() async throws -> String? {
-        guard let container else { return nil }
+        guard let container else { throw SyncError.accountUnavailable }
         return try await container.userRecordID().recordName
     }
 

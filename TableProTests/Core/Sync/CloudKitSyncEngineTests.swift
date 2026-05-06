@@ -64,11 +64,12 @@ struct CloudKitSyncEngineTests {
         }
     }
 
-    @Test("currentAccountId returns nil without iCloud entitlement")
-    func currentAccountIdReturnsNil() async throws {
+    @Test("currentAccountId throws accountUnavailable without iCloud entitlement")
+    func currentAccountIdThrows() async throws {
         try skipIfEntitled()
         let engine = CloudKitSyncEngine()
-        let accountId = try await engine.currentAccountId()
-        #expect(accountId == nil)
+        await #expect(throws: SyncError.accountUnavailable) {
+            _ = try await engine.currentAccountId()
+        }
     }
 }
