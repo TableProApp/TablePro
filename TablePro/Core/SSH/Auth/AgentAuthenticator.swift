@@ -110,6 +110,6 @@ internal struct AgentAuthenticator: SSHAuthenticator {
         }
 
         Self.logger.error("SSH agent authentication failed: no identity accepted")
-        throw SSHTunnelError.authenticationFailed
+        throw SSHTunnelError.authenticationFailed(reason: .agentRejected)
     }
 }

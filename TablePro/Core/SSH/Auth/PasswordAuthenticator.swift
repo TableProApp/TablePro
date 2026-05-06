@@ -26,7 +26,7 @@ internal struct PasswordAuthenticator: SSHAuthenticator {
             libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
             let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
             Self.logger.error("Password authentication failed: \(detail)")
-            throw SSHTunnelError.authenticationFailed
+            throw SSHTunnelError.authenticationFailed(reason: .password)
         }
     }
 }

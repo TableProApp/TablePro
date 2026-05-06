@@ -42,7 +42,7 @@ struct SSHTunnelErrorTests {
 
     @Test("SSHTunnelError.authenticationFailed has a localized description")
     func authenticationFailedDescription() {
-        let error = SSHTunnelError.authenticationFailed
+        let error = SSHTunnelError.authenticationFailed(reason: .generic)
         #expect(error.errorDescription != nil)
     }
 

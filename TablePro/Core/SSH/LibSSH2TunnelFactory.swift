@@ -468,7 +468,7 @@ internal enum LibSSH2TunnelFactory {
             // Sequel Ace's behavior.
             guard let sshPassword = credentials.sshPassword else {
                 logger.error("SSH password is nil (Keychain lookup may have failed) for \(resolved.host)")
-                throw SSHTunnelError.authenticationFailed
+                throw SSHTunnelError.authenticationFailed(reason: .password)
             }
             let totpProvider = buildTOTPProvider(config: config, credentials: credentials)
             return CompositeAuthenticator(authenticators: [
@@ -479,7 +479,7 @@ internal enum LibSSH2TunnelFactory {
         case .privateKey:
             let keyPaths = effectiveKeyPaths(for: resolved)
             guard !keyPaths.isEmpty else {
-                throw SSHTunnelError.authenticationFailed
+                throw SSHTunnelError.authenticationFailed(reason: .privateKey)
             }
             var authenticators: [any SSHAuthenticator] = keyPaths.map { keyPath in
                 buildKeyFileAuthenticator(
@@ -599,11 +599,11 @@ internal enum LibSSH2TunnelFactory {
             }
 
             // 2. Prompt the user if allowed (key is encrypted, no stored passphrase)
-            guard canPrompt else { throw SSHTunnelError.authenticationFailed }
+            guard canPrompt else { throw SSHTunnelError.authenticationFailed(reason: .privateKey) }
 
             let provider = PromptPassphraseProvider(keyPath: expandedPath)
             guard let promptResult = provider.providePassphrase() else {
-                throw SSHTunnelError.authenticationFailed
+                throw SSHTunnelError.authenticationFailed(reason: .privateKey)
             }
 
             let retryAuth = PublicKeyAuthenticator(
@@ -643,7 +643,7 @@ internal enum LibSSH2TunnelFactory {
         case .privateKey:
             let keyPaths = effectiveKeyPaths(for: resolved)
             guard !keyPaths.isEmpty else {
-                throw SSHTunnelError.authenticationFailed
+                throw SSHTunnelError.authenticationFailed(reason: .privateKey)
             }
             let authenticators = keyPaths.map { path in
                 KeyFileAuthenticator(
