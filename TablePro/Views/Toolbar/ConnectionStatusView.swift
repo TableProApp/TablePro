@@ -20,6 +20,8 @@ struct ConnectionStatusView: View {
     var safeModeLevel: SafeModeLevel = .silent
     var onSwitchDatabase: (() -> Void)?
 
+    @ScaledMetric private var engineIconSize: CGFloat = 14
+
     var body: some View {
         HStack(spacing: 10) {
             connectionIdentitySection
@@ -37,13 +39,10 @@ struct ConnectionStatusView: View {
 
     private var connectionIdentitySection: some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(displayColor)
-                .frame(width: 10, height: 10)
-                .overlay(
-                    Circle()
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                )
+            databaseType.iconImage
+                .renderingMode(.template)
+                .foregroundStyle(displayColor)
+                .frame(width: engineIconSize, height: engineIconSize)
 
             Text(connectionName)
                 .font(.callout.weight(.medium))
