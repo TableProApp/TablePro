@@ -57,6 +57,7 @@ enum AIProviderRegistration {
                         endpoint: config.endpoint,
                         apiKey: apiKey,
                         providerType: config.type,
+                        model: config.model,
                         maxOutputTokens: config.maxOutputTokens
                     )
                 }
