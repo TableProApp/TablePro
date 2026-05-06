@@ -78,10 +78,8 @@ public extension Row {
                 return nil
             case .text(let value):
                 return value
-            case .truncatedText(let head, _, _):
-                return head
-            case .binary:
-                return nil
+            case .truncatedText, .binary:
+                return cell.displayString
             }
         }
     }

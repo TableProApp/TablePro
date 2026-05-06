@@ -37,7 +37,7 @@ final class QueryEditorViewModel {
     @ObservationIgnored private var startedAt: Date?
 
     private static let flushBatchSize = 200
-    private static let flushIntervalNanos: UInt64 = 50_000_000
+    private static let flushInterval: Duration = .milliseconds(50)
 
     init(windowCapacity: Int = 100_000) {
         self.window = RowWindow(capacity: windowCapacity)
@@ -164,7 +164,7 @@ final class QueryEditorViewModel {
         }
         if flushTask == nil {
             flushTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: Self.flushIntervalNanos)
+                try? await Task.sleep(for: Self.flushInterval)
                 guard !Task.isCancelled else { return }
                 self?.flushPendingRows()
             }

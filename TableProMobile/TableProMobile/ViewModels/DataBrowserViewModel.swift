@@ -35,7 +35,7 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
 
     private static let flushBatchSize = 200
-    private static let flushIntervalNanos: UInt64 = 50_000_000
+    private static let flushInterval: Duration = .milliseconds(50)
 
     init(windowCapacity: Int = 1_000) {
         self.window = RowWindow(capacity: windowCapacity)
@@ -147,7 +147,7 @@ final class DataBrowserViewModel {
         }
         if flushTask == nil {
             flushTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: Self.flushIntervalNanos)
+                try? await Task.sleep(for: Self.flushInterval)
                 guard !Task.isCancelled else { return }
                 self?.flushPendingRows()
             }

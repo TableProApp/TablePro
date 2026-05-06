@@ -237,11 +237,12 @@ struct QueryEditorView: View {
 
     private func resultList(_ result: QueryResult) -> some View {
         List {
-            ForEach(Array(result.rows.enumerated()), id: \.offset) { rowIndex, row in
+            ForEach(result.rows.indices, id: \.self) { rowIndex in
+                let row = result.rows[rowIndex]
                 NavigationLink {
                     RowDetailView(
                         columns: result.columns,
-                        rows: result.rows,
+                        rows: viewModel.window.rows,
                         initialIndex: rowIndex
                     )
                 } label: {

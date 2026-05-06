@@ -255,11 +255,12 @@ struct DataBrowserView: View {
 
     private var rowList: some View {
         List {
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+            ForEach(rows.indices, id: \.self) { index in
+                let row = rows[index]
                 NavigationLink {
                     RowDetailView(
                         columns: columns,
-                        rows: rows,
+                        rows: viewModel.window.rows,
                         initialIndex: index,
                         table: table,
                         session: session,
@@ -267,7 +268,11 @@ struct DataBrowserView: View {
                         databaseType: connection.type,
                         safeModeLevel: connection.safeModeLevel,
                         foreignKeys: foreignKeys,
-                        onSaved: { Task { await loadData() } }
+                        onSaved: { Task { await loadData() } },
+                        loadFullValue: { ref in
+                            guard let session else { return nil }
+                            return try await viewModel.loadFullValue(driver: session.driver, ref: ref)
+                        }
                     )
                 } label: {
                     RowCard(
