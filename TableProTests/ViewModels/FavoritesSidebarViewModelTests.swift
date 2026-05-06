@@ -285,6 +285,30 @@ struct FavoriteNodeTests {
                     return .folder(folder, children: filteredChildren)
                 }
                 return nil
+            case .linkedFavorite(let linked):
+                if linked.name.localizedCaseInsensitiveContains(searchText) ||
+                    (linked.keyword?.localizedCaseInsensitiveContains(searchText) == true) ||
+                    linked.relativePath.localizedCaseInsensitiveContains(searchText) {
+                    return node
+                }
+                return nil
+            case .linkedFolder(let folder):
+                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
+                if !filteredChildren.isEmpty || folder.name.localizedCaseInsensitiveContains(searchText) {
+                    return .linkedFolder(folder, children: filteredChildren)
+                }
+                return nil
+            case .linkedSubfolder(let folderId, let displayName, let pathPrefix):
+                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
+                if !filteredChildren.isEmpty || displayName.localizedCaseInsensitiveContains(searchText) {
+                    return .linkedSubfolder(
+                        folderId: folderId,
+                        displayName: displayName,
+                        pathPrefix: pathPrefix,
+                        children: filteredChildren
+                    )
+                }
+                return nil
             }
         }
     }
