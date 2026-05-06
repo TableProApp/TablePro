@@ -23,14 +23,14 @@ struct ExportConfiguration {
     var fileName: String = "export"
 
     var fullFileName: String {
-        guard let plugin = PluginManager.shared.exportPlugins[formatId] else {
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) else {
             return "\(fileName).\(formatId)"
         }
         return "\(fileName).\(plugin.currentFileExtension)"
     }
 
     var fileExtension: String {
-        guard let plugin = PluginManager.shared.exportPlugins[formatId] else {
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) else {
             return formatId
         }
         return plugin.currentFileExtension

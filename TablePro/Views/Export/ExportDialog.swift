@@ -162,7 +162,7 @@ struct ExportDialog: View {
 
     private var availableFormats: [any ExportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        return PluginManager.shared.exportPlugins.values
+        return PluginManager.shared.allExportPlugins()
             .filter { plugin in
                 let pluginType = type(of: plugin)
                 if !pluginType.supportedDatabaseTypeIds.isEmpty {
@@ -185,7 +185,7 @@ struct ExportDialog: View {
     }
 
     private var currentPlugin: (any ExportFormatPlugin)? {
-        PluginManager.shared.exportPlugins[config.formatId]
+        PluginManager.shared.exportPlugin(forFormat: config.formatId)
     }
 
     // MARK: - Layout Constants
@@ -280,7 +280,7 @@ struct ExportDialog: View {
 
                         Picker("", selection: $config.formatId) {
                             ForEach(availableFormatIds, id: \.self) { formatId in
-                                if let plugin = PluginManager.shared.exportPlugins[formatId] {
+                                if let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) {
                                     if isProGatedFormat(formatId) {
                                         Text("\(type(of: plugin).formatDisplayName) (Pro)").tag(formatId)
                                     } else {

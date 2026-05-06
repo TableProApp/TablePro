@@ -378,7 +378,7 @@ enum DatabaseDriverFactory {
         awaitPlugins: Bool
     ) async throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
-        if PluginManager.shared.driverPlugins[pluginId] == nil,
+        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
            !PluginManager.shared.hasFinishedInitialLoad {
             logger.info("Plugin '\(pluginId)' not loaded yet — waiting for background load")
             await PluginManager.shared.waitForInitialLoad()
@@ -391,7 +391,7 @@ enum DatabaseDriverFactory {
         passwordOverride: String? = nil
     ) throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
-        guard let plugin = PluginManager.shared.driverPlugins[pluginId] else {
+        guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             if connection.type.isDownloadablePlugin {
                 throw PluginError.pluginNotInstalled(connection.type.rawValue)
             }

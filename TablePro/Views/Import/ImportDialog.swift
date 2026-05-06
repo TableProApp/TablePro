@@ -122,7 +122,7 @@ struct ImportDialog: View {
 
     private var availableFormats: [any ImportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        return PluginManager.shared.importPlugins.values
+        return PluginManager.shared.allImportPlugins()
             .filter { plugin in
                 let supported = type(of: plugin).supportedDatabaseTypeIds
                 let excluded = type(of: plugin).excludedDatabaseTypeIds
@@ -138,7 +138,7 @@ struct ImportDialog: View {
     }
 
     private var currentPlugin: (any ImportFormatPlugin)? {
-        PluginManager.shared.importPlugins[selectedFormatId]
+        PluginManager.shared.importPlugin(forFormat: selectedFormatId)
     }
 
     // MARK: - View Components

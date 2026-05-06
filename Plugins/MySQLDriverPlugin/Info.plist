@@ -4,5 +4,10 @@
 <dict>
 	<key>TableProPluginKitVersion</key>
 	<integer>9</integer>
+	<key>TableProProvidesDatabaseTypeIds</key>
+	<array>
+		<string>MySQL</string>
+		<string>MariaDB</string>
+	</array>
 </dict>
 </plist>

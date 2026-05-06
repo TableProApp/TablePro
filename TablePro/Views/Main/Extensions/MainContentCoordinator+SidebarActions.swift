@@ -123,7 +123,7 @@ extension MainContentCoordinator {
         }
         let panel = NSOpenPanel()
         var contentTypes: [UTType] = []
-        for (_, plugin) in PluginManager.shared.importPlugins {
+        for plugin in PluginManager.shared.allImportPlugins() {
             for ext in type(of: plugin).acceptedFileExtensions {
                 if let utType = UTType(filenameExtension: ext) {
                     contentTypes.append(utType)

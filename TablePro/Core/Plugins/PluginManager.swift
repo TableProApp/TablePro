@@ -84,6 +84,11 @@ final class PluginManager {
 
     private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
 
+    @ObservationIgnored private var lazyDriverURLs: [String: URL] = [:]
+    @ObservationIgnored private var lazyExportURLs: [String: URL] = [:]
+    @ObservationIgnored private var lazyImportURLs: [String: URL] = [:]
+    @ObservationIgnored private var activatedBundleIds: Set<String> = []
+
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
@@ -156,22 +161,190 @@ final class PluginManager {
     func loadPlugins() {
         migrateDisabledPluginsKey()
         discoverAllPlugins()
-        let pending = pendingPluginURLs
+        var lazyPending: [(url: URL, source: PluginSource, manifest: PluginManifest)] = []
+        var eagerPending: [(url: URL, source: PluginSource)] = []
+        for entry in pendingPluginURLs {
+            if let bundle = Bundle(url: entry.url),
+               let manifest = PluginManifest(bundle: bundle),
+               manifest.supportsLazyLoad {
+                lazyPending.append((url: entry.url, source: entry.source, manifest: manifest))
+            } else {
+                eagerPending.append(entry)
+            }
+        }
+        pendingPluginURLs.removeAll()
+
+        for entry in lazyPending {
+            registerLazyManifest(at: entry.url, source: entry.source, manifest: entry.manifest)
+        }
+
         Task {
             if !self.rejectedPlugins.isEmpty {
                 await self.autoUpdateRejectedPlugins()
             }
-            let validated = await Self.validateAndLoadBundles(pending)
-            self.pendingPluginURLs.removeAll()
+            let validated = await Self.validateAndLoadBundles(eagerPending)
             self.needsRestartStorage = false
             self.registerValidatedBundles(validated)
             self.validateDependencies()
             self.hasFinishedInitialLoad = true
-            Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
+            let lazyCount = lazyPending.count
+            let eagerCount = validated.count
+            Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(lazyCount) lazy + \(eagerCount) eager (\(self.driverPlugins.count) driver(s) active, \(self.exportPlugins.count) export(s) active, \(self.importPlugins.count) import(s) active)")
             if !self.rejectedPlugins.isEmpty {
                 NotificationCenter.default.post(name: .pluginsRejected, object: self.rejectedPlugins)
             }
         }
+    }
+
+    // MARK: - Lazy Plugin Activation
+
+    private func registerLazyManifest(at url: URL, source: PluginSource, manifest: PluginManifest) {
+        guard let bundle = Bundle(url: url) else { return }
+        do {
+            try Self.validateBundleVersions(bundle, source: source)
+        } catch {
+            Self.logger.error("Lazy plugin '\(manifest.bundleId)' failed version check: \(error.localizedDescription)")
+            if source == .userInstalled {
+                rejectedPlugins.append(RejectedPlugin(
+                    url: url,
+                    bundleId: manifest.bundleId,
+                    registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+                    name: manifest.bundleId,
+                    reason: error.localizedDescription,
+                    isOutdated: (error as? PluginError)?.isOutdated ?? false
+                ))
+            }
+            return
+        }
+        if source == .userInstalled {
+            do {
+                try verifyCodeSignature(bundle: bundle)
+            } catch {
+                Self.logger.error("Lazy plugin '\(manifest.bundleId)' failed code-sign check: \(error.localizedDescription)")
+                rejectedPlugins.append(RejectedPlugin(
+                    url: url,
+                    bundleId: manifest.bundleId,
+                    registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+                    name: manifest.bundleId,
+                    reason: error.localizedDescription,
+                    isOutdated: false
+                ))
+                return
+            }
+        }
+
+        let bundleId = manifest.bundleId
+        if source == .userInstalled,
+           let existing = plugins.first(where: { $0.id == bundleId }),
+           existing.source == .builtIn
+        {
+            Self.logger.info("Skipping user-installed lazy '\(bundleId)': built-in version already registered")
+            return
+        }
+
+        let primaryTypeId = manifest.providedDatabaseTypeIds.first
+        let additionalTypeIds = Array(manifest.providedDatabaseTypeIds.dropFirst())
+        let registrySnapshot = primaryTypeId.flatMap {
+            PluginMetadataRegistry.shared.snapshot(forTypeId: $0)
+        }
+
+        var capabilities: [PluginCapability] = []
+        if !manifest.providedDatabaseTypeIds.isEmpty { capabilities.append(.databaseDriver) }
+        if !manifest.providedExportFormatIds.isEmpty { capabilities.append(.exportFormat) }
+        if !manifest.providedImportFormatIds.isEmpty { capabilities.append(.importFormat) }
+
+        let info = bundle.infoDictionary ?? [:]
+        let version = Self.readRegistryMetadata(for: url)?.version
+            ?? (info["CFBundleShortVersionString"] as? String)
+            ?? "1.0.0"
+        let displayName = registrySnapshot?.displayName
+            ?? bundleId.split(separator: ".").last.map(String.init)
+            ?? bundleId
+        let pluginIconName = registrySnapshot?.iconName ?? "puzzlepiece"
+        let defaultPort = registrySnapshot?.defaultPort
+        let pluginDescription = registrySnapshot?.connection.tagline ?? ""
+
+        let entry = PluginEntry(
+            id: bundleId,
+            bundle: bundle,
+            url: url,
+            source: source,
+            name: displayName,
+            version: version,
+            pluginDescription: pluginDescription,
+            capabilities: capabilities,
+            isEnabled: !disabledPluginIds.contains(bundleId),
+            databaseTypeId: primaryTypeId,
+            additionalTypeIds: additionalTypeIds,
+            pluginIconName: pluginIconName,
+            defaultPort: defaultPort
+        )
+        plugins.append(entry)
+
+        for typeId in manifest.providedDatabaseTypeIds {
+            lazyDriverURLs[typeId] = url
+        }
+        for formatId in manifest.providedExportFormatIds {
+            lazyExportURLs[formatId] = url
+        }
+        for formatId in manifest.providedImportFormatIds {
+            lazyImportURLs[formatId] = url
+        }
+        Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds)")
+    }
+
+    func activateDriver(databaseTypeId typeId: String) {
+        guard driverPlugins[typeId] == nil else { return }
+        guard let url = lazyDriverURLs[typeId] else { return }
+        activateLazyBundle(at: url)
+    }
+
+    func activateExportFormat(_ formatId: String) {
+        guard exportPlugins[formatId] == nil else { return }
+        guard let url = lazyExportURLs[formatId] else { return }
+        activateLazyBundle(at: url)
+    }
+
+    func activateImportFormat(_ formatId: String) {
+        guard importPlugins[formatId] == nil else { return }
+        guard let url = lazyImportURLs[formatId] else { return }
+        activateLazyBundle(at: url)
+    }
+
+    func allLazyExportFormatIds() -> [String] {
+        Array(lazyExportURLs.keys)
+    }
+
+    func allLazyImportFormatIds() -> [String] {
+        Array(lazyImportURLs.keys)
+    }
+
+    private func activateLazyBundle(at url: URL) {
+        guard let bundle = Bundle(url: url) else { return }
+        let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
+        guard !activatedBundleIds.contains(bundleId) else { return }
+
+        guard bundle.load() else {
+            Self.logger.error("Failed to load lazy bundle '\(bundleId)' at \(url.lastPathComponent)")
+            return
+        }
+
+        guard let principalClass = bundle.principalClass as? any TableProPlugin.Type else {
+            Self.logger.error("Lazy plugin '\(bundleId)' has no TableProPlugin principal class")
+            return
+        }
+
+        validateCapabilityDeclarations(principalClass, pluginId: bundleId)
+
+        let isEnabled = plugins.first(where: { $0.id == bundleId })?.isEnabled ?? false
+        if isEnabled {
+            let instance = principalClass.init()
+            registerCapabilities(instance, pluginId: bundleId)
+        }
+
+        activatedBundleIds.insert(bundleId)
+        queryBuildingDriverCache.removeAll()
+        Self.logger.info("Activated plugin '\(bundleId)' on demand")
     }
 
     private struct ValidatedBundle: @unchecked Sendable {

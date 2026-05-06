@@ -4,5 +4,9 @@
 <dict>
 	<key>TableProPluginKitVersion</key>
 	<integer>9</integer>
+	<key>TableProProvidesDatabaseTypeIds</key>
+	<array>
+		<string>ClickHouse</string>
+	</array>
 </dict>
 </plist>

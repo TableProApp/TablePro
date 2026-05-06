@@ -214,7 +214,36 @@ extension PluginManager {
     // MARK: - Plugin Property Lookups
 
     func driverPlugin(for databaseType: DatabaseType) -> (any DriverPlugin)? {
-        driverPlugins[databaseType.pluginTypeId]
+        let typeId = databaseType.pluginTypeId
+        if let driver = driverPlugins[typeId] { return driver }
+        activateDriver(databaseTypeId: typeId)
+        return driverPlugins[typeId]
+    }
+
+    func exportPlugin(forFormat formatId: String) -> (any ExportFormatPlugin)? {
+        if let plugin = exportPlugins[formatId] { return plugin }
+        activateExportFormat(formatId)
+        return exportPlugins[formatId]
+    }
+
+    func importPlugin(forFormat formatId: String) -> (any ImportFormatPlugin)? {
+        if let plugin = importPlugins[formatId] { return plugin }
+        activateImportFormat(formatId)
+        return importPlugins[formatId]
+    }
+
+    func allExportPlugins() -> [any ExportFormatPlugin] {
+        for formatId in allLazyExportFormatIds() {
+            activateExportFormat(formatId)
+        }
+        return Array(exportPlugins.values)
+    }
+
+    func allImportPlugins() -> [any ImportFormatPlugin] {
+        for formatId in allLazyImportFormatIds() {
+            activateImportFormat(formatId)
+        }
+        return Array(importPlugins.values)
     }
 
     /// Returns a temporary plugin driver for query building (buildBrowseQuery), or nil

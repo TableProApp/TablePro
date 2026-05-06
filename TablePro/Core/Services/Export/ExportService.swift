@@ -97,7 +97,7 @@ final class ExportService {
             throw ExportError.noTablesSelected
         }
 
-        guard let plugin = PluginManager.shared.exportPlugins[config.formatId] else {
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
             throw ExportError.formatNotFound(config.formatId)
         }
 
@@ -185,7 +185,7 @@ final class ExportService {
         config: ExportConfiguration,
         to url: URL
     ) async throws {
-        guard let plugin = PluginManager.shared.exportPlugins[config.formatId] else {
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
             throw ExportError.formatNotFound(config.formatId)
         }
 
@@ -261,7 +261,7 @@ final class ExportService {
         config: ExportConfiguration,
         to url: URL
     ) async throws {
-        guard let plugin = PluginManager.shared.exportPlugins[config.formatId] else {
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
             throw ExportError.formatNotFound(config.formatId)
         }
         guard let driver else {

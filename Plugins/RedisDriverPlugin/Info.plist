@@ -18,9 +18,13 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>TableProPluginKitVersion</key>
-	<integer>9</integer>
 	<key>NSPrincipalClass</key>
 	<string>$(PRODUCT_MODULE_NAME).RedisPlugin</string>
+	<key>TableProPluginKitVersion</key>
+	<integer>9</integer>
+	<key>TableProProvidesDatabaseTypeIds</key>
+	<array>
+		<string>Redis</string>
+	</array>
 </dict>
 </plist>

@@ -54,7 +54,7 @@ final class ImportService {
         ownsDecompressedFile: Bool = false,
         knownStatementCount: Int? = nil
     ) async throws -> PluginImportResult {
-        guard let plugin = PluginManager.shared.importPlugins[formatId] else {
+        guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
         }
 

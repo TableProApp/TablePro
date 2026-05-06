@@ -4,5 +4,9 @@
 <dict>
 	<key>TableProPluginKitVersion</key>
 	<integer>9</integer>
+	<key>TableProProvidesExportFormatIds</key>
+	<array>
+		<string>csv</string>
+	</array>
 </dict>
 </plist>

@@ -15,6 +15,7 @@ extension PluginManager {
     func validateDependencies() {
         let loadedIds = Set(plugins.map(\.id))
         for plugin in plugins where plugin.isEnabled {
+            guard plugin.bundle.isLoaded else { continue }
             guard let principalClass = plugin.bundle.principalClass as? any TableProPlugin.Type else { continue }
             let deps = principalClass.dependencies
             for dep in deps {

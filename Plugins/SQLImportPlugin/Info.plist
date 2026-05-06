@@ -4,5 +4,9 @@
 <dict>
 	<key>TableProPluginKitVersion</key>
 	<integer>9</integer>
+	<key>TableProProvidesImportFormatIds</key>
+	<array>
+		<string>sql</string>
+	</array>
 </dict>
 </plist>
