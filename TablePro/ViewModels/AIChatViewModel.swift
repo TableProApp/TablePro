@@ -20,8 +20,19 @@ final class AIChatViewModel {
     var messages: [ChatTurn] = []
     var inputText: String = ""
     var isStreaming: Bool = false
-    var errorMessage: String?
+    var errorMessage: String? {
+        didSet {
+            if errorMessage == nil {
+                lastError = nil
+            }
+        }
+    }
+    var lastError: AIProviderError?
     var lastMessageFailed: Bool = false
+
+    var canRetryLastFailure: Bool {
+        lastError?.isRetryable ?? true
+    }
     var conversations: [AIConversation] = []
     var activeConversationID: UUID?
     var showAIAccessConfirmation = false
@@ -520,6 +531,7 @@ final class AIChatViewModel {
                         Self.logger.error("Streaming failed: \(error.localizedDescription)")
                         self.lastMessageFailed = true
                         self.errorMessage = error.localizedDescription
+                        self.lastError = error as? AIProviderError
 
                         // Remove empty assistant message on error
                         if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),

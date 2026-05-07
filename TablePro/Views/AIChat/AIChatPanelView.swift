@@ -451,6 +451,7 @@ struct AIChatPanelView: View {
         message.role == .user
             && message.id == viewModel.messages.last?.id
             && viewModel.lastMessageFailed
+            && viewModel.canRetryLastFailure
     }
 
     private func shouldShowRegenerate(for message: ChatTurn) -> Bool {

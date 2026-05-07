@@ -60,6 +60,15 @@ enum AIProviderError: Error, LocalizedError {
         }
         return message
     }
+
+    var isRetryable: Bool {
+        switch self {
+        case .invalidEndpoint, .authenticationFailed, .modelNotFound:
+            return false
+        case .rateLimited, .serverError, .networkError, .streamingFailed:
+            return true
+        }
+    }
 }
 
 extension ChatTransport {
