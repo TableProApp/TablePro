@@ -31,18 +31,11 @@ private final class EditorWindow: NSWindow {
 @MainActor
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
-    private static let frameLogger = Logger(subsystem: "com.TablePro", category: "WindowFrame")
 
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
-    private static var frameDefaultsKey: String { "NSWindow Frame \(frameAutosaveName)" }
-
     internal static var hasSavedFrame: Bool {
-        UserDefaults.standard.object(forKey: frameDefaultsKey) != nil
-    }
-
-    private static func savedFrameString() -> String {
-        UserDefaults.standard.string(forKey: frameDefaultsKey) ?? "<nil>"
+        UserDefaults.standard.object(forKey: "NSWindow Frame \(frameAutosaveName)") != nil
     }
 
     private lazy var dataGridFieldEditor: DataGridFieldEditor = {
@@ -76,23 +69,15 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.tabbingIdentifier = WindowManager.tabbingIdentifier(for: payload.connectionId)
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
 
-        Self.frameLogger.notice("[init] step=created savedDefaults=\(Self.savedFrameString(), privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public)")
-
-        let didRegister = window.setFrameAutosaveName(Self.frameAutosaveName)
-        Self.frameLogger.notice("[init] step=afterSetFrameAutosaveName didRegister=\(didRegister, privacy: .public) savedDefaults=\(Self.savedFrameString(), privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public)")
-
-        let restored = window.setFrameUsingName(Self.frameAutosaveName)
-        Self.frameLogger.notice("[init] step=afterSetFrameUsingName restored=\(restored, privacy: .public) savedDefaults=\(Self.savedFrameString(), privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public)")
-
         let splitVC = MainSplitViewController(payload: payload, sessionState: sessionState)
         window.contentViewController = splitVC
-        Self.frameLogger.notice("[init] step=afterContentVC savedDefaults=\(Self.savedFrameString(), privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public)")
 
         super.init(window: window)
-        Self.frameLogger.notice("[init] step=afterSuperInit savedDefaults=\(Self.savedFrameString(), privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public)")
 
         window.isReleasedWhenClosed = false
         window.delegate = self
+
+        _ = window.setFrameUsingName(Self.frameAutosaveName)
 
         Self.lifecycleLogger.info(
             "[open] TabWindowController.init payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) controllerId=\(self.controllerId, privacy: .public) eagerToolbar=\(sessionState != nil)"
@@ -113,17 +98,13 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     internal func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        Self.frameLogger.notice("[event] didResize inLive=\(window.inLiveResize, privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public) savedBefore=\(Self.savedFrameString(), privacy: .public)")
         guard !window.inLiveResize else { return }
         window.saveFrame(usingName: Self.frameAutosaveName)
-        Self.frameLogger.notice("[event] didResize savedAfter=\(Self.savedFrameString(), privacy: .public)")
     }
 
     internal func windowDidEndLiveResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        Self.frameLogger.notice("[event] didEndLiveResize windowFrame=\(NSStringFromRect(window.frame), privacy: .public) savedBefore=\(Self.savedFrameString(), privacy: .public)")
         window.saveFrame(usingName: Self.frameAutosaveName)
-        Self.frameLogger.notice("[event] didEndLiveResize savedAfter=\(Self.savedFrameString(), privacy: .public)")
     }
 
     internal func windowDidMove(_ notification: Notification) {
@@ -137,7 +118,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
-        Self.frameLogger.notice("[event] didBecomeKey windowFrame=\(NSStringFromRect(window.frame), privacy: .public) saved=\(Self.savedFrameString(), privacy: .public)")
         Self.lifecycleLogger.debug(
             "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
         )
@@ -176,9 +156,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow else { return }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
 
-        Self.frameLogger.notice("[close] before saveFrame windowFrame=\(NSStringFromRect(window.frame), privacy: .public) savedBefore=\(Self.savedFrameString(), privacy: .public)")
         window.saveFrame(usingName: Self.frameAutosaveName)
-        Self.frameLogger.notice("[close] after saveFrame savedAfter=\(Self.savedFrameString(), privacy: .public)")
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.invalidateToolbar()
