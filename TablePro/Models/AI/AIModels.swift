@@ -152,7 +152,7 @@ enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .ask:   return "questionmark.bubble"
         case .edit:  return "pencil.and.outline"
-        case .agent: return "wand.and.stars"
+        case .agent: return "infinity"
         }
     }
 }

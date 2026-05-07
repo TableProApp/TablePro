@@ -279,13 +279,15 @@ struct AIChatPanelView: View {
         return Menu {
             Picker("", selection: binding) {
                 ForEach(AIChatMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
+                    Label(mode.displayName, systemImage: mode.symbolName)
+                        .tag(mode)
                 }
             }
             .pickerStyle(.inline)
             .labelsHidden()
         } label: {
             HStack(spacing: 4) {
+                Image(systemName: settingsManager.ai.chatMode.symbolName)
                 Text(settingsManager.ai.chatMode.displayName)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
