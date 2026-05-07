@@ -17,8 +17,9 @@ final class CopilotChatProvider: ChatTransport {
     private var isProgressHandlerRegistered = false
     private var isInvokeClientToolHandlerRegistered = false
     private var registeredToolNames: Set<String> = []
-    private let invokeContinuations = OSAllocatedUnfairLock(
-        initialState: [String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]()
+    private var lastChatMode: String?
+    private let activeStream = OSAllocatedUnfairLock<(UUID, AsyncThrowingStream<ChatStreamEvent, Error>.Continuation)?>(
+        initialState: nil
     )
 
     func streamChat(
@@ -26,6 +27,12 @@ final class CopilotChatProvider: ChatTransport {
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
+            let sessionId = UUID()
+            continuation.onTermination = { [weak self] _ in
+                self?.activeStream.withLock { current in
+                    if current?.0 == sessionId { current = nil }
+                }
+            }
             let task = Task { @MainActor [weak self] in
                 guard let self else {
                     continuation.finish()
@@ -46,8 +53,19 @@ final class CopilotChatProvider: ChatTransport {
                     await self.ensureInvokeClientToolHandler()
                     await self.ensureToolsRegistered(tools: options.tools)
 
+                    let desiredChatMode: String? = (!options.tools.isEmpty && !self.registeredToolNames.isEmpty)
+                        ? "Agent" : nil
+                    if self.conversationId != nil, self.lastChatMode != desiredChatMode {
+                        Self.logger.info(
+                            "Copilot chat mode changed; resetting conversation to apply new mode"
+                        )
+                        self.conversationId = nil
+                        self.turnIds.removeAll()
+                    }
+                    self.lastChatMode = desiredChatMode
+
                     self.progressHandlers.withLock { $0[token] = continuation }
-                    self.invokeContinuations.withLock { $0["__active"] = continuation }
+                    self.activeStream.withLock { $0 = (sessionId, continuation) }
 
                     let userMessage = turns.last(where: { $0.role == .user })?.plainText ?? ""
                     let effectiveModel: String? = options.model.isEmpty ? nil : options.model
@@ -159,13 +177,13 @@ final class CopilotChatProvider: ChatTransport {
         guard !isInvokeClientToolHandlerRegistered else { return }
         isInvokeClientToolHandlerRegistered = true
         guard let client = CopilotService.shared.client else { return }
-        let invokeContinuations = invokeContinuations
+        let activeStream = activeStream
         await client.onDeferredRequest(method: "conversation/invokeClientTool") { data, requestId in
             Task { @MainActor in
                 await Self.handleInvokeClientTool(
                     data: data,
                     requestId: requestId,
-                    invokeContinuations: invokeContinuations
+                    activeStream: activeStream
                 )
             }
         }
@@ -179,7 +197,7 @@ final class CopilotChatProvider: ChatTransport {
     private static func handleInvokeClientTool(
         data: Data,
         requestId: Int,
-        invokeContinuations: OSAllocatedUnfairLock<[String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]>
+        activeStream: OSAllocatedUnfairLock<(UUID, AsyncThrowingStream<ChatStreamEvent, Error>.Continuation)?>
     ) async {
         let params: CopilotInvokeClientToolParams
         do {
@@ -198,7 +216,7 @@ final class CopilotChatProvider: ChatTransport {
         )
 
         let toolBlock = ToolUseBlock(
-            id: "\(params.conversationId)-\(params.turnId)-\(params.name)",
+            id: "\(params.conversationId)-\(params.turnId)-\(params.name)-\(UUID().uuidString)",
             name: params.name,
             input: params.input ?? .object([:]),
             approvalState: .pending
@@ -208,7 +226,7 @@ final class CopilotChatProvider: ChatTransport {
             await Self.sendToolReply(requestId: requestId, result: result)
         }
 
-        guard let continuation = invokeContinuations.withLock({ $0["__active"] }) else {
+        guard let continuation = activeStream.withLock({ $0?.1 }) else {
             Self.logger.warning("No active stream continuation for invokeClientTool; cancelling")
             await Self.sendErrorReply(requestId: requestId, message: "No active chat session")
             return
