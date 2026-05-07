@@ -1,6 +1,7 @@
 import Foundation
 
-public struct MCPProtocolError: Error, Sendable, Equatable {
+public struct MCPProtocolError: LocalizedError, Sendable, Equatable {
+    public var errorDescription: String? { message }
     public let code: Int
     public let message: String
     public let httpStatus: HttpStatus
