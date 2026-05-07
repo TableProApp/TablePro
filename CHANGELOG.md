@@ -12,8 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New tab via Cmd+T no longer flashes focus back to the previous tab in the same window group
 - Cmd+X with no selection cuts the current line, matching VS Code, Sublime, and Xcode (#1075)
 - Cmd+A on a query ending with a newline now highlights every line, not just the first (#1075)
-- Editor windows now restore their last size, position, and full screen state on launch instead of opening at a default 1200x800 every time
-- First launch picks an initial editor size based on the connected display (about 85% of the visible area) instead of a fixed 1200x800
+- Editor windows now remember their size, position, and zoom state across launches, instead of always opening at 1200x800
+- iOS: data browser and query result lists no longer crash with "Index out of range" when rows shrink during a SwiftUI update pass
+- iOS: connecting to MySQL, PostgreSQL, or Redis with an out-of-range port now reports a readable error instead of crashing on integer overflow
 
 ### Added
 

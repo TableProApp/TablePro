@@ -334,6 +334,11 @@ private actor PostgreSQLActor {
     private var conn: OpaquePointer?
 
     func connect(host: String, port: Int, user: String, password: String, database: String, sslEnabled: Bool = false) throws {
+        guard (1...65_535).contains(port) else {
+            throw PostgreSQLError.connectionFailed(
+                "Port \(port) is out of range. Use a value between 1 and 65535."
+            )
+        }
         // Close existing connection if reconnecting
         if let conn { PQfinish(conn); self.conn = nil }
 
