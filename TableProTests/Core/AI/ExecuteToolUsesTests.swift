@@ -61,6 +61,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "alpha", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
+            mode: .agent,
             context: makeContext(),
             registry: registry
         )
@@ -83,6 +84,7 @@ struct ExecuteToolUsesTests {
         ]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
+            mode: .agent,
             context: makeContext(),
             registry: registry
         )
@@ -96,6 +98,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "ghost", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
+            mode: .agent,
             context: makeContext(),
             registry: registry
         )
@@ -111,6 +114,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "boom", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
+            mode: .agent,
             context: makeContext(),
             registry: registry
         )
@@ -126,6 +130,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "warn", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
+            mode: .agent,
             context: makeContext(),
             registry: registry
         )
@@ -143,6 +148,7 @@ struct ExecuteToolUsesTests {
         ]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
+            mode: .agent,
             context: makeContext(),
             registry: registry
         )
@@ -160,6 +166,7 @@ struct ExecuteToolUsesTests {
         let input: JSONValue = .object(["query": .string("SELECT 1")])
         _ = await AIChatViewModel.executeToolUses(
             [ToolUseBlock(id: "u1", name: "alpha", input: input)],
+            mode: .agent,
             context: makeContext(),
             registry: registry
         )
@@ -172,9 +179,44 @@ struct ExecuteToolUsesTests {
         let registry = ChatToolRegistry()
         let results = await AIChatViewModel.executeToolUses(
             [],
+            mode: .agent,
             context: makeContext(),
             registry: registry
         )
         #expect(results.isEmpty)
+    }
+
+    @Test("execute_query blocked in Ask mode returns isError result without invoking tool")
+    func askModeBlocksExecuteQuery() async {
+        let registry = ChatToolRegistry()
+        let stub = StubTool(name: "execute_query", response: "should-not-run")
+        registry.register(stub)
+        let blocks = [ToolUseBlock(id: "u1", name: "execute_query", input: .object([:]))]
+        let results = await AIChatViewModel.executeToolUses(
+            blocks,
+            mode: .ask,
+            context: makeContext(),
+            registry: registry
+        )
+        #expect(results.count == 1)
+        #expect(results[0].isError == true)
+        #expect(stub.invocations.isEmpty)
+    }
+
+    @Test("confirm_destructive_operation blocked in Edit mode returns isError result")
+    func editModeBlocksDestructiveConfirm() async {
+        let registry = ChatToolRegistry()
+        let stub = StubTool(name: "confirm_destructive_operation", response: "should-not-run")
+        registry.register(stub)
+        let blocks = [ToolUseBlock(id: "u1", name: "confirm_destructive_operation", input: .object([:]))]
+        let results = await AIChatViewModel.executeToolUses(
+            blocks,
+            mode: .edit,
+            context: makeContext(),
+            registry: registry
+        )
+        #expect(results.count == 1)
+        #expect(results[0].isError == true)
+        #expect(stub.invocations.isEmpty)
     }
 }

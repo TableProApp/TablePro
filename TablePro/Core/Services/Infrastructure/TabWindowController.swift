@@ -20,9 +20,10 @@ import AppKit
 import os
 import SwiftUI
 
-/// NSWindow subclass that routes Cmd+W (performClose:) through the coordinator's
-/// closeTab() instead of AppKit's default close. This ensures the last tab clears
-/// to the empty "No tabs open" state instead of closing the entire window.
+/// NSWindow subclass that routes the standard tab-related responder selectors
+/// (`performClose:`, `newWindowForTab:`) through the coordinator. Menus and
+/// toolbar buttons reach this via `NSApp.sendAction(_:to:nil:from:)`, the same
+/// pattern AppKit uses for `selectNextTab:` and `selectPreviousTab:`.
 @MainActor
 private final class EditorWindow: NSWindow {
     override func performClose(_ sender: Any?) {
@@ -32,6 +33,15 @@ private final class EditorWindow: NSWindow {
         } else {
             super.performClose(sender)
         }
+    }
+
+    override func newWindowForTab(_ sender: Any?) {
+        guard let coordinator = MainContentCoordinator.coordinator(forWindow: self),
+              let actions = coordinator.commandActions else {
+            super.newWindowForTab(sender)
+            return
+        }
+        actions.newTab()
     }
 }
 
