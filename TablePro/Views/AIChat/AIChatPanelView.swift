@@ -574,7 +574,7 @@ struct AIChatPanelView: View {
             }
         }
 
-        let matchingTables = tables
+        let matchingTables = viewModel.tables
             .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             .prefix(10)
