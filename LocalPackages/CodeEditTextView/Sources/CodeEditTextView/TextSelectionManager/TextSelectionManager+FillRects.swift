@@ -75,12 +75,26 @@ extension TextSelectionManager {
             let endOfLine = fragmentRange.max <= range.max || range.contains(fragmentRange.max)
             let endOfDocument = intersectionRange.max == layoutManager.lineStorage.length
             let emptyLine = linePosition.range.isEmpty
+            // If the line ends with a line-break character, the selection logically continues onto a
+            // (possibly empty) trailing line and the highlight should extend to the right edge — even
+            // when this fragment is at the end of the document. Without this check, the very last
+            // fragment of a buffer that ends in `\n` collapses to zero width because
+            // `rectForOffset(lineStorage.length)` resolves to the trailing-empty-line position at
+            // the leading edge.
+            let lineEndsWithNewline: Bool = {
+                guard !linePosition.range.isEmpty,
+                      let textStorage = layoutManager.textStorage,
+                      let lineString = textStorage.substring(from: linePosition.range) else {
+                    return false
+                }
+                return LineEnding(line: lineString) != nil
+            }()
 
             // If the selection is at the end of the line, or contains the end of the fragment, and is not the end
             // of the document, we select the entire line to the right of the selection point.
             // true, !true = false, false
             // true, !true = false, true
-            if endOfLine && !(endOfDocument && !emptyLine) {
+            if endOfLine && !(endOfDocument && !emptyLine && !lineEndsWithNewline) {
                 maxRect = CGRect(
                     x: rect.maxX,
                     y: fragmentPosition.yPos + linePosition.yPos,

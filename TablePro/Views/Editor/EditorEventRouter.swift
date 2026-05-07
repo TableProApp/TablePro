@@ -166,19 +166,24 @@ internal final class EditorEventRouter {
             return event
         }
 
-        let range = textView.selectedRange()
-        guard range.length > 0 else { return event }
-        let text = (textView.string as NSString).substring(with: range)
+        let selection = textView.selectedRange()
 
         switch event.keyCode {
         case 8: // Cmd+C
+            guard selection.length > 0 else { return event }
+            let text = (textView.string as NSString).substring(with: selection)
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
             return nil
         case 7: // Cmd+X
+            guard let result = LineCutCalculator.calculate(
+                text: textView.string, selection: selection
+            ) else {
+                return event
+            }
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            textView.replaceCharacters(in: range, with: "")
+            NSPasteboard.general.setString(result.clipboardText, forType: .string)
+            textView.replaceCharacters(in: result.rangeToDelete, with: "")
             return nil
         default:
             break

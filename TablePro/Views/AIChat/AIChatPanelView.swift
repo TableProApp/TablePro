@@ -278,7 +278,7 @@ struct AIChatPanelView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(String(localized: "Chat mode"))
+        .help(settingsManager.ai.chatMode.helpText)
     }
 
     @ViewBuilder
