@@ -69,6 +69,13 @@ struct AIChatMessageView: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                     }
+                    if let modelId = message.modelId, !modelId.isEmpty {
+                        Text(modelId)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                     Spacer()
                     if let usage = message.usage {
                         Text("\(usage.inputTokens) in · \(usage.outputTokens) out")

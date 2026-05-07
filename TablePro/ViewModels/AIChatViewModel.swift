@@ -25,6 +25,8 @@ final class AIChatViewModel {
     var conversations: [AIConversation] = []
     var activeConversationID: UUID?
     var showAIAccessConfirmation = false
+    var selectedProviderId: UUID?
+    var selectedModel: String?
 
     // MARK: - Context Properties
 
@@ -344,7 +346,8 @@ final class AIChatViewModel {
 
         let settings = AppSettingsManager.shared.ai
 
-        guard let resolved = AIProviderFactory.resolve(settings: settings) else {
+        let resolved = AIProviderFactory.resolve(settings: settings, overrideProviderId: selectedProviderId, overrideModel: selectedModel)
+        guard let resolved else {
             errorMessage = String(localized: "No AI provider configured. Go to Settings > AI to add one.")
             return
         }
@@ -368,8 +371,7 @@ final class AIChatViewModel {
 
         let promptContext = capturePromptContext(settings: settings)
 
-        // Create assistant message placeholder
-        let assistantMessage = ChatTurn(role: .assistant, blocks: [])
+        let assistantMessage = ChatTurn(role: .assistant, blocks: [], modelId: resolved.model, providerId: resolved.config.id.uuidString)
         messages.append(assistantMessage)
         trimMessagesIfNeeded()
         let assistantID = assistantMessage.id

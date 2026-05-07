@@ -292,7 +292,7 @@ struct AIChatPanelView: View {
     private var inputArea: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 TextField(
                     String(localized: "Ask about your database..."),
                     text: $viewModel.inputText,
@@ -307,33 +307,84 @@ struct AIChatPanelView: View {
                     }
                 }
 
-                if viewModel.isStreaming {
-                    Button {
-                        viewModel.cancelStream()
-                    } label: {
-                        Image(systemName: "stop.circle.fill")
-                            .foregroundStyle(Color(nsColor: .systemRed))
+                HStack(alignment: .center, spacing: 8) {
+                    modelPicker
+                    Spacer()
+                    if viewModel.isStreaming {
+                        Button {
+                            viewModel.cancelStream()
+                        } label: {
+                            Image(systemName: "stop.circle.fill")
+                                .foregroundStyle(Color(nsColor: .systemRed))
+                        }
+                        .buttonStyle(.plain)
+                        .help(String(localized: "Stop Generating"))
+                    } else {
+                        Button {
+                            updateContext()
+                            viewModel.sendMessage()
+                        } label: {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .foregroundStyle(
+                                    viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? .secondary : Color.accentColor
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .help(String(localized: "Send Message"))
                     }
-                    .buttonStyle(.plain)
-                    .help(String(localized: "Stop Generating"))
-                } else {
-                    Button {
-                        updateContext()
-                        viewModel.sendMessage()
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .foregroundStyle(
-                                viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? .secondary : Color.accentColor
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .help(String(localized: "Send Message"))
                 }
             }
             .padding(8)
         }
+    }
+
+    private var modelPicker: some View {
+        let providers = settingsManager.ai.providers
+        let activeProvider = settingsManager.ai.activeProvider
+        let selectedProviderId = viewModel.selectedProviderId ?? activeProvider?.id
+        let selectedProvider = providers.first(where: { $0.id == selectedProviderId }) ?? activeProvider
+        let label: String
+        if let selectedProvider {
+            let model = viewModel.selectedModel ?? selectedProvider.model
+            label = model.isEmpty ? selectedProvider.displayName : "\(selectedProvider.displayName) · \(model)"
+        } else {
+            label = String(localized: "Select Model")
+        }
+
+        return Menu {
+            ForEach(providers) { provider in
+                Button {
+                    viewModel.selectedProviderId = provider.id
+                    viewModel.selectedModel = provider.model.isEmpty ? nil : provider.model
+                } label: {
+                    HStack {
+                        let providerLabel = provider.model.isEmpty
+                            ? provider.displayName
+                            : "\(provider.displayName) · \(provider.model)"
+                        Text(providerLabel)
+                        if provider.id == selectedProviderId {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "cpu")
+                Text(label)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(String(localized: "Choose AI provider"))
     }
 
     // MARK: - Helpers

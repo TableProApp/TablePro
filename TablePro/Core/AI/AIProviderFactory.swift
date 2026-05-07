@@ -67,8 +67,20 @@ enum AIProviderFactory {
         }
     }
 
-    static func resolve(settings: AISettings) -> ResolvedProvider? {
-        guard settings.enabled, let config = settings.activeProvider else { return nil }
+    static func resolve(
+        settings: AISettings,
+        overrideProviderId: UUID? = nil,
+        overrideModel: String? = nil
+    ) -> ResolvedProvider? {
+        guard settings.enabled else { return nil }
+        let config: AIProviderConfig?
+        if let overrideProviderId,
+           let match = settings.providers.first(where: { $0.id == overrideProviderId }) {
+            config = match
+        } else {
+            config = settings.activeProvider
+        }
+        guard let config else { return nil }
         let apiKey: String?
         switch config.type.authStyle {
         case .apiKey:
@@ -77,6 +89,7 @@ enum AIProviderFactory {
             apiKey = nil
         }
         let provider = createProvider(for: config, apiKey: apiKey)
-        return ResolvedProvider(provider: provider, model: config.model, config: config)
+        let model = overrideModel ?? config.model
+        return ResolvedProvider(provider: provider, model: model, config: config)
     }
 }
