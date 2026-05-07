@@ -548,7 +548,8 @@ struct AIChatPanelView: View {
         let vmTablesCount = viewModel.tables.count
         mentionLogger.debug("mention match: query=\"\(match.query, privacy: .public)\" panelTables=\(panelTablesCount) vmTables=\(vmTablesCount)")
         let candidates = mentionCandidates(forQuery: match.query)
-        mentionLogger.debug("candidates produced: \(candidates.count) -> \(candidates.map(\.displayLabel).joined(separator: \",\"), privacy: .public)")
+        let labels = candidates.map(\.displayLabel).joined(separator: ",")
+        mentionLogger.debug("candidates produced: \(candidates.count) labels=\(labels, privacy: .public)")
         guard !candidates.isEmpty else {
             mentionState.reset()
             return
