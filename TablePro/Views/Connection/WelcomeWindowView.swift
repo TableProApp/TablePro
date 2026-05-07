@@ -18,6 +18,7 @@ struct WelcomeWindowView: View {
     @State private var pendingInstallType: DatabaseType?
     @State private var pendingInstallPayload: DatabaseTypeChooserPayload?
     @State private var urlImportPresented: Bool = false
+    @State private var searchFocusTrigger: Int = 0
     @FocusState private var focus: FocusField?
 
     var body: some View {
@@ -232,10 +233,14 @@ struct WelcomeWindowView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .contextMenu { newConnectionContextMenu }
-        .onKeyPress(characters: .init(charactersIn: "f"), phases: .down) { keyPress in
-            guard keyPress.modifiers.contains(.command) else { return .ignored }
-            focus = .search
-            return .handled
+        .background {
+            Button {
+                searchFocusTrigger += 1
+            } label: {
+                EmptyView()
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .accessibilityHidden(true)
         }
     }
 
@@ -269,7 +274,8 @@ struct WelcomeWindowView: View {
             NativeSearchField(
                 text: $vm.searchText,
                 placeholder: String(localized: "Search for connection..."),
-                controlSize: .regular
+                controlSize: .regular,
+                focusTrigger: searchFocusTrigger
             )
             .focused($focus, equals: .search)
             .frame(maxWidth: 240)
