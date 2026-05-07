@@ -10,7 +10,6 @@ import SwiftUI
 /// AI chat panel displayed alongside the main editor content
 struct AIChatPanelView: View {
     let connection: DatabaseConnection
-    let tables: [TableInfo]
     var currentQuery: String?
     var queryResults: String?
 
@@ -50,10 +49,6 @@ struct AIChatPanelView: View {
         }
         .onChange(of: connection.id) {
             viewModel.connection = connection
-        }
-        .task(id: tables) {
-            viewModel.tables = tables
-            viewModel.fetchSchemaContext()
         }
         .task(id: settingsManager.ai.providers.map(\.id)) {
             await viewModel.loadAvailableModels()
@@ -574,8 +569,7 @@ struct AIChatPanelView: View {
             }
         }
 
-        let liveTables = SchemaService.shared.tables(for: connectionId)
-        let matchingTables = liveTables
+        let matchingTables = viewModel.tables
             .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             .prefix(10)

@@ -261,7 +261,6 @@ struct MainContentView: View {
                 setupCommandActions()
                 updateToolbarPendingState()
                 updateInspectorContext()
-                rightPanelState.aiViewModel.schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
                 coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
 
