@@ -31,6 +31,7 @@ final class ConnectionFormCoordinator {
     var ssl: SSLPaneViewModel
     var customization: CustomizationPaneViewModel
     var advanced: AdvancedPaneViewModel
+    var aiRules: AIRulesPaneViewModel
 
     var selectedPane: ConnectionFormPane = .general
     var hasLoadedData: Bool = false
@@ -67,6 +68,7 @@ final class ConnectionFormCoordinator {
         }
         panes.append(.customization)
         panes.append(.advanced)
+        panes.append(.aiRules)
         return panes
     }
 
@@ -91,6 +93,7 @@ final class ConnectionFormCoordinator {
         self.ssl = SSLPaneViewModel()
         self.customization = CustomizationPaneViewModel()
         self.advanced = AdvancedPaneViewModel()
+        self.aiRules = AIRulesPaneViewModel()
 
         let ref = WeakCoordinatorRef(self)
         network.coordinator = ref
@@ -99,6 +102,7 @@ final class ConnectionFormCoordinator {
         ssl.coordinator = ref
         customization.coordinator = ref
         advanced.coordinator = ref
+        aiRules.coordinator = ref
 
         let resolvedInitialType = initialParsedURL?.type ?? initialType
         if let resolvedInitialType {
@@ -135,6 +139,7 @@ final class ConnectionFormCoordinator {
             ssl.load(from: existing)
             customization.load(from: existing)
             advanced.load(from: existing)
+            aiRules.load(from: existing)
         }
         hasLoadedData = true
     }
@@ -250,6 +255,7 @@ final class ConnectionFormCoordinator {
             sshTunnelMode: sshTunnelMode,
             safeModeLevel: customization.safeModeLevel,
             aiPolicy: advanced.aiPolicy,
+            aiRules: aiRules.trimmedRules,
             externalAccess: advanced.externalAccess,
             redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

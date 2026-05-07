@@ -221,6 +221,7 @@ final class ConnectionStorage {
             sshTunnelMode: connection.sshTunnelMode,
             safeModeLevel: connection.safeModeLevel,
             aiPolicy: connection.aiPolicy,
+            aiRules: connection.aiRules,
             redisDatabase: connection.redisDatabase,
             startupCommands: connection.startupCommands,
             sortOrder: connection.sortOrder,

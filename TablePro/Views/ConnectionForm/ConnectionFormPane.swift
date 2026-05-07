@@ -11,6 +11,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
     case ssl
     case customization
     case advanced
+    case aiRules
 
     var id: String { rawValue }
 
@@ -21,6 +22,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
         case .ssl: return String(localized: "SSL/TLS")
         case .customization: return String(localized: "Customization")
         case .advanced: return String(localized: "Advanced")
+        case .aiRules: return String(localized: "AI Rules")
         }
     }
 
@@ -31,6 +33,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
         case .ssl: return "lock.fill"
         case .customization: return "paintbrush"
         case .advanced: return "gearshape.2"
+        case .aiRules: return "sparkles"
         }
     }
 
@@ -48,6 +51,8 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
             issues = coordinator.customization.validationIssues
         case .advanced:
             issues = coordinator.advanced.validationIssues
+        case .aiRules:
+            issues = []
         }
         return issues.isEmpty ? nil : "exclamationmark.triangle.fill"
     }

@@ -216,6 +216,20 @@ Under **Settings** > **AI** > **Context**:
 - **Include query results** (default off)
 - **Max schema tables** (default 20)
 
+## Connection rules
+
+Pin domain knowledge to a specific connection so the AI sees it on every chat turn. Open the connection's edit form and pick **AI Rules** in the sidebar.
+
+Rules are plain text. Use them for facts the schema doesn't show:
+
+- Table conventions: `Tables prefixed with tmp_ are scratch and safe to ignore.`
+- Join keys: `users.email_hash is the join key, not users.email.`
+- Soft deletes: `Always filter orders by deleted_at IS NULL.`
+- PII to avoid: `Never select users.ssn or users.dob.`
+- Business rules: `Active accounts have status = 'active' AND verified_at IS NOT NULL.`
+
+The text is appended to the system prompt under a `## Connection-Specific Rules` section, after the schema and any attached context. Rules persist per connection and follow that connection across app launches.
+
 ## Privacy
 
 Set a per-connection AI policy in the connection form: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. New connections default to **Ask Each Time**.

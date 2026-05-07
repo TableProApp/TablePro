@@ -992,7 +992,8 @@ final class AIChatViewModel {
                 settings: $0.settings,
                 identifierQuote: $0.identifierQuote,
                 editorLanguage: $0.editorLanguage,
-                queryLanguageName: $0.queryLanguageName
+                queryLanguageName: $0.queryLanguageName,
+                connectionRules: $0.connectionRules
             )
         }
     }
@@ -1189,6 +1190,7 @@ final class AIChatViewModel {
         let identifierQuote: String
         let editorLanguage: EditorLanguage
         let queryLanguageName: String
+        let connectionRules: String?
     }
 
     private func capturePromptContext(settings: AISettings) -> PromptContext? {
@@ -1204,7 +1206,8 @@ final class AIChatViewModel {
             settings: settings,
             identifierQuote: PluginManager.shared.sqlDialect(for: connection.type)?.identifierQuote ?? "\"",
             editorLanguage: PluginManager.shared.editorLanguage(for: connection.type),
-            queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type)
+            queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type),
+            connectionRules: connection.aiRules
         )
     }
 }

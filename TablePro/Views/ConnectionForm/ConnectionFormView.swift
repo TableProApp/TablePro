@@ -90,6 +90,8 @@ private struct ConnectionFormDetail: View {
                 CustomizationPaneView(coordinator: coordinator)
             case .advanced:
                 AdvancedPaneView(coordinator: coordinator)
+            case .aiRules:
+                AIRulesPaneView(coordinator: coordinator)
             }
         }
         .navigationSplitViewColumnWidth(min: 480, ideal: 580)
