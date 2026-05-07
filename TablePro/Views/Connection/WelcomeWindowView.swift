@@ -393,7 +393,7 @@ struct WelcomeWindowView: View {
         .listRowSeparator(.hidden)
     }
 
-    private func primaryAction(for ids: Set<UUID>) {
+    func primaryAction(for ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
         for id in ids {
             if let conn = vm.connections.first(where: { $0.id == id }) {
