@@ -116,7 +116,6 @@ final class AIChatViewModel {
         switch command.name {
         case "help":
             inputText = ""
-            startNewConversation()
             let helpLines = SlashCommand.allCommands
                 .map { "- `/\($0.name)` · \($0.description)" }
                 .joined(separator: "\n")
@@ -128,20 +127,23 @@ final class AIChatViewModel {
                 errorMessage = String(localized: "No query in the active editor to explain.")
                 return
             }
-            handleExplainSelection(query)
+            let databaseType = connection?.type ?? .mysql
+            sendWithContext(prompt: AIPromptTemplates.explainQuery(query, databaseType: databaseType))
         case "optimize":
             guard let query = currentQuery, !query.isEmpty else {
                 errorMessage = String(localized: "No query in the active editor to optimize.")
                 return
             }
-            handleOptimizeSelection(query)
+            let databaseType = connection?.type ?? .mysql
+            sendWithContext(prompt: AIPromptTemplates.optimizeQuery(query, databaseType: databaseType))
         case "fix":
             guard let query = currentQuery, !query.isEmpty else {
                 errorMessage = String(localized: "No query in the active editor to fix.")
                 return
             }
             let lastError = queryResults ?? ""
-            handleFixError(query: query, error: lastError)
+            let databaseType = connection?.type ?? .mysql
+            sendWithContext(prompt: AIPromptTemplates.fixError(query: query, error: lastError, databaseType: databaseType))
         default:
             break
         }
