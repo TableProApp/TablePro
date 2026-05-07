@@ -112,42 +112,57 @@ final class AIChatViewModel {
         }
     }
 
-    func runSlashCommand(_ command: SlashCommand) {
-        switch command.name {
-        case "help":
-            inputText = ""
-            let helpLines = SlashCommand.allCommands
-                .map { "- `/\($0.name)` · \($0.description)" }
-                .joined(separator: "\n")
-            let helpMarkdown = String(localized: "**Available commands:**") + "\n\n" + helpLines
+    func runSlashCommand(_ command: SlashCommand, body: String = "") {
+        inputText = ""
+        errorMessage = nil
+
+        let invocationText = body.isEmpty ? "/\(command.name)" : "/\(command.name) \(body)"
+        let databaseType = connection?.type ?? .mysql
+
+        switch command {
+        case .help:
+            let helpMarkdown = Self.helpMarkdown
+            if let last = messages.last, last.role == .assistant, last.plainText == helpMarkdown {
+                return
+            }
+            messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
             messages.append(ChatTurn(role: .assistant, blocks: [.text(helpMarkdown)]))
-            persistCurrentConversation()
-        case "explain":
-            guard let query = currentQuery, !query.isEmpty else {
-                errorMessage = String(localized: "No query in the active editor to explain.")
-                return
-            }
-            let databaseType = connection?.type ?? .mysql
+        case .explain:
+            guard let query = resolveQuery(body: body, command: command) else { return }
+            messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
             sendWithContext(prompt: AIPromptTemplates.explainQuery(query, databaseType: databaseType))
-        case "optimize":
-            guard let query = currentQuery, !query.isEmpty else {
-                errorMessage = String(localized: "No query in the active editor to optimize.")
-                return
-            }
-            let databaseType = connection?.type ?? .mysql
+        case .optimize:
+            guard let query = resolveQuery(body: body, command: command) else { return }
+            messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
             sendWithContext(prompt: AIPromptTemplates.optimizeQuery(query, databaseType: databaseType))
-        case "fix":
-            guard let query = currentQuery, !query.isEmpty else {
-                errorMessage = String(localized: "No query in the active editor to fix.")
-                return
-            }
+        case .fix:
+            guard let query = resolveQuery(body: body, command: command) else { return }
+            messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
             let lastError = queryResults ?? ""
-            let databaseType = connection?.type ?? .mysql
             sendWithContext(prompt: AIPromptTemplates.fixError(query: query, error: lastError, databaseType: databaseType))
-        default:
-            break
         }
     }
+
+    private func resolveQuery(body: String, command: SlashCommand) -> String? {
+        if !body.isEmpty {
+            return body
+        }
+        if let editorQuery = currentQuery, !editorQuery.isEmpty {
+            return editorQuery
+        }
+        errorMessage = String(
+            format: String(localized: "/%@ needs a query: type one in the editor or after the command."),
+            command.name
+        )
+        return nil
+    }
+
+    private static let helpMarkdown: String = {
+        let lines = SlashCommand.allCommands
+            .map { "- `/\($0.name)` · \($0.description)" }
+            .joined(separator: "\n")
+        return String(localized: "**Available commands:**") + "\n\n" + lines
+    }()
 
     func handleFixError(query: String, error: String) {
         startNewConversation()
@@ -215,10 +230,8 @@ final class AIChatViewModel {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
-        if let command = SlashCommand.parse(text) {
-            inputText = ""
-            errorMessage = nil
-            runSlashCommand(command)
+        if let parsed = SlashCommand.parse(text) {
+            runSlashCommand(parsed.command, body: parsed.body)
             return
         }
 
