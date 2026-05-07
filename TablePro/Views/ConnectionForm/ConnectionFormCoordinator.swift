@@ -81,12 +81,17 @@ final class ConnectionFormCoordinator {
             && advanced.validationIssues.isEmpty
     }
 
+    private let pendingInitialType: DatabaseType?
+    private let pendingInitialParsedURL: ParsedConnectionURL?
+
     init(
         connectionId: UUID?,
         initialType: DatabaseType? = nil,
         initialParsedURL: ParsedConnectionURL? = nil
     ) {
         self.connectionId = connectionId
+        self.pendingInitialType = initialType
+        self.pendingInitialParsedURL = initialParsedURL
         self.network = NetworkPaneViewModel()
         self.auth = AuthPaneViewModel()
         self.ssh = SSHPaneViewModel()
@@ -103,8 +108,15 @@ final class ConnectionFormCoordinator {
         customization.coordinator = ref
         advanced.coordinator = ref
         aiRules.coordinator = ref
+    }
 
-        let resolvedInitialType = initialParsedURL?.type ?? initialType
+    /// Performs the one-time side-effecting setup: applying initial type
+    /// defaults, loading the existing connection from storage, and overlaying
+    /// any parsed URL the form was opened with. Idempotent.
+    func start() {
+        guard !hasLoadedData else { return }
+
+        let resolvedInitialType = pendingInitialParsedURL?.type ?? pendingInitialType
         if let resolvedInitialType {
             network.type = resolvedInitialType
             network.port = String(resolvedInitialType.defaultPort)
@@ -113,8 +125,8 @@ final class ConnectionFormCoordinator {
 
         loadInitialData()
 
-        if let initialParsedURL {
-            applyParsed(initialParsedURL)
+        if let parsed = pendingInitialParsedURL {
+            applyParsed(parsed)
         }
     }
 

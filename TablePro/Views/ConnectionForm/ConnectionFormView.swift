@@ -9,28 +9,45 @@ import TableProPluginKit
 struct ConnectionFormView: View {
     let connectionId: UUID?
 
-    @State private var coordinator: ConnectionFormCoordinator
+    @State private var coordinator: ConnectionFormCoordinator?
     @Environment(\.dismiss) private var dismiss
 
-    init(connectionId: UUID?) {
-        self.connectionId = connectionId
-        let pendingImport = connectionId == nil
-            ? PendingNewConnectionImport.shared.consume()
-            : nil
-        let pendingType = connectionId == nil
-            ? PendingNewConnectionType.shared.consume()
-            : nil
-        _coordinator = State(initialValue: ConnectionFormCoordinator(
-            connectionId: connectionId,
-            initialType: pendingType,
-            initialParsedURL: pendingImport
-        ))
+    var body: some View {
+        Group {
+            if let coordinator {
+                ConnectionFormContent(coordinator: coordinator, dismiss: dismiss)
+            } else {
+                Color.clear
+                    .frame(minWidth: 720, minHeight: 560)
+            }
+        }
+        .task(id: connectionId) {
+            guard coordinator == nil else { return }
+            let pendingImport = connectionId == nil
+                ? PendingNewConnectionImport.shared.consume()
+                : nil
+            let pendingType = connectionId == nil
+                ? PendingNewConnectionType.shared.consume()
+                : nil
+            let new = ConnectionFormCoordinator(
+                connectionId: connectionId,
+                initialType: pendingType,
+                initialParsedURL: pendingImport
+            )
+            new.dismissAction = { dismiss() }
+            new.start()
+            new.detectClipboardConnectionStringIfNeeded()
+            coordinator = new
+        }
     }
+}
+
+private struct ConnectionFormContent: View {
+    @Bindable var coordinator: ConnectionFormCoordinator
+    let dismiss: DismissAction
 
     var body: some View {
-        @Bindable var bindable = coordinator
-
-        return NavigationSplitView {
+        NavigationSplitView {
             ConnectionFormSidebar(coordinator: coordinator)
         } detail: {
             ConnectionFormDetail(coordinator: coordinator)
@@ -45,12 +62,12 @@ struct ConnectionFormView: View {
         .toolbar {
             ConnectionFormToolbar(coordinator: coordinator)
         }
-        .sheet(item: $bindable.pluginDiagnostic) { item in
+        .sheet(item: $coordinator.pluginDiagnostic) { item in
             PluginDiagnosticSheet(item: item) {
                 coordinator.pluginDiagnostic = nil
             }
         }
-        .pluginInstallPrompt(connection: $bindable.pluginInstallConnection) { connection in
+        .pluginInstallPrompt(connection: $coordinator.pluginInstallConnection) { connection in
             coordinator.connectAfterInstall(connection)
         }
         .alert(
@@ -66,10 +83,6 @@ struct ConnectionFormView: View {
             }
         } message: { error in
             Text(error)
-        }
-        .task {
-            coordinator.dismissAction = { dismiss() }
-            coordinator.detectClipboardConnectionStringIfNeeded()
         }
     }
 }
