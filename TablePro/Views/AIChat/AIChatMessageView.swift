@@ -135,17 +135,51 @@ struct AIChatMessageView: View {
 
     @ViewBuilder
     private var messageContent: some View {
-        if message.plainText.isEmpty {
+        let renderable = renderableBlocks
+        if renderable.isEmpty {
             TypingIndicatorView()
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
         } else {
-            Markdown(message.plainText)
-                .markdownTheme(.tableProChat)
-                .textSelection(.enabled)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(renderable.enumerated()), id: \.offset) { _, block in
+                    switch block {
+                    case .text(let text):
+                        Markdown(text)
+                            .markdownTheme(.tableProChat)
+                            .textSelection(.enabled)
+                            .padding(.horizontal, 8)
+                    case .toolUse(let useBlock):
+                        AIChatToolUseBlockView(block: useBlock)
+                    case .toolResult(let resultBlock):
+                        AIChatToolResultBlockView(block: resultBlock)
+                    case .attachment:
+                        EmptyView()
+                    }
+                }
+            }
+            .padding(.vertical, 6)
         }
+    }
+
+    private var renderableBlocks: [ChatContentBlock] {
+        var result: [ChatContentBlock] = []
+        for block in message.blocks {
+            switch block {
+            case .text(let text):
+                if text.isEmpty { continue }
+                if case .text(let existing) = result.last {
+                    result[result.count - 1] = .text(existing + text)
+                } else {
+                    result.append(.text(text))
+                }
+            case .toolUse, .toolResult:
+                result.append(block)
+            case .attachment:
+                continue
+            }
+        }
+        return result
     }
 }
 
