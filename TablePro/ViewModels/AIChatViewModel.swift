@@ -844,7 +844,7 @@ final class AIChatViewModel {
                     )
                     let context = await MainActor.run {
                         ChatToolContext(
-                            connectionId: self?.connection?.id,
+                            connectionId: self.connection?.id,
                             bridge: ChatToolBootstrap.bridge
                         )
                     }
