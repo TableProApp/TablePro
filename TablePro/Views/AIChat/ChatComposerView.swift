@@ -140,9 +140,10 @@ private enum IntelligenceShimmer {
     }
 
     static let layers: [Layer] = [
-        Layer(id: 0, lineWidth: 1.5, blur: 0, duration: 0.5, opacity: 1.0),
-        Layer(id: 1, lineWidth: 4, blur: 5, duration: 0.7, opacity: 0.6),
-        Layer(id: 2, lineWidth: 7, blur: 12, duration: 1.0, opacity: 0.3)
+        Layer(id: 0, lineWidth: 6, blur: 0, duration: 0.5, opacity: 1.0),
+        Layer(id: 1, lineWidth: 9, blur: 4, duration: 0.6, opacity: 0.8),
+        Layer(id: 2, lineWidth: 11, blur: 12, duration: 0.8, opacity: 0.55),
+        Layer(id: 3, lineWidth: 15, blur: 15, duration: 1.0, opacity: 0.35)
     ]
 
     static let updateInterval: Duration = .milliseconds(400)
