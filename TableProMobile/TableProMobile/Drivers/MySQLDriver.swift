@@ -295,8 +295,14 @@ private actor MySQLActor {
             mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
         }
 
+        guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {
+            mysql_close(handle)
+            throw MySQLError.connectionFailed(
+                "Port \(port) is out of range. Use a value between 1 and 65535."
+            )
+        }
         guard mysql_real_connect(
-            handle, host, user, password, database, UInt32(port), nil, 0
+            handle, host, user, password, database, portU32, nil, 0
         ) != nil else {
             let msg = String(cString: mysql_error(handle))
             mysql_close(handle)

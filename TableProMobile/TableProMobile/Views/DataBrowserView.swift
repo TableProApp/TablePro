@@ -254,9 +254,15 @@ struct DataBrowserView: View {
     }
 
     private var rowList: some View {
-        List {
-            ForEach(rows.indices, id: \.self) { index in
-                let row = rows[index]
+        // Capture a snapshot to avoid race with `viewModel.legacyRows` shrinking
+        // mid-render. Wrapping each row with its index lets ForEach diff by
+        // stable identity instead of iterating `rows.indices` (which holds
+        // stale offsets when the array changes during a SwiftUI update pass).
+        let indexed = IndexedRow.wrap(rows)
+        return List {
+            ForEach(indexed) { item in
+                let index = item.id
+                let row = item.values
                 NavigationLink {
                     RowDetailView(
                         columns: columns,

@@ -363,8 +363,13 @@ private actor RedisActor {
         // Close existing connection if reconnecting
         close()
 
+        guard let portI32 = Int32(exactly: port), (1...65_535).contains(port) else {
+            throw RedisError.connectionFailed(
+                "Port \(port) is out of range. Use a value between 1 and 65535."
+            )
+        }
         var tv = timeval(tv_sec: 10, tv_usec: 0)
-        guard let context = redisConnectWithTimeout(host, Int32(port), tv) else {
+        guard let context = redisConnectWithTimeout(host, portI32, tv) else {
             throw RedisError.connectionFailed("Failed to create Redis context")
         }
 

@@ -94,9 +94,9 @@ struct RowDetailView: View {
                 rowContent(at: currentIndex)
             } else {
                 TabView(selection: $currentIndex) {
-                    ForEach(rows.indices, id: \.self) { index in
-                        rowContent(at: index)
-                            .tag(index)
+                    ForEach(IndexedRow.wrap(rows)) { item in
+                        rowContent(at: item.id)
+                            .tag(item.id)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -450,7 +450,13 @@ struct RowDetailView: View {
         }
 
         guard !pkValues.isEmpty else {
-            operationError = AppError(category: .config, title: "Cannot Save", message: "No primary key values found.", recovery: "This table needs a primary key to identify the row.", underlying: nil)
+            operationError = AppError(
+                category: .config,
+                title: "Cannot Save",
+                message: "No primary key values found.",
+                recovery: "This table needs a primary key to identify the row.",
+                underlying: nil
+            )
             showOperationError = true
             return
         }

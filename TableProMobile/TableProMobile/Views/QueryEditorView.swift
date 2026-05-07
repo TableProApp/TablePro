@@ -228,9 +228,11 @@ struct QueryEditorView: View {
     }
 
     private var resultList: some View {
-        List {
-            ForEach(viewModel.legacyRows.indices, id: \.self) { rowIndex in
-                let row = viewModel.legacyRows[rowIndex]
+        let indexed = IndexedRow.wrap(viewModel.legacyRows)
+        return List {
+            ForEach(indexed) { item in
+                let rowIndex = item.id
+                let row = item.values
                 NavigationLink {
                     RowDetailView(
                         columns: viewModel.columns,
