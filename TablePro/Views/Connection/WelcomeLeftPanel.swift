@@ -5,9 +5,11 @@
 
 import SwiftUI
 
-struct WelcomeLeftPanel: View {
+struct WelcomeActionsPanel: View {
     let onActivateLicense: () -> Void
     let onCreateConnection: () -> Void
+    let onTrySample: () -> Void
+    let onImportFromFile: () -> Void
 
     private let updaterBridge = UpdaterBridge.shared
 
@@ -15,14 +17,14 @@ struct WelcomeLeftPanel: View {
         VStack(spacing: 0) {
             Spacer()
 
-            VStack(spacing: 16) {
+            VStack(spacing: 14) {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 96, height: 96)
                     .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
 
                 VStack(spacing: 6) {
-                    Text("TablePro")
+                    Text(verbatim: "TablePro")
                         .font(.title2.weight(.semibold))
 
                     versionLine
@@ -32,27 +34,43 @@ struct WelcomeLeftPanel: View {
             }
 
             Spacer()
-                .frame(height: 32)
+                .frame(height: 28)
 
-            Button(action: onCreateConnection) {
-                Label("Create connection...", systemImage: "plus.circle")
-                    .frame(maxWidth: .infinity, alignment: .center)
+            VStack(spacing: 8) {
+                Button(action: onCreateConnection) {
+                    Label(String(localized: "Create Connection..."), systemImage: "plus.circle")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Button(action: onTrySample) {
+                    Label(String(localized: "Try Sample Database"), systemImage: "cylinder.split.1x2")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+
+                Button(action: onImportFromFile) {
+                    Label(String(localized: "Import Connections..."), systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 24)
 
             Spacer()
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
-                    SyncStatusIndicator()
-                    KeyboardHint(keys: "⌘N", label: "New")
-                    KeyboardHint(keys: "⌘,", label: "Settings")
+                    SyncStatusIndicator(onActivateLicense: onActivateLicense)
+                    KeyboardHint(keys: "⌘N", label: String(localized: "New"))
+                    KeyboardHint(keys: "⌘,", label: String(localized: "Settings"))
                 }
                 HStack(spacing: 8) {
-                    SyncStatusIndicator()
-                    KeyboardHint(keys: "⌘N", label: "New")
+                    SyncStatusIndicator(onActivateLicense: onActivateLicense)
+                    KeyboardHint(keys: "⌘N", label: String(localized: "New"))
                     KeyboardHint(keys: "⌘,", label: nil)
                 }
             }
@@ -66,14 +84,14 @@ struct WelcomeLeftPanel: View {
 
     private var versionLine: some View {
         HStack(spacing: 6) {
-            Text("Version \(Bundle.main.appVersion)")
+            Text(String(format: String(localized: "Version %@"), Bundle.main.appVersion))
                 .foregroundStyle(.secondary)
             Text(verbatim: "·")
                 .foregroundStyle(.tertiary)
             Button {
                 updaterBridge.checkForUpdates()
             } label: {
-                Text("Check for Updates...")
+                Text(String(localized: "Check for Updates..."))
             }
             .buttonStyle(.link)
             .disabled(!updaterBridge.canCheckForUpdates)
@@ -84,40 +102,15 @@ struct WelcomeLeftPanel: View {
     @ViewBuilder
     private var licenseLine: some View {
         if LicenseManager.shared.status.isValid {
-            Label("Pro", systemImage: "checkmark.seal.fill")
+            Label(String(localized: "Pro"), systemImage: "checkmark.seal.fill")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color(nsColor: .systemGreen))
         } else {
-            HoverAccentButton(action: onActivateLicense) {
-                Text("Activate License")
+            Button(action: onActivateLicense) {
+                Text(String(localized: "Activate License"))
                     .font(.subheadline)
             }
-        }
-    }
-}
-
-private struct HoverAccentButton<Label: View>: View {
-    let action: () -> Void
-    @ViewBuilder let label: () -> Label
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            label()
-                .foregroundStyle(isHovering
-                    ? AnyShapeStyle(Color.accentColor)
-                    : AnyShapeStyle(HierarchicalShapeStyle.secondary))
-                .underline(isHovering, color: .accentColor)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovering = hovering
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
+            .buttonStyle(.link)
         }
     }
 }

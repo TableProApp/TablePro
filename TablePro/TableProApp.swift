@@ -646,6 +646,7 @@ struct TableProApp: App {
                 ))
         }
         .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
         .commandsRemoved()
 
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in

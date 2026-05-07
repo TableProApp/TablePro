@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 
 struct WelcomeWindowView: View {
     private enum FocusField {
+        case search
         case connectionList
     }
 
@@ -195,60 +196,85 @@ struct WelcomeWindowView: View {
     // MARK: - Layout
 
     private var welcomeContent: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            WelcomeLeftPanel(
+        HStack(spacing: 0) {
+            WelcomeActionsPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
-                onCreateConnection: { WindowOpener.shared.openConnectionForm() }
+                onCreateConnection: { WindowOpener.shared.openConnectionForm() },
+                onTrySample: { vm.openSampleDatabase() },
+                onImportFromFile: { vm.importConnectionsFromFile() }
             )
-            .navigationSplitViewColumnWidth(240)
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
-            connectionsDetail
+            .frame(width: 240)
+            .background(.regularMaterial)
+
+            Divider()
+
+            connectionsPanel
         }
-        .navigationSplitViewStyle(.balanced)
         .transition(.opacity)
     }
 
-    // MARK: - Detail (Connections)
+    // MARK: - Connections panel
 
-    private var connectionsDetail: some View {
-        Group {
-            if vm.treeItems.isEmpty && vm.filteredConnections.isEmpty {
-                emptyState
-            } else {
-                connectionList
+    private var connectionsPanel: some View {
+        VStack(spacing: 0) {
+            connectionsHeader
+            Divider()
+            ZStack {
+                if vm.treeItems.isEmpty && vm.linkedConnections.isEmpty {
+                    emptyState
+                } else {
+                    connectionList
+                }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .contextMenu { newConnectionContextMenu }
-        .searchable(
-            text: $vm.searchText,
-            placement: .toolbar,
-            prompt: Text("Search for connection...")
-        )
-        .onSubmit(of: .search) {
-            vm.connectSelectedConnections()
+        .onKeyPress(characters: .init(charactersIn: "f"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.command) else { return .ignored }
+            focus = .search
+            return .handled
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    WindowOpener.shared.openConnectionForm()
-                } label: {
-                    Label(String(localized: "New Connection"), systemImage: "plus")
-                }
-                .help(String(localized: "New Connection (⌘N)"))
-            }
+    }
 
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    vm.pendingMoveToNewGroup = []
-                    vm.activeSheet = .newGroup(parentId: nil)
-                } label: {
-                    Label(String(localized: "New Group"), systemImage: "folder.badge.plus")
-                }
-                .help(String(localized: "New Group"))
+    private var connectionsHeader: some View {
+        HStack(spacing: 8) {
+            Button {
+                WindowOpener.shared.openConnectionForm()
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 14, height: 14)
             }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .help(String(localized: "New Connection (⌘N)"))
+            .accessibilityLabel(String(localized: "New Connection"))
+
+            Button {
+                vm.pendingMoveToNewGroup = []
+                vm.activeSheet = .newGroup(parentId: nil)
+            } label: {
+                Image(systemName: "folder.badge.plus")
+                    .frame(width: 14, height: 14)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .help(String(localized: "New Group"))
+            .accessibilityLabel(String(localized: "New Group"))
+
+            Spacer()
+
+            NativeSearchField(
+                text: $vm.searchText,
+                placeholder: String(localized: "Search for connection..."),
+                controlSize: .regular
+            )
+            .focused($focus, equals: .search)
+            .frame(maxWidth: 240)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Connection List
@@ -279,9 +305,10 @@ struct WelcomeWindowView: View {
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .focused($focus, equals: .connectionList)
-            .onKeyPress(.return) {
-                vm.connectSelectedConnections()
-                return .handled
+            .contextMenu(forSelectionType: UUID.self) { ids in
+                contextMenuContent(for: ids)
+            } primaryAction: { ids in
+                primaryAction(for: ids)
             }
             .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
                 guard keyPress.modifiers.contains(.command) else { return .ignored }
@@ -333,13 +360,11 @@ struct WelcomeWindowView: View {
         let sshProfile = connection.sshProfileId.flatMap { SSHProfileStorage.shared.profile(for: $0) }
         return WelcomeConnectionRow(
             connection: connection,
-            sshProfile: sshProfile,
-            onConnect: { vm.connectToDatabase(connection) }
+            sshProfile: sshProfile
         )
         .tag(connection.id)
         .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .listRowSeparator(.hidden)
-        .contextMenu { contextMenuContent(for: connection) }
     }
 
     private func linkedConnectionRow(for linked: LinkedConnection) -> some View {
@@ -365,13 +390,16 @@ struct WelcomeWindowView: View {
         .padding(.vertical, 4)
         .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .contentShape(Rectangle())
-        .background { DoubleClickDetector { vm.connectToLinkedConnection(linked) } }
         .listRowSeparator(.hidden)
-        .contextMenu {
-            Button {
+    }
+
+    private func primaryAction(for ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        for id in ids {
+            if let conn = vm.connections.first(where: { $0.id == id }) {
+                vm.connectToDatabase(conn)
+            } else if let linked = vm.linkedConnections.first(where: { $0.id == id }) {
                 vm.connectToLinkedConnection(linked)
-            } label: {
-                Label(String(localized: "Connect"), systemImage: "play.fill")
             }
         }
     }
@@ -416,8 +444,15 @@ private struct TreeRowsView<ConnectionContent: View>: View {
     var vm: WelcomeViewModel
     let connectionRowBuilder: (DatabaseConnection) -> ConnectionContent
 
+    private var hasGroups: Bool {
+        items.contains { node in
+            if case .group = node { return true }
+            return false
+        }
+    }
+
     var body: some View {
-        let allConnections = !items.contains { if case .group = $0 { return true } else { return false } }
+        let allConnections = !hasGroups
         ForEach(items) { item in
             switch item {
             case .connection(let conn):
