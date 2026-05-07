@@ -93,7 +93,7 @@ struct AISchemaContext {
 
     // MARK: - Private
 
-    private static func buildSchemaSection(
+    static func buildSchemaSection(
         tables: [TableInfo],
         columnsByTable: [String: [ColumnInfo]],
         foreignKeys: [String: [ForeignKeyInfo]],

@@ -86,4 +86,57 @@ struct AIChatViewModelMentionsTests {
         #expect(vm.messages.isEmpty)
         #expect(vm.attachedContext.count == 1)
     }
+
+    @Test("Stored user turn keeps typed text raw (not pre-resolved)")
+    func storedTurnIsRaw() {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        vm.inputText = "Explain"
+        vm.attach(.currentQuery(text: "SELECT * FROM Customer"))
+
+        vm.sendMessage()
+
+        let userTurn = vm.messages.first(where: { $0.role == .user })
+        #expect(userTurn?.plainText == "Explain")
+        #expect(userTurn?.blocks.contains(where: {
+            if case .attachment = $0 { return true } else { return false }
+        }) == true)
+    }
+
+    @Test("resolveTurnForWire expands attachments into the text block")
+    func resolveTurnForWireExpands() {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        let raw = ChatTurn(role: .user, blocks: [
+            .text("Explain"),
+            .attachment(.currentQuery(text: "SELECT * FROM Customer"))
+        ])
+
+        let wire = vm.resolveTurnForWire(raw)
+
+        #expect(wire.id == raw.id)
+        #expect(wire.plainText.contains("Explain"))
+        #expect(wire.plainText.contains("SELECT * FROM Customer"))
+        #expect(wire.plainText.contains("## Current Query"))
+    }
+
+    @Test("editMessage restores typed text and attachments")
+    func editMessageRecoversAttachments() {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        vm.inputText = "What is this?"
+        let connectionId = vm.connection?.id ?? UUID()
+        vm.attach(.table(connectionId: connectionId, name: "Customer"))
+        vm.sendMessage()
+
+        let userTurn = vm.messages.first(where: { $0.role == .user })
+        #expect(userTurn != nil)
+
+        guard let userTurn else { return }
+        vm.editMessage(userTurn)
+
+        #expect(vm.inputText == "What is this?")
+        #expect(vm.attachedContext.count == 1)
+        #expect(vm.attachedContext.first?.stableKey.hasPrefix("table:") == true)
+    }
 }

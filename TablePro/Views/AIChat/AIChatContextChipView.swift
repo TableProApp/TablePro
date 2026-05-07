@@ -47,10 +47,8 @@ struct AIChatContextChipStrip: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(items, id: \.stableKey) { item in
-                        AIChatContextChipView(
-                            item: item,
-                            onRemove: onRemove.map { handler in { handler(item) } }
-                        )
+                        let removeAction: (() -> Void)? = onRemove.map { handler in { handler(item) } }
+                        AIChatContextChipView(item: item, onRemove: removeAction)
                     }
                 }
                 .padding(.horizontal, 8)

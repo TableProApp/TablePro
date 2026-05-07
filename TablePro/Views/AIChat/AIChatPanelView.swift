@@ -390,48 +390,57 @@ struct AIChatPanelView: View {
         }
     }
 
+    @ViewBuilder
     private var mentionMenu: some View {
-        Menu {
-            if let connectionId = viewModel.connection?.id {
+        if let connectionId = viewModel.connection?.id {
+            Menu {
                 Button {
                     viewModel.attach(.schema(connectionId: connectionId))
                 } label: {
                     Label(String(localized: "Schema"), systemImage: "tablecells")
                 }
-                if !viewModel.tables.isEmpty {
-                    Menu(String(localized: "Tables")) {
-                        ForEach(viewModel.tables, id: \.name) { table in
-                            Button {
-                                viewModel.attach(.table(connectionId: connectionId, name: table.name))
-                            } label: {
-                                Text(table.name)
-                            }
+                .disabled(viewModel.tables.isEmpty)
+
+                Menu(String(localized: "Tables")) {
+                    let sortedTables = viewModel.tables.sorted {
+                        $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                    }
+                    ForEach(sortedTables, id: \.name) { table in
+                        Button {
+                            viewModel.attach(.table(connectionId: connectionId, name: table.name))
+                        } label: {
+                            Text(table.name)
                         }
                     }
                 }
-            }
-            if let query = currentQuery, !query.isEmpty {
+                .disabled(viewModel.tables.isEmpty)
+
                 Button {
-                    viewModel.attach(.currentQuery(text: query))
+                    if let query = currentQuery, !query.isEmpty {
+                        viewModel.attach(.currentQuery(text: query))
+                    }
                 } label: {
                     Label(String(localized: "Current Query"), systemImage: "doc.text")
                 }
-            }
-            if let results = queryResults, !results.isEmpty {
+                .disabled((currentQuery ?? "").isEmpty)
+
                 Button {
-                    viewModel.attach(.queryResult(summary: results))
+                    if let results = queryResults, !results.isEmpty {
+                        viewModel.attach(.queryResult(summary: results))
+                    }
                 } label: {
                     Label(String(localized: "Query Results"), systemImage: "list.bullet.rectangle")
                 }
+                .disabled((queryResults ?? "").isEmpty)
+            } label: {
+                Image(systemName: "at")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-        } label: {
-            Image(systemName: "at")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(String(localized: "Attach context"))
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help(String(localized: "Attach context"))
     }
 
     private var slashCommandMenu: some View {

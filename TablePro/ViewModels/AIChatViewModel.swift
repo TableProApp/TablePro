@@ -193,6 +193,10 @@ final class AIChatViewModel {
         guard let idx = messages.firstIndex(where: { $0.id == message.id }) else { return }
 
         inputText = message.plainText
+        attachedContext = message.blocks.compactMap { block in
+            if case .attachment(let item) = block { return item }
+            return nil
+        }
         messages.removeSubrange(idx...)
         persistCurrentConversation()
     }
@@ -236,10 +240,8 @@ final class AIChatViewModel {
             return
         }
 
-        let attachments = attachedContext
-        let prompt = composePrompt(text: text, attachments: attachments)
-        var blocks: [ChatContentBlock] = [.text(prompt)]
-        blocks.append(contentsOf: attachments.map { .attachment($0) })
+        var blocks: [ChatContentBlock] = [.text(text)]
+        blocks.append(contentsOf: attachedContext.map { .attachment($0) })
 
         messages.append(ChatTurn(role: .user, blocks: blocks))
         trimMessagesIfNeeded()
@@ -259,13 +261,36 @@ final class AIChatViewModel {
         attachedContext.removeAll { $0.stableKey == item.stableKey }
     }
 
-    private func composePrompt(text: String, attachments: [ContextItem]) -> String {
-        guard !attachments.isEmpty else { return text }
+    /// Produce a wire-ready copy of a turn with `.attachment` blocks expanded
+    /// into appended text. The stored `messages` array keeps the raw form so
+    /// `editMessage` can recover the typed text and attachments cleanly.
+    func resolveTurnForWire(_ turn: ChatTurn) -> ChatTurn {
+        let attachments = turn.blocks.compactMap { block -> ContextItem? in
+            if case .attachment(let item) = block { return item }
+            return nil
+        }
+        guard !attachments.isEmpty else { return turn }
+
+        let typed = turn.blocks.compactMap { block -> String? in
+            if case .text(let value) = block { return value }
+            return nil
+        }.joined()
+
         let resolved = attachments
             .compactMap { resolveAttachment($0) }
             .joined(separator: "\n\n")
-        if resolved.isEmpty { return text }
-        return text + "\n\n---\n\n" + resolved
+        if resolved.isEmpty { return turn }
+
+        let combined = typed.isEmpty ? resolved : typed + "\n\n---\n\n" + resolved
+        return ChatTurn(
+            id: turn.id,
+            role: turn.role,
+            blocks: [.text(combined)],
+            timestamp: turn.timestamp,
+            usage: turn.usage,
+            modelId: turn.modelId,
+            providerId: turn.providerId
+        )
     }
 
     private func resolveAttachment(_ item: ContextItem) -> String? {
@@ -289,19 +314,39 @@ final class AIChatViewModel {
 
     private func resolveSchemaAttachment() -> String? {
         guard !tables.isEmpty else { return nil }
-        let lines = tables.prefix(50).map { table -> String in
-            let columns = columnsByTable[table.name] ?? []
-            let columnList = columns.map { "  - \($0.name): \($0.dataType)" }.joined(separator: "\n")
-            return "### \(table.name)\n\(columnList.isEmpty ? "  (columns not loaded)" : columnList)"
-        }
-        return "## Schema\n" + lines.joined(separator: "\n")
+        let settings = AppSettingsManager.shared.ai
+        let identifierQuote = connection.flatMap {
+            PluginManager.shared.sqlDialect(for: $0.type)?.identifierQuote
+        } ?? "\""
+        let section = AISchemaContext.buildSchemaSection(
+            tables: tables,
+            columnsByTable: columnsByTable,
+            foreignKeys: foreignKeysByTable,
+            maxTables: settings.maxSchemaTables,
+            identifierQuote: identifierQuote
+        )
+        guard !section.isEmpty else { return nil }
+        return "## Schema\n\(section)"
     }
 
     private func resolveTableAttachment(name: String) -> String? {
         let columns = columnsByTable[name] ?? []
-        guard !columns.isEmpty else { return "## Table \(name)\n(columns not loaded)" }
-        let columnList = columns.map { "- \($0.name): \($0.dataType)" }.joined(separator: "\n")
-        return "## Table \(name)\n\(columnList)"
+        let foreignKeys = foreignKeysByTable[name] ?? []
+        var lines: [String] = ["## Table \(name)"]
+        if columns.isEmpty {
+            lines.append("(columns not loaded)")
+        } else {
+            for column in columns {
+                lines.append("- \(column.name): \(column.dataType)")
+            }
+        }
+        if !foreignKeys.isEmpty {
+            lines.append("Foreign keys:")
+            for foreign in foreignKeys {
+                lines.append("- \(foreign.column) -> \(foreign.referencedTable).\(foreign.referencedColumn)")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Send a pre-filled prompt
@@ -556,7 +601,7 @@ final class AIChatViewModel {
         isStreaming = true
 
         // Capture value types on main actor before detaching
-        let chatMessages = Array(messages.dropLast())
+        let chatMessages = messages.dropLast().map { resolveTurnForWire($0) }
 
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {
