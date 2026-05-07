@@ -90,7 +90,7 @@ final class CopilotChatProvider: ChatTransport {
                             workspaceFolders: nil,
                             chatMode: toolsAvailable ? "Agent" : nil,
                             customChatModeId: toolsAvailable ? "Agent" : nil,
-                            needToolCallConfirmation: toolsAvailable ? true : nil
+                            needToolCallConfirmation: toolsAvailable ? false : nil
                         )
                         let result = try await client.conversationCreate(params: params)
                         self.conversationId = result.conversationId
