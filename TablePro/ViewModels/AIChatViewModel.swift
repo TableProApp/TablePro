@@ -291,7 +291,7 @@ final class AIChatViewModel {
         guard !tables.isEmpty else { return nil }
         let lines = tables.prefix(50).map { table -> String in
             let columns = columnsByTable[table.name] ?? []
-            let columnList = columns.map { "  - \($0.name): \($0.type)" }.joined(separator: "\n")
+            let columnList = columns.map { "  - \($0.name): \($0.dataType)" }.joined(separator: "\n")
             return "### \(table.name)\n\(columnList.isEmpty ? "  (columns not loaded)" : columnList)"
         }
         return "## Schema\n" + lines.joined(separator: "\n")
@@ -300,7 +300,7 @@ final class AIChatViewModel {
     private func resolveTableAttachment(name: String) -> String? {
         let columns = columnsByTable[name] ?? []
         guard !columns.isEmpty else { return "## Table \(name)\n(columns not loaded)" }
-        let columnList = columns.map { "- \($0.name): \($0.type)" }.joined(separator: "\n")
+        let columnList = columns.map { "- \($0.name): \($0.dataType)" }.joined(separator: "\n")
         return "## Table \(name)\n\(columnList)"
     }
 
