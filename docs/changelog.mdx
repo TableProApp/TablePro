@@ -4,6 +4,49 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="May 7, 2026" description="v0.39.0">
+  ### New Features
+
+  - **Linked SQL Folders**: Point TablePro at a folder of `.sql` files for two-way sync with Favorites. Edit in TablePro or your editor; changes flow both ways. Frontmatter sets `@name`, `@keyword`, and `@description`; save-time conflicts show a side-by-side diff. Free.
+  - **Database Type Chooser**: New Connection now opens a categorised, searchable sheet listing every supported driver (Relational, Document, Key-Value, Analytical, Wide-Column, Cloud Native, Coordination & Config). Editing an existing connection skips the chooser
+  - **Free XLSX Export**: Excel export no longer requires Pro
+  - **Free Safe Mode**: Touch ID, Full, and Read Only Safe Mode levels no longer require Pro
+
+  ### Improvements
+
+  - **iOS Streaming Data Layer**: Large tables and queries stream rows instead of buffering the full result set. Memory pressure shrinks the row window automatically; CSV / JSON / SQL export stream too
+  - **Distinguishable Toolbar**: Multiple windows on the same database (e.g. `prod-safe`, `prod-unsafe`, `staging`) show a tinted engine icon plus connection name instead of duplicate "PostgreSQL 16.x" text (#1044)
+  - **Connection-Scoped Favorites**: Opening a second tab on the same connection no longer reloads the favorites tree or flashes a spinner. Selection persists across windows
+  - **Connection Form Redesign**: Rebuilt around macOS HIG sidebar navigation (General, SSH Tunnel, SSL/TLS, Customization, Advanced). Cancel, Save, and Save & Connect live in the native window toolbar; Test Connection inline
+  - **Connection URL Import**: Moved into the database type chooser; paste a URL there instead of inside the form
+  - **HIG Polish**: Hero icons scale with system text size, search fields use native `NSSearchField`, validation banners use the standard warning convention, and form sheets switch to grouped Form layouts
+  - **Native Windows**: Welcome, Connection Form, and Integrations Activity now use SwiftUI scenes, fixing an assertion crash and restoring Integrations Activity at next launch
+  - **ER Diagram Accessibility**: Diagram nodes scale with system text size
+  - **Terminology**: "Read-Only" / "Read-Write" renamed to "Read Only" / "Read & Write" to match macOS HIG
+
+  ### Bug Fixes
+
+  - **Schema Switching on SQL Server / Oracle**: Cmd+K Quick Switcher schema selection no longer silently ignored
+  - **iOS MySQL Crash**: Fixed `EXC_BREAKPOINT` when opening some MySQL tables
+  - **iOS Local Network**: Connections to `.local` hostnames and local-network addresses (10.x, 192.168.x, link-local, IPv6 ULA) no longer time out silently
+  - **MariaDB Install Prompt**: New connection chooser no longer falsely prompts to install built-in lazy drivers
+  - **IME Editor Jump**: SQL editor no longer jumps to the end after committing Chinese, Japanese, or Korean words like "测试" (#1012)
+  - **Personal Team Builds**: External-contributor builds on personal Apple Developer teams now work without an iCloud entitlement (#1020)
+  - **SSH Auth Errors**: Auth-failure alerts now point at the actual cause (wrong password, wrong verification code, rejected key) (#1005)
+  - **TOTP Rotation**: Codes that crossed a 30-second rotation boundary are no longer rejected
+  - **SSH Password vs Keyboard-Interactive**: Auth Method = Password now works against servers that only advertise keyboard-interactive (typical `pam_google_authenticator` setups) (#1005)
+  - **SSH + Google Authenticator**: Connections with Password + TOTP no longer fail (#1005)
+  - **Editor Caret Edge Cases**: Up arrow on the first line, Down on the last line, and Cmd+Left/Right at end-of-line with no trailing newline now work correctly (#1007)
+  - **Caret Gutter Color**: Caret at end of query keeps its line-number color in the gutter
+  - **Multi-Window Tab Persistence**: All windows now persist on relaunch instead of all-but-one being dropped
+  - **Filter Autocomplete Focus**: Popover no longer steals keyboard focus from the text field on Full Keyboard Access
+  - **Toolbar Database Name**: No longer empty after relaunch when the last-used database is restored
+  - **Cmd+K Database Switch**: Switching databases no longer reverts in Cmd+T, query history, AI prompts, or several tab-creation paths (#1043)
+  - **AI Provider Test**: No longer shows `unsupported URL` while editing a draft endpoint
+  - **Data Grid Header Inset**: Column headers now align with result-cell horizontal inset
+  - **Toolbar Status Inset**: Connection status keeps its left inset when no connection tag is shown
+</Update>
+
 <Update label="May 4, 2026" description="v0.38.0">
   ### New Features
 

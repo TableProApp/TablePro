@@ -133,9 +133,6 @@ enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
 
 // MARK: - AI Chat Mode
 
-/// Conversation behaviour for the AI Chat panel.
-/// Wired to provider tool exposure in a follow-up PR; in this layout-only PR
-/// the picker is rendered but the value does not yet gate tools.
 enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case ask
     case edit
@@ -155,7 +152,7 @@ enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .ask:   return "questionmark.bubble"
         case .edit:  return "pencil.and.outline"
-        case .agent: return "sparkle.magnifyingglass"
+        case .agent: return "wand.and.stars"
         }
     }
 }

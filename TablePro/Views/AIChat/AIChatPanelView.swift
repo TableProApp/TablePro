@@ -18,6 +18,7 @@ struct AIChatPanelView: View {
     @State private var isUserScrolledUp = false
     @State private var lastAutoScrollTime: Date = .distantPast
     @State private var mentionState = MentionPopoverState()
+    @State private var showClearConfirmation = false
 
     private var hasConfiguredProvider: Bool {
         settingsManager.ai.hasActiveProvider
@@ -40,6 +41,17 @@ struct AIChatPanelView: View {
 
                 inputArea
             }
+        }
+        .alert(
+            String(localized: "Clear All Conversations?"),
+            isPresented: $showClearConfirmation
+        ) {
+            Button(String(localized: "Clear"), role: .destructive) {
+                viewModel.clearConversation()
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "This will permanently delete all conversation history."))
         }
         .onAppear {
             viewModel.connection = connection
@@ -71,38 +83,18 @@ struct AIChatPanelView: View {
     // MARK: - Empty States
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            EmptyStateView(
-                icon: "sparkles",
-                title: String(localized: "Ask AI about your database"),
-                description: String(localized: "Get help writing queries, explaining schemas, or fixing errors.")
-            )
-            if hasConfiguredProvider {
-                starterPromptChips
-            }
+        VStack(spacing: 6) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 22))
+                .foregroundStyle(.secondary)
+            Text(String(localized: "Ask AI about your database"))
+                .font(.callout)
+                .foregroundStyle(.primary)
+            Text(String(localized: "AI responses may be inaccurate"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private var starterPromptChips: some View {
-        let prompts = AIStarterPrompts.suggestions(for: connection.type)
-        VStack(spacing: 8) {
-            ForEach(prompts, id: \.self) { prompt in
-                Button {
-                    viewModel.inputText = prompt
-                } label: {
-                    Text(prompt)
-                        .font(.callout)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-        }
-        .padding(.horizontal, 24)
     }
 
     private var noProviderState: some View {
@@ -261,37 +253,125 @@ struct AIChatPanelView: View {
                 )
 
                 HStack(alignment: .center, spacing: 8) {
-                    modelPicker
-                    slashCommandMenu
                     mentionMenu
+                    slashCommandMenu
+                    modeMenu
+                    modelPicker
                     Spacer()
-                    if viewModel.isStreaming {
-                        Button {
-                            viewModel.cancelStream()
-                        } label: {
-                            Image(systemName: "stop.circle.fill")
-                                .foregroundStyle(Color(nsColor: .systemRed))
-                        }
-                        .buttonStyle(.plain)
-                        .help(String(localized: "Stop Generating"))
-                    } else {
-                        Button {
-                            updateContext()
-                            viewModel.sendMessage()
-                        } label: {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .foregroundStyle(
-                                    viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                        ? .secondary : Color.accentColor
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .help(String(localized: "Send Message"))
-                    }
+                    historyMenu
+                    newConversationButton
+                    sendOrStopButton
                 }
             }
             .padding(8)
+        }
+    }
+
+    private var modeMenu: some View {
+        let binding = Binding<AIChatMode>(
+            get: { settingsManager.ai.chatMode },
+            set: { newValue in
+                var settings = settingsManager.ai
+                settings.chatMode = newValue
+                settingsManager.ai = settings
+            }
+        )
+        return Menu {
+            Picker("", selection: binding) {
+                ForEach(AIChatMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: 4) {
+                Text(settingsManager.ai.chatMode.displayName)
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(String(localized: "Chat mode"))
+    }
+
+    private var newConversationButton: some View {
+        Button {
+            viewModel.startNewConversation()
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "New Conversation"))
+    }
+
+    private var historyMenu: some View {
+        Menu {
+            if !viewModel.conversations.isEmpty {
+                Section(String(localized: "Recent Conversations")) {
+                    ForEach(viewModel.conversations) { conversation in
+                        Button {
+                            viewModel.switchConversation(to: conversation.id)
+                        } label: {
+                            HStack {
+                                Text(conversation.title.isEmpty
+                                    ? String(localized: "Untitled")
+                                    : conversation.title)
+                                if conversation.id == viewModel.activeConversationID {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
+            Button(role: .destructive) {
+                showClearConfirmation = true
+            } label: {
+                Label(String(localized: "Clear Recents"), systemImage: "trash")
+            }
+            .disabled(viewModel.conversations.isEmpty)
+        } label: {
+            Image(systemName: "clock")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "Conversation history"))
+    }
+
+    @ViewBuilder
+    private var sendOrStopButton: some View {
+        if viewModel.isStreaming {
+            Button {
+                viewModel.cancelStream()
+            } label: {
+                Image(systemName: "stop.circle.fill")
+                    .foregroundStyle(Color(nsColor: .systemRed))
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Stop Generating"))
+        } else {
+            let isEmpty = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            Button {
+                updateContext()
+                viewModel.sendMessage()
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .foregroundStyle(isEmpty ? .secondary : Color.accentColor)
+            }
+            .buttonStyle(.plain)
+            .disabled(isEmpty)
+            .help(String(localized: "Send Message"))
         }
     }
 
@@ -306,7 +386,7 @@ struct AIChatPanelView: View {
             let selectedProvider = providers.first(where: { $0.id == selectedProviderId }) ?? activeProvider
             let resolvedModel = viewModel.selectedModel ?? selectedProvider?.model ?? ""
             let label = selectedProvider.map { provider in
-                resolvedModel.isEmpty ? provider.displayName : "\(provider.displayName) · \(resolvedModel)"
+                resolvedModel.isEmpty ? provider.displayName : resolvedModel
             } ?? String(localized: "Select Model")
 
             Menu {

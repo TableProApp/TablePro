@@ -572,6 +572,25 @@
         }
       }
     },
+    "**Available commands:**" : {
+
+    },
+    "/%@" : {
+
+    },
+    "/%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "/%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "/%@ needs a query: type one in the editor or after the command." : {
+
+    },
     "/path/to/agent.sock" : {
       "localizations" : {
         "tr" : {
@@ -768,6 +787,7 @@
       }
     },
     "%@ (Pro)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -813,6 +833,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ %@"
+          }
+        }
+      }
+    },
+    "%@ • %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ • %2$@"
           }
         }
       }
@@ -910,6 +940,9 @@
           }
         }
       }
+    },
+    "%@ does not support switching schemas in TablePro." : {
+
     },
     "%@ download" : {
       "localizations" : {
@@ -4274,6 +4307,9 @@
         }
       }
     },
+    "Add Command" : {
+
+    },
     "Add Connection" : {
       "localizations" : {
         "tr" : {
@@ -4726,6 +4762,9 @@
     "Advanced object-relational SQL" : {
 
     },
+    "Agent" : {
+
+    },
     "Agent Socket" : {
       "localizations" : {
         "tr" : {
@@ -4858,6 +4897,9 @@
         }
       }
     },
+    "AI made too many tool calls in one response. Try simplifying the request." : {
+
+    },
     "AI Not Configured" : {
       "localizations" : {
         "tr" : {
@@ -4946,6 +4988,9 @@
           }
         }
       }
+    },
+    "AI responses may be inaccurate" : {
+
     },
     "AI-Powered Assistant" : {
       "localizations" : {
@@ -6599,6 +6644,9 @@
         }
       }
     },
+    "Ask" : {
+
+    },
     "Ask about your database..." : {
       "localizations" : {
         "tr" : {
@@ -6732,6 +6780,9 @@
           }
         }
       }
+    },
+    "Attach context" : {
+
     },
     "Attachments" : {
       "localizations" : {
@@ -8045,6 +8096,9 @@
         }
       }
     },
+    "Calling" : {
+
+    },
     "Cancel" : {
       "localizations" : {
         "tr" : {
@@ -8730,6 +8784,9 @@
         }
       }
     },
+    "Chat mode" : {
+
+    },
     "Check for Updates..." : {
       "localizations" : {
         "tr" : {
@@ -8944,6 +9001,9 @@
       }
     },
     "Choose a section from the sidebar." : {
+
+    },
+    "Choose AI provider and model" : {
 
     },
     "Choose your client and follow the steps to connect it to TablePro." : {
@@ -11457,6 +11517,16 @@
         }
       }
     },
+    "Connection: %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Connection: %1$@, %2$@"
+          }
+        }
+      }
+    },
     "Connections" : {
       "localizations" : {
         "tr" : {
@@ -11633,6 +11703,9 @@
           }
         }
       }
+    },
+    "Conversation history" : {
+
     },
     "Conversation History" : {
       "extractionState" : "stale",
@@ -12863,6 +12936,7 @@
       }
     },
     "Create connection..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -12883,6 +12957,9 @@
           }
         }
       }
+    },
+    "Create Connection..." : {
+
     },
     "Create Database" : {
       "localizations" : {
@@ -13132,6 +13209,9 @@
         }
       }
     },
+    "Create your own slash commands. Use {{query}}, {{schema}}, {{database}}, or {{body}} in the template to insert chat context at runtime." : {
+
+    },
     "Created" : {
       "localizations" : {
         "tr" : {
@@ -13335,6 +13415,9 @@
           }
         }
       }
+    },
+    "Current Query" : {
+
     },
     "Current schema: %@ (⌘K to switch)" : {
       "extractionState" : "stale",
@@ -13622,6 +13705,9 @@
           }
         }
       }
+    },
+    "Custom Slash Commands" : {
+
     },
     "Customization" : {
 
@@ -14156,6 +14242,7 @@
       }
     },
     "Database type: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15518,6 +15605,9 @@
       }
     },
     "Describe Table" : {
+
+    },
+    "Describe the columns of a table or view." : {
 
     },
     "Description" : {
@@ -18248,6 +18338,9 @@
     "Execute a destructive DDL query (DROP, TRUNCATE, ALTER...DROP) after explicit confirmation." : {
 
     },
+    "Execute a destructive DDL query (DROP, TRUNCATE, ALTER...DROP) after explicit confirmation. Pass confirmation_phrase exactly as: I understand this is irreversible" : {
+
+    },
     "Execute a query to view results as JSON" : {
       "localizations" : {
         "tr" : {
@@ -18269,6 +18362,9 @@
           }
         }
       }
+    },
+    "Execute a SQL query against a connection. The connection's safe mode policy applies. Multi-statement queries are rejected. Destructive operations (DROP, TRUNCATE, ALTER...DROP) are blocked here; use confirm_destructive_operation instead." : {
+
     },
     "Execute a SQL query. All queries are subject to the connection's safe mode policy. DROP/TRUNCATE/ALTER...DROP must use the confirm_destructive_operation tool." : {
 
@@ -18741,6 +18837,9 @@
           }
         }
       }
+    },
+    "Explain the current query" : {
+
     },
     "Explain this SQL query:\n\n```sql\n%@\n```" : {
       "extractionState" : "stale",
@@ -19437,6 +19536,7 @@
       }
     },
     "Export query results and tables to Excel format." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21690,6 +21790,9 @@
         }
       }
     },
+    "Fix the last error on the current query" : {
+
+    },
     "Focus an already-open tab by id (returned from list_recent_tabs)." : {
 
     },
@@ -21719,6 +21822,7 @@
 
     },
     "Focus the query editor to insert" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -22361,6 +22465,9 @@
     "Get Connection Status" : {
 
     },
+    "Get detailed status for a specific database connection." : {
+
+    },
     "Get detailed status of a database connection" : {
 
     },
@@ -22368,6 +22475,7 @@
 
     },
     "Get help writing queries, explaining schemas, or fixing errors." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -22437,6 +22545,9 @@
 
     },
     "Get the CREATE TABLE DDL statement for a table" : {
+
+    },
+    "Get the DDL (CREATE statement) for a table." : {
 
     },
     "GitHub Repository" : {
@@ -26432,6 +26543,7 @@
       }
     },
     "License expired — sync paused" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -26452,6 +26564,9 @@
           }
         }
       }
+    },
+    "License expired, sync paused" : {
+
     },
     "License expires in %lld day(s)" : {
       "localizations" : {
@@ -26861,7 +26976,13 @@
     "List all databases on the server" : {
 
     },
+    "List all saved database connections with their current status." : {
+
+    },
     "List all saved database connections with their status" : {
+
+    },
+    "List available commands" : {
 
     },
     "List Connections" : {
@@ -26873,6 +26994,9 @@
     "List Databases" : {
 
     },
+    "List databases available on a connection." : {
+
+    },
     "List of all saved database connections with metadata" : {
 
     },
@@ -26882,6 +27006,9 @@
     "List Schemas" : {
 
     },
+    "List schemas available in the active database of a connection." : {
+
+    },
     "List schemas in a database" : {
 
     },
@@ -26889,6 +27016,9 @@
 
     },
     "List tables and views in a database" : {
+
+    },
+    "List tables and views in the active database of a connection." : {
 
     },
     "Load" : {
@@ -29119,10 +29249,14 @@
         }
       }
     },
+    "New" : {
+
+    },
     "New %@ Connection" : {
 
     },
     "New Chat" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -29994,6 +30128,9 @@
           }
         }
       }
+    },
+    "No custom commands yet." : {
+
     },
     "No Data" : {
       "localizations" : {
@@ -32141,6 +32278,9 @@
         }
       }
     },
+    "Open a connection to insert" : {
+
+    },
     "Open a table tab in TablePro for the given connection." : {
 
     },
@@ -32854,6 +32994,9 @@
           }
         }
       }
+    },
+    "Optional one-line description" : {
+
     },
     "Options" : {
       "localizations" : {
@@ -35644,6 +35787,9 @@
     "Prompt for password" : {
 
     },
+    "Prompt template" : {
+
+    },
     "Providers" : {
       "localizations" : {
         "tr" : {
@@ -36092,6 +36238,9 @@
           }
         }
       }
+    },
+    "Query Results" : {
+
     },
     "Query timeout" : {
       "localizations" : {
@@ -37479,6 +37628,9 @@
         }
       }
     },
+    "Remove attachment" : {
+
+    },
     "Remove filter" : {
       "localizations" : {
         "tr" : {
@@ -38373,6 +38525,9 @@
     "Restrict to a specific connection (UUID, optional)" : {
 
     },
+    "Result" : {
+
+    },
     "Results" : {
       "localizations" : {
         "tr" : {
@@ -38578,6 +38733,9 @@
           }
         }
       }
+    },
+    "review" : {
+
     },
     "Revoke" : {
       "localizations" : {
@@ -39850,6 +40008,9 @@
         }
       }
     },
+    "Saved Query" : {
+
+    },
     "Scale" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -39951,6 +40112,9 @@
           }
         }
       }
+    },
+    "Schema Switching Not Supported" : {
+
     },
     "Schemas" : {
       "localizations" : {
@@ -40816,6 +40980,9 @@
         }
       }
     },
+    "Select Model" : {
+
+    },
     "Select Plugin" : {
       "localizations" : {
         "tr" : {
@@ -41465,7 +41632,6 @@
       }
     },
     "Settings" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -42466,6 +42632,9 @@
         }
       }
     },
+    "Slash commands" : {
+
+    },
     "Slow" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -43305,7 +43474,7 @@
         }
       }
     },
-    "SSH agent did not authenticate. Make sure the right key is loaded (try ssh-add -l)." : {
+    "SSH agent did not authenticate. Run ssh-add -l to check loaded keys." : {
 
     },
     "SSH authentication failed. Check your credentials or private key." : {
@@ -43489,7 +43658,7 @@
         }
       }
     },
-    "SSH password rejected. Check the password for this connection." : {
+    "SSH password rejected. Check the password and try again." : {
 
     },
     "SSH Port" : {
@@ -43517,7 +43686,7 @@
     "SSH port must be between 1 and 65535" : {
 
     },
-    "SSH private key rejected. Check the key file, passphrase, or pick a different identity." : {
+    "SSH private key rejected. Check the key file or passphrase." : {
 
     },
     "SSH Profile" : {
@@ -44715,6 +44884,9 @@
         }
       }
     },
+    "Suggest optimizations for the current query" : {
+
+    },
     "Suggested Actions" : {
 
     },
@@ -45623,6 +45795,7 @@
       }
     },
     "TablePro" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -46517,7 +46690,7 @@
         }
       }
     },
-    "The previous code wasn't accepted. Wait for your authenticator to roll over and enter the new code." : {
+    "The previous code wasn't accepted. Wait for your authenticator to refresh, then enter the new code." : {
 
     },
     "The server will be accessible from other devices on your network. Authentication and TLS are enabled automatically." : {
@@ -49976,6 +50149,9 @@
     "Use" : {
 
     },
+    "Use {{query}} for the current editor query, {{schema}} for the active schema, {{database}} for the active database name, and {{body}} for any text typed after the command." : {
+
+    },
     "Use ~/.pgpass" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -50511,7 +50687,7 @@
     "Verification Code Rejected" : {
 
     },
-    "Verification code rejected. The code may be wrong or expired — try a fresh code from your authenticator." : {
+    "Verification code rejected. Get a new code from your authenticator app and try again." : {
 
     },
     "Verification Code Required" : {

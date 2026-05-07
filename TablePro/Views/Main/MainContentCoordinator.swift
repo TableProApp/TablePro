@@ -113,8 +113,7 @@ final class MainContentCoordinator {
     /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
     weak var aiViewModel: AIChatViewModel?
 
-    /// Direct reference to right panel state — enables showing AI panel programmatically
-    @ObservationIgnored weak var rightPanelState: RightPanelState?
+    weak var rightPanelState: RightPanelState?
 
     /// Direct reference to the data tab grid delegate — enables row mutation operations to
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
