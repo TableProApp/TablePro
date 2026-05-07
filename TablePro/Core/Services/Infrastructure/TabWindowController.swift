@@ -74,7 +74,12 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
 
         if !window.setFrameUsingName(Self.frameAutosaveName) {
-            window.setContentSize(NSSize(width: 1_200, height: 800))
+            let visibleSize = (window.screen ?? NSScreen.main)?.visibleFrame.size
+                ?? NSSize(width: 1_440, height: 900)
+            window.setContentSize(NSSize(
+                width: min(1_200, visibleSize.width),
+                height: min(800, visibleSize.height)
+            ))
             window.center()
         }
 
@@ -203,6 +208,11 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         }
         activity.userInfo = info
 
+        // becomeCurrent is unconditional. A previous becomeCurrent: Bool gate
+        // dropped Continuity mid-session whenever the user switched between
+        // table and query tabs in the same window, because the activity-type
+        // flip above invalidates the old activity but never promotes its
+        // replacement.
         activity.becomeCurrent()
     }
 }
