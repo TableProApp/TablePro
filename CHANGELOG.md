@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Attachments render as chips above the input and inside the user message bubble.
   - Editing a sent message restores its typed text and chips so you can adjust both before resending.
 
+### Changed
+
+- AI Chat: new installations default to opt-in context. Schema, current query, and query results no longer auto-include in every prompt; attach them via the `@` menu when you want them. Existing users keep their current Settings -> AI -> "Include schema/current query/query results" choices unchanged.
+
 ### Fixed
 
 - New tab via Cmd+T no longer flashes focus back to the previous tab in the same window group

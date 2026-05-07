@@ -17,7 +17,7 @@ struct AISettingsTests {
     @Test("decoding without enabled key defaults to true")
     func decodingWithoutEnabledDefaultsToTrue() throws {
         let json = "{}"
-        let data = json.data(using: .utf8)!
+        let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AISettings.self, from: data)
         #expect(settings.enabled == true)
     }
@@ -25,9 +25,36 @@ struct AISettingsTests {
     @Test("decoding with enabled false sets it correctly")
     func decodingWithEnabledFalse() throws {
         let json = "{\"enabled\": false}"
-        let data = json.data(using: .utf8)!
+        let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AISettings.self, from: data)
         #expect(settings.enabled == false)
+    }
+
+    @Test("New installs default to opt-in context (no auto schema/query/results)")
+    func newInstallsAreOptIn() {
+        let settings = AISettings.default
+        #expect(settings.includeSchema == false)
+        #expect(settings.includeCurrentQuery == false)
+        #expect(settings.includeQueryResults == false)
+    }
+
+    @Test("Existing users with stored true values keep their auto-context behavior")
+    func upgradedUsersKeepAutoContext() throws {
+        let json = #"{"includeSchema": true, "includeCurrentQuery": true, "includeQueryResults": true}"#
+        let data = Data(json.utf8)
+        let settings = try JSONDecoder().decode(AISettings.self, from: data)
+        #expect(settings.includeSchema == true)
+        #expect(settings.includeCurrentQuery == true)
+        #expect(settings.includeQueryResults == true)
+    }
+
+    @Test("Decoding without context keys preserves backward-compat true defaults")
+    func decoderFallbacksAreBackwardCompatible() throws {
+        let json = "{}"
+        let data = Data(json.utf8)
+        let settings = try JSONDecoder().decode(AISettings.self, from: data)
+        #expect(settings.includeSchema == true)
+        #expect(settings.includeCurrentQuery == true)
     }
 }
 
@@ -88,7 +115,7 @@ struct AISettingsActiveProviderTests {
     @Test("Decoding without activeProviderID defaults to nil")
     func decodingWithoutActiveProviderDefaultsToNil() throws {
         let json = #"{"enabled": true, "providers": []}"#
-        let data = json.data(using: .utf8)!
+        let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AISettings.self, from: data)
         #expect(settings.activeProviderID == nil)
         #expect(settings.activeProvider == nil)

@@ -149,8 +149,8 @@ struct AISettings: Codable, Equatable, Sendable {
         providers: [],
         activeProviderID: nil,
         inlineSuggestionsEnabled: false,
-        includeSchema: true,
-        includeCurrentQuery: true,
+        includeSchema: false,
+        includeCurrentQuery: false,
         includeQueryResults: false,
         maxSchemaTables: 20,
         defaultConnectionPolicy: .askEachTime
@@ -161,8 +161,8 @@ struct AISettings: Codable, Equatable, Sendable {
         providers: [AIProviderConfig] = [],
         activeProviderID: UUID? = nil,
         inlineSuggestionsEnabled: Bool = false,
-        includeSchema: Bool = true,
-        includeCurrentQuery: Bool = true,
+        includeSchema: Bool = false,
+        includeCurrentQuery: Bool = false,
         includeQueryResults: Bool = false,
         maxSchemaTables: Int = 20,
         defaultConnectionPolicy: AIConnectionPolicy = .askEachTime
