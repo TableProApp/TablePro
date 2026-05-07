@@ -15,6 +15,7 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     var fullText: (() -> String?)?
     var onExplainWithAI: ((String) -> Void)?
     var onOptimizeWithAI: ((String) -> Void)?
+    var onRewriteWithAI: (() -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
     var onFormatSQL: (() -> Void)?
 
@@ -94,6 +95,18 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         optimizeItem.target = self
         optimizeItem.image = NSImage(systemSymbolName: "bolt", accessibilityDescription: nil)
         menu.addItem(optimizeItem)
+
+        if onRewriteWithAI != nil {
+            let rewriteItem = NSMenuItem(
+                title: String(localized: "Rewrite with AI..."),
+                action: #selector(handleRewriteWithAI),
+                keyEquivalent: String(format: "%c", 0x0D)
+            )
+            rewriteItem.keyEquivalentModifierMask = .control
+            rewriteItem.target = self
+            rewriteItem.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: nil)
+            menu.addItem(rewriteItem)
+        }
     }
 
     // MARK: - AI Actions
@@ -106,6 +119,10 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     @objc private func handleOptimizeWithAI() {
         guard let text = selectedText?() else { return }
         onOptimizeWithAI?(text)
+    }
+
+    @objc private func handleRewriteWithAI() {
+        onRewriteWithAI?()
     }
 
     @objc private func handleFormatSQL() {

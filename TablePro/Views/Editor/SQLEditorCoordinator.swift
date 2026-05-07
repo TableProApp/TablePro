@@ -27,6 +27,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored var connectionAIPolicy: AIConnectionPolicy?
     @ObservationIgnored private var contextMenu: AIEditorContextMenu?
     @ObservationIgnored private var inlineSuggestionManager: InlineSuggestionManager?
+    @ObservationIgnored private var inlineAssistantPresenter: InlineAssistantPresenter?
+    @ObservationIgnored private var inlineAssistantKeyMonitor: Any?
     @ObservationIgnored private var aiChatInlineSource: AIChatInlineSource?
     @ObservationIgnored private var copilotDocumentSync: CopilotDocumentSync?
     @ObservationIgnored private var copilotInlineSource: CopilotInlineSource?
@@ -80,6 +82,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         if let observer = windowKeyObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let monitor = inlineAssistantKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
         frameChangeTask?.cancel()
     }
 
@@ -113,6 +118,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             self.fixFindPanelHitTesting(controller: controller)
             self.installAIContextMenu(controller: controller)
             self.installInlineSuggestionManager(controller: controller)
+            self.installInlineAssistant(controller: controller)
             self.installVimModeIfEnabled(controller: controller)
             self.installEditorSettingsObserver(controller: controller)
             if let textView = controller.textView {
@@ -189,6 +195,12 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         inlineSuggestionManager?.uninstall()
         inlineSuggestionManager = nil
+        inlineAssistantPresenter?.uninstall()
+        inlineAssistantPresenter = nil
+        if let monitor = inlineAssistantKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            inlineAssistantKeyMonitor = nil
+        }
         copilotDocumentSync = nil
         copilotInlineSource = nil
         aiChatInlineSource = nil
@@ -225,6 +237,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         if inlineSuggestionManager == nil, let controller {
             installInlineSuggestionManager(controller: controller)
         }
+        if inlineAssistantPresenter == nil, let controller {
+            installInlineAssistant(controller: controller)
+        }
     }
 
     // MARK: - AI Context Menu
@@ -247,6 +262,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
         menu.onExplainWithAI = { [weak self] text in self?.onAIExplain?(text) }
         menu.onOptimizeWithAI = { [weak self] text in self?.onAIOptimize?(text) }
+        menu.onRewriteWithAI = { [weak self] in self?.presentInlineAssistant() }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
         menu.onFormatSQL = { [weak self] in self?.onFormatSQL?() }
         contextMenu = menu
@@ -336,6 +352,47 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
                 await sync.didActivateTab(tabID: tabID, text: capturedText)
             }
         }
+    }
+
+    // MARK: - Inline Assistant
+
+    private func installInlineAssistant(controller: TextViewController) {
+        let presenter = InlineAssistantPresenter()
+        presenter.install(
+            controller: controller,
+            schemaProvider: { [weak self] in self?.schemaProvider },
+            databaseType: { [weak self] in self?.databaseType }
+        )
+        inlineAssistantPresenter = presenter
+
+        if inlineAssistantKeyMonitor != nil { return }
+        inlineAssistantKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
+            nonisolated(unsafe) let event = nsEvent
+            return MainActor.assumeIsolated {
+                guard let self else { return event }
+                guard self.shouldHandleRewriteShortcut(event: event) else { return event }
+                self.presentInlineAssistant()
+                return nil
+            }
+        }
+    }
+
+    private func shouldHandleRewriteShortcut(event: NSEvent) -> Bool {
+        guard let textView = controller?.textView else { return false }
+        guard event.window === textView.window else { return false }
+        guard textView.window?.firstResponder === textView else { return false }
+
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard mods == .control else { return false }
+        guard event.keyCode == 36 || event.keyCode == 76 else { return false }
+        guard textView.selectedRange().length > 0 else { return false }
+        guard AppSettingsManager.shared.ai.enabled else { return false }
+        return true
+    }
+
+    func presentInlineAssistant() {
+        guard let presenter = inlineAssistantPresenter else { return }
+        presenter.presentForSelection()
     }
 
     private func teardownInlineSources(except kind: InlineSourceKind) {

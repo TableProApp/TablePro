@@ -187,8 +187,15 @@ Default shortcuts:
 | Toggle AI Chat | `Cmd+Shift+L` |
 | Explain with AI | `Cmd+L` |
 | Optimize with AI | `Cmd+Option+L` |
+| Rewrite with AI | `Ctrl+Return` |
 
 Customize under **Settings** > **Keyboard** > **AI**.
+
+## Inline Assistant
+
+Select SQL in the editor and press `Ctrl+Return` (or pick **Rewrite with AI...** from the right-click menu). A prompt strip opens above the selection. Type what you want changed and press Return to generate. The proposed rewrite streams in below the prompt as a diff: the original selection is shown with a strikethrough, the proposed replacement in green.
+
+Accept the rewrite with `Cmd+Return` to replace the selection in place. Reject with `Esc` to leave the editor untouched. The active AI provider drives the rewrite; configure one under **Settings** > **AI** before using.
 
 ## Ask AI to Fix
 
