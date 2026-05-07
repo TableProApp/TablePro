@@ -7,11 +7,11 @@ import AppKit
 import Foundation
 import os
 
+private let windowStateLogger = Logger(subsystem: "com.TablePro", category: "WindowState")
+
 @MainActor
 internal final class WindowStateController {
     static let shared = WindowStateController()
-
-    private static let logger = Logger(subsystem: "com.TablePro", category: "WindowState")
 
     private let defaults: UserDefaults
     private var bindings: [ObjectIdentifier: WindowStateBinding] = [:]
@@ -19,11 +19,14 @@ internal final class WindowStateController {
 
     private init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        observeApplicationTermination()
+        observeApplicationLifecycle()
+        windowStateLogger.info("[init] WindowStateController initialized")
     }
 
-    private func observeApplicationTermination() {
-        NotificationCenter.default.addObserver(
+    private func observeApplicationLifecycle() {
+        let center = NotificationCenter.default
+
+        center.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
             queue: .main
@@ -32,10 +35,24 @@ internal final class WindowStateController {
                 self?.handleApplicationWillTerminate()
             }
         }
+
+        center.addObserver(
+            forName: NSApplication.didFinishLaunchingNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                let value = UserDefaults.standard.bool(forKey: WindowFramePolicy.editor.fullScreenStateKey)
+                let frameKey = "NSWindow Frame \(WindowFramePolicy.editor.autosaveName)"
+                let frame = UserDefaults.standard.object(forKey: frameKey) as? String ?? "<nil>"
+                windowStateLogger.info("[launch] persisted editor.isFullScreen=\(value, privacy: .public) frame=\(frame, privacy: .public)")
+            }
+        }
     }
 
     private func handleApplicationWillTerminate() {
         isTerminating = true
+        windowStateLogger.info("[terminate] applicationWillTerminate fired, snapshotting \(self.bindings.count) bindings")
         for binding in bindings.values {
             binding.captureCurrentFullScreenState()
         }
@@ -48,6 +65,7 @@ internal final class WindowStateController {
             window.setContentSize(size)
         }
         window.center()
+        windowStateLogger.info("[install] applied first-run frame for \(policy.autosaveName, privacy: .public) size=\(NSStringFromRect(window.frame), privacy: .public)")
     }
 
     fileprivate func releaseBinding(forWindowKey key: ObjectIdentifier) {
@@ -57,9 +75,9 @@ internal final class WindowStateController {
 
 internal extension WindowStateController {
     func install(on window: NSWindow, policy: WindowFramePolicy) {
-        window.setFrameAutosaveName(policy.autosaveName)
-
-        if !window.setFrameUsingName(policy.autosaveName) {
+        let didSetAutosave = window.setFrameAutosaveName(policy.autosaveName)
+        let restored = window.setFrameUsingName(policy.autosaveName)
+        if !restored {
             applyFirstRunFrame(to: window, policy: policy)
         }
 
@@ -67,6 +85,10 @@ internal extension WindowStateController {
         bindings[key]?.invalidate()
 
         let restorePending = defaults.bool(forKey: policy.fullScreenStateKey)
+        windowStateLogger.info(
+            "[install] \(policy.autosaveName, privacy: .public) didSetAutosave=\(didSetAutosave, privacy: .public) frameRestored=\(restored, privacy: .public) restoreFullScreen=\(restorePending, privacy: .public) frame=\(NSStringFromRect(window.frame), privacy: .public) styleMask.fullScreen=\(window.styleMask.contains(.fullScreen), privacy: .public)"
+        )
+
         bindings[key] = WindowStateBinding(
             windowKey: key,
             window: window,
@@ -129,8 +151,13 @@ private final class WindowStateBinding {
     }
 
     func captureCurrentFullScreenState() {
-        guard let window else { return }
-        defaults.set(window.styleMask.contains(.fullScreen), forKey: policy.fullScreenStateKey)
+        guard let window else {
+            windowStateLogger.info("[snapshot] \(self.policy.autosaveName, privacy: .public) skipped, window is nil")
+            return
+        }
+        let isFullScreen = window.styleMask.contains(.fullScreen)
+        defaults.set(isFullScreen, forKey: policy.fullScreenStateKey)
+        windowStateLogger.info("[snapshot] \(self.policy.autosaveName, privacy: .public) wrote isFullScreen=\(isFullScreen, privacy: .public) frame=\(NSStringFromRect(window.frame), privacy: .public)")
     }
 
     private func attachLiveObservers() {
@@ -143,6 +170,7 @@ private final class WindowStateBinding {
             queue: .main
         ) { [defaults, policy] _ in
             defaults.set(true, forKey: policy.fullScreenStateKey)
+            windowStateLogger.info("[event] willEnterFullScreen \(policy.autosaveName, privacy: .public) wrote isFullScreen=true")
         })
 
         liveObservers.append(center.addObserver(
@@ -151,8 +179,12 @@ private final class WindowStateBinding {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.owner?.isTerminating != true else { return }
+                guard let self else { return }
+                let isTerm = self.owner?.isTerminating == true
+                windowStateLogger.info("[event] didExitFullScreen \(self.policy.autosaveName, privacy: .public) isTerminating=\(isTerm, privacy: .public)")
+                guard !isTerm else { return }
                 self.defaults.set(false, forKey: self.policy.fullScreenStateKey)
+                windowStateLogger.info("[event] didExitFullScreen \(self.policy.autosaveName, privacy: .public) wrote isFullScreen=false")
             }
         })
 
@@ -163,6 +195,13 @@ private final class WindowStateBinding {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                let isTerm = self.owner?.isTerminating == true
+                let isFullScreen = self.window?.styleMask.contains(.fullScreen) ?? false
+                windowStateLogger.info("[event] willClose \(self.policy.autosaveName, privacy: .public) isTerminating=\(isTerm, privacy: .public) styleMask.fullScreen=\(isFullScreen, privacy: .public)")
+                if isTerm && isFullScreen {
+                    self.defaults.set(true, forKey: self.policy.fullScreenStateKey)
+                    windowStateLogger.info("[event] willClose during terminate while fullscreen, locked isFullScreen=true")
+                }
                 self.invalidate()
                 self.owner?.releaseBinding(forWindowKey: self.windowKey)
             }
@@ -172,6 +211,7 @@ private final class WindowStateBinding {
     private func attachFullScreenRestoreObserver() {
         guard let window else { return }
         let center = NotificationCenter.default
+        windowStateLogger.info("[install] \(self.policy.autosaveName, privacy: .public) registered didBecomeKey observer for fullscreen restore")
 
         fullScreenRestoreObserver = center.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
@@ -190,7 +230,10 @@ private final class WindowStateBinding {
             NotificationCenter.default.removeObserver(observer)
             fullScreenRestoreObserver = nil
         }
-        guard !window.styleMask.contains(.fullScreen) else { return }
+        let alreadyFullScreen = window.styleMask.contains(.fullScreen)
+        windowStateLogger.info("[restore] \(self.policy.autosaveName, privacy: .public) didBecomeKey, alreadyFullScreen=\(alreadyFullScreen, privacy: .public) collectionBehaviorContainsFullScreenPrimary=\(window.collectionBehavior.contains(.fullScreenPrimary), privacy: .public)")
+        guard !alreadyFullScreen else { return }
         window.toggleFullScreen(nil)
+        windowStateLogger.info("[restore] \(self.policy.autosaveName, privacy: .public) toggleFullScreen called")
     }
 }
