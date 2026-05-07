@@ -446,6 +446,9 @@ private struct StoredConnection: Codable {
     // AI policy
     let aiPolicy: String?
 
+    // AI rules text included in the system prompt for this connection
+    let aiRules: String?
+
     // AI tools whitelisted for this connection
     let aiAlwaysAllowedTools: [String]?
 
@@ -527,6 +530,7 @@ private struct StoredConnection: Codable {
 
         // AI policy
         self.aiPolicy = connection.aiPolicy?.rawValue
+        self.aiRules = connection.aiRules
         self.aiAlwaysAllowedTools = connection.aiAlwaysAllowedTools.isEmpty
             ? nil
             : Array(connection.aiAlwaysAllowedTools).sorted()
@@ -574,6 +578,7 @@ private struct StoredConnection: Codable {
         case safeModeLevel
         case isReadOnly // Legacy key for migration reading only
         case aiPolicy
+        case aiRules
         case aiAlwaysAllowedTools
         case mongoAuthSource, mongoReadPreference, mongoWriteConcern, redisDatabase
         case mssqlSchema, oracleServiceName, startupCommands, sortOrder
@@ -613,6 +618,7 @@ private struct StoredConnection: Codable {
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
+        try container.encodeIfPresent(aiRules, forKey: .aiRules)
         try container.encodeIfPresent(aiAlwaysAllowedTools, forKey: .aiAlwaysAllowedTools)
         try container.encodeIfPresent(redisDatabase, forKey: .redisDatabase)
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
@@ -674,6 +680,7 @@ private struct StoredConnection: Codable {
             safeModeLevel = wasReadOnly ? SafeModeLevel.readOnly.rawValue : SafeModeLevel.silent.rawValue
         }
         aiPolicy = try container.decodeIfPresent(String.self, forKey: .aiPolicy)
+        aiRules = try container.decodeIfPresent(String.self, forKey: .aiRules)
         aiAlwaysAllowedTools = try container.decodeIfPresent([String].self, forKey: .aiAlwaysAllowedTools)
         mongoAuthSource = try container.decodeIfPresent(String.self, forKey: .mongoAuthSource)
         mongoReadPreference = try container.decodeIfPresent(String.self, forKey: .mongoReadPreference)
@@ -768,6 +775,7 @@ private struct StoredConnection: Codable {
             sshTunnelMode: resolvedTunnelMode,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevel) ?? .silent,
             aiPolicy: parsedAIPolicy,
+            aiRules: aiRules,
             aiAlwaysAllowedTools: Set(aiAlwaysAllowedTools ?? []),
             redisDatabase: redisDatabase,
             startupCommands: startupCommands,
