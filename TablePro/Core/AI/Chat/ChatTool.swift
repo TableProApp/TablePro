@@ -15,7 +15,10 @@ public protocol ChatTool: Sendable {
     func execute(input: JSONValue) async throws -> ChatToolResult
 }
 
-public struct ChatToolResult: Sendable, Equatable {
+public struct ChatToolResult: Sendable, Equatable, Codable {
+    /// Tool results are UTF-8 text in this version. A future expansion may
+    /// widen `content` to accept multiple typed blocks (text, image,
+    /// structured data); treat the current shape as a forward-compat floor.
     public let content: String
     public let isError: Bool
 

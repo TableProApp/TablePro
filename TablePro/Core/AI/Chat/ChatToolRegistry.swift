@@ -15,13 +15,13 @@ public final class ChatToolRegistry {
 
     private var tools: [String: any ChatTool] = [:]
 
-    private init() {}
+    public init() {}
 
     public func register(_ tool: any ChatTool) {
         let existing = tools[tool.name]
         tools[tool.name] = tool
         if existing != nil {
-            Self.logger.debug("Replaced ChatTool '\(tool.name, privacy: .public)' in registry")
+            Self.logger.warning("Replaced ChatTool '\(tool.name, privacy: .public)' in registry; second registration won")
         }
     }
 
