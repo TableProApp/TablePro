@@ -178,7 +178,8 @@ final class MongoDBConnection: @unchecked Sendable {
         }
 
         if useSrv {
-            let encodedHost = host.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? host
+            let srvHost = Self.stripPort(fromSrvHost: host)
+            let encodedHost = srvHost.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? srvHost
             uri += encodedHost
         } else if host.contains(",") {
             let segments = host.split(separator: ",").compactMap { segment -> String? in
@@ -266,6 +267,19 @@ final class MongoDBConnection: @unchecked Sendable {
 
         uri += "?" + params.joined(separator: "&")
         return uri
+    }
+
+    /// Strips a trailing `:port` from a hostname intended for an SRV URI.
+    ///
+    /// MongoDB's SRV scheme prohibits ports — the port is resolved from the DNS
+    /// SRV record. IPv6 literals are also invalid in SRV (FQDN only), so a
+    /// single trailing `:digits` segment is unambiguously a port.
+    static func stripPort(fromSrvHost host: String) -> String {
+        let trimmed = host.trimmingCharacters(in: .whitespaces)
+        guard let colonIndex = trimmed.lastIndex(of: ":") else { return trimmed }
+        let portPart = trimmed[trimmed.index(after: colonIndex)...]
+        guard !portPart.isEmpty, portPart.allSatisfy(\.isNumber) else { return trimmed }
+        return String(trimmed[..<colonIndex])
     }
 
     // MARK: - Connection Management
