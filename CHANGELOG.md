@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - AI Chat: inline model picker in the composer with per-turn model attribution. Switch between configured providers and any of their available models without leaving the chat. The model that produced each assistant turn is shown in the message footer.
 - AI Chat: slash commands `/explain`, `/optimize`, `/fix`, and `/help`. Type the command in the composer or pick from the slash menu next to the model picker. `/explain`, `/optimize`, and `/fix` operate on the current query in the active editor. `/help` lists the commands inline.
-- AI Chat: attach context to a message via the `@` menu next to the slash menu.
+- AI Chat: attach context to a message via the `@` menu next to the slash menu, or by typing `@` directly in the composer.
   - Pick Schema, a specific Table, the Current Query, or recent Query Results.
+  - Typing `@` opens a caret-anchored picker that filters as you type. Up/Down navigates, Return or Tab inserts, Escape dismisses.
   - Attachments render as chips above the input and inside the user message bubble.
   - Editing a sent message restores its typed text and chips so you can adjust both before resending.
 
