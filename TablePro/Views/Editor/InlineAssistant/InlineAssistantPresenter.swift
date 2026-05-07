@@ -110,7 +110,7 @@ final class InlineAssistantPresenter {
         let replacement = session.proposedText
         textView.replaceCharacters(in: anchorRange, with: replacement)
         let newRange = NSRange(location: anchorRange.location, length: (replacement as NSString).length)
-        textView.setSelectedRange(newRange)
+        textView.selectionManager.setSelectedRange(newRange)
         dismiss()
     }
 
