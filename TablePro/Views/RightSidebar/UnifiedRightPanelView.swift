@@ -11,7 +11,6 @@ import SwiftUI
 struct UnifiedRightPanelView: View {
     @Bindable var state: RightPanelState
     let connection: DatabaseConnection
-    let tables: [TableInfo]
 
     private var ctx: InspectorContext { state.inspectorContext }
 
@@ -49,7 +48,6 @@ struct UnifiedRightPanelView: View {
                 case .aiChat:
                     AIChatPanelView(
                         connection: connection,
-                        tables: tables,
                         currentQuery: ctx.currentQuery,
                         queryResults: ctx.queryResults,
                         viewModel: state.aiViewModel

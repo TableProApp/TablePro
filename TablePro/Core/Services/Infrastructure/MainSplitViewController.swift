@@ -398,8 +398,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         if let currentSession, let rightPanelState {
             UnifiedRightPanelView(
                 state: rightPanelState,
-                connection: currentSession.connection,
-                tables: currentSession.tables
+                connection: currentSession.connection
             )
         } else {
             Color.clear

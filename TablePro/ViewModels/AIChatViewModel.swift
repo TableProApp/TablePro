@@ -46,17 +46,22 @@ final class AIChatViewModel {
     /// Current database connection (set by parent view)
     var connection: DatabaseConnection?
 
-    /// Available tables in the current database
-    var tables: [TableInfo] = []
+    /// Tables for the current connection. Always derived live from `SchemaService`,
+    /// so reads stay in sync with schema reloads without any push-from-upstream plumbing.
+    var tables: [TableInfo] {
+        guard let id = connection?.id else { return [] }
+        return SchemaService.shared.tables(for: id)
+    }
 
-    /// Column info by table name (for schema context)
+    /// Column info cache populated on-demand when chips are attached or
+    /// schema is auto-included. Keyed by table name within the active connection.
     var columnsByTable: [String: [ColumnInfo]] = [:]
 
-    /// Foreign keys by table name
+    /// Foreign keys cache populated alongside columns.
     var foreignKeysByTable: [String: [ForeignKeyInfo]] = [:]
 
-    /// Schema provider for reusing cached column data (set by parent coordinator)
-    var schemaProvider: SQLSchemaProvider?
+    @ObservationIgnored private var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var inFlightSchemaLoad: Task<Void, Never>?
 
     /// Current query text from the active editor tab
     var currentQuery: String?
@@ -211,7 +216,7 @@ final class AIChatViewModel {
     /// nonisolated(unsafe) is required because deinit is not @MainActor-isolated,
     /// so accessing a @MainActor property from deinit requires opting out of isolation.
     @ObservationIgnored nonisolated(unsafe) private var streamingTask: Task<Void, Never>?
-    @ObservationIgnored nonisolated(unsafe) private var schemaFetchTask: Task<Void, Never>?
+    @ObservationIgnored private var prepTask: Task<Void, Never>?
     private var streamingAssistantID: UUID?
     private let chatStorage = AIChatStorage.shared
     private var sessionApprovedConnections: Set<UUID> = []
@@ -225,7 +230,6 @@ final class AIChatViewModel {
 
     deinit {
         streamingTask?.cancel()
-        schemaFetchTask?.cancel()
     }
 
     // MARK: - Actions
@@ -255,40 +259,110 @@ final class AIChatViewModel {
     func attach(_ item: ContextItem) {
         guard !attachedContext.contains(where: { $0.stableKey == item.stableKey }) else { return }
         attachedContext.append(item)
-        primeAttachmentData(for: item)
+        Task { await primeAttachmentData(for: item) }
     }
 
-    private var liveTables: [TableInfo] {
-        if !tables.isEmpty { return tables }
-        guard let id = connection?.id else { return [] }
-        return SchemaService.shared.tables(for: id)
-    }
-
-    private func primeAttachmentData(for item: ContextItem) {
+    private func primeAttachmentData(for item: ContextItem) async {
         switch item {
         case .schema:
-            fetchSchemaContext(forceLoad: true)
+            await ensureSchemaLoaded()
         case .table(_, let name):
-            fetchTableColumns(name: name)
+            await ensureColumnsLoaded(forTable: name)
         case .currentQuery, .queryResult, .savedQuery, .file:
             break
         }
     }
 
-    private func fetchTableColumns(name: String) {
-        if let existing = columnsByTable[name], !existing.isEmpty { return }
+    /// Ensure column + foreign-key data for `tableName` is in `columnsByTable`.
+    /// Idempotent and dedups concurrent calls so chip attach + send-time resolve
+    /// share a single fetch.
+    func ensureColumnsLoaded(forTable tableName: String) async {
+        if let existing = columnsByTable[tableName], !existing.isEmpty { return }
+        if let inFlight = inFlightColumnFetches[tableName] {
+            await inFlight.value
+            return
+        }
         guard let connection,
               let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let columns = (try? await driver.fetchColumns(table: name)) ?? []
-            let fkMap = (try? await driver.fetchForeignKeys(forTables: [name])) ?? [:]
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.columnsByTable[name] = columns
-                if let fks = fkMap[name] {
-                    self.foreignKeysByTable[name] = fks
+        let task: Task<Void, Never> = Task { [weak self] in
+            let columns: [ColumnInfo]
+            do {
+                columns = try await driver.fetchColumns(table: tableName)
+            } catch {
+                Self.logger.warning("Column fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                columns = []
+            }
+            let fkMap: [String: [ForeignKeyInfo]]
+            do {
+                fkMap = try await driver.fetchForeignKeys(forTables: [tableName])
+            } catch {
+                Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                fkMap = [:]
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.columnsByTable[tableName] = columns
+            if let fks = fkMap[tableName] {
+                self.foreignKeysByTable[tableName] = fks
+            }
+            self.inFlightColumnFetches[tableName] = nil
+        }
+        inFlightColumnFetches[tableName] = task
+        await task.value
+    }
+
+    /// Ensure column data is loaded for all tables in the live schema (capped by
+    /// `maxSchemaTables`). Used by `@Schema` chip resolution and the
+    /// auto-include-schema system-prompt path.
+    func ensureSchemaLoaded() async {
+        if let inFlight = inFlightSchemaLoad {
+            await inFlight.value
+            return
+        }
+        let task: Task<Void, Never> = Task { [weak self] in
+            guard let self else { return }
+            await self.runSchemaLoad()
+        }
+        inFlightSchemaLoad = task
+        await task.value
+        inFlightSchemaLoad = nil
+    }
+
+    private func runSchemaLoad() async {
+        guard let connection,
+              let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+        let settings = AppSettingsManager.shared.ai
+        let tablesToFetch = Array(tables.prefix(settings.maxSchemaTables))
+        guard !tablesToFetch.isEmpty else { return }
+
+        await withTaskGroup(of: (String, [ColumnInfo]).self) { group in
+            for table in tablesToFetch where (columnsByTable[table.name] ?? []).isEmpty {
+                let name = table.name
+                group.addTask {
+                    do {
+                        let cols = try await driver.fetchColumns(table: name)
+                        return (name, cols)
+                    } catch {
+                        Self.logger.warning("Schema column fetch failed for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        return (name, [])
+                    }
                 }
             }
+            for await (name, cols) in group {
+                columnsByTable[name] = cols
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+
+        let needsFKFetch = tablesToFetch.contains { foreignKeysByTable[$0.name] == nil }
+        guard needsFKFetch else { return }
+        do {
+            let fkMap = try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
+            for (name, fks) in fkMap {
+                foreignKeysByTable[name] = fks
+            }
+        } catch {
+            Self.logger.warning("Foreign key bulk fetch failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -297,14 +371,20 @@ final class AIChatViewModel {
     }
 
     /// Produce a wire-ready copy of a turn with `.attachment` blocks expanded
-    /// into appended text. The stored `messages` array keeps the raw form so
-    /// `editMessage` can recover the typed text and attachments cleanly.
-    func resolveTurnForWire(_ turn: ChatTurn) -> ChatTurn {
+    /// into appended text. Awaits any uncached column/foreign-key data so the
+    /// AI receives real schema instead of a "(columns not loaded)" placeholder.
+    /// The stored `messages` array keeps the raw form so `editMessage` can
+    /// recover the typed text and attachments cleanly.
+    func resolveTurnForWire(_ turn: ChatTurn) async -> ChatTurn {
         let attachments = turn.blocks.compactMap { block -> ContextItem? in
             if case .attachment(let item) = block { return item }
             return nil
         }
         guard !attachments.isEmpty else { return turn }
+
+        for item in attachments {
+            await primeAttachmentData(for: item)
+        }
 
         let typed = turn.blocks.compactMap { block -> String? in
             if case .text(let value) = block { return value }
@@ -348,14 +428,13 @@ final class AIChatViewModel {
     }
 
     private func resolveSchemaAttachment() -> String? {
-        let activeTables = liveTables
-        guard !activeTables.isEmpty else { return nil }
+        guard !tables.isEmpty else { return nil }
         let settings = AppSettingsManager.shared.ai
         let identifierQuote = connection.flatMap {
             PluginManager.shared.sqlDialect(for: $0.type)?.identifierQuote
         } ?? "\""
         let section = AISchemaContext.buildSchemaSection(
-            tables: activeTables,
+            tables: tables,
             columnsByTable: columnsByTable,
             foreignKeys: foreignKeysByTable,
             maxTables: settings.maxSchemaTables,
@@ -367,14 +446,11 @@ final class AIChatViewModel {
 
     private func resolveTableAttachment(name: String) -> String? {
         let columns = columnsByTable[name] ?? []
+        guard !columns.isEmpty else { return nil }
         let foreignKeys = foreignKeysByTable[name] ?? []
         var lines: [String] = ["## Table \(name)"]
-        if columns.isEmpty {
-            lines.append("(columns not loaded)")
-        } else {
-            for column in columns {
-                lines.append("- \(column.name): \(column.dataType)")
-            }
+        for column in columns {
+            lines.append("- \(column.name): \(column.dataType)")
         }
         if !foreignKeys.isEmpty {
             lines.append("Foreign keys:")
@@ -397,6 +473,8 @@ final class AIChatViewModel {
 
     /// Cancel the current streaming response
     func cancelStream() {
+        prepTask?.cancel()
+        prepTask = nil
         streamingTask?.cancel()
         streamingTask = nil
         isStreaming = false
@@ -509,16 +587,18 @@ final class AIChatViewModel {
     /// Unlike `clearConversation()`, this does not delete persisted history.
     func clearSessionData() {
         AIProviderFactory.resetCopilotConversation()
+        prepTask?.cancel()
+        prepTask = nil
         streamingTask?.cancel()
         streamingTask = nil
-        schemaFetchTask?.cancel()
-        schemaFetchTask = nil
         AIProviderFactory.invalidateCache()
-        schemaProvider = nil
         connection = nil
-        tables = []
         columnsByTable = [:]
         foreignKeysByTable = [:]
+        inFlightColumnFetches.values.forEach { $0.cancel() }
+        inFlightColumnFetches.removeAll()
+        inFlightSchemaLoad?.cancel()
+        inFlightSchemaLoad = nil
         currentQuery = nil
         queryResults = nil
         messages = []
@@ -587,6 +667,8 @@ final class AIChatViewModel {
     }
 
     private func startStreaming() {
+        prepTask?.cancel()
+        prepTask = nil
         if streamingTask != nil {
             streamingTask?.cancel()
             streamingTask = nil
@@ -626,8 +708,6 @@ final class AIChatViewModel {
             }
         }
 
-        let promptContext = capturePromptContext(settings: settings)
-
         let assistantMessage = ChatTurn(role: .assistant, blocks: [], modelId: resolved.model, providerId: resolved.config.id.uuidString)
         messages.append(assistantMessage)
         trimMessagesIfNeeded()
@@ -636,9 +716,37 @@ final class AIChatViewModel {
 
         isStreaming = true
 
-        // Capture value types on main actor before detaching
-        let chatMessages = messages.dropLast().map { resolveTurnForWire($0) }
+        prepTask?.cancel()
+        prepTask = Task { [weak self] in
+            guard let self else { return }
+            if settings.includeSchema {
+                await self.ensureSchemaLoaded()
+            }
+            guard !Task.isCancelled else { return }
+            let promptContext = self.capturePromptContext(settings: settings)
+            var chatMessages: [ChatTurn] = []
+            for turn in self.messages.dropLast() {
+                chatMessages.append(await self.resolveTurnForWire(turn))
+            }
+            guard !Task.isCancelled else { return }
+            self.runStream(
+                chatMessages: chatMessages,
+                promptContext: promptContext,
+                resolved: resolved,
+                assistantID: assistantID,
+                settings: settings
+            )
+            self.prepTask = nil
+        }
+    }
 
+    private func runStream(
+        chatMessages: [ChatTurn],
+        promptContext: PromptContext?,
+        resolved: AIProviderFactory.ResolvedProvider,
+        assistantID: UUID,
+        settings: AISettings
+    ) {
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {
                 // Build system prompt off the main actor
@@ -812,78 +920,5 @@ final class AIChatViewModel {
             editorLanguage: PluginManager.shared.editorLanguage(for: connection.type),
             queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type)
         )
-    }
-
-    // MARK: - Schema Context
-
-    func fetchSchemaContext(forceLoad: Bool = false) {
-        let settings = AppSettingsManager.shared.ai
-        guard forceLoad || settings.includeSchema,
-              let connection,
-              let driver = DatabaseManager.shared.driver(for: connection.id)
-        else { return }
-
-        schemaFetchTask?.cancel()
-
-        let tablesToFetch = Array(liveTables.prefix(settings.maxSchemaTables))
-        guard !tablesToFetch.isEmpty else { return }
-        let capturedProvider = schemaProvider
-
-        schemaFetchTask = Task.detached(priority: .userInitiated) { [weak self] in
-            var columns: [String: [ColumnInfo]] = [:]
-            var foreignKeys: [String: [ForeignKeyInfo]] = [:]
-
-            let fetchColumns: @Sendable (TableInfo) async -> (String, [ColumnInfo]) = { table in
-                if let provider = capturedProvider {
-                    let cached = await provider.getColumns(for: table.name)
-                    if !cached.isEmpty {
-                        return (table.name, cached)
-                    }
-                }
-                do {
-                    let cols = try await driver.fetchColumns(table: table.name)
-                    return (table.name, cols)
-                } catch {
-                    return (table.name, [])
-                }
-            }
-
-            let concurrencyLimit = 4
-            await withTaskGroup(of: (String, [ColumnInfo]).self) { group in
-                var pending = tablesToFetch.makeIterator()
-
-                // Seed initial batch
-                for _ in 0..<concurrencyLimit {
-                    guard let table = pending.next() else { break }
-                    group.addTask { await fetchColumns(table) }
-                }
-
-                // Drip-feed remaining tables as each completes
-                for await (tableName, cols) in group {
-                    if !cols.isEmpty {
-                        columns[tableName] = cols
-                    }
-                    if let next = pending.next() {
-                        group.addTask { await fetchColumns(next) }
-                    }
-                }
-            }
-
-            do {
-                let fkResult = try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
-                for (table, fks) in fkResult {
-                    foreignKeys[table] = fks
-                }
-            } catch {
-                // Foreign key fetch is best-effort for AI context
-            }
-
-            guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.columnsByTable = columns
-                self.foreignKeysByTable = foreignKeys
-            }
-        }
     }
 }
