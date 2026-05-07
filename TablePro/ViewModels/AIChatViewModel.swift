@@ -112,6 +112,43 @@ final class AIChatViewModel {
         }
     }
 
+    func runSlashCommand(_ command: SlashCommand) {
+        switch command.name {
+        case "help":
+            inputText = ""
+            startNewConversation()
+            let helpText = SlashCommand.allCommands
+                .map { "/\($0.name) · \($0.description)" }
+                .joined(separator: "\n")
+            messages.append(ChatTurn(
+                role: .assistant,
+                blocks: [.text(String(localized: "Available commands:") + "\n" + helpText)]
+            ))
+            persistCurrentConversation()
+        case "explain":
+            guard let query = currentQuery, !query.isEmpty else {
+                errorMessage = String(localized: "No query in the active editor to explain.")
+                return
+            }
+            handleExplainSelection(query)
+        case "optimize":
+            guard let query = currentQuery, !query.isEmpty else {
+                errorMessage = String(localized: "No query in the active editor to optimize.")
+                return
+            }
+            handleOptimizeSelection(query)
+        case "fix":
+            guard let query = currentQuery, !query.isEmpty else {
+                errorMessage = String(localized: "No query in the active editor to fix.")
+                return
+            }
+            let lastError = queryResults ?? ""
+            handleFixError(query: query, error: lastError)
+        default:
+            break
+        }
+    }
+
     func handleFixError(query: String, error: String) {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
@@ -177,6 +214,13 @@ final class AIChatViewModel {
     func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+
+        if let command = SlashCommand.parse(text) {
+            inputText = ""
+            errorMessage = nil
+            runSlashCommand(command)
+            return
+        }
 
         let userMessage = ChatTurn(role: .user, blocks: [.text(text)])
         messages.append(userMessage)

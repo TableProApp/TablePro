@@ -312,6 +312,7 @@ struct AIChatPanelView: View {
 
                 HStack(alignment: .center, spacing: 8) {
                     modelPicker
+                    slashCommandMenu
                     Spacer()
                     if viewModel.isStreaming {
                         Button {
@@ -381,6 +382,25 @@ struct AIChatPanelView: View {
             .fixedSize()
             .help(String(localized: "Choose AI provider and model"))
         }
+    }
+
+    private var slashCommandMenu: some View {
+        Menu {
+            ForEach(SlashCommand.allCommands) { command in
+                Button {
+                    viewModel.runSlashCommand(command)
+                } label: {
+                    Text("/\(command.name) · \(command.description)")
+                }
+            }
+        } label: {
+            Image(systemName: "command")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(String(localized: "Slash commands"))
     }
 
     @ViewBuilder
