@@ -819,7 +819,7 @@ final class AIChatViewModel {
         }
     }
 
-    private static let maxToolRoundtrips = 5
+    private static let maxToolRoundtrips = 10
 
     private func runStream(
         chatMessages: [ChatTurn],
