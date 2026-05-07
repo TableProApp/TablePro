@@ -49,6 +49,12 @@ private final class EditorWindow: NSWindow {
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
+    internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
+
+    internal static var hasSavedFrame: Bool {
+        UserDefaults.standard.object(forKey: "NSWindow Frame \(frameAutosaveName)") != nil
+    }
+
     private lazy var dataGridFieldEditor: DataGridFieldEditor = {
         let editor = DataGridFieldEditor()
         editor.isFieldEditor = true
@@ -102,7 +108,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
         super.init(window: window)
 
-        self.windowFrameAutosaveName = "MainEditorWindow"
+        self.windowFrameAutosaveName = Self.frameAutosaveName
 
         // Keep the controller alive after the window closes so NSWindowDelegate
         // hooks have time to run teardown. WindowManager drops its strong
@@ -180,6 +186,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let t0 = Date()
         guard let window = notification.object as? NSWindow else { return }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
+
+        window.saveFrame(usingName: Self.frameAutosaveName)
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.invalidateToolbar()

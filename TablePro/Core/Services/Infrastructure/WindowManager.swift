@@ -71,8 +71,7 @@ internal final class WindowManager {
                 "[open] WindowManager joined existing tab group payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )
         } else {
-            let hasSavedFrame = UserDefaults.standard.object(forKey: "NSWindow Frame MainEditorWindow") != nil
-            if !hasSavedFrame {
+            if !TabWindowController.hasSavedFrame {
                 window.center()
             }
             window.makeKeyAndOrderFront(nil)
