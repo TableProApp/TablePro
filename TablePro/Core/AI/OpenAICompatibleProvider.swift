@@ -2,14 +2,11 @@
 //  OpenAICompatibleProvider.swift
 //  TablePro
 //
-//  OpenAI-compatible API provider supporting OpenAI, OpenRouter, Ollama, and custom endpoints.
-//
 
 import Foundation
 import os
 
-/// AI provider for OpenAI-compatible APIs (OpenAI, OpenRouter, Ollama, custom)
-final class OpenAICompatibleProvider: AIProvider {
+final class OpenAICompatibleProvider: ChatTransport {
     private static let logger = Logger(
         subsystem: "com.TablePro",
         category: "OpenAICompatibleProvider"
@@ -41,22 +38,14 @@ final class OpenAICompatibleProvider: AIProvider {
         self.session = session
     }
 
-    // MARK: - AIProvider
-
     func streamChat(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
-    ) -> AsyncThrowingStream<AIStreamEvent, Error> {
+        turns: [ChatTurn],
+        options: ChatTransportOptions
+    ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let request = try buildChatCompletionRequest(
-                        messages: messages,
-                        model: model,
-                        systemPrompt: systemPrompt
-                    )
-
+                    let request = try buildChatCompletionRequest(turns: turns, options: options)
                     let (bytes, response) = try await session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
@@ -79,34 +68,29 @@ final class OpenAICompatibleProvider: AIProvider {
 
                         let jsonString: String
                         if self.providerType == .ollama {
-                            // Ollama: raw newline-delimited JSON (no SSE "data: " prefix)
                             guard !line.isEmpty else { continue }
                             jsonString = line
                         } else {
-                            // OpenAI/OpenRouter/Custom: SSE with "data: " prefix
                             guard line.hasPrefix("data: ") else { continue }
                             let payload = String(line.dropFirst(6))
                             guard payload != "[DONE]" else { break }
                             jsonString = payload
                         }
 
-                        // Single JSON parse per SSE line
                         guard let data = jsonString.data(using: .utf8),
                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                         else { continue }
 
-                        // Text extraction
                         if let choices = json["choices"] as? [[String: Any]],
                            let delta = choices.first?["delta"] as? [String: Any],
                            let content = delta["content"] as? String {
-                            continuation.yield(.text(content))
+                            continuation.yield(.textDelta(content))
                         } else if let message = json["message"] as? [String: Any],
                                   let content = message["content"] as? String,
                                   !content.isEmpty {
-                            continuation.yield(.text(content))
+                            continuation.yield(.textDelta(content))
                         }
 
-                        // Usage extraction
                         if let usage = json["usage"] as? [String: Any],
                            let promptTokens = usage["prompt_tokens"] as? Int,
                            let completionTokens = usage["completion_tokens"] as? Int {
@@ -119,7 +103,6 @@ final class OpenAICompatibleProvider: AIProvider {
                             outputTokens = evalCount
                         }
 
-                        // Ollama signals completion with "done":true
                         if json["done"] as? Bool == true {
                             break
                         }
@@ -156,7 +139,6 @@ final class OpenAICompatibleProvider: AIProvider {
     func testConnection() async throws -> Bool {
         switch providerType {
         case .ollama:
-            // Ollama is local — verify reachability and model availability
             do {
                 let models = try await fetchAvailableModels()
                 if models.isEmpty {
@@ -177,7 +159,6 @@ final class OpenAICompatibleProvider: AIProvider {
                 )
             }
         default:
-            // Send a minimal non-streaming chat request to verify auth
             let chatPath = "/v1/chat/completions"
             guard let url = URL(string: "\(endpoint)\(chatPath)") else {
                 throw AIProviderError.invalidEndpoint(endpoint)
@@ -208,7 +189,6 @@ final class OpenAICompatibleProvider: AIProvider {
                 return false
             }
 
-            // Check response is JSON (confirms we reached an API, not a random web page)
             let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? ""
             let isJSON = contentType.contains("application/json")
                 || (try? JSONSerialization.jsonObject(with: data)) != nil
@@ -217,7 +197,6 @@ final class OpenAICompatibleProvider: AIProvider {
                 throw AIProviderError.authenticationFailed("")
             }
 
-            // Non-JSON response means wrong endpoint (e.g., HTML 404 page)
             if !isJSON {
                 return false
             }
@@ -226,12 +205,9 @@ final class OpenAICompatibleProvider: AIProvider {
         }
     }
 
-    // MARK: - Request Building
-
     private func buildChatCompletionRequest(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
+        turns: [ChatTurn],
+        options: ChatTransportOptions
     ) throws -> URLRequest {
         let chatPath = providerType == .ollama
             ? "/api/chat"
@@ -251,29 +227,30 @@ final class OpenAICompatibleProvider: AIProvider {
             )
         }
 
-        // Build messages array
         var apiMessages: [[String: String]] = []
-        if let systemPrompt {
+        if let systemPrompt = options.systemPrompt {
             apiMessages.append(["role": "system", "content": systemPrompt])
         }
-        for message in messages where message.role != .system {
+        for turn in turns where turn.role != .system {
+            let text = turn.plainText
+            guard !text.isEmpty else { continue }
             apiMessages.append([
-                "role": message.role.rawValue,
-                "content": message.content
+                "role": turn.role.rawValue,
+                "content": text
             ])
         }
 
         var body: [String: Any] = [
-            "model": model,
+            "model": options.model,
             "messages": apiMessages,
             "stream": true
         ]
 
-        if let maxOutputTokens {
-            body["max_tokens"] = maxOutputTokens
+        let resolvedMaxTokens = options.maxOutputTokens ?? maxOutputTokens
+        if let resolvedMaxTokens {
+            body["max_tokens"] = resolvedMaxTokens
         }
 
-        // Request usage stats in stream (OpenAI/OpenRouter support this)
         if providerType != .ollama {
             body["stream_options"] = ["include_usage": true]
         }
@@ -281,8 +258,6 @@ final class OpenAICompatibleProvider: AIProvider {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
-
-    // MARK: - Model Fetching
 
     private func fetchOpenAIModels() async throws -> [String] {
         guard let url = URL(string: "\(endpoint)/v1/models") else {

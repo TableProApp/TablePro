@@ -11,7 +11,7 @@ import SwiftUI
 
 /// Displays a single AI chat message with appropriate styling
 struct AIChatMessageView: View {
-    let message: AIChatMessage
+    let message: ChatTurn
     var onRetry: (() -> Void)?
     var onRegenerate: (() -> Void)?
     var onEdit: (() -> Void)?
@@ -31,7 +31,7 @@ struct AIChatMessageView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                    Markdown(message.content)
+                    Markdown(message.plainText)
                         .markdownTheme(.tableProChat)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,12 +116,12 @@ struct AIChatMessageView: View {
 
     @ViewBuilder
     private var messageContent: some View {
-        if message.content.isEmpty {
+        if message.plainText.isEmpty {
             TypingIndicatorView()
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
         } else {
-            Markdown(message.content)
+            Markdown(message.plainText)
                 .markdownTheme(.tableProChat)
                 .textSelection(.enabled)
                 .padding(.horizontal, 8)

@@ -2,30 +2,27 @@
 //  AIProviderFactory.swift
 //  TablePro
 //
-//  Factory for creating AI provider instances. Resolves the active provider
-//  from settings (no per-feature routing).
-//
 
 import Foundation
 import os
 
 enum AIProviderFactory {
     struct ResolvedProvider: Sendable {
-        let provider: AIProvider
+        let provider: ChatTransport
         let model: String
         let config: AIProviderConfig
     }
 
     private static let cacheLock = OSAllocatedUnfairLock(
-        initialState: [UUID: (config: AIProviderConfig, apiKey: String?, provider: AIProvider)]()
+        initialState: [UUID: (config: AIProviderConfig, apiKey: String?, provider: ChatTransport)]()
     )
 
-    static func createProvider(for config: AIProviderConfig, apiKey: String?) -> AIProvider {
+    static func createProvider(for config: AIProviderConfig, apiKey: String?) -> ChatTransport {
         cacheLock.withLock { cache in
             if let cached = cache[config.id], cached.apiKey == apiKey, cached.config == config {
                 return cached.provider
             }
-            let provider: AIProvider
+            let provider: ChatTransport
             if let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) {
                 provider = descriptor.makeProvider(config, apiKey)
             } else {

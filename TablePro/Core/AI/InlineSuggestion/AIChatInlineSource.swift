@@ -33,21 +33,20 @@ final class AIChatInlineSource: InlineSuggestionSource {
         }
 
         let userMessage = AIPromptTemplates.inlineSuggest(textBefore: context.textBefore, fullQuery: context.fullText)
-        let messages = [
-            AIChatMessage(role: .user, content: userMessage)
+        let turns = [
+            ChatTurn(role: .user, blocks: [.text(userMessage)])
         ]
 
         let systemPrompt = await buildSystemPrompt()
 
         var accumulated = ""
         let stream = resolved.provider.streamChat(
-            messages: messages,
-            model: resolved.model,
-            systemPrompt: systemPrompt
+            turns: turns,
+            options: ChatTransportOptions(model: resolved.model, systemPrompt: systemPrompt)
         )
 
         for try await event in stream {
-            if case .text(let token) = event {
+            if case .textDelta(let token) = event {
                 accumulated += token
             }
         }

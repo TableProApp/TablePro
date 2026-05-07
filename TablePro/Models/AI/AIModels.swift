@@ -205,43 +205,8 @@ struct AISettings: Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - AI Chat Message
-
-struct AIChatMessage: Codable, Equatable, Identifiable, Sendable {
-    let id: UUID
-    var role: AIChatRole
-    var content: String
-    let timestamp: Date
-    var usage: AITokenUsage?
-
-    init(
-        id: UUID = UUID(),
-        role: AIChatRole,
-        content: String,
-        timestamp: Date = Date(),
-        usage: AITokenUsage? = nil
-    ) {
-        self.id = id
-        self.role = role
-        self.content = content
-        self.timestamp = timestamp
-        self.usage = usage
-    }
-}
-
-enum AIChatRole: String, Codable, Sendable {
-    case user
-    case assistant
-    case system
-}
-
 struct AITokenUsage: Codable, Equatable, Sendable {
     var inputTokens: Int
     var outputTokens: Int
     var totalTokens: Int { inputTokens + outputTokens }
-}
-
-enum AIStreamEvent: Sendable {
-    case text(String)
-    case usage(AITokenUsage)
 }

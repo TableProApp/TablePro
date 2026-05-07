@@ -24,5 +24,5 @@ struct AIProviderDescriptor: Sendable {
     let requiresAPIKey: Bool
     let capabilities: AIProviderCapabilities
     let symbolName: String
-    let makeProvider: @Sendable (AIProviderConfig, String?) -> AIProvider
+    let makeProvider: @Sendable (AIProviderConfig, String?) -> ChatTransport
 }

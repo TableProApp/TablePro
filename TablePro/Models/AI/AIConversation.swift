@@ -11,7 +11,7 @@ import Foundation
 struct AIConversation: Codable, Equatable, Identifiable {
     let id: UUID
     var title: String
-    var messages: [AIChatMessage]
+    var messages: [ChatTurn]
     let createdAt: Date
     var updatedAt: Date
     var connectionName: String?
@@ -19,7 +19,7 @@ struct AIConversation: Codable, Equatable, Identifiable {
     init(
         id: UUID = UUID(),
         title: String = "",
-        messages: [AIChatMessage] = [],
+        messages: [ChatTurn] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         connectionName: String? = nil
@@ -38,7 +38,7 @@ struct AIConversation: Codable, Equatable, Identifiable {
               let firstUserMessage = messages.first(where: { $0.role == .user })
         else { return }
 
-        let text = firstUserMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = firstUserMessage.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
         if (text as NSString).length > 50 {
             title = String(text.prefix(47)) + "..."
         } else {

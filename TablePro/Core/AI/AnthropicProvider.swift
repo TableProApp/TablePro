@@ -2,14 +2,11 @@
 //  AnthropicProvider.swift
 //  TablePro
 //
-//  Anthropic Claude API provider using the Messages API with SSE streaming.
-//
 
 import Foundation
 import os
 
-/// AI provider for Anthropic's Claude models
-final class AnthropicProvider: AIProvider {
+final class AnthropicProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AnthropicProvider")
 
     private let endpoint: String
@@ -24,22 +21,14 @@ final class AnthropicProvider: AIProvider {
         self.session = URLSession(configuration: .ephemeral)
     }
 
-    // MARK: - AIProvider
-
     func streamChat(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
-    ) -> AsyncThrowingStream<AIStreamEvent, Error> {
+        turns: [ChatTurn],
+        options: ChatTransportOptions
+    ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let request = try buildMessagesRequest(
-                        messages: messages,
-                        model: model,
-                        systemPrompt: systemPrompt
-                    )
-
+                    let request = try buildMessagesRequest(turns: turns, options: options)
                     let (bytes, response) = try await session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
@@ -72,7 +61,7 @@ final class AnthropicProvider: AIProvider {
                         case "content_block_delta":
                             if let delta = json["delta"] as? [String: Any],
                                let text = delta["text"] as? String {
-                                continuation.yield(.text(text))
+                                continuation.yield(.textDelta(text))
                             }
                         case "message_start":
                             if let message = json["message"] as? [String: Any],
@@ -95,7 +84,6 @@ final class AnthropicProvider: AIProvider {
                         }
                     }
 
-                    // Yield usage if we got any token data
                     if inputTokens > 0 || outputTokens > 0 {
                         continuation.yield(.usage(AITokenUsage(
                             inputTokens: inputTokens,
@@ -148,14 +136,9 @@ final class AnthropicProvider: AIProvider {
     ]
 
     func testConnection() async throws -> Bool {
-        let testMessage = AIChatMessage(role: .user, content: "Hi")
-        let request = try buildMessagesRequest(
-            messages: [testMessage],
-            model: "claude-haiku-4-5-20251001",
-            systemPrompt: nil,
-            maxTokens: 1,
-            stream: false
-        )
+        let testTurn = ChatTurn(role: .user, blocks: [.text("Hi")])
+        let testOptions = ChatTransportOptions(model: "claude-haiku-4-5-20251001", maxOutputTokens: 1)
+        let request = try buildMessagesRequest(turns: [testTurn], options: testOptions, stream: false)
 
         let (data, response) = try await session.data(for: request)
 
@@ -165,7 +148,6 @@ final class AnthropicProvider: AIProvider {
 
         let statusCode = httpResponse.statusCode
 
-        // 200 = full success, 400 = key is valid but request was rejected (e.g. billing)
         if statusCode == 200 || statusCode == 400 {
             return true
         }
@@ -178,16 +160,11 @@ final class AnthropicProvider: AIProvider {
         throw AIProviderError.mapHTTPError(statusCode: statusCode, body: body)
     }
 
-    // MARK: - Private
-
     private func buildMessagesRequest(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?,
-        maxTokens: Int? = nil,
+        turns: [ChatTurn],
+        options: ChatTransportOptions,
         stream: Bool = true
     ) throws -> URLRequest {
-        let maxTokens = maxTokens ?? maxOutputTokens
         guard let url = URL(string: "\(endpoint)/v1/messages") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
@@ -199,20 +176,21 @@ final class AnthropicProvider: AIProvider {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
         var body: [String: Any] = [
-            "model": model,
-            "max_tokens": maxTokens,
+            "model": options.model,
+            "max_tokens": options.maxOutputTokens ?? maxOutputTokens,
             "stream": stream
         ]
 
-        if let systemPrompt {
+        if let systemPrompt = options.systemPrompt {
             body["system"] = systemPrompt
         }
 
-        // Convert messages (skip system role — handled via system parameter)
-        let apiMessages = messages
+        let apiMessages = turns
             .filter { $0.role != .system }
-            .map { message -> [String: String] in
-                ["role": message.role.rawValue, "content": message.content]
+            .compactMap { turn -> [String: String]? in
+                let text = turn.plainText
+                guard !text.isEmpty else { return nil }
+                return ["role": turn.role.rawValue, "content": text]
             }
         body["messages"] = apiMessages
 

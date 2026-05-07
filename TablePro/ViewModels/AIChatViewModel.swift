@@ -17,7 +17,7 @@ final class AIChatViewModel {
 
     // MARK: - Published State
 
-    var messages: [AIChatMessage] = []
+    var messages: [ChatTurn] = []
     var inputText: String = ""
     var isStreaming: Bool = false
     var errorMessage: String?
@@ -74,11 +74,11 @@ final class AIChatViewModel {
         sendWithContext(prompt: prompt)
     }
 
-    func editMessage(_ message: AIChatMessage) {
+    func editMessage(_ message: ChatTurn) {
         guard message.role == .user, !isStreaming else { return }
         guard let idx = messages.firstIndex(where: { $0.id == message.id }) else { return }
 
-        inputText = message.content
+        inputText = message.plainText
         messages.removeSubrange(idx...)
         persistCurrentConversation()
     }
@@ -117,7 +117,7 @@ final class AIChatViewModel {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
-        let userMessage = AIChatMessage(role: .user, content: text)
+        let userMessage = ChatTurn(role: .user, blocks: [.text(text)])
         messages.append(userMessage)
         trimMessagesIfNeeded()
         inputText = ""
@@ -128,7 +128,7 @@ final class AIChatViewModel {
 
     /// Send a pre-filled prompt
     func sendWithContext(prompt: String) {
-        let userMessage = AIChatMessage(role: .user, content: prompt)
+        let userMessage = ChatTurn(role: .user, blocks: [.text(prompt)])
         messages.append(userMessage)
         trimMessagesIfNeeded()
         errorMessage = nil
@@ -145,7 +145,7 @@ final class AIChatViewModel {
         // Remove empty assistant placeholder left by cancelled stream
         if let assistantID = streamingAssistantID,
            let idx = messages.firstIndex(where: { $0.id == assistantID }),
-           messages[idx].content.isEmpty {
+           messages[idx].plainText.isEmpty {
             messages.remove(at: idx)
         }
         streamingAssistantID = nil
@@ -333,7 +333,7 @@ final class AIChatViewModel {
             streamingTask = nil
             if let id = streamingAssistantID,
                let idx = messages.firstIndex(where: { $0.id == id }),
-               messages[idx].content.isEmpty {
+               messages[idx].plainText.isEmpty {
                 messages.remove(at: idx)
             }
             streamingAssistantID = nil
@@ -369,7 +369,7 @@ final class AIChatViewModel {
         let promptContext = capturePromptContext(settings: settings)
 
         // Create assistant message placeholder
-        let assistantMessage = AIChatMessage(role: .assistant, content: "")
+        let assistantMessage = ChatTurn(role: .assistant, blocks: [])
         messages.append(assistantMessage)
         trimMessagesIfNeeded()
         let assistantID = assistantMessage.id
@@ -401,7 +401,7 @@ final class AIChatViewModel {
 
                 // Pre-send size check
                 let totalSize = ((systemPrompt ?? "") as NSString).length
-                    + chatMessages.reduce(0) { $0 + ($1.content as NSString).length }
+                    + chatMessages.reduce(0) { $0 + ($1.plainText as NSString).length }
                 if totalSize > 100_000 {
                     await MainActor.run { [weak self] in
                         guard let self else { return }
@@ -418,9 +418,11 @@ final class AIChatViewModel {
                 }
 
                 let stream = resolved.provider.streamChat(
-                    messages: chatMessages,
-                    model: resolved.model,
-                    systemPrompt: systemPrompt
+                    turns: chatMessages,
+                    options: ChatTransportOptions(
+                        model: resolved.model,
+                        systemPrompt: systemPrompt
+                    )
                 )
 
                 // Batch tokens off the main actor, flush on interval
@@ -432,10 +434,12 @@ final class AIChatViewModel {
                 for try await event in stream {
                     guard !Task.isCancelled else { break }
                     switch event {
-                    case .text(let token):
+                    case .textDelta(let token):
                         pendingContent += token
                     case .usage(let usage):
                         pendingUsage = usage
+                    case .toolUseStart, .toolUseDelta, .toolUseEnd:
+                        break
                     }
 
                     if ContinuousClock.now - lastFlushTime >= flushInterval {
@@ -448,7 +452,7 @@ final class AIChatViewModel {
                                   let idx = self.messages.firstIndex(where: { $0.id == assistantID })
                             else { return }
                             if !content.isEmpty {
-                                self.messages[idx].content += content
+                                self.messages[idx].appendText(content)
                             }
                             if let usage {
                                 self.messages[idx].usage = usage
@@ -467,7 +471,7 @@ final class AIChatViewModel {
                               let idx = self.messages.firstIndex(where: { $0.id == assistantID })
                         else { return }
                         if !content.isEmpty {
-                            self.messages[idx].content += content
+                            self.messages[idx].appendText(content)
                         }
                         if let usage {
                             self.messages[idx].usage = usage
@@ -493,7 +497,7 @@ final class AIChatViewModel {
 
                         // Remove empty assistant message on error
                         if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
-                           self.messages[idx].content.isEmpty {
+                           self.messages[idx].plainText.isEmpty {
                             self.messages.remove(at: idx)
                         }
                     }

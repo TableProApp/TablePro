@@ -229,7 +229,7 @@ struct AIChatPanelView: View {
                     isUserScrolledUp = false
                     scrollToBottom(proxy: proxy, animated: true)
                 }
-                .onChange(of: viewModel.messages.last?.content) {
+                .onChange(of: viewModel.messages.last?.plainText) {
                     guard !isUserScrolledUp else { return }
                     let now = Date()
                     guard now.timeIntervalSince(lastAutoScrollTime) >= 0.1 else { return }
@@ -353,16 +353,16 @@ struct AIChatPanelView: View {
         viewModel.queryResults = queryResults
     }
 
-    private func shouldShowRetry(for message: AIChatMessage) -> Bool {
+    private func shouldShowRetry(for message: ChatTurn) -> Bool {
         message.role == .user
             && message.id == viewModel.messages.last?.id
             && viewModel.lastMessageFailed
     }
 
-    private func shouldShowRegenerate(for message: AIChatMessage) -> Bool {
+    private func shouldShowRegenerate(for message: ChatTurn) -> Bool {
         message.role == .assistant
             && message.id == viewModel.messages.last?.id
             && !viewModel.isStreaming
-            && !message.content.isEmpty
+            && !message.plainText.isEmpty
     }
 }

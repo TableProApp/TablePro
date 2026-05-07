@@ -6,23 +6,20 @@
 import Foundation
 import os
 
-final class CopilotChatProvider: AIProvider {
+final class CopilotChatProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotChatProvider")
 
     private var conversationId: String?
     private var turnIds: [String] = []
     private let progressHandlers = OSAllocatedUnfairLock(
-        initialState: [String: AsyncThrowingStream<AIStreamEvent, Error>.Continuation]()
+        initialState: [String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]()
     )
     private var isProgressHandlerRegistered = false
 
-    // MARK: - AIProvider
-
     func streamChat(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
-    ) -> AsyncThrowingStream<AIStreamEvent, Error> {
+        turns: [ChatTurn],
+        options: ChatTransportOptions
+    ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { @MainActor [weak self] in
                 guard let self else {
@@ -44,19 +41,19 @@ final class CopilotChatProvider: AIProvider {
 
                     self.progressHandlers.withLock { $0[token] = continuation }
 
-                    let userMessage = messages.last(where: { $0.role == .user })?.content ?? ""
-                    let effectiveModel: String? = model.isEmpty ? nil : model
+                    let userMessage = turns.last(where: { $0.role == .user })?.plainText ?? ""
+                    let effectiveModel: String? = options.model.isEmpty ? nil : options.model
 
                     if self.conversationId == nil {
-                        let systemPrefix = systemPrompt.map { $0 + "\n\n" } ?? ""
-                        let turns = [CopilotConversationTurn(
+                        let systemPrefix = options.systemPrompt.map { $0 + "\n\n" } ?? ""
+                        let conversationTurns = [CopilotConversationTurn(
                             request: systemPrefix + userMessage,
                             response: "",
                             turnId: ""
                         )]
                         let params = CopilotConversationCreateParams(
                             workDoneToken: token,
-                            turns: turns,
+                            turns: conversationTurns,
                             capabilities: CopilotConversationCapabilities(
                                 skills: ["current-editor"],
                                 allSkills: true
@@ -107,8 +104,6 @@ final class CopilotChatProvider: AIProvider {
         await CopilotService.shared.isAuthenticated
     }
 
-    // MARK: - Conversation Lifecycle
-
     func resetConversation() {
         isProgressHandlerRegistered = false
         let id = conversationId
@@ -129,8 +124,6 @@ final class CopilotChatProvider: AIProvider {
             try? await client.conversationTurnDelete(conversationId: conversationId, turnId: turnId)
         }
     }
-
-    // MARK: - Progress Handler
 
     @MainActor
     private func ensureProgressHandler() async {
@@ -160,7 +153,7 @@ final class CopilotChatProvider: AIProvider {
                     reply = last["reply"] as? String
                 }
                 if let reply, !reply.isEmpty {
-                    continuation.yield(.text(reply))
+                    continuation.yield(.textDelta(reply))
                 }
 
                 if let usage = value["tokenUsage"] as? [String: Any],
