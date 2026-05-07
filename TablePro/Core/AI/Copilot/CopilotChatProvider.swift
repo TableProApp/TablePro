@@ -187,9 +187,15 @@ final class CopilotChatProvider: ChatTransport {
             params = envelope.params
         } catch {
             Self.logger.error("Failed to decode invokeClientTool params: \(error.localizedDescription, privacy: .public)")
+            if let raw = String(data: data, encoding: .utf8) {
+                Self.logger.error("Raw invokeClientTool payload: \(raw, privacy: .public)")
+            }
             await Self.sendErrorReply(requestId: requestId, message: "Failed to decode tool invocation")
             return
         }
+        Self.logger.info(
+            "Copilot invoked tool '\(params.name, privacy: .public)' (turn=\(params.turnId, privacy: .public))"
+        )
 
         let toolBlock = ToolUseBlock(
             id: "\(params.conversationId)-\(params.turnId)-\(params.name)",
@@ -217,6 +223,10 @@ final class CopilotChatProvider: ChatTransport {
         let lspResult = CopilotLanguageModelToolResult(
             status: status,
             content: [CopilotLanguageModelToolResultContent(value: .string(result.content))]
+        )
+        let preview = result.content.prefix(200)
+        Self.logger.info(
+            "Replying to invokeClientTool requestId=\(requestId) status=\(status.rawValue, privacy: .public) preview=\(preview, privacy: .public)"
         )
         do {
             try await client.sendInvokeClientToolResponse(id: requestId, result: lspResult)
