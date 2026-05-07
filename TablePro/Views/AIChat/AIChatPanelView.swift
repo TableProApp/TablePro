@@ -175,11 +175,12 @@ struct AIChatPanelView: View {
     // MARK: - Message List
 
     private var messageList: some View {
+        let visibleMessages = viewModel.messages.filter { isVisibleInMessageList($0) }
         let spacedMessageIDs: Set<UUID> = {
             var ids = Set<UUID>()
-            let visible = viewModel.messages.filter { $0.role != .system }
-            for i in 1..<visible.count where visible[i].role == .user && visible[i - 1].role == .assistant {
-                ids.insert(visible[i].id)
+            for i in 1..<visibleMessages.count
+                where visibleMessages[i].role == .user && visibleMessages[i - 1].role == .assistant {
+                ids.insert(visibleMessages[i].id)
             }
             return ids
         }()
@@ -188,22 +189,20 @@ struct AIChatPanelView: View {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(viewModel.messages) { message in
-                            if message.role != .system {
-                                if spacedMessageIDs.contains(message.id) {
-                                    Spacer()
-                                        .frame(height: 16)
-                                }
-                                AIChatMessageView(
-                                    message: message,
-                                    onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
-                                    onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
-                                    onEdit: message.role == .user && !viewModel.isStreaming
-                                        ? { viewModel.editMessage(message) } : nil
-                                )
-                                .padding(.vertical, 4)
-                                .id(message.id)
+                        ForEach(visibleMessages) { message in
+                            if spacedMessageIDs.contains(message.id) {
+                                Spacer()
+                                    .frame(height: 16)
                             }
+                            AIChatMessageView(
+                                message: message,
+                                onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
+                                onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
+                                onEdit: message.role == .user && !viewModel.isStreaming
+                                    ? { viewModel.editMessage(message) } : nil
+                            )
+                            .padding(.vertical, 4)
+                            .id(message.id)
                         }
 
                         Color.clear
@@ -527,6 +526,23 @@ struct AIChatPanelView: View {
     private func updateContext() {
         viewModel.currentQuery = currentQuery
         viewModel.queryResults = queryResults
+    }
+
+    /// Hide system turns and user turns that exist only to carry tool-result
+    /// blocks back to the model — those are protocol plumbing, not user input.
+    private func isVisibleInMessageList(_ message: ChatTurn) -> Bool {
+        guard message.role != .system else { return false }
+        if message.role == .user {
+            let hasUserContent = message.blocks.contains { block in
+                switch block {
+                case .text(let value): return !value.isEmpty
+                case .attachment: return true
+                case .toolUse, .toolResult: return false
+                }
+            }
+            if !hasUserContent { return false }
+        }
+        return true
     }
 
     private func updateMentionState(text: String, caret: Int) {
