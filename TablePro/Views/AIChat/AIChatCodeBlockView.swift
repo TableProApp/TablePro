@@ -2,18 +2,19 @@
 //  AIChatCodeBlockView.swift
 //  TablePro
 //
-//  Code block view with copy and insert-to-editor actions.
-//
 
 import AppKit
+import CodeEditLanguages
+import CodeEditSourceEditor
 import SwiftUI
 
-/// Displays a code block from AI response with action buttons
 struct AIChatCodeBlockView: View {
     let code: String
     let language: String?
 
     @State private var isCopied: Bool = false
+    @State private var isEditorReady = false
+    @State private var editorState = SourceEditorState()
     @FocusedValue(\.commandActions) private var focusedActions
     @Bindable private var commandRegistry = CommandActionsRegistry.shared
 
@@ -28,6 +29,12 @@ struct AIChatCodeBlockView: View {
             codeBlockHeader
         }
         .groupBoxStyle(CodeBlockGroupBoxStyle())
+        .task {
+            isEditorReady = true
+        }
+        .onDisappear {
+            isEditorReady = false
+        }
     }
 
     private var codeBlockHeader: some View {
@@ -79,27 +86,19 @@ struct AIChatCodeBlockView: View {
         }
     }
 
+    @ViewBuilder
     private var codeContent: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            if isSQL {
-                Text(highlightedSQL(code))
-                    .textSelection(.enabled)
-                    .padding(10)
-            } else if isMongoDB {
-                Text(highlightedJavaScript(code))
-                    .textSelection(.enabled)
-                    .padding(10)
-            } else if isRedis {
-                Text(code)
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(10)
-            } else {
-                Text(code)
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(10)
-            }
+        if isEditorReady {
+            SourceEditor(
+                .constant(code),
+                language: treeSitterLanguage,
+                configuration: Self.makeConfiguration(),
+                state: $editorState
+            )
+            .frame(height: editorHeight)
+        } else {
+            Color(nsColor: .textBackgroundColor)
+                .frame(height: editorHeight)
         }
     }
 
@@ -137,186 +136,54 @@ struct AIChatCodeBlockView: View {
         return nil
     }
 
-    private var isSQL: Bool {
-        guard let resolved = resolvedLanguage else { return false }
-        let sqlLanguages = ["sql", "mysql", "postgresql", "postgres", "sqlite"]
-        return sqlLanguages.contains(resolved.lowercased())
-    }
-
-    private var isMongoDB: Bool {
-        guard let resolved = resolvedLanguage else { return false }
-        let mongoLanguages = ["javascript", "js", "mongodb", "mongo"]
-        return mongoLanguages.contains(resolved.lowercased())
-    }
-
-    private var isRedis: Bool {
-        guard let resolved = resolvedLanguage else { return false }
-        let redisLanguages = ["redis", "bash", "shell", "sh"]
-        return redisLanguages.contains(resolved.lowercased())
+    private var treeSitterLanguage: CodeLanguage {
+        switch resolvedLanguage?.lowercased() {
+        case "sql", "mysql", "postgresql", "postgres", "sqlite":
+            return .sql
+        case "javascript", "js", "mongodb", "mongo":
+            return .javascript
+        case "redis", "bash", "shell", "sh":
+            return .bash
+        default:
+            return .default
+        }
     }
 
     private var isInsertable: Bool {
-        isSQL || isMongoDB || isRedis
+        treeSitterLanguage.id != .default
     }
 
-    // MARK: - Static SQL Regex Patterns (compiled once)
-
-    private enum SQLPatterns {
-        // swiftlint:disable force_try
-        static let singleLineComment = try! NSRegularExpression(pattern: "--[^\r\n]*")
-        static let multiLineComment = try! NSRegularExpression(pattern: "/\\*[\\s\\S]*?\\*/")
-        static let stringLiteral = try! NSRegularExpression(pattern: "'[^']*'")
-        static let number = try! NSRegularExpression(pattern: "\\b\\d+(\\.\\d+)?\\b")
-        static let nullBoolLiteral = try! NSRegularExpression(
-            pattern: "\\b(NULL|TRUE|FALSE)\\b",
-            options: .caseInsensitive
-        )
-        static let keyword: NSRegularExpression = {
-            let keywords = [
-                "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS",
-                "ON", "AND", "OR", "NOT", "IN", "EXISTS", "BETWEEN", "LIKE", "IS", "AS",
-                "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "UNION", "ALL", "DISTINCT",
-                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP",
-                "TABLE", "INDEX", "VIEW", "IF", "THEN", "ELSE", "END", "CASE", "WHEN",
-                "COUNT", "SUM", "AVG", "MIN", "MAX", "ASC", "DESC",
-                "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "DEFAULT", "CONSTRAINT", "UNIQUE",
-                "CHECK", "CASCADE", "TRUNCATE", "RETURNING", "WITH", "RECURSIVE",
-                "OVER", "PARTITION", "WINDOW", "GRANT", "REVOKE",
-                "BEGIN", "COMMIT", "ROLLBACK", "EXPLAIN", "ANALYZE"
-            ]
-            let pattern = "\\b(" + keywords.joined(separator: "|") + ")\\b"
-            return try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-        }()
-        // swiftlint:enable force_try
-    }
-
-    /// Shared highlighting engine: applies regex-based coloring with protected ranges and a 10k char cap.
-    private static func highlightCode(
-        _ code: String,
-        protectedPatterns: [(NSRegularExpression, NSColor)],
-        unprotectedPatterns: [(NSRegularExpression, NSColor)]
-    ) -> AttributedString {
-        var result = AttributedString(code)
-        result.font = .system(size: 12, design: .monospaced)
-
-        var protectedRanges: [Range<AttributedString.Index>] = []
-
-        let nsCode = code as NSString
-        let maxHighlightLength = 10_000
-        let highlightRange = NSRange(
-            location: 0,
-            length: min(nsCode.length, maxHighlightLength)
-        )
-
-        func applyColor(_ nsRange: NSRange, color: NSColor, protect: Bool) {
-            guard let stringRange = Range(nsRange, in: code),
-                  let attrStart = AttributedString.Index(stringRange.lowerBound, within: result),
-                  let attrEnd = AttributedString.Index(stringRange.upperBound, within: result)
-            else { return }
-            let range = attrStart..<attrEnd
-            result[range].foregroundColor = Color(nsColor: color)
-            if protect {
-                protectedRanges.append(range)
-            }
+    private var editorHeight: CGFloat {
+        let lineHeight: CGFloat = 18
+        let editorInsets: CGFloat = 16
+        let lineCount = code.reduce(into: 1) { count, char in
+            if char == "\n" { count += 1 }
         }
-
-        func isProtected(_ nsRange: NSRange) -> Bool {
-            guard let stringRange = Range(nsRange, in: code),
-                  let attrStart = AttributedString.Index(stringRange.lowerBound, within: result),
-                  let attrEnd = AttributedString.Index(stringRange.upperBound, within: result)
-            else { return false }
-            let range = attrStart..<attrEnd
-            return protectedRanges.contains { $0.overlaps(range) }
-        }
-
-        for (regex, color) in protectedPatterns {
-            for match in regex.matches(in: code, range: highlightRange) {
-                applyColor(match.range, color: color, protect: true)
-            }
-        }
-
-        for (regex, color) in unprotectedPatterns {
-            for match in regex.matches(in: code, range: highlightRange) {
-                guard !isProtected(match.range) else { continue }
-                applyColor(match.range, color: color, protect: false)
-            }
-        }
-
-        return result
+        let height = CGFloat(lineCount) * lineHeight + editorInsets
+        return min(max(height, 32), 400)
     }
 
-    private func highlightedSQL(_ code: String) -> AttributedString {
-        Self.highlightCode(
-            code,
-            protectedPatterns: [
-                (SQLPatterns.singleLineComment, .systemGreen),
-                (SQLPatterns.multiLineComment, .systemGreen),
-                (SQLPatterns.stringLiteral, .systemRed)
-            ],
-            unprotectedPatterns: [
-                (SQLPatterns.number, .systemPurple),
-                (SQLPatterns.nullBoolLiteral, .systemOrange),
-                (SQLPatterns.keyword, .systemBlue)
-            ]
-        )
-    }
-
-    // MARK: - Static JavaScript Regex Patterns (compiled once)
-
-    private enum JSPatterns {
-        // swiftlint:disable force_try
-        static let singleLineComment = try! NSRegularExpression(pattern: "//[^\r\n]*")
-        static let multiLineComment = try! NSRegularExpression(pattern: "/\\*[\\s\\S]*?\\*/")
-        static let doubleQuoteString = try! NSRegularExpression(pattern: "\"(?:[^\"\\\\]|\\\\.)*\"")
-        static let singleQuoteString = try! NSRegularExpression(pattern: "'(?:[^'\\\\]|\\\\.)*'")
-        static let number = try! NSRegularExpression(pattern: "\\b\\d+(\\.\\d+)?\\b")
-        static let boolNull = try! NSRegularExpression(
-            pattern: "\\b(true|false|null|undefined|NaN|Infinity)\\b"
-        )
-        static let keyword: NSRegularExpression = {
-            let keywords = [
-                "var", "let", "const", "function", "return", "if", "else", "for", "while",
-                "do", "switch", "case", "break", "continue", "new", "this", "typeof",
-                "instanceof", "in", "of", "try", "catch", "throw", "finally", "async", "await"
-            ]
-            let pattern = "\\b(" + keywords.joined(separator: "|") + ")\\b"
-            return try! NSRegularExpression(pattern: pattern)
-        }()
-        static let method: NSRegularExpression = {
-            let methods = [
-                "find", "findOne", "insertOne", "insertMany", "updateOne", "updateMany",
-                "deleteOne", "deleteMany", "aggregate", "countDocuments", "distinct",
-                "createIndex", "dropIndex", "explain", "limit", "skip", "sort", "project",
-                "match", "group", "unwind", "lookup", "replaceOne", "bulkWrite"
-            ]
-            let pattern = "\\.(" + methods.joined(separator: "|") + ")\\b"
-            return try! NSRegularExpression(pattern: pattern)
-        }()
-        static let property = try! NSRegularExpression(pattern: "\\b(db)\\b")
-        // swiftlint:enable force_try
-    }
-
-    private func highlightedJavaScript(_ code: String) -> AttributedString {
-        Self.highlightCode(
-            code,
-            protectedPatterns: [
-                (JSPatterns.singleLineComment, .systemGreen),
-                (JSPatterns.multiLineComment, .systemGreen),
-                (JSPatterns.doubleQuoteString, .systemRed),
-                (JSPatterns.singleQuoteString, .systemRed)
-            ],
-            unprotectedPatterns: [
-                (JSPatterns.number, .systemPurple),
-                (JSPatterns.boolNull, .systemOrange),
-                (JSPatterns.keyword, .systemPink),
-                (JSPatterns.method, .systemBlue),
-                (JSPatterns.property, .systemTeal)
-            ]
+    private static func makeConfiguration() -> SourceEditorConfiguration {
+        SourceEditorConfiguration(
+            appearance: .init(
+                theme: TableProEditorTheme.make(),
+                font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                wrapLines: true
+            ),
+            behavior: .init(
+                isEditable: false
+            ),
+            layout: .init(
+                contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+            ),
+            peripherals: .init(
+                showGutter: false,
+                showMinimap: false,
+                showFoldingRibbon: false
+            )
         )
     }
 }
-
-// MARK: - Code Block GroupBox Style
 
 private struct CodeBlockGroupBoxStyle: GroupBoxStyle {
     func makeBody(configuration: Configuration) -> some View {
