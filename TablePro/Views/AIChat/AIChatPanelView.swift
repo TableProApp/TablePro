@@ -53,6 +53,9 @@ struct AIChatPanelView: View {
         .task(id: settingsManager.ai.providers.map(\.id)) {
             await viewModel.loadAvailableModels()
         }
+        .task(id: connection.id) {
+            await viewModel.loadSavedQueries()
+        }
         .alert(
             String(localized: "Allow AI Access"),
             isPresented: $viewModel.showAIAccessConfirmation
@@ -443,13 +446,31 @@ struct AIChatPanelView: View {
     }
 
     private var slashCommandMenu: some View {
-        Menu {
+        let customCommands = CustomSlashCommandStorage.shared.commands.filter(\.isValid)
+        return Menu {
             ForEach(SlashCommand.allCommands) { command in
                 Button {
                     updateContext()
                     viewModel.runSlashCommand(command)
                 } label: {
                     Text("/\(command.name) · \(command.description)")
+                }
+            }
+            if !customCommands.isEmpty {
+                Divider()
+                Section(String(localized: "Custom")) {
+                    ForEach(customCommands) { command in
+                        Button {
+                            updateContext()
+                            viewModel.runCustomSlashCommand(command)
+                        } label: {
+                            if command.description.isEmpty {
+                                Text("/\(command.name)")
+                            } else {
+                                Text("/\(command.name) · \(command.description)")
+                            }
+                        }
+                    }
                 }
             }
         } label: {
@@ -590,7 +611,7 @@ struct AIChatPanelView: View {
             }
         }
 
-        let tableBudget = max(0, Self.maxMentionCandidates - items.count)
+        let tableBudget = max(0, (Self.maxMentionCandidates / 2) - items.count)
         let matchingTables = viewModel.tables
             .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -598,6 +619,17 @@ struct AIChatPanelView: View {
         for table in matchingTables {
             items.append(MentionCandidate(
                 item: .table(connectionId: connectionId, name: table.name)
+            ))
+        }
+
+        let savedBudget = max(0, Self.maxMentionCandidates - items.count)
+        let matchingSavedQueries = viewModel.savedQueries
+            .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .prefix(savedBudget)
+        for favorite in matchingSavedQueries {
+            items.append(MentionCandidate(
+                item: .savedQuery(id: favorite.id, name: favorite.name)
             ))
         }
 

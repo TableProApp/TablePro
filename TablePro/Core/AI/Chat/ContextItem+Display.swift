@@ -16,8 +16,8 @@ extension ContextItem {
             return String(localized: "Current Query")
         case .queryResult:
             return String(localized: "Query Results")
-        case .savedQuery:
-            return String(localized: "Saved Query")
+        case .savedQuery(_, let name):
+            return name.isEmpty ? String(localized: "Saved Query") : name
         case .file(let url):
             return url.lastPathComponent
         }
@@ -50,7 +50,7 @@ extension ContextItem {
             return "currentQuery"
         case .queryResult:
             return "queryResult"
-        case .savedQuery(let id):
+        case .savedQuery(let id, _):
             return "savedQuery:\(id.uuidString)"
         case .file(let url):
             return "file:\(url.absoluteString)"

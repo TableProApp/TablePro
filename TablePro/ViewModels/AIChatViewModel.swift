@@ -149,6 +149,22 @@ final class AIChatViewModel {
         }
     }
 
+    func runCustomSlashCommand(_ command: CustomSlashCommand, body: String = "") {
+        guard command.isValid else { return }
+        inputText = ""
+        errorMessage = nil
+        let invocationText = body.isEmpty ? "/\(command.name)" : "/\(command.name) \(body)"
+        let renderingContext = CustomSlashCommandRenderer.Context(
+            query: currentQuery,
+            schema: nil,
+            database: connection.flatMap { DatabaseManager.shared.activeDatabaseName(for: $0) },
+            body: body
+        )
+        let prompt = CustomSlashCommandRenderer.render(command, context: renderingContext)
+        messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
+        sendWithContext(prompt: prompt)
+    }
+
     private func resolveQuery(body: String, command: SlashCommand) -> String? {
         if !body.isEmpty {
             return body
@@ -268,8 +284,37 @@ final class AIChatViewModel {
             await ensureSchemaLoaded()
         case .table(_, let name):
             await ensureColumnsLoaded(forTable: name)
-        case .currentQuery, .queryResult, .savedQuery, .file:
+        case .savedQuery(let id, _):
+            await ensureSavedQueryLoaded(id: id)
+        case .currentQuery, .queryResult, .file:
             break
+        }
+    }
+
+    /// Loaded `SQLFavorite` instances keyed by id, populated when saved-query
+    /// chips are attached so `resolveSavedQueryAttachment` can serialize them.
+    @ObservationIgnored private var cachedSavedQueries: [UUID: SQLFavorite] = [:]
+
+    /// Saved queries available as `@`-mention candidates for the active connection.
+    /// Refreshed on connection change via `loadSavedQueries()`.
+    var savedQueries: [SQLFavorite] = []
+
+    func loadSavedQueries() async {
+        guard let connectionId = connection?.id else {
+            savedQueries = []
+            return
+        }
+        let favorites = await SQLFavoriteManager.shared.fetchFavorites(connectionId: connectionId)
+        savedQueries = favorites
+        for favorite in favorites {
+            cachedSavedQueries[favorite.id] = favorite
+        }
+    }
+
+    private func ensureSavedQueryLoaded(id: UUID) async {
+        if cachedSavedQueries[id] != nil { return }
+        if let favorite = await SQLFavoriteManager.shared.fetchFavorite(id: id) {
+            cachedSavedQueries[id] = favorite
         }
     }
 
@@ -422,9 +467,20 @@ final class AIChatViewModel {
             let snapshot = summary.isEmpty ? (queryResults ?? "") : summary
             guard !snapshot.isEmpty else { return nil }
             return "## Query Results\n\(snapshot)"
-        case .savedQuery, .file:
+        case .savedQuery(let id, let name):
+            return resolveSavedQueryAttachment(id: id, fallbackName: name)
+        case .file:
             return nil
         }
+    }
+
+    private func resolveSavedQueryAttachment(id: UUID, fallbackName: String) -> String? {
+        guard let favorite = cachedSavedQueries[id] else { return nil }
+        let displayName = favorite.name.isEmpty ? fallbackName : favorite.name
+        let header = displayName.isEmpty
+            ? String(localized: "Saved Query")
+            : "\(String(localized: "Saved Query")): \(displayName)"
+        return "## \(header)\n```sql\n\(favorite.query)\n```"
     }
 
     private func resolveSchemaAttachment() -> String? {

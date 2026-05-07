@@ -10,7 +10,7 @@ enum ContextItem: Codable, Equatable, Sendable {
     case table(connectionId: UUID, name: String)
     case currentQuery(text: String)
     case queryResult(summary: String)
-    case savedQuery(id: UUID)
+    case savedQuery(id: UUID, name: String)
     case file(url: URL)
 
     private enum CodingKeys: String, CodingKey {
@@ -37,7 +37,9 @@ enum ContextItem: Codable, Equatable, Sendable {
         case .queryResult:
             self = .queryResult(summary: try container.decode(String.self, forKey: .summary))
         case .savedQuery:
-            self = .savedQuery(id: try container.decode(UUID.self, forKey: .id))
+            let id = try container.decode(UUID.self, forKey: .id)
+            let name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+            self = .savedQuery(id: id, name: name)
         case .file:
             self = .file(url: try container.decode(URL.self, forKey: .url))
         }
@@ -59,9 +61,10 @@ enum ContextItem: Codable, Equatable, Sendable {
         case .queryResult(let summary):
             try container.encode(Kind.queryResult, forKey: .kind)
             try container.encode(summary, forKey: .summary)
-        case .savedQuery(let id):
+        case .savedQuery(let id, let name):
             try container.encode(Kind.savedQuery, forKey: .kind)
             try container.encode(id, forKey: .id)
+            try container.encode(name, forKey: .name)
         case .file(let url):
             try container.encode(Kind.file, forKey: .kind)
             try container.encode(url, forKey: .url)

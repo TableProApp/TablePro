@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Read-only tools: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`.
   - Tool calls and their results render as expandable pills in the assistant's reply.
   - Supported providers: Anthropic, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), and custom OpenAI-compatible endpoints. GitHub Copilot is not yet supported.
+- AI Chat: attach a saved query as a chip via `@`. Type `@` and pick a saved SQL query to send its name and body to the AI alongside your message.
+- AI Chat: user-defined slash commands. Create your own commands in Settings -> AI -> Custom Slash Commands. Templates support `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}` placeholders that get substituted at send time.
 
 ### Changed
 

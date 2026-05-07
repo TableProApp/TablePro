@@ -25,6 +25,7 @@ struct AISettingsView: View {
                 providersSection
                 inlineSuggestionsSection
                 contextSection
+                CustomSlashCommandsSection(storage: CustomSlashCommandStorage.shared)
                 privacySection
             }
         }
