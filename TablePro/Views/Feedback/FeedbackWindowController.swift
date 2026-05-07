@@ -9,7 +9,6 @@ import SwiftUI
 @MainActor
 final class FeedbackWindowController {
     static let shared = FeedbackWindowController()
-    private static let autosaveName: NSWindow.FrameAutosaveName = "FeedbackWindow"
     private var panel: NSPanel?
     private var closeObserver: NSObjectProtocol?
     private let viewModel = FeedbackViewModel()
@@ -43,7 +42,7 @@ final class FeedbackWindowController {
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.contentView = hostingView
-        panel.applyAutosaveName(Self.autosaveName)
+        WindowStateController.shared.install(on: panel, policy: .feedback)
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
 

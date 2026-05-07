@@ -659,6 +659,7 @@ struct TableProApp: App {
 
         Window("Integrations Activity", id: SceneId.integrationsActivity) {
             IntegrationsActivityView()
+                .background(WindowChromeConfigurator(statePolicy: .integrationsActivity))
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 960, height: 600)

@@ -71,7 +71,9 @@ internal final class WindowManager {
                 "[open] WindowManager joined existing tab group payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )
         } else {
-            window.center()
+            if !WindowStateController.shared.hasPriorState(for: .editor) {
+                window.center()
+            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             Self.lifecycleLogger.info(
