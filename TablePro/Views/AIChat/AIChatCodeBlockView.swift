@@ -14,7 +14,12 @@ struct AIChatCodeBlockView: View {
     let language: String?
 
     @State private var isCopied: Bool = false
-    @FocusedValue(\.commandActions) private var actions
+    @FocusedValue(\.commandActions) private var focusedActions
+    @Bindable private var commandRegistry = CommandActionsRegistry.shared
+
+    private var actions: MainContentCommandActions? {
+        focusedActions ?? commandRegistry.current
+    }
 
     var body: some View {
         GroupBox {
