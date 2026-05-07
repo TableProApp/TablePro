@@ -343,42 +343,44 @@ struct AIChatPanelView: View {
         }
     }
 
+    @ViewBuilder
     private var modelPicker: some View {
         let providers = settingsManager.ai.providers
-        let activeProvider = settingsManager.ai.activeProvider
-        let selectedProviderId = viewModel.selectedProviderId ?? activeProvider?.id
-        let selectedProvider = providers.first(where: { $0.id == selectedProviderId }) ?? activeProvider
-        let resolvedModel = viewModel.selectedModel ?? selectedProvider?.model ?? ""
-        let label: String
-        if let selectedProvider {
-            label = resolvedModel.isEmpty ? selectedProvider.displayName : "\(selectedProvider.displayName) · \(resolvedModel)"
+        if providers.isEmpty {
+            EmptyView()
         } else {
-            label = String(localized: "Select Model")
-        }
+            let activeProvider = settingsManager.ai.activeProvider
+            let selectedProviderId = viewModel.selectedProviderId ?? activeProvider?.id
+            let selectedProvider = providers.first(where: { $0.id == selectedProviderId }) ?? activeProvider
+            let resolvedModel = viewModel.selectedModel ?? selectedProvider?.model ?? ""
+            let label = selectedProvider.map { provider in
+                resolvedModel.isEmpty ? provider.displayName : "\(provider.displayName) · \(resolvedModel)"
+            } ?? String(localized: "Select Model")
 
-        return Menu {
-            ForEach(providers) { provider in
-                modelMenuSection(
-                    provider: provider,
-                    selectedProviderId: selectedProviderId,
-                    selectedModel: resolvedModel
-                )
+            Menu {
+                ForEach(providers) { provider in
+                    modelMenuSection(
+                        provider: provider,
+                        selectedProviderId: selectedProviderId,
+                        selectedModel: resolvedModel
+                    )
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "cpu")
+                    Text(label)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "cpu")
-                Text(label)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(String(localized: "Choose AI provider and model"))
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help(String(localized: "Choose AI provider and model"))
     }
 
     @ViewBuilder

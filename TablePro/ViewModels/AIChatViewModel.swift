@@ -67,23 +67,47 @@ final class AIChatViewModel {
 
     func loadAvailableModels() async {
         let settings = AppSettingsManager.shared.ai
-        for config in settings.providers where availableModels[config.id] == nil {
-            if Task.isCancelled { return }
-            let apiKey: String?
-            switch config.type.authStyle {
-            case .apiKey:
-                apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
-            case .oauth, .none:
-                apiKey = nil
+        let pending = settings.providers.filter { availableModels[$0.id] == nil }
+        guard !pending.isEmpty else { return }
+
+        let results = await withTaskGroup(of: (UUID, [String]?).self) { group in
+            for config in pending {
+                let apiKey: String?
+                switch config.type.authStyle {
+                case .apiKey:
+                    apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
+                case .oauth, .none:
+                    apiKey = nil
+                }
+                group.addTask {
+                    let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
+                    do {
+                        let models = try await transport.fetchAvailableModels()
+                        return (config.id, models)
+                    } catch is CancellationError {
+                        return (config.id, nil)
+                    } catch {
+                        return (config.id, [])
+                    }
+                }
             }
-            let transport = AIProviderFactory.createProvider(for: config, apiKey: apiKey)
-            do {
-                let models = try await transport.fetchAvailableModels()
-                availableModels[config.id] = models.isEmpty ? [config.model] : models
-            } catch is CancellationError {
-                return
-            } catch {
-                availableModels[config.id] = config.model.isEmpty ? [] : [config.model]
+
+            var collected: [(UUID, [String]?)] = []
+            for await result in group {
+                collected.append(result)
+            }
+            return collected
+        }
+
+        guard !Task.isCancelled else { return }
+
+        for (id, models) in results {
+            guard let models else { continue }
+            if models.isEmpty {
+                let fallback = pending.first(where: { $0.id == id })?.model
+                availableModels[id] = (fallback?.isEmpty == false) ? [fallback ?? ""] : []
+            } else {
+                availableModels[id] = models
             }
         }
     }

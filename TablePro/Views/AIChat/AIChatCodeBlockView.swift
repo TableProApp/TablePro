@@ -73,7 +73,7 @@ struct AIChatCodeBlockView: View {
                 .foregroundStyle(.secondary)
                 .disabled(actions == nil)
                 .help(actions == nil
-                    ? String(localized: "Focus the query editor to insert")
+                    ? String(localized: "Open a connection to insert")
                     : String(localized: "Insert into editor"))
             }
         }
@@ -110,10 +110,10 @@ struct AIChatCodeBlockView: View {
         return Self.detectLanguage(from: code)
     }
 
-    private static func detectLanguage(from code: String) -> String? {
+    static func detectLanguage(from code: String) -> String? {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !trimmed.isEmpty else { return nil }
-        let firstStatement = trimmed
+        let firstNonCommentLine = trimmed
             .split(whereSeparator: { $0.isNewline })
             .first(where: { line in
                 let head = line.trimmingCharacters(in: .whitespaces)
@@ -125,12 +125,13 @@ struct AIChatCodeBlockView: View {
             "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "WITH ",
             "EXPLAIN ", "PRAGMA ", "CREATE ", "ALTER ", "DROP ",
             "TRUNCATE ", "BEGIN ", "COMMIT ", "ROLLBACK ", "GRANT ",
-            "REVOKE ", "ANALYZE "
+            "REVOKE ", "ANALYZE ", "SET ", "CALL ", "LOCK ",
+            "MERGE ", "SHOW ", "DESCRIBE ", "DESC "
         ]
-        if sqlPrefixes.contains(where: { firstStatement.hasPrefix($0) }) {
+        if sqlPrefixes.contains(where: { firstNonCommentLine.hasPrefix($0) }) {
             return "sql"
         }
-        if firstStatement.hasPrefix("DB.") {
+        if firstNonCommentLine.hasPrefix("DB.") {
             return "javascript"
         }
         return nil
