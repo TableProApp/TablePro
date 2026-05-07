@@ -150,7 +150,7 @@ struct AIChatCodeBlockView: View {
     }
 
     private var isInsertable: Bool {
-        treeSitterLanguage.id != .default
+        treeSitterLanguage.id != CodeLanguage.default.id
     }
 
     private var editorHeight: CGFloat {
