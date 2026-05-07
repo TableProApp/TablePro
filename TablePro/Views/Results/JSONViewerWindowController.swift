@@ -11,6 +11,7 @@ final class JSONViewerWindowController {
     private static var activeWindows: [ObjectIdentifier: JSONViewerWindowController] = [:]
     private static let defaultSize = NSSize(width: 640, height: 500)
     private static let minSize = NSSize(width: 400, height: 300)
+    private static let autosaveName: NSWindow.FrameAutosaveName = "JSONViewerWindow"
 
     private var window: NSWindow?
     private var closeObserver: NSObjectProtocol?
@@ -38,8 +39,7 @@ final class JSONViewerWindowController {
             defer: false
         )
         window.identifier = NSUserInterfaceItemIdentifier("json-viewer")
-        window.title = columnName.map { String(format: String(localized: "JSON: %@"), $0) }
-            ?? String(localized: "JSON Viewer")
+        window.title = columnName.map { "JSON — \($0)" } ?? String(localized: "JSON Viewer")
         window.isReleasedWhenClosed = false
         window.minSize = Self.minSize
         window.collectionBehavior = [.fullScreenPrimary]
@@ -71,7 +71,7 @@ final class JSONViewerWindowController {
             }
         }
 
-        WindowStateController.shared.install(on: window, policy: .jsonViewer)
+        window.applyAutosaveName(Self.autosaveName)
         window.makeKeyAndOrderFront(nil)
     }
 }

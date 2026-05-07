@@ -11,7 +11,6 @@ internal struct WindowChromeConfigurator: NSViewRepresentable {
     var fullScreenable: Bool = true
     var hideMiniaturizeButton: Bool = false
     var hideZoomButton: Bool = false
-    var statePolicy: WindowFramePolicy?
 
     func makeNSView(context: Context) -> NSView {
         let view = ChromeHostView()
@@ -51,9 +50,5 @@ private final class ChromeHostView: NSView {
 
         window.standardWindowButton(.miniaturizeButton)?.isHidden = config.hideMiniaturizeButton
         window.standardWindowButton(.zoomButton)?.isHidden = config.hideZoomButton
-
-        if let policy = config.statePolicy {
-            WindowStateController.shared.install(on: window, policy: policy)
-        }
     }
 }

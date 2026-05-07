@@ -84,7 +84,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.minSize = NSSize(width: 720, height: 480)
         window.isRestorable = false
-        WindowStateController.shared.install(on: window, policy: .editor)
+        window.applyAutosaveName("MainEditorWindow")
         window.toolbarStyle = .unified
         // Hide the window title ("Query 1 / TablePro") embedded in the unified
         // toolbar — otherwise it claims leading space and pushes our navigation
