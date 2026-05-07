@@ -37,7 +37,7 @@ struct ChatComposerView: View {
             .onKeyPress(.escape) { handleEscape() }
             .popover(
                 isPresented: popoverBinding,
-                attachmentAnchor: .point(.top),
+                attachmentAnchor: .point(.topLeading),
                 arrowEdge: .bottom
             ) {
                 MentionSuggestionListView(
