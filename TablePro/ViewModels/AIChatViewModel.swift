@@ -255,6 +255,41 @@ final class AIChatViewModel {
     func attach(_ item: ContextItem) {
         guard !attachedContext.contains(where: { $0.stableKey == item.stableKey }) else { return }
         attachedContext.append(item)
+        primeAttachmentData(for: item)
+    }
+
+    private var liveTables: [TableInfo] {
+        if !tables.isEmpty { return tables }
+        guard let id = connection?.id else { return [] }
+        return SchemaService.shared.tables(for: id)
+    }
+
+    private func primeAttachmentData(for item: ContextItem) {
+        switch item {
+        case .schema:
+            fetchSchemaContext(forceLoad: true)
+        case .table(_, let name):
+            fetchTableColumns(name: name)
+        case .currentQuery, .queryResult, .savedQuery, .file:
+            break
+        }
+    }
+
+    private func fetchTableColumns(name: String) {
+        if let existing = columnsByTable[name], !existing.isEmpty { return }
+        guard let connection,
+              let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let columns = (try? await driver.fetchColumns(table: name)) ?? []
+            let fkMap = (try? await driver.fetchForeignKeys(forTables: [name])) ?? [:]
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.columnsByTable[name] = columns
+                if let fks = fkMap[name] {
+                    self.foreignKeysByTable[name] = fks
+                }
+            }
+        }
     }
 
     func detach(_ item: ContextItem) {
@@ -313,13 +348,14 @@ final class AIChatViewModel {
     }
 
     private func resolveSchemaAttachment() -> String? {
-        guard !tables.isEmpty else { return nil }
+        let activeTables = liveTables
+        guard !activeTables.isEmpty else { return nil }
         let settings = AppSettingsManager.shared.ai
         let identifierQuote = connection.flatMap {
             PluginManager.shared.sqlDialect(for: $0.type)?.identifierQuote
         } ?? "\""
         let section = AISchemaContext.buildSchemaSection(
-            tables: tables,
+            tables: activeTables,
             columnsByTable: columnsByTable,
             foreignKeys: foreignKeysByTable,
             maxTables: settings.maxSchemaTables,
@@ -780,16 +816,17 @@ final class AIChatViewModel {
 
     // MARK: - Schema Context
 
-    func fetchSchemaContext() {
+    func fetchSchemaContext(forceLoad: Bool = false) {
         let settings = AppSettingsManager.shared.ai
-        guard settings.includeSchema,
+        guard forceLoad || settings.includeSchema,
               let connection,
               let driver = DatabaseManager.shared.driver(for: connection.id)
         else { return }
 
         schemaFetchTask?.cancel()
 
-        let tablesToFetch = Array(tables.prefix(settings.maxSchemaTables))
+        let tablesToFetch = Array(liveTables.prefix(settings.maxSchemaTables))
+        guard !tablesToFetch.isEmpty else { return }
         let capturedProvider = schemaProvider
 
         schemaFetchTask = Task.detached(priority: .userInitiated) { [weak self] in
