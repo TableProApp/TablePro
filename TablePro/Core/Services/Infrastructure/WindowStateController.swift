@@ -15,9 +15,30 @@ internal final class WindowStateController {
 
     private let defaults: UserDefaults
     private var bindings: [ObjectIdentifier: WindowStateBinding] = [:]
+    fileprivate private(set) var isTerminating = false
 
     private init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        observeApplicationTermination()
+    }
+
+    private func observeApplicationTermination() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleApplicationWillTerminate()
+            }
+        }
+    }
+
+    private func handleApplicationWillTerminate() {
+        isTerminating = true
+        for binding in bindings.values {
+            binding.captureCurrentFullScreenState()
+        }
     }
 
     private func applyFirstRunFrame(to window: NSWindow, policy: WindowFramePolicy) {
@@ -107,6 +128,11 @@ private final class WindowStateBinding {
         }
     }
 
+    func captureCurrentFullScreenState() {
+        guard let window else { return }
+        defaults.set(window.styleMask.contains(.fullScreen), forKey: policy.fullScreenStateKey)
+    }
+
     private func attachLiveObservers() {
         guard let window else { return }
         let center = NotificationCenter.default
@@ -123,8 +149,11 @@ private final class WindowStateBinding {
             forName: NSWindow.didExitFullScreenNotification,
             object: window,
             queue: .main
-        ) { [defaults, policy] _ in
-            defaults.set(false, forKey: policy.fullScreenStateKey)
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.owner?.isTerminating != true else { return }
+                self.defaults.set(false, forKey: self.policy.fullScreenStateKey)
+            }
         })
 
         liveObservers.append(center.addObserver(
