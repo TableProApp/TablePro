@@ -307,8 +307,9 @@ final class AIChatViewModel {
             await inFlight.value
             return
         }
-        let task = Task { [weak self] in
-            await self?.runSchemaLoad()
+        let task: Task<Void, Never> = Task { [weak self] in
+            guard let self else { return }
+            await self.runSchemaLoad()
         }
         inFlightSchemaLoad = task
         await task.value
