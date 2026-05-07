@@ -57,6 +57,7 @@ final class AIChatViewModel {
     func loadAvailableModels() async {
         let settings = AppSettingsManager.shared.ai
         for config in settings.providers where availableModels[config.id] == nil {
+            if Task.isCancelled { return }
             let apiKey: String?
             switch config.type.authStyle {
             case .apiKey:
@@ -68,6 +69,8 @@ final class AIChatViewModel {
             do {
                 let models = try await transport.fetchAvailableModels()
                 availableModels[config.id] = models.isEmpty ? [config.model] : models
+            } catch is CancellationError {
+                return
             } catch {
                 availableModels[config.id] = config.model.isEmpty ? [] : [config.model]
             }
