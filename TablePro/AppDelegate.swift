@@ -53,6 +53,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         MemoryPressureAdvisor.startMonitoring()
         PluginManager.shared.loadPlugins()
+        ChatToolBootstrap.register()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleSystemDidWake),
@@ -265,25 +266,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showWelcomeFromDock() {
         WindowOpener.shared.openWelcome()
-    }
-
-    @objc func newWindowForTab(_ sender: Any?) {
-        guard let keyWindow = NSApp.keyWindow,
-              let connectionId = MainActor.assumeIsolated({
-                  WindowLifecycleMonitor.shared.connectionId(forWindow: keyWindow)
-              })
-        else { return }
-
-        MainActor.assumeIsolated {
-            if let actions = MainContentCoordinator.allActiveCoordinators()
-                .first(where: { $0.connectionId == connectionId })?.commandActions {
-                actions.newTab()
-            } else {
-                WindowManager.shared.openTab(
-                    payload: EditorTabPayload(connectionId: connectionId, intent: .newEmptyTab)
-                )
-            }
-        }
     }
 
     @objc func connectFromDock(_ sender: NSMenuItem) {

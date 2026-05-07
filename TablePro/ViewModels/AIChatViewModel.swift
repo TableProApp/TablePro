@@ -740,6 +740,8 @@ final class AIChatViewModel {
         }
     }
 
+    private static let maxToolRoundtrips = 5
+
     private func runStream(
         chatMessages: [ChatTurn],
         promptContext: PromptContext?,
@@ -749,101 +751,115 @@ final class AIChatViewModel {
     ) {
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                // Build system prompt off the main actor
-                let systemPrompt: String? = promptContext.map {
-                    AISchemaContext.buildSystemPrompt(
-                        databaseType: $0.databaseType,
-                        databaseName: $0.databaseName,
-                        tables: $0.tables,
-                        columnsByTable: $0.columnsByTable,
-                        foreignKeys: $0.foreignKeys,
-                        currentQuery: $0.currentQuery,
-                        queryResults: $0.queryResults,
-                        settings: $0.settings,
-                        identifierQuote: $0.identifierQuote,
-                        editorLanguage: $0.editorLanguage,
-                        queryLanguageName: $0.queryLanguageName
-                    )
-                }
-
-                // Pre-send size check
-                let totalSize = ((systemPrompt ?? "") as NSString).length
-                    + chatMessages.reduce(0) { $0 + ($1.plainText as NSString).length }
-                if totalSize > 100_000 {
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        self.errorMessage = String(
-                            localized: "Message too large. Try disabling 'Include schema' or 'Include query results' in AI settings."
-                        )
-                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
-                            self.messages.remove(at: idx)
-                        }
-                        self.isStreaming = false
-                        self.streamingAssistantID = nil
-                    }
-                    return
-                }
-
-                let stream = resolved.provider.streamChat(
+                let systemPrompt = Self.buildSystemPrompt(promptContext)
+                guard let self else { return }
+                let preflightOK = await self.preflightCheck(
+                    systemPrompt: systemPrompt,
                     turns: chatMessages,
-                    options: ChatTransportOptions(
-                        model: resolved.model,
-                        systemPrompt: systemPrompt
-                    )
+                    assistantID: assistantID
                 )
+                guard preflightOK else { return }
 
-                // Batch tokens off the main actor, flush on interval
-                var pendingContent = ""
-                var pendingUsage: AITokenUsage?
+                let toolSpecs = await MainActor.run { ChatToolRegistry.shared.allSpecs }
+                var workingTurns = chatMessages
+                var currentAssistantID = assistantID
                 let flushInterval: ContinuousClock.Duration = .milliseconds(150)
-                var lastFlushTime: ContinuousClock.Instant = .now
 
-                for try await event in stream {
-                    guard !Task.isCancelled else { break }
-                    switch event {
-                    case .textDelta(let token):
-                        pendingContent += token
-                    case .usage(let usage):
-                        pendingUsage = usage
-                    case .toolUseStart, .toolUseDelta, .toolUseEnd:
+                for roundtrip in 0..<Self.maxToolRoundtrips {
+                    let stream = resolved.provider.streamChat(
+                        turns: workingTurns,
+                        options: ChatTransportOptions(
+                            model: resolved.model,
+                            systemPrompt: systemPrompt,
+                            tools: toolSpecs
+                        )
+                    )
+
+                    // Batch tokens, accumulate tool-use events
+                    var pendingContent = ""
+                    var pendingUsage: AITokenUsage?
+                    var toolUseOrder: [String] = []
+                    var toolUseNames: [String: String] = [:]
+                    var toolUseInputs: [String: String] = [:]
+                    var lastFlushTime: ContinuousClock.Instant = .now
+                    let assistantIDForRound = currentAssistantID
+
+                    for try await event in stream {
+                        guard !Task.isCancelled else { break }
+                        switch event {
+                        case .textDelta(let token):
+                            pendingContent += token
+                        case .usage(let usage):
+                            pendingUsage = usage
+                        case .toolUseStart(let id, let name):
+                            if toolUseInputs[id] == nil {
+                                toolUseOrder.append(id)
+                                toolUseInputs[id] = ""
+                            }
+                            toolUseNames[id] = name
+                        case .toolUseDelta(let id, let inputJSONDelta):
+                            toolUseInputs[id, default: ""] += inputJSONDelta
+                        case .toolUseEnd:
+                            break
+                        }
+
+                        if ContinuousClock.now - lastFlushTime >= flushInterval {
+                            await self.flushPending(
+                                content: pendingContent,
+                                usage: pendingUsage,
+                                into: assistantIDForRound
+                            )
+                            pendingContent = ""
+                            pendingUsage = nil
+                            lastFlushTime = .now
+                        }
+                    }
+
+                    if !Task.isCancelled, !pendingContent.isEmpty || pendingUsage != nil {
+                        await self.flushPending(
+                            content: pendingContent,
+                            usage: pendingUsage,
+                            into: assistantIDForRound
+                        )
+                    }
+
+                    guard !Task.isCancelled else { return }
+
+                    if toolUseOrder.isEmpty { break }
+
+
+                    if roundtrip == Self.maxToolRoundtrips - 1 {
+                        await MainActor.run { [weak self] in
+                            self?.errorMessage = String(
+                                localized: "AI made too many tool calls in one response. Try simplifying the request."
+                            )
+                        }
                         break
                     }
 
-                    if ContinuousClock.now - lastFlushTime >= flushInterval {
-                        let content = pendingContent
-                        let usage = pendingUsage
-                        pendingContent = ""
-                        pendingUsage = nil
-                        await MainActor.run { [weak self] in
-                            guard let self,
-                                  let idx = self.messages.firstIndex(where: { $0.id == assistantID })
-                            else { return }
-                            if !content.isEmpty {
-                                self.messages[idx].appendText(content)
-                            }
-                            if let usage {
-                                self.messages[idx].usage = usage
-                            }
-                        }
-                        lastFlushTime = .now
+                    let toolUseBlocks = Self.assembleToolUseBlocks(
+                        order: toolUseOrder,
+                        names: toolUseNames,
+                        inputs: toolUseInputs
+                    )
+                    let context = await MainActor.run {
+                        ChatToolContext(
+                            connectionId: self?.connection?.id,
+                            bridge: ChatToolBootstrap.bridge
+                        )
                     }
-                }
+                    let toolResultBlocks = await Self.executeToolUses(toolUseBlocks, context: context)
+                    guard !Task.isCancelled else { return }
 
-                // Final flush — deliver remaining buffered tokens
-                if !Task.isCancelled, !pendingContent.isEmpty || pendingUsage != nil {
-                    let content = pendingContent
-                    let usage = pendingUsage
-                    await MainActor.run { [weak self] in
-                        guard let self,
-                              let idx = self.messages.firstIndex(where: { $0.id == assistantID })
-                        else { return }
-                        if !content.isEmpty {
-                            self.messages[idx].appendText(content)
-                        }
-                        if let usage {
-                            self.messages[idx].usage = usage
-                        }
-                    }
+                    let continuation = await self.appendToolRoundtrip(
+                        assistantIDForRound: assistantIDForRound,
+                        toolUseBlocks: toolUseBlocks,
+                        toolResultBlocks: toolResultBlocks,
+                        resolved: resolved
+                    )
+                    currentAssistantID = continuation.nextAssistantID
+                    workingTurns.append(continuation.assistantTurn)
+                    workingTurns.append(continuation.userTurn)
                 }
 
                 guard !Task.isCancelled else { return }
@@ -875,6 +891,171 @@ final class AIChatViewModel {
                 }
             }
         }
+    }
+
+    private static func buildSystemPrompt(_ promptContext: PromptContext?) -> String? {
+        promptContext.map {
+            AISchemaContext.buildSystemPrompt(
+                databaseType: $0.databaseType,
+                databaseName: $0.databaseName,
+                tables: $0.tables,
+                columnsByTable: $0.columnsByTable,
+                foreignKeys: $0.foreignKeys,
+                currentQuery: $0.currentQuery,
+                queryResults: $0.queryResults,
+                settings: $0.settings,
+                identifierQuote: $0.identifierQuote,
+                editorLanguage: $0.editorLanguage,
+                queryLanguageName: $0.queryLanguageName
+            )
+        }
+    }
+
+    private struct ToolRoundtripContinuation {
+        let nextAssistantID: UUID
+        let assistantTurn: ChatTurn
+        let userTurn: ChatTurn
+    }
+
+    private func appendToolRoundtrip(
+        assistantIDForRound: UUID,
+        toolUseBlocks: [ToolUseBlock],
+        toolResultBlocks: [ToolResultBlock],
+        resolved: AIProviderFactory.ResolvedProvider
+    ) async -> ToolRoundtripContinuation {
+        await MainActor.run { [weak self] () -> ToolRoundtripContinuation in
+            let assistantText: String = {
+                guard let self,
+                      let idx = self.messages.firstIndex(where: { $0.id == assistantIDForRound })
+                else { return "" }
+                for block in toolUseBlocks {
+                    self.messages[idx].blocks.append(.toolUse(block))
+                }
+                return self.messages[idx].plainText
+            }()
+            var assistantBlocks: [ChatContentBlock] = []
+            if !assistantText.isEmpty { assistantBlocks.append(.text(assistantText)) }
+            assistantBlocks.append(contentsOf: toolUseBlocks.map { .toolUse($0) })
+            let assistantTurn = ChatTurn(
+                id: assistantIDForRound,
+                role: .assistant,
+                blocks: assistantBlocks,
+                modelId: resolved.model,
+                providerId: resolved.config.id.uuidString
+            )
+            let userTurn = ChatTurn(
+                role: .user,
+                blocks: toolResultBlocks.map { .toolResult($0) }
+            )
+            let nextAssistant = ChatTurn(
+                role: .assistant,
+                blocks: [],
+                modelId: resolved.model,
+                providerId: resolved.config.id.uuidString
+            )
+            self?.messages.append(userTurn)
+            self?.messages.append(nextAssistant)
+            self?.streamingAssistantID = nextAssistant.id
+            return ToolRoundtripContinuation(
+                nextAssistantID: nextAssistant.id,
+                assistantTurn: assistantTurn,
+                userTurn: userTurn
+            )
+        }
+    }
+
+    private func flushPending(content: String, usage: AITokenUsage?, into assistantID: UUID) async {
+        guard !content.isEmpty || usage != nil else { return }
+        await MainActor.run { [weak self] in
+            guard let self,
+                  let idx = self.messages.firstIndex(where: { $0.id == assistantID })
+            else { return }
+            if !content.isEmpty {
+                self.messages[idx].appendText(content)
+            }
+            if let usage {
+                self.messages[idx].usage = usage
+            }
+        }
+    }
+
+    private func preflightCheck(systemPrompt: String?, turns: [ChatTurn], assistantID: UUID) async -> Bool {
+        let totalSize = ((systemPrompt ?? "") as NSString).length
+            + turns.reduce(0) { $0 + ($1.plainText as NSString).length }
+        guard totalSize > 100_000 else { return true }
+        await MainActor.run { [weak self] in
+            guard let self else { return }
+            self.errorMessage = String(
+                localized: "Message too large. Try disabling 'Include schema' or 'Include query results' in AI settings."
+            )
+            if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                self.messages.remove(at: idx)
+            }
+            self.isStreaming = false
+            self.streamingAssistantID = nil
+        }
+        return false
+    }
+
+    private static func assembleToolUseBlocks(
+        order: [String],
+        names: [String: String],
+        inputs: [String: String]
+    ) -> [ToolUseBlock] {
+        order.compactMap { id -> ToolUseBlock? in
+            guard let name = names[id] else { return nil }
+            let inputString = inputs[id] ?? "{}"
+            let inputValue: JSONValue
+            if inputString.isEmpty {
+                inputValue = .object([:])
+            } else if let data = inputString.data(using: .utf8),
+                      let decoded = try? JSONDecoder().decode(JSONValue.self, from: data) {
+                inputValue = decoded
+            } else {
+                inputValue = .object([:])
+            }
+            return ToolUseBlock(id: id, name: name, input: inputValue)
+        }
+    }
+
+    private static func executeToolUses(
+        _ blocks: [ToolUseBlock],
+        context: ChatToolContext
+    ) async -> [ToolResultBlock] {
+        let registry = await MainActor.run { ChatToolRegistry.shared }
+        var results: [ToolResultBlock] = []
+        for block in blocks {
+            guard !Task.isCancelled else { break }
+            let resultBlock: ToolResultBlock
+            if let tool = await MainActor.run(body: { registry.tool(named: block.name) }) {
+                do {
+                    let result = try await tool.execute(input: block.input, context: context)
+                    resultBlock = ToolResultBlock(
+                        toolUseId: block.id,
+                        content: result.content,
+                        isError: result.isError
+                    )
+                } catch {
+                    Self.logger.warning(
+                        "Tool \(block.name, privacy: .public) execution failed: \(error.localizedDescription, privacy: .public)"
+                    )
+                    resultBlock = ToolResultBlock(
+                        toolUseId: block.id,
+                        content: "Error: \(error.localizedDescription)",
+                        isError: true
+                    )
+                }
+            } else {
+                Self.logger.warning("Tool '\(block.name, privacy: .public)' not registered; returning error")
+                resultBlock = ToolResultBlock(
+                    toolUseId: block.id,
+                    content: "Tool '\(block.name)' is not available",
+                    isError: true
+                )
+            }
+            results.append(resultBlock)
+        }
+        return results
     }
 
     private func resolveConnectionPolicy(settings: AISettings) -> AIConnectionPolicy? {

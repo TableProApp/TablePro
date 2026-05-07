@@ -12,7 +12,7 @@ protocol ChatTool: Sendable {
     var description: String { get }
     var inputSchema: JSONValue { get }
 
-    func execute(input: JSONValue) async throws -> ChatToolResult
+    func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult
 }
 
 struct ChatToolResult: Sendable, Equatable, Codable {

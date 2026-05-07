@@ -23,10 +23,12 @@ struct ChatToolRegistryTests {
             self.response = response
         }
 
-        func execute(input: JSONValue) async throws -> ChatToolResult {
+        func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
             ChatToolResult(content: response)
         }
     }
+
+    private static let stubContext = ChatToolContext(connectionId: nil, bridge: MCPConnectionBridge())
 
     @Test("Registered tool can be looked up by name")
     func lookupByName() {
@@ -43,7 +45,7 @@ struct ChatToolRegistryTests {
         registry.register(StubTool(name: "alpha", response: "new"))
         #expect(registry.allTools.count == 1)
         let tool = try #require(registry.tool(named: "alpha"))
-        let result = try await tool.execute(input: .object([:]))
+        let result = try await tool.execute(input: .object([:]), context: Self.stubContext)
         #expect(result.content == "new")
     }
 
@@ -52,7 +54,7 @@ struct ChatToolRegistryTests {
         let registry = ChatToolRegistry()
         registry.register(StubTool(name: "alpha", response: "result"))
         let tool = try #require(registry.tool(named: "alpha"))
-        let result = try await tool.execute(input: .object([:]))
+        let result = try await tool.execute(input: .object([:]), context: Self.stubContext)
         #expect(result.content == "result")
         #expect(result.isError == false)
     }
