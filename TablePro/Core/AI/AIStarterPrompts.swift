@@ -10,6 +10,7 @@ import TableProPluginKit
 /// Bucketed by the connection's `EditorLanguage` so SQL, document, and
 /// key-value users see prompts that fit their domain.
 enum AIStarterPrompts {
+    @MainActor
     static func suggestions(for databaseType: DatabaseType) -> [String] {
         switch PluginManager.shared.editorLanguage(for: databaseType) {
         case .javascript:
@@ -24,7 +25,7 @@ enum AIStarterPrompts {
                 String(localized: "Check memory usage for a key"),
                 String(localized: "List all keys by type")
             ]
-        case .sql:
+        case .sql, .custom:
             return sqlSuggestions
         }
     }
