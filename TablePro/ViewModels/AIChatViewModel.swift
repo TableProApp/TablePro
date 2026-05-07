@@ -117,13 +117,11 @@ final class AIChatViewModel {
         case "help":
             inputText = ""
             startNewConversation()
-            let helpText = SlashCommand.allCommands
-                .map { "/\($0.name) · \($0.description)" }
+            let helpLines = SlashCommand.allCommands
+                .map { "- `/\($0.name)` · \($0.description)" }
                 .joined(separator: "\n")
-            messages.append(ChatTurn(
-                role: .assistant,
-                blocks: [.text(String(localized: "Available commands:") + "\n" + helpText)]
-            ))
+            let helpMarkdown = String(localized: "**Available commands:**") + "\n\n" + helpLines
+            messages.append(ChatTurn(role: .assistant, blocks: [.text(helpMarkdown)]))
             persistCurrentConversation()
         case "explain":
             guard let query = currentQuery, !query.isEmpty else {

@@ -388,6 +388,7 @@ struct AIChatPanelView: View {
         Menu {
             ForEach(SlashCommand.allCommands) { command in
                 Button {
+                    updateContext()
                     viewModel.runSlashCommand(command)
                 } label: {
                     Text("/\(command.name) · \(command.description)")
