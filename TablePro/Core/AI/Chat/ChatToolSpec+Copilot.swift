@@ -10,7 +10,15 @@ extension ChatToolSpec {
         CopilotLanguageModelToolInformation(
             name: name,
             description: description,
-            inputSchema: inputSchema
+            inputSchema: Self.normalizeForCopilot(inputSchema)
         )
+    }
+
+    private static func normalizeForCopilot(_ schema: JSONValue) -> JSONValue {
+        guard case .object(var dict) = schema else { return schema }
+        if dict["required"] == nil {
+            dict["required"] = .array([])
+        }
+        return .object(dict)
     }
 }
