@@ -280,8 +280,11 @@ final class ChatComposerScrollContainer: NSView {
         let insetHeight = textView.textContainerInset.height * 2
         let minHeight = lineHeight * CGFloat(minLines) + insetHeight + 4
         let maxHeight = lineHeight * CGFloat(maxLines) + insetHeight + 4
-        let used = textView.layoutManager?.usedRect(for: textView.textContainer ?? NSTextContainer())
-            .height ?? lineHeight
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: ceil(minHeight))
+        }
+        let used = layoutManager.usedRect(for: textContainer).height
         let content = used + insetHeight + 4
         let clamped = max(minHeight, min(content, maxHeight))
         return NSSize(width: NSView.noIntrinsicMetric, height: ceil(clamped))

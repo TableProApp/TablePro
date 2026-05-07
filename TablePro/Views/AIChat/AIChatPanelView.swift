@@ -539,10 +539,15 @@ struct AIChatPanelView: View {
             mentionState.reset()
             return
         }
+        let queryChanged = match.query != mentionState.query
         mentionState.candidates = candidates
         mentionState.query = match.query
         mentionState.anchorRange = match.range
-        mentionState.clampSelection()
+        if queryChanged {
+            mentionState.selectedIndex = 0
+        } else {
+            mentionState.clampSelection()
+        }
         mentionState.isVisible = true
     }
 
@@ -569,18 +574,21 @@ struct AIChatPanelView: View {
             }
         }
 
+        let tableBudget = max(0, Self.maxMentionCandidates - items.count)
         let matchingTables = viewModel.tables
             .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-            .prefix(10)
+            .prefix(tableBudget)
         for table in matchingTables {
             items.append(MentionCandidate(
                 item: .table(connectionId: connectionId, name: table.name)
             ))
         }
 
-        return Array(items.prefix(10))
+        return items
     }
+
+    private static let maxMentionCandidates = 10
 
     private func matchesQuery(_ label: String, _ query: String) -> Bool {
         query.isEmpty || label.localizedCaseInsensitiveContains(query)

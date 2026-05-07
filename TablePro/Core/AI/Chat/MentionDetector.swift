@@ -5,18 +5,13 @@
 
 import Foundation
 
-public struct MentionMatch: Equatable, Sendable {
-    public let range: NSRange
-    public let query: String
-
-    public init(range: NSRange, query: String) {
-        self.range = range
-        self.query = query
-    }
+struct MentionMatch: Equatable, Sendable {
+    let range: NSRange
+    let query: String
 }
 
-public enum MentionDetector {
-    public static func detect(in text: String, caret: Int) -> MentionMatch? {
+enum MentionDetector {
+    static func detect(in text: String, caret: Int) -> MentionMatch? {
         let nsText = text as NSString
         guard caret >= 0, caret <= nsText.length else { return nil }
 
