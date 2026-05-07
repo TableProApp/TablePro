@@ -89,6 +89,9 @@ struct WelcomeConnectionRow: View {
         if connection.host.isEmpty {
             return connection.database.isEmpty ? connection.type.rawValue : connection.database
         }
+        if connection.host.hasPrefix("/") {
+            return (connection.host as NSString).abbreviatingWithTildeInPath
+        }
         if let mongoHosts = connection.additionalFields["mongoHosts"], mongoHosts.contains(",") {
             let count = mongoHosts.split(separator: ",").count
             return String(format: String(localized: "%@ (+%d more)"), hostWithOptionalPort, count - 1)

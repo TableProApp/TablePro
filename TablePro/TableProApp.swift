@@ -636,7 +636,7 @@ struct TableProApp: App {
     var body: some Scene {
         Window("Welcome to TablePro", id: SceneId.welcome) {
             WelcomeWindowView()
-                .frame(width: 800, height: 480)
+                .frame(width: 840, height: 500)
                 .background(WindowOpenerBridge())
                 .background(WindowChromeConfigurator(
                     restorable: false,
