@@ -204,7 +204,7 @@ struct WelcomeWindowView: View {
                 onTrySample: { vm.openSampleDatabase() },
                 onImportFromFile: { vm.importConnectionsFromFile() }
             )
-            .frame(width: 240)
+            .frame(width: 220)
             .background(.regularMaterial)
 
             Divider()
