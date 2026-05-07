@@ -71,7 +71,10 @@ internal final class WindowManager {
                 "[open] WindowManager joined existing tab group payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )
         } else {
-            window.center()
+            let hasSavedFrame = UserDefaults.standard.object(forKey: "NSWindow Frame MainEditorWindow") != nil
+            if !hasSavedFrame {
+                window.center()
+            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             Self.lifecycleLogger.info(

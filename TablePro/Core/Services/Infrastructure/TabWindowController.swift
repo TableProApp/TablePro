@@ -84,7 +84,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.minSize = NSSize(width: 720, height: 480)
         window.isRestorable = false
-        window.applyAutosaveName("MainEditorWindow")
         window.toolbarStyle = .unified
         // Hide the window title ("Query 1 / TablePro") embedded in the unified
         // toolbar — otherwise it claims leading space and pushes our navigation
@@ -102,6 +101,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.contentViewController = splitVC
 
         super.init(window: window)
+
+        self.windowFrameAutosaveName = "MainEditorWindow"
 
         // Keep the controller alive after the window closes so NSWindowDelegate
         // hooks have time to run teardown. WindowManager drops its strong
