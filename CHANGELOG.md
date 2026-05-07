@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- New tab via Cmd+T no longer flashes focus back to the previous tab in the same window group
+- Cmd+X with no selection cuts the current line, matching VS Code, Sublime, and Xcode (#1075)
+
 ### Added
 
-- AI Chat: panel layout redesign. The right inspector now has a Details / AI Chat segmented picker at the top. The chat tab is composer-focused: empty state is a small icon and one-line title, and all chat actions live in a single-row composer footer (mention, slash commands, mode picker, model picker, history, new conversation, send). The mode picker (Ask / Edit / Agent) is saved to settings but does not yet change provider behavior.
+- AI Chat: panel layout redesign. The right inspector has a Details / AI Chat segmented picker at the top, with conversation history and new-conversation actions trailing on the same row. The chat tab is composer-focused: composer is a pill-shaped input with an Apple Intelligence focus glow, and a single-row footer (mention, slash commands, mode picker, model picker, send). The mode picker (Ask / Edit / Agent) is saved to settings but does not yet change provider behavior.
 - AI Chat: inline model picker in the composer with per-turn model attribution. Switch between configured providers and any of their available models without leaving the chat. The model that produced each assistant turn is shown in the message footer.
 - AI Chat: slash commands `/explain`, `/optimize`, `/fix`, and `/help`. Type the command in the composer or pick from the slash menu next to the model picker. `/explain`, `/optimize`, and `/fix` operate on the current query in the active editor. `/help` lists the commands inline.
 - AI Chat: attach context to a message via the `@` menu next to the slash menu, or by typing `@` directly in the composer.

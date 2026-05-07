@@ -18,7 +18,6 @@ struct AIChatPanelView: View {
     @State private var isUserScrolledUp = false
     @State private var lastAutoScrollTime: Date = .distantPast
     @State private var mentionState = MentionPopoverState()
-    @State private var showClearConfirmation = false
 
     private var hasConfiguredProvider: Bool {
         settingsManager.ai.hasActiveProvider
@@ -41,17 +40,6 @@ struct AIChatPanelView: View {
 
                 inputArea
             }
-        }
-        .alert(
-            String(localized: "Clear All Conversations?"),
-            isPresented: $showClearConfirmation
-        ) {
-            Button(String(localized: "Clear"), role: .destructive) {
-                viewModel.clearConversation()
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "This will permanently delete all conversation history."))
         }
         .onAppear {
             viewModel.connection = connection
@@ -83,17 +71,11 @@ struct AIChatPanelView: View {
     // MARK: - Empty States
 
     private var emptyState: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 22))
-                .foregroundStyle(.secondary)
-            Text(String(localized: "Ask AI about your database"))
-                .font(.callout)
-                .foregroundStyle(.primary)
-            Text(String(localized: "AI responses may be inaccurate"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
+        EmptyStateView(
+            icon: "sparkles",
+            title: String(localized: "Ask AI about your database"),
+            description: String(localized: "AI responses may be inaccurate")
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -234,7 +216,7 @@ struct AIChatPanelView: View {
                     onRemove: { viewModel.detach($0) }
                 )
 
-                ChatComposerTextView(
+                ChatComposerView(
                     text: $viewModel.inputText,
                     placeholder: String(localized: "Ask about your database..."),
                     minLines: 1,
@@ -258,8 +240,6 @@ struct AIChatPanelView: View {
                     modeMenu
                     modelPicker
                     Spacer()
-                    historyMenu
-                    newConversationButton
                     sendOrStopButton
                 }
             }
@@ -299,56 +279,6 @@ struct AIChatPanelView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help(String(localized: "Chat mode"))
-    }
-
-    private var newConversationButton: some View {
-        Button {
-            viewModel.startNewConversation()
-        } label: {
-            Image(systemName: "square.and.pencil")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help(String(localized: "New Conversation"))
-    }
-
-    private var historyMenu: some View {
-        Menu {
-            if !viewModel.conversations.isEmpty {
-                Section(String(localized: "Recent Conversations")) {
-                    ForEach(viewModel.conversations) { conversation in
-                        Button {
-                            viewModel.switchConversation(to: conversation.id)
-                        } label: {
-                            HStack {
-                                Text(conversation.title.isEmpty
-                                    ? String(localized: "Untitled")
-                                    : conversation.title)
-                                if conversation.id == viewModel.activeConversationID {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                }
-                Divider()
-            }
-            Button(role: .destructive) {
-                showClearConfirmation = true
-            } label: {
-                Label(String(localized: "Clear Recents"), systemImage: "trash")
-            }
-            .disabled(viewModel.conversations.isEmpty)
-        } label: {
-            Image(systemName: "clock")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help(String(localized: "Conversation history"))
     }
 
     @ViewBuilder
