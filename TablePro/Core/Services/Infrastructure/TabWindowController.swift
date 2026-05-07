@@ -34,10 +34,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
-    internal static var hasSavedFrame: Bool {
-        UserDefaults.standard.object(forKey: "NSWindow Frame \(frameAutosaveName)") != nil
-    }
-
     private lazy var dataGridFieldEditor: DataGridFieldEditor = {
         let editor = DataGridFieldEditor()
         editor.isFieldEditor = true
@@ -77,7 +73,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        _ = window.setFrameUsingName(Self.frameAutosaveName)
+        if !window.setFrameUsingName(Self.frameAutosaveName) {
+            window.setContentSize(NSSize(width: 1_200, height: 800))
+            window.center()
+        }
 
         Self.lifecycleLogger.info(
             "[open] TabWindowController.init payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) controllerId=\(self.controllerId, privacy: .public) eagerToolbar=\(sessionState != nil)"
