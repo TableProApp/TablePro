@@ -54,7 +54,7 @@ struct AIChatPanelView: View {
             viewModel.tables = tables
             viewModel.fetchSchemaContext()
         }
-        .task {
+        .task(id: settingsManager.ai.providers.map(\.id)) {
             await viewModel.loadAvailableModels()
         }
         .alert(
