@@ -216,6 +216,7 @@ final class AIChatViewModel {
     /// nonisolated(unsafe) is required because deinit is not @MainActor-isolated,
     /// so accessing a @MainActor property from deinit requires opting out of isolation.
     @ObservationIgnored nonisolated(unsafe) private var streamingTask: Task<Void, Never>?
+    @ObservationIgnored private var prepTask: Task<Void, Never>?
     private var streamingAssistantID: UUID?
     private let chatStorage = AIChatStorage.shared
     private var sessionApprovedConnections: Set<UUID> = []
@@ -283,17 +284,27 @@ final class AIChatViewModel {
         }
         guard let connection,
               let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
-        let task = Task { [weak self] in
-            let columns = (try? await driver.fetchColumns(table: tableName)) ?? []
-            let fkMap = (try? await driver.fetchForeignKeys(forTables: [tableName])) ?? [:]
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.columnsByTable[tableName] = columns
-                if let fks = fkMap[tableName] {
-                    self.foreignKeysByTable[tableName] = fks
-                }
-                self.inFlightColumnFetches[tableName] = nil
+        let task: Task<Void, Never> = Task { [weak self] in
+            let columns: [ColumnInfo]
+            do {
+                columns = try await driver.fetchColumns(table: tableName)
+            } catch {
+                Self.logger.warning("Column fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                columns = []
             }
+            let fkMap: [String: [ForeignKeyInfo]]
+            do {
+                fkMap = try await driver.fetchForeignKeys(forTables: [tableName])
+            } catch {
+                Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                fkMap = [:]
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.columnsByTable[tableName] = columns
+            if let fks = fkMap[tableName] {
+                self.foreignKeysByTable[tableName] = fks
+            }
+            self.inFlightColumnFetches[tableName] = nil
         }
         inFlightColumnFetches[tableName] = task
         await task.value
@@ -327,8 +338,13 @@ final class AIChatViewModel {
             for table in tablesToFetch where (columnsByTable[table.name] ?? []).isEmpty {
                 let name = table.name
                 group.addTask {
-                    let cols = (try? await driver.fetchColumns(table: name)) ?? []
-                    return (name, cols)
+                    do {
+                        let cols = try await driver.fetchColumns(table: name)
+                        return (name, cols)
+                    } catch {
+                        Self.logger.warning("Schema column fetch failed for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        return (name, [])
+                    }
                 }
             }
             for await (name, cols) in group {
@@ -336,9 +352,17 @@ final class AIChatViewModel {
             }
         }
 
-        let fkMap = (try? await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))) ?? [:]
-        for (name, fks) in fkMap {
-            foreignKeysByTable[name] = fks
+        guard !Task.isCancelled else { return }
+
+        let needsFKFetch = tablesToFetch.contains { foreignKeysByTable[$0.name] == nil }
+        guard needsFKFetch else { return }
+        do {
+            let fkMap = try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
+            for (name, fks) in fkMap {
+                foreignKeysByTable[name] = fks
+            }
+        } catch {
+            Self.logger.warning("Foreign key bulk fetch failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -449,6 +473,8 @@ final class AIChatViewModel {
 
     /// Cancel the current streaming response
     func cancelStream() {
+        prepTask?.cancel()
+        prepTask = nil
         streamingTask?.cancel()
         streamingTask = nil
         isStreaming = false
@@ -561,6 +587,8 @@ final class AIChatViewModel {
     /// Unlike `clearConversation()`, this does not delete persisted history.
     func clearSessionData() {
         AIProviderFactory.resetCopilotConversation()
+        prepTask?.cancel()
+        prepTask = nil
         streamingTask?.cancel()
         streamingTask = nil
         AIProviderFactory.invalidateCache()
@@ -639,6 +667,8 @@ final class AIChatViewModel {
     }
 
     private func startStreaming() {
+        prepTask?.cancel()
+        prepTask = nil
         if streamingTask != nil {
             streamingTask?.cancel()
             streamingTask = nil
@@ -686,16 +716,19 @@ final class AIChatViewModel {
 
         isStreaming = true
 
-        Task { @MainActor [weak self] in
+        prepTask?.cancel()
+        prepTask = Task { [weak self] in
             guard let self else { return }
             if settings.includeSchema {
                 await self.ensureSchemaLoaded()
             }
+            guard !Task.isCancelled else { return }
             let promptContext = self.capturePromptContext(settings: settings)
             var chatMessages: [ChatTurn] = []
             for turn in self.messages.dropLast() {
                 chatMessages.append(await self.resolveTurnForWire(turn))
             }
+            guard !Task.isCancelled else { return }
             self.runStream(
                 chatMessages: chatMessages,
                 promptContext: promptContext,
@@ -703,6 +736,7 @@ final class AIChatViewModel {
                 assistantID: assistantID,
                 settings: settings
             )
+            self.prepTask = nil
         }
     }
 
