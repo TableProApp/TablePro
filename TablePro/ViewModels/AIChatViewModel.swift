@@ -149,20 +149,43 @@ final class AIChatViewModel {
         }
     }
 
-    func runCustomSlashCommand(_ command: CustomSlashCommand, body: String = "") {
-        guard command.isValid else { return }
+    func runCustomSlashCommand(_ command: CustomSlashCommand, body: String = "") async {
+        guard command.isValid else {
+            Self.logger.warning("runCustomSlashCommand called with invalid command: name=\(command.name, privacy: .public)")
+            return
+        }
         inputText = ""
         errorMessage = nil
         let invocationText = body.isEmpty ? "/\(command.name)" : "/\(command.name) \(body)"
+        let needsSchema = command.promptTemplate.contains(CustomSlashCommandVariable.schema.placeholder)
+        if needsSchema {
+            await ensureSchemaLoaded()
+        }
         let renderingContext = CustomSlashCommandRenderer.Context(
             query: currentQuery,
-            schema: nil,
+            schema: needsSchema ? renderedSchemaSection() : nil,
             database: connection.flatMap { DatabaseManager.shared.activeDatabaseName(for: $0) },
             body: body
         )
         let prompt = CustomSlashCommandRenderer.render(command, context: renderingContext)
         messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
         sendWithContext(prompt: prompt)
+    }
+
+    private func renderedSchemaSection() -> String? {
+        guard !tables.isEmpty else { return nil }
+        let settings = AppSettingsManager.shared.ai
+        let identifierQuote = connection.flatMap {
+            PluginManager.shared.sqlDialect(for: $0.type)?.identifierQuote
+        } ?? "\""
+        let section = AISchemaContext.buildSchemaSection(
+            tables: tables,
+            columnsByTable: columnsByTable,
+            foreignKeys: foreignKeysByTable,
+            maxTables: settings.maxSchemaTables,
+            identifierQuote: identifierQuote
+        )
+        return section.isEmpty ? nil : section
     }
 
     private func resolveQuery(body: String, command: SlashCommand) -> String? {

@@ -103,6 +103,40 @@ Conversations auto-save and auto-title from your first message. Browse, clear, o
 
 Failed responses show **Retry**. Successful ones show **Regenerate**. Click **Stop** to cancel a streaming response.
 
+### Attach context with `@`
+
+Type `@` in the composer to anchor a picker at the caret. Pick from:
+
+- **Schema**: every table's columns and foreign keys.
+- A specific **Table**: that table's columns and foreign keys only.
+- **Current Query**: whatever's in the active editor tab.
+- **Query Results**: the most recent query result snapshot.
+- **Saved Query**: pick one of your starred queries to send its name and SQL alongside the message.
+
+Up/Down navigates, Return or Tab inserts, Escape dismisses. The `@` button next to the composer opens the same picker as a menu.
+
+### Slash commands
+
+Type `/` (or click the `⌘` button next to the composer) to invoke a command:
+
+- **`/explain`**: explain the active query.
+- **`/optimize`**: suggest optimizations for the active query.
+- **`/fix`**: fix the last error against the active query.
+- **`/help`**: list the commands inline in the chat.
+
+Create your own under **Settings → AI → Custom Slash Commands**. Templates support these placeholders that get substituted at send time:
+
+- `{{query}}`: the current editor query.
+- `{{schema}}`: the formatted schema for the active connection (capped by **Max schema tables** in AI settings).
+- `{{database}}`: the active database name.
+- `{{body}}`: text typed after the command (e.g. `/review WHERE clauses` passes `WHERE clauses`).
+
+### Tool calling
+
+The AI can look up your database on demand by calling a tool. You'll see a pill like `Calling list_tables` in the assistant's reply, expanding to show the arguments. The result pill shows the tool's response.
+
+Read-only tools available now: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`. Supported on Anthropic, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), and custom OpenAI-compatible endpoints. GitHub Copilot is not yet supported.
+
 <Frame caption="Streaming response">
   <img
     className="block dark:hidden"

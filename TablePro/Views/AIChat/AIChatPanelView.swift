@@ -462,7 +462,7 @@ struct AIChatPanelView: View {
                     ForEach(customCommands) { command in
                         Button {
                             updateContext()
-                            viewModel.runCustomSlashCommand(command)
+                            Task { await viewModel.runCustomSlashCommand(command) }
                         } label: {
                             if command.description.isEmpty {
                                 Text("/\(command.name)")
