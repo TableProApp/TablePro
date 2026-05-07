@@ -231,7 +231,7 @@ final class GeminiProvider: ChatTransport {
         return request
     }
 
-    private func encodeContents(turns: [ChatTurn]) -> [[String: Any]] {
+    func encodeContents(turns: [ChatTurn]) -> [[String: Any]] {
         var encoded: [[String: Any]] = []
         for (index, turn) in turns.enumerated() where turn.role != .system {
             let priorTurns = Array(turns.prefix(index))
@@ -241,7 +241,7 @@ final class GeminiProvider: ChatTransport {
         return encoded
     }
 
-    private func encodeTurn(_ turn: ChatTurn, priorTurns: [ChatTurn]) -> [String: Any]? {
+    func encodeTurn(_ turn: ChatTurn, priorTurns: [ChatTurn]) -> [String: Any]? {
         let role = turn.role == .assistant ? "model" : "user"
         var parts: [[String: Any]] = []
 
@@ -283,7 +283,7 @@ final class GeminiProvider: ChatTransport {
         return ["role": role, "parts": parts]
     }
 
-    private func resolveToolName(forToolUseId id: String, in priorTurns: [ChatTurn]) -> String? {
+    func resolveToolName(forToolUseId id: String, in priorTurns: [ChatTurn]) -> String? {
         for turn in priorTurns.reversed() {
             for block in turn.blocks {
                 if case .toolUse(let useBlock) = block, useBlock.id == id {
@@ -294,7 +294,7 @@ final class GeminiProvider: ChatTransport {
         return nil
     }
 
-    private func jsonValueToAny(_ value: JSONValue) -> Any? {
+    func jsonValueToAny(_ value: JSONValue) -> Any? {
         switch value {
         case .null:
             return NSNull()

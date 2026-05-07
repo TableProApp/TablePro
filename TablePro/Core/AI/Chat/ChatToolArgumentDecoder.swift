@@ -37,6 +37,24 @@ enum ChatToolArgumentDecoder {
         }
         return bool
     }
+
+    static func optionalInt(
+        _ args: JSONValue,
+        key: String,
+        default fallback: Int,
+        clamp: ClosedRange<Int>? = nil
+    ) -> Int? {
+        guard case .object(let dict) = args, let value = dict[key] else { return fallback }
+        let raw: Int?
+        switch value {
+        case .integer(let int): raw = Int(int)
+        case .number(let double): raw = Int(double)
+        default: raw = nil
+        }
+        guard let raw else { return fallback }
+        if let clamp { return max(clamp.lowerBound, min(raw, clamp.upperBound)) }
+        return raw
+    }
 }
 
 enum ChatToolArgumentError: Error, LocalizedError {

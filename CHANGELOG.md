@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supported providers: Anthropic, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), and custom OpenAI-compatible endpoints. GitHub Copilot is not yet supported.
 - AI Chat: attach a saved query as a chip via `@`. Type `@` and pick a saved SQL query to send its name and body to the AI alongside your message.
 - AI Chat: user-defined slash commands. Create your own commands in Settings -> AI -> Custom Slash Commands. Templates support `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}` placeholders that get substituted at send time.
+- AI Chat: tool calling can now run write queries (`execute_query`) and destructive DDL (`confirm_destructive_operation` after the AI passes the verbatim phrase). The connection's safe mode policy still gates execution, so the user remains the final approver.
 
 ### Changed
 

@@ -361,7 +361,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         return request
     }
 
-    private func encodeTurn(_ turn: ChatTurn) -> [[String: Any]] {
+    func encodeTurn(_ turn: ChatTurn) -> [[String: Any]] {
         let toolUseBlocks = turn.blocks.compactMap { block -> ToolUseBlock? in
             if case .toolUse(let useBlock) = block { return useBlock }
             return nil
@@ -416,7 +416,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         ]]
     }
 
-    private func encodeTool(_ tool: ChatToolSpec) throws -> [String: Any] {
+    func encodeTool(_ tool: ChatToolSpec) throws -> [String: Any] {
         let parameters = try jsonObject(from: tool.inputSchema)
         return [
             "type": "function",
@@ -428,7 +428,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         ]
     }
 
-    private func jsonString(from value: JSONValue) -> String {
+    func jsonString(from value: JSONValue) -> String {
         guard let data = try? JSONEncoder().encode(value),
               let string = String(data: data, encoding: .utf8)
         else {
@@ -437,7 +437,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         return string
     }
 
-    private func jsonObject(from value: JSONValue) throws -> Any {
+    func jsonObject(from value: JSONValue) throws -> Any {
         let data = try JSONEncoder().encode(value)
         return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
     }

@@ -220,7 +220,7 @@ final class AnthropicProvider: ChatTransport {
         return request
     }
 
-    private static func encodeToolSpec(_ spec: ChatToolSpec) throws -> [String: Any] {
+    static func encodeToolSpec(_ spec: ChatToolSpec) throws -> [String: Any] {
         [
             "name": spec.name,
             "description": spec.description,
@@ -228,7 +228,7 @@ final class AnthropicProvider: ChatTransport {
         ]
     }
 
-    private static func encodeTurn(_ turn: ChatTurn) throws -> [String: Any]? {
+    static func encodeTurn(_ turn: ChatTurn) throws -> [String: Any]? {
         let blocks = turn.blocks
         let needsTypedBlocks = blocks.contains { block in
             switch block {
@@ -250,7 +250,7 @@ final class AnthropicProvider: ChatTransport {
         return ["role": turn.role.rawValue, "content": text]
     }
 
-    private static func encodeBlock(_ block: ChatContentBlock) throws -> [String: Any]? {
+    static func encodeBlock(_ block: ChatContentBlock) throws -> [String: Any]? {
         switch block {
         case .text(let text):
             guard !text.isEmpty else { return nil }
@@ -277,7 +277,7 @@ final class AnthropicProvider: ChatTransport {
         }
     }
 
-    private static func jsonObject(from value: JSONValue) throws -> Any {
+    static func jsonObject(from value: JSONValue) throws -> Any {
         let data = try JSONEncoder().encode(value)
         return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
     }
