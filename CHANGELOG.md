@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - AI Chat: new installations default to opt-in context. Schema, current query, and query results no longer auto-include in every prompt; attach them via the `@` menu when you want them. Existing users keep their current Settings -> AI -> "Include schema/current query/query results" choices unchanged.
+- AI Chat: the Ask / Edit / Agent mode picker now changes which tools the provider sees. Ask exposes read-only schema lookups. Edit adds `execute_query` for SELECT/INSERT/UPDATE/DELETE. Agent adds destructive DDL via `confirm_destructive_operation`. The connection's safe mode policy still gates execution.
 
 ### Fixed
 

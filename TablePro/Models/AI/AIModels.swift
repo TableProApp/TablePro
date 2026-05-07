@@ -155,6 +155,28 @@ enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
         case .agent: return "infinity"
         }
     }
+
+    var helpText: String {
+        switch self {
+        case .ask:
+            return String(localized: "Ask: read-only schema lookups. AI can browse but not run queries.")
+        case .edit:
+            return String(localized: "Edit: read-only tools plus running queries. Destructive DDL stays blocked.")
+        case .agent:
+            return String(localized: "Agent: full tool access including destructive DDL. Safe mode still gates execution.")
+        }
+    }
+
+    var systemPromptNote: String {
+        switch self {
+        case .ask:
+            return "You are in Ask mode. Tools are read-only: schema lookups only. You cannot run queries or modify data."
+        case .edit:
+            return "You are in Edit mode. You can read schema and run SELECT/INSERT/UPDATE/DELETE via execute_query. Destructive DDL is blocked."
+        case .agent:
+            return "You are in Agent mode. All tools are available, including destructive DDL via confirm_destructive_operation. Safe mode policy still gates execution."
+        }
+    }
 }
 
 // MARK: - AI Settings

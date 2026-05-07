@@ -828,9 +828,10 @@ final class AIChatViewModel {
         assistantID: UUID,
         settings: AISettings
     ) {
+        let chatMode = settings.chatMode
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                let systemPrompt = Self.buildSystemPrompt(promptContext)
+                let systemPrompt = Self.buildSystemPrompt(promptContext, mode: chatMode)
                 guard let self else { return }
                 let preflightOK = await self.preflightCheck(
                     systemPrompt: systemPrompt,
@@ -839,7 +840,7 @@ final class AIChatViewModel {
                 )
                 guard preflightOK else { return }
 
-                let toolSpecs = await MainActor.run { ChatToolRegistry.shared.allSpecs }
+                let toolSpecs = await MainActor.run { ChatToolRegistry.shared.allSpecs(for: chatMode) }
                 var workingTurns = chatMessages
                 var currentAssistantID = assistantID
                 let flushInterval: ContinuousClock.Duration = .milliseconds(150)
@@ -934,7 +935,7 @@ final class AIChatViewModel {
                             authPolicy: ChatToolBootstrap.authPolicy
                         )
                     }
-                    let toolResultBlocks = await Self.executeToolUses(toolUseBlocks, context: context)
+                    let toolResultBlocks = await Self.executeToolUses(toolUseBlocks, mode: chatMode, context: context)
                     guard !Task.isCancelled else { return }
 
                     let continuation = await self.appendToolRoundtrip(
@@ -979,8 +980,8 @@ final class AIChatViewModel {
         }
     }
 
-    nonisolated private static func buildSystemPrompt(_ promptContext: PromptContext?) -> String? {
-        promptContext.map {
+    nonisolated private static func buildSystemPrompt(_ promptContext: PromptContext?, mode: AIChatMode) -> String? {
+        let schemaPrompt = promptContext.map {
             AISchemaContext.buildSystemPrompt(
                 databaseType: $0.databaseType,
                 databaseName: $0.databaseName,
@@ -995,6 +996,9 @@ final class AIChatViewModel {
                 queryLanguageName: $0.queryLanguageName
             )
         }
+        let modeNote = mode.systemPromptNote
+        guard let schemaPrompt, !schemaPrompt.isEmpty else { return modeNote }
+        return "\(schemaPrompt)\n\n\(modeNote)"
     }
 
     private struct ToolRoundtripContinuation {
@@ -1110,13 +1114,14 @@ final class AIChatViewModel {
     /// avoid polluting global state.
     nonisolated static func executeToolUses(
         _ blocks: [ToolUseBlock],
+        mode: AIChatMode,
         context: ChatToolContext,
         registry: ChatToolRegistry? = nil
     ) async -> [ToolResultBlock] {
         await withTaskGroup(of: (Int, ToolResultBlock).self) { group in
             for (index, block) in blocks.enumerated() {
                 group.addTask {
-                    (index, await runToolUse(block, context: context, registry: registry))
+                    (index, await runToolUse(block, mode: mode, context: context, registry: registry))
                 }
             }
             var indexed: [(Int, ToolResultBlock)] = []
@@ -1127,14 +1132,25 @@ final class AIChatViewModel {
 
     nonisolated private static func runToolUse(
         _ block: ToolUseBlock,
+        mode: AIChatMode,
         context: ChatToolContext,
         registry: ChatToolRegistry?
     ) async -> ToolResultBlock {
         if Task.isCancelled {
             return ToolResultBlock(toolUseId: block.id, content: "Cancelled", isError: true)
         }
+        guard ChatToolRegistry.isToolAllowed(name: block.name, in: mode) else {
+            Self.logger.warning(
+                "Tool '\(block.name, privacy: .public)' blocked in \(mode.rawValue, privacy: .public) mode"
+            )
+            return ToolResultBlock(
+                toolUseId: block.id,
+                content: "Tool '\(block.name)' is not available in \(mode.displayName) mode",
+                isError: true
+            )
+        }
         let tool = await MainActor.run {
-            (registry ?? ChatToolRegistry.shared).tool(named: block.name)
+            (registry ?? ChatToolRegistry.shared).tool(named: block.name, in: mode)
         }
         guard let tool else {
             Self.logger.warning("Tool '\(block.name, privacy: .public)' not registered; returning error")
