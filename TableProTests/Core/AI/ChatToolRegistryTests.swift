@@ -28,7 +28,11 @@ struct ChatToolRegistryTests {
         }
     }
 
-    private static let stubContext = ChatToolContext(connectionId: nil, bridge: MCPConnectionBridge())
+    private static let stubContext = ChatToolContext(
+        connectionId: nil,
+        bridge: MCPConnectionBridge(),
+        authPolicy: MCPAuthPolicy()
+    )
 
     @Test("Registered tool can be looked up by name")
     func lookupByName() {

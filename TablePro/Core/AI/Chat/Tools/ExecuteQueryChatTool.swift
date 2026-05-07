@@ -78,13 +78,10 @@ struct ExecuteQueryChatTool: ChatTool {
         ) ?? mcpSettings.queryTimeoutSeconds
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
-        if let database {
-            _ = try await context.bridge.switchDatabase(connectionId: connectionId, database: database)
-        }
-        if let schema {
-            _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
-        }
 
+        // Classify BEFORE mutating session state. A destructive query asked for
+        // a database/schema switch should not leave the user on the new context
+        // when we then refuse to run it.
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         if tier == .destructive {
             return ChatToolResult(
@@ -93,15 +90,25 @@ struct ExecuteQueryChatTool: ChatTool {
             )
         }
 
-        let authPolicy = MCPAuthPolicy()
-        try await authPolicy.checkSafeModeDialog(
-            sql: query,
-            connectionId: connectionId,
-            databaseType: meta.databaseType,
-            safeModeLevel: meta.safeModeLevel
-        )
+        if let database {
+            _ = try await context.bridge.switchDatabase(connectionId: connectionId, database: database)
+        }
+        if let schema {
+            _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
+        }
 
-        let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: authPolicy)
+        do {
+            try await context.authPolicy.checkSafeModeDialog(
+                sql: query,
+                connectionId: connectionId,
+                databaseType: meta.databaseType,
+                safeModeLevel: meta.safeModeLevel
+            )
+        } catch {
+            return ChatToolResult(content: "User declined to run this query.", isError: true)
+        }
+
+        let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
@@ -109,7 +116,7 @@ struct ExecuteQueryChatTool: ChatTool {
             databaseName: meta.databaseName,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            principalLabel: "AI Chat"
+            principalLabel: String(localized: "AI Chat")
         )
         return ChatToolResult(content: try ChatToolJSONFormatter.string(from: payload))
     }

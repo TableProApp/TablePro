@@ -64,4 +64,37 @@ struct ChatToolArgumentDecoderTests {
         let args: JSONValue = .object(["enabled": .bool(false)])
         #expect(ChatToolArgumentDecoder.optionalBool(args, key: "enabled", default: true) == false)
     }
+
+    @Test("optionalInt returns fallback when key is missing")
+    func optionalIntMissing() {
+        let args: JSONValue = .object([:])
+        #expect(ChatToolArgumentDecoder.optionalInt(args, key: "max_rows", default: 500) == 500)
+    }
+
+    @Test("optionalInt accepts integer values")
+    func optionalIntInteger() {
+        let args: JSONValue = .object(["max_rows": .integer(120)])
+        #expect(ChatToolArgumentDecoder.optionalInt(args, key: "max_rows", default: 500) == 120)
+    }
+
+    @Test("optionalInt coerces number (Double) to Int")
+    func optionalIntFromDouble() {
+        let args: JSONValue = .object(["max_rows": .number(120.7)])
+        #expect(ChatToolArgumentDecoder.optionalInt(args, key: "max_rows", default: 500) == 120)
+    }
+
+    @Test("optionalInt clamps to the supplied range")
+    func optionalIntClamps() {
+        let args: JSONValue = .object(["max_rows": .integer(50_000)])
+        #expect(
+            ChatToolArgumentDecoder.optionalInt(args, key: "max_rows", default: 500, clamp: 1...10_000)
+            == 10_000
+        )
+    }
+
+    @Test("optionalInt returns fallback for non-numeric value")
+    func optionalIntWrongType() {
+        let args: JSONValue = .object(["max_rows": .string("ten")])
+        #expect(ChatToolArgumentDecoder.optionalInt(args, key: "max_rows", default: 500) == 500)
+    }
 }

@@ -137,6 +137,13 @@ The AI can look up your database on demand by calling a tool. You'll see a pill 
 
 Read-only tools available now: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`. Supported on Anthropic, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), and custom OpenAI-compatible endpoints. GitHub Copilot is not yet supported.
 
+Write-side tools route through the connection's safe mode policy. The AI proposes the call, but you approve every state-changing query in the safe-mode dialog before it runs:
+
+- `execute_query`: runs `SELECT`, `INSERT`, `UPDATE`, `DELETE`. Multi-statement input is rejected. Destructive DDL (`DROP`, `TRUNCATE`, `ALTER...DROP`) is blocked here.
+- `confirm_destructive_operation`: runs destructive DDL after the AI passes the verbatim phrase `I understand this is irreversible`. The safe-mode dialog still applies, so a misuse from the model is contained.
+
+If a connection has safe mode set to **Silent**, the dialog is suppressed and writes execute without prompting. Set it to **Confirm Writes** or higher for AI-assisted query execution if you want to keep the per-query approval gate.
+
 <Frame caption="Streaming response">
   <img
     className="block dark:hidden"

@@ -10,6 +10,10 @@ import Foundation
 /// safe-mode dialog still runs before the query executes, so the user remains
 /// the final gate even if the AI mis-uses this tool.
 struct ConfirmDestructiveOperationChatTool: ChatTool {
+    /// Intentionally NOT localized: this is a wire-level contract the AI must
+    /// reproduce verbatim in `confirmation_phrase`. Translating it would change
+    /// the contract per locale and break model prompts that depend on the
+    /// English string.
     static let requiredPhrase = "I understand this is irreversible"
 
     let name = "confirm_destructive_operation"
@@ -67,16 +71,19 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             )
         }
 
-        let authPolicy = MCPAuthPolicy()
-        try await authPolicy.checkSafeModeDialog(
-            sql: query,
-            connectionId: connectionId,
-            databaseType: meta.databaseType,
-            safeModeLevel: meta.safeModeLevel
-        )
+        do {
+            try await context.authPolicy.checkSafeModeDialog(
+                sql: query,
+                connectionId: connectionId,
+                databaseType: meta.databaseType,
+                safeModeLevel: meta.safeModeLevel
+            )
+        } catch {
+            return ChatToolResult(content: "User declined to run this query.", isError: true)
+        }
 
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
-        let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: authPolicy)
+        let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
@@ -84,7 +91,7 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             databaseName: meta.databaseName,
             maxRows: 0,
             timeoutSeconds: mcpSettings.queryTimeoutSeconds,
-            principalLabel: "AI Chat"
+            principalLabel: String(localized: "AI Chat")
         )
         return ChatToolResult(content: try ChatToolJSONFormatter.string(from: payload))
     }

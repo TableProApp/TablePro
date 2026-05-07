@@ -930,7 +930,8 @@ final class AIChatViewModel {
                     let context = await MainActor.run {
                         ChatToolContext(
                             connectionId: self.connection?.id,
-                            bridge: ChatToolBootstrap.bridge
+                            bridge: ChatToolBootstrap.bridge,
+                            authPolicy: ChatToolBootstrap.authPolicy
                         )
                     }
                     let toolResultBlocks = await Self.executeToolUses(toolUseBlocks, context: context)
