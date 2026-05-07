@@ -45,6 +45,7 @@ struct ChatComposerTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: ChatComposerScrollContainer, context: Context) {
+        context.coordinator.parent = self
         let textView = container.textView
         if textView.string != text {
             context.coordinator.isUpdatingFromBinding = true
