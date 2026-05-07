@@ -14,6 +14,7 @@ struct AIChatToolUseBlockView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button {
+                guard hasInput else { return }
                 isExpanded.toggle()
             } label: {
                 HStack(spacing: 6) {
@@ -28,10 +29,12 @@ struct AIChatToolUseBlockView: View {
                             .foregroundStyle(.primary)
                     }
                     .font(.caption)
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    if hasInput {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -43,7 +46,7 @@ struct AIChatToolUseBlockView: View {
             }
             .buttonStyle(.plain)
 
-            if isExpanded {
+            if isExpanded && hasInput {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(prettyInput)
                         .font(.caption)
@@ -63,6 +66,15 @@ struct AIChatToolUseBlockView: View {
             }
         }
         .padding(.horizontal, 8)
+    }
+
+    private var hasInput: Bool {
+        switch block.input {
+        case .object(let dict): return !dict.isEmpty
+        case .array(let array): return !array.isEmpty
+        case .null: return false
+        default: return true
+        }
     }
 
     private var prettyInput: String {

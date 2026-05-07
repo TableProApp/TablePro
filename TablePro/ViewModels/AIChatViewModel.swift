@@ -830,9 +830,15 @@ final class AIChatViewModel {
 
                     if roundtrip == Self.maxToolRoundtrips - 1 {
                         await MainActor.run { [weak self] in
-                            self?.errorMessage = String(
+                            guard let self else { return }
+                            self.errorMessage = String(
                                 localized: "AI made too many tool calls in one response. Try simplifying the request."
                             )
+                            if let idx = self.messages.firstIndex(where: { $0.id == currentAssistantID }),
+                               self.messages[idx].plainText.isEmpty {
+                                self.messages.remove(at: idx)
+                            }
+                            self.lastMessageFailed = true
                         }
                         break
                     }
@@ -997,7 +1003,7 @@ final class AIChatViewModel {
         return false
     }
 
-    nonisolated private static func assembleToolUseBlocks(
+    nonisolated static func assembleToolUseBlocks(
         order: [String],
         names: [String: String],
         inputs: [String: String]
@@ -1018,44 +1024,55 @@ final class AIChatViewModel {
         }
     }
 
-    nonisolated private static func executeToolUses(
+    nonisolated static func executeToolUses(
         _ blocks: [ToolUseBlock],
         context: ChatToolContext
     ) async -> [ToolResultBlock] {
-        let registry = await MainActor.run { ChatToolRegistry.shared }
-        var results: [ToolResultBlock] = []
-        for block in blocks {
-            guard !Task.isCancelled else { break }
-            let resultBlock: ToolResultBlock
-            if let tool = await MainActor.run(body: { registry.tool(named: block.name) }) {
-                do {
-                    let result = try await tool.execute(input: block.input, context: context)
-                    resultBlock = ToolResultBlock(
-                        toolUseId: block.id,
-                        content: result.content,
-                        isError: result.isError
-                    )
-                } catch {
-                    Self.logger.warning(
-                        "Tool \(block.name, privacy: .public) execution failed: \(error.localizedDescription, privacy: .public)"
-                    )
-                    resultBlock = ToolResultBlock(
-                        toolUseId: block.id,
-                        content: "Error: \(error.localizedDescription)",
-                        isError: true
-                    )
+        await withTaskGroup(of: (Int, ToolResultBlock).self) { group in
+            for (index, block) in blocks.enumerated() {
+                group.addTask {
+                    (index, await runToolUse(block, context: context))
                 }
-            } else {
-                Self.logger.warning("Tool '\(block.name, privacy: .public)' not registered; returning error")
-                resultBlock = ToolResultBlock(
-                    toolUseId: block.id,
-                    content: "Tool '\(block.name)' is not available",
-                    isError: true
-                )
             }
-            results.append(resultBlock)
+            var indexed: [(Int, ToolResultBlock)] = []
+            for await pair in group { indexed.append(pair) }
+            return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
         }
-        return results
+    }
+
+    nonisolated private static func runToolUse(
+        _ block: ToolUseBlock,
+        context: ChatToolContext
+    ) async -> ToolResultBlock {
+        if Task.isCancelled {
+            return ToolResultBlock(toolUseId: block.id, content: "Cancelled", isError: true)
+        }
+        let tool = await MainActor.run { ChatToolRegistry.shared.tool(named: block.name) }
+        guard let tool else {
+            Self.logger.warning("Tool '\(block.name, privacy: .public)' not registered; returning error")
+            return ToolResultBlock(
+                toolUseId: block.id,
+                content: "Tool '\(block.name)' is not available",
+                isError: true
+            )
+        }
+        do {
+            let result = try await tool.execute(input: block.input, context: context)
+            return ToolResultBlock(
+                toolUseId: block.id,
+                content: result.content,
+                isError: result.isError
+            )
+        } catch {
+            Self.logger.warning(
+                "Tool \(block.name, privacy: .public) execution failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return ToolResultBlock(
+                toolUseId: block.id,
+                content: "Error: \(error.localizedDescription)",
+                isError: true
+            )
+        }
     }
 
     private func resolveConnectionPolicy(settings: AISettings) -> AIConnectionPolicy? {

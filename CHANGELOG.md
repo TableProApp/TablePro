@@ -16,7 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Typing `@` opens a caret-anchored picker that filters as you type. Up/Down navigates, Return or Tab inserts, Escape dismisses.
   - Attachments render as chips above the input and inside the user message bubble.
   - Editing a sent message restores its typed text and chips so you can adjust both before resending.
-- AI Chat: tool calling. The AI can look up your database on demand instead of relying on context you attached up front. Tools available: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`. Tool calls and their results render as expandable pills in the assistant's reply. Supported on Anthropic, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), and custom OpenAI-compatible endpoints. GitHub Copilot does not yet support tool calling.
+- AI Chat: tool calling. The AI can look up your database on demand instead of relying on context you attached up front.
+  - Read-only tools: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`.
+  - Tool calls and their results render as expandable pills in the assistant's reply.
+  - Supported providers: Anthropic, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), and custom OpenAI-compatible endpoints. GitHub Copilot is not yet supported.
 
 ### Changed
 

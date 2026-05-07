@@ -234,15 +234,14 @@ final class GeminiProvider: ChatTransport {
     private func encodeContents(turns: [ChatTurn]) -> [[String: Any]] {
         var encoded: [[String: Any]] = []
         for (index, turn) in turns.enumerated() where turn.role != .system {
-            guard let entry = encodeTurn(turn, previousTurn: index > 0 ? turns[index - 1] : nil) else {
-                continue
-            }
+            let priorTurns = Array(turns.prefix(index))
+            guard let entry = encodeTurn(turn, priorTurns: priorTurns) else { continue }
             encoded.append(entry)
         }
         return encoded
     }
 
-    private func encodeTurn(_ turn: ChatTurn, previousTurn: ChatTurn?) -> [String: Any]? {
+    private func encodeTurn(_ turn: ChatTurn, priorTurns: [ChatTurn]) -> [String: Any]? {
         let role = turn.role == .assistant ? "model" : "user"
         var parts: [[String: Any]] = []
 
@@ -264,7 +263,7 @@ final class GeminiProvider: ChatTransport {
             case .toolResult(let resultBlock):
                 let toolName = resolveToolName(
                     forToolUseId: resultBlock.toolUseId,
-                    in: previousTurn
+                    in: priorTurns
                 ) ?? resultBlock.toolUseId
                 parts.append([
                     "functionResponse": [
@@ -284,11 +283,12 @@ final class GeminiProvider: ChatTransport {
         return ["role": role, "parts": parts]
     }
 
-    private func resolveToolName(forToolUseId id: String, in previousTurn: ChatTurn?) -> String? {
-        guard let previousTurn else { return nil }
-        for block in previousTurn.blocks {
-            if case .toolUse(let useBlock) = block, useBlock.id == id {
-                return useBlock.name
+    private func resolveToolName(forToolUseId id: String, in priorTurns: [ChatTurn]) -> String? {
+        for turn in priorTurns.reversed() {
+            for block in turn.blocks {
+                if case .toolUse(let useBlock) = block, useBlock.id == id {
+                    return useBlock.name
+                }
             }
         }
         return nil
@@ -318,13 +318,17 @@ final class GeminiProvider: ChatTransport {
     }
 
     private func encodeArgsToJSONString(_ args: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(args),
-              let data = try? JSONSerialization.data(withJSONObject: args),
-              let string = String(data: data, encoding: .utf8)
-        else {
+        guard JSONSerialization.isValidJSONObject(args) else {
+            Self.logger.warning("Gemini functionCall args was not a valid JSON object; falling back to empty input")
             return "{}"
         }
-        return string
+        do {
+            let data = try JSONSerialization.data(withJSONObject: args)
+            return String(data: data, encoding: .utf8) ?? "{}"
+        } catch {
+            Self.logger.warning("Gemini functionCall args serialization failed: \(error.localizedDescription, privacy: .public)")
+            return "{}"
+        }
     }
 
     func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
