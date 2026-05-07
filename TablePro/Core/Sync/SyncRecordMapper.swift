@@ -73,6 +73,10 @@ struct SyncRecordMapper {
         if let aiPolicy = connection.aiPolicy {
             record["aiPolicy"] = aiPolicy.rawValue as CKRecordValue
         }
+        if !connection.aiAlwaysAllowedTools.isEmpty {
+            let sorted = Array(connection.aiAlwaysAllowedTools).sorted()
+            record["aiAlwaysAllowedTools"] = sorted as CKRecordValue
+        }
         if let redisDatabase = connection.redisDatabase {
             record["redisDatabase"] = Int64(redisDatabase) as CKRecordValue
         }
@@ -131,6 +135,7 @@ struct SyncRecordMapper {
         let tagId = (record["tagId"] as? String).flatMap { UUID(uuidString: $0) }
         let groupId = (record["groupId"] as? String).flatMap { UUID(uuidString: $0) }
         let aiPolicyRaw = record["aiPolicy"] as? String
+        let aiAlwaysAllowedToolsArray = record["aiAlwaysAllowedTools"] as? [String] ?? []
         let redisDatabase = (record["redisDatabase"] as? Int64).map { Int($0) }
         let startupCommands = record["startupCommands"] as? String
         let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
@@ -170,6 +175,7 @@ struct SyncRecordMapper {
             sshProfileId: sshProfileId,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevelRaw) ?? .silent,
             aiPolicy: aiPolicyRaw.flatMap { AIConnectionPolicy(rawValue: $0) },
+            aiAlwaysAllowedTools: Set(aiAlwaysAllowedToolsArray),
             redisDatabase: redisDatabase,
             startupCommands: startupCommands,
             sortOrder: sortOrder,

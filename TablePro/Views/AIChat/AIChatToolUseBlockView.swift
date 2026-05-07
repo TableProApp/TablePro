@@ -22,7 +22,7 @@ struct AIChatToolUseBlockView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     HStack(spacing: 4) {
-                        Text(String(localized: "Calling"))
+                        Text(callingLabel)
                             .foregroundStyle(.secondary)
                         Text(block.name)
                             .fontWeight(.semibold)
@@ -64,8 +64,21 @@ struct AIChatToolUseBlockView: View {
                         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
                 )
             }
+
+            if case .pending = block.approvalState {
+                ToolApprovalActionsRow(toolUseId: block.id, toolName: block.name)
+            }
         }
         .padding(.horizontal, 8)
+    }
+
+    private var callingLabel: String {
+        switch block.approvalState {
+        case .pending:   return String(localized: "Pending approval for")
+        case .cancelled: return String(localized: "Cancelled")
+        case .denied:    return String(localized: "Blocked")
+        case .approved:  return String(localized: "Calling")
+        }
     }
 
     private var hasInput: Bool {

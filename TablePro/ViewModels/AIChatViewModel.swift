@@ -556,6 +556,7 @@ final class AIChatViewModel {
         prepTask = nil
         streamingTask?.cancel()
         streamingTask = nil
+        ToolApprovalCenter.shared.cancelAll()
         isStreaming = false
 
         // Remove empty assistant placeholder left by cancelled stream
@@ -923,7 +924,7 @@ final class AIChatViewModel {
                         break
                     }
 
-                    let toolUseBlocks = Self.assembleToolUseBlocks(
+                    let assembledBlocks = Self.assembleToolUseBlocks(
                         order: toolUseOrder,
                         names: toolUseNames,
                         inputs: toolUseInputs
@@ -935,10 +936,27 @@ final class AIChatViewModel {
                             authPolicy: ChatToolBootstrap.authPolicy
                         )
                     }
-                    let toolResultBlocks = await Self.executeToolUses(toolUseBlocks, mode: chatMode, context: context)
+                    let toolUseBlocks = await self.resolveAndAwaitApprovals(
+                        assembledBlocks: assembledBlocks,
+                        assistantID: assistantIDForRound
+                    )
                     guard !Task.isCancelled else { return }
 
-                    let continuation = await self.appendToolRoundtrip(
+                    let approvedBlocks = toolUseBlocks.filter {
+                        if case .approved = $0.approvalState { return true }
+                        return false
+                    }
+                    let executedResults = await Self.executeToolUses(
+                        approvedBlocks, mode: chatMode, context: context
+                    )
+                    guard !Task.isCancelled else { return }
+
+                    let toolResultBlocks = Self.synthesizeResults(
+                        for: toolUseBlocks,
+                        executed: executedResults
+                    )
+
+                    let continuation = await self.completeToolRoundtrip(
                         assistantIDForRound: assistantIDForRound,
                         toolUseBlocks: toolUseBlocks,
                         toolResultBlocks: toolResultBlocks,
@@ -1008,7 +1026,7 @@ final class AIChatViewModel {
         let userTurn: ChatTurn
     }
 
-    private func appendToolRoundtrip(
+    private func completeToolRoundtrip(
         assistantIDForRound: UUID,
         toolUseBlocks: [ToolUseBlock],
         toolResultBlocks: [ToolResultBlock],
@@ -1019,9 +1037,6 @@ final class AIChatViewModel {
                 guard let self,
                       let idx = self.messages.firstIndex(where: { $0.id == assistantIDForRound })
                 else { return "" }
-                for block in toolUseBlocks {
-                    self.messages[idx].blocks.append(.toolUse(block))
-                }
                 return self.messages[idx].plainText
             }()
             var assistantBlocks: [ChatContentBlock] = []

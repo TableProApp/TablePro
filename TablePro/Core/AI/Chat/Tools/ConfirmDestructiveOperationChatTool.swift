@@ -71,17 +71,6 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             )
         }
 
-        do {
-            try await context.authPolicy.checkSafeModeDialog(
-                sql: query,
-                connectionId: connectionId,
-                databaseType: meta.databaseType,
-                safeModeLevel: meta.safeModeLevel
-            )
-        } catch {
-            return ChatToolResult(content: "User declined to run this query.", isError: true)
-        }
-
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(

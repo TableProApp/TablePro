@@ -97,17 +97,6 @@ struct ExecuteQueryChatTool: ChatTool {
             _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
         }
 
-        do {
-            try await context.authPolicy.checkSafeModeDialog(
-                sql: query,
-                connectionId: connectionId,
-                databaseType: meta.databaseType,
-                safeModeLevel: meta.safeModeLevel
-            )
-        } catch {
-            return ChatToolResult(content: "User declined to run this query.", isError: true)
-        }
-
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,

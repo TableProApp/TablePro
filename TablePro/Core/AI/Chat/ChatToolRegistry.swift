@@ -69,6 +69,10 @@ final class ChatToolRegistry {
         allTools(for: mode).map(\.spec)
     }
 
+    nonisolated static func requiresApproval(toolName: String) -> Bool {
+        !readOnlyToolNames.contains(toolName)
+    }
+
     nonisolated static func isToolAllowed(name: String, in mode: AIChatMode) -> Bool {
         switch mode {
         case .ask:

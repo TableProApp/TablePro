@@ -140,6 +140,41 @@ struct ToolUseBlock: Codable, Equatable, Sendable {
     let id: String
     let name: String
     let input: JSONValue
+    var approvalState: ToolApprovalState
+
+    init(id: String, name: String, input: JSONValue, approvalState: ToolApprovalState = .approved) {
+        self.id = id
+        self.name = name
+        self.input = input
+        self.approvalState = approvalState
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        input = try container.decode(JSONValue.self, forKey: .input)
+        approvalState = try container.decodeIfPresent(ToolApprovalState.self, forKey: .approvalState) ?? .approved
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(input, forKey: .input)
+        try container.encode(approvalState, forKey: .approvalState)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, input, approvalState
+    }
+}
+
+enum ToolApprovalState: Codable, Equatable, Sendable {
+    case approved
+    case pending
+    case denied(reason: String)
+    case cancelled
 }
 
 struct ToolResultBlock: Codable, Equatable, Sendable {
