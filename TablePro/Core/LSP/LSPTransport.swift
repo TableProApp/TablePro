@@ -188,6 +188,15 @@ actor LSPTransport {
         try writeMessage(data)
     }
 
+    func sendDeferredArrayResponse<R: Encodable>(id: Int, result: R) async throws {
+        let resultData = try JSONEncoder().encode(result)
+        let resultObj = try JSONSerialization.jsonObject(with: resultData)
+        let wrapped: [Any] = [resultObj, NSNull()]
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": wrapped]
+        let data = try JSONSerialization.data(withJSONObject: response)
+        try writeMessage(data)
+    }
+
     // MARK: - Private
 
     private func writeMessage(_ data: Data) throws {

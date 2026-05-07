@@ -200,6 +200,6 @@ actor LSPClient {
     }
 
     func sendInvokeClientToolResponse(id: Int, result: CopilotLanguageModelToolResult) async throws {
-        try await transport.sendDeferredResponse(id: id, result: result)
+        try await transport.sendDeferredArrayResponse(id: id, result: result)
     }
 }
