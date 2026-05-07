@@ -27,6 +27,7 @@ final class AIChatViewModel {
     var showAIAccessConfirmation = false
     var selectedProviderId: UUID?
     var selectedModel: String?
+    var availableModels: [UUID: [String]] = [:]
 
     // MARK: - Context Properties
 
@@ -52,6 +53,26 @@ final class AIChatViewModel {
     var queryResults: String?
 
     // MARK: - AI Action Dispatch
+
+    func loadAvailableModels() async {
+        let settings = AppSettingsManager.shared.ai
+        for config in settings.providers where availableModels[config.id] == nil {
+            let apiKey: String?
+            switch config.type.authStyle {
+            case .apiKey:
+                apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
+            case .oauth, .none:
+                apiKey = nil
+            }
+            let transport = AIProviderFactory.createProvider(for: config, apiKey: apiKey)
+            do {
+                let models = try await transport.fetchAvailableModels()
+                availableModels[config.id] = models.isEmpty ? [config.model] : models
+            } catch {
+                availableModels[config.id] = config.model.isEmpty ? [] : [config.model]
+            }
+        }
+    }
 
     func handleFixError(query: String, error: String) {
         startNewConversation()

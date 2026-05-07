@@ -54,6 +54,9 @@ struct AIChatPanelView: View {
             viewModel.tables = tables
             viewModel.fetchSchemaContext()
         }
+        .task {
+            await viewModel.loadAvailableModels()
+        }
         .alert(
             String(localized: "Allow AI Access"),
             isPresented: $viewModel.showAIAccessConfirmation
@@ -345,30 +348,21 @@ struct AIChatPanelView: View {
         let activeProvider = settingsManager.ai.activeProvider
         let selectedProviderId = viewModel.selectedProviderId ?? activeProvider?.id
         let selectedProvider = providers.first(where: { $0.id == selectedProviderId }) ?? activeProvider
+        let resolvedModel = viewModel.selectedModel ?? selectedProvider?.model ?? ""
         let label: String
         if let selectedProvider {
-            let model = viewModel.selectedModel ?? selectedProvider.model
-            label = model.isEmpty ? selectedProvider.displayName : "\(selectedProvider.displayName) · \(model)"
+            label = resolvedModel.isEmpty ? selectedProvider.displayName : "\(selectedProvider.displayName) · \(resolvedModel)"
         } else {
             label = String(localized: "Select Model")
         }
 
         return Menu {
             ForEach(providers) { provider in
-                Button {
-                    viewModel.selectedProviderId = provider.id
-                    viewModel.selectedModel = provider.model.isEmpty ? nil : provider.model
-                } label: {
-                    HStack {
-                        let providerLabel = provider.model.isEmpty
-                            ? provider.displayName
-                            : "\(provider.displayName) · \(provider.model)"
-                        Text(providerLabel)
-                        if provider.id == selectedProviderId {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
+                modelMenuSection(
+                    provider: provider,
+                    selectedProviderId: selectedProviderId,
+                    selectedModel: resolvedModel
+                )
             }
         } label: {
             HStack(spacing: 4) {
@@ -384,7 +378,56 @@ struct AIChatPanelView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(String(localized: "Choose AI provider"))
+        .help(String(localized: "Choose AI provider and model"))
+    }
+
+    @ViewBuilder
+    private func modelMenuSection(
+        provider: AIProviderConfig,
+        selectedProviderId: UUID?,
+        selectedModel: String
+    ) -> some View {
+        let fallback = provider.model.isEmpty ? [] : [provider.model]
+        let cached = viewModel.availableModels[provider.id] ?? []
+        let models = cached.isEmpty ? fallback : cached
+
+        if models.count > 1 {
+            Section(provider.displayName) {
+                ForEach(models, id: \.self) { model in
+                    modelButton(
+                        provider: provider,
+                        model: model,
+                        isSelected: provider.id == selectedProviderId && model == selectedModel
+                    )
+                }
+            }
+        } else if let single = models.first {
+            modelButton(
+                provider: provider,
+                model: single,
+                isSelected: provider.id == selectedProviderId && single == selectedModel,
+                showProviderPrefix: true
+            )
+        }
+    }
+
+    private func modelButton(
+        provider: AIProviderConfig,
+        model: String,
+        isSelected: Bool,
+        showProviderPrefix: Bool = false
+    ) -> some View {
+        Button {
+            viewModel.selectedProviderId = provider.id
+            viewModel.selectedModel = model
+        } label: {
+            HStack {
+                Text(showProviderPrefix ? "\(provider.displayName) · \(model)" : model)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                }
+            }
+        }
     }
 
     // MARK: - Helpers
