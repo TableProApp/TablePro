@@ -45,6 +45,7 @@ final class AnthropicProvider: ChatTransport {
 
                     var inputTokens = 0
                     var outputTokens = 0
+                    var toolUseIdsByIndex: [Int: String] = [:]
 
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
@@ -58,10 +59,31 @@ final class AnthropicProvider: ChatTransport {
                         else { continue }
 
                         switch type {
+                        case "content_block_start":
+                            if let index = json["index"] as? Int,
+                               let block = json["content_block"] as? [String: Any],
+                               (block["type"] as? String) == "tool_use",
+                               let blockId = block["id"] as? String,
+                               let blockName = block["name"] as? String {
+                                toolUseIdsByIndex[index] = blockId
+                                continuation.yield(.toolUseStart(id: blockId, name: blockName))
+                            }
                         case "content_block_delta":
-                            if let delta = json["delta"] as? [String: Any],
-                               let text = delta["text"] as? String {
+                            guard let delta = json["delta"] as? [String: Any] else { break }
+                            let deltaType = delta["type"] as? String
+                            if deltaType == "input_json_delta" {
+                                if let index = json["index"] as? Int,
+                                   let id = toolUseIdsByIndex[index],
+                                   let partial = delta["partial_json"] as? String {
+                                    continuation.yield(.toolUseDelta(id: id, inputJSONDelta: partial))
+                                }
+                            } else if let text = delta["text"] as? String {
                                 continuation.yield(.textDelta(text))
+                            }
+                        case "content_block_stop":
+                            if let index = json["index"] as? Int,
+                               let id = toolUseIdsByIndex.removeValue(forKey: index) {
+                                continuation.yield(.toolUseEnd(id: id))
                             }
                         case "message_start":
                             if let message = json["message"] as? [String: Any],
@@ -185,16 +207,78 @@ final class AnthropicProvider: ChatTransport {
             body["system"] = systemPrompt
         }
 
-        let apiMessages = turns
+        if !options.tools.isEmpty {
+            body["tools"] = try options.tools.map(Self.encodeToolSpec(_:))
+        }
+
+        let apiMessages = try turns
             .filter { $0.role != .system }
-            .compactMap { turn -> [String: String]? in
-                let text = turn.plainText
-                guard !text.isEmpty else { return nil }
-                return ["role": turn.role.rawValue, "content": text]
-            }
+            .compactMap { try Self.encodeTurn($0) }
         body["messages"] = apiMessages
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
+    }
+
+    private static func encodeToolSpec(_ spec: ChatToolSpec) throws -> [String: Any] {
+        [
+            "name": spec.name,
+            "description": spec.description,
+            "input_schema": try jsonObject(from: spec.inputSchema)
+        ]
+    }
+
+    private static func encodeTurn(_ turn: ChatTurn) throws -> [String: Any]? {
+        let blocks = turn.blocks
+        let needsTypedBlocks = blocks.contains { block in
+            switch block {
+            case .toolUse, .toolResult:
+                return true
+            case .text, .attachment:
+                return false
+            }
+        }
+
+        if needsTypedBlocks {
+            let encoded = try blocks.compactMap { try encodeBlock($0) }
+            guard !encoded.isEmpty else { return nil }
+            return ["role": turn.role.rawValue, "content": encoded]
+        }
+
+        let text = turn.plainText
+        guard !text.isEmpty else { return nil }
+        return ["role": turn.role.rawValue, "content": text]
+    }
+
+    private static func encodeBlock(_ block: ChatContentBlock) throws -> [String: Any]? {
+        switch block {
+        case .text(let text):
+            guard !text.isEmpty else { return nil }
+            return ["type": "text", "text": text]
+        case .toolUse(let toolUse):
+            return [
+                "type": "tool_use",
+                "id": toolUse.id,
+                "name": toolUse.name,
+                "input": try jsonObject(from: toolUse.input)
+            ]
+        case .toolResult(let result):
+            var encoded: [String: Any] = [
+                "type": "tool_result",
+                "tool_use_id": result.toolUseId,
+                "content": result.content
+            ]
+            if result.isError {
+                encoded["is_error"] = true
+            }
+            return encoded
+        case .attachment:
+            return nil
+        }
+    }
+
+    private static func jsonObject(from value: JSONValue) throws -> Any {
+        let data = try JSONEncoder().encode(value)
+        return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
     }
 }
