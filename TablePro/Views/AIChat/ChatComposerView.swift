@@ -16,6 +16,7 @@ struct ChatComposerView: View {
     let onAttach: (ContextItem) -> Void
 
     @FocusState private var isFocused: Bool
+    @State private var isCommittingMention = false
 
     var body: some View {
         TextField(placeholder, text: $text, axis: .vertical)
@@ -26,6 +27,7 @@ struct ChatComposerView: View {
             .padding(.vertical, 8)
             .background(composerBackground)
             .onChange(of: text) { _, newText in
+                guard !isCommittingMention else { return }
                 onTextChange(newText, (newText as NSString).length)
             }
             .onSubmit(handleSubmit)
@@ -43,7 +45,6 @@ struct ChatComposerView: View {
                     onSelect: { commitMention(at: $0) }
                 )
             }
-            .onAppear { isFocused = true }
     }
 
     private var composerBackground: some View {
@@ -110,6 +111,8 @@ struct ChatComposerView: View {
             mentionState.reset()
             return
         }
+        isCommittingMention = true
+        defer { isCommittingMention = false }
         let prefix = nsText.substring(to: range.location)
         let suffix = nsText.substring(from: NSMaxRange(range))
         text = prefix + suffix
@@ -129,7 +132,7 @@ private enum IntelligenceShimmer {
     ]
 
     struct Layer: Identifiable {
-        let id = UUID()
+        let id: Int
         let lineWidth: CGFloat
         let blur: CGFloat
         let duration: TimeInterval
@@ -137,10 +140,9 @@ private enum IntelligenceShimmer {
     }
 
     static let layers: [Layer] = [
-        Layer(lineWidth: 1.5, blur: 0, duration: 0.5, opacity: 1.0),
-        Layer(lineWidth: 3, blur: 3, duration: 0.6, opacity: 0.7),
-        Layer(lineWidth: 5, blur: 8, duration: 0.8, opacity: 0.45),
-        Layer(lineWidth: 7, blur: 12, duration: 1.0, opacity: 0.25)
+        Layer(id: 0, lineWidth: 1.5, blur: 0, duration: 0.5, opacity: 1.0),
+        Layer(id: 1, lineWidth: 4, blur: 5, duration: 0.7, opacity: 0.6),
+        Layer(id: 2, lineWidth: 7, blur: 12, duration: 1.0, opacity: 0.3)
     ]
 
     static let updateInterval: Duration = .milliseconds(400)
