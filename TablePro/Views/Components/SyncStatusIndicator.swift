@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct SyncStatusIndicator: View {
-    var onActivateLicense: (() -> Void)?
+    let onActivateLicense: () -> Void
 
     private let syncCoordinator = SyncCoordinator.shared
 
@@ -113,7 +113,7 @@ struct SyncStatusIndicator: View {
     private func handleTap() {
         switch syncCoordinator.syncStatus {
         case .disabled(.licenseRequired), .disabled(.licenseExpired):
-            onActivateLicense?()
+            onActivateLicense()
         default:
             WindowOpener.shared.openSettings(tab: .account)
         }
@@ -122,7 +122,7 @@ struct SyncStatusIndicator: View {
 
 #Preview {
     HStack(spacing: 16) {
-        SyncStatusIndicator()
+        SyncStatusIndicator(onActivateLicense: {})
     }
     .padding()
 }

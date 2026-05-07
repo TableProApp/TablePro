@@ -17,6 +17,7 @@ struct NativeSearchField: NSViewRepresentable {
     var onSubmit: (() -> Void)?
     var focusOnAppear: Bool = false
     var focusTrigger: Int = 0
+    var maxWidth: CGFloat?
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
@@ -25,6 +26,11 @@ struct NativeSearchField: NSViewRepresentable {
         field.controlSize = controlSize
         field.sendsSearchStringImmediately = true
         field.setAccessibilityIdentifier("sidebar-filter")
+        field.cell?.usesSingleLineMode = true
+        if let maxWidth {
+            field.preferredMaxLayoutWidth = maxWidth
+            field.widthAnchor.constraint(lessThanOrEqualToConstant: maxWidth).isActive = true
+        }
         context.coordinator.lastFocusTrigger = focusTrigger
         if focusOnAppear {
             DispatchQueue.main.async {

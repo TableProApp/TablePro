@@ -233,15 +233,17 @@ struct WelcomeWindowView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .contextMenu { newConnectionContextMenu }
-        .background {
-            Button {
-                searchFocusTrigger += 1
-            } label: {
-                EmptyView()
-            }
-            .keyboardShortcut("f", modifiers: .command)
-            .accessibilityHidden(true)
+        .background(findShortcut)
+    }
+
+    private var findShortcut: some View {
+        Button {
+            searchFocusTrigger += 1
+        } label: {
+            EmptyView()
         }
+        .keyboardShortcut("f", modifiers: .command)
+        .accessibilityHidden(true)
     }
 
     private var connectionsHeader: some View {
@@ -275,10 +277,11 @@ struct WelcomeWindowView: View {
                 text: $vm.searchText,
                 placeholder: String(localized: "Search for connection..."),
                 controlSize: .regular,
-                focusTrigger: searchFocusTrigger
+                focusTrigger: searchFocusTrigger,
+                maxWidth: 240
             )
             .focused($focus, equals: .search)
-            .frame(maxWidth: 240)
+            .layoutPriority(0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -402,12 +405,11 @@ struct WelcomeWindowView: View {
 
     func primaryAction(for ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
-        for id in ids {
-            if let conn = vm.connections.first(where: { $0.id == id }) {
-                vm.connectToDatabase(conn)
-            } else if let linked = vm.linkedConnections.first(where: { $0.id == id }) {
-                vm.connectToLinkedConnection(linked)
-            }
+        for connection in vm.connections where ids.contains(connection.id) {
+            vm.connectToDatabase(connection)
+        }
+        for linked in vm.linkedConnections where ids.contains(linked.id) {
+            vm.connectToLinkedConnection(linked)
         }
     }
 

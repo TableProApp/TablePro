@@ -1,5 +1,5 @@
 //
-//  WelcomeLeftPanel.swift
+//  WelcomeActionsPanel.swift
 //  TablePro
 //
 

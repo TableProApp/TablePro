@@ -135,10 +135,6 @@ final class WelcomeViewModel {
         connections.filter { selectedConnectionIds.contains($0.id) }
     }
 
-    var isMultipleSelection: Bool {
-        selectedConnectionIds.count > 1
-    }
-
     func groupName(for groupId: UUID?) -> String? {
         guard let groupId else { return nil }
         return groups.first { $0.id == groupId }?.name
@@ -263,6 +259,7 @@ final class WelcomeViewModel {
 
     deinit {
         welcomeRouterTask?.cancel()
+        searchDebounceTask?.cancel()
         [connectionUpdatedObserver, exportObserver, importObserver,
          importFromAppObserver, linkedFoldersObserver].forEach {
             if let observer = $0 {
@@ -319,12 +316,6 @@ final class WelcomeViewModel {
                     "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")
                 handleConnectionFailure(error: error, connectionId: connection.id)
             }
-        }
-    }
-
-    func connectSelectedConnections() {
-        for connection in selectedConnections {
-            connectToDatabase(connection)
         }
     }
 
