@@ -69,7 +69,7 @@ final class ChatToolRegistry {
         allTools(for: mode).map(\.spec)
     }
 
-    nonisolated static func isToolAllowed(name: String, in mode: AIChatMode) -> Bool {
+    static func isToolAllowed(name: String, in mode: AIChatMode) -> Bool {
         switch mode {
         case .ask:
             return readOnlyToolNames.contains(name)

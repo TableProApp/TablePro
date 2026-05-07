@@ -131,6 +131,10 @@ final class InlineAssistantSession {
         task = nil
     }
 
+    deinit {
+        task?.cancel()
+    }
+
     // MARK: - Helpers
 
     private func languageTag() -> String {
