@@ -301,9 +301,13 @@ final class GeminiProvider: ChatTransport {
         return json
     }
 
-    /// Translate a single Gemini chunk to events. The injected `idGenerator`
-    /// lets tests pin the synthetic id Gemini doesn't provide; production
-    /// passes `UUID().uuidString`.
+    /// Translate a single Gemini chunk to events.
+    ///
+    /// Gemini does not provide tool-call ids on `functionCall` parts, so we
+    /// synthesize one per call. `idGenerator` is injected so tests can pin the
+    /// synthetic id to a stable value; production passes `{ UUID().uuidString }`.
+    /// Each call to `idGenerator()` returns a fresh id, so multiple
+    /// `functionCall` parts in one chunk get distinct ids in production.
     static func parseChunk(
         _ json: [String: Any],
         state: inout GeminiStreamState,
@@ -341,12 +345,17 @@ final class GeminiProvider: ChatTransport {
     }
 
     static func encodeArgsToJSONString(_ args: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(args) else { return "{}" }
-        guard let data = try? JSONSerialization.data(withJSONObject: args),
-              let string = String(data: data, encoding: .utf8) else {
+        guard JSONSerialization.isValidJSONObject(args) else {
+            Self.logger.warning("Gemini functionCall args was not a valid JSON object; falling back to empty input")
             return "{}"
         }
-        return string
+        do {
+            let data = try JSONSerialization.data(withJSONObject: args)
+            return String(data: data, encoding: .utf8) ?? "{}"
+        } catch {
+            Self.logger.warning("Gemini functionCall args serialization failed: \(error.localizedDescription, privacy: .public)")
+            return "{}"
+        }
     }
 }
 

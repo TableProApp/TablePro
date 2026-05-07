@@ -161,6 +161,35 @@ struct OpenAICompatibleProviderParserTests {
         #expect(state.outputTokens == 90)
     }
 
+    @Test("message.content path yields textDelta (Ollama non-stream + final-message OpenAI)")
+    func messageContentPathYieldsTextDelta() {
+        var state = OpenAIStreamState()
+        let result = OpenAICompatibleProvider.parseChunk([
+            "message": ["content": "hi"]
+        ], state: &state)
+        guard case .textDelta(let text) = result.events.first else {
+            Issue.record("expected textDelta from message.content; got \(result.events)")
+            return
+        }
+        #expect(text == "hi")
+    }
+
+    @Test("Empty chunk yields no events and doesn't break")
+    func emptyChunk() {
+        var state = OpenAIStreamState()
+        let result = OpenAICompatibleProvider.parseChunk([:], state: &state)
+        #expect(result.events.isEmpty)
+        #expect(result.shouldBreak == false)
+    }
+
+    @Test("done: true with no pending tool calls breaks without emitting")
+    func doneWithNoPendingTools() {
+        var state = OpenAIStreamState()
+        let result = OpenAICompatibleProvider.parseChunk(["done": true], state: &state)
+        #expect(result.shouldBreak == true)
+        #expect(result.events.isEmpty)
+    }
+
     @Test("decodeStreamLine respects providerType (SSE vs NDJSON)")
     func decodeStreamLineFraming() {
         let openAIParsed = OpenAICompatibleProvider.decodeStreamLine(

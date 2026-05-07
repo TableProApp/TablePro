@@ -152,8 +152,11 @@ final class OpenAICompatibleProvider: ChatTransport {
             state.outputTokens = evalCount
         }
 
+        // Ollama signals stream-end via `done: true`. We flush again here only
+        // when finish_reason didn't already drain the tool-call map (which
+        // typically isn't set on Ollama responses).
         let shouldBreak = (json["done"] as? Bool) == true
-        if shouldBreak {
+        if shouldBreak, !state.toolCallIndexToId.isEmpty {
             events.append(contentsOf: state.flushToolUseEnds())
         }
         return (events, shouldBreak)

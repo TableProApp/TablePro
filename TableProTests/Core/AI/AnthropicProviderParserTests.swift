@@ -180,4 +180,24 @@ struct AnthropicProviderParserTests {
         #expect(AnthropicProvider.decodeStreamLine("data: [DONE]") == nil)
         #expect(AnthropicProvider.decodeStreamLine("data: {\"type\":\"x\"}") != nil)
     }
+
+    @Test("Unknown event types yield no events and don't throw")
+    func unknownEventType() throws {
+        var state = AnthropicStreamState()
+        let events = try AnthropicProvider.parseChunk(
+            ["type": "ping", "extra": "ignored"],
+            state: &state
+        )
+        #expect(events.isEmpty)
+        // State should be unchanged.
+        #expect(state.toolUseIdsByIndex.isEmpty)
+        #expect(state.inputTokens == 0)
+    }
+
+    @Test("Chunk with no type field yields no events and doesn't throw")
+    func chunkWithoutType() throws {
+        var state = AnthropicStreamState()
+        let events = try AnthropicProvider.parseChunk(["random": "data"], state: &state)
+        #expect(events.isEmpty)
+    }
 }

@@ -129,4 +129,35 @@ struct GeminiProviderParserTests {
         #expect(result.contains("\"a\""))
         #expect(result.contains("\"b\""))
     }
+
+    @Test("Chunk without candidates yields no events")
+    func chunkWithoutCandidates() {
+        var state = GeminiStreamState()
+        let events = parse(["unrelated": "data"], state: &state)
+        #expect(events.isEmpty)
+    }
+
+    @Test("Multiple functionCall parts in one chunk get distinct ids")
+    func multipleFunctionCallsGetDistinctIds() {
+        var state = GeminiStreamState()
+        var counter = 0
+        let events = GeminiProvider.parseChunk([
+            "candidates": [[
+                "content": [
+                    "parts": [
+                        ["functionCall": ["name": "list_tables", "args": [String: Any]()]],
+                        ["functionCall": ["name": "describe_table", "args": [String: Any]()]]
+                    ]
+                ]
+            ]]
+        ], state: &state, idGenerator: {
+            defer { counter += 1 }
+            return "id-\(counter)"
+        })
+        let starts = events.compactMap { event -> String? in
+            if case .toolUseStart(let id, _) = event { return id }
+            return nil
+        }
+        #expect(starts == ["id-0", "id-1"])
+    }
 }
