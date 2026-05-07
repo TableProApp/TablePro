@@ -1104,14 +1104,19 @@ final class AIChatViewModel {
         }
     }
 
+    /// Execute the given tool-use blocks in parallel via a `withTaskGroup`,
+    /// returning result blocks in the same order. The `registry` parameter
+    /// defaults to the shared singleton; tests inject a fresh instance to
+    /// avoid polluting global state.
     nonisolated static func executeToolUses(
         _ blocks: [ToolUseBlock],
-        context: ChatToolContext
+        context: ChatToolContext,
+        registry: ChatToolRegistry? = nil
     ) async -> [ToolResultBlock] {
         await withTaskGroup(of: (Int, ToolResultBlock).self) { group in
             for (index, block) in blocks.enumerated() {
                 group.addTask {
-                    (index, await runToolUse(block, context: context))
+                    (index, await runToolUse(block, context: context, registry: registry))
                 }
             }
             var indexed: [(Int, ToolResultBlock)] = []
@@ -1122,12 +1127,15 @@ final class AIChatViewModel {
 
     nonisolated private static func runToolUse(
         _ block: ToolUseBlock,
-        context: ChatToolContext
+        context: ChatToolContext,
+        registry: ChatToolRegistry?
     ) async -> ToolResultBlock {
         if Task.isCancelled {
             return ToolResultBlock(toolUseId: block.id, content: "Cancelled", isError: true)
         }
-        let tool = await MainActor.run { ChatToolRegistry.shared.tool(named: block.name) }
+        let tool = await MainActor.run {
+            (registry ?? ChatToolRegistry.shared).tool(named: block.name)
+        }
         guard let tool else {
             Self.logger.warning("Tool '\(block.name, privacy: .public)' not registered; returning error")
             return ToolResultBlock(
