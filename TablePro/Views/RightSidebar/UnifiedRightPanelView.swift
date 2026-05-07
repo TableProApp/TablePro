@@ -50,7 +50,7 @@ struct UnifiedRightPanelView: View {
     }
 
     private var inspectorHeader: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .center, spacing: 4) {
             tabPicker
             Spacer(minLength: 8)
             if state.activeTab == .aiChat {
@@ -77,12 +77,11 @@ struct UnifiedRightPanelView: View {
         Button {
             state.aiViewModel.startNewConversation()
         } label: {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
+            inspectorIcon("square.and.pencil")
         }
         .buttonStyle(.plain)
+        .frame(width: 24, height: 22)
+        .contentShape(Rectangle())
         .help(String(localized: "New Conversation"))
     }
 
@@ -115,15 +114,21 @@ struct UnifiedRightPanelView: View {
             }
             .disabled(viewModel.conversations.isEmpty)
         } label: {
-            Image(systemName: "clock")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
+            inspectorIcon("clock")
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
+        .frame(width: 24, height: 22)
+        .contentShape(Rectangle())
         .help(String(localized: "Conversation history"))
+    }
+
+    private func inspectorIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 13, weight: .regular))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var detailsView: some View {
