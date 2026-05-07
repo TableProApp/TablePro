@@ -180,6 +180,31 @@ struct CopilotConversationCreateParams: Codable, Sendable {
     let source: String
     let model: String?
     let workspaceFolders: [LSPWorkspaceFolder]?
+    let chatMode: String?
+    let customChatModeId: String?
+    let needToolCallConfirmation: Bool?
+
+    init(
+        workDoneToken: String,
+        turns: [CopilotConversationTurn],
+        capabilities: CopilotConversationCapabilities,
+        source: String,
+        model: String?,
+        workspaceFolders: [LSPWorkspaceFolder]?,
+        chatMode: String? = nil,
+        customChatModeId: String? = nil,
+        needToolCallConfirmation: Bool? = nil
+    ) {
+        self.workDoneToken = workDoneToken
+        self.turns = turns
+        self.capabilities = capabilities
+        self.source = source
+        self.model = model
+        self.workspaceFolders = workspaceFolders
+        self.chatMode = chatMode
+        self.customChatModeId = customChatModeId
+        self.needToolCallConfirmation = needToolCallConfirmation
+    }
 }
 
 struct CopilotConversationCreateResult: Codable, Sendable {

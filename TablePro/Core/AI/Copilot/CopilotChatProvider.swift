@@ -59,6 +59,7 @@ final class CopilotChatProvider: ChatTransport {
                             response: "",
                             turnId: ""
                         )]
+                        let toolsAvailable = !options.tools.isEmpty && !self.registeredToolNames.isEmpty
                         let params = CopilotConversationCreateParams(
                             workDoneToken: token,
                             turns: conversationTurns,
@@ -68,7 +69,10 @@ final class CopilotChatProvider: ChatTransport {
                             ),
                             source: "panel",
                             model: effectiveModel,
-                            workspaceFolders: nil
+                            workspaceFolders: nil,
+                            chatMode: toolsAvailable ? "Agent" : nil,
+                            customChatModeId: toolsAvailable ? "Agent" : nil,
+                            needToolCallConfirmation: toolsAvailable ? true : nil
                         )
                         let result = try await client.conversationCreate(params: params)
                         self.conversationId = result.conversationId
