@@ -35,10 +35,15 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// Retain the hosting controllers — without this, NSHostingController
     /// deallocs immediately and its view becomes orphaned, producing zero-size
     /// items that get pushed right by flexibleSpace.
-    private var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
+    internal var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
     private var sidebarButtons: [NSButton] = []
     private var sidebarObservationTask: Task<Void, Never>?
     private var splitViewObserver: NSObjectProtocol?
+
+    /// Strong refs to AI-specific toolbar items so we can flip `isHidden` on them
+    /// when `RightPanelState.activeTab` changes. Built lazily in `itemForItemIdentifier`.
+    internal var aiChatToolbarItems: [NSToolbarItem.Identifier: NSToolbarItem] = [:]
+    private var rightPanelObservationTask: Task<Void, Never>?
 
     internal init(coordinator: MainContentCoordinator) {
         self.coordinator = coordinator
@@ -70,12 +75,15 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     func invalidate() {
         sidebarObservationTask?.cancel()
         sidebarObservationTask = nil
+        rightPanelObservationTask?.cancel()
+        rightPanelObservationTask = nil
         if let observer = splitViewObserver {
             NotificationCenter.default.removeObserver(observer)
             splitViewObserver = nil
         }
         sidebarButtons = []
         hostingControllers.removeAll()
+        aiChatToolbarItems.removeAll()
         coordinator = nil
     }
 
@@ -114,6 +122,11 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             Self.newTab,
             Self.filters,
             Self.previewSQL,
+            Self.aiModePicker,
+            Self.aiModelPicker,
+            Self.aiNewConversation,
+            Self.aiHistory,
+            Self.panelTabPicker,
             Self.inspector,
         ]
     }
@@ -211,14 +224,69 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                                    ExportToolbarButton(coordinator: coordinator)
                                    ImportToolbarButton(coordinator: coordinator)
                                })
+        case Self.panelTabPicker:
+            return registerAIItem(makePanelTabPickerItem(coordinator: coordinator), coordinator: coordinator)
+        case Self.aiModePicker:
+            return registerAIItem(makeAIModePickerItem(coordinator: coordinator), coordinator: coordinator)
+        case Self.aiModelPicker:
+            return registerAIItem(makeAIModelPickerItem(coordinator: coordinator), coordinator: coordinator)
+        case Self.aiNewConversation:
+            return registerAIItem(makeAINewConversationItem(coordinator: coordinator), coordinator: coordinator)
+        case Self.aiHistory:
+            return registerAIItem(makeAIHistoryItem(coordinator: coordinator), coordinator: coordinator)
         default:
             return nil
         }
     }
 
+    /// Records an AI-specific toolbar item so `syncAIChatItemVisibility`
+    /// can flip its `isHidden` flag, then kicks off observation if needed.
+    private func registerAIItem(
+        _ item: NSToolbarItem,
+        coordinator: MainContentCoordinator
+    ) -> NSToolbarItem {
+        aiChatToolbarItems[item.itemIdentifier] = item
+        syncAIChatItemVisibility(coordinator: coordinator)
+        startRightPanelObservation(coordinator: coordinator)
+        return item
+    }
+
+    /// Hide AI-only toolbar items unless the inspector's active tab is AI Chat.
+    /// The panel-tab picker stays visible whenever AI is enabled because it's
+    /// how the user gets to the AI tab in the first place.
+    fileprivate func syncAIChatItemVisibility(coordinator: MainContentCoordinator) {
+        let isAIEnabled = AppSettingsManager.shared.ai.enabled
+        let isAITabActive = isAIEnabled && coordinator.rightPanelState?.activeTab == .aiChat
+        for identifier in Self.aiChatItemIdentifiers {
+            aiChatToolbarItems[identifier]?.isHidden = !isAITabActive
+        }
+        aiChatToolbarItems[Self.panelTabPicker]?.isHidden = !isAIEnabled
+    }
+
+    fileprivate func startRightPanelObservation(coordinator: MainContentCoordinator) {
+        guard rightPanelObservationTask == nil else { return }
+        rightPanelObservationTask = Task { [weak self, weak coordinator] in
+            while !Task.isCancelled {
+                guard let coordinator else { return }
+                await withCheckedContinuation { continuation in
+                    withObservationTracking {
+                        _ = coordinator.rightPanelState?.activeTab
+                        _ = AppSettingsManager.shared.ai.enabled
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+                guard !Task.isCancelled, let self else { return }
+                await MainActor.run {
+                    self.syncAIChatItemVisibility(coordinator: coordinator)
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
-    private func hostingItem<Content: View>(
+    internal func hostingItem<Content: View>(
         id: NSToolbarItem.Identifier,
         label: String,
         content: Content
@@ -353,18 +421,7 @@ private struct NewTabToolbarButton: View {
     var body: some View {
         let state = coordinator.toolbarState
         Button {
-            coordinator.commandActions?.newTab()
-            // Defensive: a new window will become key. Restore its first
-            // responder so AppKit's responder chain — which SwiftUI uses to
-            // resolve `@FocusedValue` — points back at MainContentView.
-            // Belt-and-suspenders for the `.focusable(false)` fix in
-            // `hostingItem`; covers any path where SwiftUI might still
-            // briefly retain scene focus on the toolbar's hosting controller.
-            DispatchQueue.main.async {
-                if let key = NSApp.keyWindow {
-                    key.makeFirstResponder(key.contentView)
-                }
-            }
+            NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
         } label: {
             Label("New Tab", systemImage: "plus.rectangle")
         }

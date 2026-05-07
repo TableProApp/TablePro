@@ -131,6 +131,35 @@ enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+// MARK: - AI Chat Mode
+
+/// Conversation behaviour for the AI Chat panel.
+/// Wired to provider tool exposure in a follow-up PR; in this layout-only PR
+/// the picker is rendered but the value does not yet gate tools.
+enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case ask
+    case edit
+    case agent
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .ask:   return String(localized: "Ask")
+        case .edit:  return String(localized: "Edit")
+        case .agent: return String(localized: "Agent")
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .ask:   return "questionmark.bubble"
+        case .edit:  return "pencil.and.outline"
+        case .agent: return "sparkle.magnifyingglass"
+        }
+    }
+}
+
 // MARK: - AI Settings
 
 struct AISettings: Codable, Equatable, Sendable {
@@ -143,6 +172,7 @@ struct AISettings: Codable, Equatable, Sendable {
     var includeQueryResults: Bool
     var maxSchemaTables: Int
     var defaultConnectionPolicy: AIConnectionPolicy
+    var chatMode: AIChatMode
 
     static let `default` = AISettings(
         enabled: true,
@@ -153,7 +183,8 @@ struct AISettings: Codable, Equatable, Sendable {
         includeCurrentQuery: false,
         includeQueryResults: false,
         maxSchemaTables: 20,
-        defaultConnectionPolicy: .askEachTime
+        defaultConnectionPolicy: .askEachTime,
+        chatMode: .ask
     )
 
     init(
@@ -165,7 +196,8 @@ struct AISettings: Codable, Equatable, Sendable {
         includeCurrentQuery: Bool = false,
         includeQueryResults: Bool = false,
         maxSchemaTables: Int = 20,
-        defaultConnectionPolicy: AIConnectionPolicy = .askEachTime
+        defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
+        chatMode: AIChatMode = .ask
     ) {
         self.enabled = enabled
         self.providers = providers
@@ -176,6 +208,7 @@ struct AISettings: Codable, Equatable, Sendable {
         self.includeQueryResults = includeQueryResults
         self.maxSchemaTables = maxSchemaTables
         self.defaultConnectionPolicy = defaultConnectionPolicy
+        self.chatMode = chatMode
     }
 
     init(from decoder: Decoder) throws {
@@ -191,6 +224,7 @@ struct AISettings: Codable, Equatable, Sendable {
         defaultConnectionPolicy = try container.decodeIfPresent(
             AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
         ) ?? .askEachTime
+        chatMode = try container.decodeIfPresent(AIChatMode.self, forKey: .chatMode) ?? .ask
     }
 
     var activeProvider: AIProviderConfig? {

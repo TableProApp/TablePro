@@ -27,21 +27,8 @@ struct UnifiedRightPanelView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if AppSettingsManager.shared.ai.enabled {
-                Picker("", selection: $state.activeTab) {
-                    ForEach(RightPanelTab.allCases, id: \.self) { tab in
-                        Label(tab.localizedTitle, systemImage: tab.systemImage)
-                            .tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-
-                Divider()
-
                 switch state.activeTab {
                 case .details:
                     detailsView

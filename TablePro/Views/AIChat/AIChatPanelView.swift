@@ -17,7 +17,6 @@ struct AIChatPanelView: View {
     private let settingsManager = AppSettingsManager.shared
     @State private var isUserScrolledUp = false
     @State private var lastAutoScrollTime: Date = .distantPast
-    @State private var showClearConfirmation = false
     @State private var mentionState = MentionPopoverState()
 
     private var hasConfiguredProvider: Bool {
@@ -26,8 +25,6 @@ struct AIChatPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-
             if !hasConfiguredProvider && viewModel.messages.isEmpty {
                 noProviderState
             } else if viewModel.messages.isEmpty {
@@ -69,97 +66,43 @@ struct AIChatPanelView: View {
         } message: {
             Text(String(localized: "Your database schema and query data will be sent to the AI provider for analysis. Allow for this connection?"))
         }
-        .alert(String(localized: "Clear All Conversations?"), isPresented: $showClearConfirmation) {
-            Button(String(localized: "Clear"), role: .destructive) {
-                viewModel.clearConversation()
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "This will permanently delete all conversation history."))
-        }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(spacing: 0) {
-            // Left: New conversation button
-            Button {
-                viewModel.startNewConversation()
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-            .help(String(localized: "New Conversation"))
-
-            Spacer()
-
-            // Center: Conversation title as dropdown
-            Menu {
-                if !viewModel.conversations.isEmpty {
-                    Section(String(localized: "Recent Conversations")) {
-                        ForEach(viewModel.conversations) { conversation in
-                            Button {
-                                viewModel.switchConversation(to: conversation.id)
-                            } label: {
-                                HStack {
-                                    Text(conversation.title.isEmpty
-                                        ? String(localized: "Untitled")
-                                        : conversation.title)
-                                    if conversation.id == viewModel.activeConversationID {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Divider()
-                }
-                Button(role: .destructive) {
-                    showClearConfirmation = true
-                } label: {
-                    Label(String(localized: "Clear Recents"), systemImage: "trash")
-                }
-                .disabled(viewModel.conversations.isEmpty)
-            } label: {
-                VStack(spacing: 2) {
-                    let title = viewModel.conversations
-                        .first(where: { $0.id == viewModel.activeConversationID })?.title
-                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    Text(title.isEmpty ? String(localized: "New Chat") : title)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    if let connectionName = viewModel.connection?.name {
-                        Text(connectionName)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-
-            Spacer()
-
-            // Right: Spacer to balance layout (history menu removed)
-            Color.clear
-                .frame(width: 32, height: 32)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
     }
 
     // MARK: - Empty States
 
     private var emptyState: some View {
-        EmptyStateView(
-            icon: "sparkles",
-            title: String(localized: "Ask AI about your database"),
-            description: String(localized: "Get help writing queries, explaining schemas, or fixing errors.")
-        )
+        VStack(spacing: 16) {
+            EmptyStateView(
+                icon: "sparkles",
+                title: String(localized: "Ask AI about your database"),
+                description: String(localized: "Get help writing queries, explaining schemas, or fixing errors.")
+            )
+            if hasConfiguredProvider {
+                starterPromptChips
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var starterPromptChips: some View {
+        let prompts = AIStarterPrompts.suggestions(for: connection.type)
+        VStack(spacing: 8) {
+            ForEach(prompts, id: \.self) { prompt in
+                Button {
+                    viewModel.inputText = prompt
+                } label: {
+                    Text(prompt)
+                        .font(.callout)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 24)
     }
 
     private var noProviderState: some View {
