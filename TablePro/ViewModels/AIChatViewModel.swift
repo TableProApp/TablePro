@@ -893,7 +893,7 @@ final class AIChatViewModel {
         }
     }
 
-    private static func buildSystemPrompt(_ promptContext: PromptContext?) -> String? {
+    nonisolated private static func buildSystemPrompt(_ promptContext: PromptContext?) -> String? {
         promptContext.map {
             AISchemaContext.buildSystemPrompt(
                 databaseType: $0.databaseType,
@@ -997,7 +997,7 @@ final class AIChatViewModel {
         return false
     }
 
-    private static func assembleToolUseBlocks(
+    nonisolated private static func assembleToolUseBlocks(
         order: [String],
         names: [String: String],
         inputs: [String: String]
@@ -1018,7 +1018,7 @@ final class AIChatViewModel {
         }
     }
 
-    private static func executeToolUses(
+    nonisolated private static func executeToolUses(
         _ blocks: [ToolUseBlock],
         context: ChatToolContext
     ) async -> [ToolResultBlock] {
