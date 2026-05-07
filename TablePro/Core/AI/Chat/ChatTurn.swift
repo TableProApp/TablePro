@@ -56,6 +56,17 @@ struct ChatTurn: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(role, forKey: .role)
+        try container.encode(blocks, forKey: .blocks)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(usage, forKey: .usage)
+        try container.encodeIfPresent(modelId, forKey: .modelId)
+        try container.encodeIfPresent(providerId, forKey: .providerId)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, role, blocks, content, timestamp, usage, modelId, providerId
     }
