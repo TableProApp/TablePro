@@ -34,6 +34,7 @@ struct WelcomeWindowView: View {
                     .transition(.move(edge: .trailing))
             }
         }
+        .ignoresSafeArea()
         .onAppear {
             vm.setUp()
             focus = .connectionList
