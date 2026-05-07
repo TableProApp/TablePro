@@ -48,11 +48,18 @@ private final class EditorWindow: NSWindow {
 @MainActor
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    private static let frameLogger = Logger(subsystem: "com.TablePro", category: "WindowFrame")
 
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
+    private static var frameDefaultsKey: String { "NSWindow Frame \(frameAutosaveName)" }
+
     internal static var hasSavedFrame: Bool {
-        UserDefaults.standard.object(forKey: "NSWindow Frame \(frameAutosaveName)") != nil
+        UserDefaults.standard.object(forKey: frameDefaultsKey) != nil
+    }
+
+    private static func currentSavedFrameString() -> String {
+        UserDefaults.standard.string(forKey: frameDefaultsKey) ?? "<nil>"
     }
 
     private lazy var dataGridFieldEditor: DataGridFieldEditor = {
@@ -108,7 +115,15 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
         super.init(window: window)
 
+        Self.frameLogger.notice("[init] before-autosave persistedFrame=\(Self.currentSavedFrameString(), privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public)")
+
         self.windowFrameAutosaveName = Self.frameAutosaveName
+        Self.frameLogger.notice("[init] after windowFrameAutosaveName setter windowAutosaveName=\(window.frameAutosaveName, privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public)")
+
+        let restored = window.setFrameUsingName(Self.frameAutosaveName)
+        Self.frameLogger.notice("[init] explicit setFrameUsingName returned=\(restored, privacy: .public) windowFrame=\(NSStringFromRect(window.frame), privacy: .public)")
+
+        installFrameAutosaveTrace(on: window)
 
         // Keep the controller alive after the window closes so NSWindowDelegate
         // hooks have time to run teardown. WindowManager drops its strong
@@ -134,6 +149,39 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("TabWindowController does not support NSCoder init")
+    }
+
+    private var frameTraceObservers: [NSObjectProtocol] = []
+
+    private func installFrameAutosaveTrace(on window: NSWindow) {
+        let center = NotificationCenter.default
+
+        frameTraceObservers.append(center.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: window,
+            queue: .main
+        ) { [weak window] _ in
+            guard let window else { return }
+            Self.frameLogger.notice("[event] didResize windowFrame=\(NSStringFromRect(window.frame), privacy: .public) inLiveResize=\(window.inLiveResize, privacy: .public) persistedFrame=\(Self.currentSavedFrameString(), privacy: .public)")
+        })
+
+        frameTraceObservers.append(center.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: window,
+            queue: .main
+        ) { [weak window] _ in
+            guard let window else { return }
+            Self.frameLogger.notice("[event] didMove windowFrame=\(NSStringFromRect(window.frame), privacy: .public) persistedFrame=\(Self.currentSavedFrameString(), privacy: .public)")
+        })
+
+        frameTraceObservers.append(center.addObserver(
+            forName: NSWindow.didEndLiveResizeNotification,
+            object: window,
+            queue: .main
+        ) { [weak window] _ in
+            guard let window else { return }
+            Self.frameLogger.notice("[event] didEndLiveResize windowFrame=\(NSStringFromRect(window.frame), privacy: .public) persistedFrame=\(Self.currentSavedFrameString(), privacy: .public)")
+        })
     }
 
     // MARK: - NSWindowDelegate
@@ -187,7 +235,14 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow else { return }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
 
+        Self.frameLogger.notice("[close] before saveFrame windowFrame=\(NSStringFromRect(window.frame), privacy: .public) styleMask.fullScreen=\(window.styleMask.contains(.fullScreen), privacy: .public) persistedFrame=\(Self.currentSavedFrameString(), privacy: .public)")
         window.saveFrame(usingName: Self.frameAutosaveName)
+        Self.frameLogger.notice("[close] after saveFrame persistedFrame=\(Self.currentSavedFrameString(), privacy: .public)")
+
+        for observer in frameTraceObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        frameTraceObservers.removeAll()
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.invalidateToolbar()
