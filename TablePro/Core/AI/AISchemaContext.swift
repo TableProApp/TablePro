@@ -24,7 +24,8 @@ struct AISchemaContext {
         settings: AISettings,
         identifierQuote: String = "\"",
         editorLanguage: EditorLanguage,
-        queryLanguageName: String
+        queryLanguageName: String,
+        connectionRules: String? = nil
     ) -> String {
         var parts: [String] = []
 
@@ -65,6 +66,11 @@ struct AISchemaContext {
            let results = queryResults,
            !results.isEmpty {
             parts.append("\n## Recent Query Results\n\(results)")
+        }
+
+        if let rules = connectionRules?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rules.isEmpty {
+            parts.append("\n## Connection-Specific Rules\n\(rules)")
         }
 
         let langTag = editorLanguage.codeBlockTag

@@ -9,8 +9,6 @@ struct MentionSuggestionListView: View {
     @Bindable var state: MentionPopoverState
     let onSelect: (Int) -> Void
 
-    private let rowHeight: CGFloat = 28
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(state.candidates.enumerated()), id: \.element.id) { index, candidate in
@@ -18,7 +16,6 @@ struct MentionSuggestionListView: View {
                     candidate: candidate,
                     isSelected: index == state.selectedIndex
                 )
-                .frame(height: rowHeight)
                 .contentShape(Rectangle())
                 .onTapGesture { onSelect(index) }
                 .onHover { hovering in
@@ -26,7 +23,7 @@ struct MentionSuggestionListView: View {
                 }
             }
         }
-        .padding(4)
+        .padding(.vertical, 4)
         .frame(width: 280)
     }
 }
@@ -36,9 +33,9 @@ private struct MentionRowView: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Image(systemName: candidate.symbolName)
-                .frame(width: 16)
+                .frame(width: 14, alignment: .center)
                 .foregroundStyle(isSelected ? Color.white : .secondary)
             Text(candidate.displayLabel)
                 .lineLimit(1)
@@ -52,10 +49,14 @@ private struct MentionRowView: View {
                     .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
             }
         }
-        .padding(.horizontal, 8)
+        .font(.callout)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(isSelected ? Color.accentColor : Color.clear)
+            isSelected
+                ? Color(nsColor: .selectedContentBackgroundColor)
+                : Color.clear
         )
     }
 }

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - New tab via Cmd+T no longer flashes focus back to the previous tab in the same window group
 - Cmd+X with no selection cuts the current line, matching VS Code, Sublime, and Xcode (#1075)
+- Cmd+A on a query ending with a newline now highlights every line, not just the first (#1075)
 - Editor windows now restore their last size, position, and full screen state on launch instead of opening at a default 1200x800 every time
 - First launch picks an initial editor size based on the connected display (about 85% of the visible area) instead of a fixed 1200x800
 
@@ -31,10 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI Chat: attach a saved query as a chip via `@`. Type `@` and pick a saved SQL query to send its name and body to the AI alongside your message.
 - AI Chat: user-defined slash commands. Create your own commands in Settings -> AI -> Custom Slash Commands. Templates support `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}` placeholders that get substituted at send time.
 - AI Chat: tool calling can now run write queries (`execute_query`) and destructive DDL (`confirm_destructive_operation` after the AI passes the verbatim phrase). The connection's safe mode policy still gates execution, so the user remains the final approver.
+- AI Chat: per-connection rules. Add custom guidance (table conventions, PII columns, naming) in the connection's AI Rules tab; the AI sees it on every chat turn for that connection.
 
 ### Changed
 
 - AI Chat: new installations default to opt-in context. Schema, current query, and query results no longer auto-include in every prompt; attach them via the `@` menu when you want them. Existing users keep their current Settings -> AI -> "Include schema/current query/query results" choices unchanged.
+- AI Chat: the Ask / Edit / Agent mode picker now changes which tools the provider sees. Ask exposes read-only schema lookups. Edit adds `execute_query` for SELECT/INSERT/UPDATE/DELETE. Agent adds destructive DDL via `confirm_destructive_operation`. The connection's safe mode policy still gates execution.
 
 ### Fixed
 

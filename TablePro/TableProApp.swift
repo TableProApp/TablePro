@@ -211,7 +211,7 @@ struct AppMenuCommands: Commands {
 
         CommandGroup(after: .newItem) {
             Button("New Tab") {
-                actions?.newTab()
+                NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
             }
             .optionalKeyboardShortcut(shortcut(for: .newTab))
             .disabled(!(actions?.isConnected ?? false))
