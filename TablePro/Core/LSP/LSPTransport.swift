@@ -44,6 +44,7 @@ actor LSPTransport {
     private var pendingRequests: [Int: CheckedContinuation<Data, Error>] = [:]
     private var notificationHandlers: [String: @Sendable (Data) -> Void] = [:]
     private var requestHandlers: [String: @Sendable (Data) -> Any?] = [:]
+    private var deferredRequestHandlers: [String: @Sendable (Data, Int) -> Void] = [:]
     private var readerQueue: DispatchQueue?
 
     // MARK: - Lifecycle
@@ -175,6 +176,18 @@ actor LSPTransport {
         requestHandlers[method] = handler
     }
 
+    func onDeferredRequest(method: String, handler: @escaping @Sendable (Data, Int) -> Void) {
+        deferredRequestHandlers[method] = handler
+    }
+
+    func sendDeferredResponse<R: Encodable>(id: Int, result: R) async throws {
+        let resultData = try JSONEncoder().encode(result)
+        let resultObj = try JSONSerialization.jsonObject(with: resultData)
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": resultObj]
+        let data = try JSONSerialization.data(withJSONObject: response)
+        try writeMessage(data)
+    }
+
     // MARK: - Private
 
     private func writeMessage(_ data: Data) throws {
@@ -286,6 +299,10 @@ actor LSPTransport {
             }
             // Server-initiated request (has both id and method) — reply with handler result or null
             if let id {
+                if let deferred = deferredRequestHandlers[method] {
+                    deferred(data, id)
+                    return
+                }
                 var result: Any = NSNull()
                 if let requestHandler = requestHandlers[method] {
                     result = requestHandler(data) ?? NSNull()

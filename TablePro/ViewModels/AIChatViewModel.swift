@@ -882,6 +882,11 @@ final class AIChatViewModel {
                             toolUseInputs[id, default: ""] += inputJSONDelta
                         case .toolUseEnd:
                             break
+                        case .toolInvocationRequest(let block, let replyToken):
+                            await self.dispatchCopilotInvocation(
+                                block: block, replyToken: replyToken,
+                                assistantID: assistantIDForRound, mode: chatMode
+                            )
                         }
 
                         if ContinuousClock.now - lastFlushTime >= flushInterval {

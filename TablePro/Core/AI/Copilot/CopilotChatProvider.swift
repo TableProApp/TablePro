@@ -15,6 +15,11 @@ final class CopilotChatProvider: ChatTransport {
         initialState: [String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]()
     )
     private var isProgressHandlerRegistered = false
+    private var isInvokeClientToolHandlerRegistered = false
+    private var registeredToolNames: Set<String> = []
+    private let invokeContinuations = OSAllocatedUnfairLock(
+        initialState: [String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]()
+    )
 
     func streamChat(
         turns: [ChatTurn],
@@ -38,8 +43,11 @@ final class CopilotChatProvider: ChatTransport {
                     }
 
                     await self.ensureProgressHandler()
+                    await self.ensureInvokeClientToolHandler()
+                    await self.ensureToolsRegistered(tools: options.tools)
 
                     self.progressHandlers.withLock { $0[token] = continuation }
+                    self.invokeContinuations.withLock { $0["__active"] = continuation }
 
                     let userMessage = turns.last(where: { $0.role == .user })?.plainText ?? ""
                     let effectiveModel: String? = options.model.isEmpty ? nil : options.model
@@ -123,6 +131,100 @@ final class CopilotChatProvider: ChatTransport {
             guard let client = CopilotService.shared.client else { return }
             try? await client.conversationTurnDelete(conversationId: conversationId, turnId: turnId)
         }
+    }
+
+    @MainActor
+    private func ensureToolsRegistered(tools: [ChatToolSpec]) async {
+        let names = Set(tools.map(\.name))
+        guard names != registeredToolNames else { return }
+        guard let client = CopilotService.shared.client else { return }
+        do {
+            let info = tools.map { $0.asCopilotToolInformation() }
+            try await client.registerTools(CopilotRegisterToolsParams(tools: info))
+            registeredToolNames = names
+            Self.logger.info("Registered \(info.count) Copilot tools")
+        } catch {
+            Self.logger.warning(
+                "Copilot tools registration failed (likely older language server): \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    @MainActor
+    private func ensureInvokeClientToolHandler() async {
+        guard !isInvokeClientToolHandlerRegistered else { return }
+        isInvokeClientToolHandlerRegistered = true
+        guard let client = CopilotService.shared.client else { return }
+        let invokeContinuations = invokeContinuations
+        await client.onDeferredRequest(method: "conversation/invokeClientTool") { data, requestId in
+            Task { @MainActor in
+                await Self.handleInvokeClientTool(
+                    data: data,
+                    requestId: requestId,
+                    invokeContinuations: invokeContinuations
+                )
+            }
+        }
+    }
+
+    private struct InvokeClientToolEnvelope: Decodable {
+        let params: CopilotInvokeClientToolParams
+    }
+
+    @MainActor
+    private static func handleInvokeClientTool(
+        data: Data,
+        requestId: Int,
+        invokeContinuations: OSAllocatedUnfairLock<[String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]>
+    ) async {
+        let params: CopilotInvokeClientToolParams
+        do {
+            let envelope = try JSONDecoder().decode(InvokeClientToolEnvelope.self, from: data)
+            params = envelope.params
+        } catch {
+            Self.logger.error("Failed to decode invokeClientTool params: \(error.localizedDescription, privacy: .public)")
+            await Self.sendErrorReply(requestId: requestId, message: "Failed to decode tool invocation")
+            return
+        }
+
+        let toolBlock = ToolUseBlock(
+            id: "\(params.conversationId)-\(params.turnId)-\(params.name)",
+            name: params.name,
+            input: params.input ?? .object([:]),
+            approvalState: .pending
+        )
+
+        let replyToken = ToolReplyToken { result in
+            await Self.sendToolReply(requestId: requestId, result: result)
+        }
+
+        guard let continuation = invokeContinuations.withLock({ $0["__active"] }) else {
+            Self.logger.warning("No active stream continuation for invokeClientTool; cancelling")
+            await Self.sendErrorReply(requestId: requestId, message: "No active chat session")
+            return
+        }
+        continuation.yield(.toolInvocationRequest(block: toolBlock, replyToken: replyToken))
+    }
+
+    @MainActor
+    private static func sendToolReply(requestId: Int, result: ChatToolResult) async {
+        guard let client = CopilotService.shared.client else { return }
+        let status: CopilotToolInvocationStatus = result.isError ? .error : .success
+        let lspResult = CopilotLanguageModelToolResult(
+            status: status,
+            content: [CopilotLanguageModelToolResultContent(value: .string(result.content))]
+        )
+        do {
+            try await client.sendInvokeClientToolResponse(id: requestId, result: lspResult)
+        } catch {
+            Self.logger.error("Failed to reply to invokeClientTool: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    @MainActor
+    private static func sendErrorReply(requestId: Int, message: String) async {
+        let result = ChatToolResult(content: message, isError: true)
+        await sendToolReply(requestId: requestId, result: result)
     }
 
     @MainActor

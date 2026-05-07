@@ -321,3 +321,37 @@ enum AnyCodableValue: Sendable, Equatable {
         }
     }
 }
+
+// MARK: - Copilot tool calling
+
+struct CopilotLanguageModelToolInformation: Codable, Sendable {
+    let name: String
+    let description: String
+    let inputSchema: JSONValue?
+}
+
+struct CopilotRegisterToolsParams: Codable, Sendable {
+    let tools: [CopilotLanguageModelToolInformation]
+}
+
+struct CopilotInvokeClientToolParams: Codable, Sendable {
+    let name: String
+    let input: JSONValue?
+    let conversationId: String
+    let turnId: String
+}
+
+enum CopilotToolInvocationStatus: String, Codable, Sendable {
+    case success
+    case error
+    case cancelled
+}
+
+struct CopilotLanguageModelToolResultContent: Codable, Sendable {
+    let value: JSONValue
+}
+
+struct CopilotLanguageModelToolResult: Codable, Sendable {
+    let status: CopilotToolInvocationStatus
+    let content: [CopilotLanguageModelToolResultContent]
+}

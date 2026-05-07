@@ -50,4 +50,17 @@ enum ChatStreamEvent: Sendable {
     case toolUseDelta(id: String, inputJSONDelta: String)
     case toolUseEnd(id: String)
     case usage(AITokenUsage)
+    case toolInvocationRequest(block: ToolUseBlock, replyToken: ToolReplyToken)
+}
+
+final class ToolReplyToken: Sendable {
+    private let onReply: @Sendable (ChatToolResult) async -> Void
+
+    init(onReply: @escaping @Sendable (ChatToolResult) async -> Void) {
+        self.onReply = onReply
+    }
+
+    func reply(_ result: ChatToolResult) async {
+        await onReply(result)
+    }
 }

@@ -99,6 +99,83 @@ extension AIChatViewModel {
         ConnectionStorage.shared.updateConnection(current)
     }
 
+    func dispatchCopilotInvocation(
+        block: ToolUseBlock,
+        replyToken: ToolReplyToken,
+        assistantID: UUID,
+        mode: AIChatMode
+    ) async {
+        let context = ChatToolContext(
+            connectionId: connection?.id,
+            bridge: ChatToolBootstrap.bridge,
+            authPolicy: ChatToolBootstrap.authPolicy
+        )
+        await handleCopilotToolInvocation(
+            block: block, replyToken: replyToken,
+            assistantID: assistantID, context: context, mode: mode
+        )
+    }
+
+    func handleCopilotToolInvocation(
+        block: ToolUseBlock,
+        replyToken: ToolReplyToken,
+        assistantID: UUID,
+        context: ChatToolContext,
+        mode: AIChatMode
+    ) async {
+        let initialState = computeInitialApprovalState(for: block.name)
+        let pendingBlock = ToolUseBlock(
+            id: block.id, name: block.name, input: block.input, approvalState: initialState
+        )
+        appendPendingToolUseBlocks([pendingBlock], assistantID: assistantID)
+
+        let finalState: ToolApprovalState
+        if case .pending = initialState {
+            let decision = await ToolApprovalCenter.shared.awaitDecision(for: block.id)
+            switch decision {
+            case .run:
+                finalState = .approved
+            case .alwaysAllow:
+                persistAlwaysAllowed(toolName: block.name)
+                finalState = .approved
+            case .cancel:
+                finalState = .cancelled
+            }
+            updateApprovalState(blockID: block.id, newState: finalState, assistantID: assistantID)
+        } else {
+            finalState = initialState
+        }
+
+        let result: ChatToolResult
+        switch finalState {
+        case .approved:
+            guard ChatToolRegistry.isToolAllowed(name: block.name, in: mode) else {
+                result = ChatToolResult(
+                    content: "Tool '\(block.name)' is not available in \(mode.displayName) mode",
+                    isError: true
+                )
+                break
+            }
+            let tool = ChatToolRegistry.shared.tool(named: block.name, in: mode)
+            guard let tool else {
+                result = ChatToolResult(content: "Tool '\(block.name)' is not registered", isError: true)
+                break
+            }
+            do {
+                result = try await tool.execute(input: block.input, context: context)
+            } catch {
+                result = ChatToolResult(content: "Error: \(error.localizedDescription)", isError: true)
+            }
+        case .cancelled:
+            result = ChatToolResult(content: "User cancelled this tool call.", isError: true)
+        case .denied(let reason):
+            result = ChatToolResult(content: reason, isError: true)
+        case .pending:
+            result = ChatToolResult(content: "Tool approval was not resolved.", isError: true)
+        }
+        await replyToken.reply(result)
+    }
+
     nonisolated static func synthesizeResults(
         for blocks: [ToolUseBlock],
         executed: [ToolResultBlock]

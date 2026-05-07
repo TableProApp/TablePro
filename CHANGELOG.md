@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- AI Chat: tool calling support for the GitHub Copilot provider. Copilot can now invoke the same database tools (list_tables, describe_table, execute_query, etc.) the other providers do, gated by chat mode and the per-card approval flow. Older Copilot language servers without the `conversation/registerTools` API gracefully degrade to chat-only.
 - AI Chat: per-card tool approval. Write and destructive AI tool calls now show inline `Run`, `Always for this connection`, and `Cancel` buttons on the tool card instead of interrupting with a modal dialog. "Always for this connection" persists the tool name on the connection so future calls run without prompting. Cancel ends only that tool call; the assistant sees an error result and continues the conversation. Read-only tools auto-run; Read-only safe mode still blocks writes outright.
 - AI Chat: panel layout redesign. The right inspector has a Details / AI Chat segmented picker at the top, with conversation history and new-conversation actions trailing on the same row. The chat tab is composer-focused: composer is a pill-shaped input with an Apple Intelligence focus glow, and a single-row footer (mention, slash commands, mode picker, model picker, send). The mode picker (Ask / Edit / Agent) is saved to settings but does not yet change provider behavior.
 - AI Chat: inline model picker in the composer with per-turn model attribution. Switch between configured providers and any of their available models without leaving the chat. The model that produced each assistant turn is shown in the message footer.
@@ -30,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI Chat: tool calling. The AI can look up your database on demand instead of relying on context you attached up front.
   - Read-only tools: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`.
   - Tool calls and their results render as expandable pills in the assistant's reply.
-  - Supported providers: Anthropic, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), and custom OpenAI-compatible endpoints. GitHub Copilot is not yet supported.
+  - Supported providers: Anthropic, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), GitHub Copilot, and custom OpenAI-compatible endpoints.
 - AI Chat: attach a saved query as a chip via `@`. Type `@` and pick a saved SQL query to send its name and body to the AI alongside your message.
 - AI Chat: user-defined slash commands. Create your own commands in Settings -> AI -> Custom Slash Commands. Templates support `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}` placeholders that get substituted at send time.
 - AI Chat: tool calling can now run write queries (`execute_query`) and destructive DDL (`confirm_destructive_operation` after the AI passes the verbatim phrase). The connection's safe mode policy still gates execution, so the user remains the final approver.
