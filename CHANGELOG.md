@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - New tab via Cmd+T no longer flashes focus back to the previous tab in the same window group
 - Cmd+X with no selection cuts the current line, matching VS Code, Sublime, and Xcode (#1075)
+- Cmd+A on a query ending with a newline now highlights every line, not just the first (#1075)
 
 ### Added
 
