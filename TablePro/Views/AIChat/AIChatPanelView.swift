@@ -6,9 +6,6 @@
 //
 
 import SwiftUI
-import os
-
-private let mentionLogger = Logger(subsystem: "com.TablePro", category: "AIChat.Mention")
 
 /// AI chat panel displayed alongside the main editor content
 struct AIChatPanelView: View {
@@ -55,7 +52,6 @@ struct AIChatPanelView: View {
             viewModel.connection = connection
         }
         .task(id: tables) {
-            mentionLogger.debug("panel .task tables push: count=\(tables.count) connection=\(connection.id.uuidString, privacy: .public)")
             viewModel.tables = tables
             viewModel.fetchSchemaContext()
         }
@@ -540,16 +536,10 @@ struct AIChatPanelView: View {
 
     private func updateMentionState(text: String, caret: Int) {
         guard let match = MentionDetector.detect(in: text, caret: caret) else {
-            mentionLogger.debug("no mention match at caret=\(caret) text=\"\(text, privacy: .public)\"")
             mentionState.reset()
             return
         }
-        let panelTablesCount = tables.count
-        let vmTablesCount = viewModel.tables.count
-        mentionLogger.debug("mention match: query=\"\(match.query, privacy: .public)\" panelTables=\(panelTablesCount) vmTables=\(vmTablesCount)")
         let candidates = mentionCandidates(forQuery: match.query)
-        let labels = candidates.map(\.displayLabel).joined(separator: ",")
-        mentionLogger.debug("candidates produced: \(candidates.count) labels=\(labels, privacy: .public)")
         guard !candidates.isEmpty else {
             mentionState.reset()
             return
@@ -584,7 +574,8 @@ struct AIChatPanelView: View {
             }
         }
 
-        let matchingTables = viewModel.tables
+        let liveTables = SchemaService.shared.tables(for: connectionId)
+        let matchingTables = liveTables
             .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             .prefix(10)
