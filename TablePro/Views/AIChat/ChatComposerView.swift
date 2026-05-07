@@ -15,40 +15,43 @@ struct ChatComposerView: View {
     let onSubmit: () -> Void
     let onAttach: (ContextItem) -> Void
 
-    @FocusState private var isFocused: Bool
+    @State private var isFocused: Bool = false
     @State private var isCommittingMention = false
 
     var body: some View {
-        TextField(placeholder, text: $text, axis: .vertical)
-            .textFieldStyle(.plain)
-            .lineLimit(minLines...maxLines)
-            .focused($isFocused)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(composerBackground)
-            .onChange(of: text) { _, newText in
+        ChatComposerTextView(
+            text: $text,
+            isFocused: $isFocused,
+            placeholder: placeholder,
+            minLines: minLines,
+            maxLines: maxLines,
+            isCommittingMention: isCommittingMention,
+            onTextChange: { newText, caret in
                 guard !isCommittingMention else { return }
-                onTextChange(newText, (newText as NSString).length)
-            }
-            .onSubmit(handleSubmit)
-            .onKeyPress(.upArrow) { handleArrow(by: -1) }
-            .onKeyPress(.downArrow) { handleArrow(by: 1) }
-            .onKeyPress(.tab) { handleTab() }
-            .onKeyPress(.escape) { handleEscape() }
-            .popover(
-                isPresented: popoverBinding,
-                attachmentAnchor: .point(.topLeading),
-                arrowEdge: .bottom
-            ) {
-                MentionSuggestionListView(
-                    state: mentionState,
-                    onSelect: { commitMention(at: $0) }
-                )
-            }
+                onTextChange(newText, caret)
+            },
+            onSubmit: { onSubmit() },
+            onCommitMention: { commitMentionIfVisible() },
+            onArrow: { delta in moveMention(by: delta) },
+            onTab: { commitMentionIfVisible() },
+            onEscape: { dismissMention() }
+        )
+        .fixedSize(horizontal: false, vertical: true)
+        .background(composerBackground)
+        .popover(
+            isPresented: popoverBinding,
+            attachmentAnchor: .point(.topLeading),
+            arrowEdge: .bottom
+        ) {
+            MentionSuggestionListView(
+                state: mentionState,
+                onSelect: { commitMention(at: $0) }
+            )
+        }
     }
 
     private var composerBackground: some View {
-        let shape = Capsule(style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         return shape
             .fill(Color(nsColor: .textBackgroundColor))
             .overlay {
@@ -72,34 +75,22 @@ struct ChatComposerView: View {
         )
     }
 
-    private func handleSubmit() {
-        if mentionState.isVisible, !mentionState.candidates.isEmpty {
-            commitMention(at: mentionState.selectedIndex)
-        } else {
-            onSubmit()
-        }
-    }
-
-    private func handleArrow(by delta: Int) -> KeyPress.Result {
-        guard mentionState.isVisible, !mentionState.candidates.isEmpty else {
-            return .ignored
-        }
-        mentionState.moveSelection(by: delta)
-        return .handled
-    }
-
-    private func handleTab() -> KeyPress.Result {
-        guard mentionState.isVisible, !mentionState.candidates.isEmpty else {
-            return .ignored
-        }
+    private func commitMentionIfVisible() -> Bool {
+        guard mentionState.isVisible, !mentionState.candidates.isEmpty else { return false }
         commitMention(at: mentionState.selectedIndex)
-        return .handled
+        return true
     }
 
-    private func handleEscape() -> KeyPress.Result {
-        guard mentionState.isVisible else { return .ignored }
+    private func moveMention(by delta: Int) -> Bool {
+        guard mentionState.isVisible, !mentionState.candidates.isEmpty else { return false }
+        mentionState.moveSelection(by: delta)
+        return true
+    }
+
+    private func dismissMention() -> Bool {
+        guard mentionState.isVisible else { return false }
         mentionState.reset()
-        return .handled
+        return true
     }
 
     private func commitMention(at index: Int) {
@@ -123,46 +114,44 @@ struct ChatComposerView: View {
 
 private enum IntelligenceShimmer {
     static let palette: [Color] = [
-        Color(red: 0.737, green: 0.510, blue: 0.953),
-        Color(red: 0.961, green: 0.725, blue: 0.918),
-        Color(red: 0.553, green: 0.624, blue: 1.0),
         Color(red: 1.0, green: 0.404, blue: 0.471),
+        Color(red: 1.0, green: 0.553, blue: 0.443),
         Color(red: 1.0, green: 0.729, blue: 0.443),
-        Color(red: 0.776, green: 0.525, blue: 1.0)
+        Color(red: 0.961, green: 0.725, blue: 0.918),
+        Color(red: 0.776, green: 0.525, blue: 1.0),
+        Color(red: 0.737, green: 0.510, blue: 0.953),
+        Color(red: 0.553, green: 0.624, blue: 1.0)
     ]
 
     struct Layer: Identifiable {
         let id: Int
         let lineWidth: CGFloat
         let blur: CGFloat
-        let duration: TimeInterval
         let opacity: Double
     }
 
     static let layers: [Layer] = [
-        Layer(id: 0, lineWidth: 1.5, blur: 0, duration: 0.5, opacity: 1.0),
-        Layer(id: 1, lineWidth: 5, blur: 4, duration: 0.6, opacity: 0.75),
-        Layer(id: 2, lineWidth: 9, blur: 10, duration: 0.8, opacity: 0.5),
-        Layer(id: 3, lineWidth: 14, blur: 16, duration: 1.0, opacity: 0.35)
+        Layer(id: 0, lineWidth: 1.5, blur: 2, opacity: 1.0),
+        Layer(id: 1, lineWidth: 5, blur: 4, opacity: 0.75),
+        Layer(id: 2, lineWidth: 9, blur: 10, opacity: 0.5),
+        Layer(id: 3, lineWidth: 14, blur: 16, opacity: 0.35)
     ]
 
-    static let updateInterval: Duration = .milliseconds(400)
-
     static func generateStops() -> [Gradient.Stop] {
-        let shuffled = palette.shuffled()
-        let lastIndex = max(1, shuffled.count - 1)
-        return shuffled.enumerated().map { index, color in
-            let base = Double(index) / Double(lastIndex)
-            let jitter = Double.random(in: -0.05...0.05)
-            return Gradient.Stop(color: color, location: min(1, max(0, base + jitter)))
+        let count = palette.count
+        var stops = palette.enumerated().map { index, color in
+            Gradient.Stop(color: color, location: Double(index) / Double(count))
         }
+        if let first = palette.first {
+            stops.append(Gradient.Stop(color: first, location: 1.0))
+        }
+        return stops
     }
 }
 
 private struct IntelligenceFocusBorder<S: Shape>: View {
     let shape: S
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var stops: [Gradient.Stop] = IntelligenceShimmer.generateStops()
 
     var body: some View {
@@ -175,17 +164,6 @@ private struct IntelligenceFocusBorder<S: Shape>: View {
                     )
                     .blur(radius: layer.blur)
                     .opacity(layer.opacity)
-                    .animation(
-                        reduceMotion ? nil : .easeInOut(duration: layer.duration),
-                        value: stops
-                    )
-            }
-        }
-        .task(id: reduceMotion) {
-            guard !reduceMotion else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: IntelligenceShimmer.updateInterval)
-                stops = IntelligenceShimmer.generateStops()
             }
         }
     }
