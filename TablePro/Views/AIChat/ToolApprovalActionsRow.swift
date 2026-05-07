@@ -20,18 +20,14 @@ struct ToolApprovalActionsRow: View {
             .controlSize(.small)
             .keyboardShortcut(.defaultAction)
 
-            Menu {
-                Button {
-                    ToolApprovalCenter.shared.resolve(toolUseId: toolUseId, decision: .alwaysAllow)
-                } label: {
-                    Text(String(format: String(localized: "Always allow %@ for this connection"), toolName))
-                }
+            Button {
+                ToolApprovalCenter.shared.resolve(toolUseId: toolUseId, decision: .alwaysAllow)
             } label: {
                 Text(String(localized: "Always for this connection"))
             }
-            .menuStyle(.borderlessButton)
+            .buttonStyle(.bordered)
             .controlSize(.small)
-            .fixedSize()
+            .help(String(format: String(localized: "Always allow %@ for this connection"), toolName))
 
             Button {
                 ToolApprovalCenter.shared.resolve(toolUseId: toolUseId, decision: .cancel)
