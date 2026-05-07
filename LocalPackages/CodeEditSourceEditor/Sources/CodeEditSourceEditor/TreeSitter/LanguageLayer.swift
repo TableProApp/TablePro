@@ -112,8 +112,45 @@ public class LanguageLayer: Hashable {
 
         let ranges = changedByteRanges(self.tree, newTree).map { $0.range }
 
+        // Tree-sitter's `changedByteRanges` only reports ranges whose syntax-tree
+        // structure changed *between* the two trees. When an edit creates (or
+        // resolves) ERROR / MISSING nodes — for example, deleting a `;` in SQL —
+        // surrounding tokens often re-classify under error recovery without
+        // their structural identity changing, so their old highlight stays
+        // stale. Folding error ranges from BOTH trees into the invalidation
+        // set forces those regions to re-query highlights.
+        let errorRanges = Self.errorNodeRanges(in: self.tree)
+            + Self.errorNodeRanges(in: newTree)
+
         self.tree = newTree
 
+        return ranges + errorRanges
+    }
+
+    /// Walks a tree-sitter tree collecting byte ranges of every `ERROR` and
+    /// `MISSING` node. Pruned: subtrees with no errors are skipped, and
+    /// descendants of an ERROR node are not enumerated since the whole
+    /// subtree is already covered by the parent range.
+    static func errorNodeRanges(in tree: MutableTree?) -> [NSRange] {
+        guard let rootNode = tree?.rootNode, rootNode.hasError else {
+            return []
+        }
+        var ranges: [NSRange] = []
+        var stack: [Node] = [rootNode]
+        while let node = stack.popLast() {
+            if node.nodeType == "ERROR" || node.isMissing {
+                ranges.append(node.range)
+                continue
+            }
+            if !node.hasError {
+                continue
+            }
+            for childIndex in 0..<node.childCount {
+                if let child = node.child(at: childIndex) {
+                    stack.append(child)
+                }
+            }
+        }
         return ranges
     }
 
