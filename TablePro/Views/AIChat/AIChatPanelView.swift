@@ -167,8 +167,7 @@ struct AIChatPanelView: View {
             description: String(localized: "Configure an AI provider in Settings to start chatting."),
             actionTitle: String(localized: "Go to Settings…"),
             action: {
-                UserDefaults.standard.set(SettingsTab.ai.rawValue, forKey: "selectedSettingsTab")
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                WindowOpener.shared.openSettings(tab: .ai)
             }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
