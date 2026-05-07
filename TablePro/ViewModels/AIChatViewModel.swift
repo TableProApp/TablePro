@@ -39,6 +39,7 @@ final class AIChatViewModel {
     var selectedProviderId: UUID?
     var selectedModel: String?
     var availableModels: [UUID: [String]] = [:]
+    var attachedContext: [ContextItem] = []
 
     // MARK: - Context Properties
 
@@ -235,13 +236,72 @@ final class AIChatViewModel {
             return
         }
 
-        let userMessage = ChatTurn(role: .user, blocks: [.text(text)])
-        messages.append(userMessage)
+        let attachments = attachedContext
+        let prompt = composePrompt(text: text, attachments: attachments)
+        var blocks: [ChatContentBlock] = [.text(prompt)]
+        blocks.append(contentsOf: attachments.map { .attachment($0) })
+
+        messages.append(ChatTurn(role: .user, blocks: blocks))
         trimMessagesIfNeeded()
         inputText = ""
+        attachedContext = []
         errorMessage = nil
 
         startStreaming()
+    }
+
+    func attach(_ item: ContextItem) {
+        guard !attachedContext.contains(where: { $0.stableKey == item.stableKey }) else { return }
+        attachedContext.append(item)
+    }
+
+    func detach(_ item: ContextItem) {
+        attachedContext.removeAll { $0.stableKey == item.stableKey }
+    }
+
+    private func composePrompt(text: String, attachments: [ContextItem]) -> String {
+        guard !attachments.isEmpty else { return text }
+        let resolved = attachments
+            .compactMap { resolveAttachment($0) }
+            .joined(separator: "\n\n")
+        if resolved.isEmpty { return text }
+        return text + "\n\n---\n\n" + resolved
+    }
+
+    private func resolveAttachment(_ item: ContextItem) -> String? {
+        switch item {
+        case .schema:
+            return resolveSchemaAttachment()
+        case .table(_, let name):
+            return resolveTableAttachment(name: name)
+        case .currentQuery(let text):
+            let snapshot = text.isEmpty ? (currentQuery ?? "") : text
+            guard !snapshot.isEmpty else { return nil }
+            return "## Current Query\n```\n\(snapshot)\n```"
+        case .queryResult(let summary):
+            let snapshot = summary.isEmpty ? (queryResults ?? "") : summary
+            guard !snapshot.isEmpty else { return nil }
+            return "## Query Results\n\(snapshot)"
+        case .savedQuery, .file:
+            return nil
+        }
+    }
+
+    private func resolveSchemaAttachment() -> String? {
+        guard !tables.isEmpty else { return nil }
+        let lines = tables.prefix(50).map { table -> String in
+            let columns = columnsByTable[table.name] ?? []
+            let columnList = columns.map { "  - \($0.name): \($0.type)" }.joined(separator: "\n")
+            return "### \(table.name)\n\(columnList.isEmpty ? "  (columns not loaded)" : columnList)"
+        }
+        return "## Schema\n" + lines.joined(separator: "\n")
+    }
+
+    private func resolveTableAttachment(name: String) -> String? {
+        let columns = columnsByTable[name] ?? []
+        guard !columns.isEmpty else { return "## Table \(name)\n(columns not loaded)" }
+        let columnList = columns.map { "- \($0.name): \($0.type)" }.joined(separator: "\n")
+        return "## Table \(name)\n\(columnList)"
     }
 
     /// Send a pre-filled prompt

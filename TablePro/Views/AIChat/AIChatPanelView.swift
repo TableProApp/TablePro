@@ -296,6 +296,11 @@ struct AIChatPanelView: View {
         VStack(spacing: 0) {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
+                AIChatContextChipStrip(
+                    items: viewModel.attachedContext,
+                    onRemove: { viewModel.detach($0) }
+                )
+
                 TextField(
                     String(localized: "Ask about your database..."),
                     text: $viewModel.inputText,
@@ -313,6 +318,7 @@ struct AIChatPanelView: View {
                 HStack(alignment: .center, spacing: 8) {
                     modelPicker
                     slashCommandMenu
+                    mentionMenu
                     Spacer()
                     if viewModel.isStreaming {
                         Button {
@@ -382,6 +388,50 @@ struct AIChatPanelView: View {
             .fixedSize()
             .help(String(localized: "Choose AI provider and model"))
         }
+    }
+
+    private var mentionMenu: some View {
+        Menu {
+            if let connectionId = viewModel.connection?.id {
+                Button {
+                    viewModel.attach(.schema(connectionId: connectionId))
+                } label: {
+                    Label(String(localized: "Schema"), systemImage: "tablecells")
+                }
+                if !viewModel.tables.isEmpty {
+                    Menu(String(localized: "Tables")) {
+                        ForEach(viewModel.tables, id: \.name) { table in
+                            Button {
+                                viewModel.attach(.table(connectionId: connectionId, name: table.name))
+                            } label: {
+                                Text(table.name)
+                            }
+                        }
+                    }
+                }
+            }
+            if let query = currentQuery, !query.isEmpty {
+                Button {
+                    viewModel.attach(.currentQuery(text: query))
+                } label: {
+                    Label(String(localized: "Current Query"), systemImage: "doc.text")
+                }
+            }
+            if let results = queryResults, !results.isEmpty {
+                Button {
+                    viewModel.attach(.queryResult(summary: results))
+                } label: {
+                    Label(String(localized: "Query Results"), systemImage: "list.bullet.rectangle")
+                }
+            }
+        } label: {
+            Image(systemName: "at")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(String(localized: "Attach context"))
     }
 
     private var slashCommandMenu: some View {

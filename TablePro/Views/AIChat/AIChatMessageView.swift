@@ -16,6 +16,13 @@ struct AIChatMessageView: View {
     var onRegenerate: (() -> Void)?
     var onEdit: (() -> Void)?
 
+    private var attachedContextItems: [ContextItem] {
+        message.blocks.compactMap { block in
+            if case .attachment(let item) = block { return item }
+            return nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             if message.role == .user {
@@ -30,6 +37,11 @@ struct AIChatMessageView: View {
                     }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+
+                    if !attachedContextItems.isEmpty {
+                        AIChatContextChipStrip(items: attachedContextItems)
+                            .padding(.bottom, 2)
+                    }
 
                     Markdown(message.plainText)
                         .markdownTheme(.tableProChat)
