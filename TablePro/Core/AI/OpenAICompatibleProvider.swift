@@ -62,6 +62,8 @@ final class OpenAICompatibleProvider: ChatTransport {
 
                     var inputTokens = 0
                     var outputTokens = 0
+                    var toolCallIndexToId: [Int: String] = [:]
+                    var toolCallOrder: [Int] = []
 
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
@@ -81,14 +83,44 @@ final class OpenAICompatibleProvider: ChatTransport {
                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                         else { continue }
 
-                        if let choices = json["choices"] as? [[String: Any]],
-                           let delta = choices.first?["delta"] as? [String: Any],
-                           let content = delta["content"] as? String {
+                        let choices = json["choices"] as? [[String: Any]]
+                        let firstChoice = choices?.first
+                        let delta = firstChoice?["delta"] as? [String: Any]
+
+                        if let delta, let content = delta["content"] as? String, !content.isEmpty {
                             continuation.yield(.textDelta(content))
                         } else if let message = json["message"] as? [String: Any],
                                   let content = message["content"] as? String,
                                   !content.isEmpty {
                             continuation.yield(.textDelta(content))
+                        }
+
+                        if let delta, let toolCalls = delta["tool_calls"] as? [[String: Any]] {
+                            handleToolCallDeltas(
+                                toolCalls,
+                                indexToId: &toolCallIndexToId,
+                                order: &toolCallOrder,
+                                continuation: continuation
+                            )
+                        } else if let message = json["message"] as? [String: Any],
+                                  let toolCalls = message["tool_calls"] as? [[String: Any]] {
+                            handleOllamaToolCalls(
+                                toolCalls,
+                                indexToId: &toolCallIndexToId,
+                                order: &toolCallOrder,
+                                continuation: continuation
+                            )
+                        }
+
+                        if let finishReason = firstChoice?["finish_reason"] as? String,
+                           finishReason == "tool_calls" {
+                            for index in toolCallOrder {
+                                if let id = toolCallIndexToId[index] {
+                                    continuation.yield(.toolUseEnd(id: id))
+                                }
+                            }
+                            toolCallIndexToId.removeAll()
+                            toolCallOrder.removeAll()
                         }
 
                         if let usage = json["usage"] as? [String: Any],
@@ -104,6 +136,13 @@ final class OpenAICompatibleProvider: ChatTransport {
                         }
 
                         if json["done"] as? Bool == true {
+                            for index in toolCallOrder {
+                                if let id = toolCallIndexToId[index] {
+                                    continuation.yield(.toolUseEnd(id: id))
+                                }
+                            }
+                            toolCallIndexToId.removeAll()
+                            toolCallOrder.removeAll()
                             break
                         }
                     }
@@ -123,6 +162,70 @@ final class OpenAICompatibleProvider: ChatTransport {
 
             continuation.onTermination = { _ in
                 task.cancel()
+            }
+        }
+    }
+
+    private func handleToolCallDeltas(
+        _ toolCalls: [[String: Any]],
+        indexToId: inout [Int: String],
+        order: inout [Int],
+        continuation: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation
+    ) {
+        for toolCall in toolCalls {
+            guard let index = toolCall["index"] as? Int else { continue }
+            let function = toolCall["function"] as? [String: Any]
+
+            if indexToId[index] == nil {
+                let id = (toolCall["id"] as? String)
+                    ?? "call_\(index)_\(UUID().uuidString.prefix(8))"
+                let name = (function?["name"] as? String) ?? ""
+                indexToId[index] = id
+                order.append(index)
+                continuation.yield(.toolUseStart(id: id, name: name))
+            }
+
+            if let id = indexToId[index],
+               let arguments = function?["arguments"] as? String,
+               !arguments.isEmpty {
+                continuation.yield(.toolUseDelta(id: id, inputJSONDelta: arguments))
+            }
+        }
+    }
+
+    private func handleOllamaToolCalls(
+        _ toolCalls: [[String: Any]],
+        indexToId: inout [Int: String],
+        order: inout [Int],
+        continuation: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation
+    ) {
+        for (offset, toolCall) in toolCalls.enumerated() {
+            guard let function = toolCall["function"] as? [String: Any],
+                  let name = function["name"] as? String else { continue }
+
+            let index = (toolCall["index"] as? Int) ?? offset
+            let id = (toolCall["id"] as? String)
+                ?? "call_\(index)_\(UUID().uuidString.prefix(8))"
+
+            if indexToId[index] == nil {
+                indexToId[index] = id
+                order.append(index)
+                continuation.yield(.toolUseStart(id: id, name: name))
+            }
+
+            let argumentsString: String
+            if let stringArgs = function["arguments"] as? String {
+                argumentsString = stringArgs
+            } else if let objectArgs = function["arguments"],
+                      let data = try? JSONSerialization.data(withJSONObject: objectArgs),
+                      let encoded = String(data: data, encoding: .utf8) {
+                argumentsString = encoded
+            } else {
+                argumentsString = ""
+            }
+
+            if !argumentsString.isEmpty, let resolvedId = indexToId[index] {
+                continuation.yield(.toolUseDelta(id: resolvedId, inputJSONDelta: argumentsString))
             }
         }
     }
@@ -227,17 +330,12 @@ final class OpenAICompatibleProvider: ChatTransport {
             )
         }
 
-        var apiMessages: [[String: String]] = []
+        var apiMessages: [[String: Any]] = []
         if let systemPrompt = options.systemPrompt {
             apiMessages.append(["role": "system", "content": systemPrompt])
         }
         for turn in turns where turn.role != .system {
-            let text = turn.plainText
-            guard !text.isEmpty else { continue }
-            apiMessages.append([
-                "role": turn.role.rawValue,
-                "content": text
-            ])
+            apiMessages.append(contentsOf: encodeTurn(turn))
         }
 
         var body: [String: Any] = [
@@ -255,8 +353,93 @@ final class OpenAICompatibleProvider: ChatTransport {
             body["stream_options"] = ["include_usage": true]
         }
 
+        if !options.tools.isEmpty {
+            body["tools"] = try options.tools.map { try encodeTool($0) }
+        }
+
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
+    }
+
+    private func encodeTurn(_ turn: ChatTurn) -> [[String: Any]] {
+        let toolUseBlocks = turn.blocks.compactMap { block -> ToolUseBlock? in
+            if case .toolUse(let useBlock) = block { return useBlock }
+            return nil
+        }
+        let toolResultBlocks = turn.blocks.compactMap { block -> ToolResultBlock? in
+            if case .toolResult(let resultBlock) = block { return resultBlock }
+            return nil
+        }
+        let textContent = turn.plainText
+
+        if turn.role == .assistant, !toolUseBlocks.isEmpty {
+            var message: [String: Any] = ["role": "assistant"]
+            if textContent.isEmpty {
+                message["content"] = NSNull()
+            } else {
+                message["content"] = textContent
+            }
+            message["tool_calls"] = toolUseBlocks.map { block -> [String: Any] in
+                [
+                    "id": block.id,
+                    "type": "function",
+                    "function": [
+                        "name": block.name,
+                        "arguments": jsonString(from: block.input)
+                    ]
+                ]
+            }
+            return [message]
+        }
+
+        if turn.role == .user, !toolResultBlocks.isEmpty {
+            var messages: [[String: Any]] = toolResultBlocks.map { block in
+                [
+                    "role": "tool",
+                    "tool_call_id": block.toolUseId,
+                    "content": block.content
+                ]
+            }
+            if !textContent.isEmpty {
+                messages.append([
+                    "role": "user",
+                    "content": textContent
+                ])
+            }
+            return messages
+        }
+
+        guard !textContent.isEmpty else { return [] }
+        return [[
+            "role": turn.role.rawValue,
+            "content": textContent
+        ]]
+    }
+
+    private func encodeTool(_ tool: ChatToolSpec) throws -> [String: Any] {
+        let parameters = try jsonObject(from: tool.inputSchema)
+        return [
+            "type": "function",
+            "function": [
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": parameters
+            ]
+        ]
+    }
+
+    private func jsonString(from value: JSONValue) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let string = String(data: data, encoding: .utf8)
+        else {
+            return "{}"
+        }
+        return string
+    }
+
+    private func jsonObject(from value: JSONValue) throws -> Any {
+        let data = try JSONEncoder().encode(value)
+        return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
     }
 
     private func fetchOpenAIModels() async throws -> [String] {
