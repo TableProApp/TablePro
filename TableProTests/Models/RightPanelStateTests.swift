@@ -19,16 +19,17 @@ struct RightPanelStateTests {
         state.teardown()
     }
 
-    @Test("teardown nils schemaProvider on aiViewModel")
+    @Test("teardown clears aiViewModel session data")
     @MainActor
-    func teardown_nilsSchemaProvider() {
+    func teardown_clearsAIViewModelSession() {
         let state = RightPanelState()
-        state.aiViewModel.schemaProvider = SQLSchemaProvider()
-        #expect(state.aiViewModel.schemaProvider != nil)
+        state.aiViewModel.connection = TestFixtures.makeConnection(type: .mysql)
+        #expect(state.aiViewModel.connection != nil)
 
         state.teardown()
 
-        #expect(state.aiViewModel.schemaProvider == nil)
+        #expect(state.aiViewModel.connection == nil)
+        #expect(state.aiViewModel.messages.isEmpty)
     }
 
     @Test("teardown nils onSave closure")

@@ -104,7 +104,7 @@ struct AIChatViewModelMentionsTests {
     }
 
     @Test("resolveTurnForWire expands attachments into the text block")
-    func resolveTurnForWireExpands() {
+    func resolveTurnForWireExpands() async {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .mysql)
         let raw = ChatTurn(role: .user, blocks: [
@@ -112,7 +112,7 @@ struct AIChatViewModelMentionsTests {
             .attachment(.currentQuery(text: "SELECT * FROM Customer"))
         ])
 
-        let wire = vm.resolveTurnForWire(raw)
+        let wire = await vm.resolveTurnForWire(raw)
 
         #expect(wire.id == raw.id)
         #expect(wire.plainText.contains("Explain"))

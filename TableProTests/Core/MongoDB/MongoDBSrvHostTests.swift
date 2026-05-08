@@ -3,6 +3,8 @@
 //  TableProTests
 //
 
+#if canImport(CLibMongoc)
+
 import Foundation
 @testable import TablePro
 import Testing
@@ -38,3 +40,5 @@ struct MongoDBSrvHostTests {
         #expect(MongoDBConnection.stripPort(fromSrvHost: "") == "")
     }
 }
+
+#endif

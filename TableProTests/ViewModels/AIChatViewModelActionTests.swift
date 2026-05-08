@@ -13,7 +13,6 @@ import Testing
 @Suite("AIChatViewModel Action Dispatch")
 @MainActor
 struct AIChatViewModelActionTests {
-
     // MARK: - handleFixError
 
     @Test("handleFixError with default connection uses SQL query language")
@@ -26,8 +25,8 @@ struct AIChatViewModelActionTests {
         #expect(vm.messages.count >= 1)
         let userMessage = vm.messages.first { $0.role == .user }
         #expect(userMessage != nil)
-        #expect(userMessage?.content.contains("SQL query") == true)
-        #expect(userMessage?.content.contains("```sql") == true)
+        #expect(userMessage?.plainText.contains("SQL query") == true)
+        #expect(userMessage?.plainText.contains("```sql") == true)
     }
 
     @Test("handleFixError with MongoDB connection uses JavaScript language")
@@ -39,8 +38,8 @@ struct AIChatViewModelActionTests {
 
         let userMessage = vm.messages.first { $0.role == .user }
         #expect(userMessage != nil)
-        #expect(userMessage?.content.contains("MongoDB query") == true)
-        #expect(userMessage?.content.contains("```javascript") == true)
+        #expect(userMessage?.plainText.contains("MongoDB query") == true)
+        #expect(userMessage?.plainText.contains("```javascript") == true)
     }
 
     @Test("handleFixError with Redis connection uses bash language")
@@ -52,8 +51,8 @@ struct AIChatViewModelActionTests {
 
         let userMessage = vm.messages.first { $0.role == .user }
         #expect(userMessage != nil)
-        #expect(userMessage?.content.contains("Redis command") == true)
-        #expect(userMessage?.content.contains("```bash") == true)
+        #expect(userMessage?.plainText.contains("Redis command") == true)
+        #expect(userMessage?.plainText.contains("```bash") == true)
     }
 
     @Test("handleFixError includes query and error text verbatim")
@@ -67,8 +66,8 @@ struct AIChatViewModelActionTests {
         vm.handleFixError(query: query, error: error)
 
         let userMessage = vm.messages.first { $0.role == .user }
-        #expect(userMessage?.content.contains(query) == true)
-        #expect(userMessage?.content.contains(error) == true)
+        #expect(userMessage?.plainText.contains(query) == true)
+        #expect(userMessage?.plainText.contains(error) == true)
     }
 
     // MARK: - handleExplainSelection
@@ -84,9 +83,9 @@ struct AIChatViewModelActionTests {
 
         let userMessage = vm.messages.first { $0.role == .user }
         #expect(userMessage != nil)
-        #expect(userMessage?.content.contains("Explain this SQL query") == true)
-        #expect(userMessage?.content.contains(selectedText) == true)
-        #expect(userMessage?.content.contains("```sql") == true)
+        #expect(userMessage?.plainText.contains("Explain this SQL query") == true)
+        #expect(userMessage?.plainText.contains(selectedText) == true)
+        #expect(userMessage?.plainText.contains("```sql") == true)
     }
 
     @Test("handleExplainSelection with empty text is a no-op")
@@ -115,9 +114,9 @@ struct AIChatViewModelActionTests {
 
         let userMessage = vm.messages.first { $0.role == .user }
         #expect(userMessage != nil)
-        #expect(userMessage?.content.contains("Optimize this SQL query") == true)
-        #expect(userMessage?.content.contains(selectedText) == true)
-        #expect(userMessage?.content.contains("```sql") == true)
+        #expect(userMessage?.plainText.contains("Optimize this SQL query") == true)
+        #expect(userMessage?.plainText.contains(selectedText) == true)
+        #expect(userMessage?.plainText.contains("```sql") == true)
     }
 
     @Test("handleOptimizeSelection with empty text is a no-op")
@@ -152,6 +151,6 @@ struct AIChatViewModelActionTests {
         // There may also be assistant/error messages from startStreaming.
         let userMessages = vm.messages.filter { $0.role == .user }
         #expect(userMessages.count == 1)
-        #expect(userMessages.first?.content.contains("SELECT 2") == true)
+        #expect(userMessages.first?.plainText.contains("SELECT 2") == true)
     }
 }
