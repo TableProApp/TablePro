@@ -75,7 +75,7 @@ final class RowOperationsManager {
     ) -> AddNewRowResult? {
         guard sourceRowIndex >= 0, sourceRowIndex < tableRows.count else { return nil }
 
-        var newValues = tableRows.rows[sourceRowIndex].values
+        var newValues = Array(tableRows.rows[sourceRowIndex].values)
 
         for pkColumn in changeManager.primaryKeyColumns {
             if let pkIndex = columns.firstIndex(of: pkColumn), pkIndex < newValues.count {
@@ -110,7 +110,7 @@ final class RowOperationsManager {
                 insertedRowsToDelete.append(rowIndex)
             } else if !changeManager.isRowDeleted(rowIndex) {
                 if rowIndex < tableRows.count {
-                    existingRowsToDelete.append((rowIndex: rowIndex, originalRow: tableRows.rows[rowIndex].values))
+                    existingRowsToDelete.append((rowIndex: rowIndex, originalRow: Array(tableRows.rows[rowIndex].values)))
                 }
             }
         }

@@ -14,7 +14,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var isEditable: Bool
     var sortedIDs: [RowID]?
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
-    private var displayCache: [RowID: [String?]] = [:]
+    private let displayCache: NSCache<RowIDKey, RowDisplayBox> = {
+        let cache = NSCache<RowIDKey, RowDisplayBox>()
+        cache.countLimit = 5_000
+        cache.totalCostLimit = 32 * 1024 * 1024
+        cache.name = "TablePro.DataGrid.displayCache"
+        return cache
+    }()
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
     var dropdownColumns: Set<Int>?
@@ -196,7 +202,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private func releaseData() {
         overlayEditor?.dismiss(commit: false)
         rowVisualStateCache.removeAll()
-        displayCache.removeAll()
+        displayCache.removeAllObjects()
         columnDisplayFormats = []
         cachedRowCount = 0
         cachedColumnCount = 0
@@ -264,42 +270,54 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func displayValue(forID id: RowID, column: Int, rawValue: String?, columnType: ColumnType?) -> String? {
-        if let cachedRow = displayCache[id], column >= 0, column < cachedRow.count, let cached = cachedRow[column] {
+        let key = RowIDKey(id)
+        if let box = displayCache.object(forKey: key),
+           column >= 0, column < box.values.count,
+           let cached = box.values[column] {
             return cached
         }
         let format = column >= 0 && column < columnDisplayFormats.count ? columnDisplayFormats[column] : nil
         let formatted = CellDisplayFormatter.format(rawValue, columnType: columnType, displayFormat: format) ?? rawValue
 
-        var rowCache = displayCache[id] ?? []
-        let neededCount = max(column + 1, columnDisplayFormats.count)
-        if rowCache.count < neededCount {
-            rowCache.append(contentsOf: Array(repeating: nil, count: neededCount - rowCache.count))
+        let neededCount = max(column + 1, columnDisplayFormats.count, cachedColumnCount)
+        let box: RowDisplayBox
+        if let existing = displayCache.object(forKey: key) {
+            box = existing
+            if box.values.count < neededCount {
+                box.values.reserveCapacity(neededCount)
+                for _ in box.values.count..<neededCount { box.values.append(nil) }
+            }
+        } else {
+            var values = ContiguousArray<String?>()
+            values.reserveCapacity(neededCount)
+            for _ in 0..<neededCount { values.append(nil) }
+            box = RowDisplayBox(values)
         }
-        if column >= 0, column < rowCache.count {
-            rowCache[column] = formatted
+        if column >= 0, column < box.values.count {
+            box.values[column] = formatted
         }
-        displayCache[id] = rowCache
+        displayCache.setObject(box, forKey: key, cost: displayCacheCost(box.values))
         return formatted
     }
 
     func invalidateDisplayCache() {
-        displayCache.removeAll()
+        displayCache.removeAllObjects()
     }
 
     func invalidateAllDisplayCaches() {
-        displayCache.removeAll()
+        displayCache.removeAllObjects()
         rebuildVisualStateCache()
     }
 
     func updateDisplayFormats(_ formats: [ValueDisplayFormat?]) {
         columnDisplayFormats = formats
-        displayCache.removeAll()
+        displayCache.removeAllObjects()
     }
 
     func syncDisplayFormats(_ formats: [ValueDisplayFormat?]) {
         guard formats != columnDisplayFormats else { return }
         columnDisplayFormats = formats
-        displayCache.removeAll()
+        displayCache.removeAllObjects()
     }
 
     func preWarmDisplayCache(upTo rowCount: Int) {
@@ -307,41 +325,42 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let displayCount = sortedIDs?.count ?? tableRows.count
         let count = min(rowCount, displayCount)
         guard count > 0 else { return }
+        let columnCount = tableRows.columns.count
         for displayIndex in 0..<count {
             guard let row = displayRow(at: displayIndex) else { continue }
-            let id = row.id
-            guard displayCache[id] == nil else { continue }
-            let columnCount = tableRows.columns.count
-            var rowCache = [String?](repeating: nil, count: columnCount)
+            let key = RowIDKey(row.id)
+            guard displayCache.object(forKey: key) == nil else { continue }
+            var values = ContiguousArray<String?>()
+            values.reserveCapacity(columnCount)
+            for _ in 0..<columnCount { values.append(nil) }
             for col in 0..<min(row.values.count, columnCount) {
                 let columnType = col < tableRows.columnTypes.count ? tableRows.columnTypes[col] : nil
                 let format = col < columnDisplayFormats.count ? columnDisplayFormats[col] : nil
-                rowCache[col] = CellDisplayFormatter.format(
+                values[col] = CellDisplayFormatter.format(
                     row.values[col],
                     columnType: columnType,
                     displayFormat: format
                 ) ?? row.values[col]
             }
-            displayCache[id] = rowCache
+            let box = RowDisplayBox(values)
+            displayCache.setObject(box, forKey: key, cost: displayCacheCost(values))
         }
     }
 
-    private func pruneDisplayCacheToAliveIDs() {
-        guard !displayCache.isEmpty else { return }
-        let tableRows = tableRowsProvider()
-        var aliveIDs = Set<RowID>()
-        aliveIDs.reserveCapacity(tableRows.count)
-        for row in tableRows.rows {
-            aliveIDs.insert(row.id)
+    private func displayCacheCost(_ values: ContiguousArray<String?>) -> Int {
+        var total = 0
+        for value in values {
+            if let s = value { total &+= s.utf8.count }
         }
-        displayCache = displayCache.filter { aliveIDs.contains($0.key) }
+        return total
     }
 
     private func invalidateDisplayCache(forDisplayRow displayIndex: Int, column: Int) {
         guard let row = displayRow(at: displayIndex) else { return }
-        guard var rowCache = displayCache[row.id], column >= 0, column < rowCache.count else { return }
-        rowCache[column] = nil
-        displayCache[row.id] = rowCache
+        let key = RowIDKey(row.id)
+        guard let box = displayCache.object(forKey: key), column >= 0, column < box.values.count else { return }
+        box.values[column] = nil
+        displayCache.setObject(box, forKey: key, cost: displayCacheCost(box.values))
     }
 
     func applyDelta(_ delta: Delta) {
@@ -384,7 +403,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         case .rowsRemoved(let indices):
             guard !indices.isEmpty else { return }
             removeMissingIDsFromSortedIDs()
-            pruneDisplayCacheToAliveIDs()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
             sortedIDs = nil

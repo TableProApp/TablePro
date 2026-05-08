@@ -21,7 +21,7 @@ extension TableViewCoordinator {
 
         let storageRow = tableRowsIndex(forDisplayRow: row)
         let columnName = tableRows.columns[columnIndex]
-        let originalRow = displayRowValues.values
+        let originalRow = Array(displayRowValues.values)
         changeManager.recordCellChange(
             rowIndex: row,
             columnIndex: columnIndex,

@@ -27,7 +27,7 @@ internal struct ResultsJsonView: View {
     }
 
     private var allRows: [[String?]] {
-        tableRows.rows.map(\.values)
+        tableRows.rows.map { Array($0.values) }
     }
 
     private var displayRows: [[String?]] {

@@ -45,7 +45,7 @@ extension TableViewCoordinator {
 
         for index in sortedIndices {
             guard let values = displayRow(at: index)?.values else { continue }
-            let formatted = formatRowValues(values: values, columnTypes: columnTypes)
+            let formatted = formatRowValues(values: Array(values), columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
         }
@@ -65,7 +65,7 @@ extension TableViewCoordinator {
 
         for index in sortedIndices {
             guard let values = displayRow(at: index)?.values else { continue }
-            let formatted = formatRowValues(values: values, columnTypes: columnTypes)
+            let formatted = formatRowValues(values: Array(values), columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
         }
@@ -120,7 +120,7 @@ extension TableViewCoordinator {
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
+            let rows: [[String?]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
             guard !rows.isEmpty else { return }
             ClipboardService.shared.writeText(converter.generateInserts(rows: rows))
         } catch {
@@ -141,7 +141,7 @@ extension TableViewCoordinator {
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
+            let rows: [[String?]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
             guard !rows.isEmpty else { return }
             ClipboardService.shared.writeText(converter.generateUpdates(rows: rows))
         } catch {
@@ -150,7 +150,7 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
+        let rows: [[String?]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
         let columnTypes = tableRows.columnTypes
@@ -182,7 +182,7 @@ extension TableViewCoordinator {
 
         if let values = displayRow(at: row)?.values {
             let tableRows = tableRowsProvider()
-            let formatted = formatRowValues(values: values, columnTypes: tableRows.columnTypes)
+            let formatted = formatRowValues(values: Array(values), columnTypes: tableRows.columnTypes)
             item.setString(formatted.joined(separator: "\t"), forType: .string)
             item.setString(
                 HtmlTableEncoder.encode(rows: [formatted], headers: tableRows.columns),

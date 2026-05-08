@@ -615,8 +615,8 @@ struct MainEditorContentView: View {
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if smartDetectionEnabled {
             let sampleRows: [[String?]]? = {
-                let rows = tableRows?.rows.prefix(10).map(\.values) ?? []
-                return rows.isEmpty ? nil : Array(rows)
+                let rows: [[String?]] = tableRows?.rows.prefix(10).map { Array($0.values) } ?? []
+                return rows.isEmpty ? nil : rows
             }()
             detected = ValueDisplayDetector.detect(
                 columns: columns,

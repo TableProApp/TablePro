@@ -1213,7 +1213,7 @@ final class MainContentCoordinator {
             let sortColumns = currentSort.columns
             let colTypes = tableRows.columnTypes
             let storageRows = tableRows.rows
-            let snapshotRows: [(id: RowID, values: [String?])] = storageRows.map { ($0.id, $0.values) }
+            let snapshotRows: [(id: RowID, values: [String?])] = storageRows.map { ($0.id, Array($0.values)) }
 
             if storageRows.count > 1_000 {
                 activeSortTasks[tabId]?.cancel()

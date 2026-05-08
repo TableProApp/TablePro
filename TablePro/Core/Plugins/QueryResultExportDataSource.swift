@@ -22,7 +22,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         self.driver = driver
         self.columns = tableRows.columns
         self.columnTypeNames = tableRows.columnTypes.map { $0.rawType ?? "" }
-        self.rows = tableRows.rows.map(\.values)
+        self.rows = tableRows.rows.map { Array($0.values) }
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
