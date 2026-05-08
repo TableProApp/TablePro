@@ -82,4 +82,28 @@ struct MentionDetectorTests {
         let match = MentionDetector.detect(in: "@niño", caret: 5)
         #expect(match?.query == "niño")
     }
+
+    @Test("Emoji directly before @ is treated as a boundary, no surrogate confusion")
+    func emojiBoundaryBeforeTrigger() {
+        let text = "hi 😀@tab"
+        let caret = (text as NSString).length
+        let match = MentionDetector.detect(in: text, caret: caret)
+        let triggerLocation = (text as NSString).range(of: "@").location
+        #expect(match?.query == "tab")
+        #expect(match?.range == NSRange(location: triggerLocation, length: caret - triggerLocation))
+    }
+
+    @Test("Emoji inside the query token does not break detection")
+    func emojiInsideQueryStops() {
+        let text = "@🚀"
+        let caret = (text as NSString).length
+        #expect(MentionDetector.detect(in: text, caret: caret) == nil)
+    }
+
+    @Test("Caret right after a non-BMP scalar with no @ returns nil")
+    func nonBmpAfterCaretWithoutTrigger() {
+        let text = "hello 😀"
+        let caret = (text as NSString).length
+        #expect(MentionDetector.detect(in: text, caret: caret) == nil)
+    }
 }

@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal: unify JSON value type used by AI tools and MCP wire
 - Internal: shared schema builder for AI chat tools, removes ~100 lines of duplicated JSON Schema boilerplate
 
+### Fixed
+
+- AI Chat: `@` mention detection no longer breaks when the cursor sits right after an emoji or other non-BMP character
+
 ## [0.39.1] - 2026-05-08
 
 ### Added
