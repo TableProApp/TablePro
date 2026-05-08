@@ -197,6 +197,31 @@ struct SQLFileParserTests {
         #expect(stmts[0].contains("'C:\\Users\\win\\AppData\\'"))
     }
 
+    @Test("Multi-byte UTF-8 char straddling 64KB chunk boundary parses correctly")
+    func multibyte_utf8_at_chunk_boundary() async throws {
+        let chunkSize = 65_536
+        let prefix = String(repeating: "a", count: chunkSize - 1)
+        let multibyteChar = "é"
+        let sql = "INSERT INTO t (a) VALUES ('\(prefix)\(multibyteChar)tail');\nSELECT 99;"
+        let stmts = try await Self.parse(sql, dialect: .postgres)
+        #expect(stmts.count == 2)
+        #expect(stmts[0].contains(multibyteChar))
+        #expect(stmts[0].contains("tail"))
+        #expect(stmts[1] == "SELECT 99")
+    }
+
+    @Test("Large multi-row INSERT yields correct statement count and content")
+    func large_multi_row_insert_correctness() async throws {
+        let rows = (1...5_000).map { "  ($0, 'row\($0)')" }.joined(separator: ",\n")
+        let sql = "INSERT INTO t (id, label) VALUES\n\(rows);\nSELECT 100;"
+        let stmts = try await Self.parse(sql, dialect: .postgres)
+        #expect(stmts.count == 2)
+        #expect(stmts[0].hasPrefix("INSERT INTO t"))
+        #expect(stmts[0].contains("(1, 'row1')"))
+        #expect(stmts[0].contains("(5000, 'row5000')"))
+        #expect(stmts[1] == "SELECT 100")
+    }
+
     @Test("Dialect.from maps known database type ids")
     func dialect_from_database_type_id() {
         #expect(SqlDialect.from(databaseTypeId: "PostgreSQL") == .postgres)
