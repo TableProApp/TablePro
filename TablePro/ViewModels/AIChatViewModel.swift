@@ -37,7 +37,7 @@ final class AIChatViewModel {
 
     var tables: [TableInfo] {
         guard let id = connection?.id else { return [] }
-        return SchemaService.shared.tables(for: id)
+        return services.schemaService.tables(for: id)
     }
 
     var columnsByTable: [String: [ColumnInfo]] = [:]
@@ -74,13 +74,15 @@ final class AIChatViewModel {
     @ObservationIgnored nonisolated(unsafe) var streamingTask: Task<Void, Never>?
     @ObservationIgnored var prepTask: Task<Void, Never>?
 
-    let chatStorage = AIChatStorage.shared
+    @ObservationIgnored let services: AppServices
+    var chatStorage: AIChatStorage { services.aiChatStorage }
     var sessionApprovedConnections: Set<UUID> = []
     @ObservationIgnored var cachedSavedQueries: [UUID: SQLFavorite] = [:]
 
     static let maxMessageCount = 200
 
-    init() {
+    init(services: AppServices = .live) {
+        self.services = services
         loadConversations()
     }
 
@@ -224,7 +226,7 @@ final class AIChatViewModel {
     }
 
     func loadAvailableModels() async {
-        let settings = AppSettingsManager.shared.ai
+        let settings = services.appSettings.ai
         let pending = settings.providers.filter { availableModels[$0.id] == nil }
         guard !pending.isEmpty else { return }
 
@@ -275,7 +277,7 @@ final class AIChatViewModel {
             savedQueries = []
             return
         }
-        let favorites = await SQLFavoriteManager.shared.fetchFavorites(connectionId: connectionId)
+        let favorites = await services.sqlFavoriteManager.fetchFavorites(connectionId: connectionId)
         savedQueries = favorites
         for favorite in favorites {
             cachedSavedQueries[favorite.id] = favorite

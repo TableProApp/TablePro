@@ -1,10 +1,7 @@
+import Combine
 import Foundation
 import os
 import SQLite3
-
-extension Notification.Name {
-    static let mcpAuditLogChanged = Notification.Name("com.TablePro.mcp.auditLogChanged")
-}
 
 actor MCPAuditLogStorage {
     static let shared = MCPAuditLogStorage()
@@ -160,7 +157,7 @@ actor MCPAuditLogStorage {
         let inserted = sqlite3_step(statement) == SQLITE_DONE
         if inserted {
             Task { @MainActor in
-                NotificationCenter.default.post(name: .mcpAuditLogChanged, object: nil)
+                AppEvents.shared.mcpAuditLogChanged.send(())
             }
         }
         return inserted

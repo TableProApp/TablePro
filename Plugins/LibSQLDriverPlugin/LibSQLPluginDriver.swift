@@ -37,6 +37,16 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var currentSchema: String? { nil }
     var parameterStyle: ParameterStyle { .questionMark }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .alterTableDDL,
+            .foreignKeyToggle,
+            .truncateTable,
+            .cancelQuery,
+        ]
+    }
+
     init(config: DriverConnectionConfig) {
         self.config = config
     }

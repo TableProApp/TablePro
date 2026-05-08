@@ -9,6 +9,7 @@ import AppKit
 import CodeEditLanguages
 import CodeEditSourceEditor
 import CodeEditTextView
+import Combine
 import SwiftUI
 
 // MARK: - SQLEditorView
@@ -35,8 +36,7 @@ struct SQLEditorView: View {
     @State private var coordinator = SQLEditorCoordinator()
     @State private var editorReady = false
     @State private var editorConfiguration = makeConfiguration()
-    @State private var favoritesObserver: NSObjectProtocol?
-    @State private var linkedFoldersObserver: NSObjectProtocol?
+    @State private var favoritesCancellables: Set<AnyCancellable> = []
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -154,18 +154,20 @@ struct SQLEditorView: View {
         refreshFavoriteKeywords()
         let adapter = completionAdapter
         let connId = connectionId
-        let refresh: @Sendable (Notification) -> Void = { _ in
+        let refresh: () -> Void = {
             Task { @MainActor in
                 let keywords = await SQLFavoriteManager.shared.fetchKeywordMap(connectionId: connId)
                 adapter?.updateFavoriteKeywords(keywords)
             }
         }
-        favoritesObserver = NotificationCenter.default.addObserver(
-            forName: .sqlFavoritesDidUpdate, object: nil, queue: .main, using: refresh
-        )
-        linkedFoldersObserver = NotificationCenter.default.addObserver(
-            forName: .linkedSQLFoldersDidUpdate, object: nil, queue: .main, using: refresh
-        )
+        AppEvents.shared.sqlFavoritesDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { _ in refresh() }
+            .store(in: &favoritesCancellables)
+        AppEvents.shared.linkedSQLFoldersDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { _ in refresh() }
+            .store(in: &favoritesCancellables)
     }
 
     private func refreshFavoriteKeywords() {
@@ -177,14 +179,7 @@ struct SQLEditorView: View {
     }
 
     private func teardownFavoritesObserver() {
-        if let observer = favoritesObserver {
-            NotificationCenter.default.removeObserver(observer)
-            favoritesObserver = nil
-        }
-        if let observer = linkedFoldersObserver {
-            NotificationCenter.default.removeObserver(observer)
-            linkedFoldersObserver = nil
-        }
+        favoritesCancellables.removeAll()
     }
 
     // MARK: - Configuration

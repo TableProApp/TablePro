@@ -113,7 +113,7 @@ extension AIChatViewModel {
         guard !current.aiAlwaysAllowedTools.contains(toolName) else { return }
         current.aiAlwaysAllowedTools.insert(toolName)
         connection = current
-        ConnectionStorage.shared.updateConnection(current)
+        services.connectionStorage.updateConnection(current)
     }
 
     func dispatchCopilotInvocation(

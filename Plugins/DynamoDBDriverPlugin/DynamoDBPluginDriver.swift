@@ -32,6 +32,13 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     var supportsTransactions: Bool { false }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .cancelQuery,
+        ]
+    }
+
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}

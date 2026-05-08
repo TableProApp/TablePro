@@ -23,6 +23,10 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var parameterStyle: ParameterStyle { .dollar }
 
+    var capabilities: PluginCapabilities {
+        [.parameterizedQueries, .transactions, .alterTableDDL, .multiSchema, .cancelQuery, .batchExecute]
+    }
+
     init(config: DriverConnectionConfig) {
         self.config = config
     }

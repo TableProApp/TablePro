@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import UniformTypeIdentifiers
@@ -565,7 +566,7 @@ enum ConnectionExportService {
         }
 
         if importedCount > 0 {
-            NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+            AppEvents.shared.connectionUpdated.send(())
             logger.info("Imported \(importedCount) connections")
         }
 

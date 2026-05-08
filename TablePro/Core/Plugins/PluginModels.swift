@@ -28,7 +28,7 @@ enum PluginSource {
     case userInstalled
 }
 
-struct RejectedPlugin {
+struct RejectedPlugin: Sendable {
     let url: URL
     let bundleId: String?
     let registryId: String?

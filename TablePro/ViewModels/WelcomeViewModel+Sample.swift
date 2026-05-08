@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 
@@ -39,7 +40,7 @@ internal enum SampleDatabaseLauncher {
             installedURL: installedURL,
             connectionStorage: connectionStorage
         )
-        NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+        AppEvents.shared.connectionUpdated.send(())
         bumpSampleOpenedCounter()
         launchSampleConnection(connection, onError: onError)
     }
@@ -173,7 +174,7 @@ internal enum SampleDatabaseLauncher {
         if let sampleConnection {
             do {
                 try await DatabaseManager.shared.ensureConnected(sampleConnection)
-                NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+                AppEvents.shared.connectionUpdated.send(())
             } catch {
                 logger.warning(
                     "Reopening sample after reset failed: \(error.localizedDescription, privacy: .public)"

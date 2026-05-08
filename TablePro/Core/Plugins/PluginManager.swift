@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import Security
@@ -191,7 +192,7 @@ final class PluginManager {
             let eagerCount = validated.count
             Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(lazyCount) lazy + \(eagerCount) eager (\(self.driverPlugins.count) driver(s) active, \(self.exportPlugins.count) export(s) active, \(self.importPlugins.count) import(s) active)")
             if !self.rejectedPlugins.isEmpty {
-                NotificationCenter.default.post(name: .pluginsRejected, object: self.rejectedPlugins)
+                AppEvents.shared.pluginsRejected.send(self.rejectedPlugins)
             }
         }
     }

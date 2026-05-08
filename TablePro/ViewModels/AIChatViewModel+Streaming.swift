@@ -32,7 +32,7 @@ extension AIChatViewModel {
     func startStreaming() {
         guard case .idle = streamingState else { return }
 
-        let settings = AppSettingsManager.shared.ai
+        let settings = services.appSettings.ai
 
         let resolved = AIProviderFactory.resolve(
             settings: settings,

@@ -8,6 +8,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import Observation
 import os
@@ -41,6 +42,9 @@ final class MainContentCommandActions {
 
     /// Task handles for async notification observers; cancelled on deinit.
     @ObservationIgnored private var notificationTasks: [Task<Void, Never>] = []
+
+    /// Combine subscriptions for typed AppEvents publishers.
+    @ObservationIgnored private var eventCancellables: Set<AnyCancellable> = []
 
     // MARK: - Initialization
 
@@ -819,7 +823,10 @@ final class MainContentCommandActions {
     // MARK: Database Broadcasts
 
     private func setupDatabaseBroadcastObservers() {
-        observe(.databaseDidConnect) { [weak self] _ in self?.handleDatabaseDidConnect() }
+        AppEvents.shared.databaseDidConnect
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.handleDatabaseDidConnect() }
+            .store(in: &eventCancellables)
     }
 
     private func handleDatabaseDidConnect() {
@@ -839,11 +846,14 @@ final class MainContentCommandActions {
     // MARK: Window Broadcasts
 
     private func setupWindowObservers() {
-        observe(.mainWindowWillClose) { [weak self] _ in
-            guard let coordinator = self?.coordinator else { return }
-            guard !MainContentCoordinator.isAppTerminating else { return }
-            coordinator.persistence.saveOrClearAggregated()
-        }
+        AppEvents.shared.mainWindowWillClose
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let coordinator = self?.coordinator else { return }
+                guard !MainContentCoordinator.isAppTerminating else { return }
+                coordinator.persistence.saveOrClearAggregated()
+            }
+            .store(in: &eventCancellables)
     }
 
     // MARK: File Open Broadcasts

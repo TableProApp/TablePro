@@ -183,15 +183,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func observeTeardown(connectionId: UUID) {
-        teardownObserver = NotificationCenter.default.addObserver(
-            forName: MainContentCoordinator.teardownNotification,
-            object: connectionId,
-            queue: .main
-        ) { [weak self] _ in
-            Task {
-                self?.releaseData()
+        teardownCancellable = AppEvents.shared.mainCoordinatorTeardown
+            .filter { $0.connectionId == connectionId }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                Task {
+                    self?.releaseData()
+                }
             }
-        }
     }
 
     private func releaseData() {
@@ -215,13 +214,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         activeFKPreviewPopover = nil
     }
 
-    private(set) var teardownObserver: NSObjectProtocol?
-
-    deinit {
-        if let observer = teardownObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-    }
+    private(set) var teardownCancellable: AnyCancellable?
 
     func updateCache() {
         let tableRows = tableRowsProvider()

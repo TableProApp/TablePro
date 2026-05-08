@@ -6,6 +6,7 @@
 //
 
 import CloudKit
+import Combine
 import Foundation
 import Observation
 import os
@@ -25,8 +26,8 @@ final class SyncCoordinator {
     @ObservationIgnored private let metadataStorage = SyncMetadataStorage.shared
     @ObservationIgnored private let conflictResolver = ConflictResolver.shared
     @ObservationIgnored private var accountObserver: NSObjectProtocol?
-    @ObservationIgnored private var changeObserver: NSObjectProtocol?
-    @ObservationIgnored private var licenseObserver: NSObjectProtocol?
+    @ObservationIgnored private var changeCancellable: AnyCancellable?
+    @ObservationIgnored private var licenseCancellable: AnyCancellable?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
 
@@ -36,8 +37,6 @@ final class SyncCoordinator {
 
     deinit {
         if let accountObserver { NotificationCenter.default.removeObserver(accountObserver) }
-        if let changeObserver { NotificationCenter.default.removeObserver(changeObserver) }
-        if let licenseObserver { NotificationCenter.default.removeObserver(licenseObserver) }
         syncTask?.cancel()
     }
 
@@ -466,7 +465,7 @@ final class SyncCoordinator {
         }
 
         if actualConnectionChanges || groupsOrTagsChanged {
-            NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+            AppEvents.shared.connectionUpdated.send(())
         }
     }
 
@@ -585,15 +584,11 @@ final class SyncCoordinator {
     }
 
     private func observeLocalChanges() {
-        changeObserver = NotificationCenter.default.addObserver(
-            forName: .syncChangeTracked,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        changeCancellable = AppEvents.shared.syncChangeTracked
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 guard let self else { return }
                 guard syncStatus.isEnabled, !syncStatus.isSyncing else { return }
-                // Debounce: schedule sync after a short delay
                 syncTask?.cancel()
                 syncTask = Task {
                     try? await Task.sleep(for: .seconds(2))
@@ -601,24 +596,18 @@ final class SyncCoordinator {
                     await self.syncNow()
                 }
             }
-        }
     }
 
     private func observeLicenseChanges() {
-        licenseObserver = NotificationCenter.default.addObserver(
-            forName: .licenseStatusDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        licenseCancellable = AppEvents.shared.licenseStatusDidChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 guard let self else { return }
                 evaluateStatus()
-
                 if syncStatus.isEnabled {
-                    await syncNow()
+                    Task { await self.syncNow() }
                 }
             }
-        }
     }
 
     // MARK: - Account

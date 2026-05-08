@@ -7,6 +7,7 @@
 //
 
 import CodeEditSourceEditor
+import Combine
 import Foundation
 import Observation
 import os
@@ -73,16 +74,13 @@ final class MainContentCoordinator {
         return switchSeq
     }
 
-    /// Posted during teardown so DataGridView coordinators can release cell views.
-    /// Object is the connection UUID.
-    static let teardownNotification = Notification.Name("MainContentCoordinator.teardown")
-
     // MARK: - Dependencies
 
+    @ObservationIgnored let services: AppServices
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
     var activeDatabaseName: String {
-        DatabaseManager.shared.activeDatabaseName(for: connection)
+        services.databaseManager.activeDatabaseName(for: connection)
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     let selectionState = GridSelectionState()
@@ -162,8 +160,8 @@ final class MainContentCoordinator {
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
-    @ObservationIgnored private var pluginDriverObserver: NSObjectProtocol?
-    @ObservationIgnored private var externalFileModObserver: NSObjectProtocol?
+    @ObservationIgnored private var pluginDriverCancellable: AnyCancellable?
+    @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
 
     var fileConflictRequest: FileConflictRequest?
 
@@ -336,9 +334,11 @@ final class MainContentCoordinator {
         changeManager: DataChangeManager,
         toolbarState: ConnectionToolbarState,
         tabSessionRegistry: TabSessionRegistry? = nil,
-        queryExecutor: QueryExecutor? = nil
+        queryExecutor: QueryExecutor? = nil,
+        services: AppServices = .live
     ) {
         let initStart = Date()
+        self.services = services
         self.connection = connection
         self.tabManager = tabManager
         self.changeManager = changeManager
@@ -347,7 +347,7 @@ final class MainContentCoordinator {
         self.tabSessionRegistry = resolvedRegistry
         tabManager.bindTabSessionRegistry(resolvedRegistry)
         self.queryExecutor = queryExecutor ?? QueryExecutor(connection: connection)
-        let dialect = PluginManager.shared.sqlDialect(for: connection.type)
+        let dialect = services.pluginManager.sqlDialect(for: connection.type)
         self.queryBuilder = TableQueryBuilder(
             databaseType: connection.type,
             dialect: dialect,
@@ -389,13 +389,11 @@ final class MainContentCoordinator {
 
         _ = Self.registerTerminationObserver
 
-        externalFileModObserver = NotificationCenter.default.addObserver(
-            forName: .linkedSQLFoldersDidUpdate, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
+        externalFileModCancellable = AppEvents.shared.linkedSQLFoldersDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.checkOpenTabsForExternalModification()
             }
-        }
 
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
@@ -424,13 +422,13 @@ final class MainContentCoordinator {
         startFileWatcherIfNeeded()
         // Retry when driver becomes available (connection may still be in progress)
         if changeManager.pluginDriver == nil {
-            pluginDriverObserver = NotificationCenter.default.addObserver(
-                forName: .databaseDidConnect, object: nil, queue: .main
-            ) { [weak self] _ in
-                Task {
-                    self?.setupPluginDriver()
+            pluginDriverCancellable = AppEvents.shared.databaseDidConnect
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    Task {
+                        self?.setupPluginDriver()
+                    }
                 }
-            }
         }
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -439,14 +437,14 @@ final class MainContentCoordinator {
 
     /// Start watching the database file for external changes (SQLite, DuckDB).
     private func startFileWatcherIfNeeded() {
-        guard PluginManager.shared.connectionMode(for: connection.type) == .fileBased else { return }
+        guard services.pluginManager.connectionMode(for: connection.type) == .fileBased else { return }
         let filePath = connection.database
         guard !filePath.isEmpty else { return }
 
         let watcher = DatabaseFileWatcher()
         watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
             guard let self else { return }
-            if case .loading = SchemaService.shared.state(for: self.connectionId) { return }
+            if case .loading = services.schemaService.state(for: self.connectionId) { return }
             Task { await self.refreshTables() }
         }
         fileWatcher = watcher
@@ -455,8 +453,8 @@ final class MainContentCoordinator {
     /// Refresh schema only if not recently refreshed (avoids redundant work
     /// when both the file watcher and window focus trigger close together).
     func refreshTablesIfStale() async {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        await SchemaService.shared.reloadIfStale(
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.reloadIfStale(
             connectionId: connectionId,
             driver: driver,
             connection: connection,
@@ -472,14 +470,12 @@ final class MainContentCoordinator {
 
     /// Set up the plugin driver for query building dispatch on the query builder and change manager.
     private func setupPluginDriver() {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
         let pluginDriver = driver.queryBuildingPluginDriver
         queryBuilder.setPluginDriver(pluginDriver)
         changeManager.pluginDriver = pluginDriver
-        // Remove observer once successfully set up
-        if pluginDriver != nil, let observer = pluginDriverObserver {
-            NotificationCenter.default.removeObserver(observer)
-            pluginDriverObserver = nil
+        if pluginDriver != nil {
+            pluginDriverCancellable = nil
         }
     }
 
@@ -492,8 +488,8 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        await SchemaService.shared.reload(
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.reload(
             connectionId: connectionId,
             driver: driver,
             connection: connection
@@ -504,10 +500,10 @@ final class MainContentCoordinator {
     /// Push the SchemaService table list into the autocomplete provider and prune sidebar
     /// state for tables that no longer exist.
     private func reconcilePostSchemaLoad() async {
-        guard case .loaded(let tables) = SchemaService.shared.state(for: connectionId) else { return }
-        if let driver = DatabaseManager.shared.driver(for: connectionId),
+        guard case .loaded(let tables) = services.schemaService.state(for: connectionId) else { return }
+        if let driver = services.databaseManager.driver(for: connectionId),
            let provider = SchemaProviderRegistry.shared.provider(for: connectionId) {
-            let currentDb = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
+            let currentDb = services.databaseManager.session(for: connectionId)?.activeDatabase
             await provider.resetForDatabase(currentDb, tables: tables, driver: driver)
         }
 
@@ -547,14 +543,8 @@ final class MainContentCoordinator {
             NotificationCenter.default.removeObserver(observer)
             terminationObserver = nil
         }
-        if let observer = pluginDriverObserver {
-            NotificationCenter.default.removeObserver(observer)
-            pluginDriverObserver = nil
-        }
-        if let observer = externalFileModObserver {
-            NotificationCenter.default.removeObserver(observer)
-            externalFileModObserver = nil
-        }
+        pluginDriverCancellable = nil
+        externalFileModCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
         currentQueryTask?.cancel()
@@ -566,9 +556,8 @@ final class MainContentCoordinator {
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
 
-        NotificationCenter.default.post(
-            name: Self.teardownNotification,
-            object: connection.id
+        AppEvents.shared.mainCoordinatorTeardown.send(
+            MainCoordinatorTeardown(connectionId: connection.id)
         )
 
         tabSessionRegistry.removeAll()
@@ -637,12 +626,12 @@ final class MainContentCoordinator {
     func initializeToolbar() {
         toolbarState.update(from: connection)
 
-        if let session = DatabaseManager.shared.session(for: connectionId) {
+        if let session = services.databaseManager.session(for: connectionId) {
             toolbarState.connectionState = mapSessionStatus(session.status)
             if let driver = session.driver {
                 toolbarState.databaseVersion = driver.serverVersion
             }
-        } else if let driver = DatabaseManager.shared.driver(for: connectionId) {
+        } else if let driver = services.databaseManager.driver(for: connectionId) {
             toolbarState.connectionState = .connected
             toolbarState.databaseVersion = driver.serverVersion
         }
@@ -672,8 +661,8 @@ final class MainContentCoordinator {
     // MARK: - Schema Loading
 
     func loadSchema() async {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        await SchemaService.shared.load(
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.load(
             connectionId: connectionId,
             driver: driver,
             connection: connection
@@ -682,7 +671,7 @@ final class MainContentCoordinator {
     }
 
     func loadTableMetadata(tableName: String) async {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
 
         do {
             let metadata = try await driver.fetchTableMetadata(tableName: tableName)
@@ -724,7 +713,7 @@ final class MainContentCoordinator {
             return
         }
 
-        if AppSettingsManager.shared.editor.queryParametersEnabled {
+        if services.appSettings.editor.queryParametersEnabled {
             let paramStatements = SQLStatementScanner.allStatements(in: sql)
             guard !paramStatements.isEmpty else { return }
             let combinedSQL = paramStatements.joined(separator: "; ")
@@ -902,7 +891,7 @@ final class MainContentCoordinator {
             return
         }
 
-        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter,
+        guard let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter,
               let explainSQL = adapter.buildExplainQuery(stmt) else {
             if let (_, index) = tabManager.selectedTabAndIndex {
                 tabManager.tabs[index].execution.errorMessage = String(localized: "EXPLAIN is not supported for this database type.")
@@ -941,7 +930,7 @@ final class MainContentCoordinator {
         if currentQueryTask != nil {
             currentQueryTask?.cancel()
             do {
-                try DatabaseManager.shared.driver(for: connectionId)?.cancelQuery()
+                try services.databaseManager.driver(for: connectionId)?.cancelQuery()
             } catch {
                 Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
             }
@@ -959,7 +948,7 @@ final class MainContentCoordinator {
         tabManager.tabs[index] = tab
         toolbarState.setExecuting(true)
 
-        if PluginManager.shared.supportsQueryProgress(for: connection.type) {
+        if services.pluginManager.supportsQueryProgress(for: connection.type) {
             installClickHouseProgressHandler()
         }
 
@@ -999,7 +988,7 @@ final class MainContentCoordinator {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     currentQueryTask = nil
-                    if PluginManager.shared.supportsQueryProgress(for: self.connection.type) {
+                    if services.pluginManager.supportsQueryProgress(for: self.connection.type) {
                         self.clearClickHouseProgress()
                     }
                     toolbarState.setExecuting(false)
@@ -1085,8 +1074,8 @@ final class MainContentCoordinator {
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
-        let usesNoSQLBrowsing = PluginManager.shared.editorLanguage(for: connection.type) != .sql
-            || (DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter)?
+        let usesNoSQLBrowsing = services.pluginManager.editorLanguage(for: connection.type) != .sql
+            || (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
                 .queryBuildingPluginDriver != nil
         if usesNoSQLBrowsing {
             let name = tabManager.selectedTab?.tableContext.tableName

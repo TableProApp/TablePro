@@ -860,6 +860,14 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .materializedViews,
+            .alterTableDDL,
+        ]
+    }
+
     init(config: DriverConnectionConfig) {
         self.config = config
     }

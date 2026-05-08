@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import Observation
 
@@ -26,40 +27,24 @@ internal final class ConnectionDataCache {
     private(set) var linkedFilesByFolderId: [UUID: [LinkedSQLFavorite]] = [:]
     private(set) var isInitialLoadComplete: Bool = false
 
-    @ObservationIgnored private var favoritesObserver: NSObjectProtocol?
-    @ObservationIgnored private var linkedObserver: NSObjectProtocol?
+    @ObservationIgnored private var cancellables: Set<AnyCancellable> = []
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
     private init(connectionId: UUID) {
         self.connectionId = connectionId
 
-        let reload: @Sendable (Notification) -> Void = { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.scheduleRefresh()
-            }
-        }
+        AppEvents.shared.sqlFavoritesDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.scheduleRefresh() }
+            .store(in: &cancellables)
 
-        favoritesObserver = NotificationCenter.default.addObserver(
-            forName: .sqlFavoritesDidUpdate,
-            object: nil,
-            queue: .main,
-            using: reload
-        )
-        linkedObserver = NotificationCenter.default.addObserver(
-            forName: .linkedSQLFoldersDidUpdate,
-            object: nil,
-            queue: .main,
-            using: reload
-        )
+        AppEvents.shared.linkedSQLFoldersDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.scheduleRefresh() }
+            .store(in: &cancellables)
     }
 
     deinit {
-        if let favoritesObserver {
-            NotificationCenter.default.removeObserver(favoritesObserver)
-        }
-        if let linkedObserver {
-            NotificationCenter.default.removeObserver(linkedObserver)
-        }
         refreshTask?.cancel()
     }
 

@@ -5,12 +5,9 @@
 //  Tracks local changes that need to be synced to CloudKit
 //
 
+import Combine
 import Foundation
 import os
-
-extension Notification.Name {
-    static let syncChangeTracked = Notification.Name("com.TablePro.syncChangeTracked")
-}
 
 /// Tracks dirty entities and deletions for sync
 final class SyncChangeTracker {
@@ -18,7 +15,6 @@ final class SyncChangeTracker {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncChangeTracker")
 
     private let metadataStorage: SyncMetadataStorage
-    private let notificationCenter: NotificationCenter
 
     /// When true, changes are not tracked (used during remote apply to avoid sync loops)
     private let suppressionLock = OSAllocatedUnfairLock(initialState: false)
@@ -28,12 +24,8 @@ final class SyncChangeTracker {
         set { suppressionLock.withLock { $0 = newValue } }
     }
 
-    init(
-        metadataStorage: SyncMetadataStorage = .shared,
-        notificationCenter: NotificationCenter = .default
-    ) {
+    init(metadataStorage: SyncMetadataStorage = .shared) {
         self.metadataStorage = metadataStorage
-        self.notificationCenter = notificationCenter
     }
 
     // MARK: - Mark Dirty
@@ -83,6 +75,8 @@ final class SyncChangeTracker {
     // MARK: - Private
 
     private func postChangeNotification() {
-        notificationCenter.post(name: .syncChangeTracked, object: self)
+        Task { @MainActor in
+            AppEvents.shared.syncChangeTracked.send(())
+        }
     }
 }

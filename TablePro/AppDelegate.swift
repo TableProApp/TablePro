@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 
@@ -13,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     private var hasRunPostLaunchActivation = false
+    private var pluginsRejectedCancellable: AnyCancellable?
 
     // MARK: - URL & File Open
 
@@ -76,10 +78,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil
         )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(handlePluginsRejected(_:)),
-            name: .pluginsRejected, object: nil
-        )
+        pluginsRejectedCancellable = AppEvents.shared.pluginsRejected
+            .receive(on: RunLoop.main)
+            .sink { [weak self] rejected in
+                self?.handlePluginsRejected(rejected)
+            }
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleFocusConnectionForm),
             name: .focusConnectionFormWindowRequested, object: nil
@@ -153,9 +156,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Plugin Rejection Alert
 
-    @objc private func handlePluginsRejected(_ notification: Notification) {
-        guard let rejected = notification.object as? [RejectedPlugin],
-              !rejected.isEmpty else { return }
+    private func handlePluginsRejected(_ rejected: [RejectedPlugin]) {
+        guard !rejected.isEmpty else { return }
         let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
         Task {
             let alert = NSAlert()
@@ -198,7 +200,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 $0 !== window && AppLaunchCoordinator.isMainWindow($0) && $0.isVisible
             }.count
             if remaining == 0 {
-                NotificationCenter.default.post(name: .mainWindowWillClose, object: nil)
+                AppEvents.shared.mainWindowWillClose.send(())
                 WindowOpener.shared.openWelcome()
             }
         }

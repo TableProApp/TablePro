@@ -23,6 +23,16 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var parameterStyle: ParameterStyle { .dollar }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .transactions,
+            .multiSchema,
+            .cancelQuery,
+            .batchExecute,
+        ]
+    }
+
     init(config: DriverConnectionConfig) {
         self.config = config
     }
