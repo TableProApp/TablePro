@@ -31,7 +31,8 @@ enum WelcomeActiveSheet: Identifiable {
 final class WelcomeViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
 
-    private let storage = ConnectionStorage.shared
+    @ObservationIgnored let services: AppServices
+    private var storage: ConnectionStorage { services.connectionStorage }
     private let groupStorage = GroupStorage.shared
 
     // MARK: - State
@@ -138,6 +139,12 @@ final class WelcomeViewModel {
     func groupName(for groupId: UUID?) -> String? {
         guard let groupId else { return nil }
         return groups.first { $0.id == groupId }?.name
+    }
+
+    // MARK: - Initialization
+
+    init(services: AppServices = .live) {
+        self.services = services
     }
 
     // MARK: - Setup & Teardown
@@ -536,7 +543,7 @@ final class WelcomeViewModel {
 
         storage.saveConnections(connections)
         if !dirtyIds.isEmpty {
-            SyncChangeTracker.shared.markDirty(.connection, ids: dirtyIds)
+            services.syncTracker.markDirty(.connection, ids: dirtyIds)
         }
         rebuildTree()
     }
@@ -571,7 +578,7 @@ final class WelcomeViewModel {
 
         storage.saveConnections(connections)
         if !dirtyIds.isEmpty {
-            SyncChangeTracker.shared.markDirty(.connection, ids: dirtyIds)
+            services.syncTracker.markDirty(.connection, ids: dirtyIds)
         }
         rebuildTree()
     }
