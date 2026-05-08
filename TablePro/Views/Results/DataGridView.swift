@@ -359,10 +359,7 @@ struct DataGridView: NSViewRepresentable {
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: false)
         coordinator.persistColumnLayoutToStorage()
-        if let observer = coordinator.settingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-            coordinator.settingsObserver = nil
-        }
+        coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil
         coordinator.tableRowsController.detach()
     }

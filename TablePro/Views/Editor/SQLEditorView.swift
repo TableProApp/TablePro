@@ -108,7 +108,7 @@ struct SQLEditorView: View {
             .onChange(of: AppSettingsManager.shared.editor) {
                 editorConfiguration = Self.makeConfiguration()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .accessibilityTextSizeDidChange)) { _ in
+            .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in
                 editorConfiguration = Self.makeConfiguration()
             }
             .onAppear {

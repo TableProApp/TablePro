@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 
 @MainActor
@@ -12,27 +13,17 @@ final class DataGridCellRegistry {
     weak var textFieldDelegate: NSTextFieldDelegate?
 
     private(set) var nullDisplayString: String
-    private var settingsObserver: NSObjectProtocol?
+    private var settingsCancellable: AnyCancellable?
 
     private let rowNumberCellIdentifier = NSUserInterfaceItemIdentifier("RowNumberCellView")
 
     init() {
         nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
-        settingsObserver = NotificationCenter.default.addObserver(
-            forName: .dataGridSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        settingsCancellable = AppEvents.shared.dataGridSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
             }
-        }
-    }
-
-    deinit {
-        if let observer = settingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
     }
 
     func resolveKind(

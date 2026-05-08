@@ -92,7 +92,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     let tableRowsController = TableRowsController()
     var overlayEditor: CellOverlayEditor?
 
-    var settingsObserver: NSObjectProtocol?
+    var settingsCancellable: AnyCancellable?
     var themeCancellable: AnyCancellable?
     private var lastDataGridSettings: DataGridSettings
 
@@ -136,14 +136,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         observeThemeChanges()
 
-        settingsObserver = NotificationCenter.default.addObserver(
-            forName: .dataGridSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-
-            Task { @MainActor [weak self] in
+        settingsCancellable = AppEvents.shared.dataGridSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 guard let self, let tableView = self.tableView else { return }
                 let settings = AppSettingsManager.shared.dataGrid
                 let prev = self.lastDataGridSettings
@@ -176,7 +171,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                     }
                 }
             }
-        }
     }
 
     func observeThemeChanges() {
@@ -224,9 +218,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var teardownObserver: NSObjectProtocol?
 
     deinit {
-        if let observer = settingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
         if let observer = teardownObserver {
             NotificationCenter.default.removeObserver(observer)
         }

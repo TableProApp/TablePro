@@ -14,6 +14,16 @@ final class AppEvents {
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()
 
+    let editorSettingsChanged = PassthroughSubject<Void, Never>()
+
+    let dataGridSettingsChanged = PassthroughSubject<Void, Never>()
+
+    let aiSettingsChanged = PassthroughSubject<Void, Never>()
+
+    let terminalSettingsChanged = PassthroughSubject<Void, Never>()
+
+    let accessibilityTextSizeChanged = PassthroughSubject<Void, Never>()
+
     private init() {}
 }
 

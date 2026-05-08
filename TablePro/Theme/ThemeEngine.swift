@@ -391,7 +391,7 @@ internal final class ThemeEngine {
                 lastAccessibilityScale = newScale
                 Self.logger.debug("Accessibility text size changed, scale: \(newScale, format: .fixed(precision: 2))")
                 reloadFontCaches()
-                NotificationCenter.default.post(name: .accessibilityTextSizeDidChange, object: self)
+                AppEvents.shared.accessibilityTextSizeChanged.send(())
             }
         }
     }

@@ -44,7 +44,7 @@ final class AppSettingsManager {
 
                 wordWrap: editor.wordWrap
             )
-            notifyChange(.editorSettingsDidChange)
+            AppEvents.shared.editorSettingsChanged.send(())
             SyncChangeTracker.shared.markDirty(.settings, id: "editor")
         }
     }
@@ -64,7 +64,7 @@ final class AppSettingsManager {
 
             storage.saveDataGrid(validated)
             DateFormattingService.shared.updateFormat(validated.dateFormat)
-            notifyChange(.dataGridSettingsDidChange)
+            AppEvents.shared.dataGridSettingsChanged.send(())
             SyncChangeTracker.shared.markDirty(.settings, id: "dataGrid")
         }
     }
@@ -106,7 +106,7 @@ final class AppSettingsManager {
         didSet {
             storage.saveAI(ai)
             SyncChangeTracker.shared.markDirty(.settings, id: "ai")
-            notifyChange(.aiSettingsDidChange)
+            AppEvents.shared.aiSettingsChanged.send(())
             let hadCopilot = oldValue.providers.contains(where: { $0.type == .copilot })
             let hasCopilot = ai.providers.contains(where: { $0.type == .copilot })
             if hasCopilot != hadCopilot {
@@ -131,7 +131,7 @@ final class AppSettingsManager {
     var terminal: TerminalSettings {
         didSet {
             storage.saveTerminal(terminal)
-            notifyChange(.terminalSettingsDidChange)
+            AppEvents.shared.terminalSettingsChanged.send(())
             SyncChangeTracker.shared.markDirty(.settings, id: "terminal")
         }
     }
@@ -207,10 +207,6 @@ final class AppSettingsManager {
         }
     }
 
-    private func notifyChange(_ notification: Notification.Name) {
-        NotificationCenter.default.post(name: notification, object: self)
-    }
-
     /// Auto-pick the first configured provider as active when nothing is selected.
     /// Avoids a "AI suddenly stopped working" upgrade UX when older settings JSON
     /// (with multiple providers and no activeProviderID concept) is loaded.
@@ -240,7 +236,7 @@ final class AppSettingsManager {
                 lastAccessibilityScale = newScale
                 Self.logger.debug("Accessibility text size changed, scale: \(newScale, format: .fixed(precision: 2))")
                 ThemeEngine.shared.reloadFontCaches()
-                NotificationCenter.default.post(name: .accessibilityTextSizeDidChange, object: self)
+                AppEvents.shared.accessibilityTextSizeChanged.send(())
             }
         }
     }
