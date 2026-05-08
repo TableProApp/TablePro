@@ -303,6 +303,22 @@ final class QueryTabManager {
         }
     }
 
+    @discardableResult
+    func mutate(tabId: UUID, _ block: (inout QueryTab) -> Void) -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabId }) else {
+            return false
+        }
+        block(&tabs[index])
+        return true
+    }
+
+    @discardableResult
+    func mutate(at index: Int, _ block: (inout QueryTab) -> Void) -> Bool {
+        guard tabs.indices.contains(index) else { return false }
+        block(&tabs[index])
+        return true
+    }
+
     func markTabRenamed(_ tabId: UUID) {
         guard tabs.contains(where: { $0.id == tabId }) else { return }
         tabStructureVersion += 1
