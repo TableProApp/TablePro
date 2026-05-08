@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal: unify JSON value type used by AI tools and MCP wire
 - Internal: shared schema builder for AI chat tools, removes ~100 lines of duplicated JSON Schema boilerplate
 - Internal: AI chat tools declare their access mode (read-only, write, agent-only) rather than relying on a hardcoded allowlist; new tools are picked up automatically
+- AI providers: Anthropic test connection uses the configured model, known model list updated through Claude 4.7, and Ollama detection now logs the actual error category instead of swallowing every failure as 'not running'
 
 ### Fixed
 

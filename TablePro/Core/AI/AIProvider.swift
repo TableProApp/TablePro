@@ -4,9 +4,11 @@
 //
 
 import Foundation
+import os
 
 enum AIProvider {
     static let modelListTimeout: TimeInterval = 5.0
+    static let logger = Logger(subsystem: "com.TablePro", category: "AIProvider")
 }
 
 enum AIProviderError: Error, LocalizedError {
@@ -84,9 +86,16 @@ enum AIProviderError: Error, LocalizedError {
 extension ChatTransport {
     func collectErrorBody(from bytes: URLSession.AsyncBytes) async throws -> String {
         var body = ""
+        var truncated = false
         for try await line in bytes.lines {
             body += line
-            if (body as NSString).length > 2_000 { break }
+            if (body as NSString).length > 2_000 {
+                truncated = true
+                break
+            }
+        }
+        if truncated {
+            AIProvider.logger.warning("Error response body truncated at 2000 bytes; full body suppressed")
         }
         return body
     }

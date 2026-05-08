@@ -11,12 +11,14 @@ final class AnthropicProvider: ChatTransport {
 
     private let endpoint: String
     private let apiKey: String
+    private let model: String
     private let maxOutputTokens: Int
     private let session: URLSession
 
-    init(endpoint: String, apiKey: String, maxOutputTokens: Int = 4_096) {
+    init(endpoint: String, apiKey: String, model: String = "", maxOutputTokens: Int = 4_096) {
         self.endpoint = endpoint.normalizedEndpoint()
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.session = URLSession(configuration: .ephemeral)
     }
@@ -100,16 +102,17 @@ final class AnthropicProvider: ChatTransport {
     }
 
     private static let knownModels = [
-        "claude-sonnet-4-6",
-        "claude-opus-4-6",
+        "claude-opus-4-7-20260101",
+        "claude-sonnet-4-6-20251101",
         "claude-haiku-4-5-20251001",
         "claude-sonnet-4-5-20250929",
-        "claude-opus-4-5-20251101"
+        "claude-opus-4-5-20250929"
     ]
 
     func testConnection() async throws -> Bool {
+        let testModel = model.isEmpty ? (Self.knownModels.first ?? "") : model
         let testTurn = ChatTurn(role: .user, blocks: [.text("Hi")])
-        let testOptions = ChatTransportOptions(model: "claude-haiku-4-5-20251001", maxOutputTokens: 1)
+        let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 1)
         let request = try buildMessagesRequest(turns: [testTurn], options: testOptions, stream: false)
 
         let (data, response) = try await session.data(for: request)

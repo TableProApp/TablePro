@@ -22,6 +22,7 @@ enum AIProviderRegistration {
                 AnthropicProvider(
                     endpoint: config.endpoint,
                     apiKey: apiKey ?? "",
+                    model: config.model,
                     maxOutputTokens: config.maxOutputTokens ?? 4_096
                 )
             }
