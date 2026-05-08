@@ -55,12 +55,15 @@ struct ChatComposerView: View {
         return shape
             .fill(Color(nsColor: .textBackgroundColor))
             .overlay {
-                shape.stroke(
-                    isFocused ? Color.accentColor : Color(nsColor: .separatorColor),
-                    lineWidth: isFocused ? 1 : 0.5
-                )
+                if isFocused {
+                    IntelligenceFocusBorder(shape: shape)
+                        .transition(.opacity)
+                } else {
+                    shape.stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                        .transition(.opacity)
+                }
             }
-            .animation(.default, value: isFocused)
+            .animation(.easeOut(duration: 0.25), value: isFocused)
     }
 
     private var popoverBinding: Binding<Bool> {
@@ -106,5 +109,62 @@ struct ChatComposerView: View {
         text = prefix + suffix
         onAttach(candidate.item)
         mentionState.reset()
+    }
+}
+
+private enum IntelligenceShimmer {
+    static let palette: [Color] = [
+        Color(red: 1.0, green: 0.404, blue: 0.471),
+        Color(red: 1.0, green: 0.553, blue: 0.443),
+        Color(red: 1.0, green: 0.729, blue: 0.443),
+        Color(red: 0.961, green: 0.725, blue: 0.918),
+        Color(red: 0.776, green: 0.525, blue: 1.0),
+        Color(red: 0.737, green: 0.510, blue: 0.953),
+        Color(red: 0.553, green: 0.624, blue: 1.0)
+    ]
+
+    struct Layer: Identifiable {
+        let id: Int
+        let lineWidth: CGFloat
+        let blur: CGFloat
+        let opacity: Double
+    }
+
+    static let layers: [Layer] = [
+        Layer(id: 0, lineWidth: 1.5, blur: 2, opacity: 1.0),
+        Layer(id: 1, lineWidth: 5, blur: 4, opacity: 0.75),
+        Layer(id: 2, lineWidth: 9, blur: 10, opacity: 0.5),
+        Layer(id: 3, lineWidth: 14, blur: 16, opacity: 0.35)
+    ]
+
+    static func generateStops() -> [Gradient.Stop] {
+        let count = palette.count
+        var stops = palette.enumerated().map { index, color in
+            Gradient.Stop(color: color, location: Double(index) / Double(count))
+        }
+        if let first = palette.first {
+            stops.append(Gradient.Stop(color: first, location: 1.0))
+        }
+        return stops
+    }
+}
+
+private struct IntelligenceFocusBorder<S: Shape>: View {
+    let shape: S
+
+    @State private var stops: [Gradient.Stop] = IntelligenceShimmer.generateStops()
+
+    var body: some View {
+        ZStack {
+            ForEach(IntelligenceShimmer.layers) { layer in
+                shape
+                    .stroke(
+                        AngularGradient(gradient: Gradient(stops: stops), center: .center),
+                        lineWidth: layer.lineWidth
+                    )
+                    .blur(radius: layer.blur)
+                    .opacity(layer.opacity)
+            }
+        }
     }
 }
