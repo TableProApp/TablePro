@@ -102,9 +102,7 @@ struct ImportDialog: View {
         }
         .sheet(isPresented: $showSuccessDialog, onDismiss: {
             isPresented = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                NotificationCenter.default.post(name: .refreshData, object: nil)
-            }
+            NotificationCenter.default.post(name: .refreshData, object: connection.id)
         }) {
             ImportSuccessView(
                 result: importResult
