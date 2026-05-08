@@ -45,7 +45,6 @@ enum ActiveSheet: Identifiable {
     case databaseSwitcher
     case exportDialog
     case importDialog
-    case quickSwitcher
     case exportQueryResults
     case maintenance(operation: String, tableName: String)
 
@@ -54,7 +53,6 @@ enum ActiveSheet: Identifiable {
         case .databaseSwitcher: "databaseSwitcher"
         case .exportDialog: "exportDialog"
         case .importDialog: "importDialog"
-        case .quickSwitcher: "quickSwitcher"
         case .exportQueryResults: "exportQueryResults"
         case .maintenance(let operation, let tableName): "maintenance-\(operation)-\(tableName)"
         }
@@ -86,6 +84,7 @@ final class MainContentCoordinator {
     let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
+    let quickSwitcherPanel = QuickSwitcherPanelController()
     let toolbarState: ConnectionToolbarState
     let tabSessionRegistry: TabSessionRegistry
     let queryExecutor: QueryExecutor

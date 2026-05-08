@@ -770,7 +770,7 @@ final class MainContentCommandActions {
     }
 
     func openQuickSwitcher() {
-        coordinator?.activeSheet = .quickSwitcher
+        coordinator?.showQuickSwitcher()
     }
 
     func openConnectionSwitcher() {
