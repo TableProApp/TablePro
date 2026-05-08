@@ -159,6 +159,14 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
 
+    var capabilities: PluginCapabilities {
+        [
+            .transactions,
+            .alterTableDDL,
+            .multiSchema,
+        ]
+    }
+
     init(config: DriverConnectionConfig) {
         self.config = config
     }
