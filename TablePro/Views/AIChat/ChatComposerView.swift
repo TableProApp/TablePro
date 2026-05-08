@@ -58,9 +58,11 @@ struct ChatComposerView: View {
                 if isFocused {
                     IntelligenceFocusBorder(shape: shape)
                         .transition(.opacity)
+                        .accessibilityHidden(true)
                 } else {
                     shape.stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                         .transition(.opacity)
+                        .accessibilityHidden(true)
                 }
             }
             .animation(.easeOut(duration: 0.25), value: isFocused)

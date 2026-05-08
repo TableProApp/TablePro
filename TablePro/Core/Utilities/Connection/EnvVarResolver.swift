@@ -11,11 +11,14 @@ import os
 internal enum EnvVarResolver {
     private static let logger = Logger(subsystem: "com.TablePro", category: "EnvVarResolver")
 
-    // Matches ${VAR_NAME} or $VAR_NAME
-    // swiftlint:disable:next force_try
-    private static let pattern = try! NSRegularExpression(
-        pattern: #"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"#
-    )
+    private static let pattern: NSRegularExpression = {
+        let source = #"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"#
+        if let regex = try? NSRegularExpression(pattern: source) {
+            return regex
+        }
+        logger.fault("Failed to compile EnvVarResolver pattern: \(source, privacy: .public)")
+        return NSRegularExpression()
+    }()
 
     /// Resolve environment variable references in a string.
     /// Unresolved variables are left as-is and logged as warnings.

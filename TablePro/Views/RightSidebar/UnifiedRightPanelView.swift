@@ -125,7 +125,7 @@ struct UnifiedRightPanelView: View {
 
     private func inspectorIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
-            .font(.system(size: 13, weight: .regular))
+            .font(.subheadline)
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)

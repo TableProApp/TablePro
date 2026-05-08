@@ -29,7 +29,8 @@ internal struct FileConflictDiffSheet: View {
             Divider()
             footer
         }
-        .frame(width: 760, height: 540)
+        .frame(minWidth: 600, idealWidth: 760, maxWidth: .infinity,
+               minHeight: 400, idealHeight: 540, maxHeight: .infinity)
     }
 
     private var header: some View {

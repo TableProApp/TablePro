@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Renders table nodes imperatively on a Canvas GraphicsContext.
@@ -9,6 +10,26 @@ enum ERDiagramNodeRenderer {
     private static var typeRightMargin: CGFloat { 8 * ERDiagramLayout.typeScale }
     private static let maxTableNameChars = 24
     private static let maxTypeChars = 18
+
+    private static var headerPointSize: CGFloat {
+        NSFont.preferredFont(forTextStyle: .caption1).pointSize
+    }
+
+    private static var iconPointSize: CGFloat {
+        NSFont.preferredFont(forTextStyle: .caption2).pointSize
+    }
+
+    private static var badgePointSize: CGFloat {
+        NSFont.preferredFont(forTextStyle: .caption2).pointSize * 0.75
+    }
+
+    private static var columnNamePointSize: CGFloat {
+        NSFont.preferredFont(forTextStyle: .caption1).pointSize * (11.0 / 12.0)
+    }
+
+    private static var columnTypePointSize: CGFloat {
+        NSFont.preferredFont(forTextStyle: .caption2).pointSize
+    }
 
     static func drawNode(
         context: inout GraphicsContext,
@@ -44,7 +65,7 @@ enum ERDiagramNodeRenderer {
             ? String(node.tableName.prefix(maxTableNameChars)) + "\u{2026}"
             : node.tableName
         let headerText = Text(displayName)
-            .font(.system(size: 12 * scale, weight: .semibold, design: .monospaced))
+            .font(.system(size: Self.headerPointSize * scale, weight: .semibold, design: .monospaced))
         context.draw(
             context.resolve(headerText),
             at: CGPoint(x: rect.minX + headerTextXOffset, y: rect.minY + headerHeight / 2),
@@ -53,7 +74,7 @@ enum ERDiagramNodeRenderer {
 
         // Table icon
         let iconText = Text(Image(systemName: "tablecells"))
-            .font(.system(size: 10 * scale))
+            .font(.system(size: Self.iconPointSize * scale))
             .foregroundStyle(.secondary)
         context.draw(
             context.resolve(iconText),
@@ -77,15 +98,15 @@ enum ERDiagramNodeRenderer {
 
             // PK/FK badge
             if col.isPrimaryKey {
-                let badge = Text(Image(systemName: "key.fill")).font(.system(size: 8 * scale)).foregroundStyle(Color(nsColor: .systemYellow))
+                let badge = Text(Image(systemName: "key.fill")).font(.system(size: Self.badgePointSize * scale)).foregroundStyle(Color(nsColor: .systemYellow))
                 clipped.draw(clipped.resolve(badge), at: CGPoint(x: rect.minX + badgeXOffset, y: rowY), anchor: .center)
             } else if col.isForeignKey {
-                let badge = Text(Image(systemName: "link")).font(.system(size: 8 * scale)).foregroundStyle(Color(nsColor: .systemBlue))
+                let badge = Text(Image(systemName: "link")).font(.system(size: Self.badgePointSize * scale)).foregroundStyle(Color(nsColor: .systemBlue))
                 clipped.draw(clipped.resolve(badge), at: CGPoint(x: rect.minX + badgeXOffset, y: rowY), anchor: .center)
             }
 
             // Column name
-            let nameText = Text(col.name).font(.system(size: 11 * scale, design: .monospaced))
+            let nameText = Text(col.name).font(.system(size: Self.columnNamePointSize * scale, design: .monospaced))
             clipped.draw(
                 clipped.resolve(nameText),
                 at: CGPoint(x: rect.minX + columnNameXOffset, y: rowY),
@@ -97,7 +118,7 @@ enum ERDiagramNodeRenderer {
                 ? String(col.dataType.prefix(maxTypeChars)) + "\u{2026}"
                 : col.dataType
             let typeText = Text(displayType)
-                .font(.system(size: 10 * scale, design: .monospaced))
+                .font(.system(size: Self.columnTypePointSize * scale, design: .monospaced))
                 .foregroundStyle(.secondary)
             clipped.draw(
                 clipped.resolve(typeText),

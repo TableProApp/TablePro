@@ -21,7 +21,7 @@ struct AIChatContextChipView: View {
             if let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)

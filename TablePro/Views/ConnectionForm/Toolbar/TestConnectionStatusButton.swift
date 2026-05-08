@@ -22,6 +22,18 @@ struct TestConnectionStatusButton: View {
         .disabled(coordinator.isTesting
                   || coordinator.isInstallingPlugin
                   || !coordinator.isFormValid)
+        .help(helpText)
+        .accessibilityLabel(helpText)
+    }
+
+    private var helpText: String {
+        if coordinator.isTesting {
+            return String(localized: "Testing connection")
+        }
+        if coordinator.testSucceeded {
+            return String(localized: "Connection succeeded")
+        }
+        return String(localized: "Test the current connection settings")
     }
 
     @ViewBuilder

@@ -72,9 +72,7 @@ struct LicenseActivationSheet: View {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .font(.subheadline)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
+                    .keyboardShortcut(.cancelAction)
                 }
             }
             .padding(.top, 20)
