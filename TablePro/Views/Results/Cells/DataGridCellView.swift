@@ -24,21 +24,43 @@ final class DataGridCellView: NSTableCellView {
     private var onEmphasizedSelection: Bool = false
 
     private var textFieldTrailingConstraint: NSLayoutConstraint!
+    private var accessoryWidthConstraint: NSLayoutConstraint!
+    private var accessoryHeightConstraint: NSLayoutConstraint!
 
     private static let fkSymbol = makeSymbol(
         name: "arrow.right.circle.fill",
-        size: NSSize(width: 16, height: 16),
         accessibilityDescription: String(localized: "Navigate to referenced row")
     )
     private static let chevronSymbol = makeSymbol(
         name: "chevron.up.chevron.down",
-        size: NSSize(width: 10, height: 12),
         accessibilityDescription: String(localized: "Open editor")
     )
 
-    private lazy var accessoryAccessibilityElement: AccessoryAccessibilityElement = {
-        let element = AccessoryAccessibilityElement(owner: self)
-        return element
+    private lazy var accessoryButton: NSButton = {
+        let button = NSButton()
+        button.bezelStyle = .inline
+        button.isBordered = false
+        button.imageScaling = .scaleProportionallyDown
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.target = self
+        button.action = #selector(handleAccessoryClick(_:))
+        button.isHidden = true
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addSubview(button)
+
+        accessoryWidthConstraint = button.widthAnchor.constraint(equalToConstant: 0)
+        accessoryHeightConstraint = button.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            button.trailingAnchor.constraint(
+                equalTo: trailingAnchor,
+                constant: -DataGridMetrics.cellHorizontalInset
+            ),
+            button.centerYAnchor.constraint(equalTo: centerYAnchor),
+            accessoryWidthConstraint,
+            accessoryHeightConstraint,
+        ])
+        return button
     }()
 
     override init(frame frameRect: NSRect) {
@@ -67,15 +89,10 @@ final class DataGridCellView: NSTableCellView {
         return field
     }
 
-    private static func makeSymbol(
-        name: String,
-        size: NSSize,
-        accessibilityDescription: String
-    ) -> NSImage {
+    private static func makeSymbol(name: String, accessibilityDescription: String) -> NSImage {
         guard let image = NSImage(systemSymbolName: name, accessibilityDescription: accessibilityDescription) else {
-            return NSImage(size: size)
+            return NSImage()
         }
-        image.size = size
         image.isTemplate = true
         return image
     }
@@ -140,13 +157,12 @@ final class DataGridCellView: NSTableCellView {
         }
         if newAccessoryVisible != accessoryVisible {
             accessoryVisible = newAccessoryVisible
-            needsDisplay = true
         }
+        configureAccessoryButton()
 
         cellTextField.setAccessibilityLabel(content.accessibilityLabel)
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
-        updateAccessoryAccessibility()
     }
 
     private func applyContent(
@@ -227,6 +243,7 @@ final class DataGridCellView: NSTableCellView {
             onEmphasizedSelection = nextEmphasized
             needsDisplay = true
             updateFocusPresentation()
+            updateAccessoryTint()
         }
     }
 
@@ -249,37 +266,47 @@ final class DataGridCellView: NSTableCellView {
             tint.setFill()
             bounds.fill()
         }
-        drawAccessoryIfNeeded()
     }
 
-    private func drawAccessoryIfNeeded() {
-        guard accessoryVisible, let image = accessoryImage() else { return }
-        let rect = accessoryRect()
-        guard !rect.isEmpty else { return }
-        let tintColor: NSColor = onEmphasizedSelection ? .alternateSelectedControlTextColor : .tertiaryLabelColor
-        let configuration = NSImage.SymbolConfiguration(paletteColors: [tintColor])
-        let tinted = image.withSymbolConfiguration(configuration) ?? image
-        tinted.draw(in: rect)
+    private func configureAccessoryButton() {
+        guard accessoryVisible else {
+            if !accessoryButton.isHidden {
+                accessoryButton.isHidden = true
+            }
+            return
+        }
+        let (image, size, label) = accessoryAssets()
+        accessoryButton.image = image
+        accessoryButton.setAccessibilityLabel(label)
+        accessoryWidthConstraint.constant = size.width
+        accessoryHeightConstraint.constant = size.height
+        accessoryButton.isHidden = false
+        updateAccessoryTint()
     }
 
-    private func accessoryImage() -> NSImage? {
+    private func accessoryAssets() -> (NSImage, NSSize, String) {
         switch kind {
-        case .foreignKey: return Self.fkSymbol
-        case .text: return nil
-        case .dropdown, .boolean, .date, .json, .blob: return Self.chevronSymbol
+        case .foreignKey:
+            return (
+                Self.fkSymbol,
+                NSSize(width: 16, height: 16),
+                String(localized: "Navigate to referenced row")
+            )
+        case .text:
+            return (NSImage(), .zero, "")
+        case .dropdown, .boolean, .date, .json, .blob:
+            return (
+                Self.chevronSymbol,
+                NSSize(width: 12, height: 14),
+                String(localized: "Open editor")
+            )
         }
     }
 
-    private func accessoryRect() -> NSRect {
-        let size: NSSize
-        switch kind {
-        case .foreignKey: size = NSSize(width: 16, height: 16)
-        case .text: return .zero
-        case .dropdown, .boolean, .date, .json, .blob: size = NSSize(width: 10, height: 12)
-        }
-        let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
-        let y = (bounds.height - size.height) / 2
-        return NSRect(x: x, y: y, width: size.width, height: size.height).integral
+    private func updateAccessoryTint() {
+        accessoryButton.contentTintColor = onEmphasizedSelection
+            ? .alternateSelectedControlTextColor
+            : .secondaryLabelColor
     }
 
     private func trailingInset(for accessoryVisible: Bool) -> CGFloat {
@@ -306,20 +333,7 @@ final class DataGridCellView: NSTableCellView {
         }
     }
 
-    override func mouseDown(with event: NSEvent) {
-        guard accessoryVisible else {
-            super.mouseDown(with: event)
-            return
-        }
-        let point = convert(event.locationInWindow, from: nil)
-        guard accessoryRect().insetBy(dx: -2, dy: -2).contains(point) else {
-            super.mouseDown(with: event)
-            return
-        }
-        invokeAccessory()
-    }
-
-    private func invokeAccessory() {
+    @objc private func handleAccessoryClick(_ sender: NSButton) {
         switch kind {
         case .foreignKey:
             accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
@@ -330,87 +344,11 @@ final class DataGridCellView: NSTableCellView {
         }
     }
 
-    override func accessibilityChildren() -> [Any]? {
-        var children: [Any] = [cellTextField]
-        if accessoryVisible {
-            children.append(accessoryAccessibilityElement)
-        }
-        return children
-    }
-
-    private func updateAccessoryAccessibility() {
-        guard accessoryVisible else { return }
-        let label: String
-        switch kind {
-        case .foreignKey: label = String(localized: "Navigate to referenced row")
-        case .text: return
-        case .dropdown, .boolean, .date, .json, .blob: label = String(localized: "Open editor")
-        }
-        accessoryAccessibilityElement.update(label: label)
-    }
-
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil): return true
         case let (l?, r?): return l == r
         default: return false
         }
-    }
-}
-
-@MainActor
-private final class AccessoryAccessibilityElement: NSAccessibilityElement {
-    weak var owner: DataGridCellView?
-
-    init(owner: DataGridCellView) {
-        super.init()
-        self.owner = owner
-        setAccessibilityRole(.button)
-        setAccessibilityParent(owner)
-    }
-
-    func update(label: String) {
-        setAccessibilityLabel(label)
-    }
-
-    override func accessibilityFrame() -> NSRect {
-        guard let owner, let window = owner.window else { return .zero }
-        let inOwner = ownerAccessoryRect()
-        let inWindow = owner.convert(inOwner, to: nil)
-        return window.convertToScreen(inWindow)
-    }
-
-    override func isAccessibilityElement() -> Bool { true }
-
-    override func accessibilityPerformPress() -> Bool {
-        guard let owner else { return false }
-        switch owner.kind {
-        case .foreignKey:
-            owner.accessoryDelegate?.dataGridCellDidClickFKArrow(
-                row: owner.cellRow,
-                columnIndex: owner.cellColumnIndex
-            )
-        case .text:
-            return false
-        case .dropdown, .boolean, .date, .json, .blob:
-            owner.accessoryDelegate?.dataGridCellDidClickChevron(
-                row: owner.cellRow,
-                columnIndex: owner.cellColumnIndex
-            )
-        }
-        return true
-    }
-
-    private func ownerAccessoryRect() -> NSRect {
-        guard let owner else { return .zero }
-        let size: NSSize
-        switch owner.kind {
-        case .foreignKey: size = NSSize(width: 16, height: 16)
-        case .text: return .zero
-        case .dropdown, .boolean, .date, .json, .blob: size = NSSize(width: 10, height: 12)
-        }
-        let x = owner.bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
-        let y = (owner.bounds.height - size.height) / 2
-        return NSRect(x: x, y: y, width: size.width, height: size.height).integral
     }
 }
