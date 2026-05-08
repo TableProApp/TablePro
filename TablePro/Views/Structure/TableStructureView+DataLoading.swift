@@ -127,7 +127,7 @@ extension TableStructureView {
         loadSchemaForEditing()
     }
 
-    func onRefreshData(_ notification: Notification) {
+    func onRefreshData() {
         // Ignore refresh notifications while we're in the middle of our own save/reload
         guard !isReloadingAfterSave else {
             Self.logger.debug("Ignoring refresh notification - currently reloading after save")

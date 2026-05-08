@@ -169,7 +169,7 @@ final class MainContentCommandActions {
 
         observeKeyWindowOnly(AppCommands.shared.duplicateRow) { [weak self] _ in self?.duplicateRow() }
 
-        observeKeyWindowOnly(.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
+        observeKeyWindowOnly(AppCommands.shared.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
 
         observeKeyWindowOnly(AppCommands.shared.copySelectedRows) { [weak self] _ in
             guard let self else { return }
@@ -644,7 +644,7 @@ final class MainContentCommandActions {
     func openSQLFile() {
         Task {
             guard let urls = await SQLFileService.showOpenPanel() else { return }
-            NotificationCenter.default.post(name: .openSQLFiles, object: urls)
+            AppCommands.shared.openSQLFiles.send(urls)
         }
     }
 
@@ -810,16 +810,19 @@ final class MainContentCommandActions {
     // MARK: Data Broadcasts
 
     private func setupDataBroadcastObservers() {
-        observe(.refreshData) { [weak self] notification in
-            guard let self else { return }
-            if let target = notification.object as? UUID, target != self.connection.id {
-                return
+        AppCommands.shared.refreshData
+            .receive(on: RunLoop.main)
+            .sink { [weak self] target in
+                guard let self else { return }
+                if let target, target != self.connection.id {
+                    return
+                }
+                if target == nil && !self.isKeyWindow() {
+                    return
+                }
+                self.handleRefreshData()
             }
-            if notification.object == nil && !self.isKeyWindow() {
-                return
-            }
-            self.handleRefreshData()
-        }
+            .store(in: &eventCancellables)
     }
 
     private func handleRefreshData() {
@@ -882,13 +885,12 @@ final class MainContentCommandActions {
     // MARK: File Open Broadcasts
 
     private func setupFileOpenObservers() {
-        observeKeyWindowOnly(.openSQLFiles) { [weak self] notification in
-            self?.handleOpenSQLFiles(notification)
+        observeKeyWindowOnly(AppCommands.shared.openSQLFiles) { [weak self] urls in
+            self?.handleOpenSQLFiles(urls)
         }
     }
 
-    private func handleOpenSQLFiles(_ notification: Notification) {
-        guard let urls = notification.object as? [URL] else { return }
+    private func handleOpenSQLFiles(_ urls: [URL]) {
         Task {
             for url in urls {
                 try? await TabRouter.shared.route(.openSQLFile(url))

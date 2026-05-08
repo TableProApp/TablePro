@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import Combine
 
 /// Custom row view that provides context menu for row operations
 final class TableRowViewWithMenu: NSTableRowView {
@@ -276,7 +277,7 @@ final class TableRowViewWithMenu: NSTableRowView {
     }
 
     @objc private func exportResults() {
-        NotificationCenter.default.post(name: .exportQueryResults, object: nil)
+        AppCommands.shared.exportQueryResults.send(())
     }
 
     @objc private func copyAsJson() {

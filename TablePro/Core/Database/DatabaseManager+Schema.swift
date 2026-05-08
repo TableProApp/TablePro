@@ -5,6 +5,7 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
+import Combine
 import Foundation
 import os
 import TableProPluginKit
@@ -89,8 +90,9 @@ extension DatabaseManager {
                     )
                 }
 
-                // Post notification to refresh UI
-                NotificationCenter.default.post(name: .refreshData, object: nil)
+                await MainActor.run {
+                    AppCommands.shared.refreshData.send(nil)
+                }
             } catch {
                 if useTransaction {
                     do {

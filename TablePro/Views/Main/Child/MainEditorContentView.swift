@@ -132,8 +132,7 @@ struct MainEditorContentView: View {
                 }
             )
         }
-        .onReceive(NotificationCenter.default.publisher(for: .saveAsFavoriteRequested)) { notification in
-            guard let query = notification.userInfo?["query"] as? String else { return }
+        .onReceive(AppCommands.shared.saveAsFavoriteRequested) { query in
             favoriteDialogQuery = FavoriteDialogQuery(query: query)
         }
         .onChange(of: tabManager.tabStructureVersion) { _, _ in

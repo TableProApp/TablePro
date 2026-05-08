@@ -118,7 +118,7 @@ struct TableStructureView: View {
             coordinator?.toolbarState.hasStructureChanges = newValue
             updateGridDelegate()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshData), perform: onRefreshData)
+        .onReceive(AppCommands.shared.refreshData) { _ in onRefreshData() }
     }
 
     // MARK: - Toolbar
@@ -247,7 +247,7 @@ struct TableStructureView: View {
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
                         columnLayoutPersister.clear(for: tableName, connectionId: connection.id)
-                        NotificationCenter.default.post(name: .refreshData, object: nil)
+                        AppCommands.shared.refreshData.send(nil)
                     } catch {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Column Reorder Failed"),

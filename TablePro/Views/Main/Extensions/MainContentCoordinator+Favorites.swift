@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 
 extension MainContentCoordinator {
@@ -31,11 +32,7 @@ extension MainContentCoordinator {
               tab.tabType == .query else { return }
         let query = tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
-        NotificationCenter.default.post(
-            name: .saveAsFavoriteRequested,
-            object: nil,
-            userInfo: ["query": query]
-        )
+        AppCommands.shared.saveAsFavoriteRequested.send(query)
     }
 
     func openLinkedFavorite(_ favorite: LinkedSQLFavorite) {
