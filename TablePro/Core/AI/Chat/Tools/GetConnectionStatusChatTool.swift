@@ -14,6 +14,7 @@ struct GetConnectionStatusChatTool: ChatTool {
         ],
         required: ["connection_id"]
     )
+    let mode: ChatToolMode = .readOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try context.resolveConnectionId(input)

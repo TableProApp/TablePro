@@ -23,6 +23,12 @@ extension AIChatViewModel {
         let cancelled: Bool
     }
 
+    private enum ToolResolution {
+        case blocked
+        case missing
+        case resolved(any ChatTool)
+    }
+
     func startStreaming() {
         guard case .idle = streamingState else { return }
 
@@ -426,7 +432,19 @@ extension AIChatViewModel {
         if Task.isCancelled {
             return ToolResultBlock(toolUseId: block.id, content: "Cancelled", isError: true)
         }
-        guard ChatToolRegistry.isToolAllowed(name: block.name, in: mode) else {
+        let resolution = await MainActor.run { () -> ToolResolution in
+            let activeRegistry = registry ?? ChatToolRegistry.shared
+            guard activeRegistry.isToolAllowed(name: block.name, in: mode) else {
+                return .blocked
+            }
+            guard let tool = activeRegistry.tool(named: block.name, in: mode) else {
+                return .missing
+            }
+            return .resolved(tool)
+        }
+        let tool: any ChatTool
+        switch resolution {
+        case .blocked:
             AIChatViewModel.logger.warning(
                 "Tool '\(block.name, privacy: .public)' blocked in \(mode.rawValue, privacy: .public) mode"
             )
@@ -435,17 +453,15 @@ extension AIChatViewModel {
                 content: "Tool '\(block.name)' is not available in \(mode.displayName) mode",
                 isError: true
             )
-        }
-        let tool = await MainActor.run {
-            (registry ?? ChatToolRegistry.shared).tool(named: block.name, in: mode)
-        }
-        guard let tool else {
+        case .missing:
             AIChatViewModel.logger.warning("Tool '\(block.name, privacy: .public)' not registered; returning error")
             return ToolResultBlock(
                 toolUseId: block.id,
                 content: "Tool '\(block.name)' is not available",
                 isError: true
             )
+        case .resolved(let resolved):
+            tool = resolved
         }
         do {
             let result = try await tool.execute(input: block.input, context: context)

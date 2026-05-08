@@ -27,6 +27,7 @@ struct ExecuteQueryChatTool: ChatTool {
         ],
         required: ["connection_id", "query"]
     )
+    let mode: ChatToolMode = .write
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try context.resolveConnectionId(input)

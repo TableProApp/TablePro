@@ -68,7 +68,7 @@ extension AIChatViewModel {
 
     @MainActor
     func computeInitialApprovalState(for toolName: String) -> ToolApprovalState {
-        if !ChatToolRegistry.requiresApproval(toolName: toolName) {
+        if !ChatToolRegistry.shared.requiresApproval(toolName: toolName) {
             return .approved
         }
         if let connection, connection.aiAlwaysAllowedTools.contains(toolName) {
@@ -166,7 +166,7 @@ extension AIChatViewModel {
         let result: ChatToolResult
         switch finalState {
         case .approved:
-            guard ChatToolRegistry.isToolAllowed(name: block.name, in: mode) else {
+            guard ChatToolRegistry.shared.isToolAllowed(name: block.name, in: mode) else {
                 result = ChatToolResult(
                     content: "Tool '\(block.name)' is not available in \(mode.displayName) mode",
                     isError: true

@@ -14,6 +14,7 @@ struct ChatToolRegistryModeTests {
         let name: String
         let description = ""
         let inputSchema: JsonValue = .object(["type": .string("object")])
+        let mode: ChatToolMode
 
         func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
             ChatToolResult(content: "ok")
@@ -33,10 +34,10 @@ struct ChatToolRegistryModeTests {
     private static func makeRegistryWithAllTools() -> ChatToolRegistry {
         let registry = ChatToolRegistry()
         for name in readOnlyToolNames {
-            registry.register(StubTool(name: name))
+            registry.register(StubTool(name: name, mode: .readOnly))
         }
-        registry.register(StubTool(name: "execute_query"))
-        registry.register(StubTool(name: "confirm_destructive_operation"))
+        registry.register(StubTool(name: "execute_query", mode: .write))
+        registry.register(StubTool(name: "confirm_destructive_operation", mode: .agentOnly))
         return registry
     }
 
@@ -74,7 +75,7 @@ struct ChatToolRegistryModeTests {
         for mode in AIChatMode.allCases {
             let allowedFromSpecs = Set(registry.allSpecs(for: mode).map(\.name))
             for tool in registry.allTools {
-                let allowed = ChatToolRegistry.isToolAllowed(name: tool.name, in: mode)
+                let allowed = registry.isToolAllowed(name: tool.name, in: mode)
                 #expect(allowed == allowedFromSpecs.contains(tool.name))
             }
         }
@@ -92,8 +93,18 @@ struct ChatToolRegistryModeTests {
 
     @Test("Unknown tool names are not allowed in any mode except agent")
     func unknownToolsBlockedOutsideAgent() {
-        #expect(ChatToolRegistry.isToolAllowed(name: "future_tool", in: .ask) == false)
-        #expect(ChatToolRegistry.isToolAllowed(name: "future_tool", in: .edit) == false)
-        #expect(ChatToolRegistry.isToolAllowed(name: "future_tool", in: .agent) == true)
+        let registry = ChatToolRegistry()
+        #expect(registry.isToolAllowed(name: "future_tool", in: .ask) == false)
+        #expect(registry.isToolAllowed(name: "future_tool", in: .edit) == false)
+        #expect(registry.isToolAllowed(name: "future_tool", in: .agent) == true)
+    }
+
+    @Test("requiresApproval reflects the registered tool mode")
+    func requiresApprovalUsesMode() {
+        let registry = Self.makeRegistryWithAllTools()
+        #expect(registry.requiresApproval(toolName: "list_tables") == false)
+        #expect(registry.requiresApproval(toolName: "execute_query") == true)
+        #expect(registry.requiresApproval(toolName: "confirm_destructive_operation") == true)
+        #expect(registry.requiresApproval(toolName: "unknown_tool") == true)
     }
 }

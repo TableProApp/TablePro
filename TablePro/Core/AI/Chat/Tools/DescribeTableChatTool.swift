@@ -16,6 +16,7 @@ struct DescribeTableChatTool: ChatTool {
         ],
         required: ["table"]
     )
+    let mode: ChatToolMode = .readOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try context.resolveConnectionId(input)

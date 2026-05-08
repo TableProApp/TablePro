@@ -18,6 +18,7 @@ struct ListTablesChatTool: ChatTool {
             )
         ]
     )
+    let mode: ChatToolMode = .readOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try context.resolveConnectionId(input)

@@ -14,12 +14,14 @@ struct ChatToolRegistryTests {
         let name: String
         let description: String
         let inputSchema: JsonValue
+        let mode: ChatToolMode
         let response: String
 
-        init(name: String, description: String = "", response: String = "ok") {
+        init(name: String, description: String = "", mode: ChatToolMode = .readOnly, response: String = "ok") {
             self.name = name
             self.description = description
             self.inputSchema = .object(["type": .string("object"), "properties": .object([:])])
+            self.mode = mode
             self.response = response
         }
 

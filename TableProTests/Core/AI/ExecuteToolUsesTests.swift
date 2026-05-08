@@ -16,14 +16,16 @@ struct ExecuteToolUsesTests {
         let name: String
         let description: String
         let inputSchema: JsonValue
+        let mode: ChatToolMode
         let response: String
         let isError: Bool
         private(set) var invocations: [JsonValue] = []
 
-        init(name: String, response: String = "ok", isError: Bool = false) {
+        init(name: String, response: String = "ok", isError: Bool = false, mode: ChatToolMode = .readOnly) {
             self.name = name
             self.description = ""
             self.inputSchema = .object(["type": .string("object")])
+            self.mode = mode
             self.response = response
             self.isError = isError
         }
@@ -34,12 +36,11 @@ struct ExecuteToolUsesTests {
         }
     }
 
-    /// Tool that always throws when called. Used to verify the error path
-    /// returns a ToolResultBlock with isError: true rather than crashing.
     private struct ThrowingTool: ChatTool {
         let name: String
         let description = ""
         let inputSchema: JsonValue = .object(["type": .string("object")])
+        let mode: ChatToolMode = .readOnly
         struct Boom: Error {}
         func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
             throw Boom()
@@ -189,7 +190,7 @@ struct ExecuteToolUsesTests {
     @Test("execute_query blocked in Ask mode returns isError result without invoking tool")
     func askModeBlocksExecuteQuery() async {
         let registry = ChatToolRegistry()
-        let stub = StubTool(name: "execute_query", response: "should-not-run")
+        let stub = StubTool(name: "execute_query", response: "should-not-run", mode: .write)
         registry.register(stub)
         let blocks = [ToolUseBlock(id: "u1", name: "execute_query", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
@@ -206,7 +207,7 @@ struct ExecuteToolUsesTests {
     @Test("confirm_destructive_operation blocked in Edit mode returns isError result")
     func editModeBlocksDestructiveConfirm() async {
         let registry = ChatToolRegistry()
-        let stub = StubTool(name: "confirm_destructive_operation", response: "should-not-run")
+        let stub = StubTool(name: "confirm_destructive_operation", response: "should-not-run", mode: .agentOnly)
         registry.register(stub)
         let blocks = [ToolUseBlock(id: "u1", name: "confirm_destructive_operation", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(

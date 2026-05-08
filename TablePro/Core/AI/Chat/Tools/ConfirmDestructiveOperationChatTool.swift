@@ -23,6 +23,7 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         ],
         required: ["connection_id", "query", "confirmation_phrase"]
     )
+    let mode: ChatToolMode = .agentOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try context.resolveConnectionId(input)

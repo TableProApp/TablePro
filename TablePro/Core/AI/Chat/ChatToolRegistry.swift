@@ -6,26 +6,11 @@
 import Foundation
 import os
 
-/// Process-wide registry of `ChatTool` implementations available to AI chat.
 @MainActor
 final class ChatToolRegistry {
     static let shared = ChatToolRegistry()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ChatToolRegistry")
-
-    private static let readOnlyToolNames: Set<String> = [
-        "list_connections",
-        "get_connection_status",
-        "list_databases",
-        "list_schemas",
-        "list_tables",
-        "describe_table",
-        "get_table_ddl"
-    ]
-
-    private static let editModeToolNames: Set<String> = readOnlyToolNames.union([
-        "execute_query"
-    ])
 
     private var tools: [String: any ChatTool] = [:]
 
@@ -48,8 +33,9 @@ final class ChatToolRegistry {
     }
 
     func tool(named name: String, in mode: AIChatMode) -> (any ChatTool)? {
-        guard Self.isToolAllowed(name: name, in: mode) else { return nil }
-        return tools[name]
+        guard let tool = tools[name] else { return nil }
+        guard tool.mode.isAllowed(in: mode) else { return nil }
+        return tool
     }
 
     var allTools: [any ChatTool] {
@@ -62,25 +48,22 @@ final class ChatToolRegistry {
     }
 
     func allTools(for mode: AIChatMode) -> [any ChatTool] {
-        allTools.filter { Self.isToolAllowed(name: $0.name, in: mode) }
+        allTools.filter { $0.mode.isAllowed(in: mode) }
     }
 
     func allSpecs(for mode: AIChatMode) -> [ChatToolSpec] {
         allTools(for: mode).map(\.spec)
     }
 
-    nonisolated static func requiresApproval(toolName: String) -> Bool {
-        !readOnlyToolNames.contains(toolName)
+    func requiresApproval(toolName: String) -> Bool {
+        guard let tool = tools[toolName] else { return true }
+        return tool.mode.requiresApproval
     }
 
-    nonisolated static func isToolAllowed(name: String, in mode: AIChatMode) -> Bool {
-        switch mode {
-        case .ask:
-            return readOnlyToolNames.contains(name)
-        case .edit:
-            return editModeToolNames.contains(name)
-        case .agent:
-            return true
+    func isToolAllowed(name: String, in mode: AIChatMode) -> Bool {
+        guard let tool = tools[name] else {
+            return mode == .agent
         }
+        return tool.mode.isAllowed(in: mode)
     }
 }

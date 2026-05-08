@@ -13,6 +13,7 @@ struct ListDatabasesChatTool: ChatTool {
             "connection_id": ChatToolSchemaBuilder.connectionId
         ]
     )
+    let mode: ChatToolMode = .readOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try context.resolveConnectionId(input)
