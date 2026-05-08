@@ -140,11 +140,14 @@ struct MainContentCoordinatorLazyLoadTests {
     func skipsWhenAlreadyExecuting() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
+        seedRows(coordinator, for: tabId, rowCount: 1)
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             Issue.record("expected tab to exist")
             return
         }
+        tabManager.tabs[idx].execution.lastExecutedAt = Date()
         tabManager.tabs[idx].execution.isExecuting = true
+        coordinator.tabSessionRegistry.evict(for: tabId)
 
         coordinator.lazyLoadCurrentTabIfNeeded()
         #expect(coordinator.needsLazyLoad == false)
