@@ -198,7 +198,7 @@ When approaching limits: extract into `TypeName+Category.swift` extension files 
 
 These are **non-negotiable** — never skip them:
 
-1. **CHANGELOG.md**: Update under `[Unreleased]` section (Added/Fixed/Changed) for new features and notable changes. Do **not** add a "Fixed" entry for fixing something that is itself still unreleased. "Fixed" entries are only for bugs in already-released features. Documentation-only changes (`docs/`) do **not** need a CHANGELOG entry. Each entry is one line, user-facing, with no file paths, class names, or method signatures; reference IDs go in parens at the end: `(#1234)`.
+1. **CHANGELOG.md**: Follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Update under `[Unreleased]` using the canonical sections: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`. Do **not** add a "Fixed" entry for fixing something that is itself still unreleased; fold the fix into the Added or Changed entry instead. Documentation-only changes (`docs/`, `CLAUDE.md`, `CHANGELOG.md` formatting) do **not** need a CHANGELOG entry. Each entry is one line, user-facing, with no file paths, class names, or method signatures; reference IDs go in parens at the end: `(#1234)`.
 
 2. **Localization**: Use `String(localized:)` for new user-facing strings in computed properties, AppKit code, alerts, and error descriptions. SwiftUI view literals (`Text("literal")`, `Button("literal")`) auto-localize. Do NOT localize technical terms (font names, database types, SQL keywords, encoding names). Never use `String(localized:)` with string interpolation — `String(localized: "Preview \(name)")` creates a dynamic key that never matches the strings catalog. Use `String(format: String(localized: "Preview %@"), name)`.
 
@@ -212,7 +212,20 @@ These are **non-negotiable** — never skip them:
 
 5. **Lint after changes**: Run `swiftlint lint --strict` to verify compliance.
 
-6. **Commit messages**: Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Single line only, no description body. Examples: `docs: fix installation instructions for unsigned app`, `fix: prevent crash on empty query result`, `feat: add CSV export`.
+6. **Commit messages**: Follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). Single line only, no description body. Format: `<type>(<scope>): <description>`. Scope is optional but preferred when the change has a clear domain. Use `!` after type or scope for breaking changes (e.g. `refactor(ai-providers)!: drop OpenAI legacy completion endpoint`).
+
+    **Types**: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`.
+
+    **Canonical scopes** (reuse these instead of inventing new ones):
+    - AI: `ai-chat`, `ai-providers`, `mcp`, `copilot`, `inline-suggest`
+    - App UI: `editor`, `datagrid`, `tabs`, `coordinator`, `sidebar`, `connections`, `connection-form`, `welcome`, `settings`, `toolbar`, `hig`
+    - Infra: `ssh`, `ios`, `windows`, `perf`, `launch`, `plugins`
+    - Plugins: `plugin-<name>` (e.g. `plugin-mongodb`, `plugin-redis`, `plugin-clickhouse`)
+    - Docs and release: `changelog`, `claude-md`, `docs`, `ci`, `release`
+
+    **Examples**: `feat(ai-chat): add /refactor slash command`, `fix(editor): prevent crash on empty query result`, `refactor(mcp): migrate pairing store to actor`, `docs(changelog): adopt Keep a Changelog 1.1.0`.
+
+7. **Atomic API changes**: When you rename, remove, or change a public type, property, or function signature, update every caller AND every test in the same commit. Do not split a rename from "fix tests for rename" into separate commits; the in-between commit is broken, fails CI, and pollutes `git bisect`. If a refactor crosses too many files for one reviewable commit, narrow the change first or stage it behind a typealias the renaming commit removes.
 
 ## Performance Pitfalls
 
