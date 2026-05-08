@@ -111,6 +111,9 @@ struct SQLEditorView: View {
             .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in
                 editorConfiguration = Self.makeConfiguration()
             }
+            .onReceive(AppEvents.shared.themeChanged) { _ in
+                editorConfiguration = Self.makeConfiguration()
+            }
             .onAppear {
                 initializeEditor()
             }
