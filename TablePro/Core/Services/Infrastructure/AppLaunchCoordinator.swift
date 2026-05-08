@@ -115,30 +115,12 @@ internal final class AppLaunchCoordinator {
     }
 
     private func runStartupBehaviorIfNeeded(skipping intents: [LaunchIntent]) {
-        guard intents.isEmpty else {
-            closeRestoredMainWindowsExcept(intents: intents)
-            return
-        }
+        guard intents.isEmpty else { return }
+
         let general = AppSettingsStorage.shared.loadGeneral()
-        guard general.startupBehavior == .reopenLast else {
-            closeRestoredMainWindowsExcept(intents: intents)
-            return
-        }
-        let openIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
-        if !openIds.isEmpty {
-            attemptAutoReconnect(connectionIds: openIds)
-            return
-        }
-        if let lastId = AppSettingsStorage.shared.loadLastConnectionId() {
-            attemptAutoReconnect(connectionIds: [lastId])
-            return
-        }
-        Task { [weak self] in
-            let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
-            if !diskIds.isEmpty {
-                self?.attemptAutoReconnect(connectionIds: diskIds)
-            } else {
-                self?.closeRestoredMainWindowsExcept(intents: [])
+        if general.startupBehavior == .showWelcome {
+            for window in NSApp.windows where Self.isMainWindow(window) {
+                window.close()
             }
         }
     }
@@ -147,60 +129,6 @@ internal final class AppLaunchCoordinator {
         guard intents.isEmpty else { return }
         guard !NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
         showWelcomeWindow()
-    }
-
-    private func closeRestoredMainWindowsExcept(intents: [LaunchIntent]) {
-        let preserved = Set(intents.compactMap { $0.targetConnectionId })
-        for window in NSApp.windows where Self.isMainWindow(window) {
-            if let id = WindowLifecycleMonitor.shared.connectionId(forWindow: window),
-               preserved.contains(id) {
-                continue
-            }
-            window.close()
-        }
-    }
-
-    private func attemptAutoReconnect(connectionIds: [UUID]) {
-        let saved = ConnectionStorage.shared.loadConnections()
-        let valid = connectionIds.compactMap { id in
-            saved.first(where: { $0.id == id })
-        }
-        guard !valid.isEmpty else {
-            AppSettingsStorage.shared.saveLastOpenConnectionIds([])
-            AppSettingsStorage.shared.saveLastConnectionId(nil)
-            closeRestoredMainWindowsExcept(intents: [])
-            showWelcomeWindow()
-            return
-        }
-        for window in NSApp.windows where Self.isWelcomeWindow(window) {
-            window.orderOut(nil)
-        }
-        Task { [weak self] in
-            for connection in valid {
-                let payload = EditorTabPayload(
-                    connectionId: connection.id, intent: .restoreOrDefault
-                )
-                WindowManager.shared.openTab(payload: payload)
-                do {
-                    try await DatabaseManager.shared.ensureConnected(connection)
-                } catch is CancellationError {
-                    for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
-                        window.close()
-                    }
-                } catch {
-                    Self.logger.error("Auto-reconnect failed for '\(connection.name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-                    for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
-                        window.close()
-                    }
-                }
-            }
-            for window in NSApp.windows where Self.isWelcomeWindow(window) {
-                window.close()
-            }
-            if !NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) {
-                self?.showWelcomeWindow()
-            }
-        }
     }
 
     // MARK: - Window Identification
