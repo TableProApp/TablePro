@@ -163,6 +163,16 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "EXPLAIN \(sql)"
     }
 
+    // MARK: - Foreign Keys
+
+    func foreignKeyDisableStatements() -> [String]? {
+        ["SET session_replication_role = replica"]
+    }
+
+    func foreignKeyEnableStatements() -> [String]? {
+        ["SET session_replication_role = DEFAULT"]
+    }
+
     // MARK: - Maintenance
 
     func supportedMaintenanceOperations() -> [String]? {

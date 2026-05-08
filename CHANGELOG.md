@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL connections honor the import dialog's "Disable foreign key checks" option via `SET session_replication_role = replica` (requires REPLICATION role or superuser; managed Postgres typically rejects it) (#1114)
 - PostgreSQL SQL exports preserve GENERATED ALWAYS AS IDENTITY values on round-trip (using OVERRIDING SYSTEM VALUE) and skip GENERATED ... STORED columns (#1114)
 - PostgreSQL SQL imports no longer fail on values ending in backslash or containing dollar-quoted blocks (#1114)
 - PostgreSQL/Redshift: schema picker no longer hides user schemas whose names start with `pg` (`pgboss`, `pgcrypto`, `pgvector`, `pgaudit`, etc.). The system-schema filter now escapes the underscore in `LIKE 'pg\_%'` so it is matched literally instead of as SQL LIKE's single-character wildcard.
