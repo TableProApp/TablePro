@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - AI Chat: `@` mention detection no longer breaks when the cursor sits right after an emoji or other non-BMP character
+- Internal: tab session registry binds automatically when a coordinator falls back to creating its own registry, so unit tests no longer trip the filter-state debug assertion
 
 ## [0.39.1] - 2026-05-08
 

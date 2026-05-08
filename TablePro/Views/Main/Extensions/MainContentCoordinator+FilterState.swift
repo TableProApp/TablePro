@@ -308,7 +308,7 @@ extension MainContentCoordinator {
             filterStateLog.error(
                 "TabSession missing for selected tab \(tabId, privacy: .public); QueryTab updated but session mirror skipped"
             )
-            assertionFailure("TabSession missing for selected tab — registry sync regression")
+            assertionFailure("TabSession missing for selected tab: registry sync regression")
         }
     }
 }

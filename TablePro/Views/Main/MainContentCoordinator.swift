@@ -343,7 +343,9 @@ final class MainContentCoordinator {
         self.tabManager = tabManager
         self.changeManager = changeManager
         self.toolbarState = toolbarState
-        self.tabSessionRegistry = tabSessionRegistry ?? TabSessionRegistry()
+        let resolvedRegistry = tabSessionRegistry ?? TabSessionRegistry()
+        self.tabSessionRegistry = resolvedRegistry
+        tabManager.bindTabSessionRegistry(resolvedRegistry)
         self.queryExecutor = queryExecutor ?? QueryExecutor(connection: connection)
         let dialect = PluginManager.shared.sqlDialect(for: connection.type)
         self.queryBuilder = TableQueryBuilder(
