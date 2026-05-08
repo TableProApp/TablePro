@@ -80,22 +80,20 @@ struct MCPHttpServerTransportPairingTests {
         challenge: String,
         expiresAt: Date
     ) async throws {
-        try await MainActor.run {
-            try MCPPairingService.shared.store.insert(
-                code: code,
-                record: PairingExchangeRecord(
-                    plaintextToken: plaintextToken,
-                    challenge: challenge,
-                    expiresAt: expiresAt
-                )
+        let store = await MainActor.run { MCPPairingService.shared.store }
+        try await store.insert(
+            code: code,
+            record: PairingExchangeRecord(
+                plaintextToken: plaintextToken,
+                challenge: challenge,
+                expiresAt: expiresAt
             )
-        }
+        )
     }
 
     private func clearPairingCode(_ code: String) async {
-        await MainActor.run {
-            _ = try? MCPPairingService.shared.store.consume(code: code, verifier: "__cleanup__")
-        }
+        let store = await MainActor.run { MCPPairingService.shared.store }
+        _ = try? await store.consume(code: code, verifier: "__cleanup__")
     }
 
     private func uniqueCode() -> String {

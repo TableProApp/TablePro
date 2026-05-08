@@ -9,16 +9,13 @@ struct PairingExchangeRecord: Sendable, Equatable {
     let expiresAt: Date
 }
 
-final class PairingExchangeStore: @unchecked Sendable {
+actor PairingExchangeStore {
     static let exchangeWindow: TimeInterval = 300
     static let maxPendingCodes = 50
 
-    private let lock = NSLock()
     private var pending: [String: PairingExchangeRecord] = [:]
 
     func insert(code: String, record: PairingExchangeRecord) throws {
-        lock.lock()
-        defer { lock.unlock() }
         prune(now: Date.now)
         guard pending.count < Self.maxPendingCodes else {
             throw MCPDataLayerError.forbidden(
@@ -29,8 +26,6 @@ final class PairingExchangeStore: @unchecked Sendable {
     }
 
     func consume(code: String, verifier: String, now: Date = .now) throws -> String {
-        lock.lock()
-        defer { lock.unlock() }
         prune(now: now)
 
         guard let entry = pending[code] else {
@@ -53,21 +48,15 @@ final class PairingExchangeStore: @unchecked Sendable {
     }
 
     func pruneExpired(now: Date = .now) {
-        lock.lock()
-        defer { lock.unlock() }
         prune(now: now)
     }
 
     func count() -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return pending.count
+        pending.count
     }
 
     func contains(code: String) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return pending[code] != nil
+        pending[code] != nil
     }
 
     private func prune(now: Date) {
@@ -148,7 +137,7 @@ final class MCPPairingService {
 
         let code = UUID().uuidString
         do {
-            try store.insert(
+            try await store.insert(
                 code: code,
                 record: PairingExchangeRecord(
                     plaintextToken: result.plaintext,
@@ -171,8 +160,8 @@ final class MCPPairingService {
         NSWorkspace.shared.open(redirect)
     }
 
-    func exchange(_ exchange: PairingExchange) throws -> String {
-        try store.consume(code: exchange.code, verifier: exchange.verifier)
+    func exchange(_ exchange: PairingExchange) async throws -> String {
+        try await store.consume(code: exchange.code, verifier: exchange.verifier)
     }
 
     private static func revokeExistingTokens(named name: String, in store: MCPTokenStore) async {
@@ -188,7 +177,7 @@ final class MCPPairingService {
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.pruneInterval)
                 guard !Task.isCancelled else { return }
-                store.pruneExpired()
+                await store.pruneExpired()
             }
         }
     }

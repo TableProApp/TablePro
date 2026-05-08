@@ -23,49 +23,50 @@ struct MCPPairingServiceTests {
     }
 
     @Test("consume returns stored token when challenge and verifier match")
-    func consumeReturnsTokenForValidVerifier() throws {
+    func consumeReturnsTokenForValidVerifier() async throws {
         let verifier = "test-verifier-1"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        try store.insert(code: "code-1", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        try await store.insert(code: "code-1", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
 
-        let token = try store.consume(code: "code-1", verifier: verifier)
+        let token = try await store.consume(code: "code-1", verifier: verifier)
 
         #expect(token == "tp_secret")
     }
 
     @Test("consume removes the entry after success (single-use)")
-    func consumeIsSingleUse() throws {
+    func consumeIsSingleUse() async throws {
         let verifier = "test-verifier-2"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        try store.insert(code: "code-2", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        try await store.insert(code: "code-2", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
 
-        _ = try store.consume(code: "code-2", verifier: verifier)
+        _ = try await store.consume(code: "code-2", verifier: verifier)
 
-        #expect(store.contains(code: "code-2") == false)
+        let contains = await store.contains(code: "code-2")
+        #expect(contains == false)
     }
 
     @Test("second consume of the same code returns notFound")
-    func duplicateConsumeReturnsNotFound() throws {
+    func duplicateConsumeReturnsNotFound() async throws {
         let verifier = "test-verifier-3"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        try store.insert(code: "code-3", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        try await store.insert(code: "code-3", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
 
-        _ = try store.consume(code: "code-3", verifier: verifier)
+        _ = try await store.consume(code: "code-3", verifier: verifier)
 
-        #expect(throws: MCPDataLayerError.self) {
-            try store.consume(code: "code-3", verifier: verifier)
+        await #expect(throws: MCPDataLayerError.self) {
+            try await store.consume(code: "code-3", verifier: verifier)
         }
     }
 
     @Test("consume returns notFound for unknown code")
-    func consumeUnknownCodeReturnsNotFound() {
+    func consumeUnknownCodeReturnsNotFound() async {
         let store = makeStore()
 
         do {
-            _ = try store.consume(code: "missing", verifier: "any")
+            _ = try await store.consume(code: "missing", verifier: "any")
             Issue.record("Expected notFound error")
         } catch let error as MCPDataLayerError {
             guard case .notFound = error else {
@@ -78,14 +79,14 @@ struct MCPPairingServiceTests {
     }
 
     @Test("consume returns expired when entry has expired")
-    func consumeExpiredEntryReturnsExpired() throws {
+    func consumeExpiredEntryReturnsExpired() async throws {
         let verifier = "test-verifier-4"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        try store.insert(code: "code-4", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
+        try await store.insert(code: "code-4", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
 
         do {
-            _ = try store.consume(code: "code-4", verifier: verifier, now: Date.now)
+            _ = try await store.consume(code: "code-4", verifier: verifier, now: Date.now)
             Issue.record("Expected expired error")
         } catch let error as MCPDataLayerError {
             guard case .expired = error else {
@@ -98,13 +99,13 @@ struct MCPPairingServiceTests {
     }
 
     @Test("consume returns forbidden when challenge does not match the verifier")
-    func consumeMismatchedChallengeReturnsForbidden() throws {
+    func consumeMismatchedChallengeReturnsForbidden() async throws {
         let store = makeStore()
         let challenge = base64UrlSha256(of: "intended-verifier")
-        try store.insert(code: "code-5", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        try await store.insert(code: "code-5", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
 
         do {
-            _ = try store.consume(code: "code-5", verifier: "attacker-verifier")
+            _ = try await store.consume(code: "code-5", verifier: "attacker-verifier")
             Issue.record("Expected forbidden error")
         } catch let error as MCPDataLayerError {
             guard case .forbidden = error else {
@@ -117,39 +118,44 @@ struct MCPPairingServiceTests {
     }
 
     @Test("consume on expired code removes the entry")
-    func consumeOnExpiredCodeRemovesEntry() throws {
+    func consumeOnExpiredCodeRemovesEntry() async throws {
         let verifier = "test-verifier-6"
         let challenge = base64UrlSha256(of: verifier)
         let store = makeStore()
-        try store.insert(code: "code-6", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
+        try await store.insert(code: "code-6", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
 
-        _ = try? store.consume(code: "code-6", verifier: verifier)
+        _ = try? await store.consume(code: "code-6", verifier: verifier)
 
-        #expect(store.contains(code: "code-6") == false)
+        let contains = await store.contains(code: "code-6")
+        #expect(contains == false)
     }
 
     @Test("pruneExpired removes only expired entries")
-    func pruneRemovesOnlyExpiredEntries() throws {
+    func pruneRemovesOnlyExpiredEntries() async throws {
         let store = makeStore()
-        try store.insert(
+        try await store.insert(
             code: "alive",
             record: record(plaintext: "tp_a", challenge: "challenge", expiresIn: 60)
         )
-        try store.insert(
+        try await store.insert(
             code: "stale-1",
             record: record(plaintext: "tp_b", challenge: "challenge", expiresIn: -1)
         )
-        try store.insert(
+        try await store.insert(
             code: "stale-2",
             record: record(plaintext: "tp_c", challenge: "challenge", expiresIn: -10)
         )
 
-        store.pruneExpired()
+        await store.pruneExpired()
 
-        #expect(store.count() == 1)
-        #expect(store.contains(code: "alive"))
-        #expect(store.contains(code: "stale-1") == false)
-        #expect(store.contains(code: "stale-2") == false)
+        let count = await store.count()
+        let containsAlive = await store.contains(code: "alive")
+        let containsStale1 = await store.contains(code: "stale-1")
+        let containsStale2 = await store.contains(code: "stale-2")
+        #expect(count == 1)
+        #expect(containsAlive)
+        #expect(containsStale1 == false)
+        #expect(containsStale2 == false)
     }
 
     @Test("sha256Base64Url matches CryptoKit output without padding")
@@ -180,17 +186,17 @@ struct MCPPairingServiceTests {
     }
 
     @Test("insert throws after maxPendingCodes consecutive inserts")
-    func insertThrowsWhenPendingCapReached() throws {
+    func insertThrowsWhenPendingCapReached() async throws {
         let store = makeStore()
         for index in 0..<PairingExchangeStore.maxPendingCodes {
-            try store.insert(
+            try await store.insert(
                 code: "code-cap-\(index)",
                 record: record(plaintext: "tp_x", challenge: "challenge", expiresIn: 60)
             )
         }
 
         do {
-            try store.insert(
+            try await store.insert(
                 code: "code-overflow",
                 record: record(plaintext: "tp_x", challenge: "challenge", expiresIn: 60)
             )
@@ -204,7 +210,9 @@ struct MCPPairingServiceTests {
             Issue.record("Unexpected error: \(error)")
         }
 
-        #expect(store.count() == PairingExchangeStore.maxPendingCodes)
-        #expect(store.contains(code: "code-overflow") == false)
+        let count = await store.count()
+        let containsOverflow = await store.contains(code: "code-overflow")
+        #expect(count == PairingExchangeStore.maxPendingCodes)
+        #expect(containsOverflow == false)
     }
 }
