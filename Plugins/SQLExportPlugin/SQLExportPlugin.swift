@@ -95,7 +95,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                 sortedTables: sortedTables, dataSource: dataSource, to: fileHandle, progress: progress)
             try await writeDataPhase(
                 sortedTables: sortedTables, dataSource: dataSource, to: fileHandle, progress: progress)
-            try writeForeignKeyPhase(
+            try await writeForeignKeyPhase(
                 sortedTables: sortedTables, fkMap: fkMap, dataSource: dataSource, to: fileHandle)
 
             try fileHandle.close()
@@ -306,11 +306,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         fkMap: [String: [PluginForeignKeyInfo]],
         dataSource: any PluginExportDataSource,
         to fileHandle: FileHandle
-    ) throws {
+    ) async throws {
         var emittedAnything = false
         for table in sortedTables where optionValue(table, at: 0) {
             let fks = fkMap[table.name] ?? []
-            guard !fks.isEmpty else { continue }
             let grouped = groupForeignKeysByConstraint(fks)
             for group in grouped {
                 let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource)
@@ -318,9 +317,36 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                 emittedAnything = true
             }
         }
+
+        for table in sortedTables where optionValue(table, at: 2) && table.tableType != "view" {
+            let columns = (try? await dataSource.fetchColumns(
+                table: table.name, databaseName: table.databaseName)) ?? []
+            for column in columns where column.isIdentity {
+                let setval = renderIdentitySetval(
+                    table: table, columnName: column.name, dataSource: dataSource)
+                try fileHandle.write(contentsOf: "\(setval)\n".toUTF8Data())
+                emittedAnything = true
+            }
+        }
+
         if emittedAnything {
             try fileHandle.write(contentsOf: "\n".toUTF8Data())
         }
+    }
+
+    private func renderIdentitySetval(
+        table: PluginExportTable,
+        columnName: String,
+        dataSource: any PluginExportDataSource
+    ) -> String {
+        let tableRef = dataSource.quoteIdentifier(table.name)
+        let columnRef = dataSource.quoteIdentifier(columnName)
+        let tableLiteral = dataSource.escapeStringLiteral(tableRef)
+        let columnLiteral = dataSource.escapeStringLiteral(columnName)
+        return "SELECT pg_catalog.setval("
+            + "pg_catalog.pg_get_serial_sequence('\(tableLiteral)', '\(columnLiteral)'), "
+            + "GREATEST(COALESCE((SELECT MAX(\(columnRef)) FROM \(tableRef)), 0), 1), "
+            + "true);"
     }
 
     private func groupForeignKeysByConstraint(
