@@ -156,6 +156,14 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .alterTableDDL,
+            .cancelQuery,
+        ]
+    }
+
     func quoteIdentifier(_ name: String) -> String {
         let escaped = name.replacingOccurrences(of: "`", with: "``")
         return "`\(escaped)`"

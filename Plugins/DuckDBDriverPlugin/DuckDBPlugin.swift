@@ -605,6 +605,16 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
     var parameterStyle: ParameterStyle { .dollar }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .transactions,
+            .alterTableDDL,
+            .multiSchema,
+            .cancelQuery,
+        ]
+    }
+
     init(config: DriverConnectionConfig) {
         self.config = config
     }

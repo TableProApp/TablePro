@@ -34,6 +34,10 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var supportsTransactions: Bool { false }
 
+    var capabilities: PluginCapabilities {
+        [.cancelQuery]
+    }
+
     // etcd has no transaction support — these are no-ops
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}

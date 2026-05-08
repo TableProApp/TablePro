@@ -43,6 +43,7 @@ final class DatabaseSwitcherViewModel {
     private let currentDatabase: String?
     private let currentSchema: String?
     private let databaseType: DatabaseType
+    @ObservationIgnored private let services: AppServices
 
     // MARK: - Computed Properties
 
@@ -59,13 +60,14 @@ final class DatabaseSwitcherViewModel {
 
     init(
         connectionId: UUID, currentDatabase: String?, currentSchema: String?,
-        databaseType: DatabaseType
+        databaseType: DatabaseType, services: AppServices = .live
     ) {
         self.connectionId = connectionId
         self.currentDatabase = currentDatabase
         self.currentSchema = currentSchema
         self.databaseType = databaseType
-        self.mode = PluginManager.shared.supportsSchemaSwitching(for: databaseType) ? .schema : .database
+        self.services = services
+        self.mode = services.pluginManager.supportsSchemaSwitching(for: databaseType) ? .schema : .database
     }
 
     // MARK: - Public Methods
@@ -76,7 +78,7 @@ final class DatabaseSwitcherViewModel {
         errorMessage = nil
 
         do {
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            guard let driver = services.databaseManager.driver(for: connectionId) else {
                 errorMessage = String(localized: "No active connection")
                 isLoading = false
                 return
@@ -132,14 +134,14 @@ final class DatabaseSwitcherViewModel {
     }
 
     func loadCreateDatabaseForm() async throws -> CreateDatabaseFormSpec? {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        guard let driver = services.databaseManager.driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
         return try await driver.createDatabaseFormSpec()
     }
 
     func createDatabase(name: String, values: [String: String]) async throws {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        guard let driver = services.databaseManager.driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
         let request = CreateDatabaseRequest(name: name, values: values)
@@ -148,7 +150,7 @@ final class DatabaseSwitcherViewModel {
 
     /// Drop a database
     func dropDatabase(name: String) async throws {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        guard let driver = services.databaseManager.driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
 
@@ -192,10 +194,10 @@ final class DatabaseSwitcherViewModel {
 
     private func isSystemItem(_ name: String) -> Bool {
         if isSchemaMode {
-            let schemaNames = PluginManager.shared.systemSchemaNames(for: databaseType)
+            let schemaNames = services.pluginManager.systemSchemaNames(for: databaseType)
             return schemaNames.contains(name)
         }
-        let dbNames = PluginManager.shared.systemDatabaseNames(for: databaseType)
+        let dbNames = services.pluginManager.systemDatabaseNames(for: databaseType)
         return dbNames.contains(name)
     }
 }

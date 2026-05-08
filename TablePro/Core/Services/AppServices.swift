@@ -18,6 +18,7 @@ struct AppServices {
     let aiChatStorage: AIChatStorage
     let syncTracker: SyncChangeTracker
     let themeEngine: ThemeEngine
+    let feedbackAPIClient: FeedbackAPIClient
 
     static let live = AppServices(
         appEvents: .shared,
@@ -30,7 +31,8 @@ struct AppServices {
         sqlFavoriteManager: .shared,
         aiChatStorage: .shared,
         syncTracker: .shared,
-        themeEngine: .shared
+        themeEngine: .shared,
+        feedbackAPIClient: .shared
     )
 }
 

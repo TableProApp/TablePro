@@ -26,6 +26,14 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         redisConnection?.serverVersion()
     }
 
+    var capabilities: PluginCapabilities {
+        [
+            .transactions,
+            .truncateTable,
+            .cancelQuery,
+        ]
+    }
+
     func quoteIdentifier(_ name: String) -> String { name }
 
     func defaultExportQuery(table: String) -> String? {

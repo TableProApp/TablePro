@@ -30,7 +30,7 @@ extension AIChatViewModel {
             return
         }
         guard let connection,
-              let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+              let driver = services.databaseManager.driver(for: connection.id) else { return }
         let task: Task<Void, Never> = Task { [weak self] in
             let columns: [ColumnInfo]
             do {
@@ -73,7 +73,7 @@ extension AIChatViewModel {
 
     func ensureSavedQueryLoaded(id: UUID) async {
         if cachedSavedQueries[id] != nil { return }
-        if let favorite = await SQLFavoriteManager.shared.fetchFavorite(id: id) {
+        if let favorite = await services.sqlFavoriteManager.fetchFavorite(id: id) {
             cachedSavedQueries[id] = favorite
         }
     }
@@ -93,8 +93,8 @@ extension AIChatViewModel {
 
     private func runSchemaLoad() async {
         guard let connection,
-              let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
-        let settings = AppSettingsManager.shared.ai
+              let driver = services.databaseManager.driver(for: connection.id) else { return }
+        let settings = services.appSettings.ai
         let tablesToFetch = Array(tables.prefix(settings.maxSchemaTables))
         guard !tablesToFetch.isEmpty else { return }
 
@@ -134,16 +134,16 @@ extension AIChatViewModel {
         guard let connection else { return nil }
         return PromptContext(
             databaseType: connection.type,
-            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
+            databaseName: services.databaseManager.activeDatabaseName(for: connection),
             tables: tables,
             columnsByTable: columnsByTable,
             foreignKeys: foreignKeysByTable,
             currentQuery: settings.includeCurrentQuery ? currentQuery : nil,
             queryResults: settings.includeQueryResults ? queryResults : nil,
             settings: settings,
-            identifierQuote: PluginManager.shared.sqlDialect(for: connection.type)?.identifierQuote ?? "\"",
-            editorLanguage: PluginManager.shared.editorLanguage(for: connection.type),
-            queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type),
+            identifierQuote: services.pluginManager.sqlDialect(for: connection.type)?.identifierQuote ?? "\"",
+            editorLanguage: services.pluginManager.editorLanguage(for: connection.type),
+            queryLanguageName: services.pluginManager.queryLanguageName(for: connection.type),
             connectionRules: connection.aiRules
         )
     }
@@ -163,9 +163,9 @@ extension AIChatViewModel {
 
     func renderedSchemaSection() -> String? {
         guard !tables.isEmpty else { return nil }
-        let settings = AppSettingsManager.shared.ai
+        let settings = services.appSettings.ai
         let identifierQuote = connection.flatMap {
-            PluginManager.shared.sqlDialect(for: $0.type)?.identifierQuote
+            services.pluginManager.sqlDialect(for: $0.type)?.identifierQuote
         } ?? "\""
         let section = AISchemaContext.buildSchemaSection(
             tables: tables,
