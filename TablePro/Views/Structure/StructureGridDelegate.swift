@@ -297,8 +297,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
         }
     }
 
-    func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool) {
-        sortHandler?(column, ascending)
+    func dataGridSortStateChanged(_ state: SortState) {
+        guard let primary = state.columns.first else {
+            sortHandler?(-1, true)
+            return
+        }
+        sortHandler?(primary.columnIndex, primary.direction == .ascending)
     }
 
     func dataGridMoveRow(from source: Int, to destination: Int) {

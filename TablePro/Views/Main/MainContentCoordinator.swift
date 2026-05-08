@@ -1154,46 +1154,25 @@ final class MainContentCoordinator {
 
     // MARK: - Sorting
 
-    func handleSort(columnIndex: Int, ascending: Bool, isMultiSort: Bool = false) {
+    func handleSortStateChanged(_ newState: SortState) {
         guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        guard newState != tab.sortState else { return }
 
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
-        guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
 
-        var currentSort = tab.sortState
-        let newDirection: SortDirection = ascending ? .ascending : .descending
-
-        if isMultiSort {
-            // Multi-sort: toggle existing or append new column
-            if let existingIndex = currentSort.columns.firstIndex(where: { $0.columnIndex == columnIndex }) {
-                if currentSort.columns[existingIndex].direction == newDirection {
-                    // Same direction clicked again — remove from sort
-                    currentSort.columns.remove(at: existingIndex)
-                } else {
-                    // Toggle direction
-                    currentSort.columns[existingIndex].direction = newDirection
-                }
-            } else {
-                // Add new column to sort list
-                currentSort.columns.append(SortColumn(columnIndex: columnIndex, direction: newDirection))
-            }
-        } else {
-            // Single sort: replace all with single column
-            currentSort = SortState()
-            currentSort.columns = [SortColumn(columnIndex: columnIndex, direction: newDirection)]
-        }
         if tab.tabType == .query {
-            // When more rows are available server-side, re-execute with ORDER BY
-            // instead of sorting locally (we only have a partial result set)
-            if tab.pagination.hasMoreRows {
-                let columnName = tableRows.columns[columnIndex]
-                let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
+            if !newState.columns.isEmpty && tab.pagination.hasMoreRows {
                 let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
                 let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
-                let quotedColumn = queryBuilder.quoteIdentifier(columnName)
-                let orderQuery = "\(strippedQuery) ORDER BY \(quotedColumn) \(direction)"
+                let orderClause = newState.columns.compactMap { sortCol -> String? in
+                    guard sortCol.columnIndex >= 0, sortCol.columnIndex < tableRows.columns.count else { return nil }
+                    let columnName = tableRows.columns[sortCol.columnIndex]
+                    let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
+                    return "\(queryBuilder.quoteIdentifier(columnName)) \(direction)"
+                }.joined(separator: ", ")
+                let orderQuery = orderClause.isEmpty ? strippedQuery : "\(strippedQuery) ORDER BY \(orderClause)"
                 tabManager.mutate(at: tabIndex) { tab in
-                    tab.sortState = currentSort
+                    tab.sortState = newState
                     tab.hasUserInteraction = true
                     tab.pagination.resetLoadMore()
                     tab.content.query = orderQuery
@@ -1202,14 +1181,24 @@ final class MainContentCoordinator {
                 return
             }
 
+            if newState.columns.isEmpty {
+                tabManager.mutate(at: tabIndex) { tab in
+                    tab.sortState = newState
+                    tab.hasUserInteraction = true
+                }
+                querySortCache.removeValue(forKey: tab.id)
+                dataTabDelegate?.dataGridDidReplaceAllRows()
+                return
+            }
+
             tabManager.mutate(at: tabIndex) { tab in
-                tab.sortState = currentSort
+                tab.sortState = newState
                 tab.hasUserInteraction = true
                 tab.pagination.reset()
             }
             let tabId = tab.id
             let schemaVersion = tab.schemaVersion
-            let sortColumns = currentSort.columns
+            let sortColumns = newState.columns
             let colTypes = tableRows.columnTypes
             let storageRows = tableRows.rows
             let snapshotRows: [(id: RowID, values: [String?])] = storageRows.map { ($0.id, Array($0.values)) }
@@ -1232,9 +1221,8 @@ final class MainContentCoordinator {
 
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        // Guard against stale completion: verify tab still expects this sort
                         guard let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                              self.tabManager.tabs[idx].sortState == currentSort else {
+                              self.tabManager.tabs[idx].sortState == newState else {
                             return
                         }
                         self.querySortCache[tabId] = QuerySortCacheEntry(
@@ -1261,58 +1249,26 @@ final class MainContentCoordinator {
         }
 
         let tabId = tab.id
-        let capturedSort = currentSort
+        let capturedSort = newState
         let capturedQuery = tab.content.query
         let capturedColumns = tableRows.columns
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
             guard let self, confirmed else { return }
-            let newQuery = self.queryBuilder.buildMultiSortQuery(
-                baseQuery: capturedQuery,
-                sortState: capturedSort,
-                columns: capturedColumns
-            )
+            let newQuery: String
+            if capturedSort.columns.isEmpty {
+                newQuery = Self.stripTrailingOrderBy(from: capturedQuery)
+            } else {
+                newQuery = self.queryBuilder.buildMultiSortQuery(
+                    baseQuery: capturedQuery,
+                    sortState: capturedSort,
+                    columns: capturedColumns
+                )
+            }
             guard self.tabManager.mutate(tabId: tabId, { tab in
                 tab.sortState = capturedSort
                 tab.hasUserInteraction = true
                 tab.pagination.reset()
                 tab.content.query = newQuery
-            }) else { return }
-            self.runQuery()
-        }
-    }
-
-    func removeMultiSortColumn(columnIndex: Int) {
-        guard let tab = tabManager.selectedTab else { return }
-        guard let existing = tab.sortState.columns.first(where: { $0.columnIndex == columnIndex }) else { return }
-        let ascending = existing.direction == .ascending
-        handleSort(columnIndex: columnIndex, ascending: ascending, isMultiSort: true)
-    }
-
-    func clearSort() {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
-        guard tab.sortState.isSorting else { return }
-
-        let emptySort = SortState()
-
-        if tab.tabType == .query {
-            tabManager.mutate(at: tabIndex) { tab in
-                tab.sortState = emptySort
-                tab.hasUserInteraction = true
-            }
-            querySortCache.removeValue(forKey: tab.id)
-            dataTabDelegate?.dataGridDidReplaceAllRows()
-            return
-        }
-
-        let tabId = tab.id
-        let capturedQuery = tab.content.query
-        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
-            guard let self, confirmed else { return }
-            guard self.tabManager.mutate(tabId: tabId, { tab in
-                tab.sortState = emptySort
-                tab.hasUserInteraction = true
-                tab.pagination.reset()
-                tab.content.query = Self.stripTrailingOrderBy(from: capturedQuery)
             }) else { return }
             self.runQuery()
         }

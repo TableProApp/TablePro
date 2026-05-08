@@ -356,16 +356,8 @@ struct MainContentView: View {
                     rowIndex: rowIndex, columnIndex: colIndex, value: value)
                 scheduleInspectorUpdate()
             },
-            onSort: { columnIndex, ascending, isMultiSort in
-                coordinator.handleSort(
-                    columnIndex: columnIndex, ascending: ascending,
-                    isMultiSort: isMultiSort)
-            },
-            onClearSort: {
-                coordinator.clearSort()
-            },
-            onRemoveSortColumn: { columnIndex in
-                coordinator.removeMultiSortColumn(columnIndex: columnIndex)
+            onSortStateChanged: { newState in
+                coordinator.handleSortStateChanged(newState)
             },
             onAddRow: {
                 coordinator.addNewRow()

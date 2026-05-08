@@ -36,9 +36,7 @@ struct MainEditorContentView: View {
     // MARK: - Callbacks
 
     let onCellEdit: (Int, Int, String?) -> Void
-    let onSort: (Int, Bool, Bool) -> Void
-    let onClearSort: () -> Void
-    let onRemoveSortColumn: (Int) -> Void
+    let onSortStateChanged: (SortState) -> Void
     let onAddRow: () -> Void
     let onUndoInsert: (Int) -> Void
     let onSelectionChange: (Set<Int>) -> Void
@@ -182,9 +180,7 @@ struct MainEditorContentView: View {
         dataTabDelegate.coordinator = coordinator
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
-        dataTabDelegate.onSort = onSort
-        dataTabDelegate.onClearSort = onClearSort
-        dataTabDelegate.onRemoveSortColumn = onRemoveSortColumn
+        dataTabDelegate.onSortStateChanged = onSortStateChanged
         dataTabDelegate.onUndoInsert = onUndoInsert
         dataTabDelegate.onFilterColumn = onFilterColumn
         dataTabDelegate.onRefresh = onRefresh
