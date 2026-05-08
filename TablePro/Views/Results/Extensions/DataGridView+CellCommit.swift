@@ -39,7 +39,7 @@ extension TableViewCoordinator {
         }
         delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
         invalidateDisplayCache()
-        rebuildVisualStateCache()
+        visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
 
         guard let tableColumnIndex = DataGridView.tableColumnIndex(
             for: columnIndex,

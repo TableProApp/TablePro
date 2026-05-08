@@ -211,7 +211,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.primaryKeyColumns = configuration.primaryKeyColumns
         coordinator.tabType = configuration.tabType
 
-        coordinator.rebuildVisualStateCache()
+        coordinator.visualIndex.rebuild(from: coordinator.changeManager, sortedIDs: coordinator.sortedIDs)
 
         if !latestRows.columns.isEmpty {
             coordinator.isRebuildingColumns = true

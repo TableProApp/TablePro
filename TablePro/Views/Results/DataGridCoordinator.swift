@@ -115,8 +115,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var layoutPersistTask: Task<Void, Never>?
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
-    private var rowVisualStateCache: [Int: RowVisualState] = [:]
-    private var lastVisualStateCacheVersion: Int = 0
+    let visualIndex = RowVisualIndex()
     private let largeDatasetThreshold = 5_000
 
     var isLargeDataset: Bool { cachedRowCount > largeDatasetThreshold }
@@ -201,7 +200,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     private func releaseData() {
         overlayEditor?.dismiss(commit: false)
-        rowVisualStateCache.removeAll()
+        visualIndex.clear()
         displayCache.removeAllObjects()
         columnDisplayFormats = []
         cachedRowCount = 0
@@ -230,14 +229,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyInsertedRows(_ indices: IndexSet) {
         guard let tableView else { return }
-        rebuildVisualStateCache()
+        visualIndex.rebuild(from: changeManager, sortedIDs: sortedIDs)
         updateCache()
         tableView.insertRows(at: indices, withAnimation: .slideDown)
     }
 
     func applyRemovedRows(_ indices: IndexSet) {
         guard let tableView else { return }
-        rebuildVisualStateCache()
+        visualIndex.rebuild(from: changeManager, sortedIDs: sortedIDs)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: .slideUp)
     }
@@ -306,7 +305,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func invalidateAllDisplayCaches() {
         displayCache.removeAllObjects()
-        rebuildVisualStateCache()
+        visualIndex.rebuild(from: changeManager, sortedIDs: sortedIDs)
     }
 
     func updateDisplayFormats(_ formats: [ValueDisplayFormat?]) {
@@ -371,7 +370,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             else { return }
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
-            rebuildVisualStateCache()
+            visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
             tableView.reloadData(
                 forRowIndexes: IndexSet(integer: row),
                 columnIndexes: IndexSet(integer: tableColumn)
@@ -394,7 +393,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 invalidateDisplayCache(forDisplayRow: position.row, column: position.column)
             }
             guard !rowSet.isEmpty, !colSet.isEmpty else { return }
-            rebuildVisualStateCache()
+            for row in rowSet {
+                visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
+            }
             tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }
@@ -546,59 +547,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
-    // MARK: - Row Visual State Cache
-
-    @MainActor
-    func rebuildVisualStateCache() {
-        let currentVersion = changeManager.reloadVersion
-        guard currentVersion != lastVisualStateCacheVersion else { return }
-        lastVisualStateCacheVersion = currentVersion
-
-        rowVisualStateCache.removeAll(keepingCapacity: true)
-
-        var insertedRowIndices: Set<Int>
-        if let sorted = sortedIDs {
-            insertedRowIndices = Set()
-            for (displayIndex, id) in sorted.enumerated() where id.isInserted {
-                insertedRowIndices.insert(displayIndex)
-            }
-        } else {
-            insertedRowIndices = changeManager.insertedRowIndices
-        }
-
-        if !changeManager.hasChanges && insertedRowIndices.isEmpty {
-            return
-        }
-
-        for rowChange in changeManager.rowChanges {
-            let rowIndex = rowChange.rowIndex
-            let isDeleted = rowChange.type == .delete
-            let isInserted = insertedRowIndices.contains(rowIndex) || rowChange.type == .insert
-            let modifiedColumns: Set<Int> = rowChange.type == .update
-                ? Set(rowChange.cellChanges.map { $0.columnIndex })
-                : []
-
-            rowVisualStateCache[rowIndex] = RowVisualState(
-                isDeleted: isDeleted,
-                isInserted: isInserted,
-                modifiedColumns: modifiedColumns
-            )
-        }
-
-        for rowIndex in insertedRowIndices where rowVisualStateCache[rowIndex] == nil {
-            rowVisualStateCache[rowIndex] = RowVisualState(
-                isDeleted: false,
-                isInserted: true,
-                modifiedColumns: []
-            )
-        }
-    }
+    // MARK: - Row Visual State
 
     func visualState(for row: Int) -> RowVisualState {
         if let delegateState = delegate?.dataGridVisualState(forRow: row) {
             return delegateState
         }
-        return rowVisualStateCache[row] ?? .empty
+        return visualIndex.visualState(for: row)
     }
 
     // MARK: - NSTableViewDataSource
