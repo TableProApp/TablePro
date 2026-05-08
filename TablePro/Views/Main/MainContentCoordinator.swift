@@ -7,6 +7,7 @@
 //
 
 import CodeEditSourceEditor
+import Combine
 import Foundation
 import Observation
 import os
@@ -72,10 +73,6 @@ final class MainContentCoordinator {
         switchSeq += 1
         return switchSeq
     }
-
-    /// Posted during teardown so DataGridView coordinators can release cell views.
-    /// Object is the connection UUID.
-    static let teardownNotification = Notification.Name("MainContentCoordinator.teardown")
 
     // MARK: - Dependencies
 
@@ -162,7 +159,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
-    @ObservationIgnored private var pluginDriverObserver: NSObjectProtocol?
+    @ObservationIgnored private var pluginDriverCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModObserver: NSObjectProtocol?
 
     var fileConflictRequest: FileConflictRequest?
@@ -424,13 +421,13 @@ final class MainContentCoordinator {
         startFileWatcherIfNeeded()
         // Retry when driver becomes available (connection may still be in progress)
         if changeManager.pluginDriver == nil {
-            pluginDriverObserver = NotificationCenter.default.addObserver(
-                forName: .databaseDidConnect, object: nil, queue: .main
-            ) { [weak self] _ in
-                Task {
-                    self?.setupPluginDriver()
+            pluginDriverCancellable = AppEvents.shared.databaseDidConnect
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    Task {
+                        self?.setupPluginDriver()
+                    }
                 }
-            }
         }
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -476,10 +473,8 @@ final class MainContentCoordinator {
         let pluginDriver = driver.queryBuildingPluginDriver
         queryBuilder.setPluginDriver(pluginDriver)
         changeManager.pluginDriver = pluginDriver
-        // Remove observer once successfully set up
-        if pluginDriver != nil, let observer = pluginDriverObserver {
-            NotificationCenter.default.removeObserver(observer)
-            pluginDriverObserver = nil
+        if pluginDriver != nil {
+            pluginDriverCancellable = nil
         }
     }
 
@@ -547,10 +542,7 @@ final class MainContentCoordinator {
             NotificationCenter.default.removeObserver(observer)
             terminationObserver = nil
         }
-        if let observer = pluginDriverObserver {
-            NotificationCenter.default.removeObserver(observer)
-            pluginDriverObserver = nil
-        }
+        pluginDriverCancellable = nil
         if let observer = externalFileModObserver {
             NotificationCenter.default.removeObserver(observer)
             externalFileModObserver = nil
@@ -566,9 +558,8 @@ final class MainContentCoordinator {
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
 
-        NotificationCenter.default.post(
-            name: Self.teardownNotification,
-            object: connection.id
+        AppEvents.shared.mainCoordinatorTeardown.send(
+            MainCoordinatorTeardown(connectionId: connection.id)
         )
 
         tabSessionRegistry.removeAll()

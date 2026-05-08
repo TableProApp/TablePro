@@ -45,10 +45,14 @@ struct DataGridView: NSViewRepresentable {
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
+        scrollView.contentView.wantsLayer = true
+        scrollView.contentView.layerContentsRedrawPolicy = .onSetNeedsDisplay
 
         let tableView = KeyHandlingTableView()
         tableView.coordinator = context.coordinator
         tableView.style = .plain
+        tableView.wantsLayer = true
+        tableView.layerContentsRedrawPolicy = .onSetNeedsDisplay
         tableView.setAccessibilityLabel(String(localized: "Data grid"))
         tableView.setAccessibilityRole(.table)
         let settings = AppSettingsManager.shared.dataGrid
@@ -156,7 +160,7 @@ struct DataGridView: NSViewRepresentable {
             }
         }
 
-        if let connectionId = configuration.connectionId, coordinator.teardownObserver == nil {
+        if let connectionId = configuration.connectionId, coordinator.teardownCancellable == nil {
             coordinator.observeTeardown(connectionId: connectionId)
         }
 

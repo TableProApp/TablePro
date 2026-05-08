@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import os
 import SwiftUI
@@ -127,7 +128,7 @@ final class ERDiagramViewModel {
     private func waitForConnection() async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let resumed = OSAllocatedUnfairLock(initialState: false)
-            let observerBox = OSAllocatedUnfairLock<NSObjectProtocol?>(initialState: nil)
+            let cancellableBox = OSAllocatedUnfairLock<AnyCancellable?>(initialState: nil)
             let timeoutTaskBox = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
             @Sendable func resumeOnce() {
@@ -138,23 +139,16 @@ final class ERDiagramViewModel {
                 }
                 guard !alreadyResumed else { return }
                 timeoutTaskBox.withLock { $0?.cancel(); $0 = nil }
-                let observer = observerBox.withLock { current -> NSObjectProtocol? in
-                    let value = current
-                    current = nil
-                    return value
-                }
-                if let observer {
-                    NotificationCenter.default.removeObserver(observer)
-                }
+                cancellableBox.withLock { $0 = nil }
                 continuation.resume()
             }
 
-            let observer = NotificationCenter.default.addObserver(
-                forName: .databaseDidConnect, object: nil, queue: .main
-            ) { _ in
-                resumeOnce()
-            }
-            observerBox.withLock { $0 = observer }
+            let cancellable = AppEvents.shared.databaseDidConnect
+                .receive(on: RunLoop.main)
+                .sink { _ in
+                    resumeOnce()
+                }
+            cancellableBox.withLock { $0 = cancellable }
 
             let timeoutTask = Task {
                 try? await Task.sleep(for: .seconds(10))

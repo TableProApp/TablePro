@@ -696,9 +696,6 @@ extension Notification.Name {
 
     // File opening notifications
     static let openSQLFiles = Notification.Name("openSQLFiles")
-
-    // Window lifecycle notifications
-    static let mainWindowWillClose = Notification.Name("mainWindowWillClose")
 }
 
 // MARK: - Check for Updates

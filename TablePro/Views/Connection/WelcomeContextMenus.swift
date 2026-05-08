@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import SwiftUI
 
 extension WelcomeWindowView {
@@ -63,7 +64,7 @@ extension WelcomeWindowView {
                     updated.localOnly = !allLocalOnly
                     ConnectionStorage.shared.updateConnection(updated)
                 }
-                NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+                AppEvents.shared.connectionUpdated.send(())
             } label: {
                 Label(
                     allLocalOnly
@@ -172,7 +173,7 @@ extension WelcomeWindowView {
                 var updated = connection
                 updated.localOnly.toggle()
                 ConnectionStorage.shared.updateConnection(updated)
-                NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+                AppEvents.shared.connectionUpdated.send(())
             } label: {
                 Label(
                     connection.localOnly

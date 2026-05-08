@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import Observation
 
@@ -16,14 +17,14 @@ internal final class WelcomeRouter {
     private(set) var pendingConnectionShare: URL?
     private(set) var pendingSQLFiles: [URL] = []
 
+    @ObservationIgnored private var databaseDidConnectCancellable: AnyCancellable?
+
     private init() {
-        NotificationCenter.default.addObserver(
-            forName: .databaseDidConnect, object: nil, queue: .main
-        ) { _ in
-            MainActor.assumeIsolated {
+        databaseDidConnectCancellable = AppEvents.shared.databaseDidConnect
+            .receive(on: RunLoop.main)
+            .sink { _ in
                 WelcomeRouter.shared.drainPendingSQLFiles()
             }
-        }
     }
 
     private func drainPendingSQLFiles() {

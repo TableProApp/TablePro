@@ -140,7 +140,7 @@ extension DatabaseManager {
             appSettingsStorage.saveLastConnectionId(connection.id)
 
             MacAnalyticsProvider.shared.markConnectionSucceeded()
-            NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
+            AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
 
             let supportsHealth = PluginMetadataRegistry.shared.snapshot(
                 forTypeId: connection.type.pluginTypeId

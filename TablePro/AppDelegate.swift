@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 
@@ -198,7 +199,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 $0 !== window && AppLaunchCoordinator.isMainWindow($0) && $0.isVisible
             }.count
             if remaining == 0 {
-                NotificationCenter.default.post(name: .mainWindowWillClose, object: nil)
+                AppEvents.shared.mainWindowWillClose.send(())
                 WindowOpener.shared.openWelcome()
             }
         }

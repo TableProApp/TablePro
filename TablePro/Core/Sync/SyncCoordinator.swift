@@ -6,6 +6,7 @@
 //
 
 import CloudKit
+import Combine
 import Foundation
 import Observation
 import os
@@ -466,7 +467,7 @@ final class SyncCoordinator {
         }
 
         if actualConnectionChanges || groupsOrTagsChanged {
-            NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+            AppEvents.shared.connectionUpdated.send(())
         }
     }
 

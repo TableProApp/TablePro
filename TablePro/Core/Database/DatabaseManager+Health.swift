@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 import TableProPluginKit
@@ -297,8 +298,7 @@ extension DatabaseManager {
                 await startHealthMonitor(for: sessionId)
             }
 
-            // Post connection notification for schema reload
-            NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
+            AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: sessionId))
 
             Self.logger.info("Manual reconnect succeeded for: \(session.connection.name)")
         } catch {

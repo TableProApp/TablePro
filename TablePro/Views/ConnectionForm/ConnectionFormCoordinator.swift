@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
@@ -165,7 +166,7 @@ final class ConnectionFormCoordinator {
               let connection = storage.loadConnections().first(where: { $0.id == id }) else { return }
         storage.deleteConnection(connection)
         dismissAction?()
-        NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+        AppEvents.shared.connectionUpdated.send(())
     }
 
     // MARK: - Type change
@@ -310,7 +311,7 @@ final class ConnectionFormCoordinator {
                 SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
-            NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+            AppEvents.shared.connectionUpdated.send(())
             if connect {
                 connectToDatabase(connectionToSave)
             }
@@ -325,7 +326,7 @@ final class ConnectionFormCoordinator {
                 SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
-            NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+            AppEvents.shared.connectionUpdated.send(())
         }
     }
 

@@ -16,8 +16,6 @@ extension Notification.Name {
 
     // MARK: - Connections
 
-    static let connectionUpdated = Notification.Name("connectionUpdated")
-    static let databaseDidConnect = Notification.Name("databaseDidConnect")
     static let exportConnections = Notification.Name("exportConnections")
     static let importConnections = Notification.Name("importConnections")
     static let importConnectionsFromApp = Notification.Name("importConnectionsFromApp")

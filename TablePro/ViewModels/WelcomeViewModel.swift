@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 
@@ -77,10 +78,10 @@ final class WelcomeViewModel {
 
     // MARK: - Notification Observers
 
-    @ObservationIgnored private var connectionUpdatedObserver: NSObjectProtocol?
+    @ObservationIgnored private var connectionUpdatedCancellable: AnyCancellable?
+    @ObservationIgnored private var linkedFoldersCancellable: AnyCancellable?
     @ObservationIgnored private var exportObserver: NSObjectProtocol?
     @ObservationIgnored private var importObserver: NSObjectProtocol?
-    @ObservationIgnored private var linkedFoldersObserver: NSObjectProtocol?
     @ObservationIgnored private var importFromAppObserver: NSObjectProtocol?
     @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
     @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
@@ -143,7 +144,7 @@ final class WelcomeViewModel {
     // MARK: - Setup & Teardown
 
     func setUp() {
-        guard connectionUpdatedObserver == nil else { return }
+        guard connectionUpdatedCancellable == nil else { return }
 
         if expandedGroupIds.isEmpty {
             let allGroupIds = Set(groupStorage.loadGroups().map(\.id))
@@ -152,13 +153,11 @@ final class WelcomeViewModel {
             }
         }
 
-        connectionUpdatedObserver = NotificationCenter.default.addObserver(
-            forName: .connectionUpdated, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        connectionUpdatedCancellable = AppEvents.shared.connectionUpdated
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.loadConnections()
             }
-        }
 
         exportObserver = NotificationCenter.default.addObserver(
             forName: .exportConnections, object: nil, queue: .main
@@ -185,13 +184,11 @@ final class WelcomeViewModel {
             }
         }
 
-        linkedFoldersObserver = NotificationCenter.default.addObserver(
-            forName: .linkedFoldersDidUpdate, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        linkedFoldersCancellable = AppEvents.shared.linkedFoldersDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.linkedConnections = LinkedFolderWatcher.shared.linkedConnections
             }
-        }
 
         loadConnections()
         linkedConnections = LinkedFolderWatcher.shared.linkedConnections
@@ -260,8 +257,7 @@ final class WelcomeViewModel {
     deinit {
         welcomeRouterTask?.cancel()
         searchDebounceTask?.cancel()
-        [connectionUpdatedObserver, exportObserver, importObserver,
-         importFromAppObserver, linkedFoldersObserver].forEach {
+        [exportObserver, importObserver, importFromAppObserver].forEach {
             if let observer = $0 {
                 NotificationCenter.default.removeObserver(observer)
             }
