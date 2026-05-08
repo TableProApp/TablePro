@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 
 extension AIChatViewModel {
     static let helpMarkdown: String = {
