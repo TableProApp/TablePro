@@ -12,15 +12,23 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
 
     private let url: URL
     private let encoding: String.Encoding
+    private let dialect: SqlDialect
     private let parser = SQLFileParser()
 
     private let externalDecompressedURL: URL?
     private let _decompressedURL = OSAllocatedUnfairLock<URL?>(initialState: nil)
     private let ownsDecompressedFile: Bool
 
-    init(url: URL, encoding: String.Encoding, decompressedURL: URL? = nil, ownsDecompressedFile: Bool? = nil) {
+    init(
+        url: URL,
+        encoding: String.Encoding,
+        dialect: SqlDialect = .generic,
+        decompressedURL: URL? = nil,
+        ownsDecompressedFile: Bool? = nil
+    ) {
         self.url = url
         self.encoding = encoding
+        self.dialect = dialect
         self.externalDecompressedURL = decompressedURL
         self.ownsDecompressedFile = ownsDecompressedFile ?? (decompressedURL == nil)
     }
