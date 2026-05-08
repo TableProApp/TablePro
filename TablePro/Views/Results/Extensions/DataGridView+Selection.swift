@@ -52,6 +52,7 @@ extension TableViewCoordinator {
         if keyTableView.focusedColumn != newFocus.column {
             keyTableView.focusedColumn = newFocus.column
         }
+        keyTableView.updateFocusOverlay()
     }
 
     private func resolvedFocus(
