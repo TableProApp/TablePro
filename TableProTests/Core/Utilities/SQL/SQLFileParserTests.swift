@@ -226,6 +226,10 @@ struct SQLFileParserTests {
     func dialect_from_database_type_id() {
         #expect(SqlDialect.from(databaseTypeId: "PostgreSQL") == .postgres)
         #expect(SqlDialect.from(databaseTypeId: "Redshift") == .postgres)
+        #expect(SqlDialect.from(databaseTypeId: "Greenplum") == .postgres)
+        #expect(SqlDialect.from(databaseTypeId: "AlloyDB") == .postgres)
+        #expect(SqlDialect.from(databaseTypeId: "Citus") == .postgres)
+        #expect(SqlDialect.from(databaseTypeId: "CockroachDB") == .postgres)
         #expect(SqlDialect.from(databaseTypeId: "MySQL") == .mysql)
         #expect(SqlDialect.from(databaseTypeId: "MariaDB") == .mysql)
         #expect(SqlDialect.from(databaseTypeId: "SQLite") == .sqlite)
