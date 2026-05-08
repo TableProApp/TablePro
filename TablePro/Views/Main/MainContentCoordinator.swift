@@ -160,7 +160,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var pluginDriverCancellable: AnyCancellable?
-    @ObservationIgnored private var externalFileModObserver: NSObjectProtocol?
+    @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
 
     var fileConflictRequest: FileConflictRequest?
 
@@ -386,13 +386,11 @@ final class MainContentCoordinator {
 
         _ = Self.registerTerminationObserver
 
-        externalFileModObserver = NotificationCenter.default.addObserver(
-            forName: .linkedSQLFoldersDidUpdate, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
+        externalFileModCancellable = AppEvents.shared.linkedSQLFoldersDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.checkOpenTabsForExternalModification()
             }
-        }
 
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
@@ -543,10 +541,7 @@ final class MainContentCoordinator {
             terminationObserver = nil
         }
         pluginDriverCancellable = nil
-        if let observer = externalFileModObserver {
-            NotificationCenter.default.removeObserver(observer)
-            externalFileModObserver = nil
-        }
+        externalFileModCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
         currentQueryTask?.cancel()

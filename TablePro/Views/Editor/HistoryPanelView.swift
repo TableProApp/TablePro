@@ -50,7 +50,7 @@ struct HistoryPanelView: View {
             restoreFilterState()
             loadData()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .queryHistoryDidUpdate)) { _ in
+        .onReceive(AppEvents.shared.queryHistoryDidUpdate) { _ in
             loadData()
         }
         .sheet(item: $favoriteDialogQuery) { item in

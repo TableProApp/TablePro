@@ -6,6 +6,7 @@
 //  Rescans on filesystem changes with 1s debounce.
 //
 
+import Combine
 import CryptoKit
 import Foundation
 import os
@@ -58,7 +59,7 @@ final class LinkedFolderWatcher {
         debounceTask = Task { @MainActor [weak self] in
             let results = await Self.scanFoldersAsync(folders)
             self?.linkedConnections = results
-            NotificationCenter.default.post(name: .linkedFoldersDidUpdate, object: nil)
+            AppEvents.shared.linkedFoldersDidUpdate.send(())
         }
     }
 
@@ -70,7 +71,7 @@ final class LinkedFolderWatcher {
             let folders = LinkedFolderStorage.shared.loadFolders()
             let results = await Self.scanFoldersAsync(folders)
             self?.linkedConnections = results
-            NotificationCenter.default.post(name: .linkedFoldersDidUpdate, object: nil)
+            AppEvents.shared.linkedFoldersDidUpdate.send(())
         }
     }
 

@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
@@ -150,8 +151,8 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     // MARK: - Notifications
 
     private func postUpdateNotification() {
-        Task {
-            NotificationCenter.default.post(name: .sqlFavoritesDidUpdate, object: nil)
+        Task { @MainActor in
+            AppEvents.shared.sqlFavoritesDidUpdate.send(())
         }
     }
 }

@@ -10,16 +10,11 @@
 import Foundation
 
 extension Notification.Name {
-    // MARK: - Query History
-
-    static let queryHistoryDidUpdate = Notification.Name("queryHistoryDidUpdate")
-
     // MARK: - Connections
 
     static let exportConnections = Notification.Name("exportConnections")
     static let importConnections = Notification.Name("importConnections")
     static let importConnectionsFromApp = Notification.Name("importConnectionsFromApp")
-    static let linkedFoldersDidUpdate = Notification.Name("linkedFoldersDidUpdate")
     static let focusConnectionFormWindowRequested = Notification.Name("focusConnectionFormWindowRequested")
     static let openSampleDatabaseRequested = Notification.Name("openSampleDatabaseRequested")
     static let resetSampleDatabaseRequested = Notification.Name("resetSampleDatabaseRequested")
@@ -34,7 +29,6 @@ extension Notification.Name {
 
     // MARK: - SQL Favorites
 
-    static let sqlFavoritesDidUpdate = Notification.Name("sqlFavoritesDidUpdate")
     static let saveAsFavoriteRequested = Notification.Name("saveAsFavoriteRequested")
 
     // MARK: - Plugins

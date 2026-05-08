@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 final class QueryHistoryManager {
@@ -59,10 +60,7 @@ final class QueryHistoryManager {
             let success = await storage.addHistory(entry)
             if success {
                 await MainActor.run {
-                    NotificationCenter.default.post(
-                        name: .queryHistoryDidUpdate,
-                        object: nil
-                    )
+                    AppEvents.shared.queryHistoryDidUpdate.send(())
                 }
             }
         }
@@ -97,7 +95,7 @@ final class QueryHistoryManager {
         let success = await storage.deleteHistory(id: id)
         if success {
             await MainActor.run {
-                NotificationCenter.default.post(name: .queryHistoryDidUpdate, object: nil)
+                AppEvents.shared.queryHistoryDidUpdate.send(())
             }
         }
         return success
@@ -111,7 +109,7 @@ final class QueryHistoryManager {
         let success = await storage.clearAllHistory()
         if success {
             await MainActor.run {
-                NotificationCenter.default.post(name: .queryHistoryDidUpdate, object: nil)
+                AppEvents.shared.queryHistoryDidUpdate.send(())
             }
         }
         return success

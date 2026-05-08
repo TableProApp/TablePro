@@ -3,13 +3,10 @@
 //  TablePro
 //
 
+import Combine
 import CoreServices
 import Foundation
 import os
-
-internal extension Notification.Name {
-    static let linkedSQLFoldersDidUpdate = Notification.Name("com.TablePro.linkedSQLFoldersDidUpdate")
-}
 
 @MainActor
 @Observable
@@ -105,7 +102,7 @@ internal final class SQLFolderWatcher {
         debounceTask = Task { @MainActor [weak self] in
             await Self.rescan(folders: folders)
             self?.lastScanCompletedAt = Date()
-            NotificationCenter.default.post(name: .linkedSQLFoldersDidUpdate, object: nil)
+            AppEvents.shared.linkedSQLFoldersDidUpdate.send(())
         }
     }
 
@@ -120,7 +117,7 @@ internal final class SQLFolderWatcher {
             let folders = LinkedSQLFolderStorage.shared.loadFolders().filter(\.isEnabled)
             await Self.rescan(folders: folders)
             self?.lastScanCompletedAt = Date()
-            NotificationCenter.default.post(name: .linkedSQLFoldersDidUpdate, object: nil)
+            AppEvents.shared.linkedSQLFoldersDidUpdate.send(())
         }
     }
 
