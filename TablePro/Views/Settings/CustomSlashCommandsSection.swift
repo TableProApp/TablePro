@@ -9,6 +9,7 @@ struct CustomSlashCommandsSection: View {
     @Bindable var storage: CustomSlashCommandStorage
     @State private var editing: CustomSlashCommand?
     @State private var isCreating = false
+    @State private var saveError: String?
 
     var body: some View {
         Section {
@@ -43,19 +44,35 @@ struct CustomSlashCommandsSection: View {
                 initial: command,
                 isCreating: isCreating,
                 onSave: { updated in
-                    if isCreating {
-                        storage.add(updated)
-                    } else {
-                        storage.update(updated)
+                    do {
+                        if isCreating {
+                            try storage.add(updated)
+                        } else {
+                            try storage.update(updated)
+                        }
+                        editing = nil
+                        isCreating = false
+                    } catch {
+                        saveError = error.localizedDescription
                     }
-                    editing = nil
-                    isCreating = false
                 },
                 onCancel: {
                     editing = nil
                     isCreating = false
                 }
             )
+        }
+        .alert(
+            String(localized: "Cannot Save Command"),
+            isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            ),
+            presenting: saveError
+        ) { _ in
+            Button(String(localized: "OK"), role: .cancel) { saveError = nil }
+        } message: { message in
+            Text(message)
         }
     }
 

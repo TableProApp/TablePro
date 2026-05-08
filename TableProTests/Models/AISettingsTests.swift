@@ -30,31 +30,39 @@ struct AISettingsTests {
         #expect(settings.enabled == false)
     }
 
-    @Test("New installs default to opt-in context (no auto schema/query/results)")
-    func newInstallsAreOptIn() {
+    @Test("Default settings include schema and current query, exclude query results")
+    func defaultsForContextFlags() {
         let settings = AISettings.default
-        #expect(settings.includeSchema == false)
-        #expect(settings.includeCurrentQuery == false)
+        #expect(settings.includeSchema == true)
+        #expect(settings.includeCurrentQuery == true)
         #expect(settings.includeQueryResults == false)
     }
 
-    @Test("Existing users with stored true values keep their auto-context behavior")
-    func upgradedUsersKeepAutoContext() throws {
-        let json = #"{"includeSchema": true, "includeCurrentQuery": true, "includeQueryResults": true}"#
-        let data = Data(json.utf8)
-        let settings = try JSONDecoder().decode(AISettings.self, from: data)
-        #expect(settings.includeSchema == true)
-        #expect(settings.includeCurrentQuery == true)
-        #expect(settings.includeQueryResults == true)
+    @Test("Memberwise init uses the same context defaults as AISettings.default")
+    func memberwiseInitMatchesDefault() {
+        let settings = AISettings()
+        #expect(settings.includeSchema == AISettings.default.includeSchema)
+        #expect(settings.includeCurrentQuery == AISettings.default.includeCurrentQuery)
+        #expect(settings.includeQueryResults == AISettings.default.includeQueryResults)
     }
 
-    @Test("Decoding without context keys preserves backward-compat true defaults")
-    func decoderFallbacksAreBackwardCompatible() throws {
-        let json = "{}"
+    @Test("Decoding empty JSON yields the same context defaults as AISettings.default")
+    func decodingEmptyJSONMatchesDefault() throws {
+        let data = Data("{}".utf8)
+        let settings = try JSONDecoder().decode(AISettings.self, from: data)
+        #expect(settings.includeSchema == AISettings.default.includeSchema)
+        #expect(settings.includeCurrentQuery == AISettings.default.includeCurrentQuery)
+        #expect(settings.includeQueryResults == AISettings.default.includeQueryResults)
+    }
+
+    @Test("Stored false values for context flags are preserved on decode")
+    func storedFalseFlagsAreRespected() throws {
+        let json = #"{"includeSchema": false, "includeCurrentQuery": false, "includeQueryResults": false}"#
         let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AISettings.self, from: data)
-        #expect(settings.includeSchema == true)
-        #expect(settings.includeCurrentQuery == true)
+        #expect(settings.includeSchema == false)
+        #expect(settings.includeCurrentQuery == false)
+        #expect(settings.includeQueryResults == false)
     }
 }
 

@@ -7,8 +7,20 @@ import Foundation
 import Observation
 import os
 
-/// UserDefaults-backed store for `CustomSlashCommand`s. Observable so the
-/// chat composer's slash menu and the Settings list rerender on edits.
+enum CustomSlashCommandError: LocalizedError, Equatable {
+    case duplicateName(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .duplicateName(let name):
+            return String(
+                format: String(localized: "A command named \"/%@\" already exists."),
+                name
+            )
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class CustomSlashCommandStorage {
@@ -25,13 +37,26 @@ final class CustomSlashCommandStorage {
         self.commands = Self.load(from: defaults)
     }
 
-    func add(_ command: CustomSlashCommand) {
+    func isDuplicate(_ name: String, excluding id: UUID? = nil) -> Bool {
+        commands.contains { existing in
+            if let id, existing.id == id { return false }
+            return existing.name.caseInsensitiveCompare(name) == .orderedSame
+        }
+    }
+
+    func add(_ command: CustomSlashCommand) throws {
+        if isDuplicate(command.name) {
+            throw CustomSlashCommandError.duplicateName(command.name)
+        }
         commands.append(command)
         persist()
     }
 
-    func update(_ command: CustomSlashCommand) {
+    func update(_ command: CustomSlashCommand) throws {
         guard let idx = commands.firstIndex(where: { $0.id == command.id }) else { return }
+        if isDuplicate(command.name, excluding: command.id) {
+            throw CustomSlashCommandError.duplicateName(command.name)
+        }
         commands[idx] = command
         persist()
     }

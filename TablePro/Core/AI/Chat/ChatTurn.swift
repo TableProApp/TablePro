@@ -49,26 +49,22 @@ struct ChatTurn: Codable, Equatable, Identifiable, Sendable {
 
         if let decodedBlocks = try container.decodeIfPresent([ChatContentBlock].self, forKey: .blocks) {
             blocks = decodedBlocks
-        } else if let legacyText = try container.decodeIfPresent(String.self, forKey: .content) {
-            blocks = [.text(legacyText)]
         } else {
-            blocks = []
+            let legacyContainer = try decoder.container(keyedBy: LegacyKeys.self)
+            if let legacyText = try legacyContainer.decodeIfPresent(String.self, forKey: .content) {
+                blocks = [.text(legacyText)]
+            } else {
+                blocks = []
+            }
         }
     }
 
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(role, forKey: .role)
-        try container.encode(blocks, forKey: .blocks)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encodeIfPresent(usage, forKey: .usage)
-        try container.encodeIfPresent(modelId, forKey: .modelId)
-        try container.encodeIfPresent(providerId, forKey: .providerId)
+    private enum CodingKeys: String, CodingKey {
+        case id, role, blocks, timestamp, usage, modelId, providerId
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case id, role, blocks, content, timestamp, usage, modelId, providerId
+    private enum LegacyKeys: String, CodingKey {
+        case content
     }
 
     var plainText: String {
