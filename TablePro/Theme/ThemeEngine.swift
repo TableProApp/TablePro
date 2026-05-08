@@ -8,6 +8,7 @@
 
 import AppKit
 import CodeEditSourceEditor
+import Combine
 import Foundation
 import Observation
 import os
@@ -371,7 +372,7 @@ internal final class ThemeEngine {
     // MARK: - Notifications
 
     private func notifyThemeDidChange() {
-        NotificationCenter.default.post(name: .themeDidChange, object: self)
+        AppEvents.shared.themeChanged.send(())
     }
 
     // MARK: - Accessibility

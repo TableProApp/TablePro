@@ -363,10 +363,7 @@ struct DataGridView: NSViewRepresentable {
             NotificationCenter.default.removeObserver(observer)
             coordinator.settingsObserver = nil
         }
-        if let observer = coordinator.themeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            coordinator.themeObserver = nil
-        }
+        coordinator.themeCancellable = nil
         coordinator.tableRowsController.detach()
     }
 

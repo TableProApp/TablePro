@@ -21,10 +21,6 @@ extension Notification.Name {
     /// Observers should reload fonts via ThemeEngine.shared.reloadFontCaches().
     static let accessibilityTextSizeDidChange = Notification.Name("accessibilityTextSizeDidChange")
 
-    /// Posted when the active theme changes (colors, fonts, or entire theme switch).
-    /// Used by AppKit components that cannot observe @Observable directly.
-    static let themeDidChange = Notification.Name("themeDidChange")
-
     /// Posted when terminal settings change (font, theme, cursor, etc.)
     /// Used by terminal views to live-update configuration.
     static let terminalSettingsDidChange = Notification.Name("terminalSettingsDidChange")

@@ -322,8 +322,8 @@ struct MainContentView: View {
             }
             .task { handleConnectionStatusChange() }
             .onReceive(
-                NotificationCenter.default.publisher(for: .connectionStatusDidChange)
-                    .filter { ($0.object as? UUID) == connection.id }
+                AppEvents.shared.connectionStatusChanged
+                    .filter { $0.connectionId == connection.id }
             ) { _ in
                 handleConnectionStatusChange()
             }

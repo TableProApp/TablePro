@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 // MARK: - Coordinator
@@ -92,7 +93,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var overlayEditor: CellOverlayEditor?
 
     var settingsObserver: NSObjectProtocol?
-    var themeObserver: NSObjectProtocol?
+    var themeCancellable: AnyCancellable?
     private var lastDataGridSettings: DataGridSettings
 
     @Binding var selectedRowIndices: Set<Int>
@@ -179,16 +180,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func observeThemeChanges() {
-        themeObserver = NotificationCenter.default.addObserver(
-            forName: .themeDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        themeCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 guard let self, let tableView = self.tableView else { return }
                 Self.updateVisibleCellFonts(tableView: tableView)
             }
-        }
     }
 
     func observeTeardown(connectionId: UUID) {
@@ -228,9 +225,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     deinit {
         if let observer = settingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = themeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = teardownObserver {

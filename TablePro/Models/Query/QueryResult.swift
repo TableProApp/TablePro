@@ -169,7 +169,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
 }
 
 /// Connection status
-enum ConnectionStatus: Equatable {
+enum ConnectionStatus: Equatable, Sendable {
     case disconnected
     case connecting
     case connected

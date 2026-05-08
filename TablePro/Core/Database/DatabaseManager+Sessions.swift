@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 import TableProPluginKit
@@ -378,13 +379,17 @@ extension DatabaseManager {
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1
-        NotificationCenter.default.post(name: .connectionStatusDidChange, object: connectionId)
+        AppEvents.shared.connectionStatusChanged.send(
+            ConnectionStatusChange(connectionId: connectionId, status: session.status)
+        )
     }
 
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
-        NotificationCenter.default.post(name: .connectionStatusDidChange, object: connectionId)
+        AppEvents.shared.connectionStatusChanged.send(
+            ConnectionStatusChange(connectionId: connectionId, status: .disconnected)
+        )
     }
 
     #if DEBUG

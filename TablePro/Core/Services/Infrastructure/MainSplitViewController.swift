@@ -9,6 +9,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 
@@ -45,7 +46,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Observers
 
-    private var connectionStatusObserver: NSObjectProtocol?
+    private var connectionStatusCancellable: AnyCancellable?
 
     // MARK: - Init
 
@@ -196,24 +197,17 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Observers
 
     private func installObservers() {
-        guard connectionStatusObserver == nil else { return }
-        connectionStatusObserver = NotificationCenter.default.addObserver(
-            forName: .connectionStatusDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
+        guard connectionStatusCancellable == nil else { return }
+        connectionStatusCancellable = AppEvents.shared.connectionStatusChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.handleConnectionStatusChange()
             }
-        }
         handleConnectionStatusChange()
     }
 
     private func removeObservers() {
-        if let observer = connectionStatusObserver {
-            NotificationCenter.default.removeObserver(observer)
-            connectionStatusObserver = nil
-        }
+        connectionStatusCancellable = nil
     }
 
     // MARK: - Toolbar
