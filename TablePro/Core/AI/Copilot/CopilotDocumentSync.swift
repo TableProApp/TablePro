@@ -13,7 +13,7 @@ final class CopilotDocumentSync {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotDocumentSync")
 
     private let documentManager = LSPDocumentManager()
-    let schemaContext = CopilotSchemaContext()
+    let preambleBuilder = CopilotPreambleBuilder()
     private var currentURI: String?
     private var serverSyncedURIs: Set<String> = []
     private var pendingText: [String: String] = [:]
@@ -23,7 +23,7 @@ final class CopilotDocumentSync {
 
     func documentURI(for tabID: UUID) -> String {
         if let existing = uriMap[tabID] { return existing }
-        let fileURL = CopilotSchemaContext.contextDirectory.appendingPathComponent("query-\(nextID).sql")
+        let fileURL = CopilotPreambleBuilder.contextDirectory.appendingPathComponent("query-\(nextID).sql")
         nextID += 1
         let uri = fileURL.absoluteString
         uriMap[tabID] = uri
@@ -39,7 +39,7 @@ final class CopilotDocumentSync {
     /// Register document locally. Does NOT send to server.
     func ensureDocumentOpen(tabID: UUID, text: String, languageId: String = "sql") {
         let uri = documentURI(for: tabID)
-        let fullText = schemaContext.prependToText(text)
+        let fullText = preambleBuilder.prependToText(text)
         if !documentManager.isOpen(uri) {
             _ = documentManager.openDocument(uri: uri, languageId: languageId, text: fullText)
         }
@@ -55,7 +55,7 @@ final class CopilotDocumentSync {
         }
 
         let uri = documentURI(for: tabID)
-        let fullText = schemaContext.prependToText(text)
+        let fullText = preambleBuilder.prependToText(text)
         ensureDocumentOpen(tabID: tabID, text: text, languageId: languageId)
 
         guard let client = CopilotService.shared.client else { return }
@@ -70,7 +70,7 @@ final class CopilotDocumentSync {
             serverSyncedURIs.insert(uri)
 
             if let pending = pendingText.removeValue(forKey: uri) {
-                let pendingFull = schemaContext.prependToText(pending)
+                let pendingFull = preambleBuilder.prependToText(pending)
                 if let (versioned, changes) = documentManager.changeDocument(uri: uri, newText: pendingFull) {
                     await client.didChangeDocument(uri: versioned.uri, version: versioned.version, changes: changes)
                 }
@@ -92,7 +92,7 @@ final class CopilotDocumentSync {
             pendingText[uri] = newText
             return
         }
-        let fullText = schemaContext.prependToText(newText)
+        let fullText = preambleBuilder.prependToText(newText)
         guard let client = CopilotService.shared.client else { return }
         guard let (versioned, changes) = documentManager.changeDocument(uri: uri, newText: fullText) else { return }
         await client.didChangeDocument(uri: versioned.uri, version: versioned.version, changes: changes)

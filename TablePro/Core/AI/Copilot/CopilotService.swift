@@ -126,7 +126,19 @@ final class CopilotService {
         serverGeneration += 1
 
         if let client = lspClient {
-            try? await client.shutdown()
+            let shutdownCompleted = await withTaskGroup(of: Bool.self, returning: Bool.self) { group in
+                group.addTask { (try? await client.shutdown()) != nil }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(10))
+                    return false
+                }
+                let first = await group.next() ?? false
+                group.cancelAll()
+                return first
+            }
+            if !shutdownCompleted {
+                Self.logger.warning("Copilot shutdown RPC timed out, forcing exit")
+            }
             await client.exit()
         }
         await transport?.stop()

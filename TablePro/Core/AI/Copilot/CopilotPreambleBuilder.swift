@@ -1,5 +1,5 @@
 //
-//  CopilotSchemaContext.swift
+//  CopilotPreambleBuilder.swift
 //  TablePro
 //
 
@@ -7,26 +7,20 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// Builds a schema preamble (SQL comments with table/column info) to prepend
-/// to document text sent to the Copilot language server. Pure data, no LSP concerns.
 @MainActor
-final class CopilotSchemaContext {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotSchemaContext")
+final class CopilotPreambleBuilder {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotPreambleBuilder")
 
-    /// Directory for query document URIs
     static let contextDirectory: URL = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return appSupport.appendingPathComponent("TablePro/copilot-context", isDirectory: true)
     }()
 
-    /// The schema preamble text (SQL comments with table/column info)
     private(set) var preamble: String = ""
 
-    /// Number of newline characters in the preamble (for cursor offset adjustment)
     private(set) var preambleLineCount: Int = 0
 
-    /// Build the preamble from cached schema data
     func buildPreamble(
         schemaProvider: SQLSchemaProvider,
         databaseName: String,
@@ -75,7 +69,6 @@ final class CopilotSchemaContext {
         Self.logger.info("Copilot schema preamble: \(tables.count) tables, \(self.preambleLineCount) lines")
     }
 
-    /// Prepend the preamble to user text for sending to Copilot
     func prependToText(_ text: String) -> String {
         guard !preamble.isEmpty else { return text }
         return preamble + text

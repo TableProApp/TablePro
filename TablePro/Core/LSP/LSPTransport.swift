@@ -45,7 +45,7 @@ actor LSPTransport {
     private var notificationHandlers: [String: @Sendable (Data) -> Void] = [:]
     private var requestHandlers: [String: @Sendable (Data) -> Any?] = [:]
     private var deferredRequestHandlers: [String: @Sendable (Data, Int) -> Void] = [:]
-    private var readerQueue: DispatchQueue?
+    private var readerTask: Task<Void, Never>?
 
     // MARK: - Lifecycle
 
@@ -91,21 +91,33 @@ actor LSPTransport {
 
         try proc.run()
 
-        let queue = DispatchQueue(label: "com.TablePro.LSPTransport.reader")
-        self.readerQueue = queue
         let handle = stdout.fileHandleForReading
-        queue.async { [weak self] in
-            self?.readLoopSync(handle: handle)
+        readerTask = Task { [weak self] in
+            await self?.runReadLoop(handle: handle)
         }
 
         Self.logger.info("LSP transport started: \(executablePath)")
     }
 
-    func stop() {
+    func stop() async {
         let pending = pendingRequests
         pendingRequests.removeAll()
         for (_, continuation) in pending {
             continuation.resume(throwing: LSPTransportError.requestCancelled)
+        }
+
+        readerTask?.cancel()
+        readerTask = nil
+
+        if let stdinHandle = stdinPipe?.fileHandleForWriting {
+            try? stdinHandle.close()
+        }
+        if let stdoutHandle = stdoutPipe?.fileHandleForReading {
+            try? stdoutHandle.close()
+        }
+        if let stderrHandle = stderrPipe?.fileHandleForReading {
+            stderrHandle.readabilityHandler = nil
+            try? stderrHandle.close()
         }
 
         if let process, process.isRunning {
@@ -114,9 +126,7 @@ actor LSPTransport {
         process = nil
         stdinPipe = nil
         stdoutPipe = nil
-        stderrPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe = nil
-        readerQueue = nil
 
         Self.logger.info("LSP transport stopped")
     }
@@ -214,18 +224,19 @@ actor LSPTransport {
         handle.write(data)
     }
 
-    /// Blocking read loop that runs on a dedicated DispatchQueue to avoid blocking the actor executor.
-    nonisolated private func readLoopSync(handle: FileHandle) {
+    private func runReadLoop(handle: FileHandle) async {
         var buffer = Data()
-
-        while true {
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { break } // EOF
-            buffer.append(chunk)
-
-            while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
-                let data = messageData
-                Task { [weak self] in await self?.dispatchMessage(data) }
+        do {
+            for try await byte in handle.bytes {
+                if Task.isCancelled { return }
+                buffer.append(byte)
+                while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
+                    dispatchMessage(messageData)
+                }
+            }
+        } catch {
+            if !Task.isCancelled {
+                Self.logger.debug("LSP read loop ended: \(error.localizedDescription)")
             }
         }
     }

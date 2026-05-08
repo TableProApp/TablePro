@@ -325,7 +325,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         Task {
             if let provider = capturedSchemaProvider, let dbType = capturedDBType {
-                await sync.schemaContext.buildPreamble(
+                await sync.preambleBuilder.buildPreamble(
                     schemaProvider: provider,
                     databaseName: dbName,
                     databaseType: dbType

@@ -26,7 +26,7 @@ final class CopilotInlineSource: InlineSuggestionSource {
         guard let docInfo = documentSync.currentDocumentInfo() else { return nil }
 
         let editorSettings = AppSettingsManager.shared.editor
-        let preambleOffset = documentSync.schemaContext.preambleLineCount
+        let preambleOffset = documentSync.preambleBuilder.preambleLineCount
         let params = LSPInlineCompletionParams(
             textDocument: LSPVersionedTextDocumentIdentifier(uri: docInfo.uri, version: docInfo.version),
             position: LSPPosition(line: context.cursorLine + preambleOffset, character: context.cursorCharacter),
