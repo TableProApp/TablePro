@@ -31,6 +31,8 @@ public struct PluginRowChange: Sendable {
 }
 
 public protocol PluginDatabaseDriver: AnyObject, Sendable {
+    var capabilities: PluginCapabilities { get }
+
     // Connection
     func connect() async throws
     func disconnect()
@@ -141,6 +143,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 }
 
 public extension PluginDatabaseDriver {
+    var capabilities: PluginCapabilities { [] }
+
     var supportsSchemas: Bool { false }
 
     func fetchSchemas() async throws -> [String] { [] }

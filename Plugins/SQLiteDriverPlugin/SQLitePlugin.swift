@@ -440,6 +440,18 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .transactions,
+            .alterTableDDL,
+            .foreignKeyToggle,
+            .truncateTable,
+            .cancelQuery,
+            .batchExecute,
+        ]
+    }
+
     func quoteIdentifier(_ name: String) -> String {
         let escaped = name.replacingOccurrences(of: "`", with: "``")
         return "`\(escaped)`"
