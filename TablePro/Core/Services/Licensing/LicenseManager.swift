@@ -5,6 +5,7 @@
 //  Orchestrates license activation, offline verification, and periodic re-validation
 //
 
+import Combine
 import Foundation
 import Observation
 import os
@@ -289,7 +290,7 @@ final class LicenseManager {
 
     private func notifyIfChanged(from previousStatus: LicenseStatus) {
         if status != previousStatus {
-            NotificationCenter.default.post(name: .licenseStatusDidChange, object: nil)
+            AppEvents.shared.licenseStatusDidChange.send(())
         }
     }
 }

@@ -19,10 +19,6 @@ extension Notification.Name {
     static let openSampleDatabaseRequested = Notification.Name("openSampleDatabaseRequested")
     static let resetSampleDatabaseRequested = Notification.Name("resetSampleDatabaseRequested")
 
-    // MARK: - License
-
-    static let licenseStatusDidChange = Notification.Name("licenseStatusDidChange")
-
     // MARK: - Export
 
     static let exportQueryResults = Notification.Name("exportQueryResults")
@@ -30,10 +26,6 @@ extension Notification.Name {
     // MARK: - SQL Favorites
 
     static let saveAsFavoriteRequested = Notification.Name("saveAsFavoriteRequested")
-
-    // MARK: - Plugins
-
-    static let pluginsRejected = Notification.Name("pluginsRejected")
 
     // MARK: - Feedback
 

@@ -23,9 +23,6 @@ struct IntegrationsActivityLogPane: View {
     @State private var hasLoaded = false
     @State private var showInspector = false
 
-    private let auditChanges = NotificationCenter.default
-        .publisher(for: .mcpAuditLogChanged)
-
     var body: some View {
         ActivityLogTable(
             entries: filteredEntries,
@@ -44,7 +41,7 @@ struct IntegrationsActivityLogPane: View {
         .navigationTitle(IntegrationsActivitySection.activityLog.title)
         .navigationSubtitle(retentionSubtitle)
         .task { await reload() }
-        .onReceive(auditChanges) { _ in
+        .onReceive(AppEvents.shared.mcpAuditLogChanged) { _ in
             Task { await reload() }
         }
         .onChange(of: selectedTokenId) { _, _ in Task { await reload() } }
