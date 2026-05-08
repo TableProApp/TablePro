@@ -200,6 +200,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     private func releaseData() {
         overlayEditor?.dismiss(commit: false)
+        settingsCancellable?.cancel()
+        settingsCancellable = nil
+        themeCancellable?.cancel()
+        themeCancellable = nil
+        teardownCancellable?.cancel()
+        teardownCancellable = nil
         visualIndex.clear()
         displayCache.removeAllObjects()
         columnDisplayFormats = []

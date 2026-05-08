@@ -152,7 +152,7 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
         var parent: JSONSyntaxTextView
         var isUpdating = false
         var braceHelper: JSONBraceMatchingHelper?
-        private var highlightWorkItem: DispatchWorkItem?
+        private var highlightTask: Task<Void, Never>?
         private var scrollObserver: NSObjectProtocol?
 
         init(_ parent: JSONSyntaxTextView) {
@@ -160,7 +160,7 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
         }
 
         deinit {
-            highlightWorkItem?.cancel()
+            highlightTask?.cancel()
             if let observer = scrollObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
@@ -207,12 +207,15 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
             isUpdating = false
 
             highlightedSet = IndexSet()
-            highlightWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [weak self] in
+            highlightTask?.cancel()
+            highlightTask = Task { @MainActor [weak self] in
+                do {
+                    try await Task.sleep(for: .milliseconds(100))
+                } catch {
+                    return
+                }
                 self?.highlightVisible()
             }
-            highlightWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
