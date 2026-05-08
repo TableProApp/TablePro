@@ -23,6 +23,7 @@ final class FocusOverlayView: NSView {
     override func makeBackingLayer() -> CALayer {
         let layer = super.makeBackingLayer()
         layer.actions = Self.disabledLayerActions
+        layer.zPosition = 1000
         return layer
     }
 

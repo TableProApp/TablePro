@@ -99,7 +99,9 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     @objc private func handleWindowKeyChange() {
-        updateFocusOverlay()
+        DispatchQueue.main.async { [weak self] in
+            self?.updateFocusOverlay()
+        }
     }
 
     deinit {
