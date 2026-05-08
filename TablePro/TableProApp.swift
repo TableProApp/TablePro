@@ -644,6 +644,7 @@ struct TableProApp: App {
                     hideMiniaturizeButton: true,
                     hideZoomButton: true
                 ))
+                .environment(\.appServices, .live)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
@@ -652,6 +653,7 @@ struct TableProApp: App {
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
             ConnectionFormView(connectionId: editingId ?? nil)
                 .background(WindowChromeConfigurator(restorable: false))
+                .environment(\.appServices, .live)
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 820, height: 600)
@@ -659,6 +661,7 @@ struct TableProApp: App {
 
         Window("Integrations Activity", id: SceneId.integrationsActivity) {
             IntegrationsActivityView()
+                .environment(\.appServices, .live)
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 960, height: 600)
@@ -673,6 +676,7 @@ struct TableProApp: App {
         Settings {
             SettingsView()
                 .environment(updaterBridge)
+                .environment(\.appServices, .live)
         }
     }
 }

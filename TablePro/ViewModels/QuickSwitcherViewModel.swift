@@ -14,6 +14,8 @@ import os
 internal final class QuickSwitcherViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
 
+    @ObservationIgnored private let services: AppServices
+
     // MARK: - State
 
     var searchText = "" {
@@ -32,6 +34,10 @@ internal final class QuickSwitcherViewModel {
 
     /// Maximum number of results to display
     private let maxResults = 100
+
+    init(services: AppServices = .live) {
+        self.services = services
+    }
 
     // MARK: - Loading
 
@@ -71,7 +77,7 @@ internal final class QuickSwitcherViewModel {
         }
 
         // Databases
-        if let driver = DatabaseManager.shared.driver(for: connectionId) {
+        if let driver = services.databaseManager.driver(for: connectionId) {
             do {
                 let databases = try await driver.fetchDatabases()
                 for db in databases {
@@ -86,7 +92,7 @@ internal final class QuickSwitcherViewModel {
                 Self.logger.warning("Failed to fetch databases for quick switcher: \(error.localizedDescription, privacy: .public)")
             }
 
-            if PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
+            if services.pluginManager.supportsSchemaSwitching(for: databaseType) {
                 do {
                     let schemas = try await driver.fetchSchemas()
                     for schema in schemas {
@@ -104,7 +110,7 @@ internal final class QuickSwitcherViewModel {
         }
 
         // Recent query history (last 50)
-        let historyEntries = await QueryHistoryStorage.shared.fetchHistory(
+        let historyEntries = await services.queryHistoryStorage.fetchHistory(
             limit: 50,
             connectionId: connectionId
         )
