@@ -58,10 +58,10 @@ extension MainContentCoordinator {
         let tabId = tabManager.tabs[tabIndex].id
         confirmDiscardChangesIfNeeded(action: .pagination) { [weak self] confirmed in
             guard let self, confirmed else { return }
-            guard let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-
-            mutate(&self.tabManager.tabs[idx].pagination)
-            self.tabManager.tabs[idx].paginationVersion += 1
+            guard self.tabManager.mutate(tabId: tabId, { tab in
+                mutate(&tab.pagination)
+                tab.paginationVersion += 1
+            }) else { return }
             self.pendingScrollToTopAfterReplace.insert(tabId)
             self.reloadCurrentPage()
         }

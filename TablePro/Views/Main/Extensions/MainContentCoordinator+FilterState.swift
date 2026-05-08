@@ -298,12 +298,12 @@ extension MainContentCoordinator {
 
     private func mutateSelectedTabFilterState(_ mutate: (inout TabFilterState) -> Void) {
         guard let index = tabManager.selectedTabIndex else { return }
-        var state = tabManager.tabs[index].filterState
-        mutate(&state)
-        tabManager.tabs[index].filterState = state
+        var newState = tabManager.tabs[index].filterState
+        mutate(&newState)
+        tabManager.mutate(at: index) { $0.filterState = newState }
         let tabId = tabManager.tabs[index].id
         if let session = tabSessionRegistry.session(for: tabId) {
-            session.filterState = state
+            session.filterState = newState
         } else {
             filterStateLog.error(
                 "TabSession missing for selected tab \(tabId, privacy: .public); QueryTab updated but session mirror skipped"

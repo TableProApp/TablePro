@@ -21,8 +21,7 @@ extension MainContentCoordinator {
             guard let self, confirmed else { return }
             guard capturedTabIndex < self.tabManager.tabs.count else { return }
 
-            // Reset pagination when filters change
-            self.tabManager.tabs[capturedTabIndex].pagination.reset()
+            self.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
 
             let tab = self.tabManager.tabs[capturedTabIndex]
             let buffer = self.tabSessionRegistry.tableRows(for: tab.id)
@@ -38,7 +37,7 @@ extension MainContentCoordinator {
                 columnExclusions: exclusions
             )
 
-            self.tabManager.tabs[capturedTabIndex].content.query = newQuery
+            self.tabManager.mutate(at: capturedTabIndex) { $0.content.query = newQuery }
 
             if !capturedFilters.isEmpty {
                 self.saveLastFilters(for: capturedTableName)
@@ -70,7 +69,7 @@ extension MainContentCoordinator {
                 columnExclusions: exclusions
             )
 
-            self.tabManager.tabs[capturedTabIndex].content.query = newQuery
+            self.tabManager.mutate(at: capturedTabIndex) { $0.content.query = newQuery }
             self.runQuery()
         }
     }
@@ -115,6 +114,6 @@ extension MainContentCoordinator {
             )
         }
 
-        tabManager.tabs[tabIndex].content.query = newQuery
+        tabManager.mutate(at: tabIndex) { $0.content.query = newQuery }
     }
 }
