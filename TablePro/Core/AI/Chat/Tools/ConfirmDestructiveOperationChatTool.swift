@@ -5,15 +5,7 @@
 
 import Foundation
 
-/// Execute a destructive DDL query (DROP, TRUNCATE, ALTER...DROP) after the AI
-/// includes the verbatim confirmation phrase in the arguments. The connection's
-/// safe-mode dialog still runs before the query executes, so the user remains
-/// the final gate even if the AI mis-uses this tool.
 struct ConfirmDestructiveOperationChatTool: ChatTool {
-    /// Intentionally NOT localized: this is a wire-level contract the AI must
-    /// reproduce verbatim in `confirmation_phrase`. Translating it would change
-    /// the contract per locale and break model prompts that depend on the
-    /// English string.
     static let requiredPhrase = "I understand this is irreversible"
 
     let name = "confirm_destructive_operation"
@@ -21,31 +13,19 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         Execute a destructive DDL query (DROP, TRUNCATE, ALTER...DROP) after explicit confirmation.\
          Pass confirmation_phrase exactly as: I understand this is irreversible
         """)
-    let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string("UUID of the active connection")
-            ]),
-            "query": .object([
-                "type": .string("string"),
-                "description": .string("The destructive query to execute")
-            ]),
-            "confirmation_phrase": .object([
-                "type": .string("string"),
-                "description": .string("Must be exactly: I understand this is irreversible")
-            ])
-        ]),
-        "required": .array([
-            .string("connection_id"),
-            .string("query"),
-            .string("confirmation_phrase")
-        ])
-    ])
+    let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
+        properties: [
+            "connection_id": ChatToolSchemaBuilder.connectionId,
+            "query": ChatToolSchemaBuilder.string(description: "The destructive query to execute"),
+            "confirmation_phrase": ChatToolSchemaBuilder.string(
+                description: "Must be exactly: I understand this is irreversible"
+            )
+        ],
+        required: ["connection_id", "query", "confirmation_phrase"]
+    )
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
-        let connectionId = try resolveConnectionId(input: input, context: context)
+        let connectionId = try context.resolveConnectionId(input)
         let query = try ChatToolArgumentDecoder.requireString(input, key: "query")
         let confirmationPhrase = try ChatToolArgumentDecoder.requireString(input, key: "confirmation_phrase")
 
