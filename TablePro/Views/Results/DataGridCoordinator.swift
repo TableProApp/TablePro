@@ -238,6 +238,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         visualIndex.rebuild(from: changeManager, sortedIDs: sortedIDs)
         updateCache()
         tableView.insertRows(at: indices, withAnimation: .slideDown)
+        deferredFocusOverlayRefresh()
     }
 
     func applyRemovedRows(_ indices: IndexSet) {
@@ -245,6 +246,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         visualIndex.rebuild(from: changeManager, sortedIDs: sortedIDs)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: .slideUp)
+        deferredFocusOverlayRefresh()
     }
 
     func applyFullReplace() {
@@ -252,6 +254,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         invalidateAllDisplayCaches()
         updateCache()
         tableView.reloadData()
+        deferredFocusOverlayRefresh()
+    }
+
+    func deferredFocusOverlayRefresh() {
+        guard let keyTableView = tableView as? KeyHandlingTableView else { return }
+        DispatchQueue.main.async { [weak keyTableView] in
+            keyTableView?.updateFocusOverlay()
+        }
     }
 
     func displayRow(at displayIndex: Int) -> Row? {
@@ -447,6 +457,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
         )
         refreshVisibleRowVisualStates()
+        deferredFocusOverlayRefresh()
     }
 
     func refreshVisibleRowVisualStates() {

@@ -53,6 +53,9 @@ extension TableViewCoordinator {
             keyTableView.focusedColumn = newFocus.column
         }
         keyTableView.updateFocusOverlay()
+        DispatchQueue.main.async { [weak keyTableView] in
+            keyTableView?.updateFocusOverlay()
+        }
     }
 
     private func resolvedFocus(
