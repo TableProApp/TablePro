@@ -3,12 +3,6 @@ import AppKit
 final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
 
-    private(set) lazy var focusOverlay: FocusOverlayView = {
-        let overlay = FocusOverlayView(frame: .zero)
-        addSubview(overlay)
-        return overlay
-    }()
-
     override var acceptsFirstResponder: Bool {
         true
     }
@@ -17,7 +11,6 @@ final class KeyHandlingTableView: NSTableView {
         didSet {
             guard let (rows, columns) = selection.reloadIndexes(from: oldValue) else { return }
             scheduleFocusReload(rows: rows, columns: columns)
-            updateFocusOverlay()
         }
     }
 
@@ -46,66 +39,6 @@ final class KeyHandlingTableView: NSTableView {
         let validColumns = pendingColumns.filteredIndexSet { $0 < numberOfColumns }
         guard !validRows.isEmpty, !validColumns.isEmpty else { return }
         reloadData(forRowIndexes: validRows, columnIndexes: validColumns)
-    }
-
-    func updateFocusOverlay() {
-        let row = selection.focusedRow
-        let column = selection.focusedColumn
-        guard row >= 0,
-              column >= 0,
-              row < numberOfRows,
-              column < numberOfColumns,
-              selectedRowIndexes.contains(row),
-              isEmphasizedRow(at: row) else {
-            focusOverlay.dismiss()
-            return
-        }
-        let rect = frameOfCell(atColumn: column, row: row)
-        focusOverlay.reposition(at: rect)
-        focusOverlay.removeFromSuperview()
-        addSubview(focusOverlay)
-    }
-
-    private func isEmphasizedRow(at row: Int) -> Bool {
-        guard let rowView = rowView(atRow: row, makeIfNecessary: false) else { return false }
-        return rowView.isEmphasized
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        let center = NotificationCenter.default
-        center.removeObserver(self)
-        guard let window else { return }
-        center.addObserver(
-            self, selector: #selector(handleColumnGeometryChange(_:)),
-            name: NSTableView.columnDidResizeNotification, object: self
-        )
-        center.addObserver(
-            self, selector: #selector(handleColumnGeometryChange(_:)),
-            name: NSTableView.columnDidMoveNotification, object: self
-        )
-        center.addObserver(
-            self, selector: #selector(handleWindowKeyChange),
-            name: NSWindow.didBecomeKeyNotification, object: window
-        )
-        center.addObserver(
-            self, selector: #selector(handleWindowKeyChange),
-            name: NSWindow.didResignKeyNotification, object: window
-        )
-    }
-
-    @objc private func handleColumnGeometryChange(_ notification: Notification) {
-        updateFocusOverlay()
-    }
-
-    @objc private func handleWindowKeyChange() {
-        DispatchQueue.main.async { [weak self] in
-            self?.updateFocusOverlay()
-        }
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     var focusedRow: Int {

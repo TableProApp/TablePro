@@ -250,6 +250,7 @@ final class DataGridCellView: NSTableCellView {
     private func updateFocusPresentation() {
         focusRingType = (isFocusedCell && !onEmphasizedSelection) ? .exterior : .none
         noteFocusRingMaskChanged()
+        needsDisplay = true
     }
 
     override var focusRingMaskBounds: NSRect {
@@ -266,6 +267,20 @@ final class DataGridCellView: NSTableCellView {
             tint.setFill()
             bounds.fill()
         }
+        drawFocusBorderIfNeeded()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsDisplay = true
+    }
+
+    private func drawFocusBorderIfNeeded() {
+        guard isFocusedCell, onEmphasizedSelection else { return }
+        let path = NSBezierPath(rect: bounds.insetBy(dx: 1, dy: 1))
+        path.lineWidth = 2
+        NSColor.alternateSelectedControlTextColor.setStroke()
+        path.stroke()
     }
 
     private func configureAccessoryButton() {
