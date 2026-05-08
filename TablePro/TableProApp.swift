@@ -202,11 +202,11 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .manageConnections))
 
             Button(String(localized: "Open Sample Database")) {
-                NotificationCenter.default.post(name: .openSampleDatabaseRequested, object: nil)
+                AppCommands.shared.openSampleDatabaseRequested.send(())
             }
 
             Button(String(localized: "Reset Sample Database...")) {
-                NotificationCenter.default.post(name: .resetSampleDatabaseRequested, object: nil)
+                AppCommands.shared.resetSampleDatabaseRequested.send(())
             }
         }
 

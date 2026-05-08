@@ -569,7 +569,7 @@ final class WelcomeViewModel {
     }
 
     func focusConnectionFormWindow() {
-        NotificationCenter.default.post(name: .focusConnectionFormWindowRequested, object: nil)
+        AppCommands.shared.focusConnectionFormWindowRequested.send(())
     }
 
     // MARK: - Private Helpers

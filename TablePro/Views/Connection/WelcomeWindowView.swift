@@ -118,11 +118,7 @@ struct WelcomeWindowView: View {
             chooserState: $welcomeChooserState,
             urlImportPresented: $urlImportPresented
         ))
-        .onReceive(NotificationCenter.default.publisher(for: .presentDatabaseTypeChooser)) { note in
-            guard
-                let payload = note.userInfo?[DatabaseTypeChooserPayload.userInfoKey]
-                    as? DatabaseTypeChooserPayload
-            else { return }
+        .onReceive(AppCommands.shared.presentDatabaseTypeChooser) { payload in
             welcomeChooserState = WelcomeChooserState(
                 initialType: payload.initialType,
                 onSelected: { type in
