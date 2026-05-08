@@ -57,8 +57,7 @@ final class AIChatInlineSource: InlineSuggestionSource {
         return InlineSuggestion(
             text: cleaned,
             replacementRange: nil,
-            replacementText: cleaned,
-            acceptCommand: nil
+            replacementText: cleaned
         )
     }
 

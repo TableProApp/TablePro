@@ -186,6 +186,7 @@ struct AISettings: Codable, Equatable, Sendable {
     var providers: [AIProviderConfig]
     var activeProviderID: UUID?
     var inlineSuggestionsEnabled: Bool
+    var inlineSuggestionDebounceMs: Int
     var includeSchema: Bool
     var includeCurrentQuery: Bool
     var includeQueryResults: Bool
@@ -193,11 +194,15 @@ struct AISettings: Codable, Equatable, Sendable {
     var defaultConnectionPolicy: AIConnectionPolicy
     var chatMode: AIChatMode
 
+    static let defaultInlineSuggestionDebounceMs: Int = 500
+    static let inlineSuggestionDebounceRange: ClosedRange<Int> = 100...3_000
+
     static let `default` = AISettings(
         enabled: true,
         providers: [],
         activeProviderID: nil,
         inlineSuggestionsEnabled: false,
+        inlineSuggestionDebounceMs: AISettings.defaultInlineSuggestionDebounceMs,
         includeSchema: true,
         includeCurrentQuery: true,
         includeQueryResults: false,
@@ -211,6 +216,7 @@ struct AISettings: Codable, Equatable, Sendable {
         providers: [AIProviderConfig] = [],
         activeProviderID: UUID? = nil,
         inlineSuggestionsEnabled: Bool = false,
+        inlineSuggestionDebounceMs: Int = AISettings.defaultInlineSuggestionDebounceMs,
         includeSchema: Bool = true,
         includeCurrentQuery: Bool = true,
         includeQueryResults: Bool = false,
@@ -222,6 +228,7 @@ struct AISettings: Codable, Equatable, Sendable {
         self.providers = providers
         self.activeProviderID = activeProviderID
         self.inlineSuggestionsEnabled = inlineSuggestionsEnabled
+        self.inlineSuggestionDebounceMs = inlineSuggestionDebounceMs
         self.includeSchema = includeSchema
         self.includeCurrentQuery = includeCurrentQuery
         self.includeQueryResults = includeQueryResults
@@ -236,6 +243,9 @@ struct AISettings: Codable, Equatable, Sendable {
         providers = try container.decodeIfPresent([AIProviderConfig].self, forKey: .providers) ?? []
         activeProviderID = try container.decodeIfPresent(UUID.self, forKey: .activeProviderID)
         inlineSuggestionsEnabled = try container.decodeIfPresent(Bool.self, forKey: .inlineSuggestionsEnabled) ?? false
+        inlineSuggestionDebounceMs = try container.decodeIfPresent(
+            Int.self, forKey: .inlineSuggestionDebounceMs
+        ) ?? AISettings.defaultInlineSuggestionDebounceMs
         includeSchema = try container.decodeIfPresent(Bool.self, forKey: .includeSchema) ?? true
         includeCurrentQuery = try container.decodeIfPresent(Bool.self, forKey: .includeCurrentQuery) ?? true
         includeQueryResults = try container.decodeIfPresent(Bool.self, forKey: .includeQueryResults) ?? false
@@ -255,6 +265,13 @@ struct AISettings: Codable, Equatable, Sendable {
 
     var hasCopilotConfigured: Bool {
         providers.contains(where: { $0.type == .copilot })
+    }
+
+    var clampedInlineSuggestionDebounceMs: Int {
+        min(
+            max(inlineSuggestionDebounceMs, AISettings.inlineSuggestionDebounceRange.lowerBound),
+            AISettings.inlineSuggestionDebounceRange.upperBound
+        )
     }
 }
 

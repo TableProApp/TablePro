@@ -225,6 +225,13 @@ struct AISettingsView: View {
                 .help(settings.hasActiveProvider
                     ? ""
                     : String(localized: "Configure an active provider to enable inline suggestions."))
+            Stepper(
+                String(format: String(localized: "Debounce: %d ms"), settings.inlineSuggestionDebounceMs),
+                value: $settings.inlineSuggestionDebounceMs,
+                in: AISettings.inlineSuggestionDebounceRange,
+                step: 50
+            )
+            .disabled(!settings.inlineSuggestionsEnabled)
         } header: {
             Text("Inline Suggestions")
         } footer: {

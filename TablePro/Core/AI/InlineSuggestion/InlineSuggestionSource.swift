@@ -5,7 +5,6 @@
 
 import Foundation
 
-/// Context passed to an inline suggestion source
 struct SuggestionContext: Sendable {
     let textBefore: String
     let fullText: String
@@ -14,20 +13,28 @@ struct SuggestionContext: Sendable {
     let cursorCharacter: Int
 }
 
-/// A completed inline suggestion
-struct InlineSuggestion: Sendable {
-    /// Text to show as ghost text (only the part after the cursor)
+struct InlineSuggestion: Sendable, Identifiable {
+    let id: UUID
     let text: String
-    /// Range to replace on accept (nil = insert at cursor)
     let replacementRange: NSRange?
-    /// Full text to insert when accepted (replaces range)
     let replacementText: String
-    let acceptCommand: LSPCommand?
+
+    init(
+        id: UUID = UUID(),
+        text: String,
+        replacementRange: NSRange? = nil,
+        replacementText: String
+    ) {
+        self.id = id
+        self.text = text
+        self.replacementRange = replacementRange
+        self.replacementText = replacementText
+    }
 }
 
-/// Protocol for inline suggestion sources
 @MainActor
 protocol InlineSuggestionSource: AnyObject {
+    var sourceIdentity: ObjectIdentifier { get }
     var isAvailable: Bool { get }
     func requestSuggestion(context: SuggestionContext) async throws -> InlineSuggestion?
     func didShowSuggestion(_ suggestion: InlineSuggestion)
@@ -36,6 +43,7 @@ protocol InlineSuggestionSource: AnyObject {
 }
 
 extension InlineSuggestionSource {
+    var sourceIdentity: ObjectIdentifier { ObjectIdentifier(self) }
     func didShowSuggestion(_ suggestion: InlineSuggestion) {}
     func didAcceptSuggestion(_ suggestion: InlineSuggestion) {}
     func didDismissSuggestion(_ suggestion: InlineSuggestion) {}

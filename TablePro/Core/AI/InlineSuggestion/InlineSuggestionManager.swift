@@ -8,8 +8,6 @@ import CodeEditSourceEditor
 import CodeEditTextView
 import os
 
-/// Manages inline suggestions rendered as ghost text in the SQL editor.
-/// Delegates actual suggestion fetching to an InlineSuggestionSource.
 @MainActor
 final class InlineSuggestionManager {
     // MARK: - Properties
@@ -21,10 +19,8 @@ final class InlineSuggestionManager {
     private var sourceResolver: (@MainActor () -> InlineSuggestionSource?)?
     private var currentSuggestion: InlineSuggestion?
     private var suggestionOffset: Int = 0
-    private var debounceTimer: Timer?
-    private var currentTask: Task<Void, Never>?
-    private var generationID: UInt = 0
-    private let debounceInterval: TimeInterval = 0.5
+    private var debounceTask: Task<Void, Never>?
+    private var requestTask: Task<Void, Never>?
     private let _keyEventMonitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
     private(set) var isEditorFocused = false
     private var isUninstalled = false
@@ -62,10 +58,10 @@ final class InlineSuggestionManager {
         isUninstalled = true
         isEditorFocused = false
 
-        debounceTimer?.invalidate()
-        debounceTimer = nil
-        currentTask?.cancel()
-        currentTask = nil
+        debounceTask?.cancel()
+        debounceTask = nil
+        requestTask?.cancel()
+        requestTask = nil
 
         renderer.uninstall()
         removeKeyEventMonitor()
@@ -94,17 +90,19 @@ final class InlineSuggestionManager {
     // MARK: - Suggestion Scheduling
 
     private func scheduleSuggestion() {
-        debounceTimer?.invalidate()
-
+        debounceTask?.cancel()
         guard isEnabled() else { return }
 
-        let timer = Timer(timeInterval: debounceInterval, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.requestSuggestion()
+        let delay = Duration.milliseconds(AppSettingsManager.shared.ai.clampedInlineSuggestionDebounceMs)
+        debounceTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
             }
+            guard !Task.isCancelled, let self else { return }
+            self.requestSuggestion()
         }
-        RunLoop.main.add(timer, forMode: .common)
-        debounceTimer = timer
     }
 
     private func isEnabled() -> Bool {
@@ -136,10 +134,6 @@ final class InlineSuggestionManager {
         let nsText = fullText as NSString
         let textBefore = nsText.substring(to: min(cursorOffset, nsText.length))
 
-        currentTask?.cancel()
-        generationID &+= 1
-        let myGeneration = generationID
-
         let (line, character) = Self.computeLineCharacter(text: nsText, offset: cursorOffset)
 
         let context = SuggestionContext(
@@ -150,13 +144,18 @@ final class InlineSuggestionManager {
             cursorCharacter: character
         )
 
-        currentTask = Task { @MainActor [weak self] in
+        let requestedFromIdentity = source.sourceIdentity
+
+        requestTask?.cancel()
+        requestTask = Task { @MainActor [weak self] in
             guard let self else { return }
             self.suggestionOffset = cursorOffset
 
             do {
                 guard let suggestion = try await source.requestSuggestion(context: context) else { return }
-                guard !Task.isCancelled, self.generationID == myGeneration else { return }
+                guard !Task.isCancelled else { return }
+                guard let activeIdentity = self.sourceResolver?()?.sourceIdentity,
+                      activeIdentity == requestedFromIdentity else { return }
                 guard !suggestion.text.isEmpty else { return }
 
                 self.currentSuggestion = suggestion
@@ -192,9 +191,10 @@ final class InlineSuggestionManager {
     }
 
     func dismissSuggestion() {
-        debounceTimer?.invalidate()
-        currentTask?.cancel()
-        currentTask = nil
+        debounceTask?.cancel()
+        debounceTask = nil
+        requestTask?.cancel()
+        requestTask = nil
 
         if let suggestion = currentSuggestion {
             sourceResolver?()?.didDismissSuggestion(suggestion)
@@ -220,11 +220,11 @@ final class InlineSuggestionManager {
                       textView.window?.firstResponder === textView else { return event }
 
                 switch event.keyCode {
-                case 48: // Tab — accept suggestion
+                case 48:
                     self.acceptSuggestion()
                     return nil
 
-                case 53: // Escape — dismiss suggestion
+                case 53:
                     self.dismissSuggestion()
                     return event
 
@@ -246,7 +246,6 @@ final class InlineSuggestionManager {
 
     // MARK: - Helpers
 
-    /// Convert a character offset to 0-based (line, character) pair.
     static func computeLineCharacter(text: NSString, offset: Int) -> (Int, Int) {
         var line = 0
         var lineStart = 0
@@ -257,7 +256,7 @@ final class InlineSuggestionManager {
         while i < target {
             let ch = text.character(at: i)
             i += 1
-            if ch == 0x0A { // newline
+            if ch == 0x0A {
                 line += 1
                 lineStart = i
             }
