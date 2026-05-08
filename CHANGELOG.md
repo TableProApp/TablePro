@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI settings: include schema and current query default to on for new installs, matching the previous decoded fallback
 - AI Chat: persisted conversations now carry a schema version so future migrations can read older files cleanly
 - AI Chat: custom slash commands reject duplicate names, including case-insensitive collisions on rename
+- Internal: unify JSON value type used by AI tools and MCP wire
 
 ## [0.39.1] - 2026-05-08
 
