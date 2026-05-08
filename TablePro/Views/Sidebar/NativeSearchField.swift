@@ -83,12 +83,13 @@ struct NativeSearchField: NSViewRepresentable {
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                if let field = control as? NSSearchField {
+                guard let field = control as? NSSearchField else { return false }
+                if !field.stringValue.isEmpty {
                     field.stringValue = ""
+                    text.wrappedValue = ""
+                    return true
                 }
-                text.wrappedValue = ""
-                control.window?.makeFirstResponder(nil)
-                return true
+                return false
             }
             if commandSelector == #selector(NSResponder.moveUp(_:)), let onMoveUp {
                 onMoveUp()
