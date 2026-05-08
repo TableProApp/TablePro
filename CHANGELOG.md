@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI Chat views: replace custom pill buttons with native `.borderless` styles, switch hardcoded text colors to semantic system colors, use relative font sizing in Markdown rendering, align spacing to the 8-pt grid, and add accessibility labels to icon-only buttons
 - Translucent backgrounds (Welcome sidebar, settings banners, ER diagram toolbar, JSON editor controls, Pro feature scrim) honor the system Reduce Transparency and Increase Contrast accessibility settings, swapping the material for a solid surface color when either is on
 - Internal: result-grid sortable header drops the custom resize cursor handling that duplicated AppKit's built-in column-edge resize, and consolidates three sort delegate methods into one that carries the full sort state. No user-facing change; multi-column sort, shift-click cycle, and the column resize cursor still work the same.
+- Internal: Redis sidebar key tree uses SwiftUI `OutlineGroup` instead of recursive `DisclosureGroup` + `ForEach` wrapped in `AnyView`. Expansion state is now managed natively per branch identifier; the explicit `expandedPrefixes` set is gone.
 
 ### Fixed
 
