@@ -206,7 +206,7 @@ struct WelcomeWindowView: View {
                 onImportFromFile: { vm.importConnectionsFromFile() }
             )
             .frame(width: 240)
-            .background(.regularMaterial)
+            .themeMaterial(.sidebar, .regularMaterial)
 
             Divider()
 

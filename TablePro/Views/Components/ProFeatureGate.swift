@@ -35,8 +35,7 @@ struct ProFeatureGateModifier: ViewModifier {
         let access = licenseManager.checkFeature(feature)
 
         ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
+            AccessibleMaterialScrim(material: .ultraThinMaterial)
 
             VStack(spacing: 12) {
                 Image(systemName: feature.systemImage)

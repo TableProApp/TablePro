@@ -22,8 +22,7 @@ internal struct JsonEditorView: View {
                             Image(systemName: "arrow.up.forward.app")
                                 .font(.caption2)
                                 .padding(4)
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .themeMaterial(.inlineControl, .ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
                         }
                         .buttonStyle(.borderless)
                         .help(String(localized: "Open in Window"))
@@ -33,8 +32,7 @@ internal struct JsonEditorView: View {
                             Image(systemName: "arrow.up.left.and.arrow.down.right")
                                 .font(.caption2)
                                 .padding(4)
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .themeMaterial(.inlineControl, .ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
                         }
                         .buttonStyle(.borderless)
                         .help(String(localized: "Expand in Sidebar"))
