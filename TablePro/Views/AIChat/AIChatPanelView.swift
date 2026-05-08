@@ -9,6 +9,8 @@ import SwiftUI
 
 /// AI chat panel displayed alongside the main editor content
 struct AIChatPanelView: View {
+    private static let warningBackgroundOpacity: Double = 0.1
+
     let connection: DatabaseConnection
     var currentQuery: String?
     var queryResults: String?
@@ -174,6 +176,7 @@ struct AIChatPanelView: View {
                     .padding(.bottom, 8)
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
+                    .accessibilityLabel(String(localized: "Scroll to latest message"))
                 }
             }
         }
@@ -202,7 +205,7 @@ struct AIChatPanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .systemYellow).opacity(0.1))
+        .background(Color(nsColor: .systemYellow).opacity(Self.warningBackgroundOpacity))
     }
 
     // MARK: - Input Area
@@ -292,6 +295,7 @@ struct AIChatPanelView: View {
             }
             .buttonStyle(.plain)
             .help(String(localized: "Stop Generating"))
+            .accessibilityLabel(String(localized: "Stop Generating"))
         } else {
             let isEmpty = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             Button {
@@ -304,6 +308,7 @@ struct AIChatPanelView: View {
             .buttonStyle(.plain)
             .disabled(isEmpty)
             .help(String(localized: "Send Message"))
+            .accessibilityLabel(String(localized: "Send Message"))
         }
     }
 
@@ -397,6 +402,7 @@ struct AIChatPanelView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help(String(localized: "Attach context"))
+            .accessibilityLabel(String(localized: "Attach context"))
         }
     }
 
@@ -436,6 +442,7 @@ struct AIChatPanelView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help(String(localized: "Slash commands"))
+        .accessibilityLabel(String(localized: "Slash commands"))
     }
 
     @ViewBuilder

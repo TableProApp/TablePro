@@ -47,13 +47,10 @@ struct AIChatToolUseBlockView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5))
-                )
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 .contentShape(RoundedRectangle(cornerRadius: 6))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
 
             if shouldShowInput {
                 ScrollView(.horizontal, showsIndicators: false) {

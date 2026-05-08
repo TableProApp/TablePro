@@ -29,11 +29,11 @@ struct AIChatContextChipView: View {
             }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Color.accentColor.opacity(0.12), in: Capsule())
+        .padding(.vertical, 4)
+        .background(.tint.opacity(0.08), in: Capsule())
         .overlay(
             Capsule()
-                .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+                .stroke(.tint.opacity(0.2), lineWidth: 0.5)
         )
     }
 }

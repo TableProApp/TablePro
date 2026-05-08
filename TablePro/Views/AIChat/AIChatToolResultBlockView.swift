@@ -31,13 +31,10 @@ struct AIChatToolResultBlockView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(accentColor.opacity(0.12))
-                )
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 .contentShape(RoundedRectangle(cornerRadius: 6))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
 
             if isExpanded {
                 ScrollView(.horizontal, showsIndicators: false) {

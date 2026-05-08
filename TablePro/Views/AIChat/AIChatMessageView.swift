@@ -11,6 +11,8 @@ import SwiftUI
 
 /// Displays a single AI chat message with appropriate styling
 struct AIChatMessageView: View {
+    private static let userBubbleTintOpacity: Double = 0.08
+
     let message: ChatTurn
     var onRetry: (() -> Void)?
     var onRegenerate: (() -> Void)?
@@ -24,7 +26,7 @@ struct AIChatMessageView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             if message.role == .user {
                 // User: timestamp header, then message text in tinted bubble
                 VStack(alignment: .leading, spacing: 4) {
@@ -58,11 +60,12 @@ struct AIChatMessageView: View {
                             .buttonStyle(.plain)
                             .foregroundStyle(.tertiary)
                             .help(String(localized: "Edit message"))
+                            .accessibilityLabel(String(localized: "Edit message"))
                         }
                     }
                 }
                 .padding(8)
-                .background(Color.accentColor.opacity(0.06))
+                .background(Color.accentColor.opacity(Self.userBubbleTintOpacity))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 // Assistant: role header above content
@@ -188,7 +191,7 @@ struct AIChatMessageView: View {
 extension MarkdownUI.Theme {
     static let tableProChat = MarkdownUI.Theme()
         .text {
-            FontSize(13)
+            FontSize(.em(1.0))
         }
         .code {
             FontFamilyVariant(.monospaced)
@@ -201,7 +204,7 @@ extension MarkdownUI.Theme {
                 .markdownMargin(top: 12, bottom: 4)
                 .markdownTextStyle {
                     FontWeight(.bold)
-                    FontSize(17)
+                    FontSize(.em(1.5))
                 }
         }
         .heading2 { configuration in
@@ -209,7 +212,7 @@ extension MarkdownUI.Theme {
                 .markdownMargin(top: 10, bottom: 4)
                 .markdownTextStyle {
                     FontWeight(.semibold)
-                    FontSize(15)
+                    FontSize(.em(1.3))
                 }
         }
         .heading3 { configuration in
@@ -217,7 +220,7 @@ extension MarkdownUI.Theme {
                 .markdownMargin(top: 8, bottom: 4)
                 .markdownTextStyle {
                     FontWeight(.bold)
-                    FontSize(13)
+                    FontSize(.em(1.15))
                 }
         }
         .blockquote { configuration in
@@ -228,7 +231,7 @@ extension MarkdownUI.Theme {
                 configuration.label
                     .markdownTextStyle {
                         ForegroundColor(.secondary)
-                        FontSize(13)
+                        FontSize(.em(1.0))
                     }
                     .padding(Edge.Set.leading, 8)
             }

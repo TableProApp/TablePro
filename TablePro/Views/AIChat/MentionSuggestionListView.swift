@@ -32,26 +32,34 @@ private struct MentionRowView: View {
     let candidate: MentionCandidate
     let isSelected: Bool
 
+    private var primaryTextColor: Color {
+        Color(nsColor: .alternateSelectedControlTextColor)
+    }
+
+    private var secondaryTextColor: Color {
+        Color(nsColor: .alternateSelectedControlTextColor).opacity(0.85)
+    }
+
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: candidate.symbolName)
                 .frame(width: 14, alignment: .center)
-                .foregroundStyle(isSelected ? Color.white : .secondary)
+                .foregroundStyle(isSelected ? primaryTextColor : .secondary)
             Text(candidate.displayLabel)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .foregroundStyle(isSelected ? Color.white : .primary)
+                .foregroundStyle(isSelected ? primaryTextColor : .primary)
             Spacer(minLength: 4)
             if let secondary = candidate.secondaryLabel {
                 Text(secondary)
                     .font(.caption2)
                     .lineLimit(1)
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
+                    .foregroundStyle(isSelected ? secondaryTextColor : .secondary)
             }
         }
         .font(.callout)
         .padding(.horizontal, 10)
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             isSelected
