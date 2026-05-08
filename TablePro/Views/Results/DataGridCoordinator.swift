@@ -446,6 +446,22 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
             columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
         )
+        refreshVisibleRowVisualStates()
+    }
+
+    func refreshVisibleRowVisualStates() {
+        guard let tableView else { return }
+        tableView.enumerateAvailableRowViews { [weak self] rowView, row in
+            guard let self, let dataRowView = rowView as? DataGridRowView else { return }
+            dataRowView.applyVisualState(self.visualState(for: row))
+        }
+    }
+
+    func refreshRowVisualState(at row: Int) {
+        guard let tableView,
+              let dataRowView = tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView
+        else { return }
+        dataRowView.applyVisualState(visualState(for: row))
     }
 
     func commitActiveCellEdit() {
