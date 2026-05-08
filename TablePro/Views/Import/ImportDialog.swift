@@ -100,13 +100,16 @@ struct ImportDialog: View {
                 .interactiveDismissDisabled()
             }
         }
-        .sheet(isPresented: $showSuccessDialog) {
+        .sheet(isPresented: $showSuccessDialog, onDismiss: {
+            isPresented = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NotificationCenter.default.post(name: .refreshData, object: nil)
+            }
+        }) {
             ImportSuccessView(
                 result: importResult
             ) {
                 showSuccessDialog = false
-                isPresented = false
-                NotificationCenter.default.post(name: .refreshData, object: nil)
             }
         }
         .sheet(isPresented: $showErrorDialog) {
