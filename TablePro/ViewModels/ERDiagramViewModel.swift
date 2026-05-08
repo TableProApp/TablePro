@@ -69,11 +69,14 @@ final class ERDiagramViewModel {
     @ObservationIgnored private var columnCountByNodeId: [UUID: Int] = [:]
     @ObservationIgnored private var nodeIdToName: [UUID: String] = [:]
 
+    @ObservationIgnored private let services: AppServices
+
     // MARK: - Initialization
 
-    init(connectionId: UUID, schemaKey: String) {
+    init(connectionId: UUID, schemaKey: String, services: AppServices = .live) {
         self.connectionId = connectionId
         self.schemaKey = schemaKey
+        self.services = services
     }
 
     deinit {
@@ -87,11 +90,11 @@ final class ERDiagramViewModel {
         guard loadState != .loaded else { return }
         loadState = .loading
 
-        if DatabaseManager.shared.driver(for: connectionId) == nil {
+        if services.databaseManager.driver(for: connectionId) == nil {
             await waitForConnection()
         }
 
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        guard let driver = services.databaseManager.driver(for: connectionId) else {
             loadState = .failed(String(localized: "No database connection"))
             return
         }
