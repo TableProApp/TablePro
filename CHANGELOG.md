@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copilot LSP shutdown caps at 10 seconds, closes pipes explicitly, and strips the quarantine attribute from the downloaded binary
 - AI Chat: streaming view model split into focused extensions backed by a single `streamingState` enum
 - MCP HTTP server: split transport into connection, router, and SSE writer files; pairing exchange store moved to a Swift actor; SSE streams send a 30-second keep-alive
+- AI providers: shared endpoint normalization and JSON encoding helpers; consistent 5s timeout and known-model fallback when listing models
 
 ## [0.39.1] - 2026-05-08
 
