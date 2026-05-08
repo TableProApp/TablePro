@@ -13,16 +13,24 @@ final class DataGridCellRegistry {
     weak var textFieldDelegate: NSTextFieldDelegate?
 
     private(set) var nullDisplayString: String
+    private(set) var palette: DataGridCellPalette
     private var settingsCancellable: AnyCancellable?
+    private var themeCancellable: AnyCancellable?
 
     private let rowNumberCellIdentifier = NSUserInterfaceItemIdentifier("RowNumberCellView")
 
     init() {
         nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
+        palette = ThemeEngine.shared.dataGridCellPalette
         settingsCancellable = AppEvents.shared.dataGridSettingsChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
+            }
+        themeCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.palette = ThemeEngine.shared.dataGridCellPalette
             }
     }
 

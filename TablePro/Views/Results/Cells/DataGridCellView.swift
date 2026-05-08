@@ -139,14 +139,15 @@ final class DataGridCellView: NSTableCellView {
     func configure(
         kind: DataGridCellKind,
         content: DataGridCellContent,
-        state: DataGridCellState
+        state: DataGridCellState,
+        palette: DataGridCellPalette
     ) {
         self.kind = kind
         cellRow = state.row
         cellColumnIndex = state.columnIndex
 
-        applyContent(content, isLargeDataset: state.isLargeDataset, visualState: state.visualState)
-        applyVisualState(state)
+        applyContent(content, isLargeDataset: state.isLargeDataset, visualState: state.visualState, palette: palette)
+        applyVisualState(state, palette: palette)
 
         cellTextField.isEditable = state.isEditable && !state.visualState.isDeleted
 
@@ -168,25 +169,24 @@ final class DataGridCellView: NSTableCellView {
     private func applyContent(
         _ content: DataGridCellContent,
         isLargeDataset: Bool,
-        visualState: RowVisualState
+        visualState: RowVisualState,
+        palette: DataGridCellPalette
     ) {
         cellTextField.placeholderString = nil
-        deletedRowTextColor = visualState.isDeleted
-            ? ThemeEngine.shared.colors.dataGrid.deletedText
-            : nil
+        deletedRowTextColor = visualState.isDeleted ? palette.deletedRowText : nil
 
         switch content.placeholder {
         case .none:
             cellTextField.stringValue = content.displayText
             cellTextField.originalValue = content.rawValue
-            cellTextField.font = ThemeEngine.shared.dataGridFonts.regular
+            cellTextField.font = palette.regularFont
             cellTextField.tag = DataGridFontVariant.regular
             cellTextField.textColor = deletedRowTextColor ?? .labelColor
 
         case .null:
             cellTextField.stringValue = ""
             cellTextField.originalValue = nil
-            cellTextField.font = ThemeEngine.shared.dataGridFonts.italic
+            cellTextField.font = palette.italicFont
             cellTextField.tag = DataGridFontVariant.italic
             cellTextField.textColor = deletedRowTextColor ?? .secondaryLabelColor
             if !isLargeDataset {
@@ -196,7 +196,7 @@ final class DataGridCellView: NSTableCellView {
         case .empty:
             cellTextField.stringValue = ""
             cellTextField.originalValue = nil
-            cellTextField.font = ThemeEngine.shared.dataGridFonts.italic
+            cellTextField.font = palette.italicFont
             cellTextField.tag = DataGridFontVariant.italic
             cellTextField.textColor = deletedRowTextColor ?? .secondaryLabelColor
             if !isLargeDataset {
@@ -206,7 +206,7 @@ final class DataGridCellView: NSTableCellView {
         case .defaultMarker:
             cellTextField.stringValue = ""
             cellTextField.originalValue = nil
-            cellTextField.font = ThemeEngine.shared.dataGridFonts.medium
+            cellTextField.font = palette.mediumFont
             cellTextField.tag = DataGridFontVariant.medium
             cellTextField.textColor = deletedRowTextColor ?? .systemBlue
             if !isLargeDataset {
@@ -215,12 +215,12 @@ final class DataGridCellView: NSTableCellView {
         }
     }
 
-    private func applyVisualState(_ state: DataGridCellState) {
+    private func applyVisualState(_ state: DataGridCellState, palette: DataGridCellPalette) {
         let nextTint: NSColor?
         if state.visualState.isDeleted || state.visualState.isInserted {
             nextTint = nil
         } else if state.visualState.modifiedColumns.contains(state.columnIndex) {
-            nextTint = ThemeEngine.shared.colors.dataGrid.modified
+            nextTint = palette.modifiedColumnTint
         } else {
             nextTint = nil
         }

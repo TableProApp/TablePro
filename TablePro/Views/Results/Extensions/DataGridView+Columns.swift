@@ -95,7 +95,7 @@ extension TableViewCoordinator {
         )
 
         let cell = cellRegistry.dequeueCell(in: tableView)
-        cell.configure(kind: kind, content: content, state: cellState)
+        cell.configure(kind: kind, content: content, state: cellState, palette: cellRegistry.palette)
         return cell
     }
 
