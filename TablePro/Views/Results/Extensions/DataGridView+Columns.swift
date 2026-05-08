@@ -94,8 +94,8 @@ extension TableViewCoordinator {
             columnIndex: columnIndex
         )
 
-        let cell = cellRegistry.dequeueCell(of: kind, in: tableView)
-        cell.configure(content: content, state: cellState)
+        let cell = cellRegistry.dequeueCell(in: tableView)
+        cell.configure(kind: kind, content: content, state: cellState)
         return cell
     }
 
@@ -110,11 +110,12 @@ extension TableViewCoordinator {
         if let delegateRowView = delegate?.dataGridRowView(for: tableView, row: row, coordinator: self) {
             return delegateRowView
         }
-        let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? TableRowViewWithMenu)
-            ?? TableRowViewWithMenu()
+        let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? DataGridRowView)
+            ?? DataGridRowView()
         rowView.identifier = Self.rowViewIdentifier
         rowView.coordinator = self
         rowView.rowIndex = row
+        rowView.applyVisualState(visualState(for: row))
         return rowView
     }
 }

@@ -43,7 +43,7 @@ final class CellTextField: NSTextField {
 
         var view: NSView? = self
         while let parent = view?.superview {
-            if let rowView = parent as? TableRowViewWithMenu {
+            if let rowView = parent as? DataGridRowView {
                 if let menu = rowView.menu(for: event) {
                     NSMenu.popUpContextMenu(menu, with: event, for: self)
                 }
@@ -58,7 +58,7 @@ final class CellTextField: NSTextField {
 
         var view: NSView? = self
         while let parent = view?.superview {
-            if let rowView = parent as? TableRowViewWithMenu {
+            if let rowView = parent as? DataGridRowView {
                 return rowView.menu(for: event)
             }
             view = parent
