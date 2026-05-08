@@ -8,6 +8,8 @@ import TableProPluginKit
 
 extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
+        let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
+        let safeTable = escapeLiteralForColumns(table)
         let query = """
             SELECT
                 c.column_name,
@@ -38,10 +40,10 @@ extension PostgreSQLPluginDriver {
                     ON tc.constraint_name = kcu.constraint_name
                     AND tc.table_schema = kcu.table_schema
                 WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(escapedSchema)'
-                    AND tc.table_name = '\(escapeLiteralForColumns(table))'
+                    AND tc.table_schema = '\(safeSchema)'
+                    AND tc.table_name = '\(safeTable)'
             ) pk ON c.column_name = pk.column_name
-            WHERE c.table_schema = '\(escapedSchema)' AND c.table_name = '\(escapeLiteralForColumns(table))'
+            WHERE c.table_schema = '\(safeSchema)' AND c.table_name = '\(safeTable)'
             ORDER BY c.ordinal_position
             """
         let result = try await execute(query: query)
@@ -51,6 +53,7 @@ extension PostgreSQLPluginDriver {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
         let query = """
             SELECT
                 c.table_name,
@@ -82,9 +85,9 @@ extension PostgreSQLPluginDriver {
                     ON tc.constraint_name = kcu.constraint_name
                     AND tc.table_schema = kcu.table_schema
                 WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(escapedSchema)'
+                    AND tc.table_schema = '\(safeSchema)'
             ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = '\(escapedSchema)'
+            WHERE c.table_schema = '\(safeSchema)'
             ORDER BY c.table_name, c.ordinal_position
             """
         let result = try await execute(query: query)
