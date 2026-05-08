@@ -138,9 +138,8 @@ extension MainContentCoordinator {
         // `lastExecutedAt`. Clear the stale flag inline so the executor's
         // own `!tab.execution.isExecuting` guard inside
         // `executeTableTabQueryDirectly` doesn't suppress this re-fire.
-        if tab.execution.isExecuting && rows.rows.isEmpty && tab.execution.lastExecutedAt == nil,
-           let idx = tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
-            tabManager.tabs[idx].execution.isExecuting = false
+        if tab.execution.isExecuting && rows.rows.isEmpty && tab.execution.lastExecutedAt == nil {
+            tabManager.mutate(tabId: tab.id) { $0.execution.isExecuting = false }
         } else if tab.execution.isExecuting {
             return
         }

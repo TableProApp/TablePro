@@ -80,7 +80,7 @@ extension MainContentCoordinator {
 
         if needsQuery, let (tab, tabIndex) = tabManager.selectedTabAndIndex {
             setActiveTableRows(TableRows(), for: tab.id)
-            tabManager.tabs[tabIndex].pagination.reset()
+            tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
         }
 
         if let (tab, _) = tabManager.selectedTabAndIndex {
@@ -100,7 +100,7 @@ extension MainContentCoordinator {
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
-            tabManager.tabs[tabIndex].content.query = filteredQuery
+            tabManager.mutate(at: tabIndex) { $0.content.query = filteredQuery }
 
             updateFilterState(filter, for: referencedTable)
 

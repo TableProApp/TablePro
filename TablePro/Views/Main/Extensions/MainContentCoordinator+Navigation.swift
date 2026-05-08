@@ -38,7 +38,7 @@ extension MainContentCoordinator {
            current.tableContext.tableName == tableName,
            current.tableContext.databaseName == currentDatabase {
             if showStructure, let (_, tabIndex) = tabManager.selectedTabAndIndex {
-                tabManager.tabs[tabIndex].display.resultsViewMode = .structure
+                tabManager.mutate(at: tabIndex) { $0.display.resultsViewMode = .structure }
             }
             return
         }
@@ -101,10 +101,12 @@ extension MainContentCoordinator {
                 return
             }
             if let (_, tabIndex) = tabManager.selectedTabAndIndex {
-                tabManager.tabs[tabIndex].tableContext.isView = isView
-                tabManager.tabs[tabIndex].tableContext.isEditable = !isView
-                tabManager.tabs[tabIndex].tableContext.schemaName = currentSchema
-                tabManager.tabs[tabIndex].pagination.reset()
+                tabManager.mutate(at: tabIndex) { tab in
+                    tab.tableContext.isView = isView
+                    tab.tableContext.isEditable = !isView
+                    tab.tableContext.schemaName = currentSchema
+                    tab.pagination.reset()
+                }
                 toolbarState.isTableTab = true
             }
             // In-place navigation needs selectRedisDatabaseAndQuery to ensure the correct
@@ -136,7 +138,7 @@ extension MainContentCoordinator {
                     clearFilterState()
                     if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
                         setActiveTableRows(TableRows(), for: tab.id)
-                        tabManager.tabs[tabIndex].pagination.reset()
+                        tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
                         toolbarState.isTableTab = true
                     }
                     restoreLastHiddenColumnsForTable(tableName)
@@ -226,8 +228,10 @@ extension MainContentCoordinator {
                 if let tabIndex = previewCoordinator.tabManager.selectedTabIndex {
                     let tabId = previewCoordinator.tabManager.tabs[tabIndex].id
                     previewCoordinator.setActiveTableRows(TableRows(), for: tabId)
-                    previewCoordinator.tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
-                    previewCoordinator.tabManager.tabs[tabIndex].pagination.reset()
+                    previewCoordinator.tabManager.mutate(at: tabIndex) { tab in
+                        tab.display.resultsViewMode = showStructure ? .structure : .data
+                        tab.pagination.reset()
+                    }
                     previewCoordinator.toolbarState.isTableTab = true
                 }
                 preview.window.makeKeyAndOrderFront(nil)
@@ -302,8 +306,10 @@ extension MainContentCoordinator {
             clearFilterState()
             if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
                 setActiveTableRows(TableRows(), for: tab.id)
-                tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
-                tabManager.tabs[tabIndex].pagination.reset()
+                tabManager.mutate(at: tabIndex) {
+                    $0.display.resultsViewMode = showStructure ? .structure : .data
+                    $0.pagination.reset()
+                }
                 toolbarState.isTableTab = true
             }
             restoreLastHiddenColumnsForTable(tableName)
@@ -329,7 +335,7 @@ extension MainContentCoordinator {
     func promotePreviewTab() {
         guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
               tab.isPreview else { return }
-        tabManager.tabs[tabIndex].isPreview = false
+        tabManager.mutate(at: tabIndex) { $0.isPreview = false }
 
         if let wid = windowId {
             WindowLifecycleMonitor.shared.setPreview(false, for: wid)

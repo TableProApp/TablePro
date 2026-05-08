@@ -75,7 +75,7 @@ extension MainContentCoordinator {
         guard let index = tabManager.selectedTabIndex else { return }
         var hidden = tabManager.tabs[index].columnLayout.hiddenColumns
         mutate(&hidden)
-        tabManager.tabs[index].columnLayout.hiddenColumns = hidden
+        tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = hidden }
         let tabId = tabManager.tabs[index].id
         tabSessionRegistry.session(for: tabId)?.columnLayout.hiddenColumns = hidden
     }

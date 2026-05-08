@@ -17,9 +17,9 @@ extension MainContentCoordinator {
            tab.tabType == .query {
             let existing = tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines)
             if existing.isEmpty {
-                tabManager.tabs[tabIndex].content.query = favorite.query
+                tabManager.mutate(at: tabIndex) { $0.content.query = favorite.query }
             } else {
-                tabManager.tabs[tabIndex].content.query += "\n\n" + favorite.query
+                tabManager.mutate(at: tabIndex) { $0.content.query += "\n\n" + favorite.query }
             }
         } else {
             runFavoriteInNewTab(favorite)
@@ -68,11 +68,13 @@ extension MainContentCoordinator {
            tab.content.sourceFileURL == nil,
            tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            !tab.pendingChanges.hasChanges {
-            tabManager.tabs[tabIndex].content.sourceFileURL = favorite.fileURL
-            tabManager.tabs[tabIndex].content.query = loaded.content
-            tabManager.tabs[tabIndex].content.savedFileContent = loaded.content
-            tabManager.tabs[tabIndex].content.loadMtime = mtime
-            tabManager.tabs[tabIndex].title = favorite.name
+            tabManager.mutate(at: tabIndex) { tab in
+                tab.content.sourceFileURL = favorite.fileURL
+                tab.content.query = loaded.content
+                tab.content.savedFileContent = loaded.content
+                tab.content.loadMtime = mtime
+                tab.title = favorite.name
+            }
             registerWindowForSourceFile(favorite.fileURL)
             return
         }
@@ -111,7 +113,7 @@ extension MainContentCoordinator {
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query,
            tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            tabManager.tabs[tabIndex].content.query = favorite.query
+            tabManager.mutate(at: tabIndex) { $0.content.query = favorite.query }
             return
         }
 

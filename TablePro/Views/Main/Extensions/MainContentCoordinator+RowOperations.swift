@@ -27,7 +27,7 @@ extension MainContentCoordinator {
         guard let result = addResult else { return }
 
         selectionState.indices = [result.rowIndex]
-        tabManager.tabs[tabIndex].hasUserInteraction = true
+        tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         querySortCache.removeValue(forKey: tabId)
         dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
@@ -62,7 +62,7 @@ extension MainContentCoordinator {
             selectionState.indices.removeAll()
         }
 
-        tabManager.tabs[tabIndex].hasUserInteraction = true
+        tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
 
         if !deleteResult.physicallyRemovedIndices.isEmpty {
             querySortCache.removeValue(forKey: tabId)
@@ -98,7 +98,7 @@ extension MainContentCoordinator {
         guard let result = dupResult else { return }
 
         selectionState.indices = [result.rowIndex]
-        tabManager.tabs[tabIndex].hasUserInteraction = true
+        tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         querySortCache.removeValue(forKey: tabId)
         dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
@@ -143,7 +143,7 @@ extension MainContentCoordinator {
             selectionState.indices = adjustedSelection
         }
 
-        tabManager.tabs[tabIndex].hasUserInteraction = true
+        tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         querySortCache.removeValue(forKey: tabId)
         dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
         dataTabDelegate?.tableViewCoordinator?.applyDelta(application.delta)
@@ -207,8 +207,10 @@ extension MainContentCoordinator {
         let newIndices = Set(pasteResult.pastedRows.map { $0.rowIndex })
         selectionState.indices = newIndices
 
-        tabManager.tabs[tabIndex].selectedRowIndices = newIndices
-        tabManager.tabs[tabIndex].hasUserInteraction = true
+        tabManager.mutate(at: tabIndex) { tab in
+            tab.selectedRowIndices = newIndices
+            tab.hasUserInteraction = true
+        }
         querySortCache.removeValue(forKey: tabId)
         dataTabDelegate?.tableViewCoordinator?.applyDelta(pasteResult.delta)
     }
@@ -219,7 +221,7 @@ extension MainContentCoordinator {
         let delta = mutateActiveTableRows(for: tabId) { rows in
             rows.edit(row: rowIndex, column: columnIndex, value: value)
         }
-        tabManager.tabs[tabIndex].hasUserInteraction = true
+        tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
     }
 }

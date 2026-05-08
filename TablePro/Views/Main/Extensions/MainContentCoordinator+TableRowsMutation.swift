@@ -33,7 +33,7 @@ extension MainContentCoordinator {
         if let outgoing = tabManager.tabs[tabIdx].display.activeResultSet {
             outgoing.tableRows = tabSessionRegistry.tableRows(for: tabId)
         }
-        tabManager.tabs[tabIdx].display.activeResultSetId = resultSetId
+        tabManager.mutate(at: tabIdx) { $0.display.activeResultSetId = resultSetId }
         if let incoming = tabManager.tabs[tabIdx].display.activeResultSet {
             tabSessionRegistry.setTableRows(incoming.tableRows, for: tabId)
             notifyFullReplaceIfActive(tabId: tabId)

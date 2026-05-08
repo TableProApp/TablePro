@@ -110,7 +110,7 @@ extension MainContentCoordinator {
         changeManager.clearChangesAndUndoHistory()
 
         if let (_, index) = tabManager.selectedTabAndIndex {
-            tabManager.tabs[index].pendingChanges = TabChangeSnapshot()
+            tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
         }
 
         Task { await refreshTables() }

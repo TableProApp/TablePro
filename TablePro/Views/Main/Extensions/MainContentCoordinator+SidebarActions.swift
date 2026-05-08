@@ -18,19 +18,21 @@ extension MainContentCoordinator {
         let rs = tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }
         guard rs?.isPinned != true else { return }
         let tabId = tabManager.tabs[tabIdx].id
-        tabManager.tabs[tabIdx].display.resultSets.removeAll { $0.id == id }
+        tabManager.mutate(at: tabIdx) { $0.display.resultSets.removeAll { $0.id == id } }
         if tabManager.tabs[tabIdx].display.activeResultSetId == id {
             let newActiveId = tabManager.tabs[tabIdx].display.resultSets.last?.id
             switchActiveResultSet(to: newActiveId, in: tabId)
         }
         if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
             setActiveTableRows(TableRows(), for: tabId)
-            tabManager.tabs[tabIdx].execution.errorMessage = nil
-            tabManager.tabs[tabIdx].execution.rowsAffected = 0
-            tabManager.tabs[tabIdx].execution.executionTime = nil
-            tabManager.tabs[tabIdx].execution.statusMessage = nil
-            tabManager.tabs[tabIdx].schemaVersion += 1
-            tabManager.tabs[tabIdx].display.isResultsCollapsed = true
+            tabManager.mutate(at: tabIdx) { tab in
+                tab.execution.errorMessage = nil
+                tab.execution.rowsAffected = 0
+                tab.execution.executionTime = nil
+                tab.execution.statusMessage = nil
+                tab.schemaVersion += 1
+                tab.display.isResultsCollapsed = true
+            }
             toolbarState.isResultsCollapsed = true
         }
     }

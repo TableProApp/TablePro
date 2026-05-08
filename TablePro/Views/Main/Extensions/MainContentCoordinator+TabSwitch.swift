@@ -32,7 +32,8 @@ extension MainContentCoordinator {
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
             if changeManager.hasChanges {
-                tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
+                let savedState = changeManager.saveState()
+                tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
             }
             if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
                 FilterSettingsStorage.shared.saveLastFilters(
@@ -145,12 +146,7 @@ extension MainContentCoordinator {
 
         for entry in toEvict {
             tabSessionRegistry.evict(for: entry.tab.id)
-            if let index = tabManager.tabs.firstIndex(where: { $0.id == entry.tab.id }) {
-                // Bump QueryTab.loadEpoch to invalidate the `.task(id:)` key in
-                // MainEditorContentView, so the next selection of this tab
-                // triggers lazy-load. The session-side bump is not observed.
-                tabManager.tabs[index].loadEpoch &+= 1
-            }
+            tabManager.mutate(tabId: entry.tab.id) { $0.loadEpoch &+= 1 }
         }
         Self.lifecycleLogger.debug(
             "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
