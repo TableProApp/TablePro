@@ -587,6 +587,17 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .transactions,
+            .alterTableDDL,
+            .multiSchema,
+            .cancelQuery,
+            .batchExecute,
+        ]
+    }
+
     func quoteIdentifier(_ name: String) -> String {
         let escaped = name.replacingOccurrences(of: "]", with: "]]")
         return "[\(escaped)]"

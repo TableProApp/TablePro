@@ -51,6 +51,15 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     var supportsTransactions: Bool { false }
 
+    var capabilities: PluginCapabilities {
+        [
+            .alterTableDDL,
+            .truncateTable,
+            .multiSchema,
+            .cancelQuery,
+        ]
+    }
+
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
