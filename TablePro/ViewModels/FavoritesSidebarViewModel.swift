@@ -123,7 +123,8 @@ internal final class FavoritesSidebarViewModel {
 
     @ObservationIgnored private let connectionId: UUID
     @ObservationIgnored private let cache: ConnectionDataCache
-    @ObservationIgnored private let manager = SQLFavoriteManager.shared
+    @ObservationIgnored private let services: AppServices
+    @ObservationIgnored private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
 
     var isInitialLoadComplete: Bool { cache.isInitialLoadComplete }
 
@@ -137,8 +138,9 @@ internal final class FavoritesSidebarViewModel {
         return roots
     }
 
-    init(connectionId: UUID) {
+    init(connectionId: UUID, services: AppServices = .live) {
         self.connectionId = connectionId
+        self.services = services
         self.cache = ConnectionDataCache.shared(for: connectionId)
         cache.ensureLoaded()
     }
