@@ -123,12 +123,17 @@ enum SessionStateFactory {
                         tabMgr.addTab(databaseName: payload.databaseName ?? activeDatabaseName)
                     }
                 case .query:
-                    tabMgr.addTab(
-                        initialQuery: payload.initialQuery,
-                        title: payload.tabTitle,
-                        databaseName: payload.databaseName ?? activeDatabaseName,
-                        sourceFileURL: payload.sourceFileURL
-                    )
+                    let hasContent = payload.initialQuery != nil
+                        || payload.tabTitle != nil
+                        || payload.sourceFileURL != nil
+                    if hasContent {
+                        tabMgr.addTab(
+                            initialQuery: payload.initialQuery,
+                            title: payload.tabTitle,
+                            databaseName: payload.databaseName ?? activeDatabaseName,
+                            sourceFileURL: payload.sourceFileURL
+                        )
+                    }
                 case .createTable:
                     tabMgr.addCreateTableTab(
                         databaseName: payload.databaseName ?? activeDatabaseName

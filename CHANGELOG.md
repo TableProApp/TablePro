@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI Chat: `@` mention detection no longer breaks when the cursor sits right after an emoji or other non-BMP character
 - AI Chat: Fix Error prompt now reads "MongoDB query" and "Redis command" using the database display name, instead of the raw query language label
 - Internal: tab session registry binds automatically when a coordinator falls back to creating its own registry, so unit tests no longer trip the filter-state debug assertion
+- Connection-only payloads no longer create an empty `Query 1` tab when there is no query, title, or source file to populate it
 
 ## [0.39.1] - 2026-05-08
 
