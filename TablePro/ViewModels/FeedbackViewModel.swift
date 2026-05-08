@@ -80,10 +80,12 @@ final class FeedbackViewModel {
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
     @ObservationIgnored private var isLoadingDraft = false
     @ObservationIgnored var captureTargetWindow: NSWindow?
+    @ObservationIgnored private let services: AppServices
 
     // MARK: - Init
 
-    init() {
+    init(services: AppServices = .live) {
+        self.services = services
         self.diagnostics = FeedbackDiagnosticsCollector.collect()
         loadDraft()
     }
@@ -172,7 +174,7 @@ final class FeedbackViewModel {
         )
 
         do {
-            let response = try await FeedbackAPIClient.shared.submitFeedback(request: request)
+            let response = try await services.feedbackAPIClient.submitFeedback(request: request)
             if let url = URL(string: response.issueUrl) {
                 submissionResult = .success(issueUrl: url, issueNumber: response.issueNumber)
                 clearDraft()
