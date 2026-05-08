@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL/Redshift: schema picker no longer hides user schemas whose names start with `pg` (`pgboss`, `pgcrypto`, `pgvector`, `pgaudit`, etc.). The system-schema filter now escapes the underscore in `LIKE 'pg\_%'` so it is matched literally instead of as SQL LIKE's single-character wildcard.
 - AI Chat: `@` mention detection no longer breaks when the cursor sits right after an emoji or other non-BMP character
 - AI Chat: Fix Error prompt now reads "MongoDB query" and "Redis command" using the database display name, instead of the raw query language label
 - Internal: tab session registry binds automatically when a coordinator falls back to creating its own registry, so unit tests no longer trip the filter-state debug assertion
