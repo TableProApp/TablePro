@@ -66,6 +66,13 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return types.map { PluginEnumTypeInfo(name: $0.name, labels: $0.labels) }
     }
 
+    func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo] {
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            return []
+        }
+        return try await pluginDriver.fetchColumns(table: table, schema: pluginDriver.currentSchema)
+    }
+
     // MARK: - Helpers
 
     private func qualifiedTableRef(table: String, databaseName: String) -> String {

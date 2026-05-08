@@ -10,9 +10,11 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int?
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo]
     func fetchDependentTypes(table: String, databaseName: String) async throws -> [PluginEnumTypeInfo]
+    func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo]
 }
 
 public extension PluginExportDataSource {
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] { [] }
     func fetchDependentTypes(table: String, databaseName: String) async throws -> [PluginEnumTypeInfo] { [] }
+    func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo] { [] }
 }

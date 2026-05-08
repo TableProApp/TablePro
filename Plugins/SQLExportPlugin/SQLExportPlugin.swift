@@ -167,58 +167,12 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                 }
 
                 if includeData {
-                    let batchSize = settings.batchSize
-                    var wroteAnyRows = false
-                    var columns: [String] = []
-                    var columnTypeNames: [String] = []
-                    var rowBatch: [[String?]] = []
-
-                    let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
-                    for try await element in stream {
-                        try progress.checkCancellation()
-
-                        switch element {
-                        case .header(let header):
-                            columns = header.columns
-                            columnTypeNames = header.columnTypeNames ?? []
-                        case .rows(let rows):
-                            for row in rows {
-                                rowBatch.append(row)
-                                if rowBatch.count >= batchSize {
-                                    try writeInsertStatements(
-                                        tableName: table.name,
-                                        columns: columns,
-                                        columnTypeNames: columnTypeNames,
-                                        rows: rowBatch,
-                                        batchSize: batchSize,
-                                        dataSource: dataSource,
-                                        to: fileHandle,
-                                        progress: progress
-                                    )
-                                    wroteAnyRows = true
-                                    rowBatch.removeAll(keepingCapacity: true)
-                                }
-                            }
-                        }
-                    }
-
-                    if !rowBatch.isEmpty {
-                        try writeInsertStatements(
-                            tableName: table.name,
-                            columns: columns,
-                            columnTypeNames: columnTypeNames,
-                            rows: rowBatch,
-                            batchSize: batchSize,
-                            dataSource: dataSource,
-                            to: fileHandle,
-                            progress: progress
-                        )
-                        wroteAnyRows = true
-                    }
-
-                    if wroteAnyRows {
-                        try fileHandle.write(contentsOf: "\n".toUTF8Data())
-                    }
+                    try await writeTableData(
+                        table: table,
+                        dataSource: dataSource,
+                        to: fileHandle,
+                        progress: progress
+                    )
                 }
             }
 
@@ -262,25 +216,102 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         return table.optionValues[index]
     }
 
+    private func writeTableData(
+        table: PluginExportTable,
+        dataSource: any PluginExportDataSource,
+        to fileHandle: FileHandle,
+        progress: PluginExportProgress
+    ) async throws {
+        let batchSize = settings.batchSize
+        var wroteAnyRows = false
+        var columns: [String] = []
+        var columnTypeNames: [String] = []
+        var rowBatch: [[String?]] = []
+
+        let columnInfo = (try? await dataSource.fetchColumns(
+            table: table.name, databaseName: table.databaseName
+        )) ?? []
+        let generatedColumnNames = Set(columnInfo.filter { $0.isGenerated }.map { $0.name })
+        let usesOverridingSystemValue = columnInfo.contains { $0.identityKind == "ALWAYS" }
+
+        let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+        for try await element in stream {
+            try progress.checkCancellation()
+
+            switch element {
+            case .header(let header):
+                columns = header.columns
+                columnTypeNames = header.columnTypeNames ?? []
+            case .rows(let rows):
+                for row in rows {
+                    rowBatch.append(row)
+                    if rowBatch.count >= batchSize {
+                        try writeInsertStatements(
+                            tableName: table.name,
+                            columns: columns,
+                            columnTypeNames: columnTypeNames,
+                            rows: rowBatch,
+                            batchSize: batchSize,
+                            excludedColumnNames: generatedColumnNames,
+                            usesOverridingSystemValue: usesOverridingSystemValue,
+                            dataSource: dataSource,
+                            to: fileHandle,
+                            progress: progress
+                        )
+                        wroteAnyRows = true
+                        rowBatch.removeAll(keepingCapacity: true)
+                    }
+                }
+            }
+        }
+
+        if !rowBatch.isEmpty {
+            try writeInsertStatements(
+                tableName: table.name,
+                columns: columns,
+                columnTypeNames: columnTypeNames,
+                rows: rowBatch,
+                batchSize: batchSize,
+                excludedColumnNames: generatedColumnNames,
+                usesOverridingSystemValue: usesOverridingSystemValue,
+                dataSource: dataSource,
+                to: fileHandle,
+                progress: progress
+            )
+            wroteAnyRows = true
+        }
+
+        if wroteAnyRows {
+            try fileHandle.write(contentsOf: "\n".toUTF8Data())
+        }
+    }
+
     private func writeInsertStatements(
         tableName: String,
         columns: [String],
         columnTypeNames: [String],
         rows: [[String?]],
         batchSize: Int,
+        excludedColumnNames: Set<String>,
+        usesOverridingSystemValue: Bool,
         dataSource: any PluginExportDataSource,
         to fileHandle: FileHandle,
         progress: PluginExportProgress
     ) throws {
+        let includedColumnIndices = columns.enumerated().compactMap { index, name in
+            excludedColumnNames.contains(name) ? nil : index
+        }
+        guard !includedColumnIndices.isEmpty else { return }
+
         let tableRef = dataSource.quoteIdentifier(tableName)
-        let quotedColumns = columns
-            .map { dataSource.quoteIdentifier($0) }
+        let quotedColumns = includedColumnIndices
+            .map { dataSource.quoteIdentifier(columns[$0]) }
             .joined(separator: ", ")
+        let overriding = usesOverridingSystemValue ? " OVERRIDING SYSTEM VALUE" : ""
+        let insertPrefix = "INSERT INTO \(tableRef) (\(quotedColumns))\(overriding) VALUES\n"
 
-        let insertPrefix = "INSERT INTO \(tableRef) (\(quotedColumns)) VALUES\n"
-
-        let numericIndices: Set<Int> = Set(columnTypeNames.enumerated().compactMap { index, typeName in
-            isNumericColumnType(typeName) ? index : nil
+        let numericIndices: Set<Int> = Set(includedColumnIndices.filter { idx in
+            idx < columnTypeNames.count && isNumericColumnType(columnTypeNames[idx])
         })
 
         let effectiveBatchSize = batchSize <= 1 ? 1 : batchSize
@@ -290,7 +321,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         for row in rows {
             try progress.checkCancellation()
 
-            let values = row.enumerated().map { colIndex, value -> String in
+            let values = includedColumnIndices.map { colIndex -> String in
+                let value = colIndex < row.count ? row[colIndex] : nil
                 guard let val = value else { return "NULL" }
                 if numericIndices.contains(colIndex) && isNumericLiteral(val) {
                     return val

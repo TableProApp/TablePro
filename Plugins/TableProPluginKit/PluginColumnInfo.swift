@@ -10,6 +10,9 @@ public struct PluginColumnInfo: Codable, Sendable {
     public let charset: String?
     public let collation: String?
     public let comment: String?
+    public let isIdentity: Bool
+    public let identityKind: String?
+    public let isGenerated: Bool
 
     public init(
         name: String,
@@ -20,7 +23,10 @@ public struct PluginColumnInfo: Codable, Sendable {
         extra: String? = nil,
         charset: String? = nil,
         collation: String? = nil,
-        comment: String? = nil
+        comment: String? = nil,
+        isIdentity: Bool = false,
+        identityKind: String? = nil,
+        isGenerated: Bool = false
     ) {
         self.name = name
         self.dataType = dataType
@@ -31,5 +37,8 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.charset = charset
         self.collation = collation
         self.comment = comment
+        self.isIdentity = isIdentity
+        self.identityKind = identityKind
+        self.isGenerated = isGenerated
     }
 }
