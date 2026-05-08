@@ -15,7 +15,7 @@ final class GeminiProvider: ChatTransport {
     private let session: URLSession
 
     init(endpoint: String, apiKey: String, maxOutputTokens: Int = 8_192) {
-        self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
+        self.endpoint = endpoint.normalizedEndpoint()
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.session = URLSession(configuration: .ephemeral)
@@ -37,9 +37,10 @@ final class GeminiProvider: ChatTransport {
 
                     guard httpResponse.statusCode == 200 else {
                         let errorBody = try await collectErrorBody(from: bytes)
-                        throw mapHTTPError(
+                        throw AIProviderError.mapHTTPError(
                             statusCode: httpResponse.statusCode,
-                            body: errorBody
+                            body: errorBody,
+                            treatForbiddenAsAuthFailure: true
                         )
                     }
 
@@ -85,6 +86,7 @@ final class GeminiProvider: ChatTransport {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = AIProvider.modelListTimeout
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
         let data: Data
@@ -92,20 +94,16 @@ final class GeminiProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
+            Self.logger.warning("Gemini model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
             return Self.knownModels
         }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            return Self.knownModels
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            return Self.knownModels
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = json["models"] as? [[String: Any]]
         else {
+            Self.logger.warning("Gemini model fetch returned unexpected response; using known models")
             return Self.knownModels
         }
 
@@ -146,7 +144,11 @@ final class GeminiProvider: ChatTransport {
 
         guard statusCode == 200 else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw mapHTTPError(statusCode: statusCode, body: body)
+            throw AIProviderError.mapHTTPError(
+                statusCode: statusCode,
+                body: body,
+                treatForbiddenAsAuthFailure: true
+            )
         }
 
         return true
@@ -177,14 +179,12 @@ final class GeminiProvider: ChatTransport {
         }
 
         if !options.tools.isEmpty {
-            let declarations = options.tools.map { tool -> [String: Any] in
+            let declarations = try options.tools.map { tool -> [String: Any] in
                 var entry: [String: Any] = [
                     "name": tool.name,
                     "description": tool.description
                 ]
-                if let parameters = jsonValueToAny(tool.inputSchema) {
-                    entry["parameters"] = parameters
-                }
+                entry["parameters"] = try tool.inputSchema.asJSONObject()
                 return entry
             }
             body["tools"] = [["functionDeclarations": declarations]]
@@ -218,7 +218,7 @@ final class GeminiProvider: ChatTransport {
             case .attachment:
                 continue
             case .toolUse(let useBlock):
-                let argsObject = jsonValueToAny(useBlock.input) ?? [String: Any]()
+                let argsObject = (try? useBlock.input.asJSONObject()) ?? [String: Any]()
                 parts.append([
                     "functionCall": [
                         "name": useBlock.name,
@@ -257,38 +257,6 @@ final class GeminiProvider: ChatTransport {
             }
         }
         return nil
-    }
-
-    func jsonValueToAny(_ value: JSONValue) -> Any? {
-        switch value {
-        case .null:
-            return NSNull()
-        case .bool(let bool):
-            return bool
-        case .integer(let int):
-            return int
-        case .number(let double):
-            return double
-        case .string(let string):
-            return string
-        case .array(let array):
-            return array.map { jsonValueToAny($0) ?? NSNull() }
-        case .object(let object):
-            var dict: [String: Any] = [:]
-            for (key, child) in object {
-                dict[key] = jsonValueToAny(child) ?? NSNull()
-            }
-            return dict
-        }
-    }
-
-
-    func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
-        if statusCode == 403 {
-            let message = AIProviderError.parseErrorMessage(from: body) ?? body
-            return .authenticationFailed(message)
-        }
-        return AIProviderError.mapHTTPError(statusCode: statusCode, body: body)
     }
 
     /// Decodes one Gemini SSE line. Returns nil for non-data lines.
