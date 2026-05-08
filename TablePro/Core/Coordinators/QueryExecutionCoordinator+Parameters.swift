@@ -95,7 +95,7 @@ extension QueryExecutionCoordinator {
             needsMetadataFetch = false
         }
 
-        parent.currentQueryTask = Task { [weak self] in
+        parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
 
             do {
@@ -205,7 +205,7 @@ extension QueryExecutionCoordinator {
         let tabId = parent.tabManager.tabs[index].id
         let totalCount = statements.count
 
-        parent.currentQueryTask = Task { [weak self] in
+        parent.currentQueryTask = Task { [weak self, parent] in
             guard let self else { return }
             var cumulativeTime: TimeInterval = 0
             var lastSelectResult: QueryResult?

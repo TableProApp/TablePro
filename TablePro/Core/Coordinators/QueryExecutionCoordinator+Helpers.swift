@@ -208,7 +208,7 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
 
-        Task(priority: .background) { [weak self] in
+        Task(priority: .background) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
             guard let mainDriver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
@@ -259,7 +259,7 @@ extension QueryExecutionCoordinator {
 
         guard !isNonSQL else { return }
         guard let enumDriver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
-        Task(priority: .background) { [weak self] in
+        Task(priority: .background) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
 
@@ -319,7 +319,7 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
 
-        Task { [weak self] in
+        Task { [weak self, parent] in
             guard let self else { return }
             guard let mainDriver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
 
@@ -393,7 +393,7 @@ extension QueryExecutionCoordinator {
 
         let errorMessage = error.localizedDescription
         let queryCopy = sql
-        Task { [weak self] in
+        Task { [weak self, parent] in
             guard let self else { return }
             if AppSettingsManager.shared.ai.enabled {
                 let wantsAIFix = await AlertHelper.showQueryErrorWithAIOption(

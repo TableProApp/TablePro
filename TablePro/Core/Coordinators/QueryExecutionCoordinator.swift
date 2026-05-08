@@ -67,13 +67,13 @@ final class QueryExecutionCoordinator {
 
         if level == .silent {
             if statements.count == 1 {
-                Task {
+                Task { [parent] in
                     let window = NSApp.keyWindow
                     guard await parent.confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
                     parent.executeQueryInternal(statements[0])
                 }
             } else {
-                Task {
+                Task { [parent] in
                     let window = NSApp.keyWindow
                     let dangerousStatements = statements.filter { parent.isDangerousQuery($0) }
                     if !dangerousStatements.isEmpty {
@@ -85,7 +85,7 @@ final class QueryExecutionCoordinator {
         } else if level.requiresConfirmation {
             guard !parent.isShowingSafeModePrompt else { return }
             parent.isShowingSafeModePrompt = true
-            Task {
+            Task { [parent] in
                 defer { parent.isShowingSafeModePrompt = false }
                 let window = NSApp.keyWindow
                 let combinedSQL = statements.joined(separator: "\n")
@@ -139,7 +139,7 @@ final class QueryExecutionCoordinator {
         let tabId = parent.tabManager.tabs[index].id
 
         if level == .silent {
-            Task {
+            Task { [parent] in
                 let window = NSApp.keyWindow
                 if statements.count == 1 {
                     guard await parent.confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
@@ -154,7 +154,7 @@ final class QueryExecutionCoordinator {
         } else if level.requiresConfirmation {
             guard !parent.isShowingSafeModePrompt else { return }
             parent.isShowingSafeModePrompt = true
-            Task {
+            Task { [parent] in
                 defer { parent.isShowingSafeModePrompt = false }
                 let window = NSApp.keyWindow
                 let combinedSQL = statements.joined(separator: "\n")
