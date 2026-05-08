@@ -22,7 +22,7 @@ final class AIChatViewModel {
 
     var messages: [ChatTurn] = []
     var inputText: String = ""
-    private(set) var streamingState: StreamingState = .idle
+    var streamingState: StreamingState = .idle
     var errorMessage: String?
     var conversations: [AIConversation] = []
     var activeConversationID: UUID?

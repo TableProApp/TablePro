@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 extension AIChatViewModel {

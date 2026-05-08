@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 extension AIChatViewModel {
@@ -426,7 +427,7 @@ extension AIChatViewModel {
             return ToolResultBlock(toolUseId: block.id, content: "Cancelled", isError: true)
         }
         guard ChatToolRegistry.isToolAllowed(name: block.name, in: mode) else {
-            logger.warning(
+            AIChatViewModel.logger.warning(
                 "Tool '\(block.name, privacy: .public)' blocked in \(mode.rawValue, privacy: .public) mode"
             )
             return ToolResultBlock(
@@ -439,7 +440,7 @@ extension AIChatViewModel {
             (registry ?? ChatToolRegistry.shared).tool(named: block.name, in: mode)
         }
         guard let tool else {
-            logger.warning("Tool '\(block.name, privacy: .public)' not registered; returning error")
+            AIChatViewModel.logger.warning("Tool '\(block.name, privacy: .public)' not registered; returning error")
             return ToolResultBlock(
                 toolUseId: block.id,
                 content: "Tool '\(block.name)' is not available",
@@ -454,7 +455,7 @@ extension AIChatViewModel {
                 isError: result.isError
             )
         } catch {
-            logger.warning(
+            AIChatViewModel.logger.warning(
                 "Tool \(block.name, privacy: .public) execution failed: \(error.localizedDescription, privacy: .public)"
             )
             return ToolResultBlock(
