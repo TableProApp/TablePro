@@ -53,17 +53,18 @@ final class ConnectionFormCoordinator {
 
     private var temporaryTestIds: Set<UUID> = []
 
-    let storage = ConnectionStorage.shared
+    @ObservationIgnored let services: AppServices
+    var storage: ConnectionStorage { services.connectionStorage }
     var dismissAction: (() -> Void)?
 
     var isNew: Bool { connectionId == nil }
 
     var visiblePanes: [ConnectionFormPane] {
         var panes: [ConnectionFormPane] = [.general]
-        if PluginManager.shared.supportsSSH(for: network.type) {
+        if services.pluginManager.supportsSSH(for: network.type) {
             panes.append(.ssh)
         }
-        if PluginManager.shared.supportsSSL(for: network.type) {
+        if services.pluginManager.supportsSSL(for: network.type) {
             panes.append(.ssl)
         }
         panes.append(.customization)
@@ -87,11 +88,13 @@ final class ConnectionFormCoordinator {
     init(
         connectionId: UUID?,
         initialType: DatabaseType? = nil,
-        initialParsedURL: ParsedConnectionURL? = nil
+        initialParsedURL: ParsedConnectionURL? = nil,
+        services: AppServices = .live
     ) {
         self.connectionId = connectionId
         self.pendingInitialType = initialType
         self.pendingInitialParsedURL = initialParsedURL
+        self.services = services
         self.network = NetworkPaneViewModel()
         self.auth = AuthPaneViewModel()
         self.ssh = SSHPaneViewModel()
@@ -209,7 +212,7 @@ final class ConnectionFormCoordinator {
         var finalPort = Int(network.port) ?? network.type.defaultPort
         let trimmedUsername = auth.username.trimmingCharacters(in: .whitespaces)
         let finalUsername =
-            trimmedUsername.isEmpty && PluginManager.shared.requiresAuthentication(for: network.type)
+            trimmedUsername.isEmpty && services.pluginManager.requiresAuthentication(for: network.type)
                 ? "root" : trimmedUsername
 
         let finalId = connectionId ?? UUID()
@@ -238,7 +241,7 @@ final class ConnectionFormCoordinator {
 
         finalAdditionalFields["promptForPassword"] = auth.promptForPassword ? "true" : nil
 
-        let secureFields = PluginManager.shared.additionalConnectionFields(for: network.type)
+        let secureFields = services.pluginManager.additionalConnectionFields(for: network.type)
             .filter(\.isSecure)
         for field in secureFields {
             if let value = finalAdditionalFields[field.id], !value.isEmpty {
@@ -307,7 +310,7 @@ final class ConnectionFormCoordinator {
             savedConnections.append(connectionToSave)
             storage.saveConnections(savedConnections)
             if !connectionToSave.localOnly {
-                SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
+                services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
@@ -322,7 +325,7 @@ final class ConnectionFormCoordinator {
             savedConnections[index] = connectionToSave
             storage.saveConnections(savedConnections)
             if !connectionToSave.localOnly {
-                SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
+                services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
@@ -395,7 +398,7 @@ final class ConnectionFormCoordinator {
         var testPort = Int(network.port) ?? network.type.defaultPort
         let trimmedUsername = auth.username.trimmingCharacters(in: .whitespaces)
         let finalUsername =
-            trimmedUsername.isEmpty && PluginManager.shared.requiresAuthentication(for: network.type)
+            trimmedUsername.isEmpty && services.pluginManager.requiresAuthentication(for: network.type)
                 ? "root" : trimmedUsername
 
         var finalAdditionalFields: [String: String] = [:]
@@ -452,34 +455,34 @@ final class ConnectionFormCoordinator {
         testTask = Task { [weak self] in
             do {
                 if !password.isEmpty && !promptForPassword {
-                    ConnectionStorage.shared.savePassword(password, for: testConn.id)
+                    services.connectionStorage.savePassword(password, for: testConn.id)
                 }
                 if sshState.enabled && sshState.profileId == nil {
                     if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
                         && !sshState.password.isEmpty
                     {
-                        ConnectionStorage.shared.saveSSHPassword(sshState.password, for: testConn.id)
+                        services.connectionStorage.saveSSHPassword(sshState.password, for: testConn.id)
                     }
                     if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
-                        ConnectionStorage.shared.saveKeyPassphrase(sshState.keyPassphrase, for: testConn.id)
+                        services.connectionStorage.saveKeyPassphrase(sshState.keyPassphrase, for: testConn.id)
                     }
                     if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
-                        ConnectionStorage.shared.saveTOTPSecret(sshState.totpSecret, for: testConn.id)
+                        services.connectionStorage.saveTOTPSecret(sshState.totpSecret, for: testConn.id)
                     }
                 }
 
-                for field in PluginManager.shared.additionalConnectionFields(for: connectionType)
+                for field in services.pluginManager.additionalConnectionFields(for: connectionType)
                     where field.isSecure
                 {
                     if let value = additionalFieldValues[field.id], !value.isEmpty {
-                        ConnectionStorage.shared.savePluginSecureField(
+                        services.connectionStorage.savePluginSecureField(
                             value, fieldId: field.id, for: testConn.id
                         )
                     }
                 }
 
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
-                let isApiOnly = PluginManager.shared.connectionMode(for: connectionType) == .apiOnly
+                let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
                 let testPwOverride: String? = promptForPassword
                     ? (password.isEmpty
                         ? await PasswordPromptHelper.prompt(
@@ -499,7 +502,7 @@ final class ConnectionFormCoordinator {
                     return
                 }
 
-                let success = try await DatabaseManager.shared.testConnection(
+                let success = try await services.databaseManager.testConnection(
                     testConn,
                     sshPassword: sshPasswordForTest,
                     passwordOverride: testPwOverride
@@ -543,13 +546,13 @@ final class ConnectionFormCoordinator {
     }
 
     func cleanupTestSecrets(for testId: UUID) {
-        ConnectionStorage.shared.deletePassword(for: testId)
-        ConnectionStorage.shared.deleteSSHPassword(for: testId)
-        ConnectionStorage.shared.deleteKeyPassphrase(for: testId)
-        ConnectionStorage.shared.deleteTOTPSecret(for: testId)
-        let secureFieldIds = PluginManager.shared.additionalConnectionFields(for: network.type)
+        services.connectionStorage.deletePassword(for: testId)
+        services.connectionStorage.deleteSSHPassword(for: testId)
+        services.connectionStorage.deleteKeyPassphrase(for: testId)
+        services.connectionStorage.deleteTOTPSecret(for: testId)
+        let secureFieldIds = services.pluginManager.additionalConnectionFields(for: network.type)
             .filter(\.isSecure).map(\.id)
-        ConnectionStorage.shared.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
+        services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
         temporaryTestIds.remove(testId)
     }
 
@@ -559,11 +562,11 @@ final class ConnectionFormCoordinator {
         isInstallingPlugin = true
         Task { [weak self] in
             do {
-                try await PluginManager.shared.installMissingPlugin(for: databaseType) { _ in }
+                try await services.pluginManager.installMissingPlugin(for: databaseType) { _ in }
                 await MainActor.run {
                     guard let self else { return }
                     if self.network.type == databaseType {
-                        for field in PluginManager.shared.additionalConnectionFields(for: databaseType) {
+                        for field in services.pluginManager.additionalConnectionFields(for: databaseType) {
                             if self.targetValues(for: field.section)[field.id] == nil,
                                let defaultValue = field.defaultValue
                             {
@@ -708,7 +711,7 @@ final class ConnectionFormCoordinator {
     }
 
     private func writeFieldByRegistry(_ fieldId: String, value: String) {
-        let registry = PluginManager.shared.additionalConnectionFields(for: network.type)
+        let registry = services.pluginManager.additionalConnectionFields(for: network.type)
         guard let field = registry.first(where: { $0.id == fieldId }) else {
             advanced.additionalFieldValues[fieldId] = value
             return
