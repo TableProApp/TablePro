@@ -58,8 +58,8 @@ struct AIChatViewModelMentionsTests {
         #expect(vm.attachedContext.isEmpty)
     }
 
-    @Test("Sending with currentQuery attachment embeds the query text in the prompt")
-    func currentQueryResolved() {
+    @Test("Sending with currentQuery attachment resolves the query text on the wire")
+    func currentQueryResolved() async {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .mysql)
         vm.inputText = "Explain"
@@ -67,8 +67,12 @@ struct AIChatViewModelMentionsTests {
 
         vm.sendMessage()
 
-        let userTurn = vm.messages.first(where: { $0.role == .user })
-        let prompt = userTurn?.plainText ?? ""
+        guard let userTurn = vm.messages.first(where: { $0.role == .user }) else {
+            Issue.record("expected a user turn after sendMessage")
+            return
+        }
+        let wire = await vm.resolveTurnForWire(userTurn)
+        let prompt = wire.plainText
         #expect(prompt.contains("Explain"))
         #expect(prompt.contains("SELECT * FROM Customer"))
         #expect(prompt.contains("## Current Query"))
