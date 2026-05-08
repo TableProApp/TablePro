@@ -60,7 +60,7 @@ extension AIChatViewModel {
         let renderingContext = CustomSlashCommandRenderer.Context(
             query: currentQuery,
             schema: needsSchema ? renderedSchemaSection() : nil,
-            database: connection.flatMap { DatabaseManager.shared.activeDatabaseName(for: $0) },
+            database: connection.flatMap { services.databaseManager.activeDatabaseName(for: $0) },
             body: body
         )
         let prompt = CustomSlashCommandRenderer.render(command, context: renderingContext)
