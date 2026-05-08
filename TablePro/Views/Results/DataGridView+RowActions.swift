@@ -29,11 +29,11 @@ extension TableViewCoordinator {
     func undoInsertRow(at index: Int) {
         delegate?.dataGridUndoInsert(at: index)
         changeManager.undoRowInsertion(rowIndex: index)
+        var capturedDelta: Delta = .none
         tableRowsMutator { rows in
-            _ = rows.remove(at: IndexSet(integer: index))
+            capturedDelta = rows.remove(at: IndexSet(integer: index))
         }
-        updateCache()
-        tableView?.reloadData()
+        applyDelta(capturedDelta)
     }
 
     func copyRows(at indices: Set<Int>) {

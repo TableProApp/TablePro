@@ -106,6 +106,15 @@ extension TableViewCoordinator {
         return nil
     }
 
+    func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+        guard let tableColumn else { return nil }
+        guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return nil }
+        guard let columnIndex = dataColumnIndex(from: tableColumn.identifier) else { return nil }
+        guard let displayRow = displayRow(at: row) else { return nil }
+        guard columnIndex < displayRow.values.count else { return nil }
+        return displayRow.values[columnIndex]
+    }
+
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         if let delegateRowView = delegate?.dataGridRowView(for: tableView, row: row, coordinator: self) {
             return delegateRowView

@@ -64,6 +64,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.gridStyleMask = [.solidVerticalGridLineMask]
         tableView.intercellSpacing = NSSize(width: 1, height: 0)
         tableView.rowHeight = CGFloat(settings.rowHeight.rawValue)
+        tableView.usesAutomaticRowHeights = false
 
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
