@@ -143,8 +143,6 @@ extension PostgreSQLPluginDriver {
             return coll.components(separatedBy: ".").last
         }()
 
-        let identityKind = pgIdentityKind(attidentity)
-
         return PluginColumnInfo(
             name: name,
             dataType: dataType,
@@ -154,16 +152,15 @@ extension PostgreSQLPluginDriver {
             charset: charset,
             collation: collation,
             comment: comment?.isEmpty == false ? comment : nil,
-            isIdentity: identityKind != nil,
-            identityKind: identityKind,
+            identityKind: pgIdentityKind(attidentity),
             isGenerated: attgenerated == "s"
         )
     }
 
-    fileprivate func pgIdentityKind(_ attidentity: String?) -> String? {
+    fileprivate func pgIdentityKind(_ attidentity: String?) -> IdentityKind? {
         switch attidentity {
-        case "a": return "ALWAYS"
-        case "d": return "BY DEFAULT"
+        case "a": return .always
+        case "d": return .byDefault
         default: return nil
         }
     }

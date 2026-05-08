@@ -1,5 +1,10 @@
 import Foundation
 
+public enum IdentityKind: String, Codable, Sendable, CaseIterable {
+    case always = "ALWAYS"
+    case byDefault = "BY DEFAULT"
+}
+
 public struct PluginColumnInfo: Codable, Sendable {
     public let name: String
     public let dataType: String
@@ -10,9 +15,10 @@ public struct PluginColumnInfo: Codable, Sendable {
     public let charset: String?
     public let collation: String?
     public let comment: String?
-    public let isIdentity: Bool
-    public let identityKind: String?
+    public let identityKind: IdentityKind?
     public let isGenerated: Bool
+
+    public var isIdentity: Bool { identityKind != nil }
 
     public init(
         name: String,
@@ -24,8 +30,7 @@ public struct PluginColumnInfo: Codable, Sendable {
         charset: String? = nil,
         collation: String? = nil,
         comment: String? = nil,
-        isIdentity: Bool = false,
-        identityKind: String? = nil,
+        identityKind: IdentityKind? = nil,
         isGenerated: Bool = false
     ) {
         self.name = name
@@ -37,7 +42,6 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.charset = charset
         self.collation = collation
         self.comment = comment
-        self.isIdentity = isIdentity
         self.identityKind = identityKind
         self.isGenerated = isGenerated
     }
