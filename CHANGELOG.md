@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PostgreSQL SQL export emits foreign key constraints via `ALTER TABLE ... ADD CONSTRAINT` after data load and resyncs sequences via `setval` so a re-imported dump round-trips cleanly even when child tables sort before parents (#1114)
 - SQL import parser uses bounded streaming and run-length string append, reducing memory and CPU on large files (#1114)
 - AI inline suggestions: debounce now uses structured Swift concurrency, and the delay is configurable via the `inlineSuggestionDebounceMs` setting (default 500ms)
 - Copilot LSP shutdown caps at 10 seconds, closes pipes explicitly, and strips the quarantine attribute from the downloaded binary

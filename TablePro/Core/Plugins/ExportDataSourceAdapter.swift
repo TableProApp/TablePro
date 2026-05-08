@@ -73,6 +73,13 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return try await pluginDriver.fetchColumns(table: table, schema: pluginDriver.currentSchema)
     }
 
+    func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            return []
+        }
+        return try await pluginDriver.fetchForeignKeys(table: table, schema: pluginDriver.currentSchema)
+    }
+
     // MARK: - Helpers
 
     private func qualifiedTableRef(table: String, databaseName: String) -> String {

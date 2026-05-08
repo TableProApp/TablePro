@@ -84,97 +84,19 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         }
 
         do {
-            let dateFormatter = ISO8601DateFormatter()
-            try fileHandle.write(contentsOf: "-- TablePro SQL Export\n".toUTF8Data())
-            try fileHandle.write(contentsOf: "-- Generated: \(dateFormatter.string(from: Date()))\n".toUTF8Data())
-            try fileHandle.write(contentsOf: "-- Database Type: \(dataSource.databaseTypeId)\n\n".toUTF8Data())
+            try writeHeader(to: fileHandle, dataSource: dataSource)
+            let fkMap = await prefetchForeignKeys(tables: tables, dataSource: dataSource)
+            let sortedTables = topologicallySort(tables, fkMap: fkMap)
 
-            // Collect dependent sequences and enum types (PostgreSQL)
-            var emittedSequenceNames: Set<String> = []
-            var emittedTypeNames: Set<String> = []
-            let structureTables = tables.filter { optionValue($0, at: 0) }
-
-            for table in structureTables {
-                do {
-                    let sequences = try await dataSource.fetchDependentSequences(
-                        table: table.name,
-                        databaseName: table.databaseName
-                    )
-                    for seq in sequences where !emittedSequenceNames.contains(seq.name) {
-                        emittedSequenceNames.insert(seq.name)
-                        let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                        try fileHandle.write(contentsOf: "DROP SEQUENCE IF EXISTS \(quotedName) CASCADE;\n".toUTF8Data())
-                        try fileHandle.write(contentsOf: "\(seq.ddl)\n\n".toUTF8Data())
-                    }
-                } catch {
-                    Self.logger.warning("Failed to fetch dependent sequences for table \(table.name): \(error)")
-                }
-
-                do {
-                    let enumTypes = try await dataSource.fetchDependentTypes(
-                        table: table.name,
-                        databaseName: table.databaseName
-                    )
-                    for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
-                        emittedTypeNames.insert(enumType.name)
-                        let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                        try fileHandle.write(contentsOf: "DROP TYPE IF EXISTS \(quotedName) CASCADE;\n".toUTF8Data())
-                        let quotedLabels = enumType.labels.map { "'\(dataSource.escapeStringLiteral($0))'" }
-                        try fileHandle.write(contentsOf: "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n".toUTF8Data())
-                    }
-                } catch {
-                    Self.logger.warning("Failed to fetch dependent types for table \(table.name): \(error)")
-                }
-            }
-
-            for (index, table) in tables.enumerated() {
-                try progress.checkCancellation()
-
-                progress.setCurrentTable(table.qualifiedName, index: index + 1)
-
-                let includeStructure = optionValue(table, at: 0)
-                let includeDrop = optionValue(table, at: 1)
-                let includeData = optionValue(table, at: 2)
-
-                let tableRef = dataSource.quoteIdentifier(table.name)
-
-                let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
-                try fileHandle.write(contentsOf: "-- --------------------------------------------------------\n".toUTF8Data())
-                try fileHandle.write(contentsOf: "-- Table: \(sanitizedName)\n".toUTF8Data())
-                try fileHandle.write(contentsOf: "-- --------------------------------------------------------\n\n".toUTF8Data())
-
-                if includeDrop {
-                    try fileHandle.write(contentsOf: "DROP TABLE IF EXISTS \(tableRef);\n\n".toUTF8Data())
-                }
-
-                if includeStructure {
-                    do {
-                        let ddl = try await dataSource.fetchTableDDL(
-                            table: table.name,
-                            databaseName: table.databaseName
-                        )
-                        try fileHandle.write(contentsOf: ddl.toUTF8Data())
-                        if !ddl.hasSuffix(";") {
-                            try fileHandle.write(contentsOf: ";".toUTF8Data())
-                        }
-                        try fileHandle.write(contentsOf: "\n\n".toUTF8Data())
-                    } catch {
-                        ddlFailures.append(sanitizedName)
-                        let ddlWarning = "Warning: failed to fetch DDL for table \(sanitizedName): \(error)"
-                        Self.logger.warning("Failed to fetch DDL for table \(sanitizedName): \(error)")
-                        try fileHandle.write(contentsOf: "-- \(PluginExportUtilities.sanitizeForSQLComment(ddlWarning))\n\n".toUTF8Data())
-                    }
-                }
-
-                if includeData {
-                    try await writeTableData(
-                        table: table,
-                        dataSource: dataSource,
-                        to: fileHandle,
-                        progress: progress
-                    )
-                }
-            }
+            try writeDropPhase(sortedTables: sortedTables, dataSource: dataSource, to: fileHandle)
+            try await writeDependentTypesAndSequences(
+                tables: tables, dataSource: dataSource, to: fileHandle)
+            try await writeCreatePhase(
+                sortedTables: sortedTables, dataSource: dataSource, to: fileHandle, progress: progress)
+            try await writeDataPhase(
+                sortedTables: sortedTables, dataSource: dataSource, to: fileHandle, progress: progress)
+            try writeForeignKeyPhase(
+                sortedTables: sortedTables, fkMap: fkMap, dataSource: dataSource, to: fileHandle)
 
             try fileHandle.close()
             try PluginExportUtilities.commitAtomicWrite(from: tempURL, to: actualDestination)
@@ -207,6 +129,235 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
             warnings.append("Could not fetch table structure for: \(failedTables)")
         }
         return ExportFormatResult(warnings: warnings)
+    }
+
+    private func writeHeader(
+        to fileHandle: FileHandle,
+        dataSource: any PluginExportDataSource
+    ) throws {
+        let dateFormatter = ISO8601DateFormatter()
+        try fileHandle.write(contentsOf: "-- TablePro SQL Export\n".toUTF8Data())
+        try fileHandle.write(contentsOf: "-- Generated: \(dateFormatter.string(from: Date()))\n".toUTF8Data())
+        try fileHandle.write(contentsOf: "-- Database Type: \(dataSource.databaseTypeId)\n\n".toUTF8Data())
+    }
+
+    private func prefetchForeignKeys(
+        tables: [PluginExportTable],
+        dataSource: any PluginExportDataSource
+    ) async -> [String: [PluginForeignKeyInfo]] {
+        var fkMap: [String: [PluginForeignKeyInfo]] = [:]
+        for table in tables {
+            do {
+                let fks = try await dataSource.fetchForeignKeys(
+                    table: table.name, databaseName: table.databaseName)
+                if !fks.isEmpty {
+                    fkMap[table.name] = fks
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch foreign keys for \(table.name): \(error)")
+            }
+        }
+        return fkMap
+    }
+
+    private func topologicallySort(
+        _ tables: [PluginExportTable],
+        fkMap: [String: [PluginForeignKeyInfo]]
+    ) -> [PluginExportTable] {
+        let nameSet = Set(tables.map { $0.name })
+        var indegree: [String: Int] = [:]
+        var children: [String: Set<String>] = [:]
+        for table in tables { indegree[table.name] = 0 }
+
+        for table in tables {
+            let fks = fkMap[table.name] ?? []
+            var seenParents: Set<String> = []
+            for fk in fks where fk.referencedTable != table.name {
+                guard nameSet.contains(fk.referencedTable),
+                      !seenParents.contains(fk.referencedTable) else { continue }
+                seenParents.insert(fk.referencedTable)
+                children[fk.referencedTable, default: []].insert(table.name)
+                indegree[table.name, default: 0] += 1
+            }
+        }
+
+        let byName = Dictionary(uniqueKeysWithValues: tables.map { ($0.name, $0) })
+        var queue = tables.map { $0.name }.filter { (indegree[$0] ?? 0) == 0 }.sorted()
+        var ordered: [String] = []
+        while !queue.isEmpty {
+            let head = queue.removeFirst()
+            ordered.append(head)
+            for child in (children[head] ?? []).sorted() {
+                indegree[child] = (indegree[child] ?? 0) - 1
+                if indegree[child] == 0 {
+                    queue.append(child)
+                }
+            }
+        }
+
+        if ordered.count < tables.count {
+            let remaining = tables.map { $0.name }
+                .filter { name in !ordered.contains(name) }
+                .sorted()
+            ordered.append(contentsOf: remaining)
+        }
+
+        return ordered.compactMap { byName[$0] }
+    }
+
+    private func writeDropPhase(
+        sortedTables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        to fileHandle: FileHandle
+    ) throws {
+        let dropTargets = sortedTables.reversed().filter { optionValue($0, at: 1) }
+        guard !dropTargets.isEmpty else { return }
+        for table in dropTargets {
+            let tableRef = dataSource.quoteIdentifier(table.name)
+            try fileHandle.write(contentsOf: "DROP TABLE IF EXISTS \(tableRef) CASCADE;\n".toUTF8Data())
+        }
+        try fileHandle.write(contentsOf: "\n".toUTF8Data())
+    }
+
+    private func writeDependentTypesAndSequences(
+        tables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        to fileHandle: FileHandle
+    ) async throws {
+        var emittedSequenceNames: Set<String> = []
+        var emittedTypeNames: Set<String> = []
+        let structureTables = tables.filter { optionValue($0, at: 0) }
+
+        for table in structureTables {
+            do {
+                let sequences = try await dataSource.fetchDependentSequences(
+                    table: table.name, databaseName: table.databaseName)
+                for seq in sequences where !emittedSequenceNames.contains(seq.name) {
+                    emittedSequenceNames.insert(seq.name)
+                    let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\""))\""
+                    try fileHandle.write(contentsOf: "DROP SEQUENCE IF EXISTS \(quotedName) CASCADE;\n".toUTF8Data())
+                    try fileHandle.write(contentsOf: "\(seq.ddl)\n\n".toUTF8Data())
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch dependent sequences for table \(table.name): \(error)")
+            }
+
+            do {
+                let enumTypes = try await dataSource.fetchDependentTypes(
+                    table: table.name, databaseName: table.databaseName)
+                for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
+                    emittedTypeNames.insert(enumType.name)
+                    let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
+                    try fileHandle.write(contentsOf: "DROP TYPE IF EXISTS \(quotedName) CASCADE;\n".toUTF8Data())
+                    let quotedLabels = enumType.labels.map { "'\(dataSource.escapeStringLiteral($0))'" }
+                    try fileHandle.write(contentsOf: "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n".toUTF8Data())
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch dependent types for table \(table.name): \(error)")
+            }
+        }
+    }
+
+    private func writeCreatePhase(
+        sortedTables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        to fileHandle: FileHandle,
+        progress: PluginExportProgress
+    ) async throws {
+        for (index, table) in sortedTables.enumerated() where optionValue(table, at: 0) {
+            try progress.checkCancellation()
+            progress.setCurrentTable(table.qualifiedName, index: index + 1)
+            let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
+            try fileHandle.write(contentsOf: "-- --------------------------------------------------------\n".toUTF8Data())
+            try fileHandle.write(contentsOf: "-- Table: \(sanitizedName)\n".toUTF8Data())
+            try fileHandle.write(contentsOf: "-- --------------------------------------------------------\n\n".toUTF8Data())
+            do {
+                let ddl = try await dataSource.fetchTableDDL(
+                    table: table.name, databaseName: table.databaseName)
+                try fileHandle.write(contentsOf: ddl.toUTF8Data())
+                if !ddl.hasSuffix(";") {
+                    try fileHandle.write(contentsOf: ";".toUTF8Data())
+                }
+                try fileHandle.write(contentsOf: "\n\n".toUTF8Data())
+            } catch {
+                ddlFailures.append(sanitizedName)
+                let ddlWarning = "Warning: failed to fetch DDL for table \(sanitizedName): \(error)"
+                Self.logger.warning("Failed to fetch DDL for table \(sanitizedName): \(error)")
+                try fileHandle.write(contentsOf: "-- \(PluginExportUtilities.sanitizeForSQLComment(ddlWarning))\n\n".toUTF8Data())
+            }
+        }
+    }
+
+    private func writeDataPhase(
+        sortedTables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        to fileHandle: FileHandle,
+        progress: PluginExportProgress
+    ) async throws {
+        for table in sortedTables where optionValue(table, at: 2) && table.tableType != "view" {
+            try progress.checkCancellation()
+            try await writeTableData(
+                table: table, dataSource: dataSource, to: fileHandle, progress: progress)
+        }
+    }
+
+    private func writeForeignKeyPhase(
+        sortedTables: [PluginExportTable],
+        fkMap: [String: [PluginForeignKeyInfo]],
+        dataSource: any PluginExportDataSource,
+        to fileHandle: FileHandle
+    ) throws {
+        var emittedAnything = false
+        for table in sortedTables where optionValue(table, at: 0) {
+            let fks = fkMap[table.name] ?? []
+            guard !fks.isEmpty else { continue }
+            let grouped = groupForeignKeysByConstraint(fks)
+            for group in grouped {
+                let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource)
+                try fileHandle.write(contentsOf: "\(alter)\n".toUTF8Data())
+                emittedAnything = true
+            }
+        }
+        if emittedAnything {
+            try fileHandle.write(contentsOf: "\n".toUTF8Data())
+        }
+    }
+
+    private func groupForeignKeysByConstraint(
+        _ fks: [PluginForeignKeyInfo]
+    ) -> [[PluginForeignKeyInfo]] {
+        var orderedNames: [String] = []
+        var groups: [String: [PluginForeignKeyInfo]] = [:]
+        for fk in fks {
+            if groups[fk.name] == nil {
+                orderedNames.append(fk.name)
+            }
+            groups[fk.name, default: []].append(fk)
+        }
+        return orderedNames.compactMap { groups[$0] }
+    }
+
+    private func renderAddConstraintFK(
+        table: PluginExportTable,
+        group: [PluginForeignKeyInfo],
+        dataSource: any PluginExportDataSource
+    ) -> String {
+        let tableRef = dataSource.quoteIdentifier(table.name)
+        let constraintName = dataSource.quoteIdentifier(group[0].name)
+        let cols = group.map { dataSource.quoteIdentifier($0.column) }.joined(separator: ", ")
+        let refCols = group.map { dataSource.quoteIdentifier($0.referencedColumn) }.joined(separator: ", ")
+        let refTable: String
+        if let schema = group[0].referencedSchema, !schema.isEmpty {
+            refTable = "\(dataSource.quoteIdentifier(schema)).\(dataSource.quoteIdentifier(group[0].referencedTable))"
+        } else {
+            refTable = dataSource.quoteIdentifier(group[0].referencedTable)
+        }
+        let onDelete = group[0].onDelete.uppercased()
+        let onUpdate = group[0].onUpdate.uppercased()
+        var alter = "ALTER TABLE \(tableRef) ADD CONSTRAINT \(constraintName) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
+        if onDelete != "NO ACTION" { alter += " ON DELETE \(onDelete)" }
+        if onUpdate != "NO ACTION" { alter += " ON UPDATE \(onUpdate)" }
+        return alter + ";"
     }
 
     // MARK: - Private

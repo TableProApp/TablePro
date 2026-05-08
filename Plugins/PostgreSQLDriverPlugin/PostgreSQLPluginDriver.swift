@@ -396,9 +396,9 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = '\(safeTable)'
               AND n.nspname = '\(escapedSchema)'
-              AND con.contype IN ('p', 'u', 'c', 'f')
+              AND con.contype IN ('p', 'u', 'c')
             ORDER BY
-              CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 WHEN 'f' THEN 3 END
+              CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 END
             """
 
         let indexesQuery = """
@@ -583,7 +583,8 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                    s.min_value,
                    s.max_value,
                    s.increment_by,
-                   s.cycle
+                   s.cycle,
+                   s.last_value
             FROM pg_attrdef ad
             JOIN pg_class c ON c.oid = ad.adrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -594,6 +595,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%nextval%'
             """
         let result = try await execute(query: query)
+        let schemaName = schema ?? _currentSchema
         return result.rows.compactMap { row in
             guard let seqName = row[0] else { return nil }
             let startVal = row[1] ?? "1"
@@ -601,10 +603,16 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let maxVal = row[3] ?? "9223372036854775807"
             let incrementBy = row[4] ?? "1"
             let cycle = row[5] == "t" ? " CYCLE" : ""
+            let lastValue = row.count > 6 ? row[6] : nil
             let quotedSeqName = "\"\(seqName.replacingOccurrences(of: "\"", with: "\"\""))\""
-            let ddl = "CREATE SEQUENCE \(quotedSeqName) INCREMENT BY \(incrementBy)"
+            let escapedSchemaForLiteral = schemaName.replacingOccurrences(of: "'", with: "''")
+            let escapedSeqForLiteral = seqName.replacingOccurrences(of: "'", with: "''")
+            var ddl = "CREATE SEQUENCE \(quotedSeqName) INCREMENT BY \(incrementBy)"
                 + " MINVALUE \(minVal) MAXVALUE \(maxVal)"
                 + " START WITH \(startVal)\(cycle);"
+            if let last = lastValue, !last.isEmpty, Int64(last) != nil {
+                ddl += "\nSELECT pg_catalog.setval('\"\(escapedSchemaForLiteral)\".\"\(escapedSeqForLiteral)\"', \(last), true);"
+            }
             return (name: seqName, ddl: ddl)
         }
     }

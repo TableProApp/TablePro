@@ -11,10 +11,12 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo]
     func fetchDependentTypes(table: String, databaseName: String) async throws -> [PluginEnumTypeInfo]
     func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo]
+    func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo]
 }
 
 public extension PluginExportDataSource {
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] { [] }
     func fetchDependentTypes(table: String, databaseName: String) async throws -> [PluginEnumTypeInfo] { [] }
     func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo] { [] }
+    func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] { [] }
 }

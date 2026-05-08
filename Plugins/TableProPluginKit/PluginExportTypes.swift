@@ -65,10 +65,22 @@ public struct PluginExportCancellationError: Error, LocalizedError {
 public struct PluginSequenceInfo: Sendable {
     public let name: String
     public let ddl: String
+    public let ownedByTable: String?
+    public let ownedByColumn: String?
+    public let schema: String?
 
-    public init(name: String, ddl: String) {
+    public init(
+        name: String,
+        ddl: String,
+        ownedByTable: String? = nil,
+        ownedByColumn: String? = nil,
+        schema: String? = nil
+    ) {
         self.name = name
         self.ddl = ddl
+        self.ownedByTable = ownedByTable
+        self.ownedByColumn = ownedByColumn
+        self.schema = schema
     }
 }
 
