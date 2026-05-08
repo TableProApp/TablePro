@@ -78,11 +78,11 @@ final class SSHProfileStorage {
     }
 
     func deleteProfile(_ profile: SSHProfile) {
-        SyncChangeTracker.shared.markDeleted(.sshProfile, id: profile.id.uuidString)
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return }
         profiles.removeAll { $0.id == profile.id }
         saveProfiles(profiles)
+        SyncChangeTracker.shared.markDeleted(.sshProfile, id: profile.id.uuidString)
 
         deleteSSHPassword(for: profile.id)
         deleteKeyPassphrase(for: profile.id)
