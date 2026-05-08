@@ -78,14 +78,6 @@ extension TableViewCoordinator {
     }
 
     @MainActor
-    func setCellValue(_ value: String?, at rowIndex: Int) {
-        guard let tableView = tableView else { return }
-        var columnIndex = max(0, tableView.selectedColumn - 1)
-        if columnIndex < 0 { columnIndex = 0 }
-        setCellValueAtColumn(value, at: rowIndex, columnIndex: columnIndex)
-    }
-
-    @MainActor
     func setCellValueAtColumn(_ value: String?, at rowIndex: Int, columnIndex: Int) {
         commitCellEdit(row: rowIndex, columnIndex: columnIndex, newValue: value)
     }
