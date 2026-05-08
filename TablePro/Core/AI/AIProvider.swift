@@ -5,6 +5,10 @@
 
 import Foundation
 
+enum AIProvider {
+    static let modelListTimeout: TimeInterval = 5.0
+}
+
 enum AIProviderError: Error, LocalizedError {
     case invalidEndpoint(String)
     case authenticationFailed(String)
@@ -36,10 +40,16 @@ enum AIProviderError: Error, LocalizedError {
         }
     }
 
-    static func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
+    static func mapHTTPError(
+        statusCode: Int,
+        body: String,
+        treatForbiddenAsAuthFailure: Bool = false
+    ) -> AIProviderError {
         let message = parseErrorMessage(from: body) ?? body
         switch statusCode {
         case 401:
+            return .authenticationFailed(message)
+        case 403 where treatForbiddenAsAuthFailure:
             return .authenticationFailed(message)
         case 429:
             return .rateLimited

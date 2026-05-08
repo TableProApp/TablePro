@@ -6,6 +6,23 @@
 import Foundation
 
 extension AIChatViewModel {
+    func confirmAIAccess() {
+        if let connectionID = connection?.id {
+            sessionApprovedConnections.insert(connectionID)
+        }
+        guard case .awaitingApproval = streamingState else { return }
+        streamingState = .idle
+        startStreaming()
+    }
+
+    func denyAIAccess() {
+        guard case .awaitingApproval = streamingState else { return }
+        streamingState = .idle
+        if let last = messages.last, last.role == .user {
+            messages.removeLast()
+        }
+    }
+
     func resolveAndAwaitApprovals(
         assembledBlocks: [ToolUseBlock],
         assistantID: UUID

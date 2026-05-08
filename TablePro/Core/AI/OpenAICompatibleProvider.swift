@@ -30,7 +30,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         maxOutputTokens: Int? = nil,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
-        self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
+        self.endpoint = endpoint.normalizedEndpoint()
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.providerType = providerType
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -375,7 +375,7 @@ final class OpenAICompatibleProvider: ChatTransport {
                     "type": "function",
                     "function": [
                         "name": block.name,
-                        "arguments": jsonString(from: block.input)
+                        "arguments": block.input.asJSONString()
                     ]
                 ]
             }
@@ -407,7 +407,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     func encodeTool(_ tool: ChatToolSpec) throws -> [String: Any] {
-        let parameters = try jsonObject(from: tool.inputSchema)
+        let parameters = try tool.inputSchema.asJSONObject()
         return [
             "type": "function",
             "function": [
@@ -418,26 +418,13 @@ final class OpenAICompatibleProvider: ChatTransport {
         ]
     }
 
-    func jsonString(from value: JSONValue) -> String {
-        guard let data = try? JSONEncoder().encode(value),
-              let string = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return string
-    }
-
-    func jsonObject(from value: JSONValue) throws -> Any {
-        let data = try JSONEncoder().encode(value)
-        return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-    }
-
     private func fetchOpenAIModels() async throws -> [String] {
         guard let url = URL(string: "\(endpoint)/v1/models") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 
         var request = URLRequest(url: url)
+        request.timeoutInterval = AIProvider.modelListTimeout
         if let apiKey, !apiKey.isEmpty {
             request.setValue(
                 "Bearer \(apiKey)",
@@ -445,7 +432,14 @@ final class OpenAICompatibleProvider: ChatTransport {
             )
         }
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            Self.logger.warning("OpenAI-compatible model fetch failed: \(error.localizedDescription, privacy: .public)")
+            throw AIProviderError.networkError("Failed to fetch models")
+        }
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200
@@ -468,8 +462,18 @@ final class OpenAICompatibleProvider: ChatTransport {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 
-        let request = URLRequest(url: url)
-        let (data, response) = try await session.data(for: request)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = AIProvider.modelListTimeout
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            Self.logger.warning("Ollama model fetch failed: \(error.localizedDescription, privacy: .public)")
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), endpoint)
+            )
+        }
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200

@@ -191,7 +191,7 @@ struct AIChatPanelView: View {
                 .lineLimit(2)
             Spacer()
             Button {
-                viewModel.errorMessage = nil
+                viewModel.clearError()
             } label: {
                 Image(systemName: "xmark")
                     .frame(width: 24, height: 24)

@@ -15,7 +15,7 @@ final class AnthropicProvider: ChatTransport {
     private let session: URLSession
 
     init(endpoint: String, apiKey: String, maxOutputTokens: Int = 4_096) {
-        self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
+        self.endpoint = endpoint.normalizedEndpoint()
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.session = URLSession(configuration: .ephemeral)
@@ -73,16 +73,25 @@ final class AnthropicProvider: ChatTransport {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = AIProvider.modelListTimeout
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            Self.logger.warning("Anthropic model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
+            return Self.knownModels
+        }
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = json["data"] as? [[String: Any]]
         else {
+            Self.logger.warning("Anthropic model fetch returned unexpected response; using known models")
             return Self.knownModels
         }
 
@@ -240,7 +249,7 @@ final class AnthropicProvider: ChatTransport {
         [
             "name": spec.name,
             "description": spec.description,
-            "input_schema": try jsonObject(from: spec.inputSchema)
+            "input_schema": try spec.inputSchema.asJSONObject()
         ]
     }
 
@@ -276,7 +285,7 @@ final class AnthropicProvider: ChatTransport {
                 "type": "tool_use",
                 "id": toolUse.id,
                 "name": toolUse.name,
-                "input": try jsonObject(from: toolUse.input)
+                "input": try toolUse.input.asJSONObject()
             ]
         case .toolResult(let result):
             var encoded: [String: Any] = [
@@ -291,11 +300,6 @@ final class AnthropicProvider: ChatTransport {
         case .attachment:
             return nil
         }
-    }
-
-    static func jsonObject(from value: JSONValue) throws -> Any {
-        let data = try JSONEncoder().encode(value)
-        return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
     }
 }
 
