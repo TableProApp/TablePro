@@ -100,13 +100,14 @@ struct ImportDialog: View {
                 .interactiveDismissDisabled()
             }
         }
-        .sheet(isPresented: $showSuccessDialog) {
+        .sheet(isPresented: $showSuccessDialog, onDismiss: {
+            isPresented = false
+            NotificationCenter.default.post(name: .refreshData, object: connection.id)
+        }) {
             ImportSuccessView(
                 result: importResult
             ) {
                 showSuccessDialog = false
-                isPresented = false
-                NotificationCenter.default.post(name: .refreshData, object: nil)
             }
         }
         .sheet(isPresented: $showErrorDialog) {
@@ -382,9 +383,10 @@ struct ImportDialog: View {
 
         do {
             let encoding = selectedEncoding.encoding
+            let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
             let parser = SQLFileParser()
             let count = try await Task.detached {
-                try await parser.countStatements(url: url, encoding: encoding)
+                try await parser.countStatements(url: url, encoding: encoding, dialect: dialect)
             }.value
             statementCount = count
         } catch {

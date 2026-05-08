@@ -241,6 +241,10 @@ Import `.sql` and `.sql.gz` files. Statements execute directly against your data
 | Wrap in transaction | Execute all statements within a single transaction | Yes |
 | Disable foreign key checks | Temporarily disable FK constraints during import | Yes |
 
+For PostgreSQL the checkbox runs `SET session_replication_role = replica`, which requires the `REPLICATION` role or superuser. Most managed Postgres providers (RDS, Neon, Supabase) reject it, so the checkbox may have no effect there. TablePro's SQL exports already emit foreign key constraints with `ALTER TABLE ... ADD CONSTRAINT` after data load, so the dump round-trips without needing the privilege.
+
+For MySQL the checkbox runs `SET FOREIGN_KEY_CHECKS = 0` and is supported on standard accounts. SQLite uses `PRAGMA foreign_keys = OFF`. Drivers without an equivalent (most NoSQL drivers) ignore the option.
+
 ### Error Handling Modes
 
 Three modes for handling errors during import:

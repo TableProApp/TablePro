@@ -800,7 +800,16 @@ final class MainContentCommandActions {
     // MARK: Data Broadcasts
 
     private func setupDataBroadcastObservers() {
-        observeKeyWindowOnly(.refreshData) { [weak self] _ in self?.handleRefreshData() }
+        observe(.refreshData) { [weak self] notification in
+            guard let self else { return }
+            if let target = notification.object as? UUID, target != self.connection.id {
+                return
+            }
+            if notification.object == nil && !self.isKeyWindow() {
+                return
+            }
+            self.handleRefreshData()
+        }
     }
 
     private func handleRefreshData() {

@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class MongoDBPluginDriver: PluginDatabaseDriver {
+final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var mongoConnection: MongoDBConnection?
     private var currentDb: String

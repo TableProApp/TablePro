@@ -163,6 +163,16 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "EXPLAIN \(sql)"
     }
 
+    // MARK: - Foreign Keys
+
+    func foreignKeyDisableStatements() -> [String]? {
+        ["SET session_replication_role = replica"]
+    }
+
+    func foreignKeyEnableStatements() -> [String]? {
+        ["SET session_replication_role = DEFAULT"]
+    }
+
     // MARK: - Maintenance
 
     func supportedMaintenanceOperations() -> [String]? {
@@ -223,155 +233,6 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let query = """
-            SELECT
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_statio_all_tables st
-                ON st.schemaname = c.table_schema
-                AND st.relname = c.table_name
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = st.relid
-                AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN (
-                SELECT DISTINCT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(escapedSchema)'
-                    AND tc.table_name = '\(escapeLiteral(table))'
-            ) pk ON c.column_name = pk.column_name
-            WHERE c.table_schema = '\(escapedSchema)' AND c.table_name = '\(escapeLiteral(table))'
-            ORDER BY c.ordinal_position
-            """
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row in
-            guard row.count >= 4,
-                  let name = row[0],
-                  let rawDataType = row[1]
-            else { return nil }
-
-            let udtName = row.count > 6 ? row[6] : nil
-            let dataType: String
-            if rawDataType.uppercased() == "USER-DEFINED", let udt = udtName {
-                dataType = "ENUM(\(udt))"
-            } else {
-                dataType = rawDataType.uppercased()
-            }
-
-            let isNullable = row[2] == "YES"
-            let defaultValue = row[3]
-            let collation = row.count > 4 ? row[4] : nil
-            let comment = row.count > 5 ? row[5] : nil
-            let isPk = row.count > 7 && row[7] == "YES"
-
-            let charset: String? = {
-                guard let coll = collation else { return nil }
-                if coll.contains(".") {
-                    return coll.components(separatedBy: ".").last
-                }
-                return nil
-            }()
-
-            return PluginColumnInfo(
-                name: name,
-                dataType: dataType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: defaultValue,
-                charset: charset,
-                collation: collation,
-                comment: comment?.isEmpty == false ? comment : nil
-            )
-        }
-    }
-
-    func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let query = """
-            SELECT
-                c.table_name,
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_statio_all_tables st
-                ON st.schemaname = c.table_schema
-                AND st.relname = c.table_name
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = st.relid
-                AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN (
-                SELECT DISTINCT kcu.table_name, kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(escapedSchema)'
-            ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = '\(escapedSchema)'
-            ORDER BY c.table_name, c.ordinal_position
-            """
-        let result = try await execute(query: query)
-        var allColumns: [String: [PluginColumnInfo]] = [:]
-        for row in result.rows {
-            guard row.count >= 5,
-                  let tableName = row[0],
-                  let name = row[1],
-                  let rawDataType = row[2]
-            else { continue }
-
-            let udtName = row.count > 7 ? row[7] : nil
-            let dataType: String
-            if rawDataType.uppercased() == "USER-DEFINED", let udt = udtName {
-                dataType = "ENUM(\(udt))"
-            } else {
-                dataType = rawDataType.uppercased()
-            }
-
-            let isNullable = row[3] == "YES"
-            let defaultValue = row[4]
-            let collation = row.count > 5 ? row[5] : nil
-            let comment = row.count > 6 ? row[6] : nil
-            let isPk = row.count > 8 && row[8] == "YES"
-
-            let charset: String? = {
-                guard let coll = collation else { return nil }
-                if coll.contains(".") {
-                    return coll.components(separatedBy: ".").last
-                }
-                return nil
-            }()
-
-            let column = PluginColumnInfo(
-                name: name,
-                dataType: dataType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: defaultValue,
-                charset: charset,
-                collation: collation,
-                comment: comment?.isEmpty == false ? comment : nil
-            )
-            allColumns[tableName, default: []].append(column)
-        }
-        return allColumns
-    }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let query = """
@@ -524,8 +385,21 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let columnsQuery = """
             SELECT
                 quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) ||
+                CASE
+                  WHEN a.attidentity = 'a' THEN ' GENERATED ALWAYS AS IDENTITY'
+                  WHEN a.attidentity = 'd' THEN ' GENERATED BY DEFAULT AS IDENTITY'
+                  ELSE ''
+                END ||
+                CASE
+                  WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') STORED'
+                  ELSE ''
+                END ||
                 CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
-                CASE WHEN a.atthasdef THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid) ELSE '' END
+                CASE
+                  WHEN a.atthasdef AND a.attidentity = '' AND a.attgenerated = ''
+                    THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid)
+                  ELSE ''
+                END
             FROM pg_attribute a
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -545,9 +419,9 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = '\(safeTable)'
               AND n.nspname = '\(escapedSchema)'
-              AND con.contype IN ('p', 'u', 'c', 'f')
+              AND con.contype IN ('p', 'u', 'c')
             ORDER BY
-              CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 WHEN 'f' THEN 3 END
+              CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 END
             """
 
         let indexesQuery = """
@@ -645,12 +519,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchSchemas() async throws -> [String] {
-        let result = try await execute(query: """
-            SELECT schema_name FROM information_schema.schemata
-            WHERE schema_name NOT LIKE 'pg_%'
-              AND schema_name <> 'information_schema'
-            ORDER BY schema_name
-            """)
+        let result = try await execute(query: PostgreSQLSchemaQueries.listSchemas)
         return result.rows.compactMap { row in row.first.flatMap { $0 } }
     }
 
@@ -737,7 +606,8 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                    s.min_value,
                    s.max_value,
                    s.increment_by,
-                   s.cycle
+                   s.cycle,
+                   s.last_value
             FROM pg_attrdef ad
             JOIN pg_class c ON c.oid = ad.adrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -748,6 +618,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%nextval%'
             """
         let result = try await execute(query: query)
+        let schemaName = schema ?? _currentSchema
         return result.rows.compactMap { row in
             guard let seqName = row[0] else { return nil }
             let startVal = row[1] ?? "1"
@@ -755,10 +626,16 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let maxVal = row[3] ?? "9223372036854775807"
             let incrementBy = row[4] ?? "1"
             let cycle = row[5] == "t" ? " CYCLE" : ""
+            let lastValue = row.count > 6 ? row[6] : nil
             let quotedSeqName = "\"\(seqName.replacingOccurrences(of: "\"", with: "\"\""))\""
-            let ddl = "CREATE SEQUENCE \(quotedSeqName) INCREMENT BY \(incrementBy)"
+            let escapedSchemaForLiteral = schemaName.replacingOccurrences(of: "'", with: "''")
+            let escapedSeqForLiteral = seqName.replacingOccurrences(of: "'", with: "''")
+            var ddl = "CREATE SEQUENCE \(quotedSeqName) INCREMENT BY \(incrementBy)"
                 + " MINVALUE \(minVal) MAXVALUE \(maxVal)"
                 + " START WITH \(startVal)\(cycle);"
+            if let last = lastValue, !last.isEmpty, Int64(last) != nil {
+                ddl += "\nSELECT pg_catalog.setval('\"\(escapedSchemaForLiteral)\".\"\(escapedSeqForLiteral)\"', \(last), true);"
+            }
             return (name: seqName, ddl: ddl)
         }
     }
@@ -957,7 +834,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return nil
         }
         if value > 999 {
-            return value / 10000
+            return value / 10_000
         }
         return value
     }
@@ -1254,5 +1131,4 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         return stmts.isEmpty ? nil : stmts
     }
-
 }

@@ -69,9 +69,15 @@ final class ImportService {
             currentProgress = nil
         }
 
-        // Create adapter and source
         let sink = ImportDataSinkAdapter(driver: driver, databaseType: connection.type)
-        let source = SqlFileImportSource(url: url, encoding: encoding, decompressedURL: decompressedURL, ownsDecompressedFile: ownsDecompressedFile)
+        let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
+        let source = SqlFileImportSource(
+            url: url,
+            encoding: encoding,
+            dialect: dialect,
+            decompressedURL: decompressedURL,
+            ownsDecompressedFile: ownsDecompressedFile
+        )
         defer { source.cleanup() }
 
         // Create progress tracker
