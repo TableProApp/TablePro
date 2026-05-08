@@ -13,9 +13,9 @@ struct ChatToolRegistryModeTests {
     private struct StubTool: ChatTool {
         let name: String
         let description = ""
-        let inputSchema: JSONValue = .object(["type": .string("object")])
+        let inputSchema: JsonValue = .object(["type": .string("object")])
 
-        func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+        func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
             ChatToolResult(content: "ok")
         }
     }

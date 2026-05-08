@@ -375,7 +375,7 @@ final class OpenAICompatibleProvider: ChatTransport {
                     "type": "function",
                     "function": [
                         "name": block.name,
-                        "arguments": block.input.asJSONString()
+                        "arguments": block.input.jsonString()
                     ]
                 ]
             }
@@ -407,7 +407,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     func encodeTool(_ tool: ChatToolSpec) throws -> [String: Any] {
-        let parameters = try tool.inputSchema.asJSONObject()
+        let parameters = try tool.inputSchema.jsonObject()
         return [
             "type": "function",
             "function": [

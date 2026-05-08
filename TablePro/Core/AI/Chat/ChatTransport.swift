@@ -41,7 +41,7 @@ struct ChatTransportOptions: Sendable {
 struct ChatToolSpec: Codable, Equatable, Sendable {
     let name: String
     let description: String
-    let inputSchema: JSONValue
+    let inputSchema: JsonValue
 }
 
 enum ChatStreamEvent: Sendable {

@@ -13,7 +13,7 @@ struct ChatToolRegistryTests {
     private struct StubTool: ChatTool {
         let name: String
         let description: String
-        let inputSchema: JSONValue
+        let inputSchema: JsonValue
         let response: String
 
         init(name: String, description: String = "", response: String = "ok") {
@@ -23,7 +23,7 @@ struct ChatToolRegistryTests {
             self.response = response
         }
 
-        func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+        func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
             ChatToolResult(content: response)
         }
     }

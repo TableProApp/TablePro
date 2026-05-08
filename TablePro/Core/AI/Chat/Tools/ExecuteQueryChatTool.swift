@@ -16,7 +16,7 @@ struct ExecuteQueryChatTool: ChatTool {
          Multi-statement queries are rejected. Destructive operations (DROP, TRUNCATE, ALTER...DROP)\
          are blocked here; use confirm_destructive_operation instead.
         """)
-    let inputSchema: JSONValue = .object([
+    let inputSchema: JsonValue = .object([
         "type": .string("object"),
         "properties": .object([
             "connection_id": .object([
@@ -47,7 +47,7 @@ struct ExecuteQueryChatTool: ChatTool {
         "required": .array([.string("connection_id"), .string("query")])
     ])
 
-    func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+    func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try resolveConnectionId(input: input, context: context)
         let query = try ChatToolArgumentDecoder.requireString(input, key: "query")
         let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
@@ -107,6 +107,6 @@ struct ExecuteQueryChatTool: ChatTool {
             timeoutSeconds: timeoutSeconds,
             principalLabel: String(localized: "AI Chat")
         )
-        return ChatToolResult(content: try ChatToolJSONFormatter.string(from: payload))
+        return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }
 }

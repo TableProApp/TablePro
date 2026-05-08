@@ -21,7 +21,7 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         Execute a destructive DDL query (DROP, TRUNCATE, ALTER...DROP) after explicit confirmation.\
          Pass confirmation_phrase exactly as: I understand this is irreversible
         """)
-    let inputSchema: JSONValue = .object([
+    let inputSchema: JsonValue = .object([
         "type": .string("object"),
         "properties": .object([
             "connection_id": .object([
@@ -44,7 +44,7 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         ])
     ])
 
-    func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+    func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try resolveConnectionId(input: input, context: context)
         let query = try ChatToolArgumentDecoder.requireString(input, key: "query")
         let confirmationPhrase = try ChatToolArgumentDecoder.requireString(input, key: "confirmation_phrase")
@@ -82,6 +82,6 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             timeoutSeconds: mcpSettings.queryTimeoutSeconds,
             principalLabel: String(localized: "AI Chat")
         )
-        return ChatToolResult(content: try ChatToolJSONFormatter.string(from: payload))
+        return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }
 }

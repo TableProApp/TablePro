@@ -386,11 +386,11 @@ extension AIChatViewModel {
         order.compactMap { id -> ToolUseBlock? in
             guard let name = names[id] else { return nil }
             let inputString = inputs[id] ?? "{}"
-            let inputValue: JSONValue
+            let inputValue: JsonValue
             if inputString.isEmpty {
                 inputValue = .object([:])
             } else if let data = inputString.data(using: .utf8),
-                      let decoded = try? JSONDecoder().decode(JSONValue.self, from: data) {
+                      let decoded = try? JSONDecoder().decode(JsonValue.self, from: data) {
                 inputValue = decoded
             } else {
                 inputValue = .object([:])

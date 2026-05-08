@@ -184,7 +184,7 @@ final class GeminiProvider: ChatTransport {
                     "name": tool.name,
                     "description": tool.description
                 ]
-                entry["parameters"] = try tool.inputSchema.asJSONObject()
+                entry["parameters"] = try tool.inputSchema.jsonObject()
                 return entry
             }
             body["tools"] = [["functionDeclarations": declarations]]
@@ -218,7 +218,7 @@ final class GeminiProvider: ChatTransport {
             case .attachment:
                 continue
             case .toolUse(let useBlock):
-                let argsObject = (try? useBlock.input.asJSONObject()) ?? [String: Any]()
+                let argsObject = (try? useBlock.input.jsonObject()) ?? [String: Any]()
                 parts.append([
                     "functionCall": [
                         "name": useBlock.name,

@@ -8,7 +8,7 @@ import Foundation
 struct GetTableDDLChatTool: ChatTool {
     let name = "get_table_ddl"
     let description = String(localized: "Get the DDL (CREATE statement) for a table.")
-    let inputSchema: JSONValue = .object([
+    let inputSchema: JsonValue = .object([
         "type": .string("object"),
         "properties": .object([
             "connection_id": .object([
@@ -27,7 +27,7 @@ struct GetTableDDLChatTool: ChatTool {
         "required": .array([.string("table")])
     ])
 
-    func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+    func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try resolveConnectionId(input: input, context: context)
         let table = try ChatToolArgumentDecoder.requireString(input, key: "table")
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
@@ -36,6 +36,6 @@ struct GetTableDDLChatTool: ChatTool {
             table: table,
             schema: schema
         )
-        return ChatToolResult(content: try ChatToolJSONFormatter.string(from: payload))
+        return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }
 }

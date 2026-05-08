@@ -5,25 +5,25 @@
 
 import Foundation
 
-/// Typed decoders for `JSONValue` input arguments coming from the AI.
+/// Typed decoders for `JsonValue` input arguments coming from the AI.
 /// Mirrors `MCPArgumentDecoder` for the MCP protocol but operates on the
-/// chat-side `JSONValue` enum.
+/// chat-side `JsonValue` enum.
 enum ChatToolArgumentDecoder {
-    static func requireString(_ args: JSONValue, key: String) throws -> String {
+    static func requireString(_ args: JsonValue, key: String) throws -> String {
         guard case .object(let dict) = args, let value = dict[key], case .string(let str) = value else {
             throw ChatToolArgumentError.missingOrInvalid(key: key, expected: "string")
         }
         return str
     }
 
-    static func optionalString(_ args: JSONValue, key: String) -> String? {
+    static func optionalString(_ args: JsonValue, key: String) -> String? {
         guard case .object(let dict) = args, let value = dict[key], case .string(let str) = value else {
             return nil
         }
         return str
     }
 
-    static func requireUUID(_ args: JSONValue, key: String) throws -> UUID {
+    static func requireUUID(_ args: JsonValue, key: String) throws -> UUID {
         let str = try requireString(args, key: key)
         guard let uuid = UUID(uuidString: str) else {
             throw ChatToolArgumentError.missingOrInvalid(key: key, expected: "UUID string")
@@ -31,7 +31,7 @@ enum ChatToolArgumentDecoder {
         return uuid
     }
 
-    static func optionalBool(_ args: JSONValue, key: String, default fallback: Bool = false) -> Bool {
+    static func optionalBool(_ args: JsonValue, key: String, default fallback: Bool = false) -> Bool {
         guard case .object(let dict) = args, let value = dict[key], case .bool(let bool) = value else {
             return fallback
         }
@@ -39,7 +39,7 @@ enum ChatToolArgumentDecoder {
     }
 
     static func optionalInt(
-        _ args: JSONValue,
+        _ args: JsonValue,
         key: String,
         default fallback: Int,
         clamp: ClosedRange<Int>? = nil
@@ -47,8 +47,8 @@ enum ChatToolArgumentDecoder {
         guard case .object(let dict) = args, let value = dict[key] else { return fallback }
         let raw: Int?
         switch value {
-        case .integer(let int): raw = Int(int)
-        case .number(let double): raw = Int(double)
+        case .int(let int): raw = int
+        case .double(let double): raw = Int(double)
         default: raw = nil
         }
         guard let raw else { return fallback }

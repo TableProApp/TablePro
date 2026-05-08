@@ -114,6 +114,24 @@ extension JsonValue: ExpressibleByDictionaryLiteral {
 }
 
 public extension JsonValue {
+    func jsonObject() throws -> Any {
+        let data = try JSONEncoder().encode(self)
+        return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+    }
+
+    func jsonString(prettyPrinted: Bool = false) -> String {
+        let encoder = JSONEncoder()
+        if prettyPrinted {
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        }
+        guard let data = try? encoder.encode(self),
+              let string = String(data: data, encoding: .utf8)
+        else {
+            return "{}"
+        }
+        return string
+    }
+
     subscript(key: String) -> JsonValue? {
         guard case .object(let dict) = self else { return nil }
         return dict[key]

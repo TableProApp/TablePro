@@ -15,10 +15,10 @@ struct ExecuteToolUsesTests {
     private final class StubTool: ChatTool {
         let name: String
         let description: String
-        let inputSchema: JSONValue
+        let inputSchema: JsonValue
         let response: String
         let isError: Bool
-        private(set) var invocations: [JSONValue] = []
+        private(set) var invocations: [JsonValue] = []
 
         init(name: String, response: String = "ok", isError: Bool = false) {
             self.name = name
@@ -28,7 +28,7 @@ struct ExecuteToolUsesTests {
             self.isError = isError
         }
 
-        func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+        func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
             invocations.append(input)
             return ChatToolResult(content: response, isError: isError)
         }
@@ -39,9 +39,9 @@ struct ExecuteToolUsesTests {
     private struct ThrowingTool: ChatTool {
         let name: String
         let description = ""
-        let inputSchema: JSONValue = .object(["type": .string("object")])
+        let inputSchema: JsonValue = .object(["type": .string("object")])
         struct Boom: Error {}
-        func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+        func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
             throw Boom()
         }
     }
@@ -158,12 +158,12 @@ struct ExecuteToolUsesTests {
         #expect(results[1].isError == true)
     }
 
-    @Test("Tool receives the input JSONValue from its ToolUseBlock")
+    @Test("Tool receives the input JsonValue from its ToolUseBlock")
     func inputForwarded() async {
         let registry = ChatToolRegistry()
         let stub = StubTool(name: "alpha")
         registry.register(stub)
-        let input: JSONValue = .object(["query": .string("SELECT 1")])
+        let input: JsonValue = .object(["query": .string("SELECT 1")])
         _ = await AIChatViewModel.executeToolUses(
             [ToolUseBlock(id: "u1", name: "alpha", input: input)],
             mode: .agent,

@@ -8,7 +8,7 @@ import Foundation
 struct ListTablesChatTool: ChatTool {
     let name = "list_tables"
     let description = String(localized: "List tables and views in the active database of a connection.")
-    let inputSchema: JSONValue = .object([
+    let inputSchema: JsonValue = .object([
         "type": .string("object"),
         "properties": .object([
             "connection_id": .object([
@@ -30,7 +30,7 @@ struct ListTablesChatTool: ChatTool {
         ])
     ])
 
-    func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+    func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try resolveConnectionId(input: input, context: context)
         let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
@@ -47,6 +47,6 @@ struct ListTablesChatTool: ChatTool {
             connectionId: connectionId,
             includeRowCounts: includeRowCounts
         )
-        return ChatToolResult(content: try ChatToolJSONFormatter.string(from: payload))
+        return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }
 }

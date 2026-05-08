@@ -14,7 +14,7 @@ extension ChatToolSpec {
         )
     }
 
-    private static func normalizeForCopilot(_ schema: JSONValue) -> JSONValue {
+    private static func normalizeForCopilot(_ schema: JsonValue) -> JsonValue {
         guard case .object(var dict) = schema else { return schema }
         if dict["required"] == nil {
             dict["required"] = .array([])

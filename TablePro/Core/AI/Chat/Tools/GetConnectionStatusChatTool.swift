@@ -8,7 +8,7 @@ import Foundation
 struct GetConnectionStatusChatTool: ChatTool {
     let name = "get_connection_status"
     let description = String(localized: "Get detailed status for a specific database connection.")
-    let inputSchema: JSONValue = .object([
+    let inputSchema: JsonValue = .object([
         "type": .string("object"),
         "properties": .object([
             "connection_id": .object([
@@ -19,14 +19,14 @@ struct GetConnectionStatusChatTool: ChatTool {
         "required": .array([.string("connection_id")])
     ])
 
-    func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult {
+    func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
         let connectionId = try resolveConnectionId(input: input, context: context)
         let payload = try await context.bridge.getConnectionStatus(connectionId: connectionId)
-        return ChatToolResult(content: try ChatToolJSONFormatter.string(from: payload))
+        return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }
 }
 
-func resolveConnectionId(input: JSONValue, context: ChatToolContext) throws -> UUID {
+func resolveConnectionId(input: JsonValue, context: ChatToolContext) throws -> UUID {
     if let connectionId = try? ChatToolArgumentDecoder.requireUUID(input, key: "connection_id") {
         return connectionId
     }

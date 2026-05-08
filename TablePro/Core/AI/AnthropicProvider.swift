@@ -249,7 +249,7 @@ final class AnthropicProvider: ChatTransport {
         [
             "name": spec.name,
             "description": spec.description,
-            "input_schema": try spec.inputSchema.asJSONObject()
+            "input_schema": try spec.inputSchema.jsonObject()
         ]
     }
 
@@ -285,7 +285,7 @@ final class AnthropicProvider: ChatTransport {
                 "type": "tool_use",
                 "id": toolUse.id,
                 "name": toolUse.name,
-                "input": try toolUse.input.asJSONObject()
+                "input": try toolUse.input.jsonObject()
             ]
         case .toolResult(let result):
             var encoded: [String: Any] = [

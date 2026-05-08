@@ -10,9 +10,9 @@ import Foundation
 protocol ChatTool: Sendable {
     var name: String { get }
     var description: String { get }
-    var inputSchema: JSONValue { get }
+    var inputSchema: JsonValue { get }
 
-    func execute(input: JSONValue, context: ChatToolContext) async throws -> ChatToolResult
+    func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult
 }
 
 struct ChatToolResult: Sendable, Equatable, Codable {

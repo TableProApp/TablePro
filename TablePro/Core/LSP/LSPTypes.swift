@@ -352,7 +352,7 @@ enum AnyCodableValue: Sendable, Equatable {
 struct CopilotLanguageModelToolInformation: Codable, Sendable {
     let name: String
     let description: String
-    let inputSchema: JSONValue?
+    let inputSchema: JsonValue?
 }
 
 struct CopilotRegisterToolsParams: Codable, Sendable {
@@ -361,7 +361,7 @@ struct CopilotRegisterToolsParams: Codable, Sendable {
 
 struct CopilotInvokeClientToolParams: Codable, Sendable {
     let name: String
-    let input: JSONValue?
+    let input: JsonValue?
     let conversationId: String
     let turnId: String
 }
@@ -373,7 +373,7 @@ enum CopilotToolInvocationStatus: String, Codable, Sendable {
 }
 
 struct CopilotLanguageModelToolResultContent: Codable, Sendable {
-    let value: JSONValue
+    let value: JsonValue
 }
 
 struct CopilotLanguageModelToolResult: Codable, Sendable {
