@@ -24,10 +24,10 @@ extension MainContentCoordinator {
         toolbarState.setExecuting(false)
         for idx in tabManager.tabs.indices {
             if tabManager.tabs[idx].execution.isExecuting || tabManager.tabs[idx].pagination.isLoadingMore {
-                var tab = tabManager.tabs[idx]
-                tab.execution.isExecuting = false
-                tab.pagination.isLoadingMore = false
-                tabManager.tabs[idx] = tab
+                tabManager.mutate(at: idx) { tab in
+                    tab.execution.isExecuting = false
+                    tab.pagination.isLoadingMore = false
+                }
             }
         }
     }
@@ -82,7 +82,7 @@ extension MainContentCoordinator {
         let capturedGeneration = queryGeneration
         let storedParamValues = tabManager.tabs[idx].pagination.baseQueryParameterValues
 
-        tabManager.tabs[idx].pagination.isLoadingMore = true
+        tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
         toolbarState.setExecuting(true)
 
         currentQueryTask = Task { [weak self] in
@@ -109,9 +109,7 @@ extension MainContentCoordinator {
                 await MainActor.run { [weak self] in
                     guard let self, !isTearingDown else { return }
                     guard capturedGeneration == queryGeneration else {
-                        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                            tabManager.tabs[idx].pagination.isLoadingMore = false
-                        }
+                        tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
                         toolbarState.setExecuting(false)
                         return
                     }
@@ -120,14 +118,14 @@ extension MainContentCoordinator {
                         return
                     }
 
-                    var tab = tabManager.tabs[idx]
-                    let replaceDelta = mutateActiveTableRows(for: tab.id) { rows in
+                    let replaceDelta = mutateActiveTableRows(for: tabId) { rows in
                         rows.replace(rows: result.rows)
                     }
-                    tab.execution.executionTime = result.executionTime
-                    tab.schemaVersion += 1
-                    tab.pagination.resetLoadMore()
-                    tabManager.tabs[idx] = tab
+                    tabManager.mutate(at: idx) { tab in
+                        tab.execution.executionTime = result.executionTime
+                        tab.schemaVersion += 1
+                        tab.pagination.resetLoadMore()
+                    }
                     dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
                     toolbarState.setExecuting(false)
                     toolbarState.lastQueryDuration = result.executionTime
@@ -139,9 +137,7 @@ extension MainContentCoordinator {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].pagination.isLoadingMore = false
-                    }
+                    tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
                     toolbarState.setExecuting(false)
                     if capturedGeneration == queryGeneration {
                         currentQueryTask = nil

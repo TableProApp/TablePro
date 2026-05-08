@@ -70,19 +70,11 @@ extension MainContentCoordinator {
     ) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
-        var updatedTab = tabManager.tabs[idx]
+        let existingTabId = tabManager.tabs[idx].id
         var columnEnumValues: [String: [String]] = [:]
         var columnDefaults: [String: String?] = [:]
         var columnForeignKeys: [String: ForeignKeyInfo] = [:]
         var columnNullable: [String: Bool] = [:]
-        updatedTab.schemaVersion += 1
-        updatedTab.execution.executionTime = executionTime
-        updatedTab.execution.rowsAffected = rowsAffected
-        updatedTab.execution.statusMessage = statusMessage
-        updatedTab.execution.isExecuting = false
-        updatedTab.execution.lastExecutedAt = Date()
-        updatedTab.tableContext.tableName = tableName
-        updatedTab.tableContext.isEditable = isEditable
         for (index, colType) in columnTypes.enumerated() {
             if case .enumType(_, let values) = colType, let vals = values, index < columns.count {
                 columnEnumValues[columns[index]] = vals
@@ -96,21 +88,14 @@ extension MainContentCoordinator {
             for (col, vals) in metadata.columnEnumValues {
                 columnEnumValues[col] = vals
             }
-            if let approxCount = metadata.approximateRowCount, approxCount > 0 {
-                updatedTab.pagination.totalRowCount = approxCount
-                updatedTab.pagination.isApproximateRowCount = true
-            }
         } else {
-            let existing = tabSessionRegistry.tableRows(for: updatedTab.id)
+            let existing = tabSessionRegistry.tableRows(for: existingTabId)
             columnDefaults = existing.columnDefaults
             columnForeignKeys = existing.columnForeignKeys
             columnNullable = existing.columnNullable
             for (col, vals) in existing.columnEnumValues where columnEnumValues[col] == nil {
                 columnEnumValues[col] = vals
             }
-        }
-        if hasSchema {
-            updatedTab.metadataVersion += 1
         }
 
         let newTableRows = TableRows.from(
@@ -122,36 +107,51 @@ extension MainContentCoordinator {
             columnEnumValues: columnEnumValues,
             columnNullable: columnNullable
         )
-        setActiveTableRows(newTableRows, for: updatedTab.id)
+        setActiveTableRows(newTableRows, for: existingTabId)
 
-        let rs = ResultSet(label: tableName ?? "Result", tableRows: newTableRows)
-        rs.executionTime = updatedTab.execution.executionTime
-        rs.rowsAffected = updatedTab.execution.rowsAffected
-        rs.statusMessage = updatedTab.execution.statusMessage
-        rs.tableName = updatedTab.tableContext.tableName
-        rs.isEditable = updatedTab.tableContext.isEditable
-        rs.metadataVersion = updatedTab.metadataVersion
+        tabManager.mutate(at: idx) { tab in
+            tab.schemaVersion += 1
+            tab.execution.executionTime = executionTime
+            tab.execution.rowsAffected = rowsAffected
+            tab.execution.statusMessage = statusMessage
+            tab.execution.isExecuting = false
+            tab.execution.lastExecutedAt = Date()
+            tab.tableContext.tableName = tableName
+            tab.tableContext.isEditable = isEditable
 
-        // Keep pinned results, replace unpinned
-        let pinned = updatedTab.display.resultSets.filter(\.isPinned)
-        updatedTab.display.resultSets = pinned + [rs]
-        updatedTab.display.activeResultSetId = rs.id
+            if let metadata, let approxCount = metadata.approximateRowCount, approxCount > 0 {
+                tab.pagination.totalRowCount = approxCount
+                tab.pagination.isApproximateRowCount = true
+            }
+            if hasSchema {
+                tab.metadataVersion += 1
+            }
 
-        if isTruncated {
-            updatedTab.pagination.hasMoreRows = true
-            updatedTab.pagination.baseQueryForMore = sql
-            updatedTab.pagination.isLoadingMore = false
-        } else {
-            updatedTab.pagination.resetLoadMore()
-        }
+            let rs = ResultSet(label: tableName ?? "Result", tableRows: newTableRows)
+            rs.executionTime = tab.execution.executionTime
+            rs.rowsAffected = tab.execution.rowsAffected
+            rs.statusMessage = tab.execution.statusMessage
+            rs.tableName = tab.tableContext.tableName
+            rs.isEditable = tab.tableContext.isEditable
+            rs.metadataVersion = tab.metadataVersion
 
-        // Auto-expand results panel when new data arrives
-        if updatedTab.display.isResultsCollapsed {
-            updatedTab.display.isResultsCollapsed = false
+            let pinned = tab.display.resultSets.filter(\.isPinned)
+            tab.display.resultSets = pinned + [rs]
+            tab.display.activeResultSetId = rs.id
+
+            if isTruncated {
+                tab.pagination.hasMoreRows = true
+                tab.pagination.baseQueryForMore = sql
+                tab.pagination.isLoadingMore = false
+            } else {
+                tab.pagination.resetLoadMore()
+            }
+
+            if tab.display.isResultsCollapsed {
+                tab.display.isResultsCollapsed = false
+            }
         }
         toolbarState.isResultsCollapsed = false
-
-        tabManager.tabs[idx] = updatedTab
 
         // Cache column types for selective queries on subsequent page/filter/sort reloads.
         // Only cache from schema-backed table loads (not arbitrary SELECTs which may have partial columns).
@@ -172,7 +172,7 @@ extension MainContentCoordinator {
         }
 
         if !resolvedPKs.isEmpty {
-            tabManager.tabs[idx].tableContext.primaryKeyColumns = resolvedPKs
+            tabManager.mutate(at: idx) { $0.tableContext.primaryKeyColumns = resolvedPKs }
         }
 
         if tabManager.selectedTabId == tabId {
@@ -260,9 +260,9 @@ extension MainContentCoordinator {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     guard capturedGeneration == queryGeneration else { return }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].pagination.totalRowCount = count
-                        tabManager.tabs[idx].pagination.isApproximateRowCount = isApproximate
+                    tabManager.mutate(tabId: tabId) { tab in
+                        tab.pagination.totalRowCount = count
+                        tab.pagination.isApproximateRowCount = isApproximate
                     }
                 }
             }
@@ -301,24 +301,23 @@ extension MainContentCoordinator {
                 guard let self else { return }
                 guard capturedGeneration == queryGeneration else { return }
                 guard !Task.isCancelled else { return }
-                if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    let existing = tabSessionRegistry.tableRows(for: tabId)
-                    let hasNewValues = columnEnumValues.contains { key, value in
-                        existing.columnEnumValues[key] != value
+                guard tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
+                let existing = tabSessionRegistry.tableRows(for: tabId)
+                let hasNewValues = columnEnumValues.contains { key, value in
+                    existing.columnEnumValues[key] != value
+                }
+                if hasNewValues {
+                    mutateActiveTableRows(for: tabId) { rows in
+                        for (col, vals) in columnEnumValues {
+                            rows.columnEnumValues[col] = vals
+                        }
+                        return .columnsReplaced
                     }
-                    if hasNewValues {
-                        mutateActiveTableRows(for: tabId) { rows in
-                            for (col, vals) in columnEnumValues {
-                                rows.columnEnumValues[col] = vals
-                            }
-                            return .columnsReplaced
-                        }
-                        tabManager.tabs[idx].metadataVersion += 1
-                        if let activeIdx = tabManager.selectedTabIndex,
-                           activeIdx < tabManager.tabs.count,
-                           tabManager.tabs[activeIdx].id == tabId {
-                            dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
-                        }
+                    tabManager.mutate(tabId: tabId) { $0.metadataVersion += 1 }
+                    if let activeIdx = tabManager.selectedTabIndex,
+                       activeIdx < tabManager.tabs.count,
+                       tabManager.tabs[activeIdx].id == tabId {
+                        dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
                     }
                 }
             }
@@ -376,9 +375,9 @@ extension MainContentCoordinator {
             if let count {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].pagination.totalRowCount = count
-                        tabManager.tabs[idx].pagination.isApproximateRowCount = isApproximate
+                    tabManager.mutate(tabId: tabId) { tab in
+                        tab.pagination.totalRowCount = count
+                        tab.pagination.isApproximateRowCount = isApproximate
                     }
                 }
             }
@@ -393,12 +392,10 @@ extension MainContentCoordinator {
         connection conn: DatabaseConnection
     ) {
         currentQueryTask = nil
-        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-            var errTab = tabManager.tabs[idx]
-            errTab.execution.errorMessage = error.localizedDescription
-            errTab.execution.isExecuting = false
-            errTab.execution.lastExecutedAt = Date()
-            tabManager.tabs[idx] = errTab
+        tabManager.mutate(tabId: tabId) { tab in
+            tab.execution.errorMessage = error.localizedDescription
+            tab.execution.isExecuting = false
+            tab.execution.lastExecutedAt = Date()
         }
         toolbarState.setExecuting(false)
 

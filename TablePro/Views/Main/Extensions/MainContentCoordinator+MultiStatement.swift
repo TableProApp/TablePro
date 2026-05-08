@@ -15,11 +15,11 @@ extension MainContentCoordinator {
         queryGeneration += 1
         let capturedGeneration = queryGeneration
 
-        var tab = tabManager.tabs[index]
-        tab.execution.isExecuting = true
-        tab.execution.executionTime = nil
-        tab.execution.errorMessage = nil
-        tabManager.tabs[index] = tab
+        tabManager.mutate(at: index) { tab in
+            tab.execution.isExecuting = true
+            tab.execution.executionTime = nil
+            tab.execution.errorMessage = nil
+        }
         toolbarState.setExecuting(true)
 
         let conn = connection
@@ -54,9 +54,7 @@ extension MainContentCoordinator {
                             multiStatementLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
                         }
                     }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].execution.isExecuting = false
-                    }
+                    tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
                 }
@@ -137,9 +135,7 @@ extension MainContentCoordinator {
                 if capturedGeneration != queryGeneration {
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                            tabManager.tabs[idx].execution.isExecuting = false
-                        }
+                        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                         currentQueryTask = nil
                         toolbarState.setExecuting(false)
                     }
@@ -158,17 +154,14 @@ extension MainContentCoordinator {
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
 
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        var errTab = tabManager.tabs[idx]
-                        errTab.execution.errorMessage = contextMsg
-                        errTab.execution.isExecuting = false
-                        errTab.execution.executionTime = cumulativeTime
+                    tabManager.mutate(tabId: tabId) { tab in
+                        tab.execution.errorMessage = contextMsg
+                        tab.execution.isExecuting = false
+                        tab.execution.executionTime = cumulativeTime
 
-                        let pinnedResults = errTab.display.resultSets.filter(\.isPinned)
-                        errTab.display.resultSets = pinnedResults + newResultSets
-                        errTab.display.activeResultSetId = newResultSets.last?.id
-
-                        tabManager.tabs[idx] = errTab
+                        let pinnedResults = tab.display.resultSets.filter(\.isPinned)
+                        tab.display.resultSets = pinnedResults + newResultSets
+                        tab.display.activeResultSetId = newResultSets.last?.id
                     }
 
                     let rawSQL = failedSQL ?? statements[min(executedCount, totalCount - 1)]
@@ -209,60 +202,62 @@ extension MainContentCoordinator {
         toolbarState.lastQueryDuration = cumulativeTime
 
         if capturedGeneration != queryGeneration {
-            if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                tabManager.tabs[idx].execution.isExecuting = false
-            }
+            tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
             return
         }
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return
         }
 
-        var updatedTab = tabManager.tabs[idx]
-
+        let currentTab = tabManager.tabs[idx]
+        let resolvedTableName: String?
         if let selectResult = lastSelectResult {
             let safeColumns = selectResult.columns.map { String($0) }
             let safeColumnTypes = selectResult.columnTypes
             let safeRows = selectResult.rows.map { row in
                 row.map { $0.map { String($0) } }
             }
-            let tableName: String?
-            if updatedTab.tabType == .table, let existing = updatedTab.tableContext.tableName {
-                tableName = existing
+            if currentTab.tabType == .table, let existing = currentTab.tableContext.tableName {
+                resolvedTableName = existing
             } else {
-                tableName = lastSelectSQL.flatMap { extractTableName(from: $0) }
+                resolvedTableName = lastSelectSQL.flatMap { extractTableName(from: $0) }
             }
 
             setActiveTableRows(
                 TableRows.from(queryRows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
-                for: updatedTab.id
+                for: currentTab.id
             )
-            updatedTab.tableContext.tableName = tableName
-            updatedTab.tableContext.isEditable = tableName != nil && updatedTab.tableContext.isEditable
         } else {
-            setActiveTableRows(TableRows(), for: updatedTab.id)
-            if updatedTab.tabType != .table {
-                updatedTab.tableContext.tableName = nil
-            }
-            updatedTab.tableContext.isEditable = false
+            resolvedTableName = nil
+            setActiveTableRows(TableRows(), for: currentTab.id)
         }
 
-        updatedTab.schemaVersion += 1
-        updatedTab.execution.executionTime = cumulativeTime
-        updatedTab.execution.rowsAffected = totalRowsAffected
-        updatedTab.execution.isExecuting = false
-        updatedTab.execution.lastExecutedAt = Date()
-        updatedTab.execution.errorMessage = nil
+        tabManager.mutate(at: idx) { tab in
+            if lastSelectResult != nil {
+                tab.tableContext.tableName = resolvedTableName
+                tab.tableContext.isEditable = resolvedTableName != nil && tab.tableContext.isEditable
+            } else {
+                if tab.tabType != .table {
+                    tab.tableContext.tableName = nil
+                }
+                tab.tableContext.isEditable = false
+            }
 
-        let pinnedResults = updatedTab.display.resultSets.filter(\.isPinned)
-        updatedTab.display.resultSets = pinnedResults + newResultSets
-        updatedTab.display.activeResultSetId = newResultSets.last?.id
-        if updatedTab.display.isResultsCollapsed {
-            updatedTab.display.isResultsCollapsed = false
+            tab.schemaVersion += 1
+            tab.execution.executionTime = cumulativeTime
+            tab.execution.rowsAffected = totalRowsAffected
+            tab.execution.isExecuting = false
+            tab.execution.lastExecutedAt = Date()
+            tab.execution.errorMessage = nil
+
+            let pinnedResults = tab.display.resultSets.filter(\.isPinned)
+            tab.display.resultSets = pinnedResults + newResultSets
+            tab.display.activeResultSetId = newResultSets.last?.id
+            if tab.display.isResultsCollapsed {
+                tab.display.isResultsCollapsed = false
+            }
         }
         toolbarState.isResultsCollapsed = false
-
-        tabManager.tabs[idx] = updatedTab
 
         if tabManager.selectedTabId == tabId {
             changeManager.clearChangesAndUndoHistory()

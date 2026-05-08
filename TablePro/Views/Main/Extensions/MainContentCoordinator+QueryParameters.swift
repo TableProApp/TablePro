@@ -16,10 +16,12 @@ extension MainContentCoordinator {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         if let firstMissing = missing.first {
-            tabManager.tabs[index].execution.errorMessage = String(
-                format: String(localized: "Missing value for parameter: %@"),
-                ":\(firstMissing.name)"
-            )
+            tabManager.mutate(at: index) {
+                $0.execution.errorMessage = String(
+                    format: String(localized: "Missing value for parameter: %@"),
+                    ":\(firstMissing.name)"
+                )
+            }
             return
         }
 
@@ -61,13 +63,14 @@ extension MainContentCoordinator {
         queryGeneration += 1
         let capturedGeneration = queryGeneration
 
-        var tab = tabManager.tabs[index]
-        tab.execution.isExecuting = true
-        tab.execution.executionTime = nil
-        tab.execution.errorMessage = nil
-        tab.display.explainText = nil
-        tab.display.explainPlan = nil
-        tabManager.tabs[index] = tab
+        tabManager.mutate(at: index) { tab in
+            tab.execution.isExecuting = true
+            tab.execution.executionTime = nil
+            tab.execution.errorMessage = nil
+            tab.display.explainText = nil
+            tab.display.explainPlan = nil
+        }
+        let tab = tabManager.tabs[index]
         toolbarState.setExecuting(true)
 
         if PluginManager.shared.supportsQueryProgress(for: connection.type) {
@@ -148,11 +151,9 @@ extension MainContentCoordinator {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        var tab = tabManager.tabs[idx]
+                    tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.isExecuting = false
                         tab.pagination.isLoadingMore = false
-                        tabManager.tabs[idx] = tab
                     }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
@@ -171,10 +172,12 @@ extension MainContentCoordinator {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         if let firstMissing = missing.first {
-            tabManager.tabs[index].execution.errorMessage = String(
-                format: String(localized: "Missing value for parameter: %@"),
-                ":\(firstMissing.name)"
-            )
+            tabManager.mutate(at: index) {
+                $0.execution.errorMessage = String(
+                    format: String(localized: "Missing value for parameter: %@"),
+                    ":\(firstMissing.name)"
+                )
+            }
             return
         }
 
@@ -186,11 +189,11 @@ extension MainContentCoordinator {
         queryGeneration += 1
         let capturedGeneration = queryGeneration
 
-        var tab = tabManager.tabs[index]
-        tab.execution.isExecuting = true
-        tab.execution.executionTime = nil
-        tab.execution.errorMessage = nil
-        tabManager.tabs[index] = tab
+        tabManager.mutate(at: index) { tab in
+            tab.execution.isExecuting = true
+            tab.execution.executionTime = nil
+            tab.execution.errorMessage = nil
+        }
         toolbarState.setExecuting(true)
 
         let conn = connection
@@ -225,9 +228,7 @@ extension MainContentCoordinator {
                             paramLog.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
                         }
                     }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].execution.isExecuting = false
-                    }
+                    tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
                 }
@@ -354,9 +355,7 @@ extension MainContentCoordinator {
             toolbarState.lastQueryDuration = fetchResult.executionTime
 
             if capturedGeneration != queryGeneration || Task.isCancelled {
-                if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].execution.isExecuting = false
-                }
+                tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                 return
             }
 
@@ -378,9 +377,8 @@ extension MainContentCoordinator {
                 queryParameterValues: originalParameters
             )
 
-            if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                tabManager.tabs[idx].pagination.baseQueryParameterValues =
-                    nativeParameters.map { $0 as? String }
+            tabManager.mutate(tabId: tabId) {
+                $0.pagination.baseQueryParameterValues = nativeParameters.map { $0 as? String }
             }
         }
     }
@@ -408,9 +406,7 @@ extension MainContentCoordinator {
         if capturedGeneration != queryGeneration {
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].execution.isExecuting = false
-                }
+                tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                 currentQueryTask = nil
                 toolbarState.setExecuting(false)
             }
@@ -431,17 +427,14 @@ extension MainContentCoordinator {
             currentQueryTask = nil
             toolbarState.setExecuting(false)
 
-            if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                var errTab = tabManager.tabs[idx]
-                errTab.execution.errorMessage = contextMsg
-                errTab.execution.isExecuting = false
-                errTab.execution.executionTime = cumulativeTime
+            tabManager.mutate(tabId: tabId) { tab in
+                tab.execution.errorMessage = contextMsg
+                tab.execution.isExecuting = false
+                tab.execution.executionTime = cumulativeTime
 
-                let pinnedResults = errTab.display.resultSets.filter(\.isPinned)
-                errTab.display.resultSets = pinnedResults + capturedResultSets
-                errTab.display.activeResultSetId = capturedResultSets.last?.id
-
-                tabManager.tabs[idx] = errTab
+                let pinnedResults = tab.display.resultSets.filter(\.isPinned)
+                tab.display.resultSets = pinnedResults + capturedResultSets
+                tab.display.activeResultSetId = capturedResultSets.last?.id
             }
 
             let rawSQL = failedSQL ?? statements[min(executedCount, totalCount - 1)]

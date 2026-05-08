@@ -19,7 +19,9 @@ extension MainContentCoordinator {
     ) {
         guard !safeModeLevel.blocksAllWrites else {
             if let index = tabManager.selectedTabIndex {
-                tabManager.tabs[index].execution.errorMessage = String(localized: "Cannot save changes: connection is read only")
+                tabManager.mutate(at: index) {
+                    $0.execution.errorMessage = String(localized: "Cannot save changes: connection is read only")
+                }
             }
             saveCompletionContinuation?.resume(returning: false)
             saveCompletionContinuation = nil
@@ -44,7 +46,7 @@ extension MainContentCoordinator {
             )
         } catch {
             if let index = tabManager.selectedTabIndex {
-                tabManager.tabs[index].execution.errorMessage = error.localizedDescription
+                tabManager.mutate(at: index) { $0.execution.errorMessage = error.localizedDescription }
             }
             saveCompletionContinuation?.resume(returning: false)
             saveCompletionContinuation = nil
@@ -53,7 +55,9 @@ extension MainContentCoordinator {
 
         guard !allStatements.isEmpty else {
             if let index = tabManager.selectedTabIndex {
-                tabManager.tabs[index].execution.errorMessage = String(localized: "Could not generate SQL for changes.")
+                tabManager.mutate(at: index) {
+                    $0.execution.errorMessage = String(localized: "Could not generate SQL for changes.")
+                }
             }
             saveCompletionContinuation?.resume(returning: false)
             saveCompletionContinuation = nil
@@ -182,7 +186,9 @@ extension MainContentCoordinator {
             do {
                 guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
                     if let index = tabManager.selectedTabIndex {
-                        tabManager.tabs[index].execution.errorMessage = String(localized: "Not connected to database")
+                        tabManager.mutate(at: index) {
+                            $0.execution.errorMessage = String(localized: "Not connected to database")
+                        }
                     }
                     throw DatabaseError.notConnected
                 }
@@ -232,8 +238,10 @@ extension MainContentCoordinator {
 
                 changeManager.clearChangesAndUndoHistory()
                 if let index = tabManager.selectedTabIndex {
-                    tabManager.tabs[index].pendingChanges = TabChangeSnapshot()
-                    tabManager.tabs[index].execution.errorMessage = nil
+                    tabManager.mutate(at: index) {
+                        $0.pendingChanges = TabChangeSnapshot()
+                        $0.execution.errorMessage = nil
+                    }
                 }
 
                 if clearTableOps {
@@ -296,7 +304,9 @@ extension MainContentCoordinator {
                 )
 
                 if let index = tabManager.selectedTabIndex {
-                    tabManager.tabs[index].execution.errorMessage = String(format: String(localized: "Save failed: %@"), error.localizedDescription)
+                    tabManager.mutate(at: index) {
+                        $0.execution.errorMessage = String(format: String(localized: "Save failed: %@"), error.localizedDescription)
+                    }
                 }
 
                 // Show error alert to user

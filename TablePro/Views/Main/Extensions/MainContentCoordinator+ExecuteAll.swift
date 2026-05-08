@@ -27,10 +27,10 @@ extension MainContentCoordinator {
                     sql: combinedSQL,
                     existing: tabManager.tabs[index].content.queryParameters
                 )
-                tabManager.tabs[index].content.queryParameters = reconciled
+                tabManager.mutate(at: index) { $0.content.queryParameters = reconciled }
 
                 if !tabManager.tabs[index].content.isParameterPanelVisible {
-                    tabManager.tabs[index].content.isParameterPanelVisible = true
+                    tabManager.mutate(at: index) { $0.content.isParameterPanelVisible = true }
                     return
                 }
 
@@ -48,8 +48,10 @@ extension MainContentCoordinator {
         if level == .readOnly {
             let writeStatements = statements.filter { isWriteQuery($0) }
             if !writeStatements.isEmpty {
-                tabManager.tabs[index].execution.errorMessage =
-                    String(localized: "Cannot execute write queries: connection is read only")
+                tabManager.mutate(at: index) {
+                    $0.execution.errorMessage =
+                        String(localized: "Cannot execute write queries: connection is read only")
+                }
                 return
             }
         }
@@ -95,9 +97,7 @@ extension MainContentCoordinator {
                         executeMultipleStatements(statements)
                     }
                 case .blocked(let reason):
-                    if index < tabManager.tabs.count {
-                        tabManager.tabs[index].execution.errorMessage = reason
-                    }
+                    tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
         } else {
@@ -119,8 +119,10 @@ extension MainContentCoordinator {
         if level == .readOnly {
             let writeStatements = statements.filter { isWriteQuery($0) }
             if !writeStatements.isEmpty {
-                tabManager.tabs[index].execution.errorMessage =
-                    String(localized: "Cannot execute write queries: connection is read only")
+                tabManager.mutate(at: index) {
+                    $0.execution.errorMessage =
+                        String(localized: "Cannot execute write queries: connection is read only")
+                }
                 return
             }
         }
@@ -160,9 +162,7 @@ extension MainContentCoordinator {
                 case .allowed:
                     executeParameterizedAfterSafeMode(statements, parameters: parameters)
                 case .blocked(let reason):
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].execution.errorMessage = reason
-                    }
+                    tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
                 }
             }
         } else {

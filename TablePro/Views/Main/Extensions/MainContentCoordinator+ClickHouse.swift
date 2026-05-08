@@ -61,9 +61,7 @@ extension MainContentCoordinator {
         Task {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
 
-            if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                tabManager.tabs[idx].execution.isExecuting = true
-            }
+            tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = true }
             toolbarState.setExecuting(true)
 
             do {
@@ -75,22 +73,23 @@ extension MainContentCoordinator {
                     row.compactMap { $0 }.joined(separator: "\t")
                 }.joined(separator: "\n")
 
-                if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].display.explainText = text
-                    tabManager.tabs[idx].display.explainExecutionTime = duration
+                let parser = QueryPlanParserFactory.parser(for: connection.type)
+                tabManager.mutate(tabId: tabId) { tab in
+                    tab.display.explainText = text
+                    tab.display.explainExecutionTime = duration
 
-                    if let parser = QueryPlanParserFactory.parser(for: connection.type) {
-                        tabManager.tabs[idx].display.explainPlan = parser.parse(rawText: text)
+                    if let parser {
+                        tab.display.explainPlan = parser.parse(rawText: text)
                     } else {
-                        tabManager.tabs[idx].display.explainPlan = nil
+                        tab.display.explainPlan = nil
                     }
-                    tabManager.tabs[idx].execution.isExecuting = false
+                    tab.execution.isExecuting = false
                 }
             } catch {
-                if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].display.explainText = "Error: \(error.localizedDescription)"
-                    tabManager.tabs[idx].display.explainPlan = nil
-                    tabManager.tabs[idx].execution.isExecuting = false
+                tabManager.mutate(tabId: tabId) { tab in
+                    tab.display.explainText = "Error: \(error.localizedDescription)"
+                    tab.display.explainPlan = nil
+                    tab.execution.isExecuting = false
                 }
             }
 
