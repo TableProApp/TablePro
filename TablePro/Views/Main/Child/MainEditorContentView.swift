@@ -355,18 +355,18 @@ struct MainEditorContentView: View {
             guard let loaded = FileTextLoader.load(url) else { return }
             let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
             await MainActor.run {
-                guard let index = coordinator.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-                coordinator.tabManager.tabs[index].content.query = loaded.content
-                coordinator.tabManager.tabs[index].content.savedFileContent = loaded.content
-                coordinator.tabManager.tabs[index].content.loadMtime = mtime
-                coordinator.tabManager.tabs[index].content.externalModificationDetected = false
+                coordinator.tabManager.mutate(tabId: tabId) { tab in
+                    tab.content.query = loaded.content
+                    tab.content.savedFileContent = loaded.content
+                    tab.content.loadMtime = mtime
+                    tab.content.externalModificationDetected = false
+                }
             }
         }
     }
 
     private func dismissExternalModBanner(tabId: UUID) {
-        guard let index = coordinator.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        coordinator.tabManager.tabs[index].content.externalModificationDetected = false
+        coordinator.tabManager.mutate(tabId: tabId) { $0.content.externalModificationDetected = false }
     }
 
     private func updateHasQueryText() {
@@ -387,13 +387,10 @@ struct MainEditorContentView: View {
                 // flushTextUpdate() fires on the OLD tab's EditorCoordinator when
                 // selectedTabIndex already points to the NEW tab — writing to
                 // selectedTabIndex would overwrite the new tab's query.
-                guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                    index < tabManager.tabs.count
-                else { return }
+                guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
 
-                tabManager.tabs[index].content.query = newValue
-
-                if tabManager.tabs[index].content.sourceFileURL != nil {
+                if let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+                   tabManager.tabs[index].content.sourceFileURL != nil {
                     let isDirty = tabManager.tabs[index].content.isFileDirty
                     Task { @MainActor in
                         if let window = NSApp.keyWindow {
@@ -410,8 +407,7 @@ struct MainEditorContentView: View {
         return Binding(
             get: { tab.content.queryParameters },
             set: { newValue in
-                guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-                tabManager.tabs[index].content.queryParameters = newValue
+                tabManager.mutate(tabId: tabId) { $0.content.queryParameters = newValue }
             }
         )
     }
@@ -421,8 +417,7 @@ struct MainEditorContentView: View {
         return Binding(
             get: { tab.content.isParameterPanelVisible },
             set: { newValue in
-                guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-                tabManager.tabs[index].content.isParameterPanelVisible = newValue
+                tabManager.mutate(tabId: tabId) { $0.content.isParameterPanelVisible = newValue }
             }
         )
     }
@@ -731,7 +726,7 @@ struct MainEditorContentView: View {
             get: { tab.sortState },
             set: { newValue in
                 if let index = tabManager.selectedTabIndex {
-                    tabManager.tabs[index].sortState = newValue
+                    tabManager.mutate(at: index) { $0.sortState = newValue }
                 }
             }
         )
@@ -743,7 +738,7 @@ struct MainEditorContentView: View {
             set: { newValue in
                 coordinator.isUpdatingColumnLayout = true
                 if let index = tabManager.selectedTabIndex {
-                    tabManager.tabs[index].columnLayout = newValue
+                    tabManager.mutate(at: index) { $0.columnLayout = newValue }
                 }
                 Task { @MainActor in
                     coordinator.isUpdatingColumnLayout = false
@@ -784,7 +779,7 @@ struct MainEditorContentView: View {
             set: { newValue in
                 Task { @MainActor in
                     if let index = tabManager.selectedTabIndex {
-                        tabManager.tabs[index].display.resultsViewMode = newValue
+                        tabManager.mutate(at: index) { $0.display.resultsViewMode = newValue }
                     }
                 }
             }

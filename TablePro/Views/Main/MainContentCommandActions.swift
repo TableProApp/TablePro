@@ -444,11 +444,12 @@ final class MainContentCommandActions {
         Task {
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
-                if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    coordinator?.tabManager.tabs[index].content.savedFileContent = content
-                    coordinator?.tabManager.tabs[index].content.loadMtime = (try? FileManager.default
-                        .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-                    coordinator?.tabManager.tabs[index].content.externalModificationDetected = false
+                let mtime = (try? FileManager.default
+                    .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+                coordinator?.tabManager.mutate(tabId: tabId) { tab in
+                    tab.content.savedFileContent = content
+                    tab.content.loadMtime = mtime
+                    tab.content.externalModificationDetected = false
                 }
             } catch {
                 Self.logger.error("Failed to save file: \(error.localizedDescription)")
@@ -486,10 +487,12 @@ final class MainContentCommandActions {
                 guard let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
                 let liveQuery = coordinator?.tabManager.tabs[index].content.query
                 guard liveQuery == queryAtRequestTime else { return }
-                coordinator?.tabManager.tabs[index].content.query = loaded.content
-                coordinator?.tabManager.tabs[index].content.savedFileContent = loaded.content
-                coordinator?.tabManager.tabs[index].content.loadMtime = mtime
-                coordinator?.tabManager.tabs[index].content.externalModificationDetected = false
+                coordinator?.tabManager.mutate(at: index) { tab in
+                    tab.content.query = loaded.content
+                    tab.content.savedFileContent = loaded.content
+                    tab.content.loadMtime = mtime
+                    tab.content.externalModificationDetected = false
+                }
             }
         }
     }
@@ -612,14 +615,15 @@ final class MainContentCommandActions {
               tab.tabType == .query else { return }
         let content = tab.content.query
         let suggestedName = tab.content.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
+        let tabId = tab.id
         Task {
             guard let url = await SQLFileService.showSavePanel(suggestedName: suggestedName) else { return }
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
-                if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
-                    coordinator?.tabManager.tabs[index].content.sourceFileURL = url
-                    coordinator?.tabManager.tabs[index].content.savedFileContent = content
-                    coordinator?.tabManager.tabs[index].title = url.deletingPathExtension().lastPathComponent
+                coordinator?.tabManager.mutate(tabId: tabId) { mutTab in
+                    mutTab.content.sourceFileURL = url
+                    mutTab.content.savedFileContent = content
+                    mutTab.title = url.deletingPathExtension().lastPathComponent
                 }
             } catch {
                 Self.logger.error("Failed to save file: \(error.localizedDescription)")
@@ -709,7 +713,7 @@ final class MainContentCommandActions {
                 cursorOffset: 0,
                 options: options
             )
-            coordinator.tabManager.tabs[tabIndex].content.query = result.formattedSQL
+            coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = result.formattedSQL }
         } catch {
             Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
         }
@@ -728,7 +732,7 @@ final class MainContentCommandActions {
     func toggleResults() {
         guard let coordinator,
               let (_, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
-        coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed.toggle()
+        coordinator.tabManager.mutate(at: tabIndex) { $0.display.isResultsCollapsed.toggle() }
         coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed
     }
 

@@ -75,7 +75,7 @@ extension MainContentView {
             },
             set: { newValue in
                 if let index = coordinator.tabManager.selectedTabIndex {
-                    coordinator.tabManager.tabs[index].sortState = newValue
+                    coordinator.tabManager.mutate(at: index) { $0.sortState = newValue }
                 }
             }
         )
@@ -89,7 +89,7 @@ extension MainContentView {
             get: { coordinator.tabManager.selectedTab?.display.resultsViewMode ?? .data },
             set: { newValue in
                 if let index = coordinator.tabManager.selectedTabIndex {
-                    coordinator.tabManager.tabs[index].display.resultsViewMode = newValue
+                    coordinator.tabManager.mutate(at: index) { $0.display.resultsViewMode = newValue }
                 }
             }
         )

@@ -67,7 +67,7 @@ extension MainContentView {
                                 limit: selectedTab.pagination.pageSize,
                                 offset: selectedTab.pagination.currentOffset
                             )
-                            tabManager.tabs[tabIndex].content.query = filteredQuery
+                            tabManager.mutate(at: tabIndex) { $0.content.query = filteredQuery }
                         }
                         if let tableName = selectedTab.tableContext.tableName {
                             coordinator.restoreLastHiddenColumnsForTable(tableName)
