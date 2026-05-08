@@ -687,13 +687,6 @@ extension Notification.Name {
     // Multi-listener broadcasts (Sidebar + Coordinator + StructureView)
     static let refreshData = Notification.Name("refreshData")
 
-    // Data operations (still posted by DataGrid / context menus)
-    static let deleteSelectedRows = Notification.Name("deleteSelectedRows")
-    static let addNewRow = Notification.Name("addNewRow")
-    static let duplicateRow = Notification.Name("duplicateRow")
-    static let copySelectedRows = Notification.Name("copySelectedRows")
-    static let pasteRows = Notification.Name("pasteRows")
-
     // File opening notifications
     static let openSQLFiles = Notification.Name("openSQLFiles")
 }
