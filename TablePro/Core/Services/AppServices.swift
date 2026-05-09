@@ -20,6 +20,11 @@ struct AppServices {
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
     let groupStorage: GroupStorage
+    let tagStorage: TagStorage
+    let sshProfileStorage: SSHProfileStorage
+    let licenseManager: LicenseManager
+    let conflictResolver: ConflictResolver
+    let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
     let linkedFolderWatcher: LinkedFolderWatcher
     let syncTracker: SyncChangeTracker
@@ -40,6 +45,11 @@ struct AppServices {
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
         groupStorage: .shared,
+        tagStorage: .shared,
+        sshProfileStorage: .shared,
+        licenseManager: .shared,
+        conflictResolver: .shared,
+        syncMetadataStorage: .shared,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
         syncTracker: .shared,
