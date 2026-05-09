@@ -21,17 +21,22 @@ final class SyncCoordinator {
     private(set) var lastSyncDate: Date?
     private(set) var iCloudAccountAvailable: Bool = false
 
+    @ObservationIgnored private let services: AppServices
     @ObservationIgnored private let engine = CloudKitSyncEngine()
-    @ObservationIgnored private let changeTracker = SyncChangeTracker.shared
-    @ObservationIgnored private let metadataStorage = SyncMetadataStorage.shared
-    @ObservationIgnored private let conflictResolver = ConflictResolver.shared
+    @ObservationIgnored private let changeTracker: SyncChangeTracker
+    @ObservationIgnored private let metadataStorage: SyncMetadataStorage
+    @ObservationIgnored private let conflictResolver: ConflictResolver
     @ObservationIgnored private var accountObserver: NSObjectProtocol?
     @ObservationIgnored private var changeCancellable: AnyCancellable?
     @ObservationIgnored private var licenseCancellable: AnyCancellable?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
 
-    private init() {
+    init(services: AppServices = .live) {
+        self.services = services
+        self.changeTracker = services.syncTracker
+        self.metadataStorage = services.syncMetadataStorage
+        self.conflictResolver = services.conflictResolver
         lastSyncDate = metadataStorage.lastSyncDate
     }
 
@@ -53,7 +58,7 @@ final class SyncCoordinator {
 
         // If local storage is empty (fresh install or wiped), clear the sync token
         // to force a full fetch instead of a delta that returns nothing
-        if ConnectionStorage.shared.loadConnections().isEmpty {
+        if services.connectionStorage.loadConnections().isEmpty {
             metadataStorage.clearSyncToken()
             Self.logger.info("No local connections — cleared sync token for full fetch")
         }
@@ -138,22 +143,22 @@ final class SyncCoordinator {
     /// Marks all existing local data as dirty so it will be pushed on the next sync.
     /// Called when sync is first enabled to upload existing connections/groups/tags/settings.
     private func markAllLocalDataDirty() {
-        let connections = ConnectionStorage.shared.loadConnections()
+        let connections = services.connectionStorage.loadConnections()
         for connection in connections where !connection.localOnly {
             changeTracker.markDirty(.connection, id: connection.id.uuidString)
         }
 
-        let groups = GroupStorage.shared.loadGroups()
+        let groups = services.groupStorage.loadGroups()
         for group in groups {
             changeTracker.markDirty(.group, id: group.id.uuidString)
         }
 
-        let tags = TagStorage.shared.loadTags()
+        let tags = services.tagStorage.loadTags()
         for tag in tags {
             changeTracker.markDirty(.tag, id: tag.id.uuidString)
         }
 
-        let sshProfiles = SSHProfileStorage.shared.loadProfiles()
+        let sshProfiles = services.sshProfileStorage.loadProfiles()
         for profile in sshProfiles {
             changeTracker.markDirty(.sshProfile, id: profile.id.uuidString)
         }
@@ -175,7 +180,7 @@ final class SyncCoordinator {
     // MARK: - Status
 
     private func evaluateStatus() {
-        let licenseManager = LicenseManager.shared
+        let licenseManager = services.licenseManager
 
         // Check license
         guard licenseManager.isFeatureAvailable(.iCloudSync) else {
@@ -189,7 +194,7 @@ final class SyncCoordinator {
         }
 
         // Check sync settings
-        let syncSettings = AppSettingsStorage.shared.loadSync()
+        let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
             syncStatus = .disabled(.userDisabled)
             return
@@ -208,13 +213,13 @@ final class SyncCoordinator {
     }
 
     private func canSync() -> Bool {
-        let licenseManager = LicenseManager.shared
+        let licenseManager = services.licenseManager
         guard licenseManager.isFeatureAvailable(.iCloudSync) else {
             Self.logger.trace("Sync skipped: license not available")
             return false
         }
 
-        let syncSettings = AppSettingsStorage.shared.loadSync()
+        let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
             Self.logger.trace("Sync skipped: disabled by user")
             return false
@@ -231,7 +236,7 @@ final class SyncCoordinator {
     // MARK: - Push
 
     private func performPush() async {
-        let settings = AppSettingsStorage.shared.loadSync()
+        let settings = services.appSettingsStorage.loadSync()
         var recordsToSave: [CKRecord] = []
         var recordIDsToDelete: [CKRecord.ID] = []
         let zoneID = await engine.zoneID
@@ -240,7 +245,7 @@ final class SyncCoordinator {
         if settings.syncConnections {
             let dirtyConnectionIds = changeTracker.dirtyRecords(for: .connection)
             if !dirtyConnectionIds.isEmpty {
-                let connections = ConnectionStorage.shared.loadConnections()
+                let connections = services.connectionStorage.loadConnections()
                 for id in dirtyConnectionIds {
                     if let connection = connections.first(where: { $0.id.uuidString == id }),
                        !connection.localOnly {
@@ -378,9 +383,9 @@ final class SyncCoordinator {
     // @MainActor and can block the UI on large sync batches. Consider moving to Task.detached
     // for large payloads.
     private func applyRemoteChanges(_ result: PullResult) {
-        let settings = AppSettingsStorage.shared.loadSync()
+        let settings = services.appSettingsStorage.loadSync()
 
-        ConnectionStorage.shared.invalidateCache()
+        services.connectionStorage.invalidateCache()
 
         changeTracker.isSuppressed = true
         defer {
@@ -444,30 +449,30 @@ final class SyncCoordinator {
         }
 
         if !connectionIdsToDelete.isEmpty {
-            var connections = ConnectionStorage.shared.loadConnections()
+            var connections = services.connectionStorage.loadConnections()
             connections.removeAll { connectionIdsToDelete.contains($0.id) }
-            if !ConnectionStorage.shared.saveConnections(connections) {
+            if !services.connectionStorage.saveConnections(connections) {
                 Self.logger.error("Failed to apply remote connection deletions: persistence error")
             }
         }
         if !groupIdsToDelete.isEmpty {
-            var groups = GroupStorage.shared.loadGroups()
+            var groups = services.groupStorage.loadGroups()
             groups.removeAll { groupIdsToDelete.contains($0.id) }
-            GroupStorage.shared.saveGroups(groups)
+            services.groupStorage.saveGroups(groups)
         }
         if !tagIdsToDelete.isEmpty {
-            var tags = TagStorage.shared.loadTags()
+            var tags = services.tagStorage.loadTags()
             tags.removeAll { tagIdsToDelete.contains($0.id) }
-            TagStorage.shared.saveTags(tags)
+            services.tagStorage.saveTags(tags)
         }
         if !sshProfileIdsToDelete.isEmpty {
-            var profiles = SSHProfileStorage.shared.loadProfiles()
+            var profiles = services.sshProfileStorage.loadProfiles()
             profiles.removeAll { sshProfileIdsToDelete.contains($0.id) }
-            SSHProfileStorage.shared.saveProfilesWithoutSync(profiles)
+            services.sshProfileStorage.saveProfilesWithoutSync(profiles)
         }
 
         if actualConnectionChanges || groupsOrTagsChanged {
-            AppEvents.shared.connectionUpdated.send(())
+            services.appEvents.connectionUpdated.send(())
         }
     }
 
@@ -485,7 +490,7 @@ final class SyncCoordinator {
             return false
         }
 
-        var connections = ConnectionStorage.shared.loadConnections()
+        var connections = services.connectionStorage.loadConnections()
         if let index = connections.firstIndex(where: { $0.id == remoteConnection.id }) {
             if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
                 let localRecord = SyncRecordMapper.toCKRecord(
@@ -512,7 +517,7 @@ final class SyncCoordinator {
         } else {
             connections.append(remoteConnection)
         }
-        guard ConnectionStorage.shared.saveConnections(connections) else {
+        guard services.connectionStorage.saveConnections(connections) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
             return false
         }
@@ -524,13 +529,13 @@ final class SyncCoordinator {
         guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return false }
         if tombstoneIds.contains(remoteGroup.id.uuidString) { return false }
 
-        var groups = GroupStorage.shared.loadGroups()
+        var groups = services.groupStorage.loadGroups()
         if let index = groups.firstIndex(where: { $0.id == remoteGroup.id }) {
             groups[index] = remoteGroup
         } else {
             groups.append(remoteGroup)
         }
-        GroupStorage.shared.saveGroups(groups)
+        services.groupStorage.saveGroups(groups)
         return true
     }
 
@@ -539,13 +544,13 @@ final class SyncCoordinator {
         guard let remoteTag = SyncRecordMapper.toTag(record) else { return false }
         if tombstoneIds.contains(remoteTag.id.uuidString) { return false }
 
-        var tags = TagStorage.shared.loadTags()
+        var tags = services.tagStorage.loadTags()
         if let index = tags.firstIndex(where: { $0.id == remoteTag.id }) {
             tags[index] = remoteTag
         } else {
             tags.append(remoteTag)
         }
-        TagStorage.shared.saveTags(tags)
+        services.tagStorage.saveTags(tags)
         return true
     }
 
@@ -559,13 +564,13 @@ final class SyncCoordinator {
         }
         if tombstoneIds.contains(remoteProfile.id.uuidString) { return }
 
-        var profiles = SSHProfileStorage.shared.loadProfiles()
+        var profiles = services.sshProfileStorage.loadProfiles()
         if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
             profiles[index] = remoteProfile
         } else {
             profiles.append(remoteProfile)
         }
-        SSHProfileStorage.shared.saveProfilesWithoutSync(profiles)
+        services.sshProfileStorage.saveProfilesWithoutSync(profiles)
     }
 
     private func applyRemoteSettings(_ record: CKRecord) {
@@ -605,7 +610,7 @@ final class SyncCoordinator {
     }
 
     private func observeLocalChanges() {
-        changeCancellable = AppEvents.shared.syncChangeTracked
+        changeCancellable = services.appEvents.syncChangeTracked
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -620,7 +625,7 @@ final class SyncCoordinator {
     }
 
     private func observeLicenseChanges() {
-        licenseCancellable = AppEvents.shared.licenseStatusDidChange
+        licenseCancellable = services.appEvents.licenseStatusDidChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -704,7 +709,7 @@ final class SyncCoordinator {
     // MARK: - Settings Helpers
 
     private func settingsData(for category: String) -> Data? {
-        let storage = AppSettingsStorage.shared
+        let storage = services.appSettingsStorage
         let encoder = JSONEncoder()
 
         do {
@@ -726,7 +731,7 @@ final class SyncCoordinator {
     }
 
     private func applySettingsData(_ data: Data, for category: String) throws {
-        let manager = AppSettingsManager.shared
+        let manager = services.appSettings
         let decoder = JSONDecoder()
 
         do {
@@ -755,7 +760,7 @@ final class SyncCoordinator {
     ) {
         let dirtyGroupIds = changeTracker.dirtyRecords(for: .group)
         if !dirtyGroupIds.isEmpty {
-            let groups = GroupStorage.shared.loadGroups()
+            let groups = services.groupStorage.loadGroups()
             for id in dirtyGroupIds {
                 if let group = groups.first(where: { $0.id.uuidString == id }) {
                     records.append(SyncRecordMapper.toCKRecord(group, in: zoneID))
@@ -777,7 +782,7 @@ final class SyncCoordinator {
     ) {
         let dirtyTagIds = changeTracker.dirtyRecords(for: .tag)
         if !dirtyTagIds.isEmpty {
-            let tags = TagStorage.shared.loadTags()
+            let tags = services.tagStorage.loadTags()
             for id in dirtyTagIds {
                 if let tag = tags.first(where: { $0.id.uuidString == id }) {
                     records.append(SyncRecordMapper.toCKRecord(tag, in: zoneID))
@@ -799,7 +804,7 @@ final class SyncCoordinator {
     ) {
         let dirtyProfileIds = changeTracker.dirtyRecords(for: .sshProfile)
         if !dirtyProfileIds.isEmpty {
-            let profiles = SSHProfileStorage.shared.loadProfiles()
+            let profiles = services.sshProfileStorage.loadProfiles()
             for id in dirtyProfileIds {
                 if let profile = profiles.first(where: { $0.id.uuidString == id }) {
                     records.append(SyncRecordMapper.toCKRecord(profile, in: zoneID))

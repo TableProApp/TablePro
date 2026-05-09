@@ -19,34 +19,34 @@ final class AppSettingsManager {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
-            SyncChangeTracker.shared.markDirty(.settings, id: "general")
+            syncTracker.markDirty(.settings, id: "general")
         }
     }
 
     var appearance: AppearanceSettings {
         didSet {
             storage.saveAppearance(appearance)
-            ThemeEngine.shared.updateAppearanceAndTheme(
+            themeEngine.updateAppearanceAndTheme(
                 mode: appearance.appearanceMode,
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
             )
-            SyncChangeTracker.shared.markDirty(.settings, id: "appearance")
+            syncTracker.markDirty(.settings, id: "appearance")
         }
     }
 
     var editor: EditorSettings {
         didSet {
             storage.saveEditor(editor)
-            ThemeEngine.shared.updateEditorSettings(
+            themeEngine.updateEditorSettings(
                 highlightCurrentLine: editor.highlightCurrentLine,
                 showLineNumbers: editor.showLineNumbers,
                 tabWidth: editor.clampedTabWidth,
 
                 wordWrap: editor.wordWrap
             )
-            AppEvents.shared.editorSettingsChanged.send(())
-            SyncChangeTracker.shared.markDirty(.settings, id: "editor")
+            appEvents.editorSettingsChanged.send(())
+            syncTracker.markDirty(.settings, id: "editor")
         }
     }
 
@@ -64,9 +64,9 @@ final class AppSettingsManager {
             }
 
             storage.saveDataGrid(validated)
-            DateFormattingService.shared.updateFormat(validated.dateFormat)
-            AppEvents.shared.dataGridSettingsChanged.send(())
-            SyncChangeTracker.shared.markDirty(.settings, id: "dataGrid")
+            dateFormattingService.updateFormat(validated.dateFormat)
+            appEvents.dataGridSettingsChanged.send(())
+            syncTracker.markDirty(.settings, id: "dataGrid")
         }
     }
 
@@ -85,37 +85,37 @@ final class AppSettingsManager {
 
             storage.saveHistory(validated)
             Task { await applyHistorySettingsImmediately() }
-            SyncChangeTracker.shared.markDirty(.settings, id: "history")
+            syncTracker.markDirty(.settings, id: "history")
         }
     }
 
     var tabs: TabSettings {
         didSet {
             storage.saveTabs(tabs)
-            SyncChangeTracker.shared.markDirty(.settings, id: "tabs")
+            syncTracker.markDirty(.settings, id: "tabs")
         }
     }
 
     var keyboard: KeyboardSettings {
         didSet {
             storage.saveKeyboard(keyboard)
-            SyncChangeTracker.shared.markDirty(.settings, id: "keyboard")
+            syncTracker.markDirty(.settings, id: "keyboard")
         }
     }
 
     var ai: AISettings {
         didSet {
             storage.saveAI(ai)
-            SyncChangeTracker.shared.markDirty(.settings, id: "ai")
-            AppEvents.shared.aiSettingsChanged.send(())
+            syncTracker.markDirty(.settings, id: "ai")
+            appEvents.aiSettingsChanged.send(())
             let hadCopilot = oldValue.providers.contains(where: { $0.type == .copilot })
             let hasCopilot = ai.providers.contains(where: { $0.type == .copilot })
             if hasCopilot != hadCopilot {
-                Task {
+                Task { [copilotService] in
                     if hasCopilot {
-                        await CopilotService.shared.start()
+                        await copilotService.start()
                     } else {
-                        await CopilotService.shared.stop()
+                        await copilotService.stop()
                     }
                 }
             }
@@ -125,15 +125,15 @@ final class AppSettingsManager {
     var sync: SyncSettings {
         didSet {
             storage.saveSync(sync)
-            SyncChangeTracker.shared.markDirty(.settings, id: "sync")
+            syncTracker.markDirty(.settings, id: "sync")
         }
     }
 
     var terminal: TerminalSettings {
         didSet {
             storage.saveTerminal(terminal)
-            AppEvents.shared.terminalSettingsChanged.send(())
-            SyncChangeTracker.shared.markDirty(.settings, id: "terminal")
+            appEvents.terminalSettingsChanged.send(())
+            syncTracker.markDirty(.settings, id: "terminal")
         }
     }
 
@@ -148,30 +148,55 @@ final class AppSettingsManager {
             }
 
             storage.saveMCP(mcp)
-            SyncChangeTracker.shared.markDirty(.settings, id: "mcp")
+            syncTracker.markDirty(.settings, id: "mcp")
             let enabledChanged = mcp.enabled != oldValue.enabled
             let portChanged = mcp.port != oldValue.port
             let remoteChanged = mcp.allowRemoteConnections != oldValue.allowRemoteConnections
             let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
             if enabledChanged || portChanged || remoteChanged || authChanged {
                 let settings = mcp
-                Task {
+                Task { [mcpServerManager] in
                     if settings.enabled {
-                        await MCPServerManager.shared.restart(port: UInt16(clamping: settings.port))
+                        await mcpServerManager.restart(port: UInt16(clamping: settings.port))
                     } else {
-                        await MCPServerManager.shared.stop()
+                        await mcpServerManager.stop()
                     }
                 }
             }
         }
     }
 
-    @ObservationIgnored private let storage = AppSettingsStorage.shared
+    @ObservationIgnored private let storage: AppSettingsStorage
+    @ObservationIgnored private let themeEngine: ThemeEngine
+    @ObservationIgnored private let syncTracker: SyncChangeTracker
+    @ObservationIgnored private let appEvents: AppEvents
+    @ObservationIgnored private let dateFormattingService: DateFormattingService
+    @ObservationIgnored private let queryHistoryManager: QueryHistoryManager
+    @ObservationIgnored private let mcpServerManager: MCPServerManager
+    @ObservationIgnored private let copilotService: CopilotService
     @ObservationIgnored private var isValidating = false
     @ObservationIgnored private var accessibilityTextSizeObserver: NSObjectProtocol?
     @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
 
-    private init() {
+    init(
+        storage: AppSettingsStorage = .shared,
+        themeEngine: ThemeEngine = .shared,
+        syncTracker: SyncChangeTracker = .shared,
+        appEvents: AppEvents = .shared,
+        dateFormattingService: DateFormattingService = .shared,
+        queryHistoryManager: QueryHistoryManager = .shared,
+        mcpServerManager: MCPServerManager = .shared,
+        copilotService: CopilotService = .shared
+    ) {
+        self.storage = storage
+        self.themeEngine = themeEngine
+        self.syncTracker = syncTracker
+        self.appEvents = appEvents
+        self.dateFormattingService = dateFormattingService
+        self.queryHistoryManager = queryHistoryManager
+        self.mcpServerManager = mcpServerManager
+        self.copilotService = copilotService
+
         self.general = storage.loadGeneral()
         self.appearance = storage.loadAppearance()
         self.editor = storage.loadEditor()
@@ -186,25 +211,25 @@ final class AppSettingsManager {
 
         general.language.apply()
 
-        ThemeEngine.shared.updateAppearanceAndTheme(
+        themeEngine.updateAppearanceAndTheme(
             mode: appearance.appearanceMode,
             lightThemeId: appearance.preferredLightThemeId,
             darkThemeId: appearance.preferredDarkThemeId
         )
 
-        ThemeEngine.shared.updateEditorSettings(
+        themeEngine.updateEditorSettings(
             highlightCurrentLine: editor.highlightCurrentLine,
             showLineNumbers: editor.showLineNumbers,
             tabWidth: editor.clampedTabWidth,
             wordWrap: editor.wordWrap
         )
 
-        DateFormattingService.shared.updateFormat(dataGrid.dateFormat)
+        dateFormattingService.updateFormat(dataGrid.dateFormat)
 
         observeAccessibilityTextSizeChanges()
 
         if ai.enabled, ai.providers.contains(where: { $0.type == .copilot }) {
-            Task { await CopilotService.shared.start() }
+            Task { [copilotService] in await copilotService.start() }
         }
     }
 
@@ -236,14 +261,14 @@ final class AppSettingsManager {
                 guard abs(newScale - lastAccessibilityScale) > 0.01 else { return }
                 lastAccessibilityScale = newScale
                 Self.logger.debug("Accessibility text size changed, scale: \(newScale, format: .fixed(precision: 2))")
-                ThemeEngine.shared.reloadFontCaches()
-                AppEvents.shared.accessibilityTextSizeChanged.send(())
+                themeEngine.reloadFontCaches()
+                appEvents.accessibilityTextSizeChanged.send(())
             }
         }
     }
 
     private func applyHistorySettingsImmediately() async {
-        await QueryHistoryManager.shared.applySettingsChange()
+        await queryHistoryManager.applySettingsChange()
     }
 
     func resetToDefaults() {
