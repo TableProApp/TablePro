@@ -4,6 +4,10 @@ import os
 struct MCPHttpRequestRouter: Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.HttpRouter")
 
+    private static let staticInternalErrorEnvelope = Data(
+        #"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"internal_error"}}"#.utf8
+    )
+
     typealias InboundEmitter = @Sendable (MCPInboundExchange) -> AsyncStream<MCPInboundExchange>.Continuation.YieldResult
     typealias SseStarter = @Sendable (UUID, MCPSessionId, HttpConnectionContext) async -> Void
     typealias ResponderSinkFactory = @Sendable (HttpConnectionContext) -> any MCPResponderSink
@@ -115,8 +119,13 @@ struct MCPHttpRequestRouter: Sendable {
             Self.logger.info("Integrations exchange succeeded (token len=\(token.count, privacy: .public))")
             let label = await Self.resolveTokenLabel(for: token)
             MCPAuditLogger.logPairingExchange(outcome: .success, tokenName: label, ip: ip)
-            let payload = (try? JSONEncoder().encode(ExchangeResponse(token: token))) ?? Data()
-            await context.writePlainJsonResponse(status: .ok, body: payload)
+            do {
+                let payload = try JSONEncoder().encode(ExchangeResponse(token: token))
+                await context.writePlainJsonResponse(status: .ok, body: payload)
+            } catch {
+                Self.logger.error("Encode ExchangeResponse failed: \(error.localizedDescription, privacy: .public)")
+                await context.writePlainJsonError(status: .internalServerError, message: "internal_error")
+            }
             await context.cancel()
         case .failure(let error):
             let mapped = Self.mapExchangeError(error)
@@ -422,7 +431,13 @@ struct MCPHttpRequestRouter: Sendable {
         requestId: JsonRpcId?
     ) async {
         let envelope = error.toJsonRpcErrorResponse(id: requestId)
-        let data = (try? JSONEncoder().encode(envelope)) ?? Data()
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(envelope)
+        } catch {
+            Self.logger.error("Encode top-level error envelope failed: \(error.localizedDescription, privacy: .public); using static fallback")
+            data = Self.staticInternalErrorEnvelope
+        }
         await context.writeJsonResponse(
             data: data,
             status: error.httpStatus,

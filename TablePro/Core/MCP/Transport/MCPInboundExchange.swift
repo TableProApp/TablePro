@@ -51,6 +51,10 @@ public protocol MCPResponderSink: Sendable {
 public actor MCPExchangeResponder {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.HttpServer")
 
+    private static let staticInternalErrorEnvelope = Data(
+        #"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"internal_error"}}"#.utf8
+    )
+
     private let sink: MCPResponderSink
     private var completed: Bool = false
     private let requestId: JsonRpcId?
@@ -71,8 +75,14 @@ public actor MCPExchangeResponder {
         do {
             body = try JsonRpcCodec.encode(message)
         } catch {
+            Self.logger.error("Encode response failed: \(error.localizedDescription, privacy: .public)")
             let fallback = MCPProtocolError.internalError(detail: "encode failed").toJsonRpcErrorResponse(id: requestId)
-            body = (try? JSONEncoder().encode(fallback)) ?? Data()
+            do {
+                body = try JSONEncoder().encode(fallback)
+            } catch {
+                Self.logger.error("Encode internal_error envelope failed: \(error.localizedDescription, privacy: .public); using static fallback")
+                body = Self.staticInternalErrorEnvelope
+            }
         }
 
         await sink.writeJson(body, status: .ok, sessionId: sessionId, extraHeaders: [])
@@ -87,7 +97,13 @@ public actor MCPExchangeResponder {
         completed = true
 
         let envelope = error.toJsonRpcErrorResponse(id: responseId ?? requestId)
-        let data = (try? JSONEncoder().encode(envelope)) ?? Data()
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(envelope)
+        } catch {
+            Self.logger.error("Encode error envelope failed: \(error.localizedDescription, privacy: .public); using static fallback")
+            data = Self.staticInternalErrorEnvelope
+        }
         await sink.writeJson(data, status: error.httpStatus, sessionId: nil, extraHeaders: error.extraHeaders)
         await sink.closeConnection()
     }
@@ -138,7 +154,13 @@ public actor MCPExchangeResponder {
         completed = true
 
         let envelope = error.toJsonRpcErrorResponse(id: requestId)
-        let data = (try? JSONEncoder().encode(envelope)) ?? Data()
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(envelope)
+        } catch {
+            Self.logger.error("Encode reject envelope failed: \(error.localizedDescription, privacy: .public); using static fallback")
+            data = Self.staticInternalErrorEnvelope
+        }
         await sink.writeJson(data, status: error.httpStatus, sessionId: nil, extraHeaders: error.extraHeaders)
         await sink.closeConnection()
     }
