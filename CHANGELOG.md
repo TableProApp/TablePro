@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Result-grid cells on rows marked for deletion keep their dropdown / date / JSON / blob chevron visible at reduced opacity instead of hiding it, so the cell type is still legible while clearly inactive. Click on the dimmed chevron is a no-op; FK arrow navigation is unchanged. Matches the macOS HIG "disabled appearance" guideline.
 - Tables sidebar refreshes automatically after a successful SQL import; the refresh notification now fires after the success sheet's dismissal animation, so the main window is key when the observer runs (#1114)
 - PostgreSQL connections honor the import dialog's "Disable foreign key checks" option via `SET session_replication_role = replica` (requires REPLICATION role or superuser; managed Postgres typically rejects it) (#1114)
 - PostgreSQL SQL exports preserve GENERATED ALWAYS AS IDENTITY values on round-trip (using OVERRIDING SYSTEM VALUE) and skip GENERATED ... STORED columns (#1114)

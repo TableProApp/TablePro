@@ -88,7 +88,7 @@ extension TableViewCoordinator {
         let cellState = DataGridCellState(
             visualState: state,
             isFocused: isFocused,
-            isEditable: isEditable && !state.isDeleted,
+            isEditable: isEditable,
             isLargeDataset: isLargeDataset,
             row: row,
             columnIndex: columnIndex

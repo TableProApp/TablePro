@@ -36,6 +36,7 @@ final class DataGridCellView: NSView {
 
     private static let chevronNormal = makeAccessoryImage("chevron.up.chevron.down", pointSize: 10, color: .secondaryLabelColor)
     private static let chevronEmphasized = makeAccessoryImage("chevron.up.chevron.down", pointSize: 10, color: .alternateSelectedControlTextColor)
+    private static let chevronDisabled = makeAccessoryImage("chevron.up.chevron.down", pointSize: 10, color: .tertiaryLabelColor)
     private static let fkArrowNormal = makeAccessoryImage("arrow.right.circle.fill", pointSize: 14, color: .secondaryLabelColor)
     private static let fkArrowEmphasized = makeAccessoryImage("arrow.right.circle.fill", pointSize: 14, color: .alternateSelectedControlTextColor)
 
@@ -263,7 +264,7 @@ final class DataGridCellView: NSView {
             let y = (bounds.height - size.height) / 2
             return NSRect(x: x, y: y, width: size.width, height: size.height)
         case .dropdown, .boolean, .date, .json, .blob:
-            guard isEditableCell, !visualState.isDeleted else { return .zero }
+            guard isEditableCell else { return .zero }
             let size = NSSize(width: 12, height: 14)
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
             let y = (bounds.height - size.height) / 2
@@ -280,7 +281,13 @@ final class DataGridCellView: NSView {
         case .foreignKey:
             image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
         case .dropdown, .boolean, .date, .json, .blob:
-            image = onEmphasizedSelection ? Self.chevronEmphasized : Self.chevronNormal
+            if visualState.isDeleted {
+                image = Self.chevronDisabled
+            } else if onEmphasizedSelection {
+                image = Self.chevronEmphasized
+            } else {
+                image = Self.chevronNormal
+            }
         }
         image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0, respectFlipped: true, hints: nil)
     }
@@ -300,6 +307,10 @@ final class DataGridCellView: NSView {
                 accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
                 return
             case .dropdown, .boolean, .date, .json, .blob:
+                guard !visualState.isDeleted else {
+                    super.mouseDown(with: event)
+                    return
+                }
                 accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
                 return
             case .text:
