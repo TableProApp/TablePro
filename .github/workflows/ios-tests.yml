@@ -19,7 +19,6 @@ on:
 env:
   XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
   XCODE_SCHEME: TableProMobile
-  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5"
 
 jobs:
   test:
@@ -51,13 +50,30 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation
 
+      - name: Pick iOS simulator destination
+        id: sim
+        run: |
+          # Choose any installed iPhone simulator with the latest available iOS runtime.
+          # Falls back from preferred newer devices to older ones if the runner does not
+          # have iOS 26 simulators yet.
+          for name in "iPhone 17 Pro" "iPhone 16 Pro" "iPhone 16" "iPhone 15 Pro" "iPhone 15"; do
+            if xcrun simctl list devices available | grep -q "$name (";  then
+              echo "device=$name" >> "$GITHUB_OUTPUT"
+              echo "Picked device: $name"
+              exit 0
+            fi
+          done
+          echo "No suitable iPhone simulator found"
+          xcrun simctl list devices available | head -50
+          exit 1
+
       - name: Run unit tests
         run: |
           set -o pipefail
           xcodebuild test \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
-            -destination "$TEST_DESTINATION" \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }},OS=latest" \
             -only-testing:TableProMobileTests \
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult \
