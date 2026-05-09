@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal: iOS data browser business logic (page load, pagination, sort, filter, search, delete, foreign-key fetch, memory pressure) moves out of the View into `DataBrowserViewModel`. The View drops 30 of its 33 `@State` properties and a dozen private functions; behavior is unchanged
 - iOS: metadata badges (column types, primary key markers, row counts) cap at the first accessibility size so they stay readable without breaking layouts at the largest Dynamic Type sizes
 - iOS: SQL editor keyboard accessory uses the system keyboard input view, dropping the deprecated screen-width measurement
 - iOS: Edit Connection moves to the navigation bar trailing pencil icon so the floating tab bar never covers it

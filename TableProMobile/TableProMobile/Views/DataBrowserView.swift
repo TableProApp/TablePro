@@ -3,7 +3,6 @@
 //  TableProMobile
 //
 
-import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -13,102 +12,58 @@ struct DataBrowserView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     let table: TableInfo
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DataBrowserView")
-
     private var connection: DatabaseConnection { coordinator.connection }
     private var session: ConnectionSession? { coordinator.session }
 
     @State private var viewModel = DataBrowserViewModel()
-    @State private var columnDetails: [ColumnInfo] = []
-    @State private var isLoading = true
-    @State private var isPageLoading = false
-    @State private var appError: AppError?
-    @State private var pagination = PaginationState(pageSize: 100, currentPage: 0)
+    @State private var searchText = ""
     @State private var showInsertSheet = false
-    @State private var deleteTarget: [(column: String, value: String)]?
+    @State private var showFilterSheet = false
+    @State private var showShareSheet = false
     @State private var showDeleteConfirmation = false
-    @State private var operationError: AppError?
-    @State private var showOperationError = false
+    @State private var showStructure = false
     @State private var showGoToPage = false
     @State private var goToPageInput = ""
-    @State private var searchText = ""
-    @State private var activeSearchText = ""
-    @State private var searchTask: Task<Void, Never>?
-    @State private var filters: [TableFilter] = []
-    @State private var filterLogicMode: FilterLogicMode = .and
-    @State private var showFilterSheet = false
-    @State private var sortState = SortState()
-    @State private var rowListGeneration = 0
-    @State private var foreignKeys: [ForeignKeyInfo] = []
+    @State private var deleteTarget: [(column: String, value: String)]?
     @State private var fkPreviewItem: FKPreviewItem?
-    @State private var memoryWarningMessage: String?
-    @State private var showShareSheet = false
     @State private var shareText = ""
     @State private var hapticSuccess = false
     @State private var hapticError = false
-    @State private var showStructure = false
 
-    private var isView: Bool {
-        table.type == .view || table.type == .materializedView
-    }
-
-    private var hasPrimaryKeys: Bool {
-        columnDetails.contains(where: \.isPrimaryKey)
-    }
-
+    private var isView: Bool { table.type == .view || table.type == .materializedView }
+    private var isRedis: Bool { connection.type == .redis }
     private var columns: [ColumnInfo] { viewModel.columns }
     private var rows: [[String?]] { viewModel.legacyRows }
 
-    private var paginationLabel: String {
-        guard !rows.isEmpty else { return "" }
-        let start = pagination.currentOffset + 1
-        let end = pagination.currentOffset + rows.count
-        if let total = pagination.totalRows {
-            return "\(start)-\(end) of \(total)"
-        }
-        return "\(start)-\(end)"
-    }
-
-    private var hasActiveSearch: Bool {
-        !activeSearchText.isEmpty
-    }
-
-    private var isRedis: Bool {
-        connection.type == .redis
-    }
-
-    private var hasActiveFilters: Bool {
-        filters.contains { $0.isEnabled && $0.isValid }
-    }
-
     private var sortColumnBinding: Binding<String?> {
         Binding(
-            get: { sortState.columns.first?.name },
+            get: { viewModel.sortState.columns.first?.name },
             set: { newColumn in
                 if let column = newColumn {
-                    sortState.columns = [SortColumn(name: column, ascending: true)]
+                    viewModel.sortState.columns = [SortColumn(name: column, ascending: true)]
                 } else {
-                    sortState.clear()
+                    viewModel.sortState.clear()
                 }
-                applySort()
+                Task { await viewModel.applySort() }
             }
         )
     }
 
     private var sortDirectionBinding: Binding<Bool> {
         Binding(
-            get: { sortState.columns.first?.ascending ?? true },
+            get: { viewModel.sortState.columns.first?.ascending ?? true },
             set: { ascending in
-                if let current = sortState.columns.first {
-                    sortState.columns = [SortColumn(name: current.name, ascending: ascending)]
+                if let current = viewModel.sortState.columns.first {
+                    viewModel.sortState.columns = [SortColumn(name: current.name, ascending: ascending)]
                 }
-                applySort()
+                Task { await viewModel.applySort() }
             }
         )
     }
 
     var body: some View {
-        searchableContent
+        @Bindable var viewModel = viewModel
+        return searchableContent
             .userActivity("com.TablePro.viewTable") { activity in
                 activity.title = table.name
                 activity.isEligibleForHandoff = true
@@ -118,18 +73,21 @@ struct DataBrowserView: View {
                 ]
             }
             .toolbar { topToolbar }
-            .toolbar(rows.isEmpty && !hasActiveSearch && !hasActiveFilters ? .hidden : .visible, for: .bottomBar)
+            .toolbar(rows.isEmpty && !viewModel.hasActiveSearch && !viewModel.hasActiveFilters ? .hidden : .visible, for: .bottomBar)
             .toolbar { paginationToolbar }
-            .task { await loadData(isInitial: true) }
-            .onDisappear { searchTask?.cancel() }
+            .task {
+                viewModel.attach(session: session, table: table, databaseType: connection.type, host: connection.host)
+                await viewModel.load(isInitial: true)
+            }
+            .onDisappear { viewModel.cancel() }
             .sheet(isPresented: $showInsertSheet) { insertSheet }
             .sheet(isPresented: $showFilterSheet) {
                 FilterSheetView(
-                    filters: $filters,
-                    logicMode: $filterLogicMode,
+                    filters: $viewModel.filters,
+                    logicMode: $viewModel.filterLogicMode,
                     columns: columns,
-                    onApply: { applyFilters() },
-                    onClear: { clearFilters() }
+                    onApply: { Task { await viewModel.applyFilters() } },
+                    onClear: { Task { await viewModel.clearFilters() } }
                 )
             }
             .sheet(item: $fkPreviewItem) { item in
@@ -146,36 +104,39 @@ struct DataBrowserView: View {
             .confirmationDialog("Delete Row", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
                     if let pkValues = deleteTarget {
-                        Task { await deleteRow(withPKs: pkValues) }
+                        Task { await performDelete(pkValues) }
                     }
                 }
             } message: {
                 Text("Are you sure you want to delete this row? This action cannot be undone.")
             }
-            .alert(operationError?.title ?? "Error", isPresented: $showOperationError) {
+            .alert(
+                viewModel.operationError?.title ?? "Error",
+                isPresented: Binding(
+                    get: { viewModel.operationError != nil },
+                    set: { if !$0 { viewModel.operationError = nil } }
+                )
+            ) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(operationError?.message ?? "")
+                Text(viewModel.operationError?.message ?? "")
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-                guard !rows.isEmpty else { return }
-                Self.logger.warning("Memory warning received: shrinking window from \(rows.count) rows")
-                Task { await viewModel.handlePressure(.warning) }
-                memoryWarningMessage = String(localized: "Results trimmed due to memory pressure.")
+                Task { await viewModel.handleSystemMemoryWarning() }
             }
             .onChange(of: MemoryPressureMonitor.shared.currentLevel) { _, level in
                 Task { await viewModel.handlePressure(level) }
             }
             .overlay(alignment: .center) {
-                if let message = memoryWarningMessage, rows.isEmpty, !isLoading, appError == nil {
+                if let message = viewModel.memoryWarning, rows.isEmpty, !viewModel.isLoading, viewModel.loadError == nil {
                     ContentUnavailableView {
                         Label("Results Cleared", systemImage: "exclamationmark.triangle")
                     } description: {
                         Text(message)
                     } actions: {
                         Button("Reload") {
-                            memoryWarningMessage = nil
-                            Task { await loadData() }
+                            viewModel.dismissMemoryWarning()
+                            Task { await viewModel.load() }
                         }
                         .buttonStyle(.borderedProminent)
                     }
@@ -189,12 +150,16 @@ struct DataBrowserView: View {
             .alert("Go to Page", isPresented: $showGoToPage) {
                 TextField("Page number", text: $goToPageInput)
                     .keyboardType(.numberPad)
-                Button("Go") { goToPage() }
+                Button("Go") {
+                    if let page = Int(goToPageInput) {
+                        Task { await viewModel.goToPage(page) }
+                    }
+                }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                if let total = pagination.totalRows {
-                    let totalPages = (total + pagination.pageSize - 1) / pagination.pageSize
-                    Text("Enter a page number (1–\(totalPages))")
+                if let total = viewModel.pagination.totalRows {
+                    let totalPages = (total + viewModel.pagination.pageSize - 1) / viewModel.pagination.pageSize
+                    Text("Enter a page number (1-\(totalPages))")
                 } else {
                     Text("Enter a page number")
                 }
@@ -213,26 +178,26 @@ struct DataBrowserView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $searchText, prompt: "Search all columns")
                 .textInputAutocapitalization(.never)
-                .onSubmit(of: .search) { applySearch() }
+                .onSubmit(of: .search) {
+                    Task { await viewModel.applySearch(searchText) }
+                }
                 .onChange(of: searchText) { oldValue, newValue in
-                    if newValue.isEmpty, !oldValue.isEmpty, hasActiveSearch {
-                        clearSearch()
+                    if newValue.isEmpty, !oldValue.isEmpty, viewModel.hasActiveSearch {
+                        Task { await viewModel.clearSearch() }
                     }
                 }
         }
     }
 
-    // MARK: - Content
-
     @ViewBuilder
     private var content: some View {
-        if isLoading {
+        if viewModel.isLoading {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let appError {
-            ErrorView(error: appError) { await loadData() }
-        } else if rows.isEmpty, hasActiveSearch {
-            ContentUnavailableView.search(text: activeSearchText)
+        } else if let appError = viewModel.loadError {
+            ErrorView(error: appError) { await viewModel.load() }
+        } else if rows.isEmpty, viewModel.hasActiveSearch {
+            ContentUnavailableView.search(text: viewModel.activeSearchText)
         } else if rows.isEmpty {
             ContentUnavailableView {
                 Label("No Data", systemImage: "tray")
@@ -249,114 +214,103 @@ struct DataBrowserView: View {
         }
     }
 
-    private var activeFilterCount: Int {
-        filters.filter { $0.isEnabled && $0.isValid }.count
-    }
-
     private var rowList: some View {
-        // Capture a snapshot to avoid race with `viewModel.legacyRows` shrinking
-        // mid-render. Wrapping each row with its index lets ForEach diff by
-        // stable identity instead of iterating `rows.indices` (which holds
-        // stale offsets when the array changes during a SwiftUI update pass).
         let indexed = IndexedRow.wrap(rows)
         return List {
             ForEach(indexed) { item in
-                let index = item.id
-                let row = item.values
-                NavigationLink {
-                    RowDetailView(
-                        columns: columns,
-                        rows: viewModel.window.rows,
-                        initialIndex: index,
-                        table: table,
-                        session: session,
-                        columnDetails: columnDetails,
-                        databaseType: connection.type,
-                        safeModeLevel: connection.safeModeLevel,
-                        foreignKeys: foreignKeys,
-                        onSaved: { Task { await loadData() } },
-                        loadFullValue: { ref in
-                            guard let session else { return nil }
-                            return try await viewModel.loadFullValue(driver: session.driver, ref: ref)
-                        }
-                    )
-                } label: {
-                    RowCard(
-                        columns: columns,
-                        columnDetails: columnDetails,
-                        row: row
-                    )
-                }
-                .hoverEffect()
-                .contextMenu {
-                    Menu("Share Row") {
-                        ForEach(ExportFormat.allCases) { format in
-                            Button(format.rawValue) {
-                                shareText = ClipboardExporter.exportRow(
-                                    columns: columns, row: row,
-                                    format: format, tableName: table.name
-                                )
-                                showShareSheet = true
-                            }
-                        }
-                    }
-                    Menu("Copy Row") {
-                        ForEach(ExportFormat.allCases) { format in
-                            Button(format.rawValue) {
-                                let text = ClipboardExporter.exportRow(
-                                    columns: columns, row: row,
-                                    format: format, tableName: table.name
-                                )
-                                ClipboardExporter.copyToClipboard(text)
-                            }
-                        }
-                    }
-                    if !foreignKeys.isEmpty {
-                        let rowFKs = foreignKeys.filter { fk in
-                            guard let colIndex = columns.firstIndex(where: { $0.name == fk.column }),
-                                  colIndex < row.count,
-                                  row[colIndex] != nil else { return false }
-                            return true
-                        }
-                        if !rowFKs.isEmpty {
-                            Divider()
-                            ForEach(rowFKs, id: \.name) { fk in
-                                Button {
-                                    if let colIndex = columns.firstIndex(where: { $0.name == fk.column }),
-                                       colIndex < row.count,
-                                       let value = row[colIndex] {
-                                        fkPreviewItem = FKPreviewItem(fk: fk, value: value)
-                                    }
-                                } label: {
-                                    Label("\(fk.column) → \(fk.referencedTable)", systemImage: "arrow.right.circle")
-                                }
-                            }
-                        }
-                    }
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    if !isView && hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
-                        Button {
-                            deleteTarget = primaryKeyValues(for: row)
-                            showDeleteConfirmation = true
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .tint(.red)
-                    }
-                }
+                rowLink(index: item.id, row: item.values)
             }
         }
         .listStyle(.plain)
-        .id(rowListGeneration)
-        .opacity(isPageLoading ? 0.5 : 1)
-        .allowsHitTesting(!isPageLoading)
-        .overlay { if isPageLoading { ProgressView() } }
-        .animation(.default, value: isPageLoading)
-        .refreshable { await loadData() }
+        .id(viewModel.pagination.currentPage)
+        .opacity(viewModel.isPageLoading ? 0.5 : 1)
+        .allowsHitTesting(!viewModel.isPageLoading)
+        .overlay { if viewModel.isPageLoading { ProgressView() } }
+        .animation(.default, value: viewModel.isPageLoading)
+        .refreshable { await viewModel.load() }
     }
 
-    // MARK: - Toolbars
+    private func rowLink(index: Int, row: [String?]) -> some View {
+        NavigationLink {
+            RowDetailView(
+                columns: columns,
+                rows: viewModel.window.rows,
+                initialIndex: index,
+                table: table,
+                session: session,
+                columnDetails: viewModel.columnDetails,
+                databaseType: connection.type,
+                safeModeLevel: connection.safeModeLevel,
+                foreignKeys: viewModel.foreignKeys,
+                onSaved: { Task { await viewModel.load() } },
+                loadFullValue: { ref in
+                    guard let session else { return nil }
+                    return try await viewModel.loadFullValue(driver: session.driver, ref: ref)
+                }
+            )
+        } label: {
+            RowCard(columns: columns, columnDetails: viewModel.columnDetails, row: row)
+        }
+        .hoverEffect()
+        .contextMenu { rowContextMenu(row: row) }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if !isView && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
+                Button {
+                    deleteTarget = viewModel.primaryKeyValues(for: row)
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .tint(.red)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rowContextMenu(row: [String?]) -> some View {
+        Menu("Share Row") {
+            ForEach(ExportFormat.allCases) { format in
+                Button(format.rawValue) {
+                    shareText = ClipboardExporter.exportRow(
+                        columns: columns, row: row,
+                        format: format, tableName: table.name
+                    )
+                    showShareSheet = true
+                }
+            }
+        }
+        Menu("Copy Row") {
+            ForEach(ExportFormat.allCases) { format in
+                Button(format.rawValue) {
+                    let text = ClipboardExporter.exportRow(
+                        columns: columns, row: row,
+                        format: format, tableName: table.name
+                    )
+                    ClipboardExporter.copyToClipboard(text)
+                }
+            }
+        }
+        let rowFKs = viewModel.foreignKeys.filter { fk in
+            guard let colIndex = columns.firstIndex(where: { $0.name == fk.column }),
+                  colIndex < row.count,
+                  row[colIndex] != nil else { return false }
+            return true
+        }
+        if !rowFKs.isEmpty {
+            Divider()
+            ForEach(rowFKs, id: \.name) { fk in
+                Button {
+                    if let colIndex = columns.firstIndex(where: { $0.name == fk.column }),
+                       colIndex < row.count,
+                       let value = row[colIndex] {
+                        fkPreviewItem = FKPreviewItem(fk: fk, value: value)
+                    }
+                } label: {
+                    Label("\(fk.column) -> \(fk.referencedTable)", systemImage: "arrow.right.circle")
+                }
+            }
+        }
+    }
 
     @ToolbarContentBuilder
     private var topToolbar: some ToolbarContent {
@@ -370,7 +324,7 @@ struct DataBrowserView: View {
                 }
                 .pickerStyle(.inline)
 
-                if sortState.isSorting {
+                if viewModel.sortState.isSorting {
                     Picker("Order", selection: sortDirectionBinding) {
                         Label("Ascending", systemImage: "chevron.up").tag(true)
                         Label("Descending", systemImage: "chevron.down").tag(false)
@@ -378,7 +332,7 @@ struct DataBrowserView: View {
                     .pickerStyle(.inline)
                 }
             } label: {
-                Image(systemName: sortState.isSorting
+                Image(systemName: viewModel.sortState.isSorting
                     ? "arrow.up.arrow.down.circle.fill"
                     : "arrow.up.arrow.down.circle")
                     .accessibilityLabel(Text("Sort"))
@@ -387,12 +341,12 @@ struct DataBrowserView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { showFilterSheet = true } label: {
-                Image(systemName: hasActiveFilters
+                Image(systemName: viewModel.hasActiveFilters
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
                     .accessibilityLabel(Text("Filter"))
             }
-            .badge(activeFilterCount)
+            .badge(viewModel.activeFilterCount)
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
@@ -430,10 +384,10 @@ struct DataBrowserView: View {
     @ToolbarContentBuilder
     private var paginationToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .bottomBar) {
-            Button { Task { await goToPreviousPage() } } label: {
+            Button { Task { await viewModel.goToPreviousPage() } } label: {
                 Image(systemName: "chevron.left")
             }
-            .disabled(pagination.currentPage == 0 || isLoading)
+            .disabled(viewModel.pagination.currentPage == 0 || viewModel.isLoading)
 
             Spacer()
 
@@ -441,11 +395,11 @@ struct DataBrowserView: View {
                 Section("Rows per Page") {
                     ForEach([50, 100, 200, 500], id: \.self) { size in
                         Button {
-                            changePageSize(size)
+                            Task { await viewModel.changePageSize(size) }
                         } label: {
                             HStack {
                                 Text("\(size) rows")
-                                if pagination.pageSize == size {
+                                if viewModel.pagination.pageSize == size {
                                     Image(systemName: "checkmark")
                                 }
                             }
@@ -461,7 +415,7 @@ struct DataBrowserView: View {
                     }
                 }
             } label: {
-                Text(paginationLabel)
+                Text(viewModel.paginationLabel)
                     .font(.footnote)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
@@ -470,249 +424,29 @@ struct DataBrowserView: View {
 
             Spacer()
 
-            Button { Task { await goToNextPage() } } label: {
+            Button { Task { await viewModel.goToNextPage() } } label: {
                 Image(systemName: "chevron.right")
             }
-            .disabled(!pagination.hasNextPage || isLoading)
+            .disabled(!viewModel.pagination.hasNextPage || viewModel.isLoading)
         }
     }
 
     private var insertSheet: some View {
         InsertRowView(
             table: table,
-            columnDetails: columnDetails,
+            columnDetails: viewModel.columnDetails,
             session: session,
             databaseType: connection.type,
-            onInserted: { Task { await loadData() } }
+            onInserted: { Task { await viewModel.load() } }
         )
     }
 
-    // MARK: - Data Loading
-
-    private func loadData(isInitial: Bool = false) async {
-        guard let session else {
-            appError = AppError(
-                category: .config,
-                title: String(localized: "Not Connected"),
-                message: String(localized: "No active database session."),
-                recovery: String(localized: "Go back and reconnect to the database."),
-                underlying: nil
-            )
-            isLoading = false
-            return
-        }
-
-        if isInitial || rows.isEmpty { isLoading = true }
-        appError = nil
-
-        do {
-            let query: String
-            if hasActiveSearch {
-                let searchableColumns = columns.filter { col in
-                    let upper = col.typeName.uppercased()
-                    return !upper.contains("BLOB") && !upper.contains("BYTEA") && !upper.contains("BINARY")
-                        && !upper.contains("VARBINARY") && !upper.contains("IMAGE")
-                }
-                query = SQLBuilder.buildSearchSelect(
-                    table: table.name, type: connection.type,
-                    searchText: activeSearchText, searchColumns: searchableColumns,
-                    filters: filters, logicMode: filterLogicMode,
-                    sortState: sortState,
-                    limit: pagination.pageSize, offset: pagination.currentOffset
-                )
-            } else if hasActiveFilters {
-                query = SQLBuilder.buildFilteredSelect(
-                    table: table.name, type: connection.type,
-                    filters: filters, logicMode: filterLogicMode,
-                    sortState: sortState,
-                    limit: pagination.pageSize, offset: pagination.currentOffset
-                )
-            } else if sortState.isSorting {
-                query = SQLBuilder.buildSelect(
-                    table: table.name, type: connection.type,
-                    sortState: sortState,
-                    limit: pagination.pageSize, offset: pagination.currentOffset
-                )
-            } else {
-                query = SQLBuilder.buildSelect(
-                    table: table.name, type: connection.type,
-                    limit: pagination.pageSize, offset: pagination.currentOffset
-                )
-            }
-            if columnDetails.isEmpty || isInitial {
-                columnDetails = try await session.driver.fetchColumns(table: table.name, schema: nil)
-            }
-            let pkColumns = columnDetails.filter(\.isPrimaryKey).map(\.name)
-            let lazyContext = pkColumns.isEmpty ? nil : LazyContext(table: table.name, primaryKeyColumns: pkColumns)
-
-            await viewModel.loadPage(
-                driver: session.driver,
-                query: query,
-                lazyContext: lazyContext,
-                pageSize: pagination.pageSize
-            )
-
-            if case .error(let err) = viewModel.phase {
-                appError = err
-                isLoading = false
-                return
-            }
-
-            if rows.count < pagination.pageSize, pagination.totalRows == nil {
-                pagination.totalRows = pagination.currentOffset + rows.count
-            }
-            if foreignKeys.isEmpty || isInitial {
-                do {
-                    foreignKeys = try await session.driver.fetchForeignKeys(table: table.name, schema: nil)
-                } catch {
-                    Self.logger.warning("Failed to fetch foreign keys: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-            if pagination.totalRows == nil {
-                await fetchTotalRows(session: session)
-            }
-            isLoading = false
-        } catch {
-            appError = ErrorClassifier.classify(
-                error,
-                context: ErrorContext(operation: "loadData", databaseType: connection.type, host: connection.host)
-            )
-            isLoading = false
-        }
-    }
-
-    private func fetchTotalRows(session: ConnectionSession) async {
-        do {
-            let countQuery: String
-            if hasActiveSearch {
-                let searchableColumns = columns.filter { col in
-                    let upper = col.typeName.uppercased()
-                    return !upper.contains("BLOB") && !upper.contains("BYTEA") && !upper.contains("BINARY")
-                        && !upper.contains("VARBINARY") && !upper.contains("IMAGE")
-                }
-                countQuery = SQLBuilder.buildSearchCount(
-                    table: table.name, type: connection.type,
-                    searchText: activeSearchText, searchColumns: searchableColumns,
-                    filters: filters, logicMode: filterLogicMode
-                )
-            } else if hasActiveFilters {
-                countQuery = SQLBuilder.buildFilteredCount(
-                    table: table.name, type: connection.type,
-                    filters: filters, logicMode: filterLogicMode
-                )
-            } else {
-                countQuery = SQLBuilder.buildCount(table: table.name, type: connection.type)
-            }
-            let countResult = try await session.driver.execute(query: countQuery)
-            if let firstRow = countResult.rows.first, let firstCol = firstRow.first {
-                pagination.totalRows = Int(firstCol ?? "0")
-            }
-        } catch {
-            Self.logger.warning("Failed to fetch row count: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    private func changePageSize(_ newSize: Int) {
-        pagination.pageSize = newSize
-        pagination.currentPage = 0
-        pagination.totalRows = nil
-        Task { await navigatePage() }
-    }
-
-    private func goToPage() {
-        guard let page = Int(goToPageInput), page >= 1 else { return }
-        if let total = pagination.totalRows {
-            let maxPage = max(1, (total + pagination.pageSize - 1) / pagination.pageSize)
-            pagination.currentPage = min(page - 1, maxPage - 1)
-        } else {
-            pagination.currentPage = page - 1
-        }
-        Task { await navigatePage() }
-    }
-
-    private func goToNextPage() async {
-        guard pagination.hasNextPage else { return }
-        pagination.currentPage += 1
-        await navigatePage()
-    }
-
-    private func goToPreviousPage() async {
-        guard pagination.currentPage > 0 else { return }
-        pagination.currentPage -= 1
-        await navigatePage()
-    }
-
-    private func navigatePage() async {
-        isPageLoading = true
-        await loadData()
-        rowListGeneration += 1
-        isPageLoading = false
-    }
-
-    // MARK: - Row Operations
-
-    private func deleteRow(withPKs pkValues: [(column: String, value: String)]) async {
-        guard let session, !pkValues.isEmpty else { return }
-        do {
-            _ = try await session.driver.execute(
-                query: SQLBuilder.buildDelete(table: table.name, type: connection.type, primaryKeys: pkValues)
-            )
-            await loadData()
+    private func performDelete(_ pkValues: [(column: String, value: String)]) async {
+        let success = await viewModel.deleteRow(pkValues: pkValues)
+        if success {
             hapticSuccess.toggle()
-        } catch {
-            operationError = ErrorClassifier.classify(
-                error,
-                context: ErrorContext(operation: "deleteRow", databaseType: connection.type, host: connection.host)
-            )
-            showOperationError = true
+        } else {
             hapticError.toggle()
         }
-    }
-
-    private func primaryKeyValues(for row: [String?]) -> [(column: String, value: String)] {
-        columnDetails.compactMap { col in
-            guard col.isPrimaryKey,
-                  let colIndex = columns.firstIndex(where: { $0.name == col.name }),
-                  colIndex < row.count,
-                  let value = row[colIndex] else { return nil }
-            return (column: col.name, value: value)
-        }
-    }
-
-    private func applySort() {
-        pagination.currentPage = 0
-        pagination.totalRows = nil
-        Task { await loadData() }
-    }
-
-    private func applySearch() {
-        activeSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard hasActiveSearch, !columns.isEmpty else { return }
-        pagination.currentPage = 0
-        pagination.totalRows = nil
-        searchTask?.cancel()
-        searchTask = Task { await loadData() }
-    }
-
-    private func clearSearch() {
-        searchText = ""
-        activeSearchText = ""
-        pagination.currentPage = 0
-        pagination.totalRows = nil
-        searchTask?.cancel()
-        searchTask = Task { await loadData() }
-    }
-
-    private func applyFilters() {
-        pagination.currentPage = 0
-        pagination.totalRows = nil
-        Task { await loadData() }
-    }
-
-    private func clearFilters() {
-        filters.removeAll()
-        pagination.currentPage = 0
-        pagination.totalRows = nil
-        Task { await loadData() }
     }
 }
