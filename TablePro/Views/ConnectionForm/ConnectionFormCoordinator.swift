@@ -169,7 +169,7 @@ final class ConnectionFormCoordinator {
               let connection = storage.loadConnections().first(where: { $0.id == id }) else { return }
         storage.deleteConnection(connection)
         dismissAction?()
-        AppEvents.shared.connectionUpdated.send(())
+        services.appEvents.connectionUpdated.send(())
     }
 
     // MARK: - Type change
@@ -317,7 +317,7 @@ final class ConnectionFormCoordinator {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
-            AppEvents.shared.connectionUpdated.send(())
+            services.appEvents.connectionUpdated.send(())
             if connect {
                 connectToDatabase(connectionToSave)
             }
@@ -335,7 +335,7 @@ final class ConnectionFormCoordinator {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
-            AppEvents.shared.connectionUpdated.send(())
+            services.appEvents.connectionUpdated.send(())
         }
     }
 

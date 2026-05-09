@@ -160,7 +160,7 @@ final class WelcomeViewModel {
             }
         }
 
-        connectionUpdatedCancellable = AppEvents.shared.connectionUpdated
+        connectionUpdatedCancellable = services.appEvents.connectionUpdated
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.loadConnections()
@@ -185,7 +185,7 @@ final class WelcomeViewModel {
                 self?.activeSheet = .importFromApp
             }
 
-        linkedFoldersCancellable = AppEvents.shared.linkedFoldersDidUpdate
+        linkedFoldersCancellable = services.appEvents.linkedFoldersDidUpdate
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.linkedConnections = LinkedFolderWatcher.shared.linkedConnections

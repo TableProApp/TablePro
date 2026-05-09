@@ -393,7 +393,7 @@ final class MainContentCoordinator {
 
         _ = Self.registerTerminationObserver
 
-        externalFileModCancellable = AppEvents.shared.linkedSQLFoldersDidUpdate
+        externalFileModCancellable = services.appEvents.linkedSQLFoldersDidUpdate
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.checkOpenTabsForExternalModification()
@@ -431,7 +431,7 @@ final class MainContentCoordinator {
         startFileWatcherIfNeeded()
         // Retry when driver becomes available (connection may still be in progress)
         if changeManager.pluginDriver == nil {
-            pluginDriverCancellable = AppEvents.shared.databaseDidConnect
+            pluginDriverCancellable = services.appEvents.databaseDidConnect
                 .receive(on: RunLoop.main)
                 .sink { [weak self] payload in
                     guard let self, payload.connectionId == self.connection.id else { return }
