@@ -55,6 +55,12 @@ jobs:
           # SDK is older than the project's compile SDK.
           sudo xcodebuild -downloadPlatform iOS
 
+      - name: Stub Secrets.xcconfig
+        run: |
+          # The real xcconfig is gitignored. Tests do not need analytics secrets;
+          # an empty stub keeps the project's xcconfig reference resolvable.
+          cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
+
       - name: Download static libraries
         env:
           GH_TOKEN: ${{ github.token }}
