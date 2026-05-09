@@ -12,14 +12,13 @@ final class DataGridCellView: NSView {
     weak var accessoryDelegate: DataGridCellAccessoryDelegate?
     var nullDisplayString: String = ""
 
-    var kind: DataGridCellKind = .text
+    private(set) var kind: DataGridCellKind = .text
     private(set) var cellRow: Int = -1
     private(set) var cellColumnIndex: Int = -1
 
     private var displayText: String = ""
     private var rawValue: String?
     private var placeholder: DataGridCellPlaceholder?
-    private var accessibilityText: String = ""
     private var isLargeDataset: Bool = false
     private var isEditableCell: Bool = false
 
@@ -32,10 +31,6 @@ final class DataGridCellView: NSView {
     private var onEmphasizedSelection: Bool = false
 
     private var attributedCache: NSAttributedString?
-    private var attrCacheText: String?
-    private var attrCacheFont: NSFont?
-    private var attrCacheColor: NSColor?
-    private var attrCacheItalic: Bool = false
 
     private var accessoryHitRect: NSRect = .zero
 
@@ -105,7 +100,6 @@ final class DataGridCellView: NSView {
         let nextDisplayText: String
         let nextFont: NSFont
         let nextColor: NSColor
-        let nextItalic: Bool
         let deletedTextColor = state.visualState.isDeleted ? palette.deletedRowText : nil
 
         switch content.placeholder {
@@ -113,39 +107,31 @@ final class DataGridCellView: NSView {
             nextDisplayText = content.displayText
             nextFont = palette.regularFont
             nextColor = deletedTextColor ?? .labelColor
-            nextItalic = false
         case .null:
             nextDisplayText = state.isLargeDataset ? "" : nullDisplayString
             nextFont = palette.italicFont
             nextColor = deletedTextColor ?? .secondaryLabelColor
-            nextItalic = true
         case .empty:
             nextDisplayText = state.isLargeDataset ? "" : String(localized: "Empty")
             nextFont = palette.italicFont
             nextColor = deletedTextColor ?? .secondaryLabelColor
-            nextItalic = true
         case .defaultMarker:
             nextDisplayText = state.isLargeDataset ? "" : String(localized: "DEFAULT")
             nextFont = palette.mediumFont
             nextColor = deletedTextColor ?? .systemBlue
-            nextItalic = false
         }
 
-        let textChanged = displayText != nextDisplayText
+        if displayText != nextDisplayText
             || textFont != nextFont
-            || textColor != nextColor
-            || attrCacheItalic != nextItalic
-        if textChanged {
+            || textColor != nextColor {
             displayText = nextDisplayText
             textFont = nextFont
             textColor = nextColor
-            attrCacheItalic = nextItalic
             attributedCache = nil
         }
 
         rawValue = content.rawValue
         placeholder = content.placeholder
-        accessibilityText = content.accessibilityLabel
         isLargeDataset = state.isLargeDataset
         isEditableCell = state.isEditable
 
@@ -174,9 +160,6 @@ final class DataGridCellView: NSView {
         needsDisplay = true
     }
 
-    var currentRawValue: String? { rawValue }
-    var currentPlaceholder: DataGridCellPlaceholder? { placeholder }
-
     private func currentEmphasizedSelection() -> Bool {
         var view: NSView? = superview
         while let candidate = view {
@@ -193,6 +176,7 @@ final class DataGridCellView: NSView {
         let nextEmphasized = currentEmphasizedSelection()
         guard nextEmphasized != onEmphasizedSelection else { return }
         onEmphasizedSelection = nextEmphasized
+        attributedCache = nil
         updateFocusPresentation()
     }
 
@@ -250,26 +234,21 @@ final class DataGridCellView: NSView {
     }
 
     private func cachedAttributedString() -> NSAttributedString {
-        let resolvedColor = resolvedTextColor()
-        if let cached = attributedCache,
-           attrCacheText == displayText,
-           attrCacheFont === textFont,
-           attrCacheColor == resolvedColor {
-            return cached
+        if let cached = attributedCache { return cached }
+        let textNS = displayText as NSString
+        let truncated: String
+        if textNS.length > 300 {
+            truncated = textNS.substring(to: 300) + "\u{2026}"
+        } else {
+            truncated = displayText
         }
-        let truncated = displayText.count > 300
-            ? String(displayText.prefix(300)) + "\u{2026}"
-            : displayText
         let attrs: [NSAttributedString.Key: Any] = [
             .font: textFont,
-            .foregroundColor: resolvedColor,
+            .foregroundColor: resolvedTextColor(),
             .paragraphStyle: Self.placeholderParagraph
         ]
         let str = NSAttributedString(string: truncated, attributes: attrs)
         attributedCache = str
-        attrCacheText = displayText
-        attrCacheFont = textFont
-        attrCacheColor = resolvedColor
         return str
     }
 

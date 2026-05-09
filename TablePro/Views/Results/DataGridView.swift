@@ -69,7 +69,6 @@ struct DataGridView: NSViewRepresentable {
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
         tableView.target = context.coordinator
-        tableView.action = #selector(TableViewCoordinator.handleClick(_:))
         tableView.doubleAction = #selector(TableViewCoordinator.handleDoubleClick(_:))
 
         let rowNumberColumn = Self.makeRowNumberColumn()
@@ -362,7 +361,7 @@ struct DataGridView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
-        coordinator.overlayEditor?.dismiss(commit: false)
+        coordinator.overlayEditor?.dismiss(commit: true)
         coordinator.persistColumnLayoutToStorage()
         coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil

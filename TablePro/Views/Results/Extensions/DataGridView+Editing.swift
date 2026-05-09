@@ -54,8 +54,6 @@ extension TableViewCoordinator {
     }
 
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
-        // AppKit only invokes this delegate when the cell view is an NSTableCellView with an
-        // editable NSTextField. Custom NSView cells go through `beginCellEdit` instead.
         false
     }
 

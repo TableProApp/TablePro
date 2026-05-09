@@ -2,13 +2,6 @@
 //  CellOverlayEditor.swift
 //  TablePro
 //
-//  In-place cell editor: an NSScrollView containing a multi-line NSTextView,
-//  added as a subview of the table view. The editor lives inside the same
-//  window as the data grid, so the window stays key during edit and accent-
-//  colored controls (toolbar, buttons) keep their saturation. This is the
-//  documented Apple pattern for in-content editors used by Numbers, Pages,
-//  and Finder rename-in-place.
-//
 
 import AppKit
 
@@ -20,6 +13,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
     private var scrollObserver: NSObjectProtocol?
     private var columnResizeObserver: NSObjectProtocol?
     private var appResignObserver: NSObjectProtocol?
+    private var windowResignKeyObserver: NSObjectProtocol?
     private var outsideClickMonitor: Any?
 
     private(set) var row: Int = -1
@@ -171,6 +165,18 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
             }
         }
 
+        if let editorWindow = tableView.window {
+            windowResignKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: editorWindow,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.dismiss(commit: true)
+                }
+            }
+        }
+
         outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self else { return event }
             Task { @MainActor [weak self] in
@@ -192,6 +198,10 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         if let observer = appResignObserver {
             NotificationCenter.default.removeObserver(observer)
             appResignObserver = nil
+        }
+        if let observer = windowResignKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+            windowResignKeyObserver = nil
         }
         if let monitor = outsideClickMonitor {
             NSEvent.removeMonitor(monitor)

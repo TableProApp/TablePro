@@ -9,16 +9,6 @@ import SwiftUI
 extension TableViewCoordinator {
     // MARK: - Click Handlers
 
-    @objc func handleClick(_ sender: NSTableView) {
-        guard isEditable else { return }
-
-        let row = sender.clickedRow
-        let column = sender.clickedColumn
-        guard row >= 0, column > 0 else { return }
-        guard DataGridView.dataColumnIndex(for: column, in: sender, schema: identitySchema) != nil else { return }
-        guard !changeManager.isRowDeleted(row) else { return }
-    }
-
     @objc func handleDoubleClick(_ sender: NSTableView) {
         guard isEditable else { return }
 

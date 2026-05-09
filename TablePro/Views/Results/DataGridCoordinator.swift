@@ -464,11 +464,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func commitActiveCellEdit() {
+        overlayEditor?.dismiss(commit: true)
         guard let tableView, let window = tableView.window else { return }
-        if tableView.editedRow >= 0 {
-            window.makeFirstResponder(tableView)
-            return
-        }
         if let firstResponder = window.firstResponder as? NSView,
            firstResponder.isDescendant(of: tableView) {
             window.makeFirstResponder(tableView)
