@@ -189,7 +189,8 @@ final class WelcomeViewModel {
         linkedFoldersCancellable = services.appEvents.linkedFoldersDidUpdate
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.linkedConnections = services.linkedFolderWatcher.linkedConnections
+                guard let self else { return }
+                self.linkedConnections = self.services.linkedFolderWatcher.linkedConnections
             }
 
         loadConnections()
