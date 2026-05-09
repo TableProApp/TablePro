@@ -34,10 +34,19 @@ final class LicenseStorage {
         switch KeychainHelper.shared.readStringResult(forKey: Keys.keychainLicenseKey) {
         case .found(let value):
             return value
-        case .locked:
-            Self.logger.warning("License key unavailable — Keychain locked")
-            return nil
         case .notFound:
+            return nil
+        case .locked:
+            Self.logger.warning("License key unavailable: Keychain locked")
+            return nil
+        case .userCancelled:
+            Self.logger.notice("License key prompt cancelled")
+            return nil
+        case .authFailed:
+            Self.logger.warning("License key auth failed")
+            return nil
+        case .error(let status):
+            Self.logger.error("License key read error \(status)")
             return nil
         }
     }

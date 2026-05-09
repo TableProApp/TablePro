@@ -145,15 +145,23 @@ final class SSHProfileStorage {
     }
 
     private func resolveString(label: String, profileId: UUID, forKey key: String) -> String? {
+        let pid = profileId.uuidString
         switch KeychainHelper.shared.readStringResult(forKey: key) {
         case .found(let value):
             return value
-        case .locked:
-            Self.logger.warning(
-                "\(label, privacy: .public) unavailable — Keychain locked (profileId=\(profileId.uuidString, privacy: .public))"
-            )
-            return nil
         case .notFound:
+            return nil
+        case .locked:
+            Self.logger.warning("\(label, privacy: .public) unavailable: Keychain locked (profileId=\(pid, privacy: .public))")
+            return nil
+        case .userCancelled:
+            Self.logger.notice("\(label, privacy: .public) prompt cancelled (profileId=\(pid, privacy: .public))")
+            return nil
+        case .authFailed:
+            Self.logger.warning("\(label, privacy: .public) auth failed (profileId=\(pid, privacy: .public))")
+            return nil
+        case .error(let status):
+            Self.logger.error("\(label, privacy: .public) read error \(status) (profileId=\(pid, privacy: .public))")
             return nil
         }
     }

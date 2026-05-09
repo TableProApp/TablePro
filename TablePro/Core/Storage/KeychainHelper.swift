@@ -11,12 +11,18 @@ enum KeychainResult: Sendable, Equatable {
     case found(Data)
     case notFound
     case locked
+    case userCancelled
+    case authFailed
+    case error(OSStatus)
 }
 
 enum KeychainStringResult: Sendable, Equatable {
     case found(String)
     case notFound
     case locked
+    case userCancelled
+    case authFailed
+    case error(OSStatus)
 }
 
 final class KeychainHelper: Sendable {
@@ -101,9 +107,15 @@ final class KeychainHelper: Sendable {
         case errSecInteractionNotAllowed:
             Self.logger.warning("Keychain locked (before first unlock) for '\(key, privacy: .public)'")
             return .locked
+        case errSecUserCanceled:
+            Self.logger.notice("Keychain prompt cancelled for '\(key, privacy: .public)'")
+            return .userCancelled
+        case errSecAuthFailed:
+            Self.logger.warning("Keychain auth failed for '\(key, privacy: .public)'")
+            return .authFailed
         default:
             log(status: status, operation: "read", key: key)
-            return .notFound
+            return .error(status)
         }
     }
 
@@ -140,13 +152,14 @@ final class KeychainHelper: Sendable {
         case .found(let data):
             guard let value = String(data: data, encoding: .utf8) else {
                 Self.logger.error("UTF-8 decode failed for '\(key, privacy: .public)'")
-                return .notFound
+                return .error(errSecDecode)
             }
             return .found(value)
-        case .notFound:
-            return .notFound
-        case .locked:
-            return .locked
+        case .notFound: return .notFound
+        case .locked: return .locked
+        case .userCancelled: return .userCancelled
+        case .authFailed: return .authFailed
+        case .error(let status): return .error(status)
         }
     }
 
