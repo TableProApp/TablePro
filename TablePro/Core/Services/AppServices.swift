@@ -27,6 +27,10 @@ struct AppServices {
     let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
     let linkedFolderWatcher: LinkedFolderWatcher
+    let queryHistoryManager: QueryHistoryManager
+    let dateFormattingService: DateFormattingService
+    let copilotService: CopilotService
+    let mcpServerManager: MCPServerManager
     let syncTracker: SyncChangeTracker
     let themeEngine: ThemeEngine
     let feedbackAPIClient: FeedbackAPIClient
@@ -52,6 +56,10 @@ struct AppServices {
         syncMetadataStorage: .shared,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
+        queryHistoryManager: .shared,
+        dateFormattingService: .shared,
+        copilotService: .shared,
+        mcpServerManager: .shared,
         syncTracker: .shared,
         themeEngine: .shared,
         feedbackAPIClient: .shared
