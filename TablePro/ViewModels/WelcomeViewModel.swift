@@ -391,7 +391,11 @@ final class WelcomeViewModel {
         for i in connections.indices where ids.contains(connections[i].id) {
             connections[i].groupId = groupId
         }
-        storage.saveConnections(connections)
+        guard storage.saveConnections(connections) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         rebuildTree()
     }
 
@@ -400,7 +404,11 @@ final class WelcomeViewModel {
         for i in connections.indices where ids.contains(connections[i].id) {
             connections[i].groupId = nil
         }
-        storage.saveConnections(connections)
+        guard storage.saveConnections(connections) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         rebuildTree()
     }
 
@@ -526,7 +534,11 @@ final class WelcomeViewModel {
             }
         }
 
-        storage.saveConnections(connections)
+        guard storage.saveConnections(connections) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         if !dirtyIds.isEmpty {
             services.syncTracker.markDirty(.connection, ids: dirtyIds)
         }
@@ -561,7 +573,11 @@ final class WelcomeViewModel {
             order += 1
         }
 
-        storage.saveConnections(connections)
+        guard storage.saveConnections(connections) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         if !dirtyIds.isEmpty {
             services.syncTracker.markDirty(.connection, ids: dirtyIds)
         }

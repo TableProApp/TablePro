@@ -309,7 +309,10 @@ final class ConnectionFormCoordinator {
         var savedConnections = storage.loadConnections()
         if isNew {
             savedConnections.append(connectionToSave)
-            storage.saveConnections(savedConnections)
+            guard storage.saveConnections(savedConnections) else {
+                saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+                return
+            }
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -324,7 +327,10 @@ final class ConnectionFormCoordinator {
                 return
             }
             savedConnections[index] = connectionToSave
-            storage.saveConnections(savedConnections)
+            guard storage.saveConnections(savedConnections) else {
+                saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+                return
+            }
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }

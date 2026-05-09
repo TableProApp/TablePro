@@ -103,16 +103,24 @@ final class ConnectionStorage {
         }
     }
 
-    /// Save all connections
-    func saveConnections(_ connections: [DatabaseConnection]) {
+    /// Save all connections. Returns `true` if persisted, `false` if encoding or
+    /// the atomic write failed. Callers that mutate dependent state (sync tracker,
+    /// keychain entries) MUST check the return value and abort on `false`.
+    /// Continuing on a failed save can nuke a user's password while leaving the
+    /// connection record on disk, then have the next sync delete the record from
+    /// iCloud too.
+    @discardableResult
+    func saveConnections(_ connections: [DatabaseConnection]) -> Bool {
         let storedConnections = connections.map { StoredConnection(from: $0) }
 
         do {
             let data = try encoder.encode(storedConnections)
             try data.write(to: fileURL, options: .atomic)
             cachedConnections = nil
+            return true
         } catch {
             Self.logger.error("Failed to save connections: \(error)")
+            return false
         }
     }
 
@@ -125,7 +133,10 @@ final class ConnectionStorage {
     func addConnection(_ connection: DatabaseConnection, password: String? = nil) {
         var connections = loadConnections()
         connections.append(connection)
-        saveConnections(connections)
+        guard saveConnections(connections) else {
+            Self.logger.error("Aborted addConnection: persistence failed for \(connection.id, privacy: .public)")
+            return
+        }
         if !connection.localOnly && !connection.isSample {
             syncTracker.markDirty(.connection, id: connection.id.uuidString)
         }
@@ -140,7 +151,10 @@ final class ConnectionStorage {
         var connections = loadConnections()
         if let index = connections.firstIndex(where: { $0.id == connection.id }) {
             connections[index] = connection
-            saveConnections(connections)
+            guard saveConnections(connections) else {
+                Self.logger.error("Aborted updateConnection: persistence failed for \(connection.id, privacy: .public)")
+                return
+            }
             if !connection.localOnly && !connection.isSample {
                 syncTracker.markDirty(.connection, id: connection.id.uuidString)
             }
@@ -159,7 +173,10 @@ final class ConnectionStorage {
     func deleteConnection(_ connection: DatabaseConnection) {
         var connections = loadConnections()
         connections.removeAll { $0.id == connection.id }
-        saveConnections(connections)
+        guard saveConnections(connections) else {
+            Self.logger.error("Aborted deleteConnection: persistence failed for \(connection.id, privacy: .public)")
+            return
+        }
         if !connection.localOnly && !connection.isSample {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
         }
@@ -181,7 +198,10 @@ final class ConnectionStorage {
         let idsToDelete = Set(connectionsToDelete.map(\.id))
         var all = loadConnections()
         all.removeAll { idsToDelete.contains($0.id) }
-        saveConnections(all)
+        guard saveConnections(all) else {
+            Self.logger.error("Aborted deleteConnections: persistence failed for \(idsToDelete.count, privacy: .public) connection(s)")
+            return
+        }
         for conn in connectionsToDelete where !conn.localOnly && !conn.isSample {
             syncTracker.markDeleted(.connection, id: conn.id.uuidString)
         }
@@ -233,7 +253,10 @@ final class ConnectionStorage {
         // Save the duplicate connection
         var connections = loadConnections()
         connections.append(duplicate)
-        saveConnections(connections)
+        guard saveConnections(connections) else {
+            Self.logger.error("Aborted duplicateConnection: persistence failed for \(duplicate.id, privacy: .public)")
+            return duplicate
+        }
         if !duplicate.localOnly {
             syncTracker.markDirty(.connection, id: duplicate.id.uuidString)
         }
@@ -403,7 +426,9 @@ final class ConnectionStorage {
         }
 
         if changed {
-            saveConnections(connections)
+            if !saveConnections(connections) {
+                Self.logger.error("Failed to persist plugin secure field migration; will retry on next launch")
+            }
         }
     }
 }

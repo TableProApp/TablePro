@@ -446,7 +446,9 @@ final class SyncCoordinator {
         if !connectionIdsToDelete.isEmpty {
             var connections = ConnectionStorage.shared.loadConnections()
             connections.removeAll { connectionIdsToDelete.contains($0.id) }
-            ConnectionStorage.shared.saveConnections(connections)
+            if !ConnectionStorage.shared.saveConnections(connections) {
+                Self.logger.error("Failed to apply remote connection deletions: persistence error")
+            }
         }
         if !groupIdsToDelete.isEmpty {
             var groups = GroupStorage.shared.loadGroups()
@@ -504,7 +506,10 @@ final class SyncCoordinator {
         } else {
             connections.append(remoteConnection)
         }
-        ConnectionStorage.shared.saveConnections(connections)
+        guard ConnectionStorage.shared.saveConnections(connections) else {
+            Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
+            return false
+        }
         return true
     }
 
