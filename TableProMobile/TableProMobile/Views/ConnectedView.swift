@@ -18,6 +18,7 @@ struct ConnectedView: View {
     @State private var coordinator: ConnectionCoordinator?
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @State private var showDeletedAlert = false
 
     var body: some View {
         Group {
@@ -38,6 +39,16 @@ struct ConnectedView: View {
         }
         .navigationTitle(connection.name.isEmpty ? connection.host : connection.name)
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: appState.connections) { _, newConnections in
+            if !newConnections.contains(where: { $0.id == connection.id }) {
+                showDeletedAlert = true
+            }
+        }
+        .alert(String(localized: "Connection Deleted"), isPresented: $showDeletedAlert) {
+            Button("OK", role: .cancel) { dismiss() }
+        } message: {
+            Text("This connection no longer exists. It may have been removed from another device.")
+        }
         .task {
             if let cached = cachedCoordinator {
                 coordinator = cached
@@ -88,7 +99,7 @@ struct ConnectedView: View {
 
     private func connectedContent(_ coordinator: ConnectionCoordinator) -> some View {
         @Bindable var coordinator = coordinator
-        return NavigationStack(path: $coordinator.navigationPath) {
+        return NavigationStack(path: $coordinator.tablesPath) {
             TabView(selection: $coordinator.selectedTab) {
                 Tab("Tables", systemImage: "tablecells", value: .tables) {
                     TableListView()

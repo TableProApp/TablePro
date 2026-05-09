@@ -51,8 +51,6 @@ struct ConnectionInfoView: View {
 
             statsSection
         }
-        .navigationTitle("Info")
-        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: Binding(
             get: { coordinator.showingEditSheet },
             set: { coordinator.showingEditSheet = $0 }

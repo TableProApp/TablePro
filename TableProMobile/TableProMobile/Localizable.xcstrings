@@ -832,6 +832,9 @@
         }
       }
     },
+    "Connection Deleted" : {
+
+    },
     "Connection Failed" : {
       "localizations" : {
         "vi" : {
@@ -3825,6 +3828,9 @@
           }
         }
       }
+    },
+    "This connection no longer exists. It may have been removed from another device." : {
+
     },
     "This database has no tables." : {
       "localizations" : {

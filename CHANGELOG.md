@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- iOS: alert when the active connection is deleted mid-session (for example via iCloud sync from another device), so a stale screen no longer fails silently on the next action
 - iOS: Face ID, Touch ID, or Optic ID lock with cold-launch protection and idle timeout (1, 5, 15, or 60 minutes), opt-in from Settings
 - iOS: Connection Info tab replaces the per-connection Settings tab, showing host, SSL, SSH tunnel, active database, and live connection status
 - MCP Setup sheet adds Zed alongside Claude Desktop, Claude Code, and Cursor with a one-paste `context_servers` snippet
