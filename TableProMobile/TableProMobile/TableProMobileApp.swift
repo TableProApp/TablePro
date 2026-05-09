@@ -1,4 +1,6 @@
+import BackgroundTasks
 import CoreSpotlight
+import os
 import SwiftUI
 import TableProAnalytics
 import TableProDatabase
@@ -6,6 +8,9 @@ import TableProModels
 
 @main
 struct TableProMobileApp: App {
+    static let backgroundSyncIdentifier = "com.TablePro.sync"
+    private static let backgroundLogger = Logger(subsystem: "com.TablePro", category: "BackgroundSync")
+
     @State private var appState = AppState()
     @State private var lockState = AppLockState()
     @State private var syncTask: Task<Void, Never>?
@@ -88,9 +93,37 @@ struct TableProMobileApp: App {
                 heartbeatTask = nil
                 heartbeatService = nil
                 Task { await appState.connectionManager.disconnectAll() }
+                scheduleBackgroundSync()
             default:
                 break
             }
         }
+        .backgroundTask(.appRefresh(Self.backgroundSyncIdentifier)) {
+            await runBackgroundSync()
+        }
+    }
+
+    private func scheduleBackgroundSync() {
+        guard AppPreferences.isCloudSyncEnabled else { return }
+        let request = BGAppRefreshTaskRequest(identifier: Self.backgroundSyncIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            Self.backgroundLogger.warning("Failed to schedule background sync: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    @Sendable
+    private func runBackgroundSync() async {
+        scheduleBackgroundSync()
+        guard AppPreferences.isCloudSyncEnabled else { return }
+        Self.backgroundLogger.info("Background sync starting")
+        await appState.syncCoordinator.sync(
+            localConnections: appState.connections,
+            localGroups: appState.groups,
+            localTags: appState.tags
+        )
+        Self.backgroundLogger.info("Background sync completed")
     }
 }

@@ -11,7 +11,8 @@ struct DataBrowserView: View {
     private var session: ConnectionSession? { coordinator.session }
 
     @State private var viewModel = DataBrowserViewModel()
-    @State private var searchText = ""
+    @SceneStorage("dataBrowser.searchText") private var searchText = ""
+    @FocusState private var searchFocused: Bool
     @State private var showInsertSheet = false
     @State private var showFilterSheet = false
     @State private var showShareSheet = false
@@ -172,6 +173,7 @@ struct DataBrowserView: View {
                 .navigationTitle(table.name)
                 .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $searchText, prompt: "Search all columns")
+                .searchFocused($searchFocused)
                 .textInputAutocapitalization(.never)
                 .onSubmit(of: .search) {
                     Task { await viewModel.applySearch(searchText) }
@@ -180,6 +182,12 @@ struct DataBrowserView: View {
                     if newValue.isEmpty, !oldValue.isEmpty, viewModel.hasActiveSearch {
                         Task { await viewModel.clearSearch() }
                     }
+                }
+                .background {
+                    Button("") { searchFocused = true }
+                        .keyboardShortcut("f", modifiers: .command)
+                        .accessibilityLabel(Text("Focus search"))
+                        .hidden()
                 }
         }
     }

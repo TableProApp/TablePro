@@ -20,5 +20,14 @@
 		<string>com.TablePro.viewConnection</string>
 		<string>com.TablePro.viewTable</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.TablePro.sync</string>
+	</array>
 </dict>
 </plist>

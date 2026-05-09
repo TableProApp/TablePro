@@ -9,7 +9,8 @@ struct TableListView: View {
     private var tables: [TableInfo] { coordinator.tables }
     private var session: ConnectionSession? { coordinator.session }
 
-    @State private var searchText = ""
+    @SceneStorage("tableList.searchText") private var searchText = ""
+    @FocusState private var searchFocused: Bool
     @State private var tableToTruncate: TableInfo?
     @State private var tableToDrop: TableInfo?
     @State private var errorMessage = ""
@@ -97,12 +98,19 @@ struct TableListView: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $searchText, prompt: "Search tables")
+        .searchFocused($searchFocused)
         .textInputAutocapitalization(.never)
         .refreshable {
             await coordinator.refreshTables()
         }
         .onAppear {
             coordinator.navigateToPendingTable()
+        }
+        .background {
+            Button("") { searchFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .accessibilityLabel(Text("Focus search"))
+                .hidden()
         }
         .overlay {
             if tables.isEmpty {

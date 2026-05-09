@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- iOS: iCloud sync runs every 30 minutes in the background via `BGAppRefreshTask` while the app is closed (gated by the iCloud Sync setting); iOS schedules the actual cadence based on usage and battery
+- iOS: Cmd+F focuses the search field in Tables and Data Browser (iPad keyboard canonical)
+- iOS: search text in Tables and Data Browser persists across process kill via `@SceneStorage` (per-window on iPad)
 - iOS Settings: iCloud Sync toggle (off keeps connections, groups, and tags on this device only and disables the sync toolbar button), Rows per Page picker (50/100/200/500, applied to new data browser sessions), Default Safe Mode picker (applied when adding a new connection)
 - iOS: alert when the active connection is deleted mid-session (for example via iCloud sync from another device), so a stale screen no longer fails silently on the next action
 - iOS: Face ID, Touch ID, or Optic ID lock with cold-launch protection and idle timeout (1, 5, 15, or 60 minutes), opt-in from Settings
@@ -17,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- iOS: SQL syntax highlighter uses Swift Regex literals for static patterns (numbers, comments, strings) and consolidates the six per-pattern enumeration loops into a single typed helper
 - iOS: VoiceOver now reads connection rows and table rows as a single combined element with type, name, host or row count, and includes a hint about what tapping does
 - iOS: toolbar icon-only buttons (Add Connection, Sync with iCloud, Settings) gain accessibility labels for VoiceOver
 - Internal: per-connection `UserDefaults` keys (`lastTab.<uuid>`, `lastDB.<uuid>`, `lastSchema.<uuid>`, `lastQuery.<uuid>`) clear when a connection is deleted, so they no longer accumulate over time
