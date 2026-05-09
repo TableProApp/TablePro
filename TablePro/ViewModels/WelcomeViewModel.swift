@@ -34,7 +34,7 @@ final class WelcomeViewModel {
 
     @ObservationIgnored let services: AppServices
     private var storage: ConnectionStorage { services.connectionStorage }
-    private let groupStorage = GroupStorage.shared
+    private var groupStorage: GroupStorage { services.groupStorage }
 
     // MARK: - State
 
@@ -43,7 +43,7 @@ final class WelcomeViewModel {
     var selectedConnectionIds: Set<UUID> = []
     var groups: [ConnectionGroup] = []
     var linkedConnections: [LinkedConnection] = []
-    var showOnboarding = !AppSettingsStorage.shared.hasCompletedOnboarding()
+    var showOnboarding: Bool
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
     var showDeleteGroupConfirmation = false
@@ -146,6 +146,7 @@ final class WelcomeViewModel {
 
     init(services: AppServices = .live) {
         self.services = services
+        self.showOnboarding = !services.appSettingsStorage.hasCompletedOnboarding()
     }
 
     // MARK: - Setup & Teardown
@@ -188,11 +189,11 @@ final class WelcomeViewModel {
         linkedFoldersCancellable = services.appEvents.linkedFoldersDidUpdate
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.linkedConnections = LinkedFolderWatcher.shared.linkedConnections
+                self?.linkedConnections = services.linkedFolderWatcher.linkedConnections
             }
 
         loadConnections()
-        linkedConnections = LinkedFolderWatcher.shared.linkedConnections
+        linkedConnections = services.linkedFolderWatcher.linkedConnections
 
         consumePendingRouterActions()
         startWelcomeRouterObservation()

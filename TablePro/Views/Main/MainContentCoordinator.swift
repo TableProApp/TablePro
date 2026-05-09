@@ -359,8 +359,8 @@ final class MainContentCoordinator {
         )
         self.persistence = TabPersistenceCoordinator(connectionId: connection.id)
 
-        _ = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
-        SchemaProviderRegistry.shared.retain(for: connection.id)
+        _ = services.schemaProviderRegistry.getOrCreate(for: connection.id)
+        services.schemaProviderRegistry.retain(for: connection.id)
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
@@ -512,7 +512,7 @@ final class MainContentCoordinator {
     private func reconcilePostSchemaLoad() async {
         guard case .loaded(let tables) = services.schemaService.state(for: connectionId) else { return }
         if let driver = services.databaseManager.driver(for: connectionId),
-           let provider = SchemaProviderRegistry.shared.provider(for: connectionId) {
+           let provider = services.schemaProviderRegistry.provider(for: connectionId) {
             let currentDb = services.databaseManager.session(for: connectionId)?.activeDatabase
             await provider.resetForDatabase(currentDb, tables: tables, driver: driver)
         }
@@ -585,8 +585,8 @@ final class MainContentCoordinator {
         // Release metadata
         tableMetadata = nil
 
-        SchemaProviderRegistry.shared.release(for: connection.id)
-        SchemaProviderRegistry.shared.purgeUnused()
+        services.schemaProviderRegistry.release(for: connection.id)
+        services.schemaProviderRegistry.purgeUnused()
         Self.lifecycleLogger.info(
             "[close] MainContentCoordinator.teardown done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
@@ -608,8 +608,8 @@ final class MainContentCoordinator {
             }
             if !alreadyHandled {
                 Task { @MainActor in
-                    SchemaProviderRegistry.shared.release(for: connectionId)
-                    SchemaProviderRegistry.shared.purgeUnused()
+                    services.schemaProviderRegistry.release(for: connectionId)
+                    services.schemaProviderRegistry.purgeUnused()
                 }
             }
             return
@@ -622,8 +622,8 @@ final class MainContentCoordinator {
 
         if !alreadyHandled {
             Task { @MainActor in
-                SchemaProviderRegistry.shared.release(for: connectionId)
-                SchemaProviderRegistry.shared.purgeUnused()
+                services.schemaProviderRegistry.release(for: connectionId)
+                services.schemaProviderRegistry.purgeUnused()
             }
         }
     }

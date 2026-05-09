@@ -235,7 +235,7 @@ final class AIChatViewModel {
                 let apiKey: String?
                 switch config.type.authStyle {
                 case .apiKey:
-                    apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
+                    apiKey = services.aiKeyStorage.loadAPIKey(for: config.id)
                 case .oauth, .none:
                     apiKey = nil
                 }

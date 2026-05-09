@@ -9,13 +9,19 @@ import SwiftUI
 struct AppServices {
     let appEvents: AppEvents
     let appSettings: AppSettingsManager
+    let appSettingsStorage: AppSettingsStorage
     let connectionStorage: ConnectionStorage
     let databaseManager: DatabaseManager
     let pluginManager: PluginManager
     let schemaService: SchemaService
+    let schemaProviderRegistry: SchemaProviderRegistry
     let queryHistoryStorage: QueryHistoryStorage
     let sqlFavoriteManager: SQLFavoriteManager
     let aiChatStorage: AIChatStorage
+    let aiKeyStorage: AIKeyStorage
+    let groupStorage: GroupStorage
+    let favoritesExpansionState: FavoritesExpansionState
+    let linkedFolderWatcher: LinkedFolderWatcher
     let syncTracker: SyncChangeTracker
     let themeEngine: ThemeEngine
     let feedbackAPIClient: FeedbackAPIClient
@@ -23,13 +29,19 @@ struct AppServices {
     static let live = AppServices(
         appEvents: .shared,
         appSettings: .shared,
+        appSettingsStorage: .shared,
         connectionStorage: .shared,
         databaseManager: .shared,
         pluginManager: .shared,
         schemaService: .shared,
+        schemaProviderRegistry: .shared,
         queryHistoryStorage: .shared,
         sqlFavoriteManager: .shared,
         aiChatStorage: .shared,
+        aiKeyStorage: .shared,
+        groupStorage: .shared,
+        favoritesExpansionState: .shared,
+        linkedFolderWatcher: .shared,
         syncTracker: .shared,
         themeEngine: .shared,
         feedbackAPIClient: .shared

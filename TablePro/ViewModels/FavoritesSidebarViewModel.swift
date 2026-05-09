@@ -223,7 +223,7 @@ internal final class FavoritesSidebarViewModel {
 
     func createFavorite(query: String? = nil, folderId: UUID? = nil) {
         if let folderId {
-            FavoritesExpansionState.shared.setFolderExpanded(folderId, expanded: true, for: connectionId)
+            services.favoritesExpansionState.setFolderExpanded(folderId, expanded: true, for: connectionId)
         }
         editDialogItem = FavoriteEditItem(favorite: nil, query: query, folderId: folderId)
     }
@@ -262,7 +262,7 @@ internal final class FavoritesSidebarViewModel {
 
     func createFolder(parentId: UUID? = nil) {
         if let parentId {
-            FavoritesExpansionState.shared.setFolderExpanded(parentId, expanded: true, for: connectionId)
+            services.favoritesExpansionState.setFolderExpanded(parentId, expanded: true, for: connectionId)
         }
         Task {
             let folder = SQLFavoriteFolder(
@@ -272,7 +272,7 @@ internal final class FavoritesSidebarViewModel {
             )
             let success = await manager.addFolder(folder)
             if success {
-                FavoritesExpansionState.shared.setFolderExpanded(folder.id, expanded: true, for: connectionId)
+                services.favoritesExpansionState.setFolderExpanded(folder.id, expanded: true, for: connectionId)
                 try? await Task.sleep(for: .milliseconds(100))
                 startRenameFolder(folder)
             }
