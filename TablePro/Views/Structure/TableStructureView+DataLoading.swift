@@ -46,14 +46,16 @@ extension TableStructureView {
 
     func loadTabDataIfNeeded(_ tab: StructureTab) async {
         guard !loadedTabs.contains(tab) else { return }
+        await fetchTabData(tab)
+    }
+
+    func fetchTabData(_ tab: StructureTab) async {
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
 
         do {
             switch tab {
             case .columns:
-                if columns.isEmpty {
-                    columns = try await driver.fetchColumns(table: tableName)
-                }
+                columns = try await driver.fetchColumns(table: tableName)
             case .indexes:
                 indexes = try await driver.fetchIndexes(table: tableName)
             case .foreignKeys:
@@ -77,7 +79,7 @@ extension TableStructureView {
                     ddlStatement = preamble + "\n" + baseDDL
                 }
             case .parts:
-                break
+                return
             }
             loadedTabs.insert(tab)
         } catch {
@@ -165,14 +167,13 @@ extension TableStructureView {
     }
 
     private func reloadAllTabs() async {
-        loadedTabs.removeAll()
         await loadColumns()
-        await loadTabDataIfNeeded(.indexes)
+        await fetchTabData(.indexes)
         if connection.type.supportsForeignKeys {
-            await loadTabDataIfNeeded(.foreignKeys)
+            await fetchTabData(.foreignKeys)
         }
-        if selectedTab == .ddl || selectedTab == .parts {
-            await loadTabDataIfNeeded(selectedTab)
+        if selectedTab == .ddl {
+            await fetchTabData(.ddl)
         }
     }
 }
