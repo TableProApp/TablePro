@@ -75,6 +75,46 @@
         }
       }
     },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@"
+          }
+        }
+      }
+    },
+    "%@, %@, %@, tag %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@, tag %4$@"
+          }
+        }
+      }
+    },
+    "%@, %@, %lld rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$lld rows"
+          }
+        }
+      }
+    },
     "%@.%@" : {
       "localizations" : {
         "en" : {
@@ -1219,6 +1259,9 @@
     "Default DB" : {
 
     },
+    "Default Safe Mode" : {
+
+    },
     "Default: %@" : {
       "localizations" : {
         "vi" : {
@@ -1234,6 +1277,9 @@
           }
         }
       }
+    },
+    "Defaults applied when adding a new connection and when opening a table for the first time." : {
+
     },
     "Delete" : {
       "localizations" : {
@@ -1923,6 +1969,9 @@
         }
       }
     },
+    "iCloud Sync" : {
+
+    },
     "Immediately" : {
 
     },
@@ -2174,6 +2223,9 @@
           }
         }
       }
+    },
+    "New Connections" : {
+
     },
     "New Database" : {
       "localizations" : {
@@ -2628,6 +2680,12 @@
           }
         }
       }
+    },
+    "Opens table data" : {
+
+    },
+    "Opens this connection" : {
+
     },
     "Operator" : {
       "localizations" : {
@@ -3582,6 +3640,9 @@
         }
       }
     },
+    "Sync" : {
+
+    },
     "Sync from iCloud" : {
       "localizations" : {
         "vi" : {
@@ -3597,6 +3658,9 @@
           }
         }
       }
+    },
+    "Sync with iCloud" : {
+
     },
     "Syncing from iCloud..." : {
       "localizations" : {
@@ -3630,6 +3694,9 @@
           }
         }
       }
+    },
+    "Table" : {
+
     },
     "Table Structure" : {
       "localizations" : {
@@ -4072,6 +4139,9 @@
         }
       }
     },
+    "View" : {
+
+    },
     "Views" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4104,6 +4174,9 @@
           }
         }
       }
+    },
+    "When off, connections, groups, and tags stay on this device only. Existing iCloud data is not deleted." : {
+
     },
     "Write Query Blocked" : {
       "localizations" : {
