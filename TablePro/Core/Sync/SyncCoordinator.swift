@@ -473,7 +473,13 @@ final class SyncCoordinator {
 
     @discardableResult
     private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        guard let remoteConnection = SyncRecordMapper.toConnection(record) else { return false }
+        let remoteConnection: DatabaseConnection
+        do {
+            remoteConnection = try SyncRecordMapper.toConnection(record)
+        } catch {
+            Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return false
+        }
 
         if tombstoneIds.contains(remoteConnection.id.uuidString) {
             return false
@@ -544,7 +550,13 @@ final class SyncCoordinator {
     }
 
     private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
-        guard let remoteProfile = SyncRecordMapper.toSSHProfile(record) else { return }
+        let remoteProfile: SSHProfile
+        do {
+            remoteProfile = try SyncRecordMapper.toSSHProfile(record)
+        } catch {
+            Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return
+        }
         if tombstoneIds.contains(remoteProfile.id.uuidString) { return }
 
         var profiles = SSHProfileStorage.shared.loadProfiles()

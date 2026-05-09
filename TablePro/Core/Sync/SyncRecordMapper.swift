@@ -20,6 +20,20 @@ enum SyncRecordType: String, CaseIterable {
     case sshProfile = "SSHProfile"
 }
 
+enum SyncDecodeError: Error, LocalizedError {
+    case missingRequiredField(String)
+    case decodeFailure(field: String, underlying: Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingRequiredField(let field):
+            return "Sync record missing required field: \(field)"
+        case .decodeFailure(let field, let underlying):
+            return "Sync record decode failed for \(field): \(underlying.localizedDescription)"
+        }
+    }
+}
+
 /// Pure-function mapper between local models and CKRecord
 struct SyncRecordMapper {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncRecordMapper")
@@ -119,14 +133,17 @@ struct SyncRecordMapper {
         return record
     }
 
-    static func toConnection(_ record: CKRecord) -> DatabaseConnection? {
+    static func toConnection(_ record: CKRecord) throws -> DatabaseConnection {
         guard let connectionIdString = record["connectionId"] as? String,
-              let connectionId = UUID(uuidString: connectionIdString),
-              let name = record["name"] as? String,
-              let typeRawValue = record["type"] as? String
+              let connectionId = UUID(uuidString: connectionIdString)
         else {
-            logger.warning("Failed to decode connection from CKRecord: missing required fields")
-            return nil
+            throw SyncDecodeError.missingRequiredField("connectionId")
+        }
+        guard let name = record["name"] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        guard let typeRawValue = record["type"] as? String else {
+            throw SyncDecodeError.missingRequiredField("type")
         }
 
         let host = record["host"] as? String ?? "localhost"
@@ -145,22 +162,33 @@ struct SyncRecordMapper {
         let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
         let sshProfileId = (record["sshProfileId"] as? String).flatMap { UUID(uuidString: $0) }
 
-        // Decode complex structs and expand portable ~/… paths to device-local form.
         var sshConfig = SSHConfiguration()
         if let sshData = record["sshConfigJson"] as? Data {
-            sshConfig = (try? decoder.decode(SSHConfiguration.self, from: sshData)) ?? SSHConfiguration()
+            do {
+                sshConfig = try decoder.decode(SSHConfiguration.self, from: sshData)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "sshConfigJson", underlying: error)
+            }
             Self.expandPaths(&sshConfig)
         }
 
         var sslConfig = SSLConfiguration()
         if let sslData = record["sslConfigJson"] as? Data {
-            sslConfig = (try? decoder.decode(SSLConfiguration.self, from: sslData)) ?? SSLConfiguration()
+            do {
+                sslConfig = try decoder.decode(SSLConfiguration.self, from: sslData)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "sslConfigJson", underlying: error)
+            }
             Self.expandPaths(&sslConfig)
         }
 
         var additionalFields: [String: String]?
         if let fieldsData = record["additionalFieldsJson"] as? Data {
-            additionalFields = try? decoder.decode([String: String].self, from: fieldsData)
+            do {
+                additionalFields = try decoder.decode([String: String].self, from: fieldsData)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "additionalFieldsJson", underlying: error)
+            }
         }
 
         return DatabaseConnection(
@@ -327,13 +355,14 @@ struct SyncRecordMapper {
         return record
     }
 
-    static func toSSHProfile(_ record: CKRecord) -> SSHProfile? {
+    static func toSSHProfile(_ record: CKRecord) throws -> SSHProfile {
         guard let profileIdString = record["profileId"] as? String,
-              let profileId = UUID(uuidString: profileIdString),
-              let name = record["name"] as? String
+              let profileId = UUID(uuidString: profileIdString)
         else {
-            logger.warning("Failed to decode SSH profile from CKRecord: missing required fields")
-            return nil
+            throw SyncDecodeError.missingRequiredField("profileId")
+        }
+        guard let name = record["name"] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
         }
 
         let host = record["host"] as? String ?? ""
@@ -349,7 +378,11 @@ struct SyncRecordMapper {
 
         var jumpHosts: [SSHJumpHost] = []
         if let jumpHostsData = record["jumpHostsJson"] as? Data {
-            jumpHosts = (try? decoder.decode([SSHJumpHost].self, from: jumpHostsData)) ?? []
+            do {
+                jumpHosts = try decoder.decode([SSHJumpHost].self, from: jumpHostsData)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "jumpHostsJson", underlying: error)
+            }
             Self.expandPaths(&jumpHosts)
         }
 
