@@ -97,6 +97,7 @@ struct CreateTableView: View {
 
             TextField("Enter table name", text: $tableName)
                 .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled(true)
                 .frame(maxWidth: 300)
 
             if showMySQLOptions {

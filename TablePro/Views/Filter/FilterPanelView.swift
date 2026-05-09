@@ -98,6 +98,7 @@ struct FilterPanelView: View {
         .contentShape(Rectangle())
         .alert(String(localized: "Save Filter Preset"), isPresented: $showSavePresetAlert) {
             TextField(String(localized: "Preset Name"), text: $newPresetName)
+                .autocorrectionDisabled(true)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
                 guard !newPresetName.isEmpty else { return }

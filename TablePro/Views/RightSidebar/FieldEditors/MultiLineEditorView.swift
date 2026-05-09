@@ -15,6 +15,7 @@ internal struct MultiLineEditorView: View {
             .textFieldStyle(.roundedBorder)
             .font(.subheadline)
             .lineLimit(3...6)
+            .autocorrectionDisabled(true)
             .focused($isFocused)
             .disabled(context.isReadOnly)
     }

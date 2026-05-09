@@ -35,6 +35,7 @@ internal struct BlobHexEditorView: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.caption2, design: .monospaced))
                 .lineLimit(3...8)
+                .autocorrectionDisabled(true)
                 .focused($isFocused)
                 .onAppear {
                     hexEditText = BlobFormattingService.shared.format(context.value.wrappedValue, for: .edit) ?? ""

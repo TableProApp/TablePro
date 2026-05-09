@@ -27,7 +27,7 @@ struct FilterValueTextField: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSTextField {
-        let textField = NSTextField()
+        let textField = SubstitutionDisabledTextField()
         textField.bezelStyle = .roundedBezel
         textField.controlSize = .small
         textField.font = .systemFont(ofSize: 12)
@@ -288,6 +288,19 @@ struct FilterValueTextField: NSViewRepresentable {
             removeKeyMonitor()
             suggestionPopover?.close()
             suggestionPopover = nil
+        }
+    }
+
+    private final class SubstitutionDisabledTextField: NSTextField {
+        override func becomeFirstResponder() -> Bool {
+            let result = super.becomeFirstResponder()
+            if result, let editor = currentEditor() as? NSTextView {
+                editor.isAutomaticQuoteSubstitutionEnabled = false
+                editor.isAutomaticDashSubstitutionEnabled = false
+                editor.isAutomaticTextReplacementEnabled = false
+                editor.isAutomaticSpellingCorrectionEnabled = false
+            }
+            return result
         }
     }
 

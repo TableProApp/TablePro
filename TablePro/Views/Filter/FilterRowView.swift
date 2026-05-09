@@ -102,6 +102,7 @@ struct FilterRowView: View {
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
                 .font(.callout)
+                .autocorrectionDisabled(true)
                 .frame(minWidth: 80)
                 .accessibilityLabel(String(localized: "Second filter value"))
                 .onSubmit { onSubmit() }
