@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal: extract `RowItemLabel` shared row component for the connection list and table list, dropping the inline HStack scaffolding from both
+- Internal: move per-database-type constants (`defaultPort`, `mobileDisplayName`, `mobileSupportedTypes`) onto a `DatabaseType` extension; the connection form picker and info screen read from the same source instead of duplicating the type-to-string switch
 - iOS: SQL syntax highlighter uses Swift Regex literals for static patterns (numbers, comments, strings) and consolidates the six per-pattern enumeration loops into a single typed helper
 - iOS: VoiceOver now reads connection rows and table rows as a single combined element with type, name, host or row count, and includes a hint about what tapping does
 - iOS: toolbar icon-only buttons (Add Connection, Sync with iCloud, Settings) gain accessibility labels for VoiceOver

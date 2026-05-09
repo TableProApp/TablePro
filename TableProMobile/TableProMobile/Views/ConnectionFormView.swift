@@ -16,14 +16,6 @@ struct ConnectionFormView: View {
 
     var onSave: (DatabaseConnection) -> Void
 
-    private let databaseTypes: [(DatabaseType, String)] = [
-        (.mysql, "MySQL"),
-        (.mariadb, "MariaDB"),
-        (.postgresql, "PostgreSQL"),
-        (.sqlite, "SQLite"),
-        (.redis, "Redis"),
-    ]
-
     enum ActiveFilePicker: Identifiable {
         case sqliteDatabase
         case sshKey
@@ -126,9 +118,9 @@ struct ConnectionFormView: View {
                 .textInputAutocapitalization(.never)
 
             Picker("Database Type", selection: $viewModel.type) {
-                ForEach(databaseTypes, id: \.0.rawValue) { dbType, label in
+                ForEach(DatabaseType.mobileSupportedTypes, id: \.rawValue) { dbType in
                     Label {
-                        Text(label)
+                        Text(dbType.mobileDisplayName)
                     } icon: {
                         Image(dbType.iconName)
                             .renderingMode(.template)

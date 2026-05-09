@@ -186,16 +186,11 @@ private struct TableRow: View {
     private var isView: Bool { table.type == .view || table.type == .materializedView }
 
     var body: some View {
-        HStack {
+        RowItemLabel(title: table.name) {
             Image(systemName: isView ? "eye" : "tablecells")
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
-
-            Text(table.name)
-                .font(.body)
-
-            Spacer()
-
+        } trailing: {
             if let rowCount = table.rowCount {
                 MetadataBadge(formatRowCount(rowCount))
             }

@@ -423,30 +423,24 @@ private struct ConnectionRow: View {
     let connection: DatabaseConnection
     let tag: ConnectionTag?
 
+    private var title: String {
+        connection.name.isEmpty ? connection.host : connection.name
+    }
+
+    private var subtitle: String {
+        if connection.type == .sqlite {
+            return connection.database.components(separatedBy: "/").last ?? "database"
+        }
+        return "\(connection.host):\(connection.port)"
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
+        RowItemLabel(title: title, subtitle: subtitle) {
             DatabaseIconView(type: connection.type, size: 18)
                 .frame(width: 32, height: 32)
                 .background(DatabaseIconView.color(for: connection.type).opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 7))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(connection.name.isEmpty ? connection.host : connection.name)
-                    .font(.body)
-
-                if connection.type != .sqlite {
-                    Text(verbatim: "\(connection.host):\(connection.port)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(connection.database.components(separatedBy: "/").last ?? "database")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
+        } trailing: {
             if let tag {
                 let tagColor = ConnectionColorPicker.swiftUIColor(for: tag.color)
                 Text(tag.name)

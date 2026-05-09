@@ -22,7 +22,7 @@ struct ConnectionInfoView: View {
                         Text("Name")
                     }
                 }
-                LabeledContent("Type", value: typeDisplayName)
+                LabeledContent("Type", value: connection.type.mobileDisplayName)
                 if connection.safeModeLevel != .off {
                     LabeledContent("Safe Mode") {
                         Label {
@@ -54,18 +54,6 @@ struct ConnectionInfoView: View {
                 appState.updateConnection(updated)
                 coordinator.showingEditSheet = false
             }
-        }
-    }
-
-    private var typeDisplayName: String {
-        switch connection.type {
-        case .mysql: "MySQL"
-        case .mariadb: "MariaDB"
-        case .postgresql: "PostgreSQL"
-        case .redshift: "Redshift"
-        case .sqlite: "SQLite"
-        case .redis: "Redis"
-        default: connection.type.rawValue.uppercased()
         }
     }
 

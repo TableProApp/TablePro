@@ -129,14 +129,7 @@ final class ConnectionFormViewModel {
     }
 
     private func updateDefaultPort() {
-        switch type {
-        case .mysql, .mariadb: port = "3306"
-        case .postgresql: port = "5432"
-        case .redshift: port = "5439"
-        case .redis: port = "6379"
-        case .sqlite: port = ""
-        default: port = "3306"
-        }
+        port = type.defaultPort
     }
 
     // MARK: - File Picker
