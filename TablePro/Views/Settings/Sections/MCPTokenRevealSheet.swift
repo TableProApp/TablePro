@@ -147,6 +147,17 @@ struct MCPTokenRevealSheet: View {
               }
             }
             """
+        case .zed:
+            return """
+            {
+              "tablepro": {
+                "url": "\(baseURL)",
+                "headers": {
+                  "Authorization": "Bearer \(plaintext)"
+                }
+              }
+            }
+            """
         }
     }
 

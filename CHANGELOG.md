@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- MCP Setup sheet adds Zed alongside Claude Desktop, Claude Code, and Cursor with a one-paste `context_servers` snippet
+
 ### Changed
 
 - PostgreSQL SQL export emits foreign key constraints via `ALTER TABLE ... ADD CONSTRAINT` after data load and resyncs sequences via `setval` so a re-imported dump round-trips cleanly even when child tables sort before parents (#1114)

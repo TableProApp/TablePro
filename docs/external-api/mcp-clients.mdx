@@ -115,21 +115,34 @@ If you prefer JSON, drop the same shape into `.continue/mcpServers/tablepro.json
 
 ## Zed
 
-Zed keys MCP servers under `context_servers`, not `mcpServers`. Edit `~/.config/zed/settings.json` (or open it via **Zed > Settings**):
+Two paths, pick one.
+
+**Add Custom Server (Agent Panel UI).** Open the Agent Panel, click the menu in its header, choose **Settings**, then under **MCP Servers** click **+ Add Custom Server** and select the **Local** tab. Paste:
+
+```json
+{
+  "tablepro": {
+    "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp",
+    "args": []
+  }
+}
+```
+
+Click **Add Server**. The dialog's Local schema requires `args` even though Zed's documented schema treats it as optional, so include the empty array.
+
+**Edit settings.json directly.** Open `~/.config/zed/settings.json` (or **Zed > Settings**) and add the entry under `context_servers` (Zed's key for MCP servers, not `mcpServers`):
 
 ```json
 {
   "context_servers": {
     "tablepro": {
-      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp",
-      "args": [],
-      "env": {}
+      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp"
     }
   }
 }
 ```
 
-Open the Agent Panel; the TablePro entry should show a green status dot.
+Here `args` and `env` are optional. Reload the Agent Panel; the TablePro entry should show a green status dot.
 
 ## Windsurf
 
