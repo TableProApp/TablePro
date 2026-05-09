@@ -146,9 +146,11 @@ final class ERDiagramViewModel {
                 continuation.resume()
             }
 
+            let targetId = self.connectionId
             let cancellable = AppEvents.shared.databaseDidConnect
                 .receive(on: RunLoop.main)
-                .sink { _ in
+                .sink { payload in
+                    guard payload.connectionId == targetId else { return }
                     resumeOnce()
                 }
             cancellableBox.withLock { $0 = cancellable }

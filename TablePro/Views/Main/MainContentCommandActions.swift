@@ -851,7 +851,10 @@ final class MainContentCommandActions {
     private func setupDatabaseBroadcastObservers() {
         AppEvents.shared.databaseDidConnect
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.handleDatabaseDidConnect() }
+            .sink { [weak self] payload in
+                guard let self, payload.connectionId == self.connection.id else { return }
+                self.handleDatabaseDidConnect()
+            }
             .store(in: &eventCancellables)
     }
 

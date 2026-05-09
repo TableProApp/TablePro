@@ -430,9 +430,10 @@ final class MainContentCoordinator {
         if changeManager.pluginDriver == nil {
             pluginDriverCancellable = AppEvents.shared.databaseDidConnect
                 .receive(on: RunLoop.main)
-                .sink { [weak self] _ in
+                .sink { [weak self] payload in
+                    guard let self, payload.connectionId == self.connection.id else { return }
                     Task {
-                        self?.setupPluginDriver()
+                        self.setupPluginDriver()
                     }
                 }
         }
