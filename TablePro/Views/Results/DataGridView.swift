@@ -124,9 +124,6 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableName = configuration.tableName
         context.coordinator.primaryKeyColumns = configuration.primaryKeyColumns
         context.coordinator.tabType = configuration.tabType
-        if let connectionId = configuration.connectionId {
-            context.coordinator.observeTeardown(connectionId: connectionId)
-        }
 
         return scrollView
     }
@@ -158,10 +155,6 @@ struct DataGridView: NSViewRepresentable {
             if !remaining.isEmpty {
                 tableView.registerForDraggedTypes(remaining)
             }
-        }
-
-        if let connectionId = configuration.connectionId, coordinator.teardownCancellable == nil {
-            coordinator.observeTeardown(connectionId: connectionId)
         }
 
         let latestRows = tableRowsProvider()

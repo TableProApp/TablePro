@@ -562,9 +562,7 @@ final class MainContentCoordinator {
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
 
-        AppEvents.shared.mainCoordinatorTeardown.send(
-            MainCoordinatorTeardown(connectionId: connection.id)
-        )
+        dataTabDelegate?.tableViewCoordinator?.releaseData()
 
         tabSessionRegistry.removeAll()
         querySortCache.removeAll()

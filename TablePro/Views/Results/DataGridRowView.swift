@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 
 @MainActor
 final class DataGridRowView: NSTableRowView {
@@ -339,7 +340,7 @@ final class DataGridRowView: NSTableRowView {
     }
 
     @objc private func exportResults() {
-        NotificationCenter.default.post(name: .exportQueryResults, object: nil)
+        AppCommands.shared.exportQueryResults.send(())
     }
 
     @objc private func copyAsJson() {

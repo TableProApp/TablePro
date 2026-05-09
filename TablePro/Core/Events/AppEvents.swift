@@ -34,7 +34,6 @@ final class AppEvents {
 
     let databaseDidConnect = PassthroughSubject<DatabaseDidConnect, Never>()
 
-    let mainCoordinatorTeardown = PassthroughSubject<MainCoordinatorTeardown, Never>()
 
     // MARK: - Window
 
@@ -76,6 +75,3 @@ struct DatabaseDidConnect: Sendable {
     let connectionId: UUID
 }
 
-struct MainCoordinatorTeardown: Sendable {
-    let connectionId: UUID
-}
