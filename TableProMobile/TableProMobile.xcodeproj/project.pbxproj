@@ -34,6 +34,13 @@
 			remoteGlobalIDString = 5AA136032F82610F00ADCD58;
 			remoteInfo = TableProWidgetExtension;
 		};
+		5AC8A8FC2FAFC99F005DE2A3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5AB9F3D12F7C1C12001F3337 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5AB9F3D82F7C1C12001F3337;
+			remoteInfo = TableProMobile;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -518,6 +525,7 @@
 		5AA313392F7EA5B4008EBA97 /* OpenSSL-SSL.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = "OpenSSL-SSL.xcframework"; path = "../Libs/ios/OpenSSL-SSL.xcframework"; sourceTree = "<group>"; };
 		5AA313532F7EC188008EBA97 /* LibSSH2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = LibSSH2.xcframework; path = ../Libs/ios/LibSSH2.xcframework; sourceTree = "<group>"; };
 		5AB9F3D92F7C1C12001F3337 /* TableProMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TableProMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5AC8A8F82FAFC99F005DE2A3 /* TableProMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -563,6 +571,11 @@
 			path = TableProMobile;
 			sourceTree = "<group>";
 		};
+		5AC8A8F92FAFC99F005DE2A3 /* TableProMobileTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TableProMobileTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -592,6 +605,13 @@
 				5AB9F3ED2F7C1D03001F3337 /* TableProPluginKit in Frameworks */,
 				5A87EEED2F7F893000D028D0 /* TableProSync in Frameworks */,
 				5AB9F3EB2F7C1D03001F3337 /* TableProModels in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5AC8A8F52FAFC99F005DE2A3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1628,6 +1648,7 @@
 				5AA136322F82675600ADCD58 /* TableProWidgetExtension.entitlements */,
 				5AB9F3DB2F7C1C12001F3337 /* TableProMobile */,
 				5AA136092F82610F00ADCD58 /* TableProWidget */,
+				5AC8A8F92FAFC99F005DE2A3 /* TableProMobileTests */,
 				5AA313332F7EA5B4008EBA97 /* Frameworks */,
 				5AB9F3DA2F7C1C12001F3337 /* Products */,
 				5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */,
@@ -1639,6 +1660,7 @@
 			children = (
 				5AB9F3D92F7C1C12001F3337 /* TableProMobile.app */,
 				5AA136042F82610F00ADCD58 /* TableProWidgetExtension.appex */,
+				5AC8A8F82FAFC99F005DE2A3 /* TableProMobileTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1698,6 +1720,29 @@
 			productReference = 5AB9F3D92F7C1C12001F3337 /* TableProMobile.app */;
 			productType = "com.apple.product-type.application";
 		};
+		5AC8A8F72FAFC99F005DE2A3 /* TableProMobileTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5AC8A8FE2FAFC99F005DE2A3 /* Build configuration list for PBXNativeTarget "TableProMobileTests" */;
+			buildPhases = (
+				5AC8A8F42FAFC99F005DE2A3 /* Sources */,
+				5AC8A8F52FAFC99F005DE2A3 /* Frameworks */,
+				5AC8A8F62FAFC99F005DE2A3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5AC8A8FD2FAFC99F005DE2A3 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5AC8A8F92FAFC99F005DE2A3 /* TableProMobileTests */,
+			);
+			name = TableProMobileTests;
+			packageProductDependencies = (
+			);
+			productName = TableProMobileTests;
+			productReference = 5AC8A8F82FAFC99F005DE2A3 /* TableProMobileTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1705,7 +1750,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2650;
+				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					5AA136032F82610F00ADCD58 = {
@@ -1713,6 +1758,10 @@
 					};
 					5AB9F3D82F7C1C12001F3337 = {
 						CreatedOnToolsVersion = 26.4;
+					};
+					5AC8A8F72FAFC99F005DE2A3 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = 5AB9F3D82F7C1C12001F3337;
 					};
 				};
 			};
@@ -1735,6 +1784,7 @@
 			targets = (
 				5AB9F3D82F7C1C12001F3337 /* TableProMobile */,
 				5AA136032F82610F00ADCD58 /* TableProWidgetExtension */,
+				5AC8A8F72FAFC99F005DE2A3 /* TableProMobileTests */,
 			);
 		};
 /* End PBXProject section */
@@ -1755,6 +1805,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5AC8A8F62FAFC99F005DE2A3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -1772,6 +1829,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5AC8A8F42FAFC99F005DE2A3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -1779,6 +1843,11 @@
 			isa = PBXTargetDependency;
 			target = 5AA136032F82610F00ADCD58 /* TableProWidgetExtension */;
 			targetProxy = 5AA136112F82611000ADCD58 /* PBXContainerItemProxy */;
+		};
+		5AC8A8FD2FAFC99F005DE2A3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5AB9F3D82F7C1C12001F3337 /* TableProMobile */;
+			targetProxy = 5AC8A8FC2FAFC99F005DE2A3 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -2054,6 +2123,52 @@
 			};
 			name = Release;
 		};
+		5AC8A8FF2FAFC99F005DE2A3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D7HJ5TFYCU;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = vn.nqd.TableProMobileTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TableProMobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TableProMobile";
+			};
+			name = Debug;
+		};
+		5AC8A9002FAFC99F005DE2A3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D7HJ5TFYCU;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = vn.nqd.TableProMobileTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TableProMobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TableProMobile";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -2080,6 +2195,15 @@
 			buildConfigurations = (
 				5AB9F3E52F7C1C13001F3337 /* Debug */,
 				5AB9F3E62F7C1C13001F3337 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5AC8A8FE2FAFC99F005DE2A3 /* Build configuration list for PBXNativeTarget "TableProMobileTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5AC8A8FF2FAFC99F005DE2A3 /* Debug */,
+				5AC8A9002FAFC99F005DE2A3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
