@@ -82,28 +82,6 @@ internal actor TabDiskActor {
         }
     }
 
-    internal func connectionIdsWithSavedState() -> [UUID] {
-        let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(
-            at: tabStateDirectory,
-            includingPropertiesForKeys: nil
-        ) else {
-            return []
-        }
-        var validIds: [UUID] = []
-        for url in files where url.pathExtension == "json" {
-            guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) else { continue }
-            if let data = try? Data(contentsOf: url),
-               let state = try? decoder.decode(TabDiskState.self, from: data),
-               !state.tabs.isEmpty {
-                validIds.append(id)
-            } else {
-                try? fm.removeItem(at: url)
-            }
-        }
-        return validIds
-    }
-
     // MARK: - Static Path Helpers
 
     nonisolated private static func resolvedTabStateDirectory() -> URL {

@@ -10,19 +10,26 @@ import Foundation
 @MainActor
 final class DataGridCellRegistry {
     weak var accessoryDelegate: DataGridCellAccessoryDelegate?
-    weak var textFieldDelegate: NSTextFieldDelegate?
 
     private(set) var nullDisplayString: String
+    private(set) var palette: DataGridCellPalette
     private var settingsCancellable: AnyCancellable?
+    private var themeCancellable: AnyCancellable?
 
     private let rowNumberCellIdentifier = NSUserInterfaceItemIdentifier("RowNumberCellView")
 
     init() {
         nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
+        palette = ThemeEngine.shared.dataGridCellPalette
         settingsCancellable = AppEvents.shared.dataGridSettingsChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
+            }
+        themeCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.palette = ThemeEngine.shared.dataGridCellPalette
             }
     }
 
@@ -43,43 +50,18 @@ final class DataGridCellRegistry {
         return .text
     }
 
-    func dequeueCell(of kind: DataGridCellKind, in tableView: NSTableView) -> DataGridBaseCellView {
-        let identifier: NSUserInterfaceItemIdentifier
-        let cellType: DataGridBaseCellView.Type
-
-        switch kind {
-        case .text:
-            identifier = DataGridTextCellView.reuseIdentifier
-            cellType = DataGridTextCellView.self
-        case .foreignKey:
-            identifier = DataGridForeignKeyCellView.reuseIdentifier
-            cellType = DataGridForeignKeyCellView.self
-        case .dropdown:
-            identifier = DataGridDropdownCellView.reuseIdentifier
-            cellType = DataGridDropdownCellView.self
-        case .boolean:
-            identifier = DataGridBooleanCellView.reuseIdentifier
-            cellType = DataGridBooleanCellView.self
-        case .date:
-            identifier = DataGridDateCellView.reuseIdentifier
-            cellType = DataGridDateCellView.self
-        case .json:
-            identifier = DataGridJsonCellView.reuseIdentifier
-            cellType = DataGridJsonCellView.self
-        case .blob:
-            identifier = DataGridBlobCellView.reuseIdentifier
-            cellType = DataGridBlobCellView.self
-        }
-
-        if let reused = tableView.makeView(withIdentifier: identifier, owner: nil) as? DataGridBaseCellView {
+    func dequeueCell(in tableView: NSTableView) -> DataGridCellView {
+        if let reused = tableView.makeView(
+            withIdentifier: DataGridCellView.reuseIdentifier,
+            owner: nil
+        ) as? DataGridCellView {
             reused.nullDisplayString = nullDisplayString
             return reused
         }
 
-        let cell = cellType.init(frame: .zero)
-        cell.identifier = identifier
+        let cell = DataGridCellView(frame: .zero)
+        cell.identifier = DataGridCellView.reuseIdentifier
         cell.accessoryDelegate = accessoryDelegate
-        cell.cellTextField.delegate = textFieldDelegate
         cell.nullDisplayString = nullDisplayString
         return cell
     }

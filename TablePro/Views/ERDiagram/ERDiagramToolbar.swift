@@ -72,7 +72,7 @@ struct ERDiagramToolbar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.thinMaterial, in: Capsule())
+        .themeMaterial(.toolbar, .thinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 0.5))
         .padding(12)
     }

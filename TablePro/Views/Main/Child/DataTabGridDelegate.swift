@@ -16,9 +16,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     var selectionState: GridSelectionState?
 
     var onCellEdit: ((Int, Int, String?) -> Void)?
-    var onSort: ((Int, Bool, Bool) -> Void)?
-    var onClearSort: (() -> Void)?
-    var onRemoveSortColumn: ((Int) -> Void)?
+    var onSortStateChanged: ((SortState) -> Void)?
     var onAddRow: (() -> Void)?
     var onUndoInsert: ((Int) -> Void)?
     var onFilterColumn: ((String) -> Void)?
@@ -30,16 +28,8 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         onCellEdit?(row, column, newValue)
     }
 
-    func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool) {
-        onSort?(column, ascending, isMultiSort)
-    }
-
-    func dataGridClearSort() {
-        onClearSort?()
-    }
-
-    func dataGridRemoveSortColumn(_ columnIndex: Int) {
-        onRemoveSortColumn?(columnIndex)
+    func dataGridSortStateChanged(_ state: SortState) {
+        onSortStateChanged?(state)
     }
 
     func dataGridAddRow() {
@@ -110,7 +100,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         return menu
     }
 
-    weak var tableViewCoordinator: (any TableViewCoordinating)?
+    weak var tableViewCoordinator: TableViewCoordinator?
 
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
         self.tableViewCoordinator = tableViewCoordinator

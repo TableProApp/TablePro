@@ -18,7 +18,7 @@ struct HexEditorContentView: View {
     @State private var isValid: Bool = true
     @State private var isTruncated: Bool = false
     @State private var byteCount: Int = 0
-    @State private var validateWorkItem: DispatchWorkItem?
+    @State private var validateTask: Task<Void, Never>?
 
     init(
         initialValue: String?,
@@ -120,12 +120,15 @@ struct HexEditorContentView: View {
     }
 
     private func scheduleValidation(_ hex: String) {
-        validateWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [hex] in
+        validateTask?.cancel()
+        validateTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(100))
+            } catch {
+                return
+            }
             validateHex(hex)
         }
-        validateWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
     }
 
     private func validateHex(_ hex: String) {

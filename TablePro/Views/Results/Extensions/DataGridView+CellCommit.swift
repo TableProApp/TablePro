@@ -21,7 +21,7 @@ extension TableViewCoordinator {
 
         let storageRow = tableRowsIndex(forDisplayRow: row)
         let columnName = tableRows.columns[columnIndex]
-        let originalRow = displayRowValues.values
+        let originalRow = Array(displayRowValues.values)
         changeManager.recordCellChange(
             rowIndex: row,
             columnIndex: columnIndex,
@@ -39,7 +39,7 @@ extension TableViewCoordinator {
         }
         delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
         invalidateDisplayCache()
-        rebuildVisualStateCache()
+        visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
 
         guard let tableColumnIndex = DataGridView.tableColumnIndex(
             for: columnIndex,

@@ -64,11 +64,11 @@ struct DataGridView: NSViewRepresentable {
         tableView.gridStyleMask = [.solidVerticalGridLineMask]
         tableView.intercellSpacing = NSSize(width: 1, height: 0)
         tableView.rowHeight = CGFloat(settings.rowHeight.rawValue)
+        tableView.usesAutomaticRowHeights = false
 
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
         tableView.target = context.coordinator
-        tableView.action = #selector(TableViewCoordinator.handleClick(_:))
         tableView.doubleAction = #selector(TableViewCoordinator.handleDoubleClick(_:))
 
         let rowNumberColumn = Self.makeRowNumberColumn()
@@ -211,7 +211,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.primaryKeyColumns = configuration.primaryKeyColumns
         coordinator.tabType = configuration.tabType
 
-        coordinator.rebuildVisualStateCache()
+        coordinator.visualIndex.rebuild(from: coordinator.changeManager, sortedIDs: coordinator.sortedIDs)
 
         if !latestRows.columns.isEmpty {
             coordinator.isRebuildingColumns = true
@@ -361,7 +361,7 @@ struct DataGridView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
-        coordinator.overlayEditor?.dismiss(commit: false)
+        coordinator.overlayEditor?.dismiss(commit: true)
         coordinator.persistColumnLayoutToStorage()
         coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil

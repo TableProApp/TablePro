@@ -45,7 +45,7 @@ struct MCPTokenRevealSheet: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial)
+        .themeMaterial(.banner, .thinMaterial)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(Color(nsColor: .systemOrange), lineWidth: 1)
@@ -143,6 +143,17 @@ struct MCPTokenRevealSheet: View {
                   "headers": {
                     "Authorization": "Bearer \(plaintext)"
                   }
+                }
+              }
+            }
+            """
+        case .zed:
+            return """
+            {
+              "tablepro": {
+                "url": "\(baseURL)",
+                "headers": {
+                  "Authorization": "Bearer \(plaintext)"
                 }
               }
             }

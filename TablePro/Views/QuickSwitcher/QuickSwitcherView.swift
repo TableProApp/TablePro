@@ -2,23 +2,18 @@
 //  QuickSwitcherView.swift
 //  TablePro
 //
-//  Quick switcher sheet for searching and opening database objects.
-//  Presented as a native SwiftUI .sheet() via the ActiveSheet pattern.
+//  SwiftUI content for the quick switcher. Hosted inside an NSPanel
+//  by `QuickSwitcherPanelController` for the Spotlight presentation pattern.
 //
 
 import SwiftUI
 
-// MARK: - Sheet
-
-/// Native SwiftUI sheet for the quick switcher, matching the project's ActiveSheet pattern.
-internal struct QuickSwitcherSheet: View {
-    @Binding var isPresented: Bool
-    @Environment(\.dismiss) private var dismiss
-
+internal struct QuickSwitcherContentView: View {
     let schemaProvider: SQLSchemaProvider
     let connectionId: UUID
     let databaseType: DatabaseType
     let onSelect: (QuickSwitcherItem) -> Void
+    let onDismiss: () -> Void
 
     @State private var viewModel = QuickSwitcherViewModel()
 
@@ -30,19 +25,16 @@ internal struct QuickSwitcherSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             Text("Quick Switcher")
                 .font(.body.weight(.semibold))
                 .padding(.vertical, 12)
 
             Divider()
 
-            // Search toolbar
             searchToolbar
 
             Divider()
 
-            // Content
             if viewModel.isLoading {
                 loadingView
             } else if viewModel.filteredItems.isEmpty {
@@ -53,7 +45,6 @@ internal struct QuickSwitcherSheet: View {
 
             Divider()
 
-            // Footer
             footer
         }
         .frame(width: 460, height: 480)
@@ -65,7 +56,7 @@ internal struct QuickSwitcherSheet: View {
                 databaseType: databaseType
             )
         }
-        .onExitCommand { dismiss() }
+        .onExitCommand { onDismiss() }
         .onKeyPress(.return) {
             openSelectedItem()
             return .handled
@@ -102,7 +93,6 @@ internal struct QuickSwitcherSheet: View {
         ScrollViewReader { proxy in
             List(selection: $viewModel.selectedItemId) {
                 if viewModel.searchText.isEmpty {
-                    // Grouped by kind when not searching
                     ForEach(viewModel.groupedItems, id: \.kind) { group in
                         Section {
                             ForEach(group.items) { item in
@@ -115,7 +105,6 @@ internal struct QuickSwitcherSheet: View {
                         }
                     }
                 } else {
-                    // Flat ranked list when searching
                     ForEach(viewModel.filteredItems) { item in
                         itemRow(item)
                     }
@@ -181,7 +170,7 @@ internal struct QuickSwitcherSheet: View {
         VStack(spacing: 12) {
             ProgressView()
                 .scaleEffect(0.8)
-            Text("Loading...")
+            Text(String(localized: "Loading..."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -195,13 +184,13 @@ internal struct QuickSwitcherSheet: View {
                 .foregroundStyle(.secondary)
 
             if viewModel.searchText.isEmpty {
-                Text("No objects found")
+                Text(String(localized: "No objects found"))
                     .font(.body.weight(.medium))
             } else {
-                Text("No matching objects")
+                Text(String(localized: "No matching objects"))
                     .font(.body.weight(.medium))
 
-                Text("No objects match \"\(viewModel.searchText)\"")
+                Text(String(format: String(localized: "No objects match \"%@\""), viewModel.searchText))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -213,13 +202,13 @@ internal struct QuickSwitcherSheet: View {
 
     private var footer: some View {
         HStack {
-            Button("Cancel") {
-                dismiss()
+            Button(String(localized: "Cancel")) {
+                onDismiss()
             }
 
             Spacer()
 
-            Button("Open") {
+            Button(String(localized: "Open")) {
                 openSelectedItem()
             }
             .buttonStyle(.borderedProminent)
@@ -232,18 +221,18 @@ internal struct QuickSwitcherSheet: View {
 
     private func sectionTitle(for kind: QuickSwitcherItemKind) -> String {
         switch kind {
-        case .table: return "TABLES"
-        case .view: return "VIEWS"
-        case .systemTable: return "SYSTEM TABLES"
-        case .database: return "DATABASES"
-        case .schema: return "SCHEMAS"
-        case .queryHistory: return "RECENT QUERIES"
+        case .table: return String(localized: "TABLES")
+        case .view: return String(localized: "VIEWS")
+        case .systemTable: return String(localized: "SYSTEM TABLES")
+        case .database: return String(localized: "DATABASES")
+        case .schema: return String(localized: "SCHEMAS")
+        case .queryHistory: return String(localized: "RECENT QUERIES")
         }
     }
 
     private func openSelectedItem() {
         guard let item = viewModel.selectedItem else { return }
         onSelect(item)
-        dismiss()
+        onDismiss()
     }
 }

@@ -34,12 +34,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
-    private lazy var dataGridFieldEditor: DataGridFieldEditor = {
-        let editor = DataGridFieldEditor()
-        editor.isFieldEditor = true
-        return editor
-    }()
-
     internal let payload: EditorTabPayload
 
     internal let controllerId: UUID
@@ -58,7 +52,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         )
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.minSize = NSSize(width: 720, height: 480)
-        window.isRestorable = false
+        window.isRestorable = AppSettingsStorage.shared.loadGeneral().startupBehavior == .reopenLast
+        window.restorationClass = TabWindowRestoration.self
         window.toolbarStyle = .unified
         window.titleVisibility = .hidden
         window.tabbingMode = .preferred
@@ -93,12 +88,12 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         fatalError("TabWindowController does not support NSCoder init")
     }
 
-    // MARK: - NSWindowDelegate
-
-    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
-        guard client is CellTextField else { return nil }
-        return dataGridFieldEditor
+    override func encodeRestorableState(with coder: NSCoder) {
+        super.encodeRestorableState(with: coder)
+        coder.encode(payload.connectionId.uuidString as NSString, forKey: TabWindowRestoration.connectionIdKey)
     }
+
+    // MARK: - NSWindowDelegate
 
     internal func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }

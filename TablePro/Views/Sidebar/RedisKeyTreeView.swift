@@ -7,7 +7,6 @@ import SwiftUI
 
 internal struct RedisKeyTreeView: View {
     let nodes: [RedisKeyNode]
-    @Binding var expandedPrefixes: Set<String>
     let isLoading: Bool
     let isTruncated: Bool
     var onSelectNamespace: ((String) -> Void)?
@@ -29,7 +28,9 @@ internal struct RedisKeyTreeView: View {
                 .font(.caption)
                 .padding(.vertical, 4)
         } else {
-            renderNodes(nodes)
+            OutlineGroup(nodes, children: \.children) { node in
+                row(for: node)
+            }
             if isTruncated {
                 Text("Showing first 50,000 keys")
                     .foregroundStyle(.secondary)
@@ -39,65 +40,41 @@ internal struct RedisKeyTreeView: View {
         }
     }
 
-    private func renderNodes(_ items: [RedisKeyNode]) -> AnyView {
-        AnyView(
-            ForEach(items) { node in
-                switch node {
-                case .namespace(let name, let fullPrefix, let children, let keyCount):
-                    DisclosureGroup(isExpanded: Binding(
-                        get: { expandedPrefixes.contains(fullPrefix) },
-                        set: { expanded in
-                            if expanded {
-                                expandedPrefixes.insert(fullPrefix)
-                            } else {
-                                expandedPrefixes.remove(fullPrefix)
-                            }
-                        }
-                    )) {
-                        renderNodes(children)
-                    } label: {
-                        namespaceLabel(name: name, keyCount: keyCount, fullPrefix: fullPrefix)
-                    }
-                case .key(let name, let fullKey, let keyType):
-                    keyLabel(name: name, fullKey: fullKey, keyType: keyType)
+    @ViewBuilder
+    private func row(for node: RedisKeyNode) -> some View {
+        switch node {
+        case .namespace(let name, let fullPrefix, _, let keyCount):
+            Button {
+                onSelectNamespace?(fullPrefix)
+            } label: {
+                HStack {
+                    Label(name, systemImage: "folder")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text("\(keyCount)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(.quaternary, in: Capsule())
                 }
             }
-        )
-    }
-
-    private func namespaceLabel(name: String, keyCount: Int, fullPrefix: String) -> some View {
-        Button {
-            onSelectNamespace?(fullPrefix)
-        } label: {
-            HStack {
-                Label(name, systemImage: "folder")
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text("\(keyCount)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(.quaternary, in: Capsule())
+            .buttonStyle(.plain)
+        case .key(let name, let fullKey, let keyType):
+            Button {
+                onSelectKey?(fullKey, keyType)
+            } label: {
+                HStack {
+                    Label(name, systemImage: keyTypeIcon(keyType))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(keyType)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
-    }
-
-    private func keyLabel(name: String, fullKey: String, keyType: String) -> some View {
-        Button {
-            onSelectKey?(fullKey, keyType)
-        } label: {
-            HStack {
-                Label(name, systemImage: keyTypeIcon(keyType))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text(keyType)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private func keyTypeIcon(_ type: String) -> String {

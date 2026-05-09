@@ -109,7 +109,7 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 - **`SQLEditorTheme`** — single source of truth for editor colors/fonts
 - **`TableProEditorTheme`** — adapter to CodeEdit's `EditorTheme` protocol
 - **`CompletionEngine`** — framework-agnostic; **`SQLCompletionAdapter`** bridges to CodeEdit's `CodeSuggestionDelegate`
-- **`EditorTabBar`** — pure SwiftUI tab bar
+- Editor tabs use native NSWindow tabs (`NSWindow.tabbingMode = .preferred` in `TabWindowController`); there is no custom tab bar.
 - Cursor model: `cursorPositions: [CursorPosition]` (multi-cursor via CodeEditSourceEditor)
 
 ### Change Tracking Flow

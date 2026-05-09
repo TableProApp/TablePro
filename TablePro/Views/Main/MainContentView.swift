@@ -198,16 +198,6 @@ struct MainContentView: View {
                 connection: connection,
                 initialFileURL: coordinator.importFileURL
             )
-        case .quickSwitcher:
-            QuickSwitcherSheet(
-                isPresented: dismissBinding,
-                schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
-                connectionId: connection.id,
-                databaseType: connection.type,
-                onSelect: { item in
-                    coordinator.handleQuickSwitcherSelection(item)
-                }
-            )
         case .maintenance(let operation, let tableName):
             MaintenanceSheet(
                 operation: operation,
@@ -366,16 +356,8 @@ struct MainContentView: View {
                     rowIndex: rowIndex, columnIndex: colIndex, value: value)
                 scheduleInspectorUpdate()
             },
-            onSort: { columnIndex, ascending, isMultiSort in
-                coordinator.handleSort(
-                    columnIndex: columnIndex, ascending: ascending,
-                    isMultiSort: isMultiSort)
-            },
-            onClearSort: {
-                coordinator.clearSort()
-            },
-            onRemoveSortColumn: { columnIndex in
-                coordinator.removeMultiSortColumn(columnIndex: columnIndex)
+            onSortStateChanged: { newState in
+                coordinator.handleSortStateChanged(newState)
             },
             onAddRow: {
                 coordinator.addNewRow()

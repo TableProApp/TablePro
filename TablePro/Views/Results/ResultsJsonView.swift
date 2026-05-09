@@ -16,6 +16,8 @@ internal struct ResultsJsonView: View {
     @State private var prettyText = ""
     @State private var cachedJson = ""
     @State private var copied = false
+    @State private var renderToken: Int = 0
+    @State private var copyCooldownTask: Task<Void, Never>?
 
     init(
         tableRows: TableRows,
@@ -26,27 +28,14 @@ internal struct ResultsJsonView: View {
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
     }
 
-    private var allRows: [[String?]] {
-        tableRows.rows.map(\.values)
-    }
-
-    private var displayRows: [[String?]] {
-        let rows = allRows
-        if selectedRowIndices.isEmpty {
-            return rows
-        }
-        return selectedRowIndices.sorted().compactMap { idx in
-            rows.indices.contains(idx) ? rows[idx] : nil
-        }
-    }
-
     private var rowCountText: String {
-        let displaying = displayRows.count
-        let total = tableRows.count
-        if selectedRowIndices.isEmpty || displaying == total {
-            return String(format: String(localized: "%d rows"), total)
+        let rowCount = tableRows.count
+        let selectedCount = selectedRowIndices.count
+        let displaying = selectedCount == 0 ? rowCount : selectedCount
+        if selectedRowIndices.isEmpty || displaying == rowCount {
+            return String(format: String(localized: "%d rows"), rowCount)
         }
-        return String(format: String(localized: "%d of %d rows"), displaying, total)
+        return String(format: String(localized: "%d of %d rows"), displaying, rowCount)
     }
 
     var body: some View {
@@ -56,9 +45,9 @@ internal struct ResultsJsonView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onAppear { rebuildJson() }
-        .onChange(of: selectedRowIndices) { rebuildJson() }
-        .onChange(of: tableRows.count) { rebuildJson() }
+        .onAppear { startRebuild() }
+        .onChange(of: selectedRowIndices) { startRebuild() }
+        .onChange(of: tableRows.count) { startRebuild() }
         .onChange(of: viewMode) {
             AppSettingsManager.shared.editor.jsonViewerPreferredMode = viewMode
         }
@@ -86,8 +75,14 @@ internal struct ResultsJsonView: View {
             Button {
                 ClipboardService.shared.writeText(cachedJson)
                 copied = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    copied = false
+                copyCooldownTask?.cancel()
+                copyCooldownTask = Task { @MainActor in
+                    do {
+                        try await Task.sleep(for: .milliseconds(1500))
+                        copied = false
+                    } catch {
+                        // cancelled by next press
+                    }
                 }
             } label: {
                 Label(
@@ -151,20 +146,57 @@ internal struct ResultsJsonView: View {
 
     // MARK: - JSON Generation
 
-    private func rebuildJson() {
-        let converter = JsonRowConverter(columns: tableRows.columns, columnTypes: tableRows.columnTypes)
-        let json = converter.generateJson(rows: displayRows)
-        cachedJson = json
-        prettyText = json.prettyPrintedAsJson() ?? json
+    private func startRebuild() {
+        renderToken &+= 1
+        let token = renderToken
+        let columns = tableRows.columns
+        let columnTypes = tableRows.columnTypes
+        let rowsSnapshot = tableRows.rows
+        let selectedIndices = selectedRowIndices
 
-        let result = JSONTreeParser.parse(json)
-        switch result {
-        case .success(let node):
-            parsedTree = node
-            parseError = nil
-        case .failure(let error):
-            parsedTree = nil
-            parseError = error
+        Task { @MainActor in
+            let result = await Task.detached(priority: .userInitiated) {
+                Self.computeJson(
+                    columns: columns,
+                    columnTypes: columnTypes,
+                    rows: rowsSnapshot,
+                    selectedIndices: selectedIndices
+                )
+            }.value
+
+            guard token == renderToken else { return }
+            cachedJson = result.json
+            prettyText = result.pretty
+            switch result.parseResult {
+            case .success(let node):
+                parsedTree = node
+                parseError = nil
+            case .failure(let error):
+                parsedTree = nil
+                parseError = error
+            }
         }
+    }
+
+    nonisolated private static func computeJson(
+        columns: [String],
+        columnTypes: [ColumnType],
+        rows: ContiguousArray<Row>,
+        selectedIndices: Set<Int>
+    ) -> (json: String, pretty: String, parseResult: Result<JSONTreeNode, JSONTreeParseError>) {
+        let allRows: [[String?]] = rows.map { Array($0.values) }
+        let displayRows: [[String?]]
+        if selectedIndices.isEmpty {
+            displayRows = allRows
+        } else {
+            displayRows = selectedIndices.sorted().compactMap {
+                allRows.indices.contains($0) ? allRows[$0] : nil
+            }
+        }
+        let converter = JsonRowConverter(columns: columns, columnTypes: columnTypes)
+        let json = converter.generateJson(rows: displayRows)
+        let pretty = json.prettyPrintedAsJson() ?? json
+        let parseResult = JSONTreeParser.parse(json)
+        return (json: json, pretty: pretty, parseResult: parseResult)
     }
 }

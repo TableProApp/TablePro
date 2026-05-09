@@ -13,7 +13,6 @@ internal final class RedisKeyTreeViewModel {
     private static let maxKeys = 50_000
 
     var rootNodes: [RedisKeyNode] = []
-    var expandedPrefixes: Set<String> = []
     var isLoading = false
     var isTruncated = false
     var separator: String = ":"
@@ -65,7 +64,6 @@ internal final class RedisKeyTreeViewModel {
     func clear() {
         rootNodes = []
         allKeys = []
-        expandedPrefixes = []
         isTruncated = false
     }
 

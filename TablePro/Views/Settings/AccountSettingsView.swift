@@ -36,7 +36,7 @@ struct AccountSettingsView: View {
                     .controlSize(.small)
             }
             .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .themeMaterial(.banner, .ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
             .padding()
 
             Spacer()

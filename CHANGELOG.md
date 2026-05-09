@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- MCP Setup sheet adds Zed alongside Claude Desktop, Claude Code, and Cursor with a one-paste `context_servers` snippet
+
 ### Changed
 
 - PostgreSQL SQL export emits foreign key constraints via `ALTER TABLE ... ADD CONSTRAINT` after data load and resyncs sequences via `setval` so a re-imported dump round-trips cleanly even when child tables sort before parents (#1114)
@@ -24,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal: AI chat tools declare their access mode (read-only, write, agent-only) rather than relying on a hardcoded allowlist; new tools are picked up automatically
 - AI providers: Anthropic test connection uses the configured model, known model list updated through Claude 4.7, and Ollama detection now logs the actual error category instead of swallowing every failure as 'not running'
 - AI Chat views: replace custom pill buttons with native `.borderless` styles, switch hardcoded text colors to semantic system colors, use relative font sizing in Markdown rendering, align spacing to the 8-pt grid, and add accessibility labels to icon-only buttons
+- Translucent backgrounds (Welcome sidebar, settings banners, ER diagram toolbar, JSON editor controls, Pro feature scrim) honor the system Reduce Transparency and Increase Contrast accessibility settings, swapping the material for a solid surface color when either is on
+- Internal: result-grid sortable header drops the custom resize cursor handling that duplicated AppKit's built-in column-edge resize, and consolidates three sort delegate methods into one that carries the full sort state. No user-facing change; multi-column sort, shift-click cycle, and the column resize cursor still work the same.
+- Internal: Redis sidebar key tree uses SwiftUI `OutlineGroup` instead of recursive `DisclosureGroup` + `ForEach` wrapped in `AnyView`. Expansion state is now managed natively per branch identifier; the explicit `expandedPrefixes` set is gone.
+- Result-grid cells render via direct `draw(_:)` on a layer-backed `NSView` instead of an `NSTableCellView` wrapping an `NSTextField` plus an `NSButton` accessory. Per cell during scroll there is no Auto Layout solving, no `NSTextField` re-layout, and no `NSButton` tracking-area work. Editing for plain-text columns now opens the overlay editor (the same surface previously used for multi-line cells) rather than an inline text field.
 
 ### Fixed
 

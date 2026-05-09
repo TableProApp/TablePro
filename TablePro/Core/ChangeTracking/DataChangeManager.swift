@@ -56,11 +56,7 @@ final class DataChangeManager: ChangeManaging {
     var databaseType: DatabaseType = .mysql
     var pluginDriver: (any PluginDatabaseDriver)?
 
-    private var _columnsStorage: [String] = []
-    var columns: [String] {
-        get { _columnsStorage }
-        set { _columnsStorage = newValue.map { String($0) } }
-    }
+    var columns: [String] = []
 
     var undoManagerProvider: (() -> UndoManager?)?
     var onUndoApplied: ((UndoResult) -> Void)?

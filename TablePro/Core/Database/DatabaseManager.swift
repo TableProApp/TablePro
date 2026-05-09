@@ -26,7 +26,6 @@ final class DatabaseManager {
         didSet {
             if Set(oldValue.keys) != Set(activeSessions.keys) {
                 connectionListVersion &+= 1
-                persistOpenConnectionIds()
             }
             connectionStatusVersion &+= 1
         }
@@ -105,10 +104,4 @@ final class DatabaseManager {
         self.pluginManager = pluginManager
     }
 
-    private func persistOpenConnectionIds() {
-        let connections = connectionStorage.loadConnections()
-        let activeKeys = Set(activeSessions.keys)
-        let ids = connections.filter { activeKeys.contains($0.id) }.map(\.id)
-        appSettingsStorage.saveLastOpenConnectionIds(ids)
-    }
 }
