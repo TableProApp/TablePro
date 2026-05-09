@@ -566,7 +566,7 @@ enum ConnectionExportService {
         }
 
         if importedCount > 0 {
-            AppEvents.shared.connectionUpdated.send(())
+            AppEvents.shared.connectionUpdated.send(nil)
             logger.info("Imported \(importedCount) connections")
         }
 

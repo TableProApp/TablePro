@@ -64,7 +64,7 @@ extension WelcomeWindowView {
                     updated.localOnly = !allLocalOnly
                     ConnectionStorage.shared.updateConnection(updated)
                 }
-                AppEvents.shared.connectionUpdated.send(())
+                AppEvents.shared.connectionUpdated.send(nil)
             } label: {
                 Label(
                     allLocalOnly
@@ -173,7 +173,7 @@ extension WelcomeWindowView {
                 var updated = connection
                 updated.localOnly.toggle()
                 ConnectionStorage.shared.updateConnection(updated)
-                AppEvents.shared.connectionUpdated.send(())
+                AppEvents.shared.connectionUpdated.send(connection.id)
             } label: {
                 Label(
                     connection.localOnly

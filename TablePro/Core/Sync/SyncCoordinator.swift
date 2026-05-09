@@ -472,7 +472,7 @@ final class SyncCoordinator {
         }
 
         if actualConnectionChanges || groupsOrTagsChanged {
-            services.appEvents.connectionUpdated.send(())
+            services.appEvents.connectionUpdated.send(nil)
         }
     }
 

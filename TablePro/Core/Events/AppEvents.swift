@@ -30,7 +30,12 @@ final class AppEvents {
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()
 
-    let connectionUpdated = PassthroughSubject<Void, Never>()
+    /// Connection metadata changed (name, color, group, type, etc.).
+    /// Payload is the affected connection's id, or `nil` for bulk updates
+    /// (sync pull, multi-import) where the sender doesn't track individual ids.
+    /// Subscribers scoped to a single connection should filter `payload == id`;
+    /// list-level subscribers refresh on every event regardless.
+    let connectionUpdated = PassthroughSubject<UUID?, Never>()
 
     let databaseDidConnect = PassthroughSubject<DatabaseDidConnect, Never>()
 
@@ -74,4 +79,3 @@ struct ConnectionStatusChange: Sendable {
 struct DatabaseDidConnect: Sendable {
     let connectionId: UUID
 }
-

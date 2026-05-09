@@ -40,7 +40,7 @@ internal enum SampleDatabaseLauncher {
             installedURL: installedURL,
             connectionStorage: connectionStorage
         )
-        AppEvents.shared.connectionUpdated.send(())
+        AppEvents.shared.connectionUpdated.send(connection.id)
         bumpSampleOpenedCounter()
         launchSampleConnection(connection, onError: onError)
     }
@@ -174,7 +174,7 @@ internal enum SampleDatabaseLauncher {
         if let sampleConnection {
             do {
                 try await DatabaseManager.shared.ensureConnected(sampleConnection)
-                AppEvents.shared.connectionUpdated.send(())
+                AppEvents.shared.connectionUpdated.send(sampleConnection.id)
             } catch {
                 logger.warning(
                     "Reopening sample after reset failed: \(error.localizedDescription, privacy: .public)"
