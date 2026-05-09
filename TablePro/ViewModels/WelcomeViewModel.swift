@@ -585,7 +585,9 @@ final class WelcomeViewModel {
     }
 
     func focusConnectionFormWindow() {
-        AppCommands.shared.focusConnectionFormWindowRequested.send(())
+        if let window = NSApp.windows.first(where: { AppLaunchCoordinator.isConnectionFormWindow($0) }) {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     // MARK: - Private Helpers

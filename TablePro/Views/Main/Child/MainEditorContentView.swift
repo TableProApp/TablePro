@@ -57,7 +57,6 @@ struct MainEditorContentView: View {
     @State private var cachedChangeManager: AnyChangeManager?
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
-    @State private var favoriteDialogQuery: FavoriteDialogQuery?
     @State private var dataTabDelegate = DataTabGridDelegate()
 
     // Native macOS window tabs — no LRU tracking needed (single tab per window)
@@ -97,7 +96,10 @@ struct MainEditorContentView: View {
             }
         }
         .background(.background)
-        .sheet(item: $favoriteDialogQuery) { item in
+        .sheet(item: Binding(
+            get: { coordinator.favoriteDialogQuery },
+            set: { coordinator.favoriteDialogQuery = $0 }
+        )) { item in
             FavoriteEditDialog(
                 connectionId: connectionId,
                 favorite: nil,
@@ -129,9 +131,6 @@ struct MainEditorContentView: View {
                     coordinator.fileConflictRequest = nil
                 }
             )
-        }
-        .onReceive(AppCommands.shared.saveAsFavoriteRequested) { query in
-            favoriteDialogQuery = FavoriteDialogQuery(query: query)
         }
         .onChange(of: tabManager.tabStructureVersion) { _, _ in
             let openTabIds = Set(tabManager.tabIds)
@@ -332,7 +331,7 @@ struct MainEditorContentView: View {
                         },
                         onSaveAsFavorite: { text in
                             guard !text.isEmpty else { return }
-                            favoriteDialogQuery = FavoriteDialogQuery(query: text)
+                            coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
                         }
                     )
                 }

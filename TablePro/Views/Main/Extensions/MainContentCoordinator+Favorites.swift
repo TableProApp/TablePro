@@ -32,7 +32,7 @@ extension MainContentCoordinator {
               tab.tabType == .query else { return }
         let query = tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
-        AppCommands.shared.saveAsFavoriteRequested.send(query)
+        favoriteDialogQuery = FavoriteDialogQuery(query: query)
     }
 
     func openLinkedFavorite(_ favorite: LinkedSQLFavorite) {

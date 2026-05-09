@@ -106,7 +106,10 @@ final class MainContentCoordinator {
     /// Stable identifier for this coordinator's window (set by MainContentView on appear)
     var windowId: UUID?
 
-    /// Direct reference to sidebar viewmodel — eliminates global notification broadcasts
+    /// Setting this presents the favorite-edit dialog sheet from `MainEditorContentView`.
+    var favoriteDialogQuery: FavoriteDialogQuery?
+
+    /// Direct reference to sidebar viewmodel, eliminates global notification broadcasts
     weak var sidebarViewModel: SidebarViewModel?
 
     /// Direct reference to structure view actions — eliminates notification broadcasts

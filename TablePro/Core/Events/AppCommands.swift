@@ -29,13 +29,9 @@ final class AppCommands {
     let importConnections = PassthroughSubject<Void, Never>()
     let importConnectionsFromApp = PassthroughSubject<Void, Never>()
     let exportQueryResults = PassthroughSubject<Void, Never>()
-    let saveAsFavoriteRequested = PassthroughSubject<String, Never>()
 
     // MARK: - Window / Sheet Commands
 
-    let focusConnectionFormWindowRequested = PassthroughSubject<Void, Never>()
-    let openSampleDatabaseRequested = PassthroughSubject<Void, Never>()
-    let resetSampleDatabaseRequested = PassthroughSubject<Void, Never>()
     let presentDatabaseTypeChooser = PassthroughSubject<DatabaseTypeChooserPayload, Never>()
 
     private init() {}
