@@ -19,6 +19,7 @@ on:
 env:
   XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
   XCODE_SCHEME: TableProMobile
+  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5"
 
 jobs:
   test:
@@ -27,8 +28,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -38,28 +38,15 @@ jobs:
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
 
-      - name: Show installed iOS simulator runtimes
-        run: |
-          echo "=== xcodebuild -showsdks ==="
-          xcodebuild -showsdks | grep -i ios || true
-          echo "=== xcrun simctl list runtimes ==="
-          xcrun simctl list runtimes
-          echo "=== xcrun simctl list devices available (iOS section) ==="
-          xcrun simctl list devices available | sed -n '/iOS/,/^--/p' | head -80
+      # macos-26 lazy-loads simulator runtimes; -downloadPlatform pulls the runtime
+      # matching Xcode's SDK and is a no-op when it is already present.
+      - name: Install iOS simulator runtime
+        run: sudo xcodebuild -downloadPlatform iOS
 
-      - name: Install latest iOS simulator runtime
-        run: |
-          # Always run -downloadPlatform; it is idempotent and ensures the runtime
-          # matching the Xcode SDK is present. Older partial-version runtimes are
-          # not enough on Xcode 26.5 because xcodebuild rejects simulators whose
-          # SDK is older than the project's compile SDK.
-          sudo xcodebuild -downloadPlatform iOS
-
+      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
+      # checked-in example template is enough for the project to resolve.
       - name: Stub Secrets.xcconfig
-        run: |
-          # The real xcconfig is gitignored. Tests do not need analytics secrets;
-          # an empty stub keeps the project's xcconfig reference resolvable.
-          cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
+        run: cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
 
       - name: Download static libraries
         env:
@@ -73,59 +60,24 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation
 
-      - name: Show destinations xcodebuild sees
-        run: |
-          xcodebuild -showdestinations \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -skipPackagePluginValidation 2>&1 | head -80 || true
-
-      - name: Pick iOS simulator destination
-        id: sim
-        run: |
-          # Pick a specific iPhone simulator UDID by walking installed iOS runtimes
-          # (highest version first) and trying preferred device names. Returning a
-          # UDID via `id=` avoids both the runtime-version-string mismatch (26.4 vs
-          # 26.4.1) and the `OS=latest` template-vs-installed mismatch.
-          udid=$(xcrun simctl list -j devices available | python3 -c '
-          import json, re, sys
-          data = json.load(sys.stdin)
-          ios_runtimes = sorted(
-              [k for k in data["devices"] if "iOS" in k],
-              key=lambda k: tuple(int(p) for p in re.findall(r"\d+", k)),
-              reverse=True,
-          )
-          preferred = ["iPhone 17 Pro", "iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro", "iPhone 15"]
-          for runtime in ios_runtimes:
-              for name in preferred:
-                  for dev in data["devices"][runtime]:
-                      if dev.get("isAvailable") and dev["name"] == name:
-                          print("%s|%s|%s" % (dev["udid"], name, runtime))
-                          sys.exit(0)
-          ')
-          if [ -z "$udid" ]; then
-            echo "No matching iPhone simulator found"
-            xcrun simctl list devices available
-            exit 1
-          fi
-          UDID="${udid%%|*}"
-          rest="${udid#*|}"
-          NAME="${rest%%|*}"
-          RUNTIME="${rest#*|}"
-          echo "Picked $NAME ($UDID) on $RUNTIME"
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-
+      # Override TEST_HOST/BUNDLE_LOADER to run tests as a standalone library
+      # bundle in the xctest process. The default setup launches the host app
+      # (which spins up CloudKit, sync, etc.) and that bootstrap path is fragile
+      # on a CI simulator without an iCloud account or full entitlements. Pure
+      # unit tests against the view models do not need the app to be alive.
       - name: Run unit tests
         run: |
           set -o pipefail
           xcodebuild test \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -destination "$TEST_DESTINATION" \
             -only-testing:TableProMobileTests \
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
+            TEST_HOST="" \
+            BUNDLE_LOADER="" \
             | xcbeautify --renderer github-actions
 
       - name: Upload test results
@@ -135,3 +87,16 @@ jobs:
           name: ios-test-results
           path: TestResults.xcresult
           retention-days: 7
+
+      # Diagnostics only on failure so happy-path runs stay quiet.
+      - name: Show simulator state on failure
+        if: failure()
+        run: |
+          echo "=== iOS runtimes ==="
+          xcrun simctl list runtimes | grep -E "iOS|tvOS" || true
+          echo "=== Eligible scheme destinations ==="
+          xcodebuild -showdestinations \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -skipPackagePluginValidation 2>&1 \
+            | grep -E "iOS Simulator.*iPhone" || true
