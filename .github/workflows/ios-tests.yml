@@ -16,6 +16,11 @@ on:
       - ".github/workflows/ios-tests.yml"
   workflow_dispatch:
 
+# Only one run per PR/branch at a time; new pushes cancel pending older ones.
+concurrency:
+  group: ios-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
   XCODE_SCHEME: TableProMobile
@@ -25,7 +30,7 @@ jobs:
   test:
     name: Run iOS Tests
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -48,10 +53,16 @@ jobs:
       - name: Stub Secrets.xcconfig
         run: cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
 
+      - name: Cache static libraries
+        uses: actions/cache@v4
+        with:
+          path: Libs
+          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256') }}
+
       - name: Download static libraries
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/download-libs.sh --force
+        run: scripts/download-libs.sh
 
       - name: Resolve Swift package dependencies
         run: |
