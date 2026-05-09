@@ -47,14 +47,13 @@ jobs:
           echo "=== xcrun simctl list devices available (iOS section) ==="
           xcrun simctl list devices available | sed -n '/iOS/,/^--/p' | head -80
 
-      - name: Install iOS simulator runtime if missing
+      - name: Install latest iOS simulator runtime
         run: |
-          if ! xcrun simctl list runtimes | grep -q "iOS 26"; then
-            echo "iOS 26 simulator runtime missing, downloading..."
-            sudo xcodebuild -downloadPlatform iOS
-          else
-            echo "iOS 26 simulator runtime already installed"
-          fi
+          # Always run -downloadPlatform; it is idempotent and ensures the runtime
+          # matching the Xcode SDK is present. Older partial-version runtimes are
+          # not enough on Xcode 26.5 because xcodebuild rejects simulators whose
+          # SDK is older than the project's compile SDK.
+          sudo xcodebuild -downloadPlatform iOS
 
       - name: Download static libraries
         env:
@@ -67,6 +66,13 @@ jobs:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation
+
+      - name: Show destinations xcodebuild sees
+        run: |
+          xcodebuild -showdestinations \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -skipPackagePluginValidation 2>&1 | head -80 || true
 
       - name: Pick iOS simulator destination
         id: sim
