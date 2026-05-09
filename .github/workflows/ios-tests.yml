@@ -71,39 +71,37 @@ jobs:
       - name: Pick iOS simulator destination
         id: sim
         run: |
-          # Find the highest installed iOS runtime version. `OS=latest` would resolve
-          # against Xcode's KNOWN runtime list (e.g. 26.5) which may not be installed
-          # on the runner; pinning to an installed version avoids that mismatch.
-          runtime=$(xcrun simctl list runtimes -j | python3 -c '
-          import json, sys, re
+          # Pick a specific iPhone simulator UDID by walking installed iOS runtimes
+          # (highest version first) and trying preferred device names. Returning a
+          # UDID via `id=` avoids both the runtime-version-string mismatch (26.4 vs
+          # 26.4.1) and the `OS=latest` template-vs-installed mismatch.
+          udid=$(xcrun simctl list -j devices available | python3 -c '
+          import json, re, sys
           data = json.load(sys.stdin)
-          ios = [r for r in data["runtimes"] if r["platform"] == "iOS" and r.get("isAvailable")]
-          ios.sort(key=lambda r: tuple(int(p) for p in re.findall(r"\d+", r["version"])))
-          print(ios[-1]["version"] if ios else "")
+          ios_runtimes = sorted(
+              [k for k in data["devices"] if "iOS" in k],
+              key=lambda k: tuple(int(p) for p in re.findall(r"\d+", k)),
+              reverse=True,
+          )
+          preferred = ["iPhone 17 Pro", "iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro", "iPhone 15"]
+          for runtime in ios_runtimes:
+              for name in preferred:
+                  for dev in data["devices"][runtime]:
+                      if dev.get("isAvailable") and dev["name"] == name:
+                          print(f"{dev[\"udid\"]}|{name}|{runtime}")
+                          sys.exit(0)
           ')
-          if [ -z "$runtime" ]; then
-            echo "No iOS simulator runtime installed"
-            xcrun simctl list runtimes
+          if [ -z "$udid" ]; then
+            echo "No matching iPhone simulator found"
+            xcrun simctl list devices available
             exit 1
           fi
-          echo "Picked iOS runtime: $runtime"
-
-          # Pick the first available iPhone device that has a simulator on that runtime.
-          device=""
-          for candidate in "iPhone 17 Pro" "iPhone 16 Pro" "iPhone 16" "iPhone 15 Pro" "iPhone 15"; do
-            if xcrun simctl list devices available "iOS $runtime" | grep -q "$candidate ("; then
-              device="$candidate"
-              break
-            fi
-          done
-          if [ -z "$device" ]; then
-            echo "No suitable iPhone for runtime iOS $runtime"
-            xcrun simctl list devices available "iOS $runtime"
-            exit 1
-          fi
-          echo "Picked device: $device"
-          echo "device=$device" >> "$GITHUB_OUTPUT"
-          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+          UDID="${udid%%|*}"
+          rest="${udid#*|}"
+          NAME="${rest%%|*}"
+          RUNTIME="${rest#*|}"
+          echo "Picked $NAME ($UDID) on $RUNTIME"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
       - name: Run unit tests
         run: |
@@ -111,7 +109,7 @@ jobs:
           xcodebuild test \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
-            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }},OS=${{ steps.sim.outputs.runtime }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
             -only-testing:TableProMobileTests \
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult \
