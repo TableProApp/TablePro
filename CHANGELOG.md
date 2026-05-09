@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Translucent backgrounds (Welcome sidebar, settings banners, ER diagram toolbar, JSON editor controls, Pro feature scrim) honor the system Reduce Transparency and Increase Contrast accessibility settings, swapping the material for a solid surface color when either is on
 - Internal: result-grid sortable header drops the custom resize cursor handling that duplicated AppKit's built-in column-edge resize, and consolidates three sort delegate methods into one that carries the full sort state. No user-facing change; multi-column sort, shift-click cycle, and the column resize cursor still work the same.
 - Internal: Redis sidebar key tree uses SwiftUI `OutlineGroup` instead of recursive `DisclosureGroup` + `ForEach` wrapped in `AnyView`. Expansion state is now managed natively per branch identifier; the explicit `expandedPrefixes` set is gone.
+- Result-grid cells render via direct `draw(_:)` on a layer-backed `NSView` instead of an `NSTableCellView` wrapping an `NSTextField` plus an `NSButton` accessory. Per cell during scroll there is no Auto Layout solving, no `NSTextField` re-layout, and no `NSButton` tracking-area work. Editing for plain-text columns now opens the overlay editor (the same surface previously used for multi-line cells) rather than an inline text field.
 
 ### Fixed
 

@@ -6,10 +6,9 @@
 import AppKit
 
 @MainActor
-final class DataGridCellView: NSTableCellView {
+final class DataGridCellView: NSView {
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("dataCell")
 
-    let cellTextField: CellTextField
     weak var accessoryDelegate: DataGridCellAccessoryDelegate?
     var nullDisplayString: String = ""
 
@@ -17,110 +16,67 @@ final class DataGridCellView: NSTableCellView {
     private(set) var cellRow: Int = -1
     private(set) var cellColumnIndex: Int = -1
 
+    private var displayText: String = ""
+    private var rawValue: String?
+    private var placeholder: DataGridCellPlaceholder?
+    private var accessibilityText: String = ""
+    private var isLargeDataset: Bool = false
+    private var isEditableCell: Bool = false
+
+    private var textFont: NSFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    private var textColor: NSColor = .labelColor
     private var modifiedColumnTint: NSColor?
-    private var deletedRowTextColor: NSColor?
-    private var accessoryVisible: Bool = false
+
+    private var visualState: RowVisualState = .empty
     private var isFocusedCell: Bool = false
     private var onEmphasizedSelection: Bool = false
 
-    private var textFieldTrailingConstraint: NSLayoutConstraint!
-    private var accessoryWidthConstraint: NSLayoutConstraint!
-    private var accessoryHeightConstraint: NSLayoutConstraint!
+    private var attributedCache: NSAttributedString?
+    private var attrCacheText: String?
+    private var attrCacheFont: NSFont?
+    private var attrCacheColor: NSColor?
+    private var attrCacheItalic: Bool = false
 
-    private static let fkSymbol = makeSymbol(
-        name: "arrow.right.circle.fill",
-        accessibilityDescription: String(localized: "Navigate to referenced row")
-    )
-    private static let chevronSymbol = makeSymbol(
-        name: "chevron.up.chevron.down",
-        accessibilityDescription: String(localized: "Open editor")
-    )
+    private var accessoryHitRect: NSRect = .zero
 
-    private lazy var accessoryButton: NSButton = {
-        let button = NSButton()
-        button.bezelStyle = .inline
-        button.isBordered = false
-        button.imageScaling = .scaleProportionallyDown
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.target = self
-        button.action = #selector(handleAccessoryClick(_:))
-        button.isHidden = true
-        button.setContentHuggingPriority(.required, for: .horizontal)
-        button.setContentCompressionResistancePriority(.required, for: .horizontal)
-        addSubview(button)
+    private static let chevronNormal = makeAccessoryImage("chevron.up.chevron.down", pointSize: 10, color: .secondaryLabelColor)
+    private static let chevronEmphasized = makeAccessoryImage("chevron.up.chevron.down", pointSize: 10, color: .alternateSelectedControlTextColor)
+    private static let fkArrowNormal = makeAccessoryImage("arrow.right.circle.fill", pointSize: 14, color: .secondaryLabelColor)
+    private static let fkArrowEmphasized = makeAccessoryImage("arrow.right.circle.fill", pointSize: 14, color: .alternateSelectedControlTextColor)
 
-        accessoryWidthConstraint = button.widthAnchor.constraint(equalToConstant: 0)
-        accessoryHeightConstraint = button.heightAnchor.constraint(equalToConstant: 0)
-        NSLayoutConstraint.activate([
-            button.trailingAnchor.constraint(
-                equalTo: trailingAnchor,
-                constant: -DataGridMetrics.cellHorizontalInset
-            ),
-            button.centerYAnchor.constraint(equalTo: centerYAnchor),
-            accessoryWidthConstraint,
-            accessoryHeightConstraint,
-        ])
-        return button
+    private static func makeAccessoryImage(_ name: String, pointSize: CGFloat, color: NSColor) -> NSImage {
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+            .applying(.init(hierarchicalColor: color))
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) ?? NSImage()
+    }
+
+    private static let placeholderParagraph: NSParagraphStyle = {
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingTail
+        return p
     }()
 
     override init(frame frameRect: NSRect) {
-        cellTextField = Self.makeTextField()
         super.init(frame: frameRect)
         commonInit()
     }
 
     required init?(coder: NSCoder) {
-        cellTextField = Self.makeTextField()
         super.init(coder: coder)
         commonInit()
-    }
-
-    private static func makeTextField() -> CellTextField {
-        let field = CellTextField()
-        field.font = ThemeEngine.shared.dataGridFonts.regular
-        field.drawsBackground = false
-        field.isBordered = false
-        field.focusRingType = .none
-        field.lineBreakMode = .byTruncatingTail
-        field.maximumNumberOfLines = 1
-        field.cell?.truncatesLastVisibleLine = true
-        field.cell?.usesSingleLineMode = true
-        field.translatesAutoresizingMaskIntoConstraints = false
-        return field
-    }
-
-    private static func makeSymbol(name: String, accessibilityDescription: String) -> NSImage {
-        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: accessibilityDescription) else {
-            return NSImage()
-        }
-        image.isTemplate = true
-        return image
     }
 
     private func commonInit() {
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         canDrawSubviewsIntoLayer = true
-
-        addSubview(cellTextField)
-        textFieldTrailingConstraint = cellTextField.trailingAnchor.constraint(
-            equalTo: trailingAnchor,
-            constant: -DataGridMetrics.cellHorizontalInset
-        )
-        NSLayoutConstraint.activate([
-            cellTextField.leadingAnchor.constraint(
-                equalTo: leadingAnchor,
-                constant: DataGridMetrics.cellHorizontalInset
-            ),
-            textFieldTrailingConstraint,
-            cellTextField.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-
         setAccessibilityElement(true)
         setAccessibilityRole(.cell)
     }
 
     override var allowsVibrancy: Bool { false }
+    override var isFlipped: Bool { true }
 
     override func makeBackingLayer() -> CALayer {
         let layer = super.makeBackingLayer()
@@ -146,76 +102,53 @@ final class DataGridCellView: NSTableCellView {
         cellRow = state.row
         cellColumnIndex = state.columnIndex
 
-        applyContent(content, isLargeDataset: state.isLargeDataset, visualState: state.visualState, palette: palette)
-        applyVisualState(state, palette: palette)
-
-        cellTextField.isEditable = state.isEditable && !state.visualState.isDeleted
-
-        let newAccessoryVisible = computeAccessoryVisibility(content: content, state: state)
-        let newInset = trailingInset(for: newAccessoryVisible)
-        if textFieldTrailingConstraint.constant != newInset {
-            textFieldTrailingConstraint.constant = newInset
-        }
-        if newAccessoryVisible != accessoryVisible {
-            accessoryVisible = newAccessoryVisible
-        }
-        configureAccessoryButton()
-
-        cellTextField.setAccessibilityLabel(content.accessibilityLabel)
-        setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
-        setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
-    }
-
-    private func applyContent(
-        _ content: DataGridCellContent,
-        isLargeDataset: Bool,
-        visualState: RowVisualState,
-        palette: DataGridCellPalette
-    ) {
-        cellTextField.placeholderString = nil
-        deletedRowTextColor = visualState.isDeleted ? palette.deletedRowText : nil
+        let nextDisplayText: String
+        let nextFont: NSFont
+        let nextColor: NSColor
+        let nextItalic: Bool
+        let deletedTextColor = state.visualState.isDeleted ? palette.deletedRowText : nil
 
         switch content.placeholder {
         case .none:
-            cellTextField.stringValue = content.displayText
-            cellTextField.originalValue = content.rawValue
-            cellTextField.font = palette.regularFont
-            cellTextField.tag = DataGridFontVariant.regular
-            cellTextField.textColor = deletedRowTextColor ?? .labelColor
-
+            nextDisplayText = content.displayText
+            nextFont = palette.regularFont
+            nextColor = deletedTextColor ?? .labelColor
+            nextItalic = false
         case .null:
-            cellTextField.stringValue = ""
-            cellTextField.originalValue = nil
-            cellTextField.font = palette.italicFont
-            cellTextField.tag = DataGridFontVariant.italic
-            cellTextField.textColor = deletedRowTextColor ?? .secondaryLabelColor
-            if !isLargeDataset {
-                cellTextField.placeholderString = nullDisplayString
-            }
-
+            nextDisplayText = state.isLargeDataset ? "" : nullDisplayString
+            nextFont = palette.italicFont
+            nextColor = deletedTextColor ?? .secondaryLabelColor
+            nextItalic = true
         case .empty:
-            cellTextField.stringValue = ""
-            cellTextField.originalValue = nil
-            cellTextField.font = palette.italicFont
-            cellTextField.tag = DataGridFontVariant.italic
-            cellTextField.textColor = deletedRowTextColor ?? .secondaryLabelColor
-            if !isLargeDataset {
-                cellTextField.placeholderString = String(localized: "Empty")
-            }
-
+            nextDisplayText = state.isLargeDataset ? "" : String(localized: "Empty")
+            nextFont = palette.italicFont
+            nextColor = deletedTextColor ?? .secondaryLabelColor
+            nextItalic = true
         case .defaultMarker:
-            cellTextField.stringValue = ""
-            cellTextField.originalValue = nil
-            cellTextField.font = palette.mediumFont
-            cellTextField.tag = DataGridFontVariant.medium
-            cellTextField.textColor = deletedRowTextColor ?? .systemBlue
-            if !isLargeDataset {
-                cellTextField.placeholderString = String(localized: "DEFAULT")
-            }
+            nextDisplayText = state.isLargeDataset ? "" : String(localized: "DEFAULT")
+            nextFont = palette.mediumFont
+            nextColor = deletedTextColor ?? .systemBlue
+            nextItalic = false
         }
-    }
 
-    private func applyVisualState(_ state: DataGridCellState, palette: DataGridCellPalette) {
+        let textChanged = displayText != nextDisplayText
+            || textFont != nextFont
+            || textColor != nextColor
+            || attrCacheItalic != nextItalic
+        if textChanged {
+            displayText = nextDisplayText
+            textFont = nextFont
+            textColor = nextColor
+            attrCacheItalic = nextItalic
+            attributedCache = nil
+        }
+
+        rawValue = content.rawValue
+        placeholder = content.placeholder
+        accessibilityText = content.accessibilityLabel
+        isLargeDataset = state.isLargeDataset
+        isEditableCell = state.isEditable
+
         let nextTint: NSColor?
         if state.visualState.isDeleted || state.visualState.isInserted {
             nextTint = nil
@@ -224,27 +157,43 @@ final class DataGridCellView: NSTableCellView {
         } else {
             nextTint = nil
         }
-
         if !colorsEqual(modifiedColumnTint, nextTint) {
             modifiedColumnTint = nextTint
-            needsDisplay = true
         }
 
+        visualState = state.visualState
         if isFocusedCell != state.isFocused {
             isFocusedCell = state.isFocused
             updateFocusPresentation()
         }
+
+        setAccessibilityLabel(content.accessibilityLabel)
+        setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
+        setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
+
+        needsDisplay = true
     }
 
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet {
-            let nextEmphasized = backgroundStyle == .emphasized
-            guard nextEmphasized != onEmphasizedSelection else { return }
-            onEmphasizedSelection = nextEmphasized
-            needsDisplay = true
-            updateFocusPresentation()
-            updateAccessoryTint()
+    var currentRawValue: String? { rawValue }
+    var currentPlaceholder: DataGridCellPlaceholder? { placeholder }
+
+    private func currentEmphasizedSelection() -> Bool {
+        var view: NSView? = superview
+        while let candidate = view {
+            if let row = candidate as? NSTableRowView {
+                return row.isSelected && row.isEmphasized
+            }
+            view = candidate.superview
         }
+        return false
+    }
+
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        let nextEmphasized = currentEmphasizedSelection()
+        guard nextEmphasized != onEmphasizedSelection else { return }
+        onEmphasizedSelection = nextEmphasized
+        updateFocusPresentation()
     }
 
     private func updateFocusPresentation() {
@@ -262,101 +211,136 @@ final class DataGridCellView: NSTableCellView {
         NSBezierPath(rect: bounds).fill()
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        if let tint = modifiedColumnTint, !onEmphasizedSelection {
-            tint.setFill()
-            bounds.fill()
-        }
-        drawFocusBorderIfNeeded()
-    }
-
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         needsDisplay = true
     }
 
-    private func drawFocusBorderIfNeeded() {
-        guard isFocusedCell, onEmphasizedSelection else { return }
+    override func draw(_ dirtyRect: NSRect) {
+        if let tint = modifiedColumnTint, !onEmphasizedSelection {
+            tint.setFill()
+            bounds.fill()
+        }
+
+        let accessoryRect = computeAccessoryRect()
+        accessoryHitRect = accessoryRect
+
+        drawText(reservingTrailingWidth: accessoryRect.width)
+        drawAccessory(in: accessoryRect)
+
+        if isFocusedCell && onEmphasizedSelection {
+            drawFocusBorder()
+        }
+    }
+
+    private func drawText(reservingTrailingWidth trailing: CGFloat) {
+        guard !displayText.isEmpty else { return }
+        let attr = cachedAttributedString()
+        var rect = bounds.insetBy(dx: DataGridMetrics.cellHorizontalInset, dy: 0)
+        rect.size.width -= trailing
+        guard rect.width > 0 else { return }
+        let lineHeight = textFont.ascender - textFont.descender + textFont.leading
+        rect.origin.y = max(0, (bounds.height - lineHeight) / 2)
+        rect.size.height = lineHeight + 2
+        attr.draw(with: rect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin], context: nil)
+    }
+
+    private func resolvedTextColor() -> NSColor {
+        onEmphasizedSelection ? .alternateSelectedControlTextColor : textColor
+    }
+
+    private func cachedAttributedString() -> NSAttributedString {
+        let resolvedColor = resolvedTextColor()
+        if let cached = attributedCache,
+           attrCacheText == displayText,
+           attrCacheFont === textFont,
+           attrCacheColor == resolvedColor {
+            return cached
+        }
+        let truncated = displayText.count > 300
+            ? String(displayText.prefix(300)) + "\u{2026}"
+            : displayText
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: textFont,
+            .foregroundColor: resolvedColor,
+            .paragraphStyle: Self.placeholderParagraph
+        ]
+        let str = NSAttributedString(string: truncated, attributes: attrs)
+        attributedCache = str
+        attrCacheText = displayText
+        attrCacheFont = textFont
+        attrCacheColor = resolvedColor
+        return str
+    }
+
+    private func computeAccessoryRect() -> NSRect {
+        switch kind {
+        case .text:
+            return .zero
+        case .foreignKey:
+            guard let raw = rawValue, !raw.isEmpty else { return .zero }
+            let size = NSSize(width: 16, height: 16)
+            let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
+            let y = (bounds.height - size.height) / 2
+            return NSRect(x: x, y: y, width: size.width, height: size.height)
+        case .dropdown, .boolean, .date, .json, .blob:
+            guard isEditableCell, !visualState.isDeleted else { return .zero }
+            let size = NSSize(width: 12, height: 14)
+            let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
+            let y = (bounds.height - size.height) / 2
+            return NSRect(x: x, y: y, width: size.width, height: size.height)
+        }
+    }
+
+    private func drawAccessory(in rect: NSRect) {
+        guard !rect.isEmpty else { return }
+        let image: NSImage
+        switch kind {
+        case .text:
+            return
+        case .foreignKey:
+            image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
+        case .dropdown, .boolean, .date, .json, .blob:
+            image = onEmphasizedSelection ? Self.chevronEmphasized : Self.chevronNormal
+        }
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0, respectFlipped: true, hints: nil)
+    }
+
+    private func drawFocusBorder() {
         let path = NSBezierPath(rect: bounds.insetBy(dx: 1, dy: 1))
         path.lineWidth = 2
         NSColor.alternateSelectedControlTextColor.setStroke()
         path.stroke()
     }
 
-    private func configureAccessoryButton() {
-        guard accessoryVisible else {
-            if !accessoryButton.isHidden {
-                accessoryButton.isHidden = true
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if !accessoryHitRect.isEmpty && accessoryHitRect.contains(point) {
+            switch kind {
+            case .foreignKey:
+                accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
+                return
+            case .dropdown, .boolean, .date, .json, .blob:
+                accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
+                return
+            case .text:
+                break
             }
-            return
         }
-        let (image, size, label) = accessoryAssets()
-        accessoryButton.image = image
-        accessoryButton.setAccessibilityLabel(label)
-        accessoryWidthConstraint.constant = size.width
-        accessoryHeightConstraint.constant = size.height
-        accessoryButton.isHidden = false
-        updateAccessoryTint()
+        super.mouseDown(with: event)
     }
 
-    private func accessoryAssets() -> (NSImage, NSSize, String) {
-        switch kind {
-        case .foreignKey:
-            return (
-                Self.fkSymbol,
-                NSSize(width: 16, height: 16),
-                String(localized: "Navigate to referenced row")
-            )
-        case .text:
-            return (NSImage(), .zero, "")
-        case .dropdown, .boolean, .date, .json, .blob:
-            return (
-                Self.chevronSymbol,
-                NSSize(width: 12, height: 14),
-                String(localized: "Open editor")
-            )
+    override func rightMouseDown(with event: NSEvent) {
+        var view: NSView? = self
+        while let parent = view?.superview {
+            if let rowView = parent as? DataGridRowView,
+               let menu = rowView.menu(for: event) {
+                NSMenu.popUpContextMenu(menu, with: event, for: self)
+                return
+            }
+            view = parent
         }
-    }
-
-    private func updateAccessoryTint() {
-        accessoryButton.contentTintColor = onEmphasizedSelection
-            ? .alternateSelectedControlTextColor
-            : .secondaryLabelColor
-    }
-
-    private func trailingInset(for accessoryVisible: Bool) -> CGFloat {
-        guard accessoryVisible else { return -DataGridMetrics.cellHorizontalInset }
-        switch kind {
-        case .foreignKey: return -22
-        case .text: return -DataGridMetrics.cellHorizontalInset
-        case .dropdown, .boolean, .date, .json, .blob: return -18
-        }
-    }
-
-    private func computeAccessoryVisibility(
-        content: DataGridCellContent,
-        state: DataGridCellState
-    ) -> Bool {
-        switch kind {
-        case .foreignKey:
-            guard let raw = content.rawValue, !raw.isEmpty else { return false }
-            return true
-        case .text:
-            return false
-        case .dropdown, .boolean, .date, .json, .blob:
-            return state.isEditable && !state.visualState.isDeleted
-        }
-    }
-
-    @objc private func handleAccessoryClick(_ sender: NSButton) {
-        switch kind {
-        case .foreignKey:
-            accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
-        case .text:
-            return
-        case .dropdown, .boolean, .date, .json, .blob:
-            accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
-        }
+        super.rightMouseDown(with: event)
     }
 
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {

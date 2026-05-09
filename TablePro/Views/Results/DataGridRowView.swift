@@ -52,6 +52,26 @@ final class DataGridRowView: NSTableRowView {
         }
     }
 
+    override var isSelected: Bool {
+        didSet {
+            guard isSelected != oldValue else { return }
+            invalidateCellSubviews()
+        }
+    }
+
+    override var isEmphasized: Bool {
+        didSet {
+            guard isEmphasized != oldValue else { return }
+            invalidateCellSubviews()
+        }
+    }
+
+    private func invalidateCellSubviews() {
+        for subview in subviews where subview is DataGridCellView {
+            subview.needsDisplay = true
+        }
+    }
+
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
         guard let rowTint, !isSelected else { return }

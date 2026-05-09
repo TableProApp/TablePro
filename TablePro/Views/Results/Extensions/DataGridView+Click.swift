@@ -62,7 +62,7 @@ extension TableViewCoordinator {
             return
         }
 
-        sender.editColumn(column, row: row, with: nil, select: true)
+        beginCellEdit(row: row, tableColumnIndex: column)
     }
 
     // MARK: - Chevron Click

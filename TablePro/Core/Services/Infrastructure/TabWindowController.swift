@@ -34,12 +34,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
-    private lazy var dataGridFieldEditor: DataGridFieldEditor = {
-        let editor = DataGridFieldEditor()
-        editor.isFieldEditor = true
-        return editor
-    }()
-
     internal let payload: EditorTabPayload
 
     internal let controllerId: UUID
@@ -100,11 +94,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: - NSWindowDelegate
-
-    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
-        guard client is CellTextField else { return nil }
-        return dataGridFieldEditor
-    }
 
     internal func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }

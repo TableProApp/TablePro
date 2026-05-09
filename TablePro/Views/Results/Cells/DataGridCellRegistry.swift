@@ -10,7 +10,6 @@ import Foundation
 @MainActor
 final class DataGridCellRegistry {
     weak var accessoryDelegate: DataGridCellAccessoryDelegate?
-    weak var textFieldDelegate: NSTextFieldDelegate?
 
     private(set) var nullDisplayString: String
     private(set) var palette: DataGridCellPalette
@@ -63,7 +62,6 @@ final class DataGridCellRegistry {
         let cell = DataGridCellView(frame: .zero)
         cell.identifier = DataGridCellView.reuseIdentifier
         cell.accessoryDelegate = accessoryDelegate
-        cell.cellTextField.delegate = textFieldDelegate
         cell.nullDisplayString = nullDisplayString
         return cell
     }
