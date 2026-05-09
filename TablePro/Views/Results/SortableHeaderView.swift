@@ -64,9 +64,11 @@ final class SortableHeaderView: NSTableHeaderView {
     weak var coordinator: TableViewCoordinator?
 
     private static let clickDragThreshold: CGFloat = 4
+    private static let resizeZoneWidth: CGFloat = 4
 
     private var pendingClickStartLocation: NSPoint?
     private var dragOccurredDuringClick = false
+    private var mouseMovedTrackingArea: NSTrackingArea?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -74,6 +76,40 @@ final class SortableHeaderView: NSTableHeaderView {
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = mouseMovedTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseMoved, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        mouseMovedTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard let tableView else {
+            super.mouseMoved(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        let zone = Self.resizeZoneWidth
+        let inResizeZone = tableView.tableColumns.enumerated().contains { index, column in
+            guard column.resizingMask.contains(.userResizingMask) else { return false }
+            let edge = headerRect(ofColumn: index).maxX
+            return abs(point.x - edge) <= zone
+        }
+        if inResizeZone {
+            NSCursor.resizeLeftRight.set()
+        } else {
+            NSCursor.arrow.set()
+        }
     }
 
     func updateSortIndicators(state: SortState, schema: ColumnIdentitySchema) {
