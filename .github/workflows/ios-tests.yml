@@ -24,7 +24,7 @@ jobs:
   test:
     name: Run iOS Tests
     runs-on: macos-26
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -37,6 +37,24 @@ jobs:
 
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
+
+      - name: Show installed iOS simulator runtimes
+        run: |
+          echo "=== xcodebuild -showsdks ==="
+          xcodebuild -showsdks | grep -i ios || true
+          echo "=== xcrun simctl list runtimes ==="
+          xcrun simctl list runtimes
+          echo "=== xcrun simctl list devices available (iOS section) ==="
+          xcrun simctl list devices available | sed -n '/iOS/,/^--/p' | head -80
+
+      - name: Install iOS simulator runtime if missing
+        run: |
+          if ! xcrun simctl list runtimes | grep -q "iOS 26"; then
+            echo "iOS 26 simulator runtime missing, downloading..."
+            sudo xcodebuild -downloadPlatform iOS
+          else
+            echo "iOS 26 simulator runtime already installed"
+          fi
 
       - name: Download static libraries
         env:
