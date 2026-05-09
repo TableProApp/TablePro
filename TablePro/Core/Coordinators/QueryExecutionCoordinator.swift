@@ -66,14 +66,18 @@ final class QueryExecutionCoordinator {
         }
 
         if level == .silent {
+            guard !parent.isShowingSafeModePrompt else { return }
+            parent.isShowingSafeModePrompt = true
             if statements.count == 1 {
                 Task { [parent] in
+                    defer { parent.isShowingSafeModePrompt = false }
                     let window = NSApp.keyWindow
                     guard await parent.confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
                     parent.executeQueryInternal(statements[0])
                 }
             } else {
                 Task { [parent] in
+                    defer { parent.isShowingSafeModePrompt = false }
                     let window = NSApp.keyWindow
                     let dangerousStatements = statements.filter { parent.isDangerousQuery($0) }
                     if !dangerousStatements.isEmpty {
@@ -139,7 +143,10 @@ final class QueryExecutionCoordinator {
         let tabId = parent.tabManager.tabs[index].id
 
         if level == .silent {
+            guard !parent.isShowingSafeModePrompt else { return }
+            parent.isShowingSafeModePrompt = true
             Task { [parent] in
+                defer { parent.isShowingSafeModePrompt = false }
                 let window = NSApp.keyWindow
                 if statements.count == 1 {
                     guard await parent.confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
