@@ -82,18 +82,11 @@ extension DatabaseManager {
                     case .reconnecting(let attempt):
                         Self.logger.info("Reconnecting session \(id) (attempt \(attempt))")
                         if case .connecting = self.activeSessions[id]?.status {
-                            // Already .connecting — skip redundant write
+                            // Already .connecting, skip redundant write
                         } else {
                             self.updateSession(id) { session in
                                 session.status = .connecting
                             }
-                        }
-                    case .failed:
-                        Self.logger.error(
-                            "Health monitoring failed for session \(id)")
-                        self.updateSession(id) { session in
-                            session.status = .error(String(localized: "Connection lost"))
-                            session.clearCachedData()
                         }
                     case .checking:
                         break  // No UI update needed
