@@ -157,7 +157,7 @@ final class ConnectionCoordinator {
     // MARK: - Database / Schema Switching
 
     func switchDatabase(to name: String) async {
-        guard let session, name != activeDatabase, !isSwitching else { return }
+        guard session != nil, name != activeDatabase, !isSwitching else { return }
         isSwitching = true
         defer { isSwitching = false }
 
