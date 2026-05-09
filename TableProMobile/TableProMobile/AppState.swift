@@ -35,6 +35,13 @@ final class AppState {
         connections = storage.load()
         groups = groupStorage.load()
         tags = tagStorage.load()
+
+        // Skip side-effecting callbacks (Spotlight, WidgetKit, sync wiring) when
+        // running unit tests inside the host app. These rely on entitlements
+        // that the CI simulator does not have and have caused the test runner
+        // to crash before it could connect to xctest.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+
         secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
         Task {
             updateWidgetData()

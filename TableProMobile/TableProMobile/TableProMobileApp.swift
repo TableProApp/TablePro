@@ -65,6 +65,9 @@ struct TableProMobileApp: App {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            // Skip lifecycle side-effects under XCTest so unit tests do not
+            // boot CloudKit sync, analytics, or biometric checks.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
             lockState.handleScenePhase(phase)
             switch phase {
             case .active:

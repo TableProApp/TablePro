@@ -60,11 +60,6 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation
 
-      # Override TEST_HOST/BUNDLE_LOADER to run tests as a standalone library
-      # bundle in the xctest process. The default setup launches the host app
-      # (which spins up CloudKit, sync, etc.) and that bootstrap path is fragile
-      # on a CI simulator without an iCloud account or full entitlements. Pure
-      # unit tests against the view models do not need the app to be alive.
       - name: Run unit tests
         run: |
           set -o pipefail
@@ -76,8 +71,6 @@ jobs:
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
-            TEST_HOST="" \
-            BUNDLE_LOADER="" \
             | xcbeautify --renderer github-actions
 
       - name: Upload test results
