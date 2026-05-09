@@ -171,8 +171,14 @@ actor LSPTransport {
 
     func cancelRequest(id: Int) {
         let params: [String: Int] = ["id": id]
-        if let data = try? JSONEncoder().encode(LSPJSONRPCNotification(method: "$/cancelRequest", params: params)) {
-            try? writeMessage(data)
+        do {
+            let data = try JSONEncoder().encode(LSPJSONRPCNotification(method: "$/cancelRequest", params: params))
+            try writeMessage(data)
+        } catch {
+            Self.logger.warning("LSP cancelRequest \(id) failed to send: \(error.localizedDescription); resolving local pending entry")
+            if let continuation = pendingRequests.removeValue(forKey: id) {
+                continuation.resume(throwing: CancellationError())
+            }
         }
     }
 
