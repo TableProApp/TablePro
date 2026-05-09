@@ -1776,6 +1776,9 @@
         }
       }
     },
+    "Focus search" : {
+
+    },
     "Foreign Keys" : {
       "extractionState" : "stale",
       "localizations" : {

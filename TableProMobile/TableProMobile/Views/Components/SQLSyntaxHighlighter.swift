@@ -17,7 +17,7 @@ enum SQLSyntaxHighlighter {
             "UNIQUE", "ADD", "COLUMN", "RENAME", "TO", "DATABASE", "SCHEMA", "USE",
             "GRANT", "REVOKE", "WITH", "RECURSIVE", "FETCH", "NEXT", "ROWS", "ONLY"
         ]
-        let pattern = #"\b("# + keywords.joined(separator: "|") + #")\b"#
+        let pattern = #"\b(?:"# + keywords.joined(separator: "|") + #")\b"#
         // swiftlint:disable:next force_try
         return try! Regex(pattern, as: Substring.self).ignoresCase()
     }()
@@ -31,7 +31,7 @@ enum SQLSyntaxHighlighter {
             "DATE", "TIME", "YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND",
             "GROUP_CONCAT", "STRING_AGG", "ARRAY_AGG", "JSON_EXTRACT", "JSON_VALUE"
         ]
-        let pattern = #"\b("# + functions.joined(separator: "|") + #")\s*(?=\()"#
+        let pattern = #"\b(?:"# + functions.joined(separator: "|") + #")\s*(?=\()"#
         // swiftlint:disable:next force_try
         return try! Regex(pattern, as: Substring.self).ignoresCase()
     }()
