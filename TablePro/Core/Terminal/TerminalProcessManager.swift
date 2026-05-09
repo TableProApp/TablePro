@@ -9,7 +9,7 @@ import os
 
 @MainActor
 final class TerminalProcessManager {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TerminalProcessManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TerminalProcessManager")
 
     private let fdLock = NSLock()
     nonisolated(unsafe) private var _ptyFD: Int32 = -1
@@ -90,15 +90,28 @@ final class TerminalProcessManager {
         guard !data.isEmpty else { return }
         let fd = fdLock.withLock { _ptyFD }
         guard fd >= 0 else { return }
+        let total = data.count
         data.withUnsafeBytes { buffer in
             guard let ptr = buffer.baseAddress else { return }
-            var remaining = data.count
+            var remaining = total
             var offset = 0
             while remaining > 0 {
                 let written = Darwin.write(fd, ptr.advanced(by: offset), remaining)
-                if written <= 0 { break }
-                offset += written
-                remaining -= written
+                if written > 0 {
+                    offset += written
+                    remaining -= written
+                    continue
+                }
+                if written == 0 {
+                    Self.logger.error("PTY write returned 0; aborting after \(offset) of \(total) bytes")
+                    return
+                }
+                let err = errno
+                if err == EINTR {
+                    continue
+                }
+                Self.logger.error("PTY write failed errno=\(err) after \(offset) of \(total) bytes")
+                return
             }
         }
     }
