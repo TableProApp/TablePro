@@ -186,25 +186,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
     }
 
-    func observeTeardown(connectionId: UUID) {
-        teardownCancellable = AppEvents.shared.mainCoordinatorTeardown
-            .filter { $0.connectionId == connectionId }
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                Task {
-                    self?.releaseData()
-                }
-            }
-    }
-
-    private func releaseData() {
+    func releaseData() {
         overlayEditor?.dismiss(commit: false)
         settingsCancellable?.cancel()
         settingsCancellable = nil
         themeCancellable?.cancel()
         themeCancellable = nil
-        teardownCancellable?.cancel()
-        teardownCancellable = nil
         visualIndex.clear()
         displayCache.removeAllObjects()
         columnDisplayFormats = []
@@ -223,8 +210,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         activeFKPreviewPopover?.close()
         activeFKPreviewPopover = nil
     }
-
-    private(set) var teardownCancellable: AnyCancellable?
 
     func updateCache() {
         let tableRows = tableRowsProvider()
