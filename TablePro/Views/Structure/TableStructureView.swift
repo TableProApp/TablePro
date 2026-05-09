@@ -48,7 +48,7 @@ struct TableStructureView: View {
     @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
-    @State var structureColumnLayout = ColumnLayoutState()
+    @State var structureColumnLayouts: [StructureTab: ColumnLayoutState] = [:]
     @State var columnLayoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister()
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
@@ -208,6 +208,13 @@ struct TableStructureView: View {
         )
     }
 
+    private func columnLayoutBinding(for tab: StructureTab) -> Binding<ColumnLayoutState> {
+        Binding(
+            get: { structureColumnLayouts[tab] ?? ColumnLayoutState() },
+            set: { structureColumnLayouts[tab] = $0 }
+        )
+    }
+
     func updateGridDelegate() {
         let provider = makeCurrentProvider()
         let canEdit = connection.type.supportsSchemaEditing
@@ -284,7 +291,7 @@ struct TableStructureView: View {
             layoutPersister: columnLayoutPersister,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
-            columnLayout: $structureColumnLayout
+            columnLayout: columnLayoutBinding(for: selectedTab)
         )
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {

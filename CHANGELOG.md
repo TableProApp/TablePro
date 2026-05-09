@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal: tab session registry binds automatically when a coordinator falls back to creating its own registry, so unit tests no longer trip the filter-state debug assertion
 - Connection-only payloads no longer create an empty `Query 1` tab when there is no query, title, or source file to populate it
 - Import from Other App: cancelling a macOS keychain prompt now stops the import loop instead of silently continuing through every remaining password. The loading screen has a Cancel button, and an explainer alert before reading passwords sets expectations about the per-item prompts (#1134)
+- Structure view: switching between Columns / Indexes / Foreign Keys no longer shows stale data from the previous tab. The data grid now invalidates its display cache on schema change, scopes column widths and row selection per tab, and refresh re-fetches all tabs so badge counts persist (#1110)
 
 ## [0.39.1] - 2026-05-08
 

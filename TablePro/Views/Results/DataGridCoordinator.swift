@@ -493,7 +493,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         tableView.scrollRowToVisible(0)
     }
 
-    func rebuildColumnMetadataCache(from tableRows: TableRows) {
+    @discardableResult
+    func rebuildColumnMetadataCache(from tableRows: TableRows) -> Bool {
         var enumSet = Set<Int>()
         var fkSet = Set<Int>()
         let columns = tableRows.columns
@@ -517,9 +518,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         fkColumns = fkSet
 
         let nextSchema = ColumnIdentitySchema(columns: columns)
-        if nextSchema != identitySchema {
-            identitySchema = nextSchema
-        }
+        guard nextSchema != identitySchema else { return false }
+        identitySchema = nextSchema
+        displayCache.removeAllObjects()
+        return true
     }
 
     // MARK: - Font Updates

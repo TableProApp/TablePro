@@ -106,6 +106,7 @@ extension TableStructureView {
         searchText = ""
         structureSortDescriptor = nil
         sortState = SortState()
+        selectedRows = []
         displayVersion += 1
         Task {
             await loadTabDataIfNeeded(new)
@@ -152,18 +153,26 @@ extension TableStructureView {
 
                 if confirmed {
                     discardChanges()
-                    loadedTabs.removeAll()
-                    await loadColumns()
-                    await loadTabDataIfNeeded(selectedTab)
+                    await reloadAllTabs()
                 }
             }
             // If cancelled, do nothing
         } else {
             Task { @MainActor in
-                loadedTabs.removeAll()
-                await loadColumns()
-                await loadTabDataIfNeeded(selectedTab)
+                await reloadAllTabs()
             }
+        }
+    }
+
+    private func reloadAllTabs() async {
+        loadedTabs.removeAll()
+        await loadColumns()
+        await loadTabDataIfNeeded(.indexes)
+        if connection.type.supportsForeignKeys {
+            await loadTabDataIfNeeded(.foreignKeys)
+        }
+        if selectedTab == .ddl || selectedTab == .parts {
+            await loadTabDataIfNeeded(selectedTab)
         }
     }
 }

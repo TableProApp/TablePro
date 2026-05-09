@@ -173,10 +173,10 @@ struct DataGridView: NSViewRepresentable {
         let oldColumnCount = coordinator.cachedColumnCount
 
         let structureChanged = oldRowCount != rowDisplayCount || oldColumnCount != columnCount
-        let needsFullReload = structureChanged
 
         coordinator.updateCache()
-        coordinator.rebuildColumnMetadataCache(from: latestRows)
+        let schemaChanged = coordinator.rebuildColumnMetadataCache(from: latestRows)
+        let needsFullReload = structureChanged || schemaChanged
 
         if oldRowCount == 0, rowDisplayCount > 0 {
             let rowH = tableView.rowHeight
