@@ -187,7 +187,7 @@ final class RowEditingCoordinator {
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
         let rows = indices.sorted().compactMap { idx -> [String?]? in
             guard idx >= 0, idx < tableRows.count else { return nil }
-            return tableRows.rows[idx].values
+            return Array(tableRows.rows[idx].values)
         }
         guard !rows.isEmpty else { return }
         let converter = JsonRowConverter(
