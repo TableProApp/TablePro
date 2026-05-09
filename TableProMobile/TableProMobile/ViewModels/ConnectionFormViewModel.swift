@@ -61,7 +61,10 @@ final class ConnectionFormViewModel {
 
     init(editing: DatabaseConnection? = nil) {
         self.existingConnection = editing
-        guard let conn = editing else { return }
+        guard let conn = editing else {
+            safeModeLevel = AppPreferences.defaultSafeMode
+            return
+        }
         name = conn.name
         type = conn.type
         host = conn.host

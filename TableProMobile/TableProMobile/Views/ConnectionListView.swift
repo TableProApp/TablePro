@@ -94,10 +94,12 @@ struct ConnectionListView: View {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
-                                Image(systemName: "arrow.triangle.2.circlepath.icloud")
+                                Image(systemName: AppPreferences.isCloudSyncEnabled
+                                    ? "arrow.triangle.2.circlepath.icloud"
+                                    : "icloud.slash")
                             }
                         }
-                        .disabled(isSyncing)
+                        .disabled(isSyncing || !AppPreferences.isCloudSyncEnabled)
                         .accessibilityLabel(Text("Sync with iCloud"))
 
                         Button {
@@ -221,6 +223,7 @@ struct ConnectionListView: View {
             }
             .environment(\.editMode, $editMode)
             .refreshable {
+                guard AppPreferences.isCloudSyncEnabled else { return }
                 await appState.syncCoordinator.sync(
                     localConnections: appState.connections,
                     localGroups: appState.groups,

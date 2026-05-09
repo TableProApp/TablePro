@@ -64,13 +64,15 @@ struct TableProMobileApp: App {
             switch phase {
             case .active:
                 MemoryPressureMonitor.shared.start()
-                syncTask?.cancel()
-                syncTask = Task {
-                    await appState.syncCoordinator.sync(
-                        localConnections: appState.connections,
-                        localGroups: appState.groups,
-                        localTags: appState.tags
-                    )
+                if AppPreferences.isCloudSyncEnabled {
+                    syncTask?.cancel()
+                    syncTask = Task {
+                        await appState.syncCoordinator.sync(
+                            localConnections: appState.connections,
+                            localGroups: appState.groups,
+                            localTags: appState.tags
+                        )
+                    }
                 }
                 if heartbeatTask == nil {
                     let provider = IOSAnalyticsProvider.shared

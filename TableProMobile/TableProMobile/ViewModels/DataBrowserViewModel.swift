@@ -28,7 +28,7 @@ final class DataBrowserViewModel {
 
     private(set) var columnDetails: [ColumnInfo] = []
     private(set) var foreignKeys: [ForeignKeyInfo] = []
-    private(set) var pagination = PaginationState(pageSize: 100, currentPage: 0)
+    private(set) var pagination: PaginationState
     var sortState = SortState()
     var filters: [TableFilter] = []
     var filterLogicMode: FilterLogicMode = .and
@@ -53,6 +53,7 @@ final class DataBrowserViewModel {
 
     init(windowCapacity: Int = 1_000) {
         self.window = RowWindow(capacity: windowCapacity)
+        self.pagination = PaginationState(pageSize: AppPreferences.defaultPageSize, currentPage: 0)
     }
 
     // MARK: - Computed

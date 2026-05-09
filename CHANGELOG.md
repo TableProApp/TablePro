@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- iOS Settings: iCloud Sync toggle (off keeps connections, groups, and tags on this device only and disables the sync toolbar button), Rows per Page picker (50/100/200/500, applied to new data browser sessions), Default Safe Mode picker (applied when adding a new connection)
 - iOS: alert when the active connection is deleted mid-session (for example via iCloud sync from another device), so a stale screen no longer fails silently on the next action
 - iOS: Face ID, Touch ID, or Optic ID lock with cold-launch protection and idle timeout (1, 5, 15, or 60 minutes), opt-in from Settings
 - iOS: Connection Info tab replaces the per-connection Settings tab, showing host, SSL, SSH tunnel, active database, and live connection status
