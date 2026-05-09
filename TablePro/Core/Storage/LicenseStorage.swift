@@ -16,22 +16,25 @@ final class LicenseStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseStorage")
 
     private let defaults = UserDefaults.standard
+    private let keychain: KeychainHelper
 
     private enum Keys {
         static let keychainLicenseKey = "com.TablePro.license.key"
         static let licensePayload = "com.TablePro.license.payload"
     }
 
-    private init() {}
+    init(keychain: KeychainHelper = .shared) {
+        self.keychain = keychain
+    }
 
     // MARK: - License Key (Keychain)
 
     func saveLicenseKey(_ key: String) {
-        KeychainHelper.shared.writeString(key, forKey: Keys.keychainLicenseKey)
+        keychain.writeString(key, forKey: Keys.keychainLicenseKey)
     }
 
     func loadLicenseKey() -> String? {
-        switch KeychainHelper.shared.readStringResult(forKey: Keys.keychainLicenseKey) {
+        switch keychain.readStringResult(forKey: Keys.keychainLicenseKey) {
         case .found(let value):
             return value
         case .notFound:
@@ -52,7 +55,7 @@ final class LicenseStorage {
     }
 
     func deleteLicenseKey() {
-        KeychainHelper.shared.delete(forKey: Keys.keychainLicenseKey)
+        keychain.delete(forKey: Keys.keychainLicenseKey)
     }
 
     // MARK: - Signed Payload (UserDefaults)

@@ -14,9 +14,12 @@ final class SSHProfileStorage {
     private let defaults = UserDefaults.standard
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let keychain: KeychainHelper
     private(set) var lastLoadFailed = false
 
-    private init() {}
+    init(keychain: KeychainHelper = .shared) {
+        self.keychain = keychain
+    }
 
     // MARK: - Profile CRUD
 
@@ -97,7 +100,7 @@ final class SSHProfileStorage {
 
     func saveSSHPassword(_ password: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.password.\(profileId.uuidString)"
-        KeychainHelper.shared.writeString(password, forKey: key)
+        keychain.writeString(password, forKey: key)
     }
 
     func loadSSHPassword(for profileId: UUID) -> String? {
@@ -107,14 +110,14 @@ final class SSHProfileStorage {
 
     func deleteSSHPassword(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.password.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 
     // MARK: - Key Passphrase Storage
 
     func saveKeyPassphrase(_ passphrase: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-        KeychainHelper.shared.writeString(passphrase, forKey: key)
+        keychain.writeString(passphrase, forKey: key)
     }
 
     func loadKeyPassphrase(for profileId: UUID) -> String? {
@@ -124,14 +127,14 @@ final class SSHProfileStorage {
 
     func deleteKeyPassphrase(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 
     // MARK: - TOTP Secret Storage
 
     func saveTOTPSecret(_ secret: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-        KeychainHelper.shared.writeString(secret, forKey: key)
+        keychain.writeString(secret, forKey: key)
     }
 
     func loadTOTPSecret(for profileId: UUID) -> String? {
@@ -141,12 +144,12 @@ final class SSHProfileStorage {
 
     func deleteTOTPSecret(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 
     private func resolveString(label: String, profileId: UUID, forKey key: String) -> String? {
         let pid = profileId.uuidString
-        switch KeychainHelper.shared.readStringResult(forKey: key) {
+        switch keychain.readStringResult(forKey: key) {
         case .found(let value):
             return value
         case .notFound:

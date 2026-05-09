@@ -28,16 +28,20 @@ final class ConnectionStorage {
 
     private let fileURL: URL
 
+    private let keychain: KeychainHelper
+
     init(
         fileURL: URL = ConnectionStorage.defaultFileURL(),
         userDefaults: UserDefaults = .standard,
         syncTracker: SyncChangeTracker = .shared,
-        appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared
+        appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
+        keychain: KeychainHelper = .shared
     ) {
         self.fileURL = fileURL
         self.defaults = userDefaults
         self.syncTracker = syncTracker
         self.appSettingsProvider = appSettings
+        self.keychain = keychain
 
         migrateFromUserDefaultsIfNeeded()
     }
@@ -289,7 +293,7 @@ final class ConnectionStorage {
 
     func savePassword(_ password: String, for connectionId: UUID) {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        KeychainHelper.shared.writeString(password, forKey: key)
+        keychain.writeString(password, forKey: key)
     }
 
     func loadPassword(for connectionId: UUID) -> String? {
@@ -299,14 +303,14 @@ final class ConnectionStorage {
 
     func deletePassword(for connectionId: UUID) {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 
     // MARK: - SSH Password Storage
 
     func saveSSHPassword(_ password: String, for connectionId: UUID) {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        KeychainHelper.shared.writeString(password, forKey: key)
+        keychain.writeString(password, forKey: key)
     }
 
     func loadSSHPassword(for connectionId: UUID) -> String? {
@@ -316,14 +320,14 @@ final class ConnectionStorage {
 
     func deleteSSHPassword(for connectionId: UUID) {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 
     // MARK: - Key Passphrase Storage
 
     func saveKeyPassphrase(_ passphrase: String, for connectionId: UUID) {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        KeychainHelper.shared.writeString(passphrase, forKey: key)
+        keychain.writeString(passphrase, forKey: key)
     }
 
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
@@ -333,14 +337,14 @@ final class ConnectionStorage {
 
     func deleteKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 
     // MARK: - Plugin Secure Field Storage
 
     func savePluginSecureField(_ value: String, fieldId: String, for connectionId: UUID) {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
-        KeychainHelper.shared.writeString(value, forKey: key)
+        keychain.writeString(value, forKey: key)
     }
 
     func loadPluginSecureField(fieldId: String, for connectionId: UUID) -> String? {
@@ -350,7 +354,7 @@ final class ConnectionStorage {
 
     func deletePluginSecureField(fieldId: String, for connectionId: UUID) {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 
     func deleteAllPluginSecureFields(for connectionId: UUID, fieldIds: [String]) {
@@ -363,7 +367,7 @@ final class ConnectionStorage {
 
     func saveTOTPSecret(_ secret: String, for connectionId: UUID) {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
-        KeychainHelper.shared.writeString(secret, forKey: key)
+        keychain.writeString(secret, forKey: key)
     }
 
     func loadTOTPSecret(for connectionId: UUID) -> String? {
@@ -373,7 +377,7 @@ final class ConnectionStorage {
 
     func deleteTOTPSecret(for connectionId: UUID) {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 
     private struct SecretContext {
@@ -384,7 +388,7 @@ final class ConnectionStorage {
     private func resolveString(_ context: SecretContext, forKey key: String) -> String? {
         let label = context.label
         let connId = context.connectionId.uuidString
-        switch KeychainHelper.shared.readStringResult(forKey: key) {
+        switch keychain.readStringResult(forKey: key) {
         case .found(let value):
             return value
         case .notFound:

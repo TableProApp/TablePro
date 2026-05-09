@@ -14,17 +14,21 @@ final class AIKeyStorage {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AIKeyStorage")
 
-    private init() {}
+    private let keychain: KeychainHelper
+
+    init(keychain: KeychainHelper = .shared) {
+        self.keychain = keychain
+    }
 
     func saveAPIKey(_ apiKey: String, for providerID: UUID) {
         let key = "com.TablePro.aikey.\(providerID.uuidString)"
-        KeychainHelper.shared.writeString(apiKey, forKey: key)
+        keychain.writeString(apiKey, forKey: key)
     }
 
     func loadAPIKey(for providerID: UUID) -> String? {
         let key = "com.TablePro.aikey.\(providerID.uuidString)"
         let pid = providerID.uuidString
-        switch KeychainHelper.shared.readStringResult(forKey: key) {
+        switch keychain.readStringResult(forKey: key) {
         case .found(let value):
             return value
         case .notFound:
@@ -46,6 +50,6 @@ final class AIKeyStorage {
 
     func deleteAPIKey(for providerID: UUID) {
         let key = "com.TablePro.aikey.\(providerID.uuidString)"
-        KeychainHelper.shared.delete(forKey: key)
+        keychain.delete(forKey: key)
     }
 }
