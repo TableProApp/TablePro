@@ -572,7 +572,11 @@ final class SyncCoordinator {
         guard let category = SyncRecordMapper.settingsCategory(from: record),
               let data = SyncRecordMapper.settingsData(from: record)
         else { return }
-        applySettingsData(data, for: category)
+        do {
+            try applySettingsData(data, for: category)
+        } catch {
+            Self.logger.error("Skipping remote settings \(record.recordID.recordName, privacy: .public) (\(category, privacy: .public)): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Observers
@@ -721,45 +725,24 @@ final class SyncCoordinator {
         }
     }
 
-    private func applySettingsData(_ data: Data, for category: String) {
+    private func applySettingsData(_ data: Data, for category: String) throws {
         let manager = AppSettingsManager.shared
         let decoder = JSONDecoder()
 
-        switch category {
-        case "general":
-            if let settings = try? decoder.decode(GeneralSettings.self, from: data) {
-                manager.general = settings
+        do {
+            switch category {
+            case "general": manager.general = try decoder.decode(GeneralSettings.self, from: data)
+            case "appearance": manager.appearance = try decoder.decode(AppearanceSettings.self, from: data)
+            case "editor": manager.editor = try decoder.decode(EditorSettings.self, from: data)
+            case "dataGrid": manager.dataGrid = try decoder.decode(DataGridSettings.self, from: data)
+            case "history": manager.history = try decoder.decode(HistorySettings.self, from: data)
+            case "tabs": manager.tabs = try decoder.decode(TabSettings.self, from: data)
+            case "keyboard": manager.keyboard = try decoder.decode(KeyboardSettings.self, from: data)
+            case "ai": manager.ai = try decoder.decode(AISettings.self, from: data)
+            default: return
             }
-        case "appearance":
-            if let settings = try? decoder.decode(AppearanceSettings.self, from: data) {
-                manager.appearance = settings
-            }
-        case "editor":
-            if let settings = try? decoder.decode(EditorSettings.self, from: data) {
-                manager.editor = settings
-            }
-        case "dataGrid":
-            if let settings = try? decoder.decode(DataGridSettings.self, from: data) {
-                manager.dataGrid = settings
-            }
-        case "history":
-            if let settings = try? decoder.decode(HistorySettings.self, from: data) {
-                manager.history = settings
-            }
-        case "tabs":
-            if let settings = try? decoder.decode(TabSettings.self, from: data) {
-                manager.tabs = settings
-            }
-        case "keyboard":
-            if let settings = try? decoder.decode(KeyboardSettings.self, from: data) {
-                manager.keyboard = settings
-            }
-        case "ai":
-            if let settings = try? decoder.decode(AISettings.self, from: data) {
-                manager.ai = settings
-            }
-        default:
-            break
+        } catch {
+            throw SyncDecodeError.decodeFailure(field: category, underlying: error)
         }
     }
 
