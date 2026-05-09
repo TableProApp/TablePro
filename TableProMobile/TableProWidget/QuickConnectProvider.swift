@@ -1,8 +1,3 @@
-//
-//  QuickConnectProvider.swift
-//  TableProWidget
-//
-
 import WidgetKit
 
 struct QuickConnectProvider: TimelineProvider {

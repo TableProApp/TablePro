@@ -1,8 +1,3 @@
-//
-//  AppError.swift
-//  TableProMobile
-//
-
 import Foundation
 import os
 import TableProModels

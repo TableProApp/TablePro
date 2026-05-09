@@ -1,8 +1,3 @@
-//
-//  ConnectionListView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProModels
 import TableProSync
@@ -83,6 +78,7 @@ struct ConnectionListView: View {
                             Image(systemName: "plus")
                         }
                         .keyboardShortcut("n", modifiers: .command)
+                        .accessibilityLabel(Text("Add Connection"))
                     }
                     ToolbarItemGroup(placement: .topBarLeading) {
                         Button {
@@ -102,12 +98,14 @@ struct ConnectionListView: View {
                             }
                         }
                         .disabled(isSyncing)
+                        .accessibilityLabel(Text("Sync with iCloud"))
 
                         Button {
                             showingSettings = true
                         } label: {
                             Image(systemName: "gear")
                         }
+                        .accessibilityLabel(Text("Settings"))
                     }
                 }
             .onChange(of: appState.pendingConnectionId) { _, newId in
@@ -458,6 +456,20 @@ private struct ConnectionRow: View {
                     )
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Text("Opens this connection"))
     }
 
+    private var accessibilityLabel: Text {
+        let displayName = connection.name.isEmpty ? connection.host : connection.name
+        let typeName = connection.type.rawValue.uppercased()
+        let location: String = connection.type == .sqlite
+            ? (connection.database.components(separatedBy: "/").last ?? "database")
+            : "\(connection.host) port \(connection.port)"
+        if let tag {
+            return Text("\(typeName), \(displayName), \(location), tag \(tag.name)")
+        }
+        return Text("\(typeName), \(displayName), \(location)")
+    }
 }

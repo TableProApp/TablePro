@@ -1,8 +1,3 @@
-//
-//  LocalNetworkPermission.swift
-//  TableProMobile
-//
-
 import Foundation
 import Network
 import os

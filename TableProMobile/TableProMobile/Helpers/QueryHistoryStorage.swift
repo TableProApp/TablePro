@@ -1,8 +1,3 @@
-//
-//  QueryHistoryStorage.swift
-//  TableProMobile
-//
-
 import Foundation
 
 struct QueryHistoryItem: Identifiable, Codable, Hashable {

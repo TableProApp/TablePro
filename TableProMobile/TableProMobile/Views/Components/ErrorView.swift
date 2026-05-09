@@ -1,8 +1,3 @@
-//
-//  ErrorView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 
 struct ErrorView: View {

@@ -1,10 +1,3 @@
-//
-//  SSHTunnel.swift
-//  TableProMobile
-//
-//  Actor-based SSH tunnel using libssh2 C API via CLibSSH2 bridge.
-//
-
 import Foundation
 import CLibSSH2
 import os

@@ -1,8 +1,3 @@
-//
-//  MetadataBadge.swift
-//  TableProMobile
-//
-
 import SwiftUI
 
 struct MetadataBadge<Background: ShapeStyle>: View {

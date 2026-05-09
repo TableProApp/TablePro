@@ -1,8 +1,3 @@
-//
-//  AppState.swift
-//  TableProMobile
-//
-
 import CoreSpotlight
 import Foundation
 import Observation
@@ -114,11 +109,20 @@ final class AppState {
         try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(connection.id.uuidString)")
+        clearPerConnectionPreferences(for: connection.id)
         storage.save(connections)
         updateWidgetData()
         updateSpotlightIndex()
         syncCoordinator.markDeleted(connection.id)
         syncCoordinator.scheduleSyncAfterChange()
+    }
+
+    private func clearPerConnectionPreferences(for id: UUID) {
+        let suffix = id.uuidString
+        let defaults = UserDefaults.standard
+        for prefix in ["lastTab.", "lastDB.", "lastSchema.", "lastQuery."] {
+            defaults.removeObject(forKey: prefix + suffix)
+        }
     }
 
     // MARK: - Groups

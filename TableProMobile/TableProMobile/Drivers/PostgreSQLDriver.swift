@@ -1,10 +1,3 @@
-//
-//  PostgreSQLDriver.swift
-//  TableProMobile
-//
-//  PostgreSQL driver conforming to DatabaseDriver directly (no plugin layer).
-//
-
 import CLibPQ
 import Foundation
 import TableProDatabase

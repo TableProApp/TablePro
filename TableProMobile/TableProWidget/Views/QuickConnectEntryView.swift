@@ -1,8 +1,3 @@
-//
-//  QuickConnectEntryView.swift
-//  TableProWidget
-//
-
 import SwiftUI
 import WidgetKit
 

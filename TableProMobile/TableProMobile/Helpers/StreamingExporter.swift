@@ -1,8 +1,3 @@
-//
-//  StreamingExporter.swift
-//  TableProMobile
-//
-
 import Foundation
 import os
 import TableProDatabase

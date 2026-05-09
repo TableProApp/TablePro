@@ -1,8 +1,3 @@
-//
-//  SQLSyntaxHighlighter.swift
-//  TableProMobile
-//
-
 import UIKit
 
 enum SQLSyntaxHighlighter {

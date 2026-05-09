@@ -1,8 +1,3 @@
-//
-//  TableProMobileApp.swift
-//  TableProMobile
-//
-
 import CoreSpotlight
 import SwiftUI
 import TableProAnalytics

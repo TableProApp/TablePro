@@ -1,8 +1,3 @@
-//
-//  GroupManagementView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProModels
 

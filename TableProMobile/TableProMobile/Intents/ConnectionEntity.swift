@@ -1,8 +1,3 @@
-//
-//  ConnectionEntity.swift
-//  TableProMobile
-//
-
 import AppIntents
 import Foundation
 

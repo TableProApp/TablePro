@@ -1,8 +1,3 @@
-//
-//  ClipboardExporter.swift
-//  TableProMobile
-//
-
 import Foundation
 import TableProModels
 import UIKit

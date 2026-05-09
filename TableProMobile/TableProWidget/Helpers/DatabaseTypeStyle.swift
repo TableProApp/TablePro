@@ -1,8 +1,3 @@
-//
-//  DatabaseTypeStyle.swift
-//  TableProWidget
-//
-
 import SwiftUI
 
 enum DatabaseTypeStyle {

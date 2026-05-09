@@ -1,8 +1,3 @@
-//
-//  StructureView.swift
-//  TableProMobile
-//
-
 import os
 import SwiftUI
 import TableProDatabase

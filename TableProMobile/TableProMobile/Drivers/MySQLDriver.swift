@@ -1,10 +1,3 @@
-//
-//  MySQLDriver.swift
-//  TableProMobile
-//
-//  MySQL driver conforming to DatabaseDriver directly (no plugin layer).
-//
-
 import CMariaDB
 import Foundation
 import TableProDatabase

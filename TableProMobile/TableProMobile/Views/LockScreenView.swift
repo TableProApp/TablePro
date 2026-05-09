@@ -1,8 +1,3 @@
-//
-//  LockScreenView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 
 struct LockScreenView: View {

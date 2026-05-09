@@ -1,10 +1,3 @@
-//
-//  SQLiteDriver.swift
-//  TableProMobile
-//
-//  SQLite driver conforming to DatabaseDriver directly (no plugin layer).
-//
-
 import Foundation
 import SQLite3
 import TableProDatabase

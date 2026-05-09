@@ -1,8 +1,3 @@
-//
-//  OpenConnectionIntent.swift
-//  TableProMobile
-//
-
 import AppIntents
 import Foundation
 import UIKit

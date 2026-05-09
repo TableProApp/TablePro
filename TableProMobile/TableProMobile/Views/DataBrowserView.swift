@@ -1,8 +1,3 @@
-//
-//  DataBrowserView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProDatabase
 import TableProModels

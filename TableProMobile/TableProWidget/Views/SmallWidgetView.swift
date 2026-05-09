@@ -1,8 +1,3 @@
-//
-//  SmallWidgetView.swift
-//  TableProWidget
-//
-
 import SwiftUI
 import WidgetKit
 

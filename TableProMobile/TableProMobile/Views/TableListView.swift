@@ -1,8 +1,3 @@
-//
-//  TableListView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -180,9 +175,11 @@ struct TableListView: View {
 private struct TableRow: View {
     let table: TableInfo
 
+    private var isView: Bool { table.type == .view || table.type == .materializedView }
+
     var body: some View {
         HStack {
-            Image(systemName: table.type == .view || table.type == .materializedView ? "eye" : "tablecells")
+            Image(systemName: isView ? "eye" : "tablecells")
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
 
@@ -195,6 +192,17 @@ private struct TableRow: View {
                 MetadataBadge(formatRowCount(rowCount))
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Text("Opens table data"))
+    }
+
+    private var accessibilityLabel: Text {
+        let kind = isView ? String(localized: "View") : String(localized: "Table")
+        if let rowCount = table.rowCount {
+            return Text("\(kind), \(table.name), \(rowCount) rows")
+        }
+        return Text("\(kind), \(table.name)")
     }
 
     private func formatRowCount(_ count: Int) -> String {

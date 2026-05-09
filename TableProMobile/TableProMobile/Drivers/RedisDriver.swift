@@ -1,11 +1,3 @@
-//
-//  RedisDriver.swift
-//  TableProMobile
-//
-//  Redis driver conforming to DatabaseDriver directly (no plugin layer).
-//  Maps Redis key-value concepts to the relational DatabaseDriver protocol.
-//
-
 import CRedis
 import Foundation
 import os

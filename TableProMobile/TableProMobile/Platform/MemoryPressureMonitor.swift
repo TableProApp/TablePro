@@ -1,8 +1,3 @@
-//
-//  MemoryPressureMonitor.swift
-//  TableProMobile
-//
-
 import Foundation
 import os
 

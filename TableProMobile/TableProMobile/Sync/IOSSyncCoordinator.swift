@@ -1,8 +1,3 @@
-//
-//  IOSSyncCoordinator.swift
-//  TableProMobile
-//
-
 import CloudKit
 import Foundation
 import Observation

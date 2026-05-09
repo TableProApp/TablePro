@@ -1,8 +1,3 @@
-//
-//  IndexedRow.swift
-//  TableProMobile
-//
-
 import Foundation
 
 /// Identifiable wrapper used by iOS lists that need both the row payload and

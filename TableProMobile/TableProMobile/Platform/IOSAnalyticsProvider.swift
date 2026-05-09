@@ -1,8 +1,3 @@
-//
-//  IOSAnalyticsProvider.swift
-//  TableProMobile
-//
-
 import Foundation
 import os
 import TableProAnalytics

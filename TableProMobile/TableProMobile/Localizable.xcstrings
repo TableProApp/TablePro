@@ -20,6 +20,16 @@
         }
       }
     },
+    "%@ -> %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ -> %2$@"
+          }
+        }
+      }
+    },
     "%@ · %@" : {
       "localizations" : {
         "en" : {
@@ -43,6 +53,7 @@
       }
     },
     "%@ → %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -489,7 +500,6 @@
       }
     },
     "Cannot Save" : {
-      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -1471,7 +1481,11 @@
         }
       }
     },
+    "Enter a page number (1-%lld)" : {
+
+    },
     "Enter a page number (1–%lld)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -2354,7 +2368,6 @@
       }
     },
     "No primary key values found." : {
-      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -3913,7 +3926,6 @@
       }
     },
     "This table needs a primary key to identify the row." : {
-      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {

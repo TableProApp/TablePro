@@ -1,8 +1,3 @@
-//
-//  SQLHighlightTextView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import UIKit
 

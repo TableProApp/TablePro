@@ -1,8 +1,3 @@
-//
-//  MediumWidgetView.swift
-//  TableProWidget
-//
-
 import SwiftUI
 
 struct MediumWidgetView: View {

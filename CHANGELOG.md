@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- iOS: VoiceOver now reads connection rows and table rows as a single combined element with type, name, host or row count, and includes a hint about what tapping does
+- iOS: toolbar icon-only buttons (Add Connection, Sync with iCloud, Settings) gain accessibility labels for VoiceOver
+- Internal: per-connection `UserDefaults` keys (`lastTab.<uuid>`, `lastDB.<uuid>`, `lastSchema.<uuid>`, `lastQuery.<uuid>`) clear when a connection is deleted, so they no longer accumulate over time
+- Internal: drop redundant 4-line Xcode-generated file headers from every iOS source file (~58 files)
 - Internal: iOS query editor uses a `Binding<Bool>` focus channel into `SQLHighlightTextView` to dismiss the keyboard before running a query, replacing the `UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder))` call. Keyboard behavior is unchanged
 - Internal: iOS row detail (edit lifecycle, save SQL build, lazy cell value load, primary key extraction, success-toast auto-dismiss) moves out of the View into `RowDetailViewModel`. The View now keeps only sheet flags and haptic triggers; behavior is unchanged
 - Internal: iOS connection form (test connection, save, file picker handlers, default port resolution, credential hydration) moves out of the View into `ConnectionFormViewModel`. The View drops from 53 to 5 `@State` properties; behavior is unchanged

@@ -1,8 +1,3 @@
-//
-//  SettingsView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 
 struct SettingsView: View {

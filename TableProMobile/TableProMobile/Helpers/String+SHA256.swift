@@ -1,8 +1,3 @@
-//
-//  String+SHA256.swift
-//  TableProMobile
-//
-
 import CryptoKit
 import Foundation
 

@@ -1,8 +1,3 @@
-//
-//  TableProShortcuts.swift
-//  TableProMobile
-//
-
 import AppIntents
 
 struct TableProShortcuts: AppShortcutsProvider {

@@ -1,8 +1,3 @@
-//
-//  TagPersistence.swift
-//  TableProMobile
-//
-
 import Foundation
 import TableProModels
 

@@ -1,8 +1,3 @@
-//
-//  GroupFormSheet.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProModels
 

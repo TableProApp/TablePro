@@ -1,8 +1,3 @@
-//
-//  SQLBuilder.swift
-//  TableProMobile
-//
-
 import Foundation
 import TableProModels
 import TableProPluginKit

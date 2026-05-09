@@ -1,8 +1,3 @@
-//
-//  AppLockState.swift
-//  TableProMobile
-//
-
 import Foundation
 import Observation
 import os

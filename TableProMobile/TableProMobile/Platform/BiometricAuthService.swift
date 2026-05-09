@@ -1,8 +1,3 @@
-//
-//  BiometricAuthService.swift
-//  TableProMobile
-//
-
 import Foundation
 import LocalAuthentication
 import os

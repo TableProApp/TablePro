@@ -1,10 +1,3 @@
-//
-//  SSHTunnelFactory.swift
-//  TableProMobile
-//
-//  Stateless factory that creates fully-connected, authenticated SSH tunnels.
-//
-
 import CLibSSH2
 import Foundation
 import TableProModels
