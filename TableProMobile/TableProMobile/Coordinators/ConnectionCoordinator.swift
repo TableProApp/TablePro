@@ -34,6 +34,7 @@ final class ConnectionCoordinator {
     }
     var pendingQuery: String?
     var navigationPath = NavigationPath()
+    var showingEditSheet = false
 
     private(set) var queryHistory: [QueryHistoryItem] = []
     private let historyStorage = QueryHistoryStorage()

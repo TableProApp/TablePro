@@ -4,6 +4,8 @@
 <dict>
 	<key>AnalyticsHMACSecret</key>
 	<string>$(ANALYTICS_HMAC_SECRET)</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>TablePro uses Face ID to protect your saved database connections and credentials.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>TablePro connects to database servers and SSH tunnels running on your local network, including Bonjour (.local) hostnames.</string>
 	<key>NSBonjourServices</key>

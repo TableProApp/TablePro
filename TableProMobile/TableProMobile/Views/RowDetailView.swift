@@ -94,9 +94,9 @@ struct RowDetailView: View {
                 rowContent(at: currentIndex)
             } else {
                 TabView(selection: $currentIndex) {
-                    ForEach(IndexedRow.wrap(rows)) { item in
-                        rowContent(at: item.id)
-                            .tag(item.id)
+                    ForEach(rows.indices, id: \.self) { index in
+                        rowContent(at: index)
+                            .tag(index)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -124,32 +124,7 @@ struct RowDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Section("Share") {
-                        ForEach(ExportFormat.allCases) { format in
-                            Button {
-                                shareText = ClipboardExporter.exportRow(
-                                    columns: columns, row: currentRow,
-                                    format: format, tableName: table?.name
-                                )
-                                showShareSheet = true
-                            } label: {
-                                Label(format.rawValue, systemImage: "square.and.arrow.up")
-                            }
-                        }
-                    }
-                    Section("Copy to Clipboard") {
-                        ForEach(ExportFormat.allCases) { format in
-                            Button {
-                                let text = ClipboardExporter.exportRow(
-                                    columns: columns, row: currentRow,
-                                    format: format, tableName: table?.name
-                                )
-                                ClipboardExporter.copyToClipboard(text)
-                            } label: {
-                                Label(format.rawValue, systemImage: "doc.on.clipboard")
-                            }
-                        }
-                    }
+                    shareMenuContent
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
@@ -234,6 +209,36 @@ struct RowDetailView: View {
     }
 
     @ViewBuilder
+    private var shareMenuContent: some View {
+        Section("Share") {
+            ForEach(ExportFormat.allCases) { format in
+                Button {
+                    shareText = ClipboardExporter.exportRow(
+                        columns: columns, row: currentRow,
+                        format: format, tableName: table?.name
+                    )
+                    showShareSheet = true
+                } label: {
+                    Label(format.rawValue, systemImage: "square.and.arrow.up")
+                }
+            }
+        }
+        Section("Copy to Clipboard") {
+            ForEach(ExportFormat.allCases) { format in
+                Button {
+                    let text = ClipboardExporter.exportRow(
+                        columns: columns, row: currentRow,
+                        format: format, tableName: table?.name
+                    )
+                    ClipboardExporter.copyToClipboard(text)
+                } label: {
+                    Label(format.rawValue, systemImage: "doc.on.clipboard")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
     private func rowContent(at rowIndex: Int) -> some View {
         let row: [String?] = {
             guard rowIndex >= 0, rowIndex < rows.count else { return [] }
@@ -303,13 +308,7 @@ struct RowDetailView: View {
 
                         Spacer()
 
-                        Text(column.typeName)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.fill.tertiary)
-                            .clipShape(Capsule())
+                        MetadataBadge(column.typeName)
                     }
                 }
             }

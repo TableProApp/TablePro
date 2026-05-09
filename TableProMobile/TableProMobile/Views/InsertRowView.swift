@@ -97,13 +97,7 @@ struct InsertRowView: View {
 
                             Spacer()
 
-                            Text(column.typeName)
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.fill.tertiary)
-                                .clipShape(Capsule())
+                            MetadataBadge(column.typeName)
                         }
                     } footer: {
                         if let defaultValue = column.defaultValue {

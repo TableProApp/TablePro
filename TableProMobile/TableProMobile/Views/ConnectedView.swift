@@ -102,8 +102,8 @@ struct ConnectedView: View {
                     QueryHistoryView()
                         .environment(coordinator)
                 }
-                Tab("Settings", systemImage: "gear", value: .settings) {
-                    SettingsView()
+                Tab("Info", systemImage: "info.circle", value: .info) {
+                    ConnectionInfoView()
                         .environment(coordinator)
                 }
             }
@@ -128,9 +128,9 @@ struct ConnectedView: View {
                 .keyboardShortcut("3", modifiers: .command)
                 .accessibilityLabel(Text("History"))
                 .hidden()
-            Button("") { coordinator.selectedTab = .settings }
+            Button("") { coordinator.selectedTab = .info }
                 .keyboardShortcut("4", modifiers: .command)
-                .accessibilityLabel(Text("Settings"))
+                .accessibilityLabel(Text("Info"))
                 .hidden()
         }
         .overlay(alignment: .top) {
@@ -179,7 +179,7 @@ struct ConnectedView: View {
         switch coordinator.selectedTab {
         case .tables, .query: coordinator.displayName
         case .history: String(localized: "History")
-        case .settings: String(localized: "Settings")
+        case .info: String(localized: "Info")
         }
     }
 
@@ -187,6 +187,16 @@ struct ConnectedView: View {
 
     @ToolbarContentBuilder
     private func connectionToolbar(_ coordinator: ConnectionCoordinator) -> some ToolbarContent {
+        if coordinator.selectedTab == .info {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    coordinator.showingEditSheet = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .accessibilityLabel(Text("Edit Connection"))
+                }
+            }
+        }
         if connection.safeModeLevel != .off {
             ToolbarItem(placement: .topBarTrailing) {
                 Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")

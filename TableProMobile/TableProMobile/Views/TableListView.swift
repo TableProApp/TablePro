@@ -192,13 +192,7 @@ private struct TableRow: View {
             Spacer()
 
             if let rowCount = table.rowCount {
-                Text(formatRowCount(rowCount))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(.fill.tertiary)
-                    .clipShape(Capsule())
+                MetadataBadge(formatRowCount(rowCount))
             }
         }
     }

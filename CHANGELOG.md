@@ -9,10 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- iOS: Face ID, Touch ID, or Optic ID lock with cold-launch protection and idle timeout (1, 5, 15, or 60 minutes), opt-in from Settings
+- iOS: Connection Info tab replaces the per-connection Settings tab, showing host, SSL, SSH tunnel, active database, and live connection status
 - MCP Setup sheet adds Zed alongside Claude Desktop, Claude Code, and Cursor with a one-paste `context_servers` snippet
 
 ### Changed
 
+- iOS: metadata badges (column types, primary key markers, row counts) cap at the first accessibility size so they stay readable without breaking layouts at the largest Dynamic Type sizes
+- iOS: SQL editor keyboard accessory uses the system keyboard input view, dropping the deprecated screen-width measurement
+- iOS: Edit Connection moves to the navigation bar trailing pencil icon so the floating tab bar never covers it
 - PostgreSQL SQL export emits foreign key constraints via `ALTER TABLE ... ADD CONSTRAINT` after data load and resyncs sequences via `setval` so a re-imported dump round-trips cleanly even when child tables sort before parents (#1114)
 - SQL import parser uses bounded streaming and run-length string append, reducing memory and CPU on large files (#1114)
 - AI inline suggestions: debounce now uses structured Swift concurrency, and the delay is configurable via the `inlineSuggestionDebounceMs` setting (default 500ms)

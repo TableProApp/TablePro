@@ -78,13 +78,7 @@ struct StructureView: View {
 
                         Spacer()
 
-                        Text(column.typeName)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.fill.tertiary)
-                            .clipShape(Capsule())
+                        MetadataBadge(column.typeName)
                     }
 
                     HStack(spacing: 8) {
@@ -140,35 +134,15 @@ struct StructureView: View {
                                 Spacer()
 
                                 if index.isPrimary {
-                                    Text("Primary")
-                                        .font(.caption2)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(.orange.opacity(0.15))
-                                        .foregroundStyle(.orange)
-                                        .clipShape(Capsule())
+                                    MetadataBadge(text: "Primary", foreground: .orange, background: Color.orange.opacity(0.15))
                                 }
 
                                 if index.isUnique && !index.isPrimary {
-                                    Text("Unique")
-                                        .font(.caption2)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(.blue.opacity(0.15))
-                                        .foregroundStyle(.blue)
-                                        .clipShape(Capsule())
+                                    MetadataBadge(text: "Unique", foreground: .blue, background: Color.blue.opacity(0.15))
                                 }
 
                                 if !index.type.isEmpty {
-                                    Text(index.type)
-                                        .font(.caption2)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(.fill.tertiary)
-                                        .clipShape(Capsule())
+                                    MetadataBadge(index.type)
                                 }
                             }
 

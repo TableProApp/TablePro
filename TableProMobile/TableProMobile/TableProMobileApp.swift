@@ -12,6 +12,7 @@ import TableProModels
 @main
 struct TableProMobileApp: App {
     @State private var appState = AppState()
+    @State private var lockState = AppLockState()
     @State private var syncTask: Task<Void, Never>?
     @State private var heartbeatService: AnalyticsHeartbeatService?
     @State private var heartbeatTask: Task<Void, Never>?
@@ -19,15 +20,26 @@ struct TableProMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if appState.hasCompletedOnboarding {
-                    ConnectionListView()
-                        .environment(appState)
-                } else {
-                    OnboardingView()
-                        .environment(appState)
+            ZStack {
+                Group {
+                    if appState.hasCompletedOnboarding {
+                        ConnectionListView()
+                            .environment(appState)
+                    } else {
+                        OnboardingView()
+                            .environment(appState)
+                    }
+                }
+                .blur(radius: lockState.isLocked ? 20 : 0)
+                .allowsHitTesting(!lockState.isLocked)
+
+                if lockState.isLocked {
+                    LockScreenView()
+                        .environment(lockState)
+                        .transition(.opacity)
                 }
             }
+            .animation(.default, value: lockState.isLocked)
             .onOpenURL { url in
                 guard url.scheme == "tablepro",
                       url.host(percentEncoded: false) == "connect",
@@ -53,6 +65,7 @@ struct TableProMobileApp: App {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            lockState.handleScenePhase(phase)
             switch phase {
             case .active:
                 MemoryPressureMonitor.shared.start()
