@@ -102,7 +102,7 @@ internal final class SQLFolderWatcher {
         debounceTask = Task { @MainActor [weak self] in
             await Self.rescan(folders: folders)
             self?.lastScanCompletedAt = Date()
-            AppEvents.shared.linkedSQLFoldersDidUpdate.send(())
+            AppEvents.shared.linkedSQLFoldersDidUpdate.send(nil)
         }
     }
 
@@ -117,7 +117,7 @@ internal final class SQLFolderWatcher {
             let folders = LinkedSQLFolderStorage.shared.loadFolders().filter(\.isEnabled)
             await Self.rescan(folders: folders)
             self?.lastScanCompletedAt = Date()
-            AppEvents.shared.linkedSQLFoldersDidUpdate.send(())
+            AppEvents.shared.linkedSQLFoldersDidUpdate.send(nil)
         }
     }
 

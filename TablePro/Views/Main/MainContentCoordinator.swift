@@ -395,8 +395,10 @@ final class MainContentCoordinator {
 
         externalFileModCancellable = services.appEvents.linkedSQLFoldersDidUpdate
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.checkOpenTabsForExternalModification()
+            .sink { [weak self] payload in
+                guard let self else { return }
+                guard payload == nil || payload == self.connectionId else { return }
+                self.checkOpenTabsForExternalModification()
             }
 
         self.filterCoordinator = FilterCoordinator(parent: self)

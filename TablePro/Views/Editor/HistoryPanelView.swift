@@ -50,7 +50,8 @@ struct HistoryPanelView: View {
             restoreFilterState()
             loadData()
         }
-        .onReceive(AppEvents.shared.queryHistoryDidUpdate) { _ in
+        .onReceive(AppEvents.shared.queryHistoryDidUpdate) { payload in
+            guard payload == nil || payload == connectionId else { return }
             loadData()
         }
         .sheet(item: $favoriteDialogQuery) { item in

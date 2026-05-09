@@ -48,7 +48,11 @@ internal final class ConnectionDataCache {
 
         AppEvents.shared.linkedSQLFoldersDidUpdate
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.scheduleRefresh() }
+            .sink { [weak self] payload in
+                guard let self else { return }
+                guard payload == nil || payload == self.connectionId else { return }
+                self.scheduleRefresh()
+            }
             .store(in: &cancellables)
     }
 

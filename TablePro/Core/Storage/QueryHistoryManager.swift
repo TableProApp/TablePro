@@ -60,7 +60,7 @@ final class QueryHistoryManager {
             let success = await storage.addHistory(entry)
             if success {
                 await MainActor.run {
-                    AppEvents.shared.queryHistoryDidUpdate.send(())
+                    AppEvents.shared.queryHistoryDidUpdate.send(entry.connectionId)
                 }
             }
         }
@@ -95,7 +95,7 @@ final class QueryHistoryManager {
         let success = await storage.deleteHistory(id: id)
         if success {
             await MainActor.run {
-                AppEvents.shared.queryHistoryDidUpdate.send(())
+                AppEvents.shared.queryHistoryDidUpdate.send(nil)
             }
         }
         return success
@@ -109,7 +109,7 @@ final class QueryHistoryManager {
         let success = await storage.clearAllHistory()
         if success {
             await MainActor.run {
-                AppEvents.shared.queryHistoryDidUpdate.send(())
+                AppEvents.shared.queryHistoryDidUpdate.send(nil)
             }
         }
         return success

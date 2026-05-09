@@ -46,7 +46,11 @@ final class AppEvents {
 
     // MARK: - Data Sources
 
-    let queryHistoryDidUpdate = PassthroughSubject<Void, Never>()
+    /// Query history changed (entry added, deleted, or cleared).
+    /// Payload is the affected connection's id, or `nil` for cross-connection
+    /// operations (delete-by-id without connection lookup, clear-all).
+    /// Per-connection subscribers should refresh on `payload == nil || payload == self.connectionId`.
+    let queryHistoryDidUpdate = PassthroughSubject<UUID?, Never>()
 
     /// SQL favorites or favorite folders changed.
     /// Payload is the affected connection's id, or `nil` for cross-connection
@@ -57,7 +61,11 @@ final class AppEvents {
 
     let linkedFoldersDidUpdate = PassthroughSubject<Void, Never>()
 
-    let linkedSQLFoldersDidUpdate = PassthroughSubject<Void, Never>()
+    /// Linked SQL folder rescan completed; cached file index changed.
+    /// Senders are bulk rescans across all enabled folders, so payload is always `nil`.
+    /// The shape is kept consistent with `sqlFavoritesDidUpdate` so subscribers can
+    /// uniformly handle "this update may affect me" via `payload == nil || payload == self.connectionId`.
+    let linkedSQLFoldersDidUpdate = PassthroughSubject<UUID?, Never>()
 
     // MARK: - License & Sync
 
