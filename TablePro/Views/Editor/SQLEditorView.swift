@@ -162,7 +162,10 @@ struct SQLEditorView: View {
         }
         AppEvents.shared.sqlFavoritesDidUpdate
             .receive(on: RunLoop.main)
-            .sink { _ in refresh() }
+            .sink { payload in
+                guard payload == nil || payload == connectionId else { return }
+                refresh()
+            }
             .store(in: &favoritesCancellables)
         AppEvents.shared.linkedSQLFoldersDidUpdate
             .receive(on: RunLoop.main)

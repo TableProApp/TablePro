@@ -23,7 +23,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func addFavorite(_ favorite: SQLFavorite) async -> Bool {
         let result = await storage.addFavorite(favorite)
         if result {
-            postUpdateNotification()
+            postUpdateNotification(connectionId: favorite.connectionId)
         }
         return result
     }
@@ -31,7 +31,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func updateFavorite(_ favorite: SQLFavorite) async -> Bool {
         let result = await storage.updateFavorite(favorite)
         if result {
-            postUpdateNotification()
+            postUpdateNotification(connectionId: favorite.connectionId)
         }
         return result
     }
@@ -39,7 +39,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func deleteFavorite(id: UUID) async -> Bool {
         let result = await storage.deleteFavorite(id: id)
         if result {
-            postUpdateNotification()
+            postUpdateNotification(connectionId: nil)
         }
         return result
     }
@@ -47,7 +47,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func deleteFavorites(ids: [UUID]) async {
         let result = await storage.deleteFavorites(ids: ids)
         if result {
-            postUpdateNotification()
+            postUpdateNotification(connectionId: nil)
         }
     }
 
@@ -68,7 +68,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func addFolder(_ folder: SQLFavoriteFolder) async -> Bool {
         let result = await storage.addFolder(folder)
         if result {
-            postUpdateNotification()
+            postUpdateNotification(connectionId: folder.connectionId)
         }
         return result
     }
@@ -76,7 +76,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func updateFolder(_ folder: SQLFavoriteFolder) async -> Bool {
         let result = await storage.updateFolder(folder)
         if result {
-            postUpdateNotification()
+            postUpdateNotification(connectionId: folder.connectionId)
         }
         return result
     }
@@ -84,7 +84,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func deleteFolder(id: UUID) async -> Bool {
         let result = await storage.deleteFolder(id: id)
         if result {
-            postUpdateNotification()
+            postUpdateNotification(connectionId: nil)
         }
         return result
     }
@@ -150,9 +150,9 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     // MARK: - Notifications
 
-    private func postUpdateNotification() {
+    private func postUpdateNotification(connectionId: UUID?) {
         Task { @MainActor in
-            AppEvents.shared.sqlFavoritesDidUpdate.send(())
+            AppEvents.shared.sqlFavoritesDidUpdate.send(connectionId)
         }
     }
 }

@@ -48,7 +48,12 @@ final class AppEvents {
 
     let queryHistoryDidUpdate = PassthroughSubject<Void, Never>()
 
-    let sqlFavoritesDidUpdate = PassthroughSubject<Void, Never>()
+    /// SQL favorites or favorite folders changed.
+    /// Payload is the affected connection's id, or `nil` for cross-connection
+    /// favorites (`favorite.connectionId == nil`) and bulk operations
+    /// (multi-favorite delete) where the sender doesn't track a single id.
+    /// Per-connection subscribers should refresh on `payload == nil || payload == self.connectionId`.
+    let sqlFavoritesDidUpdate = PassthroughSubject<UUID?, Never>()
 
     let linkedFoldersDidUpdate = PassthroughSubject<Void, Never>()
 
