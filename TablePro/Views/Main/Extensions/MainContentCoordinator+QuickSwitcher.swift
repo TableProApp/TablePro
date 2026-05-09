@@ -8,7 +8,17 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// Handle selection from the quick switcher palette
+    func showQuickSwitcher() {
+        quickSwitcherPanel.show(
+            schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
+            connectionId: connection.id,
+            databaseType: connection.type,
+            onSelect: { [weak self] item in
+                self?.handleQuickSwitcherSelection(item)
+            }
+        )
+    }
+
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem) {
         switch item.kind {
         case .table, .systemTable:

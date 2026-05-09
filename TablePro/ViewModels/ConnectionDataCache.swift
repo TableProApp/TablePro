@@ -10,12 +10,16 @@ import Observation
 @MainActor
 @Observable
 internal final class ConnectionDataCache {
-    private static var instances: [UUID: ConnectionDataCache] = [:]
+    private static let instances = NSMapTable<NSUUID, ConnectionDataCache>(
+        keyOptions: .strongMemory,
+        valueOptions: .weakMemory
+    )
 
     static func shared(for connectionId: UUID) -> ConnectionDataCache {
-        if let existing = instances[connectionId] { return existing }
+        let key = connectionId as NSUUID
+        if let existing = instances.object(forKey: key) { return existing }
         let cache = ConnectionDataCache(connectionId: connectionId)
-        instances[connectionId] = cache
+        instances.setObject(cache, forKey: key)
         return cache
     }
 

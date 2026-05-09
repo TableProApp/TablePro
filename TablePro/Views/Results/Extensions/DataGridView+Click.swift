@@ -9,16 +9,6 @@ import SwiftUI
 extension TableViewCoordinator {
     // MARK: - Click Handlers
 
-    @objc func handleClick(_ sender: NSTableView) {
-        guard isEditable else { return }
-
-        let row = sender.clickedRow
-        let column = sender.clickedColumn
-        guard row >= 0, column > 0 else { return }
-        guard DataGridView.dataColumnIndex(for: column, in: sender, schema: identitySchema) != nil else { return }
-        guard !changeManager.isRowDeleted(row) else { return }
-    }
-
     @objc func handleDoubleClick(_ sender: NSTableView) {
         guard isEditable else { return }
 
@@ -62,7 +52,7 @@ extension TableViewCoordinator {
             return
         }
 
-        sender.editColumn(column, row: row, with: nil, select: true)
+        beginCellEdit(row: row, tableColumnIndex: column)
     }
 
     // MARK: - Chevron Click
@@ -123,5 +113,35 @@ extension TableViewCoordinator {
         guard let value = value, !value.isEmpty else { return }
 
         delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
+    }
+
+    // MARK: - Type Picker Popover
+
+    func showTypePickerPopover(
+        tableView: NSTableView,
+        row: Int,
+        column: Int,
+        columnIndex: Int
+    ) {
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let currentValue = cellValue(at: row, column: columnIndex) ?? ""
+        let dbType = databaseType ?? .mysql
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView
+        ) { [weak self] dismiss in
+            TypePickerContentView(
+                databaseType: dbType,
+                currentValue: currentValue,
+                onCommit: { newValue in
+                    guard let self else { return }
+                    self.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: dismiss
+            )
+        }
     }
 }

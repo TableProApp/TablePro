@@ -15,6 +15,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
@@ -302,7 +303,7 @@ private struct RefreshToolbarButton: View {
     var body: some View {
         let state = coordinator.toolbarState
         Button {
-            NotificationCenter.default.post(name: .refreshData, object: nil)
+            AppCommands.shared.refreshData.send(nil)
         } label: {
             Label("Refresh", systemImage: "arrow.clockwise")
         }

@@ -8,6 +8,7 @@ import SwiftUI
 struct ImportFromAppPreviewStep: View {
     let preview: ConnectionImportPreview
     let sourceName: String
+    let credentialsAborted: Bool
     let onBack: () -> Void
     var onImported: ((Int) -> Void)?
 
@@ -18,6 +19,9 @@ struct ImportFromAppPreviewStep: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if credentialsAborted {
+                credentialsAbortedBanner
+            }
             Divider()
             ConnectionImportPreviewList(
                 items: preview.items,
@@ -28,6 +32,19 @@ struct ImportFromAppPreviewStep: View {
             footer
         }
         .onAppear { selectReadyItems() }
+    }
+
+    private var credentialsAbortedBanner: some View {
+        Label {
+            Text(String(localized: "Some passwords were not read. You can enter them in the connection editor after import."))
+                .font(.caption)
+        } icon: {
+            Image(systemName: "key.slash")
+                .foregroundStyle(Color(nsColor: .systemOrange))
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .systemOrange).opacity(0.12))
     }
 
     // MARK: - Header

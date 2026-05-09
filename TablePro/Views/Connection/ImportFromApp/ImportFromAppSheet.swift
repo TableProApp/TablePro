@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 struct ImportFromAppSheet: View {
@@ -11,12 +12,13 @@ struct ImportFromAppSheet: View {
 
     private enum Step {
         case sourcePicker
-        case loading
-        case preview(ConnectionImportPreview, String)
+        case loading(sourceName: String)
+        case preview(ConnectionImportPreview, String, Bool)
         case error(String)
     }
 
     @State private var step: Step = .sourcePicker
+    @State private var importTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -24,27 +26,19 @@ struct ImportFromAppSheet: View {
             case .sourcePicker:
                 ImportFromAppSourcePicker(
                     onSelect: { importer, includePasswords in
-                        startImport(importer: importer, includePasswords: includePasswords)
+                        beginImport(importer: importer, includePasswords: includePasswords)
                     },
                     onCancel: { dismiss() }
                 )
 
-            case .loading:
-                VStack {
-                    Spacer()
-                    ProgressView()
-                        .controlSize(.large)
-                    Text("Reading connections...")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 8)
-                    Spacer()
-                }
+            case .loading(let sourceName):
+                loadingView(sourceName: sourceName)
 
-            case .preview(let preview, let sourceName):
+            case .preview(let preview, let sourceName, let credentialsAborted):
                 ImportFromAppPreviewStep(
                     preview: preview,
                     sourceName: sourceName,
+                    credentialsAborted: credentialsAborted,
                     onBack: { step = .sourcePicker },
                     onImported: onImported
                 )
@@ -54,6 +48,31 @@ struct ImportFromAppSheet: View {
             }
         }
         .frame(width: 520, height: 440)
+    }
+
+    // MARK: - Loading View
+
+    private func loadingView(sourceName: String) -> some View {
+        VStack(spacing: 12) {
+            Spacer()
+            ProgressView()
+                .controlSize(.large)
+            Text(String(format: String(localized: "Reading connections from %@…"), sourceName))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text(String(localized: "If macOS asks for your login password, click Always Allow on each prompt."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
+            HStack {
+                Spacer()
+                Button(String(localized: "Cancel")) { cancelImport() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(12)
+        }
     }
 
     // MARK: - Error View
@@ -82,21 +101,59 @@ struct ImportFromAppSheet: View {
 
     // MARK: - Actions
 
-    private func startImport(importer: any ForeignAppImporter, includePasswords: Bool) {
-        step = .loading
+    private func beginImport(importer: any ForeignAppImporter, includePasswords: Bool) {
+        if includePasswords, !confirmKeychainPrompts(for: importer) {
+            return
+        }
+        startImport(importer: importer, includePasswords: includePasswords)
+    }
 
-        Task.detached(priority: .userInitiated) {
+    private func confirmKeychainPrompts(for importer: any ForeignAppImporter) -> Bool {
+        let count = importer.connectionCount()
+        let template = String(
+            localized: """
+                Importing passwords from %1$@ reads up to %2$d keychain items. \
+                macOS prompts for your login password once per item because each is owned by %1$@. \
+                Click Always Allow on each prompt to grant TablePro permanent access. \
+                Cancel any prompt to skip the rest.
+                """
+        )
+        let alert = NSAlert()
+        alert.messageText = String(localized: "macOS will ask for your login password")
+        alert.informativeText = String(format: template, importer.displayName, count)
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: String(localized: "Continue"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func startImport(importer: any ForeignAppImporter, includePasswords: Bool) {
+        step = .loading(sourceName: importer.displayName)
+
+        importTask = Task.detached(priority: .userInitiated) {
             do {
                 let result = try importer.importConnections(includePasswords: includePasswords)
+                try Task.checkCancellation()
                 let preview = await ConnectionExportService.analyzeImport(result.envelope)
+                try Task.checkCancellation()
                 await MainActor.run {
-                    step = .preview(preview, result.sourceName)
+                    step = .preview(preview, result.sourceName, result.credentialsAborted)
+                    importTask = nil
                 }
+            } catch is CancellationError {
+                await MainActor.run { importTask = nil }
             } catch {
                 await MainActor.run {
                     step = .error(error.localizedDescription)
+                    importTask = nil
                 }
             }
         }
+    }
+
+    private func cancelImport() {
+        importTask?.cancel()
+        importTask = nil
+        dismiss()
     }
 }

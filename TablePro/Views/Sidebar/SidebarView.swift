@@ -222,10 +222,6 @@ struct SidebarView: View {
                 Section(isExpanded: $viewModel.isRedisKeysExpanded) {
                     RedisKeyTreeView(
                         nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
-                        expandedPrefixes: Binding(
-                            get: { keyTreeVM.expandedPrefixes },
-                            set: { keyTreeVM.expandedPrefixes = $0 }
-                        ),
                         isLoading: keyTreeVM.isLoading,
                         isTruncated: keyTreeVM.isTruncated,
                         onSelectNamespace: { prefix in

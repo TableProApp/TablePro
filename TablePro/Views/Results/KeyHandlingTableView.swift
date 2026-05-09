@@ -90,7 +90,7 @@ final class KeyHandlingTableView: NSTableView {
             if let schema = coordinator?.identitySchema,
                let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
                coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
-                editColumn(clickedColumn, row: clickedRow, with: nil, select: true)
+                coordinator?.beginCellEdit(row: clickedRow, tableColumnIndex: clickedColumn)
             }
         }
     }
@@ -210,7 +210,7 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        editColumn(focusedColumn, row: row, with: nil, select: true)
+        coordinator?.beginCellEdit(row: row, tableColumnIndex: focusedColumn)
     }
 
     @objc override func cancelOperation(_ sender: Any?) {

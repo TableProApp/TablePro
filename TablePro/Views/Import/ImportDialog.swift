@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
@@ -102,7 +103,7 @@ struct ImportDialog: View {
         }
         .sheet(isPresented: $showSuccessDialog, onDismiss: {
             isPresented = false
-            NotificationCenter.default.post(name: .refreshData, object: connection.id)
+            AppCommands.shared.refreshData.send(connection.id)
         }) {
             ImportSuccessView(
                 result: importResult

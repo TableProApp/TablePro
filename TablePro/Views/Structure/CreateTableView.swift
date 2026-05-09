@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
@@ -348,7 +349,7 @@ struct CreateTableView: View {
                     wasSuccessful: true
                 )
 
-                NotificationCenter.default.post(name: .refreshData, object: nil)
+                AppCommands.shared.refreshData.send(nil)
 
                 if let coordinator {
                     coordinator.openTableTab(tableName)

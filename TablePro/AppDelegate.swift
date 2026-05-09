@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var hasRunPostLaunchActivation = false
     private var pluginsRejectedCancellable: AnyCancellable?
+    private var commandCancellables: Set<AnyCancellable> = []
 
     // MARK: - URL & File Open
 
@@ -83,18 +84,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] rejected in
                 self?.handlePluginsRejected(rejected)
             }
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(handleFocusConnectionForm),
-            name: .focusConnectionFormWindowRequested, object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(handleOpenSampleDatabase(_:)),
-            name: .openSampleDatabaseRequested, object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(handleResetSampleDatabase(_:)),
-            name: .resetSampleDatabaseRequested, object: nil
-        )
+        AppCommands.shared.focusConnectionFormWindowRequested
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.handleFocusConnectionForm() }
+            .store(in: &commandCancellables)
+        AppCommands.shared.openSampleDatabaseRequested
+            .receive(on: RunLoop.main)
+            .sink { _ in SampleDatabaseLauncher.open() }
+            .store(in: &commandCancellables)
+        AppCommands.shared.resetSampleDatabaseRequested
+            .receive(on: RunLoop.main)
+            .sink { _ in SampleDatabaseLauncher.reset() }
+            .store(in: &commandCancellables)
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -114,6 +115,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             LicenseManager.shared.startPeriodicValidation()
         }
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -206,18 +211,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func handleFocusConnectionForm() {
+    private func handleFocusConnectionForm() {
         if let window = NSApp.windows.first(where: { AppLaunchCoordinator.isConnectionFormWindow($0) }) {
             window.makeKeyAndOrderFront(nil)
         }
-    }
-
-    @objc func handleOpenSampleDatabase(_ notification: Notification) {
-        SampleDatabaseLauncher.open()
-    }
-
-    @objc func handleResetSampleDatabase(_ notification: Notification) {
-        SampleDatabaseLauncher.reset()
     }
 
     // MARK: - Dock Menu

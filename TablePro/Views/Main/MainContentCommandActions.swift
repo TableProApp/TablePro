@@ -111,6 +111,20 @@ final class MainContentCommandActions {
         }
     }
 
+    /// Subscribes to an `AppCommands` publisher and only runs the handler when this instance's window is key.
+    private func observeKeyWindowOnly<Payload>(
+        _ publisher: PassthroughSubject<Payload, Never>,
+        handler: @escaping @MainActor (Payload) -> Void
+    ) {
+        publisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] payload in
+                guard self?.isKeyWindow() == true else { return }
+                handler(payload)
+            }
+            .store(in: &eventCancellables)
+    }
+
     // MARK: - Save Action
 
     private func setupSaveAction() {
@@ -147,27 +161,23 @@ final class MainContentCommandActions {
     /// context menus, QueryEditorView, ConnectionStatusView). These bridge AppKit/non-menu
     /// notification posts to the same command action methods used by @FocusedValue callers.
     private func setupNonMenuNotificationObservers() {
-        observeKeyWindowOnly(.addNewRow) { [weak self] _ in self?.addNewRow() }
+        observeKeyWindowOnly(AppCommands.shared.addNewRow) { [weak self] _ in self?.addNewRow() }
 
-        observeKeyWindowOnly(.deleteSelectedRows) { [weak self] notification in
-            let directIndices = notification.userInfo?["rowIndices"] as? Set<Int>
-            self?.deleteSelectedRows(rowIndices: directIndices)
+        observeKeyWindowOnly(AppCommands.shared.deleteSelectedRows) { [weak self] _ in
+            self?.deleteSelectedRows()
         }
 
-        observeKeyWindowOnly(.duplicateRow) { [weak self] _ in self?.duplicateRow() }
+        observeKeyWindowOnly(AppCommands.shared.duplicateRow) { [weak self] _ in self?.duplicateRow() }
 
-        observeKeyWindowOnly(.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
+        observeKeyWindowOnly(AppCommands.shared.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
 
-        // Note: .copySelectedRows and .pasteRows observers call the data-grid
-        // path directly (not the public methods) to avoid an infinite loop —
-        // the public methods re-post these notifications for structure view.
-        observeKeyWindowOnly(.copySelectedRows) { [weak self] _ in
+        observeKeyWindowOnly(AppCommands.shared.copySelectedRows) { [weak self] _ in
             guard let self else { return }
             let indices = self.selectionState.indices
             self.coordinator?.copySelectedRowsToClipboard(indices: indices)
         }
 
-        observeKeyWindowOnly(.pasteRows) { [weak self] _ in
+        observeKeyWindowOnly(AppCommands.shared.pasteRows) { [weak self] _ in
             self?.coordinator?.pasteRows()
         }
     }
@@ -634,7 +644,7 @@ final class MainContentCommandActions {
     func openSQLFile() {
         Task {
             guard let urls = await SQLFileService.showOpenPanel() else { return }
-            NotificationCenter.default.post(name: .openSQLFiles, object: urls)
+            AppCommands.shared.openSQLFiles.send(urls)
         }
     }
 
@@ -770,7 +780,7 @@ final class MainContentCommandActions {
     }
 
     func openQuickSwitcher() {
-        coordinator?.activeSheet = .quickSwitcher
+        coordinator?.showQuickSwitcher()
     }
 
     func openConnectionSwitcher() {
@@ -800,16 +810,19 @@ final class MainContentCommandActions {
     // MARK: Data Broadcasts
 
     private func setupDataBroadcastObservers() {
-        observe(.refreshData) { [weak self] notification in
-            guard let self else { return }
-            if let target = notification.object as? UUID, target != self.connection.id {
-                return
+        AppCommands.shared.refreshData
+            .receive(on: RunLoop.main)
+            .sink { [weak self] target in
+                guard let self else { return }
+                if let target, target != self.connection.id {
+                    return
+                }
+                if target == nil && !self.isKeyWindow() {
+                    return
+                }
+                self.handleRefreshData()
             }
-            if notification.object == nil && !self.isKeyWindow() {
-                return
-            }
-            self.handleRefreshData()
-        }
+            .store(in: &eventCancellables)
     }
 
     private func handleRefreshData() {
@@ -872,13 +885,12 @@ final class MainContentCommandActions {
     // MARK: File Open Broadcasts
 
     private func setupFileOpenObservers() {
-        observeKeyWindowOnly(.openSQLFiles) { [weak self] notification in
-            self?.handleOpenSQLFiles(notification)
+        observeKeyWindowOnly(AppCommands.shared.openSQLFiles) { [weak self] urls in
+            self?.handleOpenSQLFiles(urls)
         }
     }
 
-    private func handleOpenSQLFiles(_ notification: Notification) {
-        guard let urls = notification.object as? [URL] else { return }
+    private func handleOpenSQLFiles(_ urls: [URL]) {
         Task {
             for url in urls {
                 try? await TabRouter.shared.route(.openSQLFile(url))

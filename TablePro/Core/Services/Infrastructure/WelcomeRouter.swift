@@ -30,7 +30,7 @@ internal final class WelcomeRouter {
     private func drainPendingSQLFiles() {
         let urls = consumePendingSQLFiles()
         guard !urls.isEmpty else { return }
-        NotificationCenter.default.post(name: .openSQLFiles, object: urls)
+        AppCommands.shared.openSQLFiles.send(urls)
     }
 
     internal func routeImport(_ exportable: ExportableConnection) {

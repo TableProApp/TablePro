@@ -2,29 +2,28 @@
 //  CellOverlayEditor.swift
 //  TablePro
 //
-//  Overlay editor for multiline cell values.
-//  Uses a borderless NSPanel containing an NSScrollView + NSTextView,
-//  bypassing NSTextFieldCell's field editor which cannot scroll vertically.
-//
 
 import AppKit
 
 @MainActor
 final class CellOverlayEditor: NSObject, NSTextViewDelegate {
-    private var panel: CellOverlayPanel?
+    private var container: OverlayContainerView?
+    private var textView: OverlayTextView?
     private weak var tableView: NSTableView?
     private var scrollObserver: NSObjectProtocol?
     private var columnResizeObserver: NSObjectProtocol?
+    private var appResignObserver: NSObjectProtocol?
+    private var windowResignKeyObserver: NSObjectProtocol?
+    private var outsideClickMonitor: Any?
 
     private(set) var row: Int = -1
     private(set) var column: Int = -1
     private(set) var columnIndex: Int = -1
 
     var onCommit: ((_ row: Int, _ columnIndex: Int, _ newValue: String) -> Void)?
-
     var onTabNavigation: ((_ row: Int, _ column: Int, _ forward: Bool) -> Void)?
 
-    var isActive: Bool { panel != nil }
+    var isActive: Bool { container != nil }
 
     // MARK: - Show / Dismiss
 
@@ -42,85 +41,97 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         self.column = column
         self.columnIndex = columnIndex
 
-        guard let cellView = tableView.view(atColumn: column, row: row, makeIfNecessary: false) else { return }
+        let cellFrame = tableView.frameOfCell(atColumn: column, row: row)
+        guard !cellFrame.isEmpty else { return }
         guard let window = tableView.window else { return }
 
-        let cellRectInWindow = cellView.convert(cellView.bounds, to: nil)
-        let cellRectOnScreen = window.convertToScreen(cellRectInWindow)
-
-        let lineHeight: CGFloat = ThemeEngine.shared.dataGridFonts.regular.boundingRectForFont.height + 4
+        let lineHeight = ThemeEngine.shared.dataGridFonts.regular.boundingRectForFont.height + 4
         var newlineCount = 0
         for scalar in value.unicodeScalars where scalar == "\n" {
             newlineCount += 1
         }
         let lineCount = CGFloat(newlineCount + 1)
-        let contentHeight = max(lineCount * lineHeight + 8, cellRectOnScreen.height)
-        let overlayHeight = min(contentHeight, 120)
+        let contentHeight = max(lineCount * lineHeight + 8, cellFrame.height)
+        let overlayHeight = min(max(contentHeight, cellFrame.height), 120)
 
-        let panelRect = NSRect(
-            x: cellRectOnScreen.origin.x,
-            y: cellRectOnScreen.origin.y - (overlayHeight - cellRectOnScreen.height),
-            width: cellRectOnScreen.width,
+        let editorFrame = NSRect(
+            x: cellFrame.origin.x,
+            y: cellFrame.origin.y,
+            width: cellFrame.width,
             height: overlayHeight
         )
 
-        let contentSize = NSSize(width: panelRect.width, height: panelRect.height)
+        let containerView = OverlayContainerView(frame: editorFrame)
+        containerView.wantsLayer = true
+        containerView.layer?.borderWidth = 2
+        containerView.layer?.borderColor = NSColor.keyboardFocusIndicatorColor.cgColor
+        containerView.layer?.cornerRadius = 2
+        containerView.layer?.masksToBounds = true
+        containerView.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
 
-        let textView = OverlayTextView(frame: NSRect(origin: .zero, size: contentSize))
-        textView.overlayEditor = self
-        textView.isRichText = false
-        textView.allowsUndo = true
-        textView.font = ThemeEngine.shared.dataGridFonts.regular
-        textView.textColor = .labelColor
-        textView.backgroundColor = .textBackgroundColor
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(
-            width: contentSize.width,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-        textView.delegate = self
-        textView.string = value
-        textView.selectAll(nil)
-
-        let scrollView = NSScrollView(frame: NSRect(origin: .zero, size: contentSize))
+        let scrollView = NSScrollView(frame: containerView.bounds)
+        scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
-        scrollView.documentView = textView
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
-        scrollView.autoresizingMask = [.width, .height]
 
-        let newPanel = CellOverlayPanel(
-            contentRect: panelRect,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
+        let editorTextView = OverlayTextView(frame: scrollView.bounds)
+        editorTextView.overlayEditor = self
+        editorTextView.isRichText = false
+        editorTextView.allowsUndo = true
+        editorTextView.font = ThemeEngine.shared.dataGridFonts.regular
+        editorTextView.textColor = .labelColor
+        editorTextView.backgroundColor = .textBackgroundColor
+        editorTextView.isVerticallyResizable = true
+        editorTextView.isHorizontallyResizable = false
+        editorTextView.textContainer?.widthTracksTextView = true
+        editorTextView.textContainer?.containerSize = NSSize(
+            width: scrollView.bounds.width,
+            height: CGFloat.greatestFiniteMagnitude
         )
-        newPanel.level = .floating
-        newPanel.hidesOnDeactivate = false
-        newPanel.isReleasedWhenClosed = false
-        newPanel.hasShadow = true
-        newPanel.backgroundColor = .textBackgroundColor
-        newPanel.isOpaque = false
-        newPanel.contentView = scrollView
-        newPanel.contentView?.wantsLayer = true
-        newPanel.contentView?.layer?.borderWidth = 2
-        newPanel.contentView?.layer?.borderColor = NSColor.keyboardFocusIndicatorColor.safeCGColor
-        newPanel.contentView?.layer?.cornerRadius = 2
-        newPanel.contentView?.layer?.masksToBounds = true
+        editorTextView.delegate = self
+        editorTextView.string = value
+        editorTextView.selectAll(nil)
 
-        newPanel.onResignKey = { [weak self] in
-            self?.dismiss(commit: true)
+        scrollView.documentView = editorTextView
+        containerView.addSubview(scrollView)
+
+        tableView.addSubview(containerView)
+        container = containerView
+        textView = editorTextView
+
+        window.makeFirstResponder(editorTextView)
+
+        installDismissObservers()
+    }
+
+    func dismiss(commit: Bool) {
+        guard let activeContainer = container, let activeTextView = textView else { return }
+
+        let newValue = activeTextView.string
+
+        removeDismissObservers()
+
+        activeContainer.removeFromSuperview()
+        container = nil
+        textView = nil
+
+        if let tableView {
+            tableView.window?.makeFirstResponder(tableView)
         }
 
-        panel = newPanel
+        if commit {
+            onCommit?(row, columnIndex, newValue)
+        }
+    }
 
-        newPanel.makeKeyAndOrderFront(nil)
-        newPanel.makeFirstResponder(textView)
+    // MARK: - Observers
+
+    private func installDismissObservers() {
+        guard let tableView else { return }
 
         if let clipView = tableView.enclosingScrollView?.contentView {
             scrollObserver = NotificationCenter.default.addObserver(
@@ -143,17 +154,39 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
                 self?.dismiss(commit: false)
             }
         }
+
+        appResignObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.dismiss(commit: true)
+            }
+        }
+
+        if let editorWindow = tableView.window {
+            windowResignKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: editorWindow,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.dismiss(commit: true)
+                }
+            }
+        }
+
+        outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self else { return event }
+            Task { @MainActor [weak self] in
+                self?.handleOutsideClick(event: event)
+            }
+            return event
+        }
     }
 
-    func dismiss(commit: Bool) {
-        guard let activePanel = panel,
-              let scrollView = activePanel.contentView as? NSScrollView,
-              let textView = scrollView.documentView as? NSTextView else { return }
-
-        let newValue = textView.string
-
-        activePanel.onResignKey = nil
-
+    private func removeDismissObservers() {
         if let observer = scrollObserver {
             NotificationCenter.default.removeObserver(observer)
             scrollObserver = nil
@@ -162,16 +195,27 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
             NotificationCenter.default.removeObserver(observer)
             columnResizeObserver = nil
         }
-
-        activePanel.orderOut(nil)
-        panel = nil
-
-        if let tableView {
-            tableView.window?.makeFirstResponder(tableView)
+        if let observer = appResignObserver {
+            NotificationCenter.default.removeObserver(observer)
+            appResignObserver = nil
         }
+        if let observer = windowResignKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+            windowResignKeyObserver = nil
+        }
+        if let monitor = outsideClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickMonitor = nil
+        }
+    }
 
-        if commit {
-            onCommit?(row, columnIndex, newValue)
+    private func handleOutsideClick(event: NSEvent) {
+        guard let containerView = container,
+              let containerWindow = containerView.window,
+              event.window === containerWindow else { return }
+        let frameInWindow = containerView.convert(containerView.bounds, to: nil)
+        if !frameInWindow.contains(event.locationInWindow) {
+            dismiss(commit: true)
         }
     }
 
@@ -210,17 +254,10 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
     }
 }
 
-// MARK: - Overlay Panel
+// MARK: - Container View
 
-private final class CellOverlayPanel: NSPanel {
-    var onResignKey: (() -> Void)?
-
-    override var canBecomeKey: Bool { true }
-
-    override func resignKey() {
-        super.resignKey()
-        onResignKey?()
-    }
+private final class OverlayContainerView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 // MARK: - Overlay Text View

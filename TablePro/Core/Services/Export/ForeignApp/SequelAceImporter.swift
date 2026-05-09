@@ -48,14 +48,16 @@ struct SequelAceImporter: ForeignAppImporter {
         var exportableConnections: [ExportableConnection] = []
         var groupNames: Set<String> = []
         var credentials: [String: ExportableCredentials] = [:]
+        var credentialsAborted = false
 
-        parseChildren(
+        try parseChildren(
             children,
             groupName: nil,
             connections: &exportableConnections,
             groupNames: &groupNames,
             credentials: &credentials,
-            includePasswords: includePasswords
+            includePasswords: includePasswords,
+            credentialsAborted: &credentialsAborted
         )
 
         guard !exportableConnections.isEmpty else {
@@ -76,7 +78,11 @@ struct SequelAceImporter: ForeignAppImporter {
             credentials: credentials.isEmpty ? nil : credentials
         )
 
-        return ForeignAppImportResult(envelope: envelope, sourceName: displayName)
+        return ForeignAppImportResult(
+            envelope: envelope,
+            sourceName: displayName,
+            credentialsAborted: credentialsAborted
+        )
     }
 
     // MARK: - Private
@@ -106,23 +112,24 @@ struct SequelAceImporter: ForeignAppImporter {
         connections: inout [ExportableConnection],
         groupNames: inout Set<String>,
         credentials: inout [String: ExportableCredentials],
-        includePasswords: Bool
-    ) {
+        includePasswords: Bool,
+        credentialsAborted: inout Bool
+    ) throws {
         for child in children {
+            try Task.checkCancellation()
             if let subChildren = child["Children"] as? [[String: Any]] {
-                // This is a group node
                 let name = child["Name"] as? String ?? "Untitled Group"
                 groupNames.insert(name)
-                parseChildren(
+                try parseChildren(
                     subChildren,
                     groupName: name,
                     connections: &connections,
                     groupNames: &groupNames,
                     credentials: &credentials,
-                    includePasswords: includePasswords
+                    includePasswords: includePasswords,
+                    credentialsAborted: &credentialsAborted
                 )
             } else {
-                // This is a connection leaf
                 do {
                     let conn = try parseConnection(child, groupName: groupName)
                     let index = connections.count
@@ -132,8 +139,8 @@ struct SequelAceImporter: ForeignAppImporter {
                         groupNames.insert(gn)
                     }
 
-                    if includePasswords {
-                        let creds = readCredentials(from: child)
+                    if includePasswords, !credentialsAborted {
+                        let creds = readCredentials(from: child, abortFlag: &credentialsAborted)
                         if creds.password != nil || creds.sshPassword != nil {
                             credentials[String(index)] = creds
                         }
@@ -242,26 +249,40 @@ struct SequelAceImporter: ForeignAppImporter {
         )
     }
 
-    private func readCredentials(from entry: [String: Any]) -> ExportableCredentials {
+    private func readCredentials(from entry: [String: Any], abortFlag: inout Bool) -> ExportableCredentials {
         let name = entry["name"] as? String ?? ""
         let connId = entry["id"] ?? 0
         let user = entry["user"] as? String ?? ""
         let host = entry["host"] as? String ?? ""
         let database = entry["database"] as? String ?? ""
 
-        let service = "Sequel Ace : \(name) (\(connId))"
-        let account = "\(user)@\(host)/\(database)"
+        func read(service: String, account: String) -> String? {
+            guard !abortFlag else { return nil }
+            switch ForeignKeychainReader.readPassword(service: service, account: account) {
+            case .found(let value):
+                return value
+            case .notFound:
+                return nil
+            case .cancelled:
+                abortFlag = true
+                return nil
+            }
+        }
 
-        let dbPassword = ForeignKeychainReader.readPassword(service: service, account: account)
+        let dbPassword = read(
+            service: "Sequel Ace : \(name) (\(connId))",
+            account: "\(user)@\(host)/\(database)"
+        )
 
         var sshPassword: String?
         let connectionType = entry["type"] as? Int ?? 0
         if connectionType == 2 {
             let sshUser = entry["sshUser"] as? String ?? ""
             let sshHost = entry["sshHost"] as? String ?? ""
-            let sshService = "Sequel Ace SSHTunnel : \(name) (\(connId))"
-            let sshAccount = "\(sshUser)@\(sshHost)"
-            sshPassword = ForeignKeychainReader.readPassword(service: sshService, account: sshAccount)
+            sshPassword = read(
+                service: "Sequel Ace SSHTunnel : \(name) (\(connId))",
+                account: "\(sshUser)@\(sshHost)"
+            )
         }
 
         return ExportableCredentials(

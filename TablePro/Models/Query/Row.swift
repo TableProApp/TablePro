@@ -17,7 +17,7 @@ enum RowID: Hashable, Sendable {
 
 struct Row: Equatable, Sendable {
     var id: RowID
-    var values: [String?]
+    var values: ContiguousArray<String?>
 
     subscript(column: Int) -> String? {
         get { column >= 0 && column < values.count ? values[column] : nil }

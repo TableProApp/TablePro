@@ -4,6 +4,7 @@ enum IntegrationClient: String, CaseIterable, Identifiable, Sendable {
     case claudeCode
     case claudeDesktop
     case cursor
+    case zed
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum IntegrationClient: String, CaseIterable, Identifiable, Sendable {
         case .claudeCode: return String(localized: "Claude Code")
         case .claudeDesktop: return String(localized: "Claude Desktop")
         case .cursor: return String(localized: "Cursor")
+        case .zed: return String(localized: "Zed")
         }
     }
 }

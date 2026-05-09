@@ -94,8 +94,8 @@ extension TableViewCoordinator {
             columnIndex: columnIndex
         )
 
-        let cell = cellRegistry.dequeueCell(of: kind, in: tableView)
-        cell.configure(content: content, state: cellState)
+        let cell = cellRegistry.dequeueCell(in: tableView)
+        cell.configure(kind: kind, content: content, state: cellState, palette: cellRegistry.palette)
         return cell
     }
 
@@ -106,15 +106,25 @@ extension TableViewCoordinator {
         return nil
     }
 
+    func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+        guard let tableColumn else { return nil }
+        guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return nil }
+        guard let columnIndex = dataColumnIndex(from: tableColumn.identifier) else { return nil }
+        guard let displayRow = displayRow(at: row) else { return nil }
+        guard columnIndex < displayRow.values.count else { return nil }
+        return displayRow.values[columnIndex]
+    }
+
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         if let delegateRowView = delegate?.dataGridRowView(for: tableView, row: row, coordinator: self) {
             return delegateRowView
         }
-        let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? TableRowViewWithMenu)
-            ?? TableRowViewWithMenu()
+        let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? DataGridRowView)
+            ?? DataGridRowView()
         rowView.identifier = Self.rowViewIdentifier
         rowView.coordinator = self
         rowView.rowIndex = row
+        rowView.applyVisualState(visualState(for: row))
         return rowView
     }
 }

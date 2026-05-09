@@ -6,6 +6,7 @@
 //
 
 import CodeEditTextView
+import Combine
 import Observation
 import os
 import Sparkle
@@ -201,11 +202,11 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .manageConnections))
 
             Button(String(localized: "Open Sample Database")) {
-                NotificationCenter.default.post(name: .openSampleDatabaseRequested, object: nil)
+                AppCommands.shared.openSampleDatabaseRequested.send(())
             }
 
             Button(String(localized: "Reset Sample Database...")) {
-                NotificationCenter.default.post(name: .resetSampleDatabaseRequested, object: nil)
+                AppCommands.shared.resetSampleDatabaseRequested.send(())
             }
         }
 
@@ -265,15 +266,15 @@ struct AppMenuCommands: Commands {
             Divider()
 
             Button(String(localized: "Export Connections...")) {
-                NotificationCenter.default.post(name: .exportConnections, object: nil)
+                AppCommands.shared.exportConnections.send(())
             }
 
             Button(String(localized: "Import Connections...")) {
-                NotificationCenter.default.post(name: .importConnections, object: nil)
+                AppCommands.shared.importConnections.send(())
             }
 
             Button(String(localized: "Import from Other App...")) {
-                NotificationCenter.default.post(name: .importConnectionsFromApp, object: nil)
+                AppCommands.shared.importConnectionsFromApp.send(())
             }
 
             Divider()
@@ -350,7 +351,7 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isQueryExecuting ?? false))
 
             Button("Refresh") {
-                NotificationCenter.default.post(name: .refreshData, object: nil)
+                AppCommands.shared.refreshData.send(nil)
             }
             .optionalKeyboardShortcut(shortcut(for: .refresh))
             .disabled(!(actions?.isConnected ?? false))
@@ -679,23 +680,6 @@ struct TableProApp: App {
                 .environment(\.appServices, .live)
         }
     }
-}
-
-// MARK: - Notification Names
-
-extension Notification.Name {
-    // Multi-listener broadcasts (Sidebar + Coordinator + StructureView)
-    static let refreshData = Notification.Name("refreshData")
-
-    // Data operations (still posted by DataGrid / context menus)
-    static let deleteSelectedRows = Notification.Name("deleteSelectedRows")
-    static let addNewRow = Notification.Name("addNewRow")
-    static let duplicateRow = Notification.Name("duplicateRow")
-    static let copySelectedRows = Notification.Name("copySelectedRows")
-    static let pasteRows = Notification.Name("pasteRows")
-
-    // File opening notifications
-    static let openSQLFiles = Notification.Name("openSQLFiles")
 }
 
 // MARK: - Check for Updates

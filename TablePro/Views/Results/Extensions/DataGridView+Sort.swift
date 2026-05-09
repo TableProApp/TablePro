@@ -159,12 +159,20 @@ extension TableViewCoordinator {
 
     @objc func sortAscending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
-        delegate?.dataGridSort(column: columnIndex, ascending: true, isMultiSort: false)
+        var state = SortState()
+        state.columns = [SortColumn(columnIndex: columnIndex, direction: .ascending)]
+        currentSortState = state
+        updateSortIndicatorsFromCurrentState()
+        delegate?.dataGridSortStateChanged(state)
     }
 
     @objc func sortDescending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
-        delegate?.dataGridSort(column: columnIndex, ascending: false, isMultiSort: false)
+        var state = SortState()
+        state.columns = [SortColumn(columnIndex: columnIndex, direction: .descending)]
+        currentSortState = state
+        updateSortIndicatorsFromCurrentState()
+        delegate?.dataGridSortStateChanged(state)
     }
 
     @objc func showAllColumns() {
@@ -172,7 +180,14 @@ extension TableViewCoordinator {
     }
 
     @objc func clearSortAction() {
-        delegate?.dataGridClearSort()
+        currentSortState = SortState()
+        updateSortIndicatorsFromCurrentState()
+        delegate?.dataGridSortStateChanged(SortState())
+    }
+
+    private func updateSortIndicatorsFromCurrentState() {
+        guard let header = tableView?.headerView as? SortableHeaderView else { return }
+        header.updateSortIndicators(state: currentSortState, schema: identitySchema)
     }
 
     @objc func copyColumnName(_ sender: NSMenuItem) {

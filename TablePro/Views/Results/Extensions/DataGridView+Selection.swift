@@ -28,12 +28,11 @@ extension TableViewCoordinator {
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard !isSyncingSelection else { return }
         guard let tableView = notification.object as? NSTableView else { return }
 
         let previousSelection = selectedRowIndices
         let newSelection = Set(tableView.selectedRowIndexes.map { $0 })
-        if newSelection != previousSelection {
+        if !isSyncingSelection && newSelection != previousSelection {
             selectedRowIndices = newSelection
         }
 

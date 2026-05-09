@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import SwiftUI
 
 internal struct WindowOpenerBridge: View {
@@ -26,19 +27,13 @@ internal struct WindowOpenerBridge: View {
                     initialType: initialType,
                     onSelected: onSelected
                 )
-                NotificationCenter.default.post(
-                    name: .presentDatabaseTypeChooser,
-                    object: nil,
-                    userInfo: [DatabaseTypeChooserPayload.userInfoKey: payload]
-                )
+                AppCommands.shared.presentDatabaseTypeChooser.send(payload)
             }
         )
     }
 }
 
 internal final class DatabaseTypeChooserPayload {
-    static let userInfoKey = "DatabaseTypeChooserPayload"
-
     let initialType: DatabaseType?
     let onSelected: (DatabaseType) -> Void
 
@@ -46,8 +41,4 @@ internal final class DatabaseTypeChooserPayload {
         self.initialType = initialType
         self.onSelected = onSelected
     }
-}
-
-internal extension Notification.Name {
-    static let presentDatabaseTypeChooser = Notification.Name("com.TablePro.presentDatabaseTypeChooser")
 }

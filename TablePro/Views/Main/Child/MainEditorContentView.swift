@@ -36,9 +36,7 @@ struct MainEditorContentView: View {
     // MARK: - Callbacks
 
     let onCellEdit: (Int, Int, String?) -> Void
-    let onSort: (Int, Bool, Bool) -> Void
-    let onClearSort: () -> Void
-    let onRemoveSortColumn: (Int) -> Void
+    let onSortStateChanged: (SortState) -> Void
     let onAddRow: () -> Void
     let onUndoInsert: (Int) -> Void
     let onSelectionChange: (Set<Int>) -> Void
@@ -132,8 +130,7 @@ struct MainEditorContentView: View {
                 }
             )
         }
-        .onReceive(NotificationCenter.default.publisher(for: .saveAsFavoriteRequested)) { notification in
-            guard let query = notification.userInfo?["query"] as? String else { return }
+        .onReceive(AppCommands.shared.saveAsFavoriteRequested) { query in
             favoriteDialogQuery = FavoriteDialogQuery(query: query)
         }
         .onChange(of: tabManager.tabStructureVersion) { _, _ in
@@ -182,9 +179,7 @@ struct MainEditorContentView: View {
         dataTabDelegate.coordinator = coordinator
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
-        dataTabDelegate.onSort = onSort
-        dataTabDelegate.onClearSort = onClearSort
-        dataTabDelegate.onRemoveSortColumn = onRemoveSortColumn
+        dataTabDelegate.onSortStateChanged = onSortStateChanged
         dataTabDelegate.onUndoInsert = onUndoInsert
         dataTabDelegate.onFilterColumn = onFilterColumn
         dataTabDelegate.onRefresh = onRefresh
@@ -615,8 +610,8 @@ struct MainEditorContentView: View {
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if smartDetectionEnabled {
             let sampleRows: [[String?]]? = {
-                let rows = tableRows?.rows.prefix(10).map(\.values) ?? []
-                return rows.isEmpty ? nil : Array(rows)
+                let rows: [[String?]] = tableRows?.rows.prefix(10).map { Array($0.values) } ?? []
+                return rows.isEmpty ? nil : rows
             }()
             detected = ValueDisplayDetector.detect(
                 columns: columns,

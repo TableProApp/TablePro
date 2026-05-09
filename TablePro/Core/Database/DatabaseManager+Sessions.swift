@@ -137,8 +137,6 @@ extension DatabaseManager {
                 setSession(session, for: connection.id)
             }
 
-            appSettingsStorage.saveLastConnectionId(connection.id)
-
             MacAnalyticsProvider.shared.markConnectionSucceeded()
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
 
@@ -345,7 +343,6 @@ extension DatabaseManager {
                 switchToSession(nextSessionId)
             } else {
                 currentSessionId = nil
-                appSettingsStorage.saveLastConnectionId(nil)
             }
         }
         lifecycleLogger.info(

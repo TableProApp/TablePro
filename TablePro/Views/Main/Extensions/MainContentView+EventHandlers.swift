@@ -171,7 +171,7 @@ extension MainContentView {
         var allRows: [[String?]] = []
         for index in selectedIndices.sorted() {
             if index < tableRows.rows.count {
-                allRows.append(tableRows.rows[index].values)
+                allRows.append(Array(tableRows.rows[index].values))
             }
         }
 
@@ -232,7 +232,7 @@ extension MainContentView {
 
             for rowIndex in capturedEditState.selectedRowIndices {
                 guard rowIndex < tableRows.rows.count else { continue }
-                let originalRow = tableRows.rows[rowIndex].values
+                let originalRow = Array(tableRows.rows[rowIndex].values)
 
                 let oldValue: String?
                 if columnIndex < capturedEditState.fields.count,

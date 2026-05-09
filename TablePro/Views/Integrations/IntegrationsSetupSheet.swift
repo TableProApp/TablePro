@@ -107,6 +107,12 @@ private struct IntegrationsSetupInstructions: View {
                 String(localized: "Click \"+ Add new global MCP server\""),
                 String(localized: "Paste the JSON below and save")
             ]
+        case .zed:
+            [
+                String(localized: "Open Zed and click the Agent Panel icon in the right side of the title bar"),
+                String(localized: "Click the menu in the Agent Panel header and choose Settings"),
+                String(localized: "Under MCP Servers click \"+ Add Custom Server\", select the Local tab, paste the JSON below, then click Add Server")
+            ]
         }
     }
 
@@ -119,6 +125,15 @@ private struct IntegrationsSetupInstructions: View {
                 "tablepro": {
                   "command": "\(bridgeBinaryPath)"
                 }
+              }
+            }
+            """
+        case .zed:
+            return """
+            {
+              "tablepro": {
+                "command": "\(bridgeBinaryPath)",
+                "args": []
               }
             }
             """
