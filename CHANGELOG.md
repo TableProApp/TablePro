@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal: Swift Testing tests for `DataBrowserViewModel`, `ConnectionFormViewModel`, and `RowDetailViewModel` covering load lifecycle, pagination, sort/filter/search, delete, hydration, validation, edit lifecycle, save paths, and lazy cell load. Runs against in-memory `DatabaseDriver` and `SecureStore` mocks. `loadStoredCredentials`, `testConnection`, `save` on `ConnectionFormViewModel` now accept `any SecureStore` so the keychain backend can be substituted under test
 - Internal: extract `RowItemLabel` shared row component for the connection list and table list, dropping the inline HStack scaffolding from both
 - Internal: move per-database-type constants (`defaultPort`, `mobileDisplayName`, `mobileSupportedTypes`) onto a `DatabaseType` extension; the connection form picker and info screen read from the same source instead of duplicating the type-to-string switch
 - iOS: SQL syntax highlighter uses Swift Regex literals for static patterns (numbers, comments, strings) and consolidates the six per-pattern enumeration loops into a single typed helper

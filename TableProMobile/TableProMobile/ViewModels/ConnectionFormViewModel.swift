@@ -105,7 +105,7 @@ final class ConnectionFormViewModel {
 
     // MARK: - Credential Hydration
 
-    func loadStoredCredentials(secureStore: KeychainSecureStore) async {
+    func loadStoredCredentials(secureStore: any SecureStore) async {
         guard let conn = existingConnection else { return }
         let connKey = "com.TablePro.password.\(conn.id.uuidString)"
         if let stored = try? secureStore.retrieve(forKey: connKey), !stored.isEmpty {
@@ -203,7 +203,7 @@ final class ConnectionFormViewModel {
 
     // MARK: - Test Connection
 
-    func testConnection(appState: AppState, secureStore: KeychainSecureStore) async {
+    func testConnection(appState: AppState, secureStore: any SecureStore) async {
         isTesting = true
         testResult = nil
         defer { isTesting = false }
@@ -256,7 +256,7 @@ final class ConnectionFormViewModel {
 
     // MARK: - Save
 
-    func save(appState: AppState, secureStore: KeychainSecureStore) -> DatabaseConnection? {
+    func save(appState: AppState, secureStore: any SecureStore) -> DatabaseConnection? {
         let connection = buildConnection()
         var storageFailed = false
 
