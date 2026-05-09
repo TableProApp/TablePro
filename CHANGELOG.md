@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal: iOS query editor uses a `Binding<Bool>` focus channel into `SQLHighlightTextView` to dismiss the keyboard before running a query, replacing the `UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder))` call. Keyboard behavior is unchanged
 - Internal: iOS row detail (edit lifecycle, save SQL build, lazy cell value load, primary key extraction, success-toast auto-dismiss) moves out of the View into `RowDetailViewModel`. The View now keeps only sheet flags and haptic triggers; behavior is unchanged
 - Internal: iOS connection form (test connection, save, file picker handlers, default port resolution, credential hydration) moves out of the View into `ConnectionFormViewModel`. The View drops from 53 to 5 `@State` properties; behavior is unchanged
 - Internal: iOS data browser business logic (page load, pagination, sort, filter, search, delete, foreign-key fetch, memory pressure) moves out of the View into `DataBrowserViewModel`. The View drops 30 of its 33 `@State` properties and a dozen private functions; behavior is unchanged

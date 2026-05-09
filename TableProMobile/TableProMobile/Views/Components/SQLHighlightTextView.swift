@@ -8,8 +8,14 @@ import UIKit
 
 struct SQLHighlightTextView: UIViewRepresentable {
     @Binding var text: String
+    @Binding var isFocused: Bool
 
     private static let font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+
+    init(text: Binding<String>, isFocused: Binding<Bool> = .constant(false)) {
+        self._text = text
+        self._isFocused = isFocused
+    }
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
@@ -40,6 +46,11 @@ struct SQLHighlightTextView: UIViewRepresentable {
             }
             context.coordinator.isUpdating = false
         }
+        if isFocused, !textView.isFirstResponder {
+            textView.becomeFirstResponder()
+        } else if !isFocused, textView.isFirstResponder {
+            textView.resignFirstResponder()
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -56,6 +67,14 @@ struct SQLHighlightTextView: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             guard !isUpdating else { return }
             parent.text = textView.text
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            if !parent.isFocused { parent.isFocused = true }
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            if parent.isFocused { parent.isFocused = false }
         }
 
         func textStorage(

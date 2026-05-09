@@ -14,6 +14,7 @@ struct QueryEditorView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
     @State private var query = ""
+    @State private var editorFocused = false
     @State private var viewModel = QueryEditorViewModel()
     @State private var appError: AppError?
     @State private var isExecuting = false
@@ -112,7 +113,7 @@ struct QueryEditorView: View {
 
     private var editorSection: some View {
         VStack(spacing: 0) {
-            SQLHighlightTextView(text: $query)
+            SQLHighlightTextView(text: $query, isFocused: $editorFocused)
                 .frame(minHeight: 80, maxHeight: hasResult || appError != nil ? 120 : 250)
 
             actionBar
@@ -392,7 +393,7 @@ struct QueryEditorView: View {
     private func executeQueryDirect(_ trimmed: String) async {
         guard let session else { return }
 
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        editorFocused = false
         isExecuting = true
         executionStartTime = Date()
         defer {
