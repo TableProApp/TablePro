@@ -409,7 +409,7 @@ final class DataChangeManager: ChangeManaging {
                 deletedRowIndices: deletedRowIndices,
                 insertedRowIndices: insertedRowIndices
             ) {
-                return statements.map { ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map { $0.asText }) }
+                return statements.map { ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map { $0.asAny }) }
             }
         }
 

@@ -123,9 +123,8 @@ extension TableViewCoordinator {
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
             let typedRows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
-            let rows: [[String?]] = typedRows.map { row in row.map { $0.asText } }
-            guard !rows.isEmpty else { return }
-            ClipboardService.shared.writeText(converter.generateInserts(rows: rows))
+            guard !typedRows.isEmpty else { return }
+            ClipboardService.shared.writeText(converter.generateInserts(rows: typedRows))
         } catch {
             rowActionsLogger.error("copyRowsAsInsert failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -145,9 +144,8 @@ extension TableViewCoordinator {
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
             let typedRows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
-            let rows: [[String?]] = typedRows.map { row in row.map { $0.asText } }
-            guard !rows.isEmpty else { return }
-            ClipboardService.shared.writeText(converter.generateUpdates(rows: rows))
+            guard !typedRows.isEmpty else { return }
+            ClipboardService.shared.writeText(converter.generateUpdates(rows: typedRows))
         } catch {
             rowActionsLogger.error("copyRowsAsUpdate failed: \(error.localizedDescription, privacy: .public)")
         }

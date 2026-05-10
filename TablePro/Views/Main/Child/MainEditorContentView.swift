@@ -691,9 +691,9 @@ struct MainEditorContentView: View {
             let row2 = storageRows[idx2].values
             for sortCol in sortColumns {
                 let val1 = sortCol.columnIndex < row1.count
-                    ? (row1[sortCol.columnIndex].asText ?? "") : ""
+                    ? row1[sortCol.columnIndex].sortKey : ""
                 let val2 = sortCol.columnIndex < row2.count
-                    ? (row2[sortCol.columnIndex].asText ?? "") : ""
+                    ? row2[sortCol.columnIndex].sortKey : ""
                 let colType = sortCol.columnIndex < colTypes.count
                     ? colTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(val1, val2, columnType: colType)

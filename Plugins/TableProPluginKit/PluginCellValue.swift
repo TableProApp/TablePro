@@ -45,6 +45,23 @@ public extension PluginCellValue {
         case .bytes(let d): return d
         }
     }
+
+    /// String representation suitable for sorting and equality comparison.
+    /// Binary cells are rendered as uppercase hex without prefix so byte-wise
+    /// lexicographic order matches a stable sort across runs.
+    var sortKey: String {
+        switch self {
+        case .null: return ""
+        case .text(let s): return s
+        case .bytes(let d):
+            var hex = ""
+            hex.reserveCapacity(d.count * 2)
+            for byte in d {
+                hex += String(format: "%02X", byte)
+            }
+            return hex
+        }
+    }
 }
 
 extension PluginCellValue: Codable {

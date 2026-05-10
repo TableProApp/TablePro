@@ -28,7 +28,17 @@ extension MainContentView {
         let tblName = tab.tableContext.tableName
 
         for (i, col) in tableRows.columns.enumerated() {
-            var value: String? = i < row.count ? row[i].asText : nil
+            var value: String?
+            if i < row.count {
+                switch row[i] {
+                case .null:
+                    value = nil
+                case .text(let s):
+                    value = s
+                case .bytes(let data):
+                    value = BlobFormattingService.shared.format(data, for: .copy)
+                }
+            }
             let type = i < tableRows.columnTypes.count ? tableRows.columnTypes[i].displayName : "string"
 
             if let rawValue = value {

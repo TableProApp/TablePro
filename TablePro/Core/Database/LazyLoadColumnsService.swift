@@ -56,7 +56,14 @@ struct LazyLoadColumnsService {
 
         var dict: [String: String?] = [:]
         for (index, colName) in excludedColumnNames.enumerated() where index < row.count {
-            dict[colName] = row[index].asText
+            switch row[index] {
+            case .null:
+                dict[colName] = .some(nil)
+            case .text(let s):
+                dict[colName] = .some(s)
+            case .bytes(let data):
+                dict[colName] = .some(String(data: data, encoding: .isoLatin1) ?? "")
+            }
         }
         return dict
     }

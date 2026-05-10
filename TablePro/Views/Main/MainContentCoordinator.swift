@@ -1297,8 +1297,8 @@ final class MainContentCoordinator {
             indices.sort { i1, i2 in
                 let row1 = rows[i1].values
                 let row2 = rows[i2].values
-                let v1 = colIndex < row1.count ? (row1[colIndex].asText ?? "") : ""
-                let v2 = colIndex < row2.count ? (row2[colIndex].asText ?? "") : ""
+                let v1 = colIndex < row1.count ? row1[colIndex].sortKey : ""
+                let v2 = colIndex < row2.count ? row2[colIndex].sortKey : ""
                 let cmp = RowSortComparator.compare(v1, v2, columnType: colType)
                 return ascending ? cmp == .orderedAscending : cmp == .orderedDescending
             }
@@ -1310,8 +1310,8 @@ final class MainContentCoordinator {
             let row1 = rows[i1].values
             let row2 = rows[i2].values
             for sortCol in sortColumns {
-                let v1 = sortCol.columnIndex < row1.count ? (row1[sortCol.columnIndex].asText ?? "") : ""
-                let v2 = sortCol.columnIndex < row2.count ? (row2[sortCol.columnIndex].asText ?? "") : ""
+                let v1 = sortCol.columnIndex < row1.count ? row1[sortCol.columnIndex].sortKey : ""
+                let v2 = sortCol.columnIndex < row2.count ? row2[sortCol.columnIndex].sortKey : ""
                 let colType = sortCol.columnIndex < columnTypes.count
                     ? columnTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(v1, v2, columnType: colType)
