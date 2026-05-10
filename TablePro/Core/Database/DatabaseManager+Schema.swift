@@ -148,7 +148,7 @@ extension DatabaseManager {
 
         do {
             let result = try await driver.execute(query: query)
-            if let row = result.rows.first, let name = row[0], !name.isEmpty {
+            if let row = result.rows.first, let name = row[0].asText, !name.isEmpty {
                 return name
             }
         } catch {

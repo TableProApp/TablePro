@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
     let supportedPanels: Set<DashboardPanel> = [.activeSessions, .serverMetrics, .slowQueries]
@@ -152,9 +153,9 @@ private extension PostgreSQLDashboardProvider {
         return map
     }
 
-    func value(_ row: [String?], at index: Int?) -> String {
+    func value(_ row: [PluginCellValue], at index: Int?) -> String {
         guard let index, index < row.count else { return "" }
-        return row[index] ?? ""
+        return row[index].asText ?? ""
     }
 
     func formatDuration(seconds: Int) -> String {

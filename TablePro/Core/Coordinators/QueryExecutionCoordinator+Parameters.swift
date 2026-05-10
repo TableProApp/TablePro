@@ -279,7 +279,7 @@ extension QueryExecutionCoordinator {
 
                     let stmtTableName = await MainActor.run { parent.extractTableName(from: stmtSQL) }
                     let stmtRows = TableRows.from(
-                        queryRows: result.rows.map { row in row.map { $0.map { String($0) } } },
+                        queryRows: result.rows.map { row in row.map { $0.asText } },
                         columns: result.columns.map { String($0) },
                         columnTypes: result.columnTypes
                     )

@@ -521,19 +521,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
         let columnTypes = pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) }
-        let stringRows: [[String?]] = pluginResult.rows.map { row in
-            row.map { cell -> String? in
-                switch cell {
-                case .null: return nil
-                case .text(let s): return s
-                case .bytes(let d): return String(data: d, encoding: .isoLatin1) ?? ""
-                }
-            }
-        }
         var result = QueryResult(
             columns: pluginResult.columns,
             columnTypes: columnTypes,
-            rows: stringRows,
+            rows: pluginResult.rows,
             rowsAffected: pluginResult.rowsAffected,
             executionTime: pluginResult.executionTime,
             error: nil

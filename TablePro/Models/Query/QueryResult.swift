@@ -6,12 +6,12 @@
 //
 
 import Foundation
+import TableProPluginKit
 
-/// Result of a database query execution
 struct QueryResult {
     let columns: [String]
-    let columnTypes: [ColumnType]  // NEW: Type metadata for each column
-    let rows: [[String?]]
+    let columnTypes: [ColumnType]
+    let rows: [[PluginCellValue]]
     let rowsAffected: Int
     let executionTime: TimeInterval
     let error: DatabaseError?

@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProPluginKit
 
 public actor MCPConnectionBridge {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
@@ -198,10 +199,11 @@ public actor MCPConnectionBridge {
         let jsonColumns: [JsonValue] = result.columns.map { .string($0) }
         let jsonRows: [JsonValue] = result.rows.map { row in
             .array(row.map { cell in
-                if let value = cell {
-                    return .string(value)
+                switch cell {
+                case .null: return .null
+                case .text(let s): return .string(s)
+                case .bytes(let d): return .string(d.base64EncodedString())
                 }
-                return .null
             })
         }
 

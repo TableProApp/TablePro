@@ -688,30 +688,28 @@ struct ExportDialog: View {
                 ORDER BY 1
                 """
             let result = try await driver.execute(query: query)
-            return result.rows.compactMap { row in
-                guard let name = row[safe: 0] ?? nil else { return nil }
-                let typeStr = (row[safe: 1] ?? nil) ?? "BASE TABLE"
+            return result.rows.compactMap { row -> TableInfo? in
+                guard let name = row[safe: 0]?.asText else { return nil }
+                let typeStr = row[safe: 1]?.asText ?? "BASE TABLE"
                 let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
                 return TableInfo(name: name, type: type, rowCount: nil)
             }
         }
 
-        // MSSQL / PostgreSQL / Redshift: use information_schema
         let query = """
             SELECT table_schema, table_name, table_type
             FROM information_schema.tables
             ORDER BY table_name
             """
         let result = try await driver.execute(query: query)
-        return result.rows.compactMap { row in
-            // Expect: [table_schema, table_name, table_type]
+        return result.rows.compactMap { row -> TableInfo? in
             guard row.count >= 2,
-                  let rowSchema = row[0],
+                  let rowSchema = row[0].asText,
                   rowSchema == schema,
-                  let name = row[1] else {
+                  let name = row[1].asText else {
                 return nil
             }
-            let typeStr = row.count > 2 ? (row[2] ?? "BASE TABLE") : "BASE TABLE"
+            let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
             let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
             return TableInfo(name: name, type: type, rowCount: nil)
         }
@@ -727,15 +725,14 @@ struct ExportDialog: View {
             """
         let result = try await driver.execute(query: query)
 
-        return result.rows.compactMap { row in
-            // Expect: [TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE]
+        return result.rows.compactMap { row -> TableInfo? in
             guard row.count >= 2,
-                  let rowSchema = row[0],
+                  let rowSchema = row[0].asText,
                   rowSchema == database,
-                  let name = row[1] else {
+                  let name = row[1].asText else {
                 return nil
             }
-            let typeStr = row.count > 2 ? (row[2] ?? "BASE TABLE") : "BASE TABLE"
+            let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
             let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
             return TableInfo(name: name, type: type, rowCount: nil)
         }

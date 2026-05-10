@@ -7,7 +7,7 @@ private let queryExecutorLog = Logger(subsystem: "com.TablePro", category: "Quer
 struct QueryFetchResult {
     let columns: [String]
     let columnTypes: [ColumnType]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let executionTime: TimeInterval
     let rowsAffected: Int
     let statusMessage: String?

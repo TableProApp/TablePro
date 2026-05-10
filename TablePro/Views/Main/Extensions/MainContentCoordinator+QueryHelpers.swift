@@ -33,7 +33,7 @@ extension MainContentCoordinator {
         tabId: UUID,
         columns: [String],
         columnTypes: [ColumnType],
-        rows: [[String?]],
+        rows: [[PluginCellValue]],
         executionTime: TimeInterval,
         rowsAffected: Int,
         statusMessage: String?,

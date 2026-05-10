@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import os
+import TableProPluginKit
 
 private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
 
@@ -190,7 +191,7 @@ final class PaginationCoordinator {
                     }
 
                     let replaceDelta = parent.mutateActiveTableRows(for: tabId) { rows in
-                        rows.replace(rows: result.rows)
+                        rows.replace(rows: result.rows.map { row in row.map { $0.asText } })
                     }
                     parent.tabManager.mutate(at: idx) { tab in
                         tab.execution.executionTime = result.executionTime

@@ -56,7 +56,7 @@ struct LazyLoadColumnsService {
 
         var dict: [String: String?] = [:]
         for (index, colName) in excludedColumnNames.enumerated() where index < row.count {
-            dict[colName] = row[index]
+            dict[colName] = row[index].asText
         }
         return dict
     }

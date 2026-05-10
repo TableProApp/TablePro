@@ -6,6 +6,7 @@
 import Foundation
 import Observation
 import os
+import TableProPluginKit
 
 @MainActor @Observable
 internal final class RedisKeyTreeViewModel {
@@ -46,8 +47,8 @@ internal final class RedisKeyTreeViewModel {
             var keys: [(key: String, type: String)] = []
             for row in result.rows {
                 guard keyColumnIndex < row.count,
-                      let keyName = row[keyColumnIndex] else { continue }
-                let keyType = typeColumnIndex < row.count ? (row[typeColumnIndex] ?? "string") : "string"
+                      let keyName = row[keyColumnIndex].asText else { continue }
+                let keyType = typeColumnIndex < row.count ? (row[typeColumnIndex].asText ?? "string") : "string"
                 keys.append((key: keyName, type: keyType))
                 if keys.count >= Self.maxKeys { break }
             }

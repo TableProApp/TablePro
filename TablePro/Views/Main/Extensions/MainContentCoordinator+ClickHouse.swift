@@ -70,7 +70,7 @@ extension MainContentCoordinator {
                 let duration = Date().timeIntervalSince(startTime)
 
                 let text = result.rows.map { row in
-                    row.compactMap { $0 }.joined(separator: "\t")
+                    row.compactMap { $0.asText }.joined(separator: "\t")
                 }.joined(separator: "\n")
 
                 let parser = QueryPlanParserFactory.parser(for: connection.type)

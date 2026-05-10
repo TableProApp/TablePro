@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct SQLiteDashboardProvider: ServerDashboardQueryProvider {
     let supportedPanels: Set<DashboardPanel> = [.serverMetrics]
@@ -72,9 +73,9 @@ struct SQLiteDashboardProvider: ServerDashboardQueryProvider {
 // MARK: - Helpers
 
 private extension SQLiteDashboardProvider {
-    func value(_ row: [String?], at index: Int?) -> String {
+    func value(_ row: [PluginCellValue], at index: Int?) -> String {
         guard let index, index < row.count else { return "" }
-        return row[index] ?? ""
+        return row[index].asText ?? ""
     }
 
     func formatBytes(_ bytes: Int) -> String {

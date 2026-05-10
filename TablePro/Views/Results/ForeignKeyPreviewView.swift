@@ -177,7 +177,7 @@ struct ForeignKeyPreviewView: View {
             let result = try await driver.execute(query: query)
             if let firstRow = result.rows.first {
                 columns = result.columns
-                values = firstRow
+                values = firstRow.map { $0.asText }
             }
         } catch {
             Self.logger.error("FK preview query failed: \(error.localizedDescription)")
