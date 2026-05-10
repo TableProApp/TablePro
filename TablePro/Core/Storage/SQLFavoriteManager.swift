@@ -14,7 +14,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     private let storage: SQLFavoriteStorage
 
-    init(storage: SQLFavoriteStorage = .shared) {
+    init(storage: SQLFavoriteStorage = SQLFavoriteStorage()) {
         self.storage = storage
     }
 

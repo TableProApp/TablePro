@@ -201,7 +201,7 @@ public actor MCPAuthPolicy {
             errorMessage: errorMessage
         )
 
-        _ = await QueryHistoryStorage.shared.addHistory(entry)
+        _ = await QueryHistoryManager.shared.addHistory(entry)
     }
 
     private func runApprovalDedup(

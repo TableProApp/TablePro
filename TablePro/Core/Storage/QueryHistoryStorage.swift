@@ -26,7 +26,6 @@ enum DateFilter {
 }
 
 actor QueryHistoryStorage {
-    static let shared = QueryHistoryStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryHistoryStorage")
 
     private var db: OpaquePointer?

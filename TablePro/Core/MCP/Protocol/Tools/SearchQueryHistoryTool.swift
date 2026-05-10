@@ -76,7 +76,7 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             allowlist = allConnectionIds.subtracting(blocked)
         }
 
-        let entries = await QueryHistoryStorage.shared.fetchHistory(
+        let entries = await QueryHistoryManager.shared.fetchHistory(
             limit: limit,
             offset: 0,
             connectionId: connectionId,

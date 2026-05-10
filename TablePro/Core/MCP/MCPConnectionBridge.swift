@@ -416,7 +416,7 @@ public actor MCPConnectionBridge {
         default: filter = .all
         }
 
-        let entries = await QueryHistoryStorage.shared.fetchHistory(
+        let entries = await QueryHistoryManager.shared.fetchHistory(
             limit: limit,
             connectionId: connectionId,
             searchText: search,

@@ -6,8 +6,23 @@ final class QueryHistoryManager {
 
     private let storage: QueryHistoryStorage
 
-    init(storage: QueryHistoryStorage = .shared) {
+    init(storage: QueryHistoryStorage = QueryHistoryStorage()) {
         self.storage = storage
+    }
+
+    /// Append a pre-built `QueryHistoryEntry` and post the change notification.
+    /// Use `recordQuery(...)` for the typical SQL-execution path that builds
+    /// the entry from raw arguments. `addHistory` is exposed for callers that
+    /// already have an entry value (e.g. MCP audit logging).
+    @discardableResult
+    func addHistory(_ entry: QueryHistoryEntry) async -> Bool {
+        let success = await storage.addHistory(entry)
+        if success {
+            await MainActor.run {
+                AppEvents.shared.queryHistoryDidUpdate.send(entry.connectionId)
+            }
+        }
+        return success
     }
 
     @MainActor
@@ -56,13 +71,8 @@ final class QueryHistoryManager {
             parameterValues: encodedParams
         )
 
-        Task {
-            let success = await storage.addHistory(entry)
-            if success {
-                await MainActor.run {
-                    AppEvents.shared.queryHistoryDidUpdate.send(entry.connectionId)
-                }
-            }
+        Task { [self] in
+            _ = await self.addHistory(entry)
         }
     }
 

@@ -69,7 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task.detached(priority: .background) {
-            _ = QueryHistoryStorage.shared
+            _ = QueryHistoryManager.shared
         }
 
         AppLaunchCoordinator.shared.didFinishLaunching()

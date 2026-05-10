@@ -15,7 +15,6 @@ struct AppServices {
     let pluginManager: PluginManager
     let schemaService: SchemaService
     let schemaProviderRegistry: SchemaProviderRegistry
-    let queryHistoryStorage: QueryHistoryStorage
     let sqlFavoriteManager: SQLFavoriteManager
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
@@ -44,7 +43,6 @@ struct AppServices {
         pluginManager: .shared,
         schemaService: .shared,
         schemaProviderRegistry: .shared,
-        queryHistoryStorage: .shared,
         sqlFavoriteManager: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
