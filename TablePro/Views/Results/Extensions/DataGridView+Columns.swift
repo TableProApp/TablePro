@@ -117,6 +117,13 @@ extension TableViewCoordinator {
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         if let delegateRowView = delegate?.dataGridRowView(for: tableView, row: row, coordinator: self) {
+            // Delegate-provided row views (e.g. StructureRowViewWithMenu) must still
+            // pick up the deleted/inserted/modified tint. Apply the visual state if
+            // the row view subclasses DataGridRowView; otherwise the delegate is
+            // responsible for its own visual state.
+            if let dataGridRow = delegateRowView as? DataGridRowView {
+                dataGridRow.applyVisualState(visualState(for: row))
+            }
             return delegateRowView
         }
         let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? DataGridRowView)

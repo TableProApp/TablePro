@@ -32,8 +32,12 @@ extension TableViewCoordinator {
             }
         }
 
-        if dropdownColumns?.contains(columnIndex) == true { return .blocked }
-        if typePickerColumns?.contains(columnIndex) == true { return .blocked }
+        // Note: dropdown / type-picker columns are deliberately *not* blocked
+        // here. The chevron button opens the popup, while the cell body still
+        // accepts inline text edit so the user can type a value the picker
+        // doesn't list (custom column type, numeric default, etc). Compare
+        // NSComboBox: the field is text-editable AND the chevron lists
+        // predefined options.
 
         let value: String
         if let displayRow = displayRow(at: row),

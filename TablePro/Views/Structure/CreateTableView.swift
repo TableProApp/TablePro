@@ -236,14 +236,28 @@ struct CreateTableView: View {
             additionalFields: [.primaryKey]
         )
 
-        let tableRows = provider.asTableRows()
+        // Rebuild the row snapshot fresh on every call so cell edits made
+        // through the delegate are visible to the next reloadData. Capturing
+        // a snapshot here would let the cell view re-render with the pre-edit
+        // value. Same rationale as `TableStructureView.structureGrid`.
+        let manager = structureChangeManager
+        let tab = structureTab
+        let dbType = connection.type
         return DataGridView(
-            tableRowsProvider: { tableRows },
+            tableRowsProvider: {
+                StructureRowProvider(
+                    changeManager: manager,
+                    tab: tab,
+                    databaseType: dbType,
+                    additionalFields: [.primaryKey]
+                ).asTableRows()
+            },
             changeManager: wrappedChangeManager,
             isEditable: true,
             configuration: DataGridConfiguration(
                 dropdownColumns: provider.dropdownColumns,
                 typePickerColumns: provider.typePickerColumns,
+                customDropdownOptions: provider.customDropdownOptions,
                 connectionId: connection.id,
                 databaseType: connection.type
             ),

@@ -17,6 +17,13 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
     var onSelectedRowsChanged: ((Set<Int>) -> Void)?
     var orderedFields: [StructureColumnField] = []
 
+    /// Captured from `DataGridView.updateNSView` so we can ask `NSTableView` to
+    /// reload affected rows after a state mutation. Required because the
+    /// SwiftUI re-render driven by `reloadVersion` only triggers a full
+    /// `reloadData` when row count or column schema changes; cell-content edits
+    /// alone won't redraw without this targeted reload.
+    private weak var attachedCoordinator: TableViewCoordinator?
+
     init(
         structureChangeManager: StructureChangeManager,
         structureTab: StructureTab,
@@ -28,6 +35,10 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
     }
 
     // MARK: - DataGridViewDelegate
+
+    func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
+        attachedCoordinator = tableViewCoordinator
+    }
 
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {
         guard column >= 0 else { return }
@@ -54,6 +65,21 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
         default:
             break
         }
+
+        reloadDisplayRow(row)
+    }
+
+    private func reloadDisplayRow(_ displayRow: Int) {
+        attachedCoordinator?.reloadRowAndState(at: displayRow)
+    }
+
+    private func reloadAllVisibleRows() {
+        attachedCoordinator?.reloadVisibleRowsAndStates()
+    }
+
+    func dataGridVisualState(forRow row: Int) -> RowVisualState? {
+        let (isDeleted, isInserted) = structureChangeManager.deleteInsertState(for: row, tab: structureTab)
+        return RowVisualState(isDeleted: isDeleted, isInserted: isInserted, modifiedColumns: [])
     }
 
     func dataGridDeleteRows(_ rows: Set<Int>) {
@@ -105,10 +131,12 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
 
     func dataGridUndo() {
         structureChangeManager.undo()
+        reloadAllVisibleRows()
     }
 
     func dataGridRedo() {
         structureChangeManager.redo()
+        reloadAllVisibleRows()
     }
 
     func dataGridAddRow() {

@@ -18,6 +18,10 @@ extension TableStructureView {
     func generateStructurePreviewSQL() {
         let changes = structureChangeManager.getChangesArray()
         guard !changes.isEmpty else {
+            // After undo brings the working copy back to a clean state, the popover
+            // would otherwise retain the last-generated SQL. Clear it so reopening
+            // the popover correctly shows "no changes".
+            toolbarState.previewStatements = []
             return
         }
 
@@ -120,6 +124,15 @@ extension TableStructureView {
             // Force clear state after reload (in case it got set during the async process)
             structureChangeManager.discardChanges()
 
+            // Save resets the manager (pendingChanges cleared, working state
+            // refetched from DB) but row count is usually unchanged after a
+            // rename / type-change, so `DataGridView.updateNSView` does not
+            // call `reloadData` on its own. Ask the grid to repaint visible
+            // cells so the modified yellow tint clears and any value the DB
+            // round-trip changed (collation defaults, etc.) shows the canonical
+            // post-save value.
+            gridDelegate.reloadAllVisibleRows()
+
             lastSaveTime = Date()
             isReloadingAfterSave = false
         } catch {
@@ -134,6 +147,10 @@ extension TableStructureView {
 
     func discardChanges() {
         structureChangeManager.discardChanges()
+        // Mirror the save path: discard reverts working state without changing
+        // row count, so the grid needs an explicit reload to drop the yellow
+        // modified tint and revert any displayed value.
+        gridDelegate.reloadAllVisibleRows()
     }
 
     // MARK: - DDL View

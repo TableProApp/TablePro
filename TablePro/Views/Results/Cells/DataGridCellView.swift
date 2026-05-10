@@ -139,7 +139,7 @@ final class DataGridCellView: NSView {
         let nextTint: NSColor?
         if state.visualState.isDeleted || state.visualState.isInserted {
             nextTint = nil
-        } else if state.visualState.modifiedColumns.contains(state.columnIndex) {
+        } else if state.visualState.isModified(columnIndex: state.columnIndex) {
             nextTint = palette.modifiedColumnTint
         } else {
             nextTint = nil

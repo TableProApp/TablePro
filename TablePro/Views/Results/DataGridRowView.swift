@@ -7,16 +7,12 @@ import AppKit
 import Combine
 
 @MainActor
-final class DataGridRowView: NSTableRowView {
+class DataGridRowView: NSTableRowView {
     weak var coordinator: TableViewCoordinator?
     var rowIndex: Int = 0
 
-    private var rowTint: NSColor? {
-        didSet {
-            guard !colorsEqual(oldValue, rowTint) else { return }
-            needsDisplay = true
-        }
-    }
+    private(set) var visualState: RowVisualState = .empty
+    private var rowTint: NSColor?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -44,13 +40,18 @@ final class DataGridRowView: NSTableRowView {
     ]
 
     func applyVisualState(_ state: RowVisualState) {
-        if state.isDeleted {
-            rowTint = ThemeEngine.shared.colors.dataGrid.deleted
+        guard state != visualState else { return }
+        visualState = state
+        let nextTint: NSColor? = if state.isDeleted {
+            ThemeEngine.shared.colors.dataGrid.deleted
         } else if state.isInserted {
-            rowTint = ThemeEngine.shared.colors.dataGrid.inserted
+            ThemeEngine.shared.colors.dataGrid.inserted
         } else {
-            rowTint = nil
+            nil
         }
+        guard !colorsEqual(rowTint, nextTint) else { return }
+        rowTint = nextTint
+        needsDisplay = true
     }
 
     override var isSelected: Bool {

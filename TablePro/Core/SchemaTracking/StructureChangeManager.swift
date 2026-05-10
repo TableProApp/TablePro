@@ -35,12 +35,20 @@ final class StructureChangeManager: ChangeManaging {
 
     // MARK: - Undo/Redo Support
 
+    /// Private `NSUndoManager` owned by this change manager. Each
+    /// `StructureChangeManager` instance has its own, so the registered actions
+    /// can never outlive the manager (the UndoManager is freed when the manager
+    /// is deallocated, taking its action queue with it). The app does not have
+    /// an NSDocument-backed `NSWindow.undoManager`, and no view in the
+    /// responder chain provides one, so wiring this through the window would
+    /// silently no-op. Cmd+Z is routed by the app's own `.commands` block in
+    /// `TableProApp` to `MainContentCommandActions.undoChange()`, which checks
+    /// the active tab's `resultsViewMode` and calls into this manager directly.
     private let undoManager: UndoManager = {
         let manager = UndoManager()
         manager.levelsOfUndo = 100
         return manager
     }()
-    private var visualStateCache: [VisualStateCacheKey: RowVisualState] = [:]
 
     var canUndo: Bool { undoManager.canUndo }
     var canRedo: Bool { undoManager.canRedo }
@@ -129,7 +137,6 @@ final class StructureChangeManager: ChangeManaging {
         undoManager.setActionName(String(localized: "Add Column"))
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     func addNewIndex() {
@@ -144,7 +151,6 @@ final class StructureChangeManager: ChangeManaging {
         undoManager.setActionName(String(localized: "Add Index"))
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     func addNewForeignKey() {
@@ -159,7 +165,6 @@ final class StructureChangeManager: ChangeManaging {
         undoManager.setActionName(String(localized: "Add Foreign Key"))
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     // MARK: - Paste Operations (public methods for adding copied items)
@@ -174,7 +179,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Column"))
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     func addIndex(_ index: EditableIndexDefinition) {
@@ -187,7 +191,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Index"))
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     func addForeignKey(_ foreignKey: EditableForeignKeyDefinition) {
@@ -200,7 +203,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Foreign Key"))
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     // MARK: - Column Operations
@@ -238,7 +240,6 @@ final class StructureChangeManager: ChangeManaging {
 
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     func deleteColumn(id: UUID) {
@@ -265,7 +266,6 @@ final class StructureChangeManager: ChangeManaging {
 
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     // MARK: - Index Operations
@@ -303,7 +303,6 @@ final class StructureChangeManager: ChangeManaging {
 
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     func deleteIndex(id: UUID) {
@@ -330,7 +329,6 @@ final class StructureChangeManager: ChangeManaging {
 
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     // MARK: - Foreign Key Operations
@@ -368,7 +366,6 @@ final class StructureChangeManager: ChangeManaging {
 
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     func deleteForeignKey(id: UUID) {
@@ -395,32 +392,38 @@ final class StructureChangeManager: ChangeManaging {
 
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
-    // MARK: - Primary Key Operations
+    // MARK: - Row-Specific Undo Delete
 
-    func updatePrimaryKey(_ columns: [String]) {
-        // Push undo action before modifying
-        if columns != workingPrimaryKey {
-            let oldPK = workingPrimaryKey
-            undoManager.registerUndo(withTarget: self) { target in
-                target.applySchemaUndo(.primaryKeyChange(old: oldPK, new: columns))
-            }
-            undoManager.setActionName(String(localized: "Change Primary Key"))
+    /// Clear the deletion mark for the entity at `row` in `tab`. Mirrors
+    /// `DataChangeManager.undoRowDeletion(rowIndex:)`: the global NSUndoManager
+    /// stack is intentionally left alone. The original `applySchemaUndo(...)`
+    /// handler the deletion registered remains on the stack; if global Cmd+Z
+    /// later invokes it, the handler finds `pendingChanges` no longer marks
+    /// this row as deleted and treats the redo as a no-op for this entity. The
+    /// row-specific affordance and the global undo stack are independent
+    /// affordances. The data tab uses the same separation.
+    func undoDelete(for tab: StructureTab, at row: Int) {
+        let key: SchemaChangeIdentifier
+        switch tab {
+        case .columns:
+            guard row < workingColumns.count else { return }
+            key = .column(workingColumns[row].id)
+        case .indexes:
+            guard row < workingIndexes.count else { return }
+            key = .index(workingIndexes[row].id)
+        case .foreignKeys:
+            guard row < workingForeignKeys.count else { return }
+            key = .foreignKey(workingForeignKeys[row].id)
+        case .ddl, .parts:
+            return
         }
-
-        let key = SchemaChangeIdentifier.primaryKey
-        if columns != currentPrimaryKey {
-            pendingChanges[key] = .modifyPrimaryKey(old: currentPrimaryKey, new: columns)
-            trackChangeKey(key)
-        } else {
-            pendingChanges.removeValue(forKey: key)
-            untrackChangeKey(key)
-        }
-
-        workingPrimaryKey = columns
+        guard pendingChanges[key]?.isDelete == true else { return }
+        pendingChanges.removeValue(forKey: key)
+        untrackChangeKey(key)
         validate()
+        reloadVersion += 1
     }
 
     // MARK: - Validation
@@ -520,7 +523,6 @@ final class StructureChangeManager: ChangeManaging {
         validationErrors.removeAll()
         resetWorkingState()
         reloadVersion += 1
-        rebuildVisualStateCache()
         undoManager.removeAllActions()
     }
 
@@ -566,7 +568,6 @@ final class StructureChangeManager: ChangeManaging {
 
         validate()
         reloadVersion += 1
-        rebuildVisualStateCache()
     }
 
     private func applyColumnEditUndo(id: UUID, old: EditableColumnDefinition, new: EditableColumnDefinition) {
@@ -775,77 +776,38 @@ final class StructureChangeManager: ChangeManaging {
 
     // MARK: - Visual State Management
 
-    func getVisualState(for row: Int, tab: StructureTab) -> RowVisualState {
-        let cacheKey = VisualStateCacheKey(tab: tab, row: row)
-        if let cached = visualStateCache[cacheKey] {
-            return cached
-        }
-
-        let state: RowVisualState
-
+    /// Per-row delete/insert flags. Modified-column tinting is computed by the
+    /// `StructureGridDelegate` because it requires the tab's `orderedFields`
+    /// (which depends on the database type and is a UI concern). The delegate
+    /// merges the result of this method with `modifiedColumns` from
+    /// `StructureEditingSupport` field-diff helpers to build the final
+    /// `RowVisualState`.
+    func deleteInsertState(for row: Int, tab: StructureTab) -> (isDeleted: Bool, isInserted: Bool) {
         switch tab {
         case .columns:
-            guard row < workingColumns.count else { return .empty }
+            guard row < workingColumns.count else { return (false, false) }
             let column = workingColumns[row]
             let change = pendingChanges[.column(column.id)]
-
             let isDeleted = change?.isDelete ?? false
             let isInserted = !currentColumns.contains(where: { $0.id == column.id })
-            let isModified = change != nil && !isDeleted && !isInserted
-
-            state = RowVisualState(
-                isDeleted: isDeleted,
-                isInserted: isInserted,
-                modifiedColumns: isModified ? Set(0..<6) : []
-            )
-
+            return (isDeleted, isInserted)
         case .indexes:
-            guard row < workingIndexes.count else { return .empty }
+            guard row < workingIndexes.count else { return (false, false) }
             let index = workingIndexes[row]
             let change = pendingChanges[.index(index.id)]
-
             let isDeleted = change?.isDelete ?? false
             let isInserted = !currentIndexes.contains(where: { $0.id == index.id })
-            let isModified = change != nil && !isDeleted && !isInserted
-
-            state = RowVisualState(
-                isDeleted: isDeleted,
-                isInserted: isInserted,
-                modifiedColumns: isModified ? Set(0..<5) : []
-            )
-
+            return (isDeleted, isInserted)
         case .foreignKeys:
-            guard row < workingForeignKeys.count else { return .empty }
+            guard row < workingForeignKeys.count else { return (false, false) }
             let fk = workingForeignKeys[row]
             let change = pendingChanges[.foreignKey(fk.id)]
-
             let isDeleted = change?.isDelete ?? false
             let isInserted = !currentForeignKeys.contains(where: { $0.id == fk.id })
-            let isModified = change != nil && !isDeleted && !isInserted
-
-            state = RowVisualState(
-                isDeleted: isDeleted,
-                isInserted: isInserted,
-                modifiedColumns: isModified ? Set(0..<7) : []
-            )
-
-        case .ddl:
-            state = .empty
-        case .parts:
-            state = .empty
+            return (isDeleted, isInserted)
+        case .ddl, .parts:
+            return (false, false)
         }
-
-        visualStateCache[cacheKey] = state
-        return state
-    }
-
-    func rebuildVisualStateCache() {
-        visualStateCache.removeAll()
-    }
-
-    private struct VisualStateCacheKey: Hashable {
-        let tab: StructureTab
-        let row: Int
     }
 
     // MARK: - ChangeManaging Conformance (Data-Specific No-Ops)

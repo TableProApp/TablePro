@@ -29,6 +29,14 @@ final class StructureGridDelegate: DataGridViewDelegate {
     // Ordered fields for column editing (updated when currentProvider is set)
     var orderedFields: [StructureColumnField] = []
 
+    // Stored when DataGridView calls `dataGridAttach(tableViewCoordinator:)` on
+    // every updateNSView. Lets us tell `NSTableView` which rows to reload after
+    // an edit / soft-delete / undo so the displayed cell value and visual-state
+    // tint stay in sync with the change manager. Without this, edits inside a
+    // row that does not change the row count never trigger `reloadData` because
+    // the SwiftUI re-render only invalidates layout-affecting properties.
+    private weak var attachedCoordinator: TableViewCoordinator?
+
     init(
         structureChangeManager: StructureChangeManager,
         selectedTab: StructureTab,
@@ -59,32 +67,58 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
     // MARK: - DataGridViewDelegate
 
-    func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {
+    func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
+        attachedCoordinator = tableViewCoordinator
+    }
+
+    func dataGridDidEditCell(row displayRow: Int, column: Int, newValue: String?) {
         guard column >= 0 else { return }
-        let row = sourceRow(for: row)
+        let sourceRowIndex = sourceRow(for: displayRow)
 
         switch selectedTab {
         case .columns:
-            guard row < structureChangeManager.workingColumns.count else { return }
-            var col = structureChangeManager.workingColumns[row]
+            guard sourceRowIndex < structureChangeManager.workingColumns.count else { return }
+            var col = structureChangeManager.workingColumns[sourceRowIndex]
             StructureEditingSupport.updateColumn(&col, at: column, with: newValue ?? "", orderedFields: orderedFields)
             structureChangeManager.updateColumn(id: col.id, with: col)
 
         case .indexes:
-            guard row < structureChangeManager.workingIndexes.count else { return }
-            var idx = structureChangeManager.workingIndexes[row]
+            guard sourceRowIndex < structureChangeManager.workingIndexes.count else { return }
+            var idx = structureChangeManager.workingIndexes[sourceRowIndex]
             StructureEditingSupport.updateIndex(&idx, at: column, with: newValue ?? "")
             structureChangeManager.updateIndex(id: idx.id, with: idx)
 
         case .foreignKeys:
-            guard row < structureChangeManager.workingForeignKeys.count else { return }
-            var fk = structureChangeManager.workingForeignKeys[row]
+            guard sourceRowIndex < structureChangeManager.workingForeignKeys.count else { return }
+            var fk = structureChangeManager.workingForeignKeys[sourceRowIndex]
             StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
 
         case .ddl, .parts:
             break
         }
+
+        // Standard NSTableView contract after a data-source mutation: tell the
+        // table view which row to redraw so the cell shows the new value AND
+        // the modified-row visual state tint takes effect. The SwiftUI re-render
+        // alone is not enough because `updateNSView` only triggers `reloadData`
+        // when the row count or column schema changes.
+        reloadDisplayRow(displayRow)
+    }
+
+    private func reloadDisplayRow(_ displayRow: Int) {
+        attachedCoordinator?.reloadRowAndState(at: displayRow)
+    }
+
+    /// Repaint every visible cell + row view from the current change-manager
+    /// state. `TableStructureView` calls this after save/discard, since those
+    /// reset working state outside the delegate without changing row count, so
+    /// `DataGridView.updateNSView` would otherwise leave cells and tints stale.
+    /// Forwards to the shared `TableViewCoordinator` primitive so data tab and
+    /// structure tab use the same Apple-blessed two-layer refresh
+    /// (`reloadData(forRowIndexes:)` + `enumerateAvailableRowViews`).
+    func reloadAllVisibleRows() {
+        attachedCoordinator?.reloadVisibleRowsAndStates()
     }
 
     func dataGridDeleteRows(_ rows: Set<Int>) {
@@ -131,6 +165,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
         } else {
             onSelectedRowsChanged?([])
         }
+
+        // Existing-column deletes leave the row in `workingColumns` and only
+        // mark it as `pendingChanges[.deleteColumn]`, so the row count is
+        // unchanged. Without a forced reload the row's deleted-state tint and
+        // text color never paint on the live row view.
+        reloadAllVisibleRows()
     }
 
     func dataGridCopyRows(_ indices: Set<Int>) {
@@ -274,11 +314,17 @@ final class StructureGridDelegate: DataGridViewDelegate {
     func dataGridUndo() {
         guard selectedTab != .ddl else { return }
         structureChangeManager.undo()
+        // Undo can revert any row's content and visual state. The SwiftUI
+        // re-render driven by `reloadVersion` only invalidates the snapshot;
+        // ask `NSTableView` to redraw visible rows so the cell text and
+        // modified-tint actually update on screen.
+        reloadAllVisibleRows()
     }
 
     func dataGridRedo() {
         guard selectedTab != .ddl else { return }
         structureChangeManager.redo()
+        reloadAllVisibleRows()
     }
 
     func dataGridAddRow() {
@@ -310,7 +356,39 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridVisualState(forRow row: Int) -> RowVisualState? {
-        structureChangeManager.getVisualState(for: sourceRow(for: row), tab: selectedTab)
+        let src = sourceRow(for: row)
+        let (isDeleted, isInserted) = structureChangeManager.deleteInsertState(for: src, tab: selectedTab)
+        let modified = isDeleted || isInserted ? [] : modifiedColumns(at: src)
+        return RowVisualState(isDeleted: isDeleted, isInserted: isInserted, modifiedColumns: modified)
+    }
+
+    /// Diff the working entity against the original (`currentColumns` etc.) to
+    /// find which display columns the user actually edited. Returning a real
+    /// per-cell set lets the cell view tint only the touched cells, mirroring
+    /// the data tab's behavior, instead of flagging the whole row when one
+    /// field changed.
+    private func modifiedColumns(at sourceRow: Int) -> Set<Int> {
+        switch selectedTab {
+        case .columns:
+            guard sourceRow < structureChangeManager.workingColumns.count else { return [] }
+            let working = structureChangeManager.workingColumns[sourceRow]
+            guard let original = structureChangeManager.currentColumns.first(where: { $0.id == working.id }) else { return [] }
+            return StructureEditingSupport.columnModifiedIndices(
+                old: original, new: working, orderedFields: orderedFields
+            )
+        case .indexes:
+            guard sourceRow < structureChangeManager.workingIndexes.count else { return [] }
+            let working = structureChangeManager.workingIndexes[sourceRow]
+            guard let original = structureChangeManager.currentIndexes.first(where: { $0.id == working.id }) else { return [] }
+            return StructureEditingSupport.indexModifiedIndices(old: original, new: working)
+        case .foreignKeys:
+            guard sourceRow < structureChangeManager.workingForeignKeys.count else { return [] }
+            let working = structureChangeManager.workingForeignKeys[sourceRow]
+            guard let original = structureChangeManager.currentForeignKeys.first(where: { $0.id == working.id }) else { return [] }
+            return StructureEditingSupport.foreignKeyModifiedIndices(old: original, new: working)
+        case .ddl, .parts:
+            return []
+        }
     }
 
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView? {
@@ -337,7 +415,13 @@ final class StructureGridDelegate: DataGridViewDelegate {
         rowView.isStructureEditable = connection.type.supportsSchemaEditing
 
         let src = sourceRow(for: row)
-        rowView.isRowDeleted = structureChangeManager.getVisualState(for: src, tab: selectedTab).isDeleted
+        // Don't set `isDeleted` / visual state here. `DataGridView+Columns`
+        // calls `applyVisualState(visualState(for: row))` on every row view it
+        // returns from `tableView(_:rowViewForRow:)`. Setting it twice is a
+        // smell that previously hid the bug: when `applyVisualState` was a
+        // tint-only setter, this line was the only place the menu's
+        // `isDeleted` flag was assigned, and it was assigned only on row-view
+        // creation. Single source of truth now is `DataGridRowView.visualState`.
 
         if selectedTab == .foreignKeys, src < structureChangeManager.workingForeignKeys.count {
             rowView.referencedTableName = structureChangeManager.workingForeignKeys[src].referencedTable
@@ -368,7 +452,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
             self.handleDuplicateItems(self.sourceRows(for: indices))
         }
         rowView.onDelete = { [weak self] indices in self?.dataGridDeleteRows(indices) }
-        rowView.onUndoDelete = { [weak self] _ in self?.dataGridUndo() }
+        rowView.onUndoDelete = { [weak self] displayRow in
+            guard let self else { return }
+            let src = self.sourceRow(for: displayRow)
+            self.structureChangeManager.undoDelete(for: self.selectedTab, at: src)
+            self.attachedCoordinator?.reloadRowAndState(at: displayRow)
+        }
         return rowView
     }
 

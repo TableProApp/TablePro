@@ -185,7 +185,15 @@ final class MainContentCommandActions {
     // MARK: - Row Operations (Group A — Called Directly)
 
     func addNewRow() {
-        coordinator?.addNewRow()
+        // The structure tab routes through StructureGridDelegate, which inserts
+        // a column / index / FK row depending on the active Structure sub-tab.
+        // The data tab routes through MainContentCoordinator.addNewRow which
+        // calls RowEditingCoordinator.addNewRow (data-only).
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
+            coordinator?.structureActions?.addRow?()
+        } else {
+            coordinator?.addNewRow()
+        }
     }
 
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {

@@ -14,10 +14,14 @@ struct CellPosition: Hashable {
     let column: Int
 }
 
-struct RowVisualState {
+struct RowVisualState: Equatable {
     let isDeleted: Bool
     let isInserted: Bool
     let modifiedColumns: Set<Int>
+
+    func isModified(columnIndex: Int) -> Bool {
+        modifiedColumns.contains(columnIndex)
+    }
 
     static let empty = RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [])
 }

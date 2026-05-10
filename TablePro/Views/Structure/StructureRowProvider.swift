@@ -155,18 +155,6 @@ final class StructureRowProvider {
         return cachedRows[index].row
     }
 
-    func updateValue(_ newValue: String?, at rowIndex: Int, columnIndex: Int) {
-        // Updates are handled by the onCellEdit callback in TableStructureView
-    }
-
-    func appendRow(_ row: [String?]) {
-        // Handled by changeManager.addNewColumn/Index/ForeignKey
-    }
-
-    func removeRow(at index: Int) {
-        // Handled by changeManager.deleteColumn/Index/ForeignKey
-    }
-
     // MARK: - Private Helpers
 
     private struct IndexedRow {

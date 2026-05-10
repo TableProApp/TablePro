@@ -200,17 +200,27 @@ final class KeyHandlingTableView: NSTableView {
               DataGridView.isDataTableColumn(focusedColumn),
               coordinator?.isEditable == true,
               let schema = coordinator?.identitySchema,
-              let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
+              let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
+              let coordinator else {
             return
         }
 
-        if let value = coordinator?.cellValue(at: row, column: columnIndex),
+        // Dropdown / type-picker columns: Return opens the popup, matching the
+        // chevron and double-click paths. Without this branch, Return on a focused
+        // dropdown cell does nothing because beginCellEdit is blocked by editEligibility.
+        if coordinator.dropdownColumns?.contains(columnIndex) == true ||
+           coordinator.typePickerColumns?.contains(columnIndex) == true {
+            coordinator.handleChevronAction(row: row, columnIndex: columnIndex)
+            return
+        }
+
+        if let value = coordinator.cellValue(at: row, column: columnIndex),
            value.containsLineBreak {
-            coordinator?.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
+            coordinator.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
             return
         }
 
-        coordinator?.beginCellEdit(row: row, tableColumnIndex: focusedColumn)
+        coordinator.beginCellEdit(row: row, tableColumnIndex: focusedColumn)
     }
 
     @objc override func cancelOperation(_ sender: Any?) {

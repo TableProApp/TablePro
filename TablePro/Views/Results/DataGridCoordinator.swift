@@ -423,6 +423,17 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func invalidateCachesForUndoRedo() {
         invalidateAllDisplayCaches()
         updateCache()
+        reloadVisibleRowsAndStates()
+    }
+
+    /// Repaint visible rows in two layers Apple's NSTableView contract requires:
+    /// `reloadData(forRowIndexes:columnIndexes:)` re-fetches cells via
+    /// `tableView(_:viewFor:row:)` but does not touch row views, so per-row
+    /// decoration (deleted/inserted tint, deleted-row context menu state) goes
+    /// stale. `enumerateAvailableRowViews` then visits each live `NSTableRowView`
+    /// so `applyVisualState` can mutate row-level state without recreating views.
+    /// Both delegates call this after model mutations that don't change row count.
+    func reloadVisibleRowsAndStates() {
         guard let tableView else { return }
         let visibleRange = tableView.rows(in: tableView.visibleRect)
         guard visibleRange.length > 0 else { return }
@@ -431,6 +442,18 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
         )
         refreshVisibleRowVisualStates()
+    }
+
+    /// Single-row equivalent of `reloadVisibleRowsAndStates` for cases where
+    /// only one row's content + visual state changed (cell edit, single-row
+    /// undo delete).
+    func reloadRowAndState(at row: Int) {
+        guard let tableView, row >= 0, row < tableView.numberOfRows else { return }
+        tableView.reloadData(
+            forRowIndexes: IndexSet(integer: row),
+            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
+        )
+        refreshRowVisualState(at: row)
     }
 
     func refreshVisibleRowVisualStates() {

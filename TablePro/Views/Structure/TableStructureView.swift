@@ -108,6 +108,7 @@ struct TableStructureView: View {
             actionHandler.pasteRows = { self.gridDelegate.dataGridPasteRows() }
             actionHandler.undo = { self.gridDelegate.dataGridUndo() }
             actionHandler.redo = { self.gridDelegate.dataGridRedo() }
+            actionHandler.addRow = { self.gridDelegate.dataGridAddRow() }
             coordinator?.structureActions = actionHandler
         }
         .onDisappear {
@@ -117,6 +118,15 @@ struct TableStructureView: View {
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
             updateGridDelegate()
+        }
+        .onChange(of: structureChangeManager.reloadVersion) { _, _ in
+            // Any mutation that does not toggle hasChanges (add row when changes
+            // already exist, undo to a still-dirty state) only bumps reloadVersion.
+            // Bump displayVersion so SwiftUI re-evaluates structureGrid with a fresh
+            // tableRows snapshot, which lets DataGridView see the new row count and
+            // call reloadData(). Without this, Cmd+Shift+N adds the row to the change
+            // manager but the grid never displays it.
+            displayVersion += 1
         }
         .onReceive(AppCommands.shared.refreshData) { _ in onRefreshData() }
     }
@@ -275,9 +285,17 @@ struct TableStructureView: View {
         let customOptions = provider.customDropdownOptions
         let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
 
-        let tableRows = provider.asTableRows()
+        // Build the row snapshot fresh on every call rather than capturing it
+        // once at body-evaluation time. After a cell edit / undo / redo the
+        // change manager's working state is updated synchronously, but a
+        // captured snapshot would still hold the pre-edit value, so the
+        // `tableView.reloadData(forRowIndexes:)` issued by the delegate would
+        // re-render the cell from a stale source. Mirror the data tab's pattern
+        // (`MainEditorContentView` rebuilds via `coordinator.tabSessionRegistry`
+        // on every call). `makeCurrentProvider` is cheap because the working
+        // arrays are small (typically <100 entries).
         return DataGridView(
-            tableRowsProvider: { tableRows },
+            tableRowsProvider: { makeCurrentProvider().asTableRows() },
             changeManager: wrappedChangeManager,
             isEditable: canEdit,
             configuration: DataGridConfiguration(
