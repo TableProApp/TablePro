@@ -221,4 +221,105 @@ struct MSSQLPluginDriverDMLTests {
         #expect(sql == "DELETE TOP (1) FROM [Invoices] WHERE [Number] = ? AND [Amount] = ?")
         #expect(result?.first?.parameters == ["INV-0001", "100.00"])
     }
+
+    // MARK: - INSERT skips IDENTITY columns
+
+    @Test("INSERT skips IDENTITY columns when the cache has observed them")
+    func insertSkipsIdentityColumn() {
+        let driver = makeDriver()
+        driver.setIdentityColumnsForTesting(["Id"], table: "Customers")
+
+        let columns = ["Id", "Name", "City", "CreatedAt"]
+        let insertChange = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [],
+            originalRow: nil
+        )
+        let insertedValues: [String?] = ["4", "Acme", "Hanoi", "2026-05-10 07:58:53.2840598"]
+
+        let result = driver.generateStatements(
+            table: "Customers",
+            columns: columns,
+            primaryKeyColumns: ["Id"],
+            changes: [insertChange],
+            insertedRowData: [0: insertedValues],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        let sql = result?.first?.statement ?? ""
+        #expect(sql == "INSERT INTO [Customers] ([Name], [City], [CreatedAt]) VALUES (?, ?, ?)")
+        #expect(result?.first?.parameters == ["Acme", "Hanoi", "2026-05-10 07:58:53.2840598"])
+    }
+
+    @Test("INSERT includes all columns when no IDENTITY columns are cached")
+    func insertIncludesAllWithoutIdentityCache() {
+        let driver = makeDriver()
+        // Note: no setIdentityColumnsForTesting call; the cache is empty for this table.
+        let columns = ["Number", "Amount"]
+        let insertChange = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [],
+            originalRow: nil
+        )
+        let insertedValues: [String?] = ["INV-9999", "42.00"]
+
+        let result = driver.generateStatements(
+            table: "Invoices",
+            columns: columns,
+            primaryKeyColumns: [],
+            changes: [insertChange],
+            insertedRowData: [0: insertedValues],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        let sql = result?.first?.statement ?? ""
+        #expect(sql == "INSERT INTO [Invoices] ([Number], [Amount]) VALUES (?, ?)")
+        #expect(result?.first?.parameters == ["INV-9999", "42.00"])
+    }
+
+    @Test("INSERT skips multiple IDENTITY columns and the __DEFAULT__ sentinel")
+    func insertSkipsIdentityAndDefaults() {
+        let driver = makeDriver()
+        driver.setIdentityColumnsForTesting(["Id", "RowVersion"], table: "Audit")
+
+        let columns = ["Id", "RowVersion", "Action", "CreatedAt"]
+        let insertChange = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [],
+            originalRow: nil
+        )
+        let insertedValues: [String?] = ["1", "X", "DELETE", "__DEFAULT__"]
+
+        let result = driver.generateStatements(
+            table: "Audit",
+            columns: columns,
+            primaryKeyColumns: ["Id"],
+            changes: [insertChange],
+            insertedRowData: [0: insertedValues],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        let sql = result?.first?.statement ?? ""
+        #expect(sql == "INSERT INTO [Audit] ([Action]) VALUES (?)")
+        #expect(result?.first?.parameters == ["DELETE"])
+    }
+
+    @Test("cachedIdentityColumns returns empty set for unobserved table")
+    func cachedIdentityColumnsEmptyByDefault() {
+        let driver = makeDriver()
+        #expect(driver.cachedIdentityColumns(for: "NeverFetched") == [])
+    }
+
+    @Test("cachedIdentityColumns returns the seeded set after seeding")
+    func cachedIdentityColumnsRoundTrip() {
+        let driver = makeDriver()
+        driver.setIdentityColumnsForTesting(["Id", "Version"], table: "T")
+        #expect(driver.cachedIdentityColumns(for: "T") == ["Id", "Version"])
+    }
 }

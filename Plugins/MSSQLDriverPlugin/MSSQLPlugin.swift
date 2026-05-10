@@ -702,6 +702,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var _currentSchema: String
     private var _serverVersion: String?
 
+    /// IDENTITY columns observed during `fetchColumns`, keyed by table name.
+    /// `generateMssqlInsert` reads this to skip IDENTITY columns: SQL Server
+    /// rejects explicit values for IDENTITY columns unless IDENTITY_INSERT is ON,
+    /// and the value the user typed is server-allocated anyway.
+    private var identityColumnsByTable: [String: Set<String>] = [:]
+    private let identityCacheLock = NSLock()
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
 
     var currentSchema: String? { _currentSchema }
@@ -874,11 +881,17 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> (statement: String, parameters: [String?])? {
         var nonDefaultColumns: [String] = []
         var parameters: [String?] = []
+        let identityColumns = cachedIdentityColumns(for: table)
 
         for (index, value) in values.enumerated() {
             if value == "__DEFAULT__" { continue }
             guard index < columns.count else { continue }
-            nonDefaultColumns.append("[\(columns[index].replacingOccurrences(of: "]", with: "]]"))]")
+            let columnName = columns[index]
+            // SQL Server IDENTITY columns are server-allocated. INSERTs that include
+            // an explicit value fail unless `SET IDENTITY_INSERT <table> ON` was issued,
+            // so always omit them and let the server assign the next value.
+            if identityColumns.contains(columnName) { continue }
+            nonDefaultColumns.append("[\(columnName.replacingOccurrences(of: "]", with: "]]"))]")
             parameters.append(value)
         }
 
@@ -1082,7 +1095,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY c.ORDINAL_POSITION
             """
         let result = try await execute(query: sql)
-        return result.rows.compactMap { row -> PluginColumnInfo? in
+        var identityColumns: Set<String> = []
+        let columns: [PluginColumnInfo] = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0] ?? nil else { return nil }
             let dataType = row[safe: 1] ?? nil
             let charLen = row[safe: 2] ?? nil
@@ -1092,6 +1106,10 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let defaultValue = row[safe: 6] ?? nil
             let isIdentity = (row[safe: 7] ?? nil) == "1"
             let isPk = (row[safe: 8] ?? nil) == "1"
+
+            if isIdentity {
+                identityColumns.insert(name)
+            }
 
             let baseType = (dataType ?? "nvarchar").lowercased()
             let fixedSizeTypes: Set<String> = [
@@ -1122,6 +1140,27 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 extra: isIdentity ? "IDENTITY" : nil
             )
         }
+        identityCacheLock.lock()
+        identityColumnsByTable[table] = identityColumns
+        identityCacheLock.unlock()
+        return columns
+    }
+
+    /// Snapshot of IDENTITY columns observed by the most recent `fetchColumns` for the table.
+    /// Returns an empty set when `fetchColumns` hasn't run for this table yet, so callers
+    /// fall through to including every typed value (matching pre-cache behavior).
+    internal func cachedIdentityColumns(for table: String) -> Set<String> {
+        identityCacheLock.lock()
+        defer { identityCacheLock.unlock() }
+        return identityColumnsByTable[table] ?? []
+    }
+
+    /// Test seam: pre-populate the cache so generateMssqlInsert can be exercised
+    /// without going through a live `fetchColumns` round-trip.
+    internal func setIdentityColumnsForTesting(_ columns: Set<String>, table: String) {
+        identityCacheLock.lock()
+        identityColumnsByTable[table] = columns
+        identityCacheLock.unlock()
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
