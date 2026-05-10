@@ -128,6 +128,34 @@ struct SQLStatementGeneratorBinaryTests {
         #expect(payload.first == 0xD3)
     }
 
+    @Test("INSERT via lazy insertedRowData with .bytes emits Data parameter")
+    func insertViaLazyDataPreservesBinaryParameter() throws {
+        let generator = try makeGenerator()
+        let bytes = Data([0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD])
+        let change = RowChange(
+            rowIndex: 7,
+            type: .insert,
+            cellChanges: [],
+            originalRow: nil
+        )
+        let statements = generator.generateStatements(
+            from: [change],
+            insertedRowData: [7: [.text("99"), .bytes(bytes)]],
+            deletedRowIndices: [],
+            insertedRowIndices: [7]
+        )
+        guard let stmt = statements.first else {
+            Issue.record("INSERT statement not generated for lazy path")
+            return
+        }
+        guard stmt.parameters.count == 2 else {
+            Issue.record("Expected 2 parameters, got \(stmt.parameters.count)")
+            return
+        }
+        #expect(stmt.parameters[0] as? String == "99")
+        #expect(stmt.parameters[1] as? Data == bytes)
+    }
+
     @Test(".null parameters bind as NSNull/nil, not String")
     func nullParameterIsNotString() throws {
         let generator = try makeGenerator()

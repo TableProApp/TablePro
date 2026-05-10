@@ -208,11 +208,21 @@ struct JsonRowConverterTests {
 
     // MARK: - Blob
 
-    @Test("Blob column produces base64 encoded value")
-    func blobColumn() {
+    @Test("Binary cell produces base64 encoded value regardless of column type")
+    func binaryCellProducesBase64() {
         let converter = makeConverter(columns: ["data"], columnTypes: [.blob(rawType: nil)])
-        let result = converter.generateJson(rows: [["hello"]])
-        // "hello" in base64 is "aGVsbG8="
+        let bytes = Data("hello".utf8)
+        let result = converter.generateJson(rows: [[.bytes(bytes)]])
         #expect(result.contains("\"aGVsbG8=\""))
+    }
+
+    @Test("Issue #1188 binary cell base64-encodes correctly")
+    func issue1188BinaryCellBase64() {
+        let converter = makeConverter(columns: ["payload"], columnTypes: [.blob(rawType: "BYTEA")])
+        let bytes = Data([0xD3, 0x8C, 0xE5, 0x66])
+        let result = converter.generateJson(rows: [[.bytes(bytes)]])
+        let expected = bytes.base64EncodedString()
+        #expect(result.contains("\"\(expected)\""))
+        #expect(!result.contains("null"))
     }
 }
