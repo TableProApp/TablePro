@@ -231,12 +231,7 @@ final class RowEditingCoordinator {
     }
 
     func updateCellInTab(rowIndex: Int, columnIndex: Int, value: PluginCellValue) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
-        let tabId = tab.id
-        let delta = parent.mutateActiveTableRows(for: tabId) { rows in
-            rows.edit(row: rowIndex, column: columnIndex, value: value)
-        }
+        guard let (_, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
     }
 }
