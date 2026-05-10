@@ -262,9 +262,16 @@ final class RowOperationsManager {
         for rowIndex in indicesToCopy {
             guard rowIndex < tableRows.count else { continue }
             if !result.isEmpty { result.append("\n") }
-            for (colIdx, value) in tableRows.rows[rowIndex].values.enumerated() {
+            for (colIdx, cell) in tableRows.rows[rowIndex].values.enumerated() {
                 if colIdx > 0 { result.append("\t") }
-                result.append(value.asText ?? "NULL")
+                switch cell {
+                case .null:
+                    result.append("NULL")
+                case .text(let s):
+                    result.append(s)
+                case .bytes(let data):
+                    result.append(BlobFormattingService.shared.format(data, for: .copy) ?? "")
+                }
             }
         }
 
