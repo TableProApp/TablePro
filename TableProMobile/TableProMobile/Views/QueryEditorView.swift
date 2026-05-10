@@ -1,3 +1,4 @@
+import ActivityKit
 import os
 import SwiftUI
 import TableProDatabase
@@ -394,10 +395,13 @@ struct QueryEditorView: View {
 
         editorFocused = false
         isExecuting = true
-        executionStartTime = Date()
+        let startedAt = Date()
+        executionStartTime = startedAt
+        let activity = startQueryActivity(trimmed: trimmed, startedAt: startedAt)
         defer {
             isExecuting = false
             executionStartTime = nil
+            endQueryActivity(activity)
         }
         appError = nil
 
@@ -416,5 +420,31 @@ struct QueryEditorView: View {
 
         let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
         coordinator.addHistoryItem(item)
+    }
+
+    // MARK: - Live Activity
+
+    private func startQueryActivity(trimmed: String, startedAt: Date) -> Activity<QueryActivityAttributes>? {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return nil }
+        let attributes = QueryActivityAttributes(
+            connectionName: coordinator.displayName,
+            queryPreview: String(trimmed.prefix(60))
+        )
+        let initialState = QueryActivityAttributes.ContentState(elapsed: 0, rowsStreamed: 0)
+        return try? Activity.request(
+            attributes: attributes,
+            content: .init(state: initialState, staleDate: startedAt.addingTimeInterval(60 * 60))
+        )
+    }
+
+    private func endQueryActivity(_ activity: Activity<QueryActivityAttributes>?) {
+        guard let activity else { return }
+        let final = QueryActivityAttributes.ContentState(
+            elapsed: viewModel.executionTime,
+            rowsStreamed: viewModel.legacyRows.count
+        )
+        Task {
+            await activity.end(.init(state: final, staleDate: nil), dismissalPolicy: .immediate)
+        }
     }
 }

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- iOS: Live Activity for running queries shows query preview, elapsed time, and row count on the lock screen and Dynamic Island
+- iOS: multi-window support on iPad - drag a tab off to open a second window, each window remembers its own selected connection across launches
 - iOS: VoiceOver "Delete row" / "Delete group" / "Delete tag" custom actions on rows whose only deletion path was a swipe gesture
 - iOS: empty Groups and Tags screens show a Create button so the action is reachable without opening the toolbar
 - iOS: "No Results" empty state in Query Editor explains the query returned no rows

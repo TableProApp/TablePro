@@ -541,6 +541,7 @@
 			membershipExceptions = (
 				Shared/SharedConnectionStore.swift,
 				Shared/WidgetConnectionItem.swift,
+				Shared/QueryActivityAttributes.swift,
 			);
 			target = 5AB9F3D82F7C1C12001F3337 /* TableProMobile */;
 		};

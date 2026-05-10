@@ -7,7 +7,7 @@ struct ConnectionListView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showingAddConnection = false
     @State private var editingConnection: DatabaseConnection?
-    @AppStorage("lastConnectionId") private var selectedConnectionIdString: String?
+    @SceneStorage("lastConnectionId") private var selectedConnectionIdString: String?
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var showingGroupManagement = false
     @State private var showingTagManagement = false

@@ -1262,6 +1262,9 @@
         }
       }
     },
+    "Create Group" : {
+
+    },
     "Create New Database" : {
       "localizations" : {
         "vi" : {
@@ -1277,6 +1280,9 @@
           }
         }
       }
+    },
+    "Create Tag" : {
+
     },
     "Database" : {
       "localizations" : {
@@ -1462,6 +1468,9 @@
         }
       }
     },
+    "Delete group" : {
+
+    },
     "Delete Group" : {
       "localizations" : {
         "vi" : {
@@ -1478,6 +1487,9 @@
         }
       }
     },
+    "Delete row" : {
+
+    },
     "Delete Row" : {
       "localizations" : {
         "vi" : {
@@ -1493,6 +1505,9 @@
           }
         }
       }
+    },
+    "Delete tag" : {
+
     },
     "Descending" : {
       "localizations" : {
@@ -4209,6 +4224,9 @@
           }
         }
       }
+    },
+    "The query returned no rows." : {
+
     },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
