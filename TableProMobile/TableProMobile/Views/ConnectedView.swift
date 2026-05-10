@@ -113,7 +113,6 @@ struct ConnectedView: View {
                         .environment(coordinator)
                 }
             }
-            .navigationTitle(tabTitle(coordinator))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { connectionToolbar(coordinator) }
             .navigationDestination(for: TableInfo.self) { table in
@@ -178,14 +177,6 @@ struct ConnectedView: View {
             activity.title = connection.name.isEmpty ? connection.host : connection.name
             activity.isEligibleForHandoff = true
             activity.userInfo = ["connectionId": connection.id.uuidString]
-        }
-    }
-
-    private func tabTitle(_ coordinator: ConnectionCoordinator) -> String {
-        switch coordinator.selectedTab {
-        case .tables, .query: coordinator.displayName
-        case .history: String(localized: "History")
-        case .info: String(localized: "Info")
         }
     }
 

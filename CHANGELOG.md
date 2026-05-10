@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- iOS: drop the centered navigation title on the four connection tabs (Tables, Query, History, Info). The bottom tab bar already labels the active tab, so the centered title was redundant; removing it frees room for the database picker, schema picker, and edit button on iPhone widths.
 - iOS: Vietnamese localization completed for the iOS strings catalog (312/312 keys)
 - Internal: GitHub Actions workflow `ios-tests.yml` runs the iOS unit tests on every PR and main push that touches mobile code or shared packages
 - Internal: Swift Testing tests for `DataBrowserViewModel`, `ConnectionFormViewModel`, and `RowDetailViewModel` covering load lifecycle, pagination, sort/filter/search, delete, hydration, validation, edit lifecycle, save paths, and lazy cell load. Runs against in-memory `DatabaseDriver` and `SecureStore` mocks. `loadStoredCredentials`, `testConnection`, `save` on `ConnectionFormViewModel` now accept `any SecureStore` so the keychain backend can be substituted under test
