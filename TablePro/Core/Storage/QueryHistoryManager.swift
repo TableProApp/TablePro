@@ -83,14 +83,20 @@ final class QueryHistoryManager {
         offset: Int = 0,
         connectionId: UUID? = nil,
         searchText: String? = nil,
-        dateFilter: DateFilter = .all
+        dateFilter: DateFilter = .all,
+        since: Date? = nil,
+        until: Date? = nil,
+        allowedConnectionIds: Set<UUID>? = nil
     ) async -> [QueryHistoryEntry] {
         await storage.fetchHistory(
             limit: limit,
             offset: offset,
             connectionId: connectionId,
             searchText: searchText,
-            dateFilter: dateFilter
+            dateFilter: dateFilter,
+            since: since,
+            until: until,
+            allowedConnectionIds: allowedConnectionIds
         )
     }
 
