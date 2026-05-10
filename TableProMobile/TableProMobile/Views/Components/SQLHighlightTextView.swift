@@ -87,9 +87,9 @@ struct SQLHighlightTextView: UIViewRepresentable {
         // MARK: - Keyboard Accessory Toolbar
 
         func makeAccessoryToolbar() -> UIView {
-            let toolbar = UIInputView(frame: CGRect(x: 0, y: 0, width: 0, height: 44), inputViewStyle: .keyboard)
+            let toolbar = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: 44))
             toolbar.autoresizingMask = .flexibleWidth
-            toolbar.allowsSelfSizing = true
+            toolbar.backgroundColor = .secondarySystemBackground
 
             let separator = UIView()
             separator.backgroundColor = .separator
