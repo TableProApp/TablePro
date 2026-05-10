@@ -6,8 +6,7 @@ struct QueryLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: QueryActivityAttributes.self) { context in
             lockScreenView(context: context)
-                .activityBackgroundTint(Color.black.opacity(0.7))
-                .activitySystemActionForegroundColor(.white)
+                .widgetURL(deepLink(connectionId: context.attributes.connectionId))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -93,6 +92,10 @@ struct QueryLiveActivityWidget: Widget {
             // System ticks this label every second without app push updates.
             Text(timerInterval: state.startedAt...Date.distantFuture, countsDown: false, showsHours: false)
         }
+    }
+
+    private func deepLink(connectionId: UUID) -> URL? {
+        URL(string: "tablepro://connect/\(connectionId.uuidString)")
     }
 
     private func formatElapsed(_ seconds: TimeInterval) -> String {

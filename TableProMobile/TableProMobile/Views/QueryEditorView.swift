@@ -427,6 +427,7 @@ struct QueryEditorView: View {
     private func startQueryActivity(trimmed: String, startedAt: Date) -> Activity<QueryActivityAttributes>? {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return nil }
         let attributes = QueryActivityAttributes(
+            connectionId: coordinator.connection.id,
             connectionName: coordinator.displayName,
             queryPreview: String(trimmed.prefix(60))
         )
@@ -435,9 +436,11 @@ struct QueryEditorView: View {
             endedAt: nil,
             rowsStreamed: 0
         )
+        // 5-minute stale window: if the app crashes mid-query, iOS marks the
+        // activity stale instead of showing a forever-ticking timer.
         return try? Activity.request(
             attributes: attributes,
-            content: .init(state: initialState, staleDate: startedAt.addingTimeInterval(60 * 60))
+            content: .init(state: initialState, staleDate: startedAt.addingTimeInterval(5 * 60))
         )
     }
 

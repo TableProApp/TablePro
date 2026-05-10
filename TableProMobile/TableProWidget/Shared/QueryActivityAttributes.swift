@@ -8,6 +8,7 @@ struct QueryActivityAttributes: ActivityAttributes {
         var rowsStreamed: Int
     }
 
+    let connectionId: UUID
     let connectionName: String
     let queryPreview: String
 }
