@@ -15,7 +15,7 @@ struct QueryLiveActivityWidget: Widget {
                         .foregroundStyle(.tint)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(formatElapsed(context.state.elapsed))
+                    elapsedText(context.state)
                         .font(.body.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -42,7 +42,7 @@ struct QueryLiveActivityWidget: Widget {
             } compactLeading: {
                 Image(systemName: "terminal.fill")
             } compactTrailing: {
-                Text(formatElapsed(context.state.elapsed))
+                elapsedText(context.state)
                     .monospacedDigit()
             } minimal: {
                 Image(systemName: "terminal.fill")
@@ -72,7 +72,7 @@ struct QueryLiveActivityWidget: Widget {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(formatElapsed(context.state.elapsed))
+                elapsedText(context.state)
                     .font(.body.monospacedDigit())
                 if context.state.rowsStreamed > 0 {
                     Text("\(context.state.rowsStreamed) rows")
@@ -83,6 +83,16 @@ struct QueryLiveActivityWidget: Widget {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private func elapsedText(_ state: QueryActivityAttributes.ContentState) -> some View {
+        if let ended = state.endedAt {
+            Text(formatElapsed(ended.timeIntervalSince(state.startedAt)))
+        } else {
+            // System ticks this label every second without app push updates.
+            Text(timerInterval: state.startedAt...Date.distantFuture, countsDown: false, showsHours: false)
+        }
     }
 
     private func formatElapsed(_ seconds: TimeInterval) -> String {

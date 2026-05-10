@@ -401,7 +401,7 @@ struct QueryEditorView: View {
         defer {
             isExecuting = false
             executionStartTime = nil
-            endQueryActivity(activity)
+            endQueryActivity(activity, startedAt: startedAt)
         }
         appError = nil
 
@@ -430,17 +430,22 @@ struct QueryEditorView: View {
             connectionName: coordinator.displayName,
             queryPreview: String(trimmed.prefix(60))
         )
-        let initialState = QueryActivityAttributes.ContentState(elapsed: 0, rowsStreamed: 0)
+        let initialState = QueryActivityAttributes.ContentState(
+            startedAt: startedAt,
+            endedAt: nil,
+            rowsStreamed: 0
+        )
         return try? Activity.request(
             attributes: attributes,
             content: .init(state: initialState, staleDate: startedAt.addingTimeInterval(60 * 60))
         )
     }
 
-    private func endQueryActivity(_ activity: Activity<QueryActivityAttributes>?) {
+    private func endQueryActivity(_ activity: Activity<QueryActivityAttributes>?, startedAt: Date) {
         guard let activity else { return }
         let final = QueryActivityAttributes.ContentState(
-            elapsed: viewModel.executionTime,
+            startedAt: startedAt,
+            endedAt: Date(),
             rowsStreamed: viewModel.legacyRows.count
         )
         Task {

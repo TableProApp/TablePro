@@ -3,7 +3,8 @@ import Foundation
 
 struct QueryActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
-        var elapsed: TimeInterval
+        var startedAt: Date
+        var endedAt: Date?
         var rowsStreamed: Int
     }
 
