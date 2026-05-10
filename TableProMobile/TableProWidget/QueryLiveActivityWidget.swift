@@ -9,10 +9,39 @@ struct QueryLiveActivityWidget: Widget {
                 .widgetURL(deepLink(connectionId: context.attributes.connectionId))
         } dynamicIsland: { context in
             DynamicIsland {
-                expandedLeading(context: context)
-                expandedTrailing(context: context)
-                expandedCenter(context: context)
-                expandedBottom(context: context)
+                DynamicIslandExpandedRegion(.leading) {
+                    Image(systemName: "terminal.fill")
+                        .font(.title3)
+                        .foregroundStyle(.tint)
+                        .frame(width: 32, height: 32)
+                        .background(.tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    elapsedText(context.state)
+                        .font(.title3.monospacedDigit())
+                        .foregroundStyle(context.state.endedAt == nil ? .primary : .secondary)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    Text(context.attributes.connectionName)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    HStack {
+                        Text(context.attributes.queryPreview)
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer()
+                        if context.state.rowsStreamed > 0 {
+                            Label("^[\(context.state.rowsStreamed) row](inflect: true)", systemImage: "list.bullet")
+                                .font(.caption)
+                                .labelStyle(.titleAndIcon)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             } compactLeading: {
                 Image(systemName: "terminal.fill")
                     .foregroundStyle(.tint)
@@ -62,57 +91,6 @@ struct QueryLiveActivityWidget: Widget {
         .padding(.vertical, 10)
     }
 
-    // MARK: - Dynamic Island Expanded
-
-    @DynamicIslandExpandedContentBuilder
-    private func expandedLeading(context: ActivityViewContext<QueryActivityAttributes>) -> DynamicIslandExpandedRegion<some View> {
-        DynamicIslandExpandedRegion(.leading) {
-            Image(systemName: "terminal.fill")
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .frame(width: 32, height: 32)
-                .background(.tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
-        }
-    }
-
-    @DynamicIslandExpandedContentBuilder
-    private func expandedTrailing(context: ActivityViewContext<QueryActivityAttributes>) -> DynamicIslandExpandedRegion<some View> {
-        DynamicIslandExpandedRegion(.trailing) {
-            elapsedText(context.state)
-                .font(.title3.monospacedDigit())
-                .foregroundStyle(context.state.endedAt == nil ? .primary : .secondary)
-        }
-    }
-
-    @DynamicIslandExpandedContentBuilder
-    private func expandedCenter(context: ActivityViewContext<QueryActivityAttributes>) -> DynamicIslandExpandedRegion<some View> {
-        DynamicIslandExpandedRegion(.center) {
-            Text(context.attributes.connectionName)
-                .font(.subheadline.weight(.medium))
-                .lineLimit(1)
-        }
-    }
-
-    @DynamicIslandExpandedContentBuilder
-    private func expandedBottom(context: ActivityViewContext<QueryActivityAttributes>) -> DynamicIslandExpandedRegion<some View> {
-        DynamicIslandExpandedRegion(.bottom) {
-            HStack {
-                Text(context.attributes.queryPreview)
-                    .font(.system(.footnote, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer()
-                if context.state.rowsStreamed > 0 {
-                    Label("^[\(context.state.rowsStreamed) row](inflect: true)", systemImage: "list.bullet")
-                        .font(.caption)
-                        .labelStyle(.titleAndIcon)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
     // MARK: - Compact / Minimal Status
 
     @ViewBuilder
@@ -124,7 +102,6 @@ struct QueryLiveActivityWidget: Widget {
             ProgressView()
                 .progressViewStyle(.circular)
                 .controlSize(.mini)
-                .tint(.tint)
         }
     }
 
