@@ -7,7 +7,7 @@ import AppKit
 import Combine
 
 @MainActor
-final class DataGridRowView: NSTableRowView {
+class DataGridRowView: NSTableRowView {
     weak var coordinator: TableViewCoordinator?
     var rowIndex: Int = 0
 

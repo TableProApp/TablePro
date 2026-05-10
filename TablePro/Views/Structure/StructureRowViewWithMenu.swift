@@ -8,13 +8,17 @@
 
 import AppKit
 
-/// Row view providing a context menu tailored to the Structure tab
-final class StructureRowViewWithMenu: NSTableRowView {
-    weak var coordinator: TableViewCoordinator?
-    var rowIndex: Int = 0
+/// Row view providing a context menu tailored to the Structure tab.
+/// Inherits selection/emphasis propagation, deleted-row tint, and layer-backing
+/// from `DataGridRowView` so structure cells repaint on selection like data-tab cells.
+final class StructureRowViewWithMenu: DataGridRowView {
     var structureTab: StructureTab = .columns
     var isStructureEditable: Bool = true
-    var isRowDeleted: Bool = false
+    var isRowDeleted: Bool = false {
+        didSet {
+            applyVisualState(RowVisualState(isDeleted: isRowDeleted, isInserted: false, modifiedColumns: []))
+        }
+    }
     var referencedTableName: String?
 
     var onCopyName: ((Set<Int>) -> Void)?
