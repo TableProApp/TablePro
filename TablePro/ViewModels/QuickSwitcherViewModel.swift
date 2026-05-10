@@ -110,7 +110,7 @@ internal final class QuickSwitcherViewModel {
         }
 
         // Recent query history (last 50)
-        let historyEntries = await services.queryHistoryStorage.fetchHistory(
+        let historyEntries = await services.queryHistoryManager.fetchHistory(
             limit: 50,
             connectionId: connectionId
         )
