@@ -207,7 +207,15 @@ extension MainContentView {
         let pkColumns = Set(tab.tableContext.primaryKeyColumns)
         let fkColumns = Set(tableRows.columnForeignKeys.keys)
 
-        let stringRows: [[String?]] = allRows.map { row in row.map { $0.asText } }
+        let stringRows: [[String?]] = allRows.map { row in
+            row.map { cell -> String? in
+                switch cell {
+                case .null: return nil
+                case .text(let s): return s
+                case .bytes(let data): return String(data: data, encoding: .isoLatin1) ?? ""
+                }
+            }
+        }
         rightPanelState.editState.configure(
             selectedRowIndices: selectedIndices,
             allRows: stringRows,
@@ -252,7 +260,7 @@ extension MainContentView {
                     columnIndex: columnIndex,
                     columnName: columnName,
                     oldValue: oldValue,
-                    newValue: PluginCellValue.fromOptional(newValue),
+                    newValue: newValue,
                     originalRow: originalRow
                 )
             }

@@ -68,10 +68,15 @@ internal struct BlobHexEditorView: View {
     }
 
     private func commitHexEdit() {
-        if let raw = BlobFormattingService.shared.parseHex(hexEditText) {
-            context.value.wrappedValue = raw
-        } else {
+        guard let raw = BlobFormattingService.shared.parseHex(hexEditText) else {
             hexEditText = BlobFormattingService.shared.format(context.value.wrappedValue, for: .edit) ?? ""
+            return
+        }
+        if let commitBytes = context.commitBytes,
+           let data = raw.data(using: .isoLatin1) {
+            commitBytes(data)
+        } else {
+            context.value.wrappedValue = raw
         }
     }
 }

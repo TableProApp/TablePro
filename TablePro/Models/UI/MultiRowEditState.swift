@@ -8,6 +8,7 @@
 
 import Foundation
 import Observation
+import TableProPluginKit
 
 /// Represents the edit state for a single field across multiple rows
 struct FieldEditState: Identifiable {
@@ -54,7 +55,7 @@ struct FieldEditState: Identifiable {
 final class MultiRowEditState {
     var fields: [FieldEditState] = []
 
-    var onFieldChanged: ((Int, String?) -> Void)?
+    var onFieldChanged: ((Int, PluginCellValue) -> Void)?
 
     private(set) var selectedRowIndices: Set<Int> = []
     private(set) var allRows: [[String?]] = []
@@ -181,38 +182,43 @@ final class MultiRowEditState {
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
         if fields[index].pendingValue != nil || hadPendingEdit {
-            onFieldChanged?(index, value)
+            onFieldChanged?(index, PluginCellValue.fromOptional(value))
         }
     }
 
-    /// Set a field to NULL
+    func setFieldToBytes(at index: Int, data: Data) {
+        guard index < fields.count else { return }
+        let encoded = String(data: data, encoding: .isoLatin1) ?? ""
+        fields[index].pendingValue = encoded
+        fields[index].isPendingNull = false
+        fields[index].isPendingDefault = false
+        onFieldChanged?(index, .bytes(data))
+    }
+
     func setFieldToNull(at index: Int) {
         guard index < fields.count else { return }
         fields[index].pendingValue = nil
         fields[index].isPendingNull = true
         fields[index].isPendingDefault = false
-        onFieldChanged?(index, nil)
+        onFieldChanged?(index, .null)
     }
 
-    /// Set a field to DEFAULT
     func setFieldToDefault(at index: Int) {
         guard index < fields.count else { return }
         fields[index].pendingValue = nil
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = true
-        onFieldChanged?(index, "__DEFAULT__")
+        onFieldChanged?(index, .text("__DEFAULT__"))
     }
 
-    /// Set a field to a SQL function (e.g., NOW())
     func setFieldToFunction(at index: Int, function: String) {
         guard index < fields.count else { return }
         fields[index].pendingValue = function
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        onFieldChanged?(index, function)
+        onFieldChanged?(index, .text(function))
     }
 
-    /// Set a field to empty string
     func setFieldToEmpty(at index: Int) {
         guard index < fields.count else { return }
         let hadPendingEdit = fields[index].hasEdit
@@ -224,7 +230,7 @@ final class MultiRowEditState {
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
         if fields[index].pendingValue != nil || hadPendingEdit {
-            onFieldChanged?(index, "")
+            onFieldChanged?(index, .text(""))
         }
     }
 

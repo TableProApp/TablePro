@@ -264,7 +264,8 @@ struct RightSidebarView: View {
                 ) : .constant(field.originalValue ?? ""),
                 originalValue: field.originalValue,
                 hasMultipleValues: field.hasMultipleValues,
-                isReadOnly: !isEditable
+                isReadOnly: !isEditable,
+                commitBytes: isEditable ? { data in editState.setFieldToBytes(at: index, data: data) } : nil
             ),
             isPendingNull: field.isPendingNull,
             isPendingDefault: field.isPendingDefault,

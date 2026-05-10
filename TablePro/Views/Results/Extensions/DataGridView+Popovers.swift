@@ -161,6 +161,9 @@ extension TableViewCoordinator {
                 onCommit: { newValue in
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
+                onCommitBytes: { data in
+                    self?.commitBinaryEdit(row: row, columnIndex: columnIndex, data: data)
+                },
                 onDismiss: dismiss
             )
         }
@@ -296,6 +299,10 @@ extension TableViewCoordinator {
 
     func commitPopoverEdit(row: Int, columnIndex: Int, newValue: String?) {
         commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+    }
+
+    func commitBinaryEdit(row: Int, columnIndex: Int, data: Data) {
+        commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: .bytes(data))
     }
 }
 

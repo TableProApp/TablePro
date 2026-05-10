@@ -8,6 +8,10 @@ import TableProPluginKit
 
 extension TableViewCoordinator {
     func commitCellEdit(row: Int, columnIndex: Int, newValue: String?) {
+        commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: PluginCellValue.fromOptional(newValue))
+    }
+
+    func commitTypedCellEdit(row: Int, columnIndex: Int, newValue typedNewValue: PluginCellValue) {
         guard !isCommittingCellEdit else { return }
         guard let tableView else { return }
         let tableRows = tableRowsProvider()
@@ -15,7 +19,6 @@ extension TableViewCoordinator {
         guard let displayRowValues = displayRow(at: row) else { return }
         guard columnIndex < displayRowValues.values.count else { return }
         let oldValue = displayRowValues.values[columnIndex]
-        let typedNewValue = PluginCellValue.fromOptional(newValue)
         guard oldValue != typedNewValue else { return }
 
         isCommittingCellEdit = true
@@ -39,7 +42,7 @@ extension TableViewCoordinator {
                 delta = tableRows.edit(row: storageRow, column: columnIndex, value: typedNewValue)
             }
         }
-        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
+        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: typedNewValue.asText)
         invalidateDisplayCache()
         visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
 

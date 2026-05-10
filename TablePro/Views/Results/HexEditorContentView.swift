@@ -11,6 +11,7 @@ import SwiftUI
 struct HexEditorContentView: View {
     let initialValue: String?
     let onCommit: (String) -> Void
+    let onCommitBytes: ((Data) -> Void)?
     let onDismiss: () -> Void
 
     @State private var hexDumpText: String
@@ -23,10 +24,12 @@ struct HexEditorContentView: View {
     init(
         initialValue: String?,
         onCommit: @escaping (String) -> Void,
+        onCommitBytes: ((Data) -> Void)? = nil,
         onDismiss: @escaping () -> Void
     ) {
         self.initialValue = initialValue
         self.onCommit = onCommit
+        self.onCommitBytes = onCommitBytes
         self.onDismiss = onDismiss
 
         let service = BlobFormattingService.shared
@@ -106,7 +109,11 @@ struct HexEditorContentView: View {
 
         if editableHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if initialValue != nil, initialValue != "" {
-                onCommit("")
+                if let onCommitBytes {
+                    onCommitBytes(Data())
+                } else {
+                    onCommit("")
+                }
             }
             onDismiss()
             return
@@ -114,7 +121,11 @@ struct HexEditorContentView: View {
 
         guard let rawValue = BlobFormattingService.shared.parseHex(editableHex) else { return }
         if rawValue != initialValue {
-            onCommit(rawValue)
+            if let onCommitBytes, let data = rawValue.data(using: .isoLatin1) {
+                onCommitBytes(data)
+            } else {
+                onCommit(rawValue)
+            }
         }
         onDismiss()
     }
