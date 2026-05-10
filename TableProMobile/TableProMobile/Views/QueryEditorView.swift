@@ -398,7 +398,9 @@ struct QueryEditorView: View {
         let startedAt = Date()
         executionStartTime = startedAt
         let activity = startQueryActivity(trimmed: trimmed, startedAt: startedAt)
+        let progressUpdater = startActivityProgressUpdater(activity: activity, startedAt: startedAt)
         defer {
+            progressUpdater.cancel()
             isExecuting = false
             executionStartTime = nil
             endQueryActivity(activity, startedAt: startedAt)
@@ -442,6 +444,37 @@ struct QueryEditorView: View {
             attributes: attributes,
             content: .init(state: initialState, staleDate: startedAt.addingTimeInterval(5 * 60))
         )
+    }
+
+    /// Polls the streaming row count once per second while the query runs and pushes
+    /// `activity.update(state:)` only when the count changes. The system rate-limits
+    /// activity updates anyway, and the lock screen card just needs a fresh number
+    /// when the user wakes the device mid-query - it does not need real-time ticks
+    /// for the count (the elapsed time ticks itself via `Text(timerInterval:)`).
+    private func startActivityProgressUpdater(
+        activity: Activity<QueryActivityAttributes>?,
+        startedAt: Date
+    ) -> Task<Void, Never> {
+        Task { [weak viewModel] in
+            guard let activity else { return }
+            var lastReportedCount = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                let count = viewModel?.legacyRows.count ?? 0
+                guard count != lastReportedCount else { continue }
+                lastReportedCount = count
+                let state = QueryActivityAttributes.ContentState(
+                    startedAt: startedAt,
+                    endedAt: nil,
+                    rowsStreamed: count
+                )
+                await activity.update(.init(
+                    state: state,
+                    staleDate: startedAt.addingTimeInterval(5 * 60)
+                ))
+            }
+        }
     }
 
     private func endQueryActivity(_ activity: Activity<QueryActivityAttributes>?, startedAt: Date) {

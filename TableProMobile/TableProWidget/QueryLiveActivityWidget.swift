@@ -9,45 +9,23 @@ struct QueryLiveActivityWidget: Widget {
                 .widgetURL(deepLink(connectionId: context.attributes.connectionId))
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: "terminal.fill")
-                        .foregroundStyle(.tint)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    elapsedText(context.state)
-                        .font(.body.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    Text(context.attributes.connectionName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    HStack {
-                        Text(context.attributes.queryPreview)
-                            .font(.system(.footnote, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        Spacer()
-                        if context.state.rowsStreamed > 0 {
-                            Label("\(context.state.rowsStreamed)", systemImage: "list.bullet")
-                                .font(.caption)
-                                .labelStyle(.titleAndIcon)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                expandedLeading(context: context)
+                expandedTrailing(context: context)
+                expandedCenter(context: context)
+                expandedBottom(context: context)
             } compactLeading: {
                 Image(systemName: "terminal.fill")
+                    .foregroundStyle(.tint)
             } compactTrailing: {
-                elapsedText(context.state)
-                    .monospacedDigit()
+                compactStatus(state: context.state)
             } minimal: {
-                Image(systemName: "terminal.fill")
+                compactStatus(state: context.state)
             }
+            .widgetURL(deepLink(connectionId: context.attributes.connectionId))
         }
     }
+
+    // MARK: - Lock Screen
 
     @ViewBuilder
     private func lockScreenView(context: ActivityViewContext<QueryActivityAttributes>) -> some View {
@@ -60,10 +38,10 @@ struct QueryLiveActivityWidget: Widget {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(context.attributes.connectionName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.medium))
                 Text(context.attributes.queryPreview)
-                    .font(.system(.subheadline, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -74,7 +52,7 @@ struct QueryLiveActivityWidget: Widget {
                 elapsedText(context.state)
                     .font(.body.monospacedDigit())
                 if context.state.rowsStreamed > 0 {
-                    Text("\(context.state.rowsStreamed) rows")
+                    Text("^[\(context.state.rowsStreamed) row](inflect: true)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -84,12 +62,79 @@ struct QueryLiveActivityWidget: Widget {
         .padding(.vertical, 10)
     }
 
+    // MARK: - Dynamic Island Expanded
+
+    @DynamicIslandExpandedContentBuilder
+    private func expandedLeading(context: ActivityViewContext<QueryActivityAttributes>) -> DynamicIslandExpandedRegion<some View> {
+        DynamicIslandExpandedRegion(.leading) {
+            Image(systemName: "terminal.fill")
+                .font(.title3)
+                .foregroundStyle(.tint)
+                .frame(width: 32, height: 32)
+                .background(.tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
+        }
+    }
+
+    @DynamicIslandExpandedContentBuilder
+    private func expandedTrailing(context: ActivityViewContext<QueryActivityAttributes>) -> DynamicIslandExpandedRegion<some View> {
+        DynamicIslandExpandedRegion(.trailing) {
+            elapsedText(context.state)
+                .font(.title3.monospacedDigit())
+                .foregroundStyle(context.state.endedAt == nil ? .primary : .secondary)
+        }
+    }
+
+    @DynamicIslandExpandedContentBuilder
+    private func expandedCenter(context: ActivityViewContext<QueryActivityAttributes>) -> DynamicIslandExpandedRegion<some View> {
+        DynamicIslandExpandedRegion(.center) {
+            Text(context.attributes.connectionName)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+        }
+    }
+
+    @DynamicIslandExpandedContentBuilder
+    private func expandedBottom(context: ActivityViewContext<QueryActivityAttributes>) -> DynamicIslandExpandedRegion<some View> {
+        DynamicIslandExpandedRegion(.bottom) {
+            HStack {
+                Text(context.attributes.queryPreview)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer()
+                if context.state.rowsStreamed > 0 {
+                    Label("^[\(context.state.rowsStreamed) row](inflect: true)", systemImage: "list.bullet")
+                        .font(.caption)
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: - Compact / Minimal Status
+
+    @ViewBuilder
+    private func compactStatus(state: QueryActivityAttributes.ContentState) -> some View {
+        if state.endedAt != nil {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        } else {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.mini)
+                .tint(.tint)
+        }
+    }
+
+    // MARK: - Helpers
+
     @ViewBuilder
     private func elapsedText(_ state: QueryActivityAttributes.ContentState) -> some View {
         if let ended = state.endedAt {
             Text(formatElapsed(ended.timeIntervalSince(state.startedAt)))
         } else {
-            // System ticks this label every second without app push updates.
             Text(timerInterval: state.startedAt...Date.distantFuture, countsDown: false, showsHours: false)
         }
     }
