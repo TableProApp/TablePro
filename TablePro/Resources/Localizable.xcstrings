@@ -1042,7 +1042,6 @@
 
     },
     "%@ ms" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -1266,7 +1265,6 @@
       }
     },
     "%@ s" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -1334,16 +1332,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@, %@"
-          }
-        }
-      }
-    },
-    "%@: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@: %2$@"
           }
         }
       }
@@ -2049,7 +2037,6 @@
       }
     },
     "%lld row%@ affected" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2418,7 +2405,6 @@
       }
     },
     "•" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -3537,9 +3523,6 @@
           }
         }
       }
-    },
-    "A command named \"/%@\" already exists." : {
-
     },
     "A connection with this name, host, and type already exists." : {
       "localizations" : {
@@ -4804,9 +4787,6 @@
         }
       }
     },
-    "Agent: full tool access including destructive DDL. Safe mode still gates execution." : {
-
-    },
     "AI" : {
       "localizations" : {
         "tr" : {
@@ -5010,9 +4990,6 @@
       }
     },
     "AI responses may be inaccurate" : {
-
-    },
-    "AI Rules" : {
 
     },
     "AI-Powered Assistant" : {
@@ -5682,9 +5659,6 @@
         }
       }
     },
-    "Always allow %@ for this connection" : {
-
-    },
     "Always count" : {
       "localizations" : {
         "tr" : {
@@ -5706,9 +5680,6 @@
           }
         }
       }
-    },
-    "Always for this connection" : {
-
     },
     "Always Hide" : {
       "localizations" : {
@@ -6809,9 +6780,6 @@
           }
         }
       }
-    },
-    "Ask: read-only schema lookups. AI can browse but not run queries." : {
-
     },
     "Attach context" : {
 
@@ -8219,9 +8187,6 @@
         }
       }
     },
-    "Cancelled" : {
-
-    },
     "Cancelled by user." : {
       "localizations" : {
         "tr" : {
@@ -8339,9 +8304,6 @@
           }
         }
       }
-    },
-    "Cannot Save Command" : {
-
     },
     "Cannot save schema changes: connection is read only." : {
 
@@ -8821,6 +8783,9 @@
           }
         }
       }
+    },
+    "Chat mode" : {
+
     },
     "Check for Updates..." : {
       "localizations" : {
@@ -9580,9 +9545,6 @@
           }
         }
       }
-    },
-    "Click the menu in the Agent Panel header and choose Settings" : {
-
     },
     "Click to load models" : {
       "extractionState" : "stale",
@@ -11241,11 +11203,7 @@
         }
       }
     },
-    "Connection is read-only. Set safe mode to Confirm Writes or higher to allow this tool." : {
-
-    },
     "Connection lost" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -11381,9 +11339,6 @@
           }
         }
       }
-    },
-    "Connection succeeded" : {
-
     },
     "Connection successful" : {
       "localizations" : {
@@ -12844,9 +12799,6 @@
     "Could Not Reset Sample" : {
 
     },
-    "Could not save the connection. Check disk space and permissions, then try again." : {
-
-    },
     "Could not write to file. Check that the file is writable." : {
 
     },
@@ -13394,28 +13346,7 @@
         }
       }
     },
-    "Current %@: %@ (⌘K to %@)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Current %1$@: %2$@ (⌘K to %3$@)"
-          }
-        }
-      }
-    },
-    "Current %@: %@ (read only, ⌘K to %@)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Current %1$@: %2$@ (read only, ⌘K to %3$@)"
-          }
-        }
-      }
-    },
     "Current database: %@ (⌘K to switch)" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13436,6 +13367,9 @@
           }
         }
       }
+    },
+    "Current database: %@ (read only, ⌘K to switch)" : {
+
     },
     "Current database: %@ (read-only, ⌘K to switch)" : {
       "extractionState" : "stale",
@@ -13749,9 +13683,6 @@
           }
         }
       }
-    },
-    "Custom guidance the AI sees on every chat turn for this connection. Use it for table conventions, naming, columns to avoid (PII, soft-deleted rows), join hints, or business rules the schema doesn't show." : {
-
     },
     "Custom Path" : {
       "localizations" : {
@@ -14444,9 +14375,6 @@
         }
       }
     },
-    "DATABASES" : {
-
-    },
     "Date format:" : {
       "localizations" : {
         "tr" : {
@@ -14579,9 +14507,6 @@
           }
         }
       }
-    },
-    "Debounce: %d ms" : {
-
     },
     "Decimal" : {
       "extractionState" : "stale",
@@ -17350,9 +17275,6 @@
         }
       }
     },
-    "Edit: read-only tools plus running queries. Destructive DDL stays blocked." : {
-
-    },
     "Edit..." : {
       "localizations" : {
         "tr" : {
@@ -18346,9 +18268,6 @@
           }
         }
       }
-    },
-    "Examples" : {
-
     },
     "Excel spreadsheet with formatting support." : {
       "localizations" : {
@@ -20174,9 +20093,6 @@
           }
         }
       }
-    },
-    "Failed to fetch models from %@" : {
-
     },
     "Failed to fetch models from %@ (HTTP %d)" : {
       "localizations" : {
@@ -23545,9 +23461,6 @@
         }
       }
     },
-    "If macOS asks for your login password, click Always Allow on each prompt." : {
-
-    },
     "Ignore foreign key checks" : {
       "localizations" : {
         "tr" : {
@@ -24091,9 +24004,6 @@
           }
         }
       }
-    },
-    "Importing passwords from %1$@ reads up to %2$d keychain items. macOS prompts for your login password once per item because each is owned by %1$@. Click Always Allow on each prompt to grant TablePro permanent access. Cancel any prompt to skip the rest." : {
-
     },
     "Importing..." : {
       "localizations" : {
@@ -27677,9 +27587,6 @@
         }
       }
     },
-    "macOS will ask for your login password" : {
-
-    },
     "Maintenance" : {
       "localizations" : {
         "tr" : {
@@ -29121,7 +29028,6 @@
       }
     },
     "Navigate to referenced row" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32562,7 +32468,6 @@
       }
     },
     "Open editor" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32882,9 +32787,6 @@
           }
         }
       }
-    },
-    "Open Zed and click the Agent Panel icon in the right side of the title bar" : {
-
     },
     "Open-source fork of MySQL" : {
 
@@ -33938,9 +33840,6 @@
         }
       }
     },
-    "Pending approval for" : {
-
-    },
     "pending delete" : {
       "localizations" : {
         "tr" : {
@@ -34119,9 +34018,6 @@
           }
         }
       }
-    },
-    "Plain text. Markdown is preserved as written." : {
-
     },
     "Planning: %.3fms" : {
       "localizations" : {
@@ -37026,11 +36922,7 @@
         }
       }
     },
-    "Reading connections from %@…" : {
-
-    },
     "Reading connections..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -37118,9 +37010,6 @@
           }
         }
       }
-    },
-    "RECENT QUERIES" : {
-
     },
     "Recent query history for a connection (supports ?limit=, ?search=, ?date_filter=)" : {
 
@@ -39308,12 +39197,6 @@
         }
       }
     },
-    "Rules" : {
-
-    },
-    "Run" : {
-
-    },
     "Run a query to see execution time" : {
       "localizations" : {
         "tr" : {
@@ -40254,12 +40137,6 @@
           }
         }
       }
-    },
-    "SCHEMAS" : {
-
-    },
-    "Scroll to latest message" : {
-
     },
     "Scrollback lines:" : {
       "localizations" : {
@@ -42937,9 +42814,6 @@
         }
       }
     },
-    "Some passwords were not read. You can enter them in the connection editor after import." : {
-
-    },
     "Some tabs have unsaved edits. Quitting will discard these changes." : {
       "localizations" : {
         "tr" : {
@@ -45127,9 +45001,6 @@
         }
       }
     },
-    "switch database" : {
-
-    },
     "Switch Database" : {
       "localizations" : {
         "tr" : {
@@ -45174,9 +45045,6 @@
           }
         }
       }
-    },
-    "switch schema" : {
-
     },
     "Switch Schema" : {
 
@@ -45714,9 +45582,6 @@
         }
       }
     },
-    "SYSTEM TABLES" : {
-
-    },
     "Tab Behavior" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -45995,9 +45860,6 @@
           }
         }
       }
-    },
-    "TABLES" : {
-
     },
     "Tables with more estimated rows use approximate counts to avoid slow COUNT(*) queries" : {
       "localizations" : {
@@ -46405,12 +46267,6 @@
           }
         }
       }
-    },
-    "Test the current connection settings" : {
-
-    },
-    "Testing connection" : {
-
     },
     "Text" : {
       "localizations" : {
@@ -49381,9 +49237,6 @@
         }
       }
     },
-    "Under MCP Servers click \"+ Add Custom Server\", select the Local tab, paste the JSON below, then click Add Server" : {
-
-    },
     "Underline" : {
       "localizations" : {
         "tr" : {
@@ -51204,9 +51057,6 @@
         }
       }
     },
-    "VIEWS" : {
-
-    },
     "Vim mode" : {
       "localizations" : {
         "tr" : {
@@ -51956,9 +51806,6 @@
           }
         }
       }
-    },
-    "Zed" : {
-
     },
     "Zero Fill" : {
       "extractionState" : "stale",

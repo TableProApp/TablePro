@@ -976,6 +976,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _currentSchema = schema
     }
 
+    /// Oracle has no real database concept; "switch database" is a schema switch.
+    /// Aliases to keep `coordinator.switchDatabase` working from tab restore paths
+    /// without relying on a manager-side kludge.
+    func switchDatabase(to database: String) async throws {
+        try await switchSchema(to: database)
+    }
+
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {
