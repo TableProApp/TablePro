@@ -32,7 +32,8 @@ struct ToolbarPrincipalContent: View {
             ConnectionStatusView(
                 databaseType: state.databaseType,
                 databaseVersion: state.databaseVersion,
-                databaseName: state.databaseName,
+                chipText: state.chipText,
+                databaseGroupingStrategy: state.databaseGroupingStrategy,
                 connectionName: state.connectionName,
                 displayColor: state.displayColor,
                 safeModeLevel: state.safeModeLevel,

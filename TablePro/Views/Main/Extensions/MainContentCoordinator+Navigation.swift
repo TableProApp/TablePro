@@ -408,8 +408,8 @@ extension MainContentCoordinator {
     /// Switch to a different database (called from database switcher)
     func switchDatabase(to database: String) async {
         clearFilterState()
-        let previousDatabase = toolbarState.databaseName
-        toolbarState.databaseName = database
+        let previousDatabase = toolbarState.currentDatabase
+        toolbarState.currentDatabase = database
 
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
@@ -423,7 +423,7 @@ extension MainContentCoordinator {
 
             await refreshTables()
         } catch {
-            toolbarState.databaseName = previousDatabase
+            toolbarState.currentDatabase = previousDatabase
 
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
@@ -451,8 +451,8 @@ extension MainContentCoordinator {
         }
 
         clearFilterState()
-        let previousSchema = toolbarState.databaseName
-        toolbarState.databaseName = schema
+        let previousSchema = toolbarState.currentSchema
+        toolbarState.currentSchema = schema
 
         do {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
@@ -466,7 +466,7 @@ extension MainContentCoordinator {
 
             await refreshTables()
         } catch {
-            toolbarState.databaseName = previousSchema
+            toolbarState.currentSchema = previousSchema
             await refreshTables()
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
@@ -506,7 +506,7 @@ extension MainContentCoordinator {
             DatabaseManager.shared.updateSession(connId) { session in
                 session.currentDatabase = database
             }
-            toolbarState.databaseName = database
+            toolbarState.currentDatabase = database
             executeTableTabQueryDirectly()
 
             let separator = connection.additionalFields["redisSeparator"] ?? ":"
@@ -536,7 +536,7 @@ extension MainContentCoordinator {
         sidebarViewModel?.redisKeyTreeViewModel = vm
 
         let connId = connectionId
-        let database = toolbarState.databaseName
+        let database = toolbarState.currentDatabase
         let separator = connection.additionalFields["redisSeparator"] ?? ":"
         Task {
             await vm.loadKeys(connectionId: connId, database: database, separator: separator)

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>10</integer>
+	<integer>11</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>ClickHouse</string>

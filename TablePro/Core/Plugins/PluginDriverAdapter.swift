@@ -20,13 +20,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     func pluginGenerateStatements(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [String?]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [String?])]? {
         pluginDriver.generateStatements(
-            table: table, columns: columns, changes: changes,
+            table: table, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,
             insertedRowIndices: insertedRowIndices

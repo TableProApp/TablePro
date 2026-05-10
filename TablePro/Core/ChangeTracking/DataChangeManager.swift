@@ -402,6 +402,7 @@ final class DataChangeManager: ChangeManaging {
             if let statements = pluginDriver.generateStatements(
                 table: tableName,
                 columns: columns,
+                primaryKeyColumns: primaryKeyColumns,
                 changes: pluginChanges,
                 insertedRowData: insertedRowData,
                 deletedRowIndices: deletedRowIndices,

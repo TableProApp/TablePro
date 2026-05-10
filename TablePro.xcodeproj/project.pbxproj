@@ -50,6 +50,7 @@
 		5ABQR00100000000000000A7 /* BigQueryTypeMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A7 /* BigQueryTypeMapper.swift */; };
 		5ABQR00100000000000000A8 /* BigQueryOAuthServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A8 /* BigQueryOAuthServer.swift */; };
 		5ABQR00100000000000000A9 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5AC8C69F2FB081BB005DE2A3 /* MSSQLDriver.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A864000100000000 /* MSSQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000002 /* CodeEditSourceEditor */; };
 		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
@@ -237,6 +238,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				5AC8C69F2FB081BB005DE2A3 /* MSSQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins (12 items) */,

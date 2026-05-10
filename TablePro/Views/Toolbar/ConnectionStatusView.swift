@@ -7,12 +7,14 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 /// Main connection status display for the toolbar center
 struct ConnectionStatusView: View {
     let databaseType: DatabaseType
     let databaseVersion: String?
-    let databaseName: String
+    let chipText: String
+    let databaseGroupingStrategy: GroupingStrategy
     let connectionName: String
     let displayColor: Color
     var safeModeLevel: SafeModeLevel = .silent
@@ -24,11 +26,11 @@ struct ConnectionStatusView: View {
         HStack(spacing: 10) {
             connectionIdentitySection
 
-            if !databaseName.isEmpty {
+            if !chipText.isEmpty {
                 Divider()
                     .frame(height: 12)
 
-                databaseNameSection
+                chipSection
             }
         }
     }
@@ -55,35 +57,61 @@ struct ConnectionStatusView: View {
     }
 
     @ViewBuilder
-    private var databaseNameSection: some View {
+    private var chipSection: some View {
         if !PluginManager.shared.supportsDatabaseSwitching(for: databaseType) {
-            databaseNameLabel
-                .help("Database: \(databaseName)")
+            chipLabel
+                .help(staticChipTooltip)
         } else {
             Button {
                 onSwitchDatabase?()
             } label: {
-                databaseNameLabel
+                chipLabel
             }
             .buttonStyle(.plain)
-            .help(safeModeLevel == .readOnly
-                ? String(format: String(localized: "Current database: %@ (read only, ⌘K to switch)"), databaseName)
-                : String(format: String(localized: "Current database: %@ (⌘K to switch)"), databaseName))
+            .help(switchableChipTooltip)
         }
     }
 
-    private var databaseNameLabel: some View {
+    private var chipLabel: some View {
         HStack(spacing: 4) {
             Image(systemName: "cylinder")
                 .imageScale(.small)
                 .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
 
-            Text(databaseName)
+            Text(chipText)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
+    }
+
+    private var chipKindLabel: String {
+        switch databaseGroupingStrategy {
+        case .bySchema: return String(localized: "Schema")
+        case .byDatabase, .flat: return String(localized: "Database")
+        }
+    }
+
+    private var staticChipTooltip: String {
+        String(format: String(localized: "%@: %@"), chipKindLabel, chipText)
+    }
+
+    private var switchableChipTooltip: String {
+        let switchVerb: String = switch databaseGroupingStrategy {
+        case .bySchema: String(localized: "switch schema")
+        case .byDatabase, .flat: String(localized: "switch database")
+        }
+        if safeModeLevel == .readOnly {
+            return String(
+                format: String(localized: "Current %@: %@ (read only, ⌘K to %@)"),
+                chipKindLabel.lowercased(), chipText, switchVerb
+            )
+        }
+        return String(
+            format: String(localized: "Current %@: %@ (⌘K to %@)"),
+            chipKindLabel.lowercased(), chipText, switchVerb
+        )
     }
 
     // MARK: - Computed Properties
@@ -110,7 +138,8 @@ struct ConnectionStatusView: View {
     ConnectionStatusView(
         databaseType: .mariadb,
         databaseVersion: "11.1.2",
-        databaseName: "production_db",
+        chipText: "production_db",
+        databaseGroupingStrategy: .byDatabase,
         connectionName: "Production Database",
         displayColor: .cyan
     )
@@ -122,7 +151,8 @@ struct ConnectionStatusView: View {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "8.0.35",
-        databaseName: "dev_db",
+        chipText: "dev_db",
+        databaseGroupingStrategy: .byDatabase,
         connectionName: "Development",
         displayColor: .orange
     )
@@ -134,7 +164,8 @@ struct ConnectionStatusView: View {
     ConnectionStatusView(
         databaseType: .postgresql,
         databaseVersion: "16.1",
-        databaseName: "analytics",
+        chipText: "public",
+        databaseGroupingStrategy: .bySchema,
         connectionName: "Analytics DB",
         displayColor: .blue
     )
@@ -147,7 +178,8 @@ struct ConnectionStatusView: View {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "9.5.0",
-        databaseName: "",
+        chipText: "",
+        databaseGroupingStrategy: .byDatabase,
         connectionName: "Local",
         displayColor: .green
     )

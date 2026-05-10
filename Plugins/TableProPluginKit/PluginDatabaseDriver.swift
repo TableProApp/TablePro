@@ -87,7 +87,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     // Statement generation (optional, for NoSQL plugins)
-    func generateStatements(table: String, columns: [String], changes: [PluginRowChange], insertedRowData: [Int: [String?]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [String?])]?
+    func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [String?]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [String?])]?
 
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
@@ -245,7 +245,7 @@ public extension PluginDatabaseDriver {
 
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
-    func generateStatements(table: String, columns: [String], changes: [PluginRowChange], insertedRowData: [Int: [String?]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [String?])]? { nil }
+    func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [String?]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [String?])]? { nil }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? { nil }
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? { nil }

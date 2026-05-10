@@ -531,6 +531,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     func generateStatements(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [String?]],
         deletedRowIndices: Set<Int>,

@@ -79,7 +79,7 @@ enum SessionStateFactory {
 
         if connection.type.pluginTypeId == "Redis" {
             let dbIndex = connection.redisDatabase ?? Int(connection.database) ?? 0
-            toolbarSt.databaseName = String(dbIndex)
+            toolbarSt.currentDatabase = String(dbIndex)
         }
 
         let activeDatabaseName = DatabaseManager.shared.activeDatabaseName(for: connection)

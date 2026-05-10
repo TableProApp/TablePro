@@ -21,7 +21,7 @@
 	<key>NSPrincipalClass</key>
 	<string>$(PRODUCT_MODULE_NAME).RedisPlugin</string>
 	<key>TableProPluginKitVersion</key>
-	<integer>10</integer>
+	<integer>11</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>Redis</string>

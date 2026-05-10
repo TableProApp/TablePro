@@ -167,7 +167,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
-    @ObservationIgnored private var pluginDriverCancellable: AnyCancellable?
+    @ObservationIgnored private var postConnectCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
 
     var fileConflictRequest: FileConflictRequest?
@@ -437,14 +437,15 @@ final class MainContentCoordinator {
         registerForPersistence()
         setupPluginDriver()
         startFileWatcherIfNeeded()
-        // Retry when driver becomes available (connection may still be in progress)
         if changeManager.pluginDriver == nil {
-            pluginDriverCancellable = services.appEvents.databaseDidConnect
+            postConnectCancellable = services.appEvents.databaseDidConnect
                 .receive(on: RunLoop.main)
                 .sink { [weak self] payload in
                     guard let self, payload.connectionId == self.connection.id else { return }
-                    Task {
+                    Task { @MainActor in
                         self.setupPluginDriver()
+                        await self.loadSchemaIfNeeded()
+                        self.postConnectCancellable = nil
                     }
                 }
         }
@@ -492,9 +493,6 @@ final class MainContentCoordinator {
         let pluginDriver = driver.queryBuildingPluginDriver
         queryBuilder.setPluginDriver(pluginDriver)
         changeManager.pluginDriver = pluginDriver
-        if pluginDriver != nil {
-            pluginDriverCancellable = nil
-        }
     }
 
     func markTeardownScheduled() {
@@ -561,7 +559,7 @@ final class MainContentCoordinator {
             NotificationCenter.default.removeObserver(observer)
             terminationObserver = nil
         }
-        pluginDriverCancellable = nil
+        postConnectCancellable = nil
         externalFileModCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil

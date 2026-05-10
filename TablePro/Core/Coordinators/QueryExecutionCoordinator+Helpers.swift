@@ -427,7 +427,7 @@ extension QueryExecutionCoordinator {
             DatabaseManager.shared.updateSession(parent.connectionId) { session in
                 session.currentSchema = schema
             }
-            parent.toolbarState.databaseName = schema
+            parent.toolbarState.currentSchema = schema
             await parent.refreshTables()
         } catch {
             helpersLogger.warning("Failed to restore schema '\(schema, privacy: .public)': \(error.localizedDescription, privacy: .public)")

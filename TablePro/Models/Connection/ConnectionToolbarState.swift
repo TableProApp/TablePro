@@ -124,8 +124,18 @@ final class ConnectionToolbarState {
     /// Connection name for display
     var connectionName: String = ""
 
-    /// Current database name
-    var databaseName: String = ""
+    /// Active database (always meaningful). For schema-grouped engines like SQL Server,
+    /// this is the SQL Server database (e.g. "Sales"); the active schema lives in
+    /// `currentSchema` and is what the toolbar chip shows.
+    var currentDatabase: String = ""
+
+    /// Active schema for engines whose grouping strategy is `.bySchema`. Nil for
+    /// `.byDatabase` and `.flat` engines, where the database is the primary unit.
+    var currentSchema: String?
+
+    /// How the engine groups data. Drives whether `chipText` returns `currentSchema`
+    /// (for schema-grouped engines) or `currentDatabase`.
+    var databaseGroupingStrategy: GroupingStrategy = .byDatabase
 
     /// Custom display color for the connection (uses database type color if not set)
     var displayColor: Color = .init(nsColor: .systemOrange)
@@ -219,6 +229,22 @@ final class ConnectionToolbarState {
         return databaseType.rawValue
     }
 
+    /// Text shown in the toolbar's database/schema chip. For `.bySchema` engines
+    /// (SQL Server, PostgreSQL, Oracle, BigQuery), this is the active schema; for
+    /// `.byDatabase` and `.flat` engines, it is the active database. Falls back to
+    /// `currentDatabase` when a schema-grouped engine has not yet resolved its schema.
+    var chipText: String {
+        switch databaseGroupingStrategy {
+        case .bySchema:
+            if let schema = currentSchema, !schema.isEmpty {
+                return schema
+            }
+            return currentDatabase
+        case .byDatabase, .flat:
+            return currentDatabase
+        }
+    }
+
     /// Tooltip text for the status indicator
     var statusTooltip: String {
         var parts: [String] = [connectionState.description]
@@ -254,22 +280,30 @@ final class ConnectionToolbarState {
         displayColor = connection.displayColor
         tagId = connection.tagId
         safeModeLevel = connection.safeModeLevel
-        syncDatabaseName(for: connection)
+        databaseGroupingStrategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        syncFromSession(for: connection)
     }
 
-    /// Resolve `databaseName` from the active session, falling back to the connection's configured value.
-    func syncDatabaseName(for connection: DatabaseConnection) {
-        let resolved: String
+    /// Resolve `currentDatabase` and `currentSchema` from the active session, falling
+    /// back to the connection's configured database for `currentDatabase`. The chip
+    /// updates automatically via the `chipText` computed property.
+    func syncFromSession(for connection: DatabaseConnection) {
+        let resolvedDatabase: String
         if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
-            resolved = (connection.database as NSString).lastPathComponent
+            resolvedDatabase = (connection.database as NSString).lastPathComponent
         } else if let session = DatabaseManager.shared.session(for: connection.id),
                   let database = session.currentDatabase {
-            resolved = database
+            resolvedDatabase = database
         } else {
-            resolved = connection.database
+            resolvedDatabase = connection.database
         }
-        if databaseName != resolved {
-            databaseName = resolved
+        if currentDatabase != resolvedDatabase {
+            currentDatabase = resolvedDatabase
+        }
+
+        let resolvedSchema = DatabaseManager.shared.session(for: connection.id)?.currentSchema
+        if currentSchema != resolvedSchema {
+            currentSchema = resolvedSchema
         }
     }
 
@@ -293,7 +327,9 @@ final class ConnectionToolbarState {
         databaseType = .mysql
         databaseVersion = nil
         connectionName = ""
-        databaseName = ""
+        currentDatabase = ""
+        currentSchema = nil
+        databaseGroupingStrategy = .byDatabase
         displayColor = databaseType.themeColor
         connectionState = .disconnected
         isExecuting = false

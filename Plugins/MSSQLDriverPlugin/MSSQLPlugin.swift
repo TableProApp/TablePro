@@ -540,11 +540,86 @@ private final class FreeTDSConnection: @unchecked Sendable {
             let converted = buf.withUnsafeMutableBufferPointer { bufPtr in
                 dbconvert(proc, srcType, ptr, srcLen, Int32(SYBCHAR), bufPtr.baseAddress, bufSize)
             }
-            if converted > 0 {
-                return String(bytes: buf.prefix(Int(converted)), encoding: .utf8)
-            }
+            guard converted > 0,
+                  let raw = String(bytes: buf.prefix(Int(converted)), encoding: .utf8)
+            else { return nil }
+            return reformatDatetimeIfNeeded(raw, srcType: srcType) ?? raw
+        }
+    }
+
+    /// FreeTDS in msdblib mode renders DATETIME / DATETIME2 / SMALLDATETIME via
+    /// `dbconvert(... SYBCHAR)` as `MMM d yyyy h:mm[:ss[:fffffff]]AM/PM`. SQL Server
+    /// cannot parse that format back through implicit string-to-datetime conversion,
+    /// so an UPDATE that includes the value in the SET or WHERE clause fails with
+    /// "Conversion failed when converting date and/or time from character string."
+    /// Reformat to ISO 8601 (`yyyy-MM-dd HH:mm:ss[.fffffff]`) which round-trips.
+    /// Preserves the original fractional precision verbatim, without Foundation.Date
+    /// truncation to milliseconds.
+    private static func reformatDatetimeIfNeeded(_ raw: String, srcType: Int32) -> String? {
+        switch srcType {
+        case Int32(SYBDATETIME), Int32(SYBDATETIME4), Int32(SYBDATETIMN):
+            break
+        case 40, 41, 42, 43:
+            // SYBMSDATE, SYBMSTIME, SYBMSDATETIME2, SYBMSDATETIMEOFFSET (TDS 7.3+).
+            // Not declared in CFreeTDS stub yet; matched by raw constant.
+            break
+        default:
             return nil
         }
+        return parseFreeTDSDatetime(raw)
+    }
+
+    private static let monthNamesByPrefix: [String: Int] = [
+        "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+        "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
+    ]
+
+    private static func parseFreeTDSDatetime(_ raw: String) -> String? {
+        let scanner = Scanner(string: raw)
+        scanner.charactersToBeSkipped = nil
+        _ = scanner.scanCharacters(from: .whitespaces)
+
+        guard let monthToken = scanner.scanCharacters(from: .letters),
+              monthToken.count >= 3,
+              let month = monthNamesByPrefix[String(monthToken.prefix(3))]
+        else { return nil }
+
+        _ = scanner.scanCharacters(from: .whitespaces)
+        guard let day = scanner.scanInt(), (1...31).contains(day) else { return nil }
+        _ = scanner.scanCharacters(from: .whitespaces)
+        guard let year = scanner.scanInt(), year > 0 else { return nil }
+        _ = scanner.scanCharacters(from: .whitespaces)
+        guard var hour = scanner.scanInt(), (0...23).contains(hour) else { return nil }
+
+        var minute = 0
+        var second = 0
+        var fractional = ""
+
+        if scanner.scanString(":") != nil {
+            guard let m = scanner.scanInt(), (0...59).contains(m) else { return nil }
+            minute = m
+        }
+        if scanner.scanString(":") != nil {
+            guard let s = scanner.scanInt(), (0...59).contains(s) else { return nil }
+            second = s
+        }
+        if scanner.scanString(":") != nil || scanner.scanString(".") != nil {
+            fractional = scanner.scanCharacters(from: .decimalDigits) ?? ""
+        }
+
+        if let ampm = scanner.scanCharacters(from: .letters)?.uppercased() {
+            if ampm == "PM", hour < 12 {
+                hour += 12
+            } else if ampm == "AM", hour == 12 {
+                hour = 0
+            }
+        }
+
+        var iso = String(format: "%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second)
+        if !fractional.isEmpty {
+            iso += "." + fractional
+        }
+        return iso
     }
 
     private static func freetdsTypeName(_ type: Int32) -> String {
@@ -641,6 +716,20 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
         try await conn.connect()
         self.freeTDSConn = conn
+
+        if let result = try? await conn.executeQuery("SELECT SCHEMA_NAME()"),
+           let serverSchema = result.rows.first?.first ?? nil,
+           !serverSchema.isEmpty {
+            _currentSchema = serverSchema
+        } else {
+            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self._currentSchema, privacy: .public)")
+        }
+
+        let formSchema = config.additionalFields["mssqlSchema"]
+        if let formSchema, !formSchema.isEmpty, formSchema != _currentSchema {
+            _currentSchema = formSchema
+        }
+
         if let result = try? await conn.executeQuery("SELECT @@VERSION"),
            let versionStr = result.rows.first?.first ?? nil {
             _serverVersion = String(versionStr.prefix(50))
@@ -685,6 +774,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateStatements(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [String?]],
         deletedRowIndices: Set<Int>,
@@ -704,7 +794,10 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     }
                 }
             case .update:
-                if let stmt = generateMssqlUpdate(table: table, columns: columns, change: change) {
+                if let stmt = generateMssqlUpdate(
+                    table: table, columns: columns,
+                    primaryKeyColumns: primaryKeyColumns, change: change
+                ) {
                     statements.append(stmt)
                 }
             case .delete:
@@ -715,7 +808,10 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         if !deleteChanges.isEmpty {
             for change in deleteChanges {
-                if let stmt = generateMssqlDelete(table: table, columns: columns, change: change) {
+                if let stmt = generateMssqlDelete(
+                    table: table, columns: columns,
+                    primaryKeyColumns: primaryKeyColumns, change: change
+                ) {
                     statements.append(stmt)
                 }
             }
@@ -751,9 +847,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func generateMssqlUpdate(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         change: PluginRowChange
     ) -> (statement: String, parameters: [String?])? {
         guard !change.cellChanges.isEmpty else { return nil }
+        guard let originalRow = change.originalRow else { return nil }
 
         let escapedTable = "[\(table.replacingOccurrences(of: "]", with: "]]"))]"
         var parameters: [String?] = []
@@ -764,15 +862,15 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return "\(col) = ?"
         }.joined(separator: ", ")
 
-        // Check if we have original row data to identify by PK or all columns
-        guard let originalRow = change.originalRow else { return nil }
+        let whereColumns: [String] = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
 
-        // Use all columns as WHERE clause for safety
         var conditions: [String] = []
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            let col = "[\(columnName.replacingOccurrences(of: "]", with: "]]"))]"
-            if let value = originalRow[index] {
+        for whereColumn in whereColumns {
+            guard let columnIndex = columns.firstIndex(of: whereColumn),
+                  columnIndex < originalRow.count
+            else { continue }
+            let col = "[\(whereColumn.replacingOccurrences(of: "]", with: "]]"))]"
+            if let value = originalRow[columnIndex] {
                 parameters.append(value)
                 conditions.append("\(col) = ?")
             } else {
@@ -783,15 +881,15 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !conditions.isEmpty else { return nil }
 
         let whereClause = conditions.joined(separator: " AND ")
-
-        // Without a reliable PK, use UPDATE TOP (1) for safety
-        let sql = "UPDATE TOP (1) \(escapedTable) SET \(setClauses) WHERE \(whereClause)"
+        let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
+        let sql = "UPDATE \(topClause)\(escapedTable) SET \(setClauses) WHERE \(whereClause)"
         return (statement: sql, parameters: parameters)
     }
 
     private func generateMssqlDelete(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         change: PluginRowChange
     ) -> (statement: String, parameters: [String?])? {
         guard let originalRow = change.originalRow else { return nil }
@@ -800,10 +898,14 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var parameters: [String?] = []
         var conditions: [String] = []
 
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            let col = "[\(columnName.replacingOccurrences(of: "]", with: "]]"))]"
-            if let value = originalRow[index] {
+        let whereColumns: [String] = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
+
+        for whereColumn in whereColumns {
+            guard let columnIndex = columns.firstIndex(of: whereColumn),
+                  columnIndex < originalRow.count
+            else { continue }
+            let col = "[\(whereColumn.replacingOccurrences(of: "]", with: "]]"))]"
+            if let value = originalRow[columnIndex] {
                 parameters.append(value)
                 conditions.append("\(col) = ?")
             } else {
@@ -814,7 +916,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !conditions.isEmpty else { return nil }
 
         let whereClause = conditions.joined(separator: " AND ")
-        let sql = "DELETE TOP (1) FROM \(escapedTable) WHERE \(whereClause)"
+        let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
+        let sql = "DELETE \(topClause)FROM \(escapedTable) WHERE \(whereClause)"
         return (statement: sql, parameters: parameters)
     }
 

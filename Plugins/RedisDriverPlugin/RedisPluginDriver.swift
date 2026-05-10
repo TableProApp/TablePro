@@ -596,6 +596,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateStatements(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [String?]],
         deletedRowIndices: Set<Int>,

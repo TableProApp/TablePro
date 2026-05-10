@@ -251,14 +251,6 @@ extension DatabaseManager {
             appSettingsStorage.saveLastSchema(nil, for: connectionId)
             await SchemaService.shared.invalidate(connectionId: connectionId)
             await reconnectSession(connectionId)
-        } else if pm?.capabilities.supportsSchemaSwitching == true,
-                  let schemaDriver = driver as? SchemaSwitchable {
-            try await schemaDriver.switchSchema(to: database)
-            updateSession(connectionId) { session in
-                session.currentSchema = database
-            }
-            appSettingsStorage.saveLastSchema(database, for: connectionId)
-            return
         } else if let adapter = driver as? PluginDriverAdapter {
             try await adapter.switchDatabase(to: database)
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
