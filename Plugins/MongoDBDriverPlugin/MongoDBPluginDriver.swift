@@ -129,7 +129,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return try await executeOperation(operation, connection: conn, startTime: startTime)
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await execute(query: query)
     }
 
@@ -538,10 +538,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])]? {
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let generator = MongoDBStatementGenerator(collectionName: table, columns: columns)
         return generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,

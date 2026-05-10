@@ -28,7 +28,7 @@ struct RedisStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["cache:mykey", "hello", nil]
         ]
 
@@ -57,7 +57,7 @@ struct RedisStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["session:abc", "data", "3600"]
         ]
 
@@ -87,7 +87,7 @@ struct RedisStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["mykey", "value", "0"]
         ]
 
@@ -116,7 +116,7 @@ struct RedisStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, "value", nil]
         ]
 
@@ -144,7 +144,7 @@ struct RedisStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["", "value", nil]
         ]
 
@@ -172,7 +172,7 @@ struct RedisStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["mykey", nil, nil]
         ]
 
@@ -570,7 +570,7 @@ struct RedisStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["my key", "hello world", nil]
         ]
 
@@ -599,7 +599,7 @@ struct RedisStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["key", "say \"hello\"", nil]
         ]
 
@@ -646,7 +646,7 @@ struct RedisStatementGeneratorTests {
             )
         ]
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["newkey", "newval", nil]
         ]
 

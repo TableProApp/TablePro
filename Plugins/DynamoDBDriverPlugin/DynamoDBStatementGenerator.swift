@@ -40,11 +40,11 @@ internal struct DynamoDBStatementGenerator {
 
     func generateStatements(
         from changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) throws -> [(statement: String, parameters: [String?])] {
-        var statements: [(statement: String, parameters: [String?])] = []
+    ) throws -> [(statement: String, parameters: [PluginCellValue])] {
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         for change in changes {
             switch change.type {
@@ -68,17 +68,17 @@ internal struct DynamoDBStatementGenerator {
 
     private func generateInsert(
         for change: PluginRowChange,
-        insertedRowData: [Int: [String?]]
-    ) throws -> [(statement: String, parameters: [String?])] {
+        insertedRowData: [Int: [PluginCellValue]]
+    ) throws -> [(statement: String, parameters: [PluginCellValue])] {
         var values: [String: String?] = [:]
 
         if let rowData = insertedRowData[change.rowIndex] {
             for (index, column) in columns.enumerated() where index < rowData.count {
-                values[column] = rowData[index]
+                values[column] = rowData[index].asText
             }
         } else {
             for cellChange in change.cellChanges {
-                values[cellChange.columnName] = cellChange.newValue
+                values[cellChange.columnName] = cellChange.newValue.asText
             }
         }
 
@@ -108,7 +108,7 @@ internal struct DynamoDBStatementGenerator {
 
     private func generateUpdate(
         for change: PluginRowChange
-    ) throws -> [(statement: String, parameters: [String?])] {
+    ) throws -> [(statement: String, parameters: [PluginCellValue])] {
         guard !change.cellChanges.isEmpty else { return [] }
 
         let nonKeyChanges = change.cellChanges.filter { !keyColumnNames.contains($0.columnName) }
@@ -127,7 +127,7 @@ internal struct DynamoDBStatementGenerator {
             let typeIndex = columns.firstIndex(of: cellChange.columnName) ?? 0
             let typeName = typeIndex < columnTypeNames.count ? columnTypeNames[typeIndex] : "S"
             let formattedValue: String
-            if let newValue = cellChange.newValue {
+            if let newValue = cellChange.newValue.asText {
                 formattedValue = try formatValue(newValue, typeName: typeName)
             } else {
                 formattedValue = "NULL"
@@ -145,7 +145,7 @@ internal struct DynamoDBStatementGenerator {
 
     private func generateDelete(
         for change: PluginRowChange
-    ) throws -> (statement: String, parameters: [String?])? {
+    ) throws -> (statement: String, parameters: [PluginCellValue])? {
         guard let whereClause = try buildWhereClause(from: change) else {
             Self.logger.warning("Skipping DELETE - cannot build WHERE clause")
             return nil
@@ -166,7 +166,7 @@ internal struct DynamoDBStatementGenerator {
         for key in keySchema {
             guard let colIndex = columns.firstIndex(of: key.name),
                   colIndex < originalRow.count,
-                  let value = originalRow[colIndex]
+                  let value = originalRow[colIndex].asText
             else { return nil }
 
             let typeName = colIndex < columnTypeNames.count ? columnTypeNames[colIndex] : "S"

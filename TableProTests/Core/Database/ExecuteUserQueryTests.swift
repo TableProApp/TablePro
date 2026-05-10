@@ -106,12 +106,12 @@ struct ExecuteUserQueryTests {
 
 private final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var lastExecutedQuery: String?
-    private(set) var lastParameters: [String?]?
-    private let rowsToReturn: [[String?]]
+    private(set) var lastParameters: [PluginCellValue]?
+    private let rowsToReturn: [[PluginCellValue]]
     private let statusMessage: String?
 
     init(rows: [[String?]], statusMessage: String? = nil) {
-        self.rowsToReturn = rows
+        self.rowsToReturn = rows.map { row in row.map(PluginCellValue.fromOptional) }
         self.statusMessage = statusMessage
     }
 
@@ -130,7 +130,7 @@ private final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         )
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         lastExecutedQuery = query
         lastParameters = parameters
         return PluginQueryResult(

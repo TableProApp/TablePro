@@ -129,7 +129,7 @@ private struct ClickHouseError: Error, PluginDriverError {
 private struct CHQueryResult {
     let columns: [String]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let affectedRows: Int
     let isTruncated: Bool
 }
@@ -223,7 +223,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         if let result = try? await executeRaw("SELECT version()"),
-           let versionStr = result.rows.first?.first ?? nil {
+           let versionStr = result.rows.first?.first?.asText {
             _serverVersion = versionStr
         }
 
@@ -261,7 +261,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else {
             return try await execute(query: query)
         }
@@ -292,8 +292,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: sql)
         return result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[safe: 0] ?? nil else { return nil }
-            let engine = row[safe: 1] ?? nil
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let engine = row[safe: 1]?.asText
             let tableType = (engine?.contains("View") == true) ? "VIEW" : "TABLE"
             return PluginTableInfo(name: name, type: tableType)
         }
@@ -307,8 +307,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             WHERE database = currentDatabase() AND name = '\(escapedTable)'
             """
         let pkResult = try await execute(query: pkSql)
-        let primaryKey = pkResult.rows.first.flatMap { $0[safe: 0] ?? nil } ?? ""
-        let sortingKey = pkResult.rows.first.flatMap { $0[safe: 1] ?? nil } ?? ""
+        let primaryKey = pkResult.rows.first.flatMap { $0[safe: 0]?.asText } ?? ""
+        let sortingKey = pkResult.rows.first.flatMap { $0[safe: 1]?.asText } ?? ""
         let keyString = primaryKey.isEmpty ? sortingKey : primaryKey
         let pkColumns = Set(keyString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
 
@@ -320,11 +320,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: sql)
         return result.rows.compactMap { row -> PluginColumnInfo? in
-            guard let name = row[safe: 0] ?? nil else { return nil }
-            let dataType = (row[safe: 1] ?? nil) ?? "String"
-            let defaultKind = row[safe: 2] ?? nil
-            let defaultExpr = row[safe: 3] ?? nil
-            let comment = row[safe: 4] ?? nil
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let dataType = (row[safe: 1]?.asText) ?? "String"
+            let defaultKind = row[safe: 2]?.asText
+            let defaultExpr = row[safe: 3]?.asText
+            let comment = row[safe: 4]?.asText
 
             let isNullable = dataType.hasPrefix("Nullable(")
 
@@ -361,9 +361,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let pkResult = try await execute(query: pkSql)
         var pkLookup: [String: Set<String>] = [:]
         for row in pkResult.rows {
-            guard let tableName = row[safe: 0] ?? nil else { continue }
-            let primaryKey = (row[safe: 1] ?? nil) ?? ""
-            let sortingKey = (row[safe: 2] ?? nil) ?? ""
+            guard let tableName = row[safe: 0]?.asText else { continue }
+            let primaryKey = (row[safe: 1]?.asText) ?? ""
+            let sortingKey = (row[safe: 2]?.asText) ?? ""
             let keyString = primaryKey.isEmpty ? sortingKey : primaryKey
             guard !keyString.isEmpty else { continue }
             let cols = Set(keyString.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) })
@@ -379,12 +379,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: sql)
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
-            guard let tableName = row[safe: 0] ?? nil,
-                  let colName = row[safe: 1] ?? nil else { continue }
-            let dataType = (row[safe: 2] ?? nil) ?? "String"
-            let defaultKind = row[safe: 3] ?? nil
-            let defaultExpr = row[safe: 4] ?? nil
-            let comment = row[safe: 5] ?? nil
+            guard let tableName = row[safe: 0]?.asText,
+                  let colName = row[safe: 1]?.asText else { continue }
+            let dataType = (row[safe: 2]?.asText) ?? "String"
+            let defaultKind = row[safe: 3]?.asText
+            let defaultExpr = row[safe: 4]?.asText
+            let comment = row[safe: 5]?.asText
 
             let isNullable = dataType.hasPrefix("Nullable(")
 
@@ -422,7 +422,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let sortingResult = try await execute(query: sortingKeySql)
         if let row = sortingResult.rows.first,
-           let sortingKey = row[safe: 0] ?? nil, !sortingKey.isEmpty {
+           let sortingKey = row[safe: 0]?.asText, !sortingKey.isEmpty {
             let columns = sortingKey.components(separatedBy: ",").map {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -441,8 +441,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let skippingResult = try await execute(query: skippingSql)
         for row in skippingResult.rows {
-            guard let idxName = row[safe: 0] ?? nil else { continue }
-            let expr = (row[safe: 1] ?? nil) ?? ""
+            guard let idxName = row[safe: 0]?.asText else { continue }
+            let expr = (row[safe: 1]?.asText) ?? ""
             let columns = expr.components(separatedBy: ",").map {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -469,7 +469,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             WHERE database = currentDatabase() AND table = '\(escapedTable)' AND active = 1
             """
         let result = try await execute(query: sql)
-        if let row = result.rows.first, let cell = row.first, let str = cell {
+        if let row = result.rows.first, let cell = row.first, let str = cell.asText {
             return Int(str)
         }
         return nil
@@ -479,7 +479,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let escapedTable = table.replacingOccurrences(of: "`", with: "``")
         let sql = "SHOW CREATE TABLE `\(escapedTable)`"
         let result = try await execute(query: sql)
-        return result.rows.first?.first?.flatMap { $0 } ?? ""
+        return result.rows.first?.first?.asText ?? ""
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -489,7 +489,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             WHERE database = currentDatabase() AND name = '\(escapedView)'
             """
         let result = try await execute(query: sql)
-        return result.rows.first?.first?.flatMap { $0 } ?? ""
+        return result.rows.first?.first?.asText ?? ""
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -500,8 +500,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             WHERE database = currentDatabase() AND name = '\(escapedTable)'
             """
         let engineResult = try await execute(query: engineSql)
-        let engine = engineResult.rows.first.flatMap { $0[safe: 0] ?? nil }
-        let tableComment = engineResult.rows.first.flatMap { $0[safe: 1] ?? nil }
+        let engine = engineResult.rows.first.flatMap { $0[safe: 0]?.asText }
+        let tableComment = engineResult.rows.first.flatMap { $0[safe: 1]?.asText }
 
         let partsSql = """
             SELECT sum(rows), sum(bytes_on_disk)
@@ -510,8 +510,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let partsResult = try await execute(query: partsSql)
         if let row = partsResult.rows.first {
-            let rowCount = (row[safe: 0] ?? nil).flatMap { Int64($0) }
-            let sizeBytes = (row[safe: 1] ?? nil).flatMap { Int64($0) } ?? 0
+            let rowCount = (row[safe: 0]?.asText).flatMap { Int64($0) }
+            let sizeBytes = (row[safe: 1]?.asText).flatMap { Int64($0) } ?? 0
             return PluginTableMetadata(
                 tableName: table,
                 dataSize: sizeBytes,
@@ -527,7 +527,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchDatabases() async throws -> [String] {
         let result = try await execute(query: "SHOW DATABASES")
-        return result.rows.compactMap { $0.first ?? nil }
+        return result.rows.compactMap { $0.first?.asText }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
@@ -538,8 +538,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: sql)
         if let row = result.rows.first {
-            let tableCount = (row[safe: 0] ?? nil).flatMap { Int($0) } ?? 0
-            let sizeBytes = (row[safe: 1] ?? nil).flatMap { Int64($0) }
+            let tableCount = (row[safe: 0]?.asText).flatMap { Int($0) } ?? 0
+            let sizeBytes = (row[safe: 1]?.asText).flatMap { Int64($0) }
             return PluginDatabaseMetadata(
                 name: database,
                 tableCount: tableCount,
@@ -558,9 +558,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: sql)
         return result.rows.compactMap { row -> PluginDatabaseMetadata? in
-            guard let name = row[safe: 0] ?? nil else { return nil }
-            let tableCount = (row[safe: 1] ?? nil).flatMap { Int($0) } ?? 0
-            let sizeBytes = (row[safe: 2] ?? nil).flatMap { Int64($0) }
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let tableCount = (row[safe: 1]?.asText).flatMap { Int($0) } ?? 0
+            let sizeBytes = (row[safe: 2]?.asText).flatMap { Int64($0) }
             return PluginDatabaseMetadata(name: name, tableCount: tableCount, sizeBytes: sizeBytes)
         }
     }
@@ -603,11 +603,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])]? {
-        var statements: [(statement: String, parameters: [String?])] = []
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         for change in changes {
             switch change.type {
@@ -636,13 +636,13 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func generateClickHouseInsert(
         table: String,
         columns: [String],
-        values: [String?]
-    ) -> (statement: String, parameters: [String?])? {
+        values: [PluginCellValue]
+    ) -> (statement: String, parameters: [PluginCellValue])? {
         var nonDefaultColumns: [String] = []
-        var parameters: [String?] = []
+        var parameters: [PluginCellValue] = []
 
         for (index, value) in values.enumerated() {
-            if value == "__DEFAULT__" { continue }
+            if value.asText == "__DEFAULT__" { continue }
             guard index < columns.count else { continue }
             nonDefaultColumns.append("`\(columns[index].replacingOccurrences(of: "`", with: "``"))`")
             parameters.append(value)
@@ -660,11 +660,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         table: String,
         columns: [String],
         change: PluginRowChange
-    ) -> (statement: String, parameters: [String?])? {
+    ) -> (statement: String, parameters: [PluginCellValue])? {
         guard !change.cellChanges.isEmpty else { return nil }
 
         let escapedTable = "`\(table.replacingOccurrences(of: "`", with: "``"))`"
-        var parameters: [String?] = []
+        var parameters: [PluginCellValue] = []
 
         let setClauses = change.cellChanges.map { cellChange -> String in
             let col = "`\(cellChange.columnName.replacingOccurrences(of: "`", with: "``"))`"
@@ -684,9 +684,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         table: String,
         columns: [String],
         change: PluginRowChange
-    ) -> (statement: String, parameters: [String?])? {
+    ) -> (statement: String, parameters: [PluginCellValue])? {
         let escapedTable = "`\(table.replacingOccurrences(of: "`", with: "``"))`"
-        var parameters: [String?] = []
+        var parameters: [PluginCellValue] = []
 
         guard let whereClause = buildWhereClause(
             columns: columns, change: change, parameters: &parameters
@@ -699,7 +699,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func buildWhereClause(
         columns: [String],
         change: PluginRowChange,
-        parameters: inout [String?]
+        parameters: inout [PluginCellValue]
     ) -> String? {
         guard let originalRow = change.originalRow else { return nil }
 
@@ -707,11 +707,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         for (index, columnName) in columns.enumerated() {
             guard index < originalRow.count else { continue }
             let col = "`\(columnName.replacingOccurrences(of: "`", with: "``"))`"
-            if let value = originalRow[index] {
+            let value = originalRow[index]
+            if value.isNull {
+                conditions.append("\(col) IS NULL")
+            } else {
                 parameters.append(value)
                 conditions.append("\(col) = ?")
-            } else {
-                conditions.append("\(col) IS NULL")
             }
         }
 
@@ -980,18 +981,18 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let columns = lines[0].components(separatedBy: "\t")
         let columnTypes = lines[1].components(separatedBy: "\t")
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         var truncated = false
         for i in 2..<lines.count {
             let line = lines[i]
             if line.isEmpty { continue }
 
             let fields = line.components(separatedBy: "\t")
-            let row = fields.map { field -> String? in
+            let row: [PluginCellValue] = fields.map { field in
                 if field == "\\N" {
-                    return nil
+                    return .null
                 }
-                return Self.unescapeTsvField(field)
+                return .text(Self.unescapeTsvField(field))
             }
             rows.append(row)
             if rows.count >= PluginRowLimits.emergencyMax {
@@ -1039,7 +1040,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Convert `?` placeholders to `{p1:String}` and build parameter map for ClickHouse HTTP params.
     private static func buildClickHouseParams(
         query: String,
-        parameters: [String?]
+        parameters: [PluginCellValue]
     ) -> (String, [String: String?]) {
         var converted = ""
         var paramIndex = 0
@@ -1073,7 +1074,14 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var paramMap: [String: String?] = [:]
         for i in 0..<paramIndex where i < parameters.count {
-            paramMap["p\(i + 1)"] = parameters[i]
+            switch parameters[i] {
+            case .null:
+                paramMap["p\(i + 1)"] = nil
+            case .text(let s):
+                paramMap["p\(i + 1)"] = s
+            case .bytes(let d):
+                paramMap["p\(i + 1)"] = "0x" + d.map { String(format: "%02X", $0) }.joined()
+            }
         }
 
         return (converted, paramMap)
@@ -1156,25 +1164,25 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 continue
             }
 
-            var row: [String?] = []
+            var row: [PluginCellValue] = []
             for colName in columnOrder {
                 if let value = json[colName] {
                     if value is NSNull {
-                        row.append(nil)
+                        row.append(.null)
                     } else if let str = value as? String {
-                        row.append(str)
+                        row.append(.text(str))
                     } else if let num = value as? NSNumber {
-                        row.append(num.stringValue)
+                        row.append(.text(num.stringValue))
                     } else {
                         if let jsonData = try? JSONSerialization.data(withJSONObject: value),
                            let jsonStr = String(data: jsonData, encoding: .utf8) {
-                            row.append(jsonStr)
+                            row.append(.text(jsonStr))
                         } else {
-                            row.append(String(describing: value))
+                            row.append(.text(String(describing: value)))
                         }
                     }
                 } else {
-                    row.append(nil)
+                    row.append(.null)
                 }
             }
 

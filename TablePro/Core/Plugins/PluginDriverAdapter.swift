@@ -26,12 +26,16 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [String?])]? {
-        pluginDriver.generateStatements(
+        let pluginRowData = insertedRowData.mapValues { row in
+            row.map(PluginCellValue.fromOptional)
+        }
+        let result = pluginDriver.generateStatements(
             table: table, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
-            insertedRowData: insertedRowData,
+            insertedRowData: pluginRowData,
             deletedRowIndices: deletedRowIndices,
             insertedRowIndices: insertedRowIndices
         )
+        return result?.map { (statement: $0.statement, parameters: $0.parameters.map { $0.asText }) }
     }
 
     /// The underlying plugin driver, exposed for DDL schema generation delegation.
@@ -124,28 +128,30 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
-        let stringParams = parameters.map { param -> String? in
-            guard let p = param else { return nil }
-            return Self.stringValue(for: p)
+        let cellParams: [PluginCellValue] = parameters.map { param in
+            guard let p = param else { return .null }
+            if let data = p as? Data { return .bytes(data) }
+            return .text(Self.stringValue(for: p))
         }
-        let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: stringParams)
+        let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: cellParams)
         return mapQueryResult(pluginResult)
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
-        let stringParams: [String?]?
+        let cellParams: [PluginCellValue]?
         if let parameters {
-            stringParams = parameters.map { param -> String? in
-                guard let p = param else { return nil }
-                return Self.stringValue(for: p)
+            cellParams = parameters.map { param -> PluginCellValue in
+                guard let p = param else { return .null }
+                if let data = p as? Data { return .bytes(data) }
+                return .text(Self.stringValue(for: p))
             }
         } else {
-            stringParams = nil
+            cellParams = nil
         }
         let pluginResult = try await pluginDriver.executeUserQuery(
             query: query,
             rowCap: rowCap,
-            parameters: stringParams
+            parameters: cellParams
         )
         return mapQueryResult(pluginResult)
     }
@@ -515,10 +521,19 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
         let columnTypes = pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) }
+        let stringRows: [[String?]] = pluginResult.rows.map { row in
+            row.map { cell -> String? in
+                switch cell {
+                case .null: return nil
+                case .text(let s): return s
+                case .bytes(let d): return String(data: d, encoding: .isoLatin1) ?? ""
+                }
+            }
+        }
         var result = QueryResult(
             columns: pluginResult.columns,
             columnTypes: columnTypes,
-            rows: pluginResult.rows,
+            rows: stringRows,
             rowsAffected: pluginResult.rowsAffected,
             executionTime: pluginResult.executionTime,
             error: nil

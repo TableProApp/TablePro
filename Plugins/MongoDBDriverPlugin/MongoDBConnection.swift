@@ -1168,9 +1168,12 @@ private extension MongoDBConnection {
                 }
             }
 
-            let row: [String?] = columns.map { column in
-                guard let value = dict[column] else { return nil }
-                return BsonDocumentFlattener.stringValue(for: value)
+            let row: [PluginCellValue] = columns.map { column in
+                guard let value = dict[column] else { return .null }
+                if let data = value as? Data {
+                    return .bytes(data)
+                }
+                return PluginCellValue.fromOptional(BsonDocumentFlattener.stringValue(for: value))
             }
             continuation.yield(.rows([row]))
         }

@@ -60,7 +60,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         self.libpqConnection = pqConn
 
         if let schemaResult = try? await pqConn.executeQuery("SELECT current_schema()"),
-           let schema = schemaResult.rows.first?.first.flatMap({ $0 }) {
+           let schema = schemaResult.rows.first?.first?.asText {
             _currentSchema = schema
         }
     }
@@ -103,7 +103,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard let pqConn = libpqConnection else {
             throw LibPQPluginError.notConnected
         }
@@ -225,9 +225,9 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY table_name
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row in
-            guard let name = row[0] else { return nil }
-            let typeStr = row[1] ?? "BASE TABLE"
+        return result.rows.compactMap { row -> PluginTableInfo? in
+            guard let name = row[0].asText else { return nil }
+            let typeStr = row[1].asText ?? "BASE TABLE"
             let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
             return PluginTableInfo(name: name, type: type)
         }
@@ -253,18 +253,18 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY ix.indisprimary DESC, i.relname
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row in
-            guard row.count >= 5, let name = row[0], let columnsStr = row[1] else { return nil }
+        return result.rows.compactMap { row -> PluginIndexInfo? in
+            guard row.count >= 5, let name = row[0].asText, let columnsStr = row[1].asText else { return nil }
             let columns = columnsStr
                 .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
                 .components(separatedBy: ",")
-            let whereClause = row.count > 5 ? row[5] : nil
+            let whereClause = row.count > 5 ? row[5].asText : nil
             return PluginIndexInfo(
                 name: name,
                 columns: columns,
-                isUnique: row[2] == "t",
-                isPrimary: row[3] == "t",
-                type: row[4]?.uppercased() ?? "BTREE",
+                isUnique: row[2].asText == "t",
+                isPrimary: row[3].asText == "t",
+                type: row[4].asText?.uppercased() ?? "BTREE",
                 whereClause: whereClause
             )
         }
@@ -296,21 +296,21 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY tc.constraint_name
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row in
+        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
             guard row.count >= 7,
-                  let name = row[0],
-                  let column = row[1],
-                  let refTable = row[2],
-                  let refColumn = row[3]
+                  let name = row[0].asText,
+                  let column = row[1].asText,
+                  let refTable = row[2].asText,
+                  let refColumn = row[3].asText
             else { return nil }
             return PluginForeignKeyInfo(
                 name: name,
                 column: column,
                 referencedTable: refTable,
                 referencedColumn: refColumn,
-                referencedSchema: row[4],
-                onDelete: row[5] ?? "NO ACTION",
-                onUpdate: row[6] ?? "NO ACTION"
+                referencedSchema: row[4].asText,
+                onDelete: row[5].asText ?? "NO ACTION",
+                onUpdate: row[6].asText ?? "NO ACTION"
             )
         }
     }
@@ -344,20 +344,20 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var grouped: [String: [PluginForeignKeyInfo]] = [:]
         for row in result.rows {
             guard row.count >= 8,
-                  let tableName = row[0],
-                  let name = row[1],
-                  let column = row[2],
-                  let refTable = row[3],
-                  let refColumn = row[4]
+                  let tableName = row[0].asText,
+                  let name = row[1].asText,
+                  let column = row[2].asText,
+                  let refTable = row[3].asText,
+                  let refColumn = row[4].asText
             else { continue }
             let fk = PluginForeignKeyInfo(
                 name: name,
                 column: column,
                 referencedTable: refTable,
                 referencedColumn: refColumn,
-                referencedSchema: row[5],
-                onDelete: row[6] ?? "NO ACTION",
-                onUpdate: row[7] ?? "NO ACTION"
+                referencedSchema: row[5].asText,
+                onDelete: row[6].asText ?? "NO ACTION",
+                onUpdate: row[7].asText ?? "NO ACTION"
             )
             grouped[tableName, default: []].append(fk)
         }
@@ -374,7 +374,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               )
             """
         let result = try await execute(query: query)
-        guard let firstRow = result.rows.first, let value = firstRow[0], let count = Int(value) else { return nil }
+        guard let firstRow = result.rows.first, let value = firstRow[0].asText, let count = Int(value) else { return nil }
         return count >= 0 ? count : nil
     }
 
@@ -445,12 +445,12 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let (cols, cons, idxs) = try await (columnsResult, constraintsResult, indexesResult)
 
-        let columnDefs = cols.rows.compactMap { $0[0] }
+        let columnDefs = cols.rows.compactMap { $0[0].asText }
         guard !columnDefs.isEmpty else {
             throw LibPQPluginError(message: "Failed to fetch DDL for table '\(table)'", sqlState: nil, detail: nil)
         }
 
-        let constraints = cons.rows.compactMap { $0[0] }
+        let constraints = cons.rows.compactMap { $0[0].asText }
         var parts = columnDefs
         parts.append(contentsOf: constraints)
 
@@ -459,7 +459,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             parts.joined(separator: ",\n  ") +
             "\n);"
 
-        let indexDefs = idxs.rows.compactMap { $0[0] }
+        let indexDefs = idxs.rows.compactMap { $0[0].asText }
         if indexDefs.isEmpty { return ddl }
         return ddl + "\n\n" + indexDefs.joined(separator: ";\n") + ";"
     }
@@ -472,7 +472,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               AND schemaname = '\(escapedSchema)'
             """
         let result = try await execute(query: query)
-        guard let firstRow = result.rows.first, let ddl = firstRow[0] else {
+        guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
             throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
         }
         return ddl
@@ -496,11 +496,11 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return PluginTableMetadata(tableName: table)
         }
 
-        let totalSize = !row.isEmpty ? Int64(row[0] ?? "0") : nil
-        let dataSize = row.count > 1 ? Int64(row[1] ?? "0") : nil
-        let indexSize = row.count > 2 ? Int64(row[2] ?? "0") : nil
-        let rowCount = row.count > 3 ? Int64(row[3] ?? "0") : nil
-        let comment = row.count > 4 ? row[4] : nil
+        let totalSize = !row.isEmpty ? Int64(row[0].asText ?? "0") : nil
+        let dataSize = row.count > 1 ? Int64(row[1].asText ?? "0") : nil
+        let indexSize = row.count > 2 ? Int64(row[2].asText ?? "0") : nil
+        let rowCount = row.count > 3 ? Int64(row[3].asText ?? "0") : nil
+        let comment = row.count > 4 ? row[4].asText : nil
 
         return PluginTableMetadata(
             tableName: table,
@@ -515,12 +515,12 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchDatabases() async throws -> [String] {
         let result = try await execute(query: "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
-        return result.rows.compactMap { row in row.first.flatMap { $0 } }
+        return result.rows.compactMap { row in row.first?.asText }
     }
 
     func fetchSchemas() async throws -> [String] {
         let result = try await execute(query: PostgreSQLSchemaQueries.listSchemas)
-        return result.rows.compactMap { row in row.first.flatMap { $0 } }
+        return result.rows.compactMap { row in row.first?.asText }
     }
 
     func switchSchema(to schema: String) async throws {
@@ -540,8 +540,8 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         """
         let result = try await execute(query: query)
         let row = result.rows.first
-        let tableCount = Int(row?[0] ?? "0") ?? 0
-        let sizeBytes = Int64(row?[1] ?? "0") ?? 0
+        let tableCount = Int(row?[0].asText ?? "0") ?? 0
+        let sizeBytes = Int64(row?[1].asText ?? "0") ?? 0
 
         let systemDatabases = ["postgres", "template0", "template1"]
         let isSystem = systemDatabases.contains(database)
@@ -563,9 +563,9 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY d.datname
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row in
-            guard let dbName = row[0] else { return nil }
-            let sizeBytes = Int64(row[1] ?? "0") ?? 0
+        return result.rows.compactMap { row -> PluginDatabaseMetadata? in
+            guard let dbName = row[0].asText else { return nil }
+            let sizeBytes = Int64(row[1].asText ?? "0") ?? 0
             let isSystem = systemDatabases.contains(dbName)
             return PluginDatabaseMetadata(name: dbName, sizeBytes: sizeBytes, isSystemDatabase: isSystem)
         }
@@ -589,8 +589,8 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY t.typname
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row in
-            guard let typeName = row[0], let labelsStr = row[1] else { return nil }
+        return result.rows.compactMap { row -> (name: String, labels: [String])? in
+            guard let typeName = row[0].asText, let labelsStr = row[1].asText else { return nil }
             let labels = labelsStr
                 .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
                 .components(separatedBy: ",")
@@ -619,14 +619,14 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
         let schemaName = schema ?? _currentSchema
-        return result.rows.compactMap { row in
-            guard let seqName = row[0] else { return nil }
-            let startVal = row[1] ?? "1"
-            let minVal = row[2] ?? "1"
-            let maxVal = row[3] ?? "9223372036854775807"
-            let incrementBy = row[4] ?? "1"
-            let cycle = row[5] == "t" ? " CYCLE" : ""
-            let lastValue = row.count > 6 ? row[6] : nil
+        return result.rows.compactMap { row -> (name: String, ddl: String)? in
+            guard let seqName = row[0].asText else { return nil }
+            let startVal = row[1].asText ?? "1"
+            let minVal = row[2].asText ?? "1"
+            let maxVal = row[3].asText ?? "9223372036854775807"
+            let incrementBy = row[4].asText ?? "1"
+            let cycle = row[5].asText == "t" ? " CYCLE" : ""
+            let lastValue = row.count > 6 ? row[6].asText : nil
             let quotedSeqName = "\"\(seqName.replacingOccurrences(of: "\"", with: "\"\""))\""
             let escapedSchemaForLiteral = schemaName.replacingOccurrences(of: "'", with: "''")
             let escapedSeqForLiteral = seqName.replacingOccurrences(of: "'", with: "''")
@@ -862,15 +862,15 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
             guard let row = result.rows.first,
                   row.count >= 4,
-                  let collate = row[0],
-                  let ctype = row[1] else {
+                  let collate = row[0].asText,
+                  let ctype = row[1].asText else {
                 return nil
             }
             return Template1Defaults(
                 collate: collate,
                 ctype: ctype,
-                provider: row[2],
-                iculocale: row[3]
+                provider: row[2].asText,
+                iculocale: row[3].asText
             )
         } catch {
             Self.logger.error(
@@ -888,7 +888,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             var libc: [String] = []
             var icu: [String] = []
             for row in result.rows {
-                guard row.count >= 2, let name = row[0], let provider = row[1] else { continue }
+                guard row.count >= 2, let name = row[0].asText, let provider = row[1].asText else { continue }
                 switch provider {
                 case "b", "c":
                     libc.append(name)

@@ -214,6 +214,13 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
+        let tableRows = coordinator.tableRowsProvider()
+        if columnIndex < tableRows.columnTypes.count,
+           tableRows.columnTypes[columnIndex].isBlobType {
+            coordinator.showBlobEditorPopover(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex)
+            return
+        }
+
         if let value = coordinator.cellValue(at: row, column: columnIndex),
            value.containsLineBreak {
             coordinator.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)

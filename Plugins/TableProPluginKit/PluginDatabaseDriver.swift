@@ -14,14 +14,14 @@ public struct PluginRowChange: Sendable {
 
     public let rowIndex: Int
     public let type: ChangeType
-    public let cellChanges: [(columnIndex: Int, columnName: String, oldValue: String?, newValue: String?)]
-    public let originalRow: [String?]?
+    public let cellChanges: [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)]
+    public let originalRow: [PluginCellValue]?
 
     public init(
         rowIndex: Int,
         type: ChangeType,
-        cellChanges: [(columnIndex: Int, columnName: String, oldValue: String?, newValue: String?)],
-        originalRow: [String?]?
+        cellChanges: [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)],
+        originalRow: [PluginCellValue]?
     ) {
         self.rowIndex = rowIndex
         self.type = type
@@ -40,7 +40,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     // Queries
     func execute(query: String) async throws -> PluginQueryResult
-    func executeUserQuery(query: String, rowCap: Int?, parameters: [String?]?) async throws -> PluginQueryResult
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult
 
     // Schema
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
@@ -81,13 +81,13 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec?
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws
     func dropDatabase(name: String) async throws
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
     // Query building (optional, for NoSQL plugins)
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     // Statement generation (optional, for NoSQL plugins)
-    func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [String?]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [String?])]?
+    func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
 
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
@@ -245,7 +245,7 @@ public extension PluginDatabaseDriver {
 
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
-    func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [String?]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [String?])]? { nil }
+    func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? { nil }
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? { nil }
@@ -311,7 +311,7 @@ public extension PluginDatabaseDriver {
         return result
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else {
             return try await execute(query: query)
         }
@@ -327,7 +327,7 @@ public extension PluginDatabaseDriver {
         return try await execute(query: sql)
     }
 
-    private static func substituteQuestionMarks(query: String, parameters: [String?]) -> String {
+    private static func substituteQuestionMarks(query: String, parameters: [PluginCellValue]) -> String {
         let nsQuery = query as NSString
         let length = nsQuery.length
         var sql = ""
@@ -374,11 +374,7 @@ public extension PluginDatabaseDriver {
             }
 
             if char == questionMark && !inSingleQuote && !inDoubleQuote && paramIndex < parameters.count {
-                if let value = parameters[paramIndex] {
-                    sql.append(escapedParameterValue(value))
-                } else {
-                    sql.append("NULL")
-                }
+                sql.append(sqlLiteral(for: parameters[paramIndex]))
                 paramIndex += 1
             } else {
                 if let scalar = UnicodeScalar(char) {
@@ -394,7 +390,7 @@ public extension PluginDatabaseDriver {
         return sql
     }
 
-    private static func substituteDollarParams(query: String, parameters: [String?]) -> String {
+    private static func substituteDollarParams(query: String, parameters: [PluginCellValue]) -> String {
         let nsQuery = query as NSString
         let length = nsQuery.length
         var sql = ""
@@ -453,11 +449,7 @@ public extension PluginDatabaseDriver {
                     }
                 }
                 if !numStr.isEmpty, let paramNum = Int(numStr), paramNum >= 1, paramNum <= parameters.count {
-                    if let value = parameters[paramNum - 1] {
-                        sql.append(escapedParameterValue(value))
-                    } else {
-                        sql.append("NULL")
-                    }
+                    sql.append(sqlLiteral(for: parameters[paramNum - 1]))
                     i = j
                     continue
                 }
@@ -472,6 +464,23 @@ public extension PluginDatabaseDriver {
         }
 
         return sql
+    }
+
+    static func sqlLiteral(for value: PluginCellValue) -> String {
+        switch value {
+        case .null:
+            return "NULL"
+        case .text(let s):
+            return escapedParameterValue(s)
+        case .bytes(let data):
+            var hex = "X'"
+            hex.reserveCapacity(2 + data.count * 2 + 1)
+            for byte in data {
+                hex.append(String(format: "%02X", byte))
+            }
+            hex.append("'")
+            return hex
+        }
     }
 
     static func escapedParameterValue(_ value: String) -> String {
@@ -542,7 +551,7 @@ public extension PluginDatabaseDriver {
         return hasDigit
     }
 
-    func executeUserQuery(query: String, rowCap: Int?, parameters: [String?]?) async throws -> PluginQueryResult {
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
         let raw: PluginQueryResult
         if let parameters {
             raw = try await executeParameterized(query: query, parameters: parameters)

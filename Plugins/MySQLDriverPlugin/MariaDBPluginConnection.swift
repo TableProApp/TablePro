@@ -40,7 +40,7 @@ struct MariaDBPluginQueryResult {
     let columns: [String]
     let columnTypes: [UInt32]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let affectedRows: UInt64
     let insertId: UInt64
     let isTruncated: Bool
@@ -399,7 +399,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
     }
 
-    func executeParameterizedQuery(_ query: String, parameters: [Any?]) async throws -> MariaDBPluginQueryResult {
+    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
 
@@ -442,9 +442,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columns: [String] = []
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
+        var columnIsBinary: [Bool] = []
         columns.reserveCapacity(numFields)
         columnTypes.reserveCapacity(numFields)
         columnTypeNames.reserveCapacity(numFields)
+        columnIsBinary.reserveCapacity(numFields)
 
         if let fields = mysql_fetch_fields(resultPtr) {
             for i in 0..<numFields {
@@ -460,10 +462,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
                 columnTypeNames.append(mysqlTypeToString(fields + i))
+                columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
             }
         }
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
 
         let maxRows = PluginRowLimits.emergencyMax
@@ -495,7 +498,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
             let lengths = mysql_fetch_lengths(resultPtr)
 
-            var row: [String?] = []
+            var row: [PluginCellValue] = []
             row.reserveCapacity(numFields)
 
             for i in 0..<numFields {
@@ -504,14 +507,16 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
 
                     if columnTypes[i] == 255 {
-                        row.append(GeometryWKBParser.parse(bufferPtr))
+                        row.append(.text(GeometryWKBParser.parse(bufferPtr)))
+                    } else if columnIsBinary[i] {
+                        row.append(.bytes(Data(bufferPtr)))
                     } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                        row.append(str)
+                        row.append(.text(str))
                     } else {
-                        row.append(String(bytes: bufferPtr, encoding: .isoLatin1) ?? "")
+                        row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
                     }
                 } else {
-                    row.append(nil)
+                    row.append(.null)
                 }
             }
             rows.append(row)
@@ -556,7 +561,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     private func bindParameters(
-        _ parameters: [Any?],
+        _ parameters: [PluginCellValue],
         toStatement stmt: UnsafeMutablePointer<MYSQL_STMT>
     ) throws -> ParameterBindings {
         let paramCount = parameters.count
@@ -564,19 +569,18 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var buffers: [UnsafeMutableRawPointer?] = []
 
         for (index, param) in parameters.enumerated() {
-            if let param = param {
-                let stringValue: String
-                if let str = param as? String {
-                    stringValue = str
-                } else if let num = param as? any Numeric {
-                    stringValue = "\(num)"
-                } else {
-                    stringValue = "\(param)"
-                }
+            switch param {
+            case .null:
+                binds[index].buffer_type = MYSQL_TYPE_NULL
+                binds[index].is_null = UnsafeMutablePointer<my_bool>.allocate(capacity: 1)
+                binds[index].is_null?.pointee = 1
 
+            case .text(let stringValue):
                 let data = stringValue.data(using: .utf8) ?? Data()
-                let buffer = UnsafeMutableRawPointer.allocate(byteCount: data.count, alignment: 1)
-                data.copyBytes(to: buffer.assumingMemoryBound(to: UInt8.self), count: data.count)
+                let buffer = UnsafeMutableRawPointer.allocate(byteCount: max(data.count, 1), alignment: 1)
+                if !data.isEmpty {
+                    data.copyBytes(to: buffer.assumingMemoryBound(to: UInt8.self), count: data.count)
+                }
 
                 binds[index].buffer_type = MYSQL_TYPE_STRING
                 binds[index].buffer = buffer
@@ -587,10 +591,22 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 binds[index].is_null?.pointee = 0
 
                 buffers.append(buffer)
-            } else {
-                binds[index].buffer_type = MYSQL_TYPE_NULL
+
+            case .bytes(let data):
+                let buffer = UnsafeMutableRawPointer.allocate(byteCount: max(data.count, 1), alignment: 1)
+                if !data.isEmpty {
+                    data.copyBytes(to: buffer.assumingMemoryBound(to: UInt8.self), count: data.count)
+                }
+
+                binds[index].buffer_type = MYSQL_TYPE_LONG_BLOB
+                binds[index].buffer = buffer
+                binds[index].buffer_length = UInt(data.count)
+                binds[index].length = UnsafeMutablePointer<UInt>.allocate(capacity: 1)
+                binds[index].length?.pointee = UInt(data.count)
                 binds[index].is_null = UnsafeMutablePointer<my_bool>.allocate(capacity: 1)
-                binds[index].is_null?.pointee = 1
+                binds[index].is_null?.pointee = 0
+
+                buffers.append(buffer)
             }
         }
 
@@ -608,8 +624,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         metadata: UnsafeMutablePointer<MYSQL_RES>,
         columns: [String],
         columnTypes: [UInt32],
-        columnTypeNames: [String]
-    ) throws -> (rows: [[String?]], isTruncated: Bool) {
+        columnTypeNames: [String],
+        columnIsBinary: [Bool]
+    ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool) {
         let numFields = columns.count
         var resultBinds: [MYSQL_BIND] = Array(repeating: MYSQL_BIND(), count: numFields)
         var resultBuffers: [UnsafeMutableRawPointer] = []
@@ -642,7 +659,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             throw getStmtError(stmt)
         }
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         let maxRows = PluginRowLimits.emergencyMax
         var truncated = false
 
@@ -682,18 +699,20 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 }
             }
 
-            var row: [String?] = []
+            var row: [PluginCellValue] = []
             for i in 0..<numFields {
                 if resultBinds[i].is_null?.pointee == 1 {
-                    row.append(nil)
+                    row.append(.null)
                 } else {
                     let length = Int(resultBinds[i].length?.pointee ?? 0)
                     let buffer = resultBuffers[i].assumingMemoryBound(to: UInt8.self)
                     let data = Data(bytes: buffer, count: length)
-                    if let str = String(data: data, encoding: .utf8) {
-                        row.append(str)
+                    if columnIsBinary[i] {
+                        row.append(.bytes(data))
+                    } else if let str = String(data: data, encoding: .utf8) {
+                        row.append(.text(str))
                     } else {
-                        row.append(nil)
+                        row.append(.text(String(data: data, encoding: .isoLatin1) ?? ""))
                     }
                 }
             }
@@ -707,7 +726,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return (rows: rows, isTruncated: truncated)
     }
 
-    private func executeParameterizedQuerySync(_ query: String, parameters: [Any?]) throws -> MariaDBPluginQueryResult {
+    private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> MariaDBPluginQueryResult {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
@@ -772,6 +791,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columns: [String] = []
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
+        var columnIsBinary: [Bool] = []
         let numFields = Int(mysql_num_fields(metadata))
 
         if let fields = mysql_fetch_fields(metadata) {
@@ -788,12 +808,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
                 columnTypeNames.append(mysqlTypeToString(fields + i))
+                columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
             }
         }
 
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
-            columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames
+            columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
+            columnIsBinary: columnIsBinary
         )
 
         return MariaDBPluginQueryResult(
@@ -865,9 +887,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 var columns: [String] = []
                 var columnTypes: [UInt32] = []
                 var columnTypeNames: [String] = []
+                var columnIsBinary: [Bool] = []
                 columns.reserveCapacity(numFields)
                 columnTypes.reserveCapacity(numFields)
                 columnTypeNames.reserveCapacity(numFields)
+                columnIsBinary.reserveCapacity(numFields)
 
                 if let fields = mysql_fetch_fields(resultPtr) {
                     for i in 0..<numFields {
@@ -883,6 +907,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                         columnTypes.append(fieldType)
                         columnTypeNames.append(mysqlTypeToString(fields + i))
+                        columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
                     }
                 }
 
@@ -908,7 +933,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
                     let lengths = mysql_fetch_lengths(resultPtr)
 
-                    var row: [String?] = []
+                    var row: [PluginCellValue] = []
                     row.reserveCapacity(numFields)
 
                     for i in 0..<numFields {
@@ -917,14 +942,16 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                             let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
 
                             if columnTypes[i] == 255 {
-                                row.append(GeometryWKBParser.parse(bufferPtr))
+                                row.append(.text(GeometryWKBParser.parse(bufferPtr)))
+                            } else if columnIsBinary[i] {
+                                row.append(.bytes(Data(bufferPtr)))
                             } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                                row.append(str)
+                                row.append(.text(str))
                             } else {
-                                row.append(String(bytes: bufferPtr, encoding: .isoLatin1) ?? "")
+                                row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
                             }
                         } else {
-                            row.append(nil)
+                            row.append(.null)
                         }
                     }
 

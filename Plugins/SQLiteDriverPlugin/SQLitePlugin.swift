@@ -164,7 +164,7 @@ private actor SQLiteConnectionActor {
             }
         }
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         var rowsAffected = 0
         var truncated = false
 
@@ -174,24 +174,23 @@ private actor SQLiteConnectionActor {
                 break
             }
 
-            var row: [String?] = []
+            var row: [PluginCellValue] = []
 
             for i in 0..<columnCount {
                 let colType = sqlite3_column_type(statement, i)
                 if colType == SQLITE_NULL {
-                    row.append(nil)
+                    row.append(.null)
                 } else if colType == SQLITE_BLOB {
                     let byteCount = Int(sqlite3_column_bytes(statement, i))
                     if byteCount > 0, let blobPtr = sqlite3_column_blob(statement, i) {
-                        let data = Data(bytes: blobPtr, count: byteCount)
-                        row.append(String(data: data, encoding: .isoLatin1) ?? "")
+                        row.append(.bytes(Data(bytes: blobPtr, count: byteCount)))
                     } else {
-                        row.append("")
+                        row.append(.bytes(Data()))
                     }
                 } else if let text = sqlite3_column_text(statement, i) {
-                    row.append(String(cString: text))
+                    row.append(.text(String(cString: text)))
                 } else {
-                    row.append(nil)
+                    row.append(.null)
                 }
             }
 
@@ -265,24 +264,23 @@ private actor SQLiteConnectionActor {
                 return
             }
 
-            var row: [String?] = []
+            var row: [PluginCellValue] = []
 
             for i in 0..<columnCount {
                 let colType = sqlite3_column_type(statement, i)
                 if colType == SQLITE_NULL {
-                    row.append(nil)
+                    row.append(.null)
                 } else if colType == SQLITE_BLOB {
                     let byteCount = Int(sqlite3_column_bytes(statement, i))
                     if byteCount > 0, let blobPtr = sqlite3_column_blob(statement, i) {
-                        let data = Data(bytes: blobPtr, count: byteCount)
-                        row.append(String(data: data, encoding: .isoLatin1) ?? "")
+                        row.append(.bytes(Data(bytes: blobPtr, count: byteCount)))
                     } else {
-                        row.append("")
+                        row.append(.bytes(Data()))
                     }
                 } else if let text = sqlite3_column_text(statement, i) {
-                    row.append(String(cString: text))
+                    row.append(.text(String(cString: text)))
                 } else {
-                    row.append(nil)
+                    row.append(.null)
                 }
             }
 
@@ -301,7 +299,7 @@ private actor SQLiteConnectionActor {
         continuation.finish()
     }
 
-    func executeParameterizedQuery(_ query: String, stringParams: [String?]) throws -> SQLiteRawResult {
+    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) throws -> SQLiteRawResult {
         guard let db else {
             throw SQLitePluginError.notConnected
         }
@@ -320,30 +318,29 @@ private actor SQLiteConnectionActor {
             sqlite3_finalize(statement)
         }
 
-        for (index, param) in stringParams.enumerated() {
-            let bindIndex = Int32(index + 1)
+        let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-            if let stringValue = param {
-                // SQLITE_TRANSIENT ensures SQLite copies the string immediately,
-                // preventing use-after-free from Swift's temporary C string bridge
-                let bindResult = sqlite3_bind_text(
-                    statement, bindIndex, stringValue, -1,
-                    unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (index, param) in parameters.enumerated() {
+            let bindIndex = Int32(index + 1)
+            let bindResult: Int32
+
+            switch param {
+            case .null:
+                bindResult = sqlite3_bind_null(statement, bindIndex)
+            case .text(let stringValue):
+                bindResult = sqlite3_bind_text(statement, bindIndex, stringValue, -1, sqliteTransient)
+            case .bytes(let data):
+                bindResult = data.withUnsafeBytes { rawBuffer -> Int32 in
+                    let baseAddress = rawBuffer.baseAddress
+                    return sqlite3_bind_blob(statement, bindIndex, baseAddress, Int32(data.count), sqliteTransient)
+                }
+            }
+
+            if bindResult != SQLITE_OK {
+                let errorMessage = String(cString: sqlite3_errmsg(db))
+                throw SQLitePluginError.queryFailed(
+                    "Failed to bind parameter \(index): \(errorMessage)"
                 )
-                if bindResult != SQLITE_OK {
-                    let errorMessage = String(cString: sqlite3_errmsg(db))
-                    throw SQLitePluginError.queryFailed(
-                        "Failed to bind parameter \(index): \(errorMessage)"
-                    )
-                }
-            } else {
-                let bindResult = sqlite3_bind_null(statement, bindIndex)
-                if bindResult != SQLITE_OK {
-                    let errorMessage = String(cString: sqlite3_errmsg(db))
-                    throw SQLitePluginError.queryFailed(
-                        "Failed to bind NULL parameter \(index): \(errorMessage)"
-                    )
-                }
             }
         }
 
@@ -365,7 +362,7 @@ private actor SQLiteConnectionActor {
             }
         }
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         var rowsAffected = 0
         var truncated = false
 
@@ -375,24 +372,23 @@ private actor SQLiteConnectionActor {
                 break
             }
 
-            var row: [String?] = []
+            var row: [PluginCellValue] = []
 
             for i in 0..<columnCount {
                 let colType = sqlite3_column_type(statement, i)
                 if colType == SQLITE_NULL {
-                    row.append(nil)
+                    row.append(.null)
                 } else if colType == SQLITE_BLOB {
                     let byteCount = Int(sqlite3_column_bytes(statement, i))
                     if byteCount > 0, let blobPtr = sqlite3_column_blob(statement, i) {
-                        let data = Data(bytes: blobPtr, count: byteCount)
-                        row.append(String(data: data, encoding: .isoLatin1) ?? "")
+                        row.append(.bytes(Data(bytes: blobPtr, count: byteCount)))
                     } else {
-                        row.append("")
+                        row.append(.bytes(Data()))
                     }
                 } else if let text = sqlite3_column_text(statement, i) {
-                    row.append(String(cString: text))
+                    row.append(.text(String(cString: text)))
                 } else {
-                    row.append(nil)
+                    row.append(.null)
                 }
             }
 
@@ -419,7 +415,7 @@ private actor SQLiteConnectionActor {
 private struct SQLiteRawResult: Sendable {
     let columns: [String]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let rowsAffected: Int
     let executionTime: TimeInterval
     let isTruncated: Bool
@@ -507,8 +503,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
-        let rawResult = try await connectionActor.executeParameterizedQuery(query, stringParams: parameters)
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        let rawResult = try await connectionActor.executeParameterizedQuery(query, parameters: parameters)
         return PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
@@ -572,7 +568,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - User Query
 
-    func executeUserQuery(query: String, rowCap: Int?, parameters: [String?]?) async throws -> PluginQueryResult {
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
         if let parameters {
             let raw = try await executeParameterized(query: query, parameters: parameters)
             guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
@@ -590,7 +586,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let startTime = Date()
         var columns: [String] = []
         var columnTypeNames: [String] = []
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         var truncated = false
 
         let stream = streamRows(query: query)
@@ -639,8 +635,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         """
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
-            guard let name = row[safe: 0] ?? nil else { return nil }
-            let typeString = (row[safe: 1] ?? nil) ?? "table"
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let typeString = row[safe: 1]?.asText ?? "table"
             let tableType = typeString.lowercased() == "view" ? "VIEW" : "TABLE"
             return PluginTableInfo(name: name, type: tableType)
         }
@@ -653,15 +649,16 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         return result.rows.compactMap { row in
             guard row.count >= 6,
-                  let name = row[1],
-                  let dataType = row[2] else {
+                  let name = row[1].asText,
+                  let dataType = row[2].asText else {
                 return nil
             }
 
-            let isNullable = row[3] == "0"
+            let isNullable = row[3].asText == "0"
             // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
-            let isPrimaryKey = row[5] != nil && row[5] != "0"
-            let defaultValue = row[4]
+            let pkText = row[5].asText
+            let isPrimaryKey = pkText != nil && pkText != "0"
+            let defaultValue = row[4].asText
 
             return PluginColumnInfo(
                 name: name,
@@ -686,16 +683,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         for row in result.rows {
             guard row.count >= 7,
-                  let tableName = row[0],
-                  let columnName = row[2],
-                  let dataType = row[3] else {
+                  let tableName = row[0].asText,
+                  let columnName = row[2].asText,
+                  let dataType = row[3].asText else {
                 continue
             }
 
-            let isNullable = row[4] == "0"
-            let defaultValue = row[5]
+            let isNullable = row[4].asText == "0"
+            let defaultValue = row[5].asText
             // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
-            let isPrimaryKey = row[6] != nil && row[6] != "0"
+            let pkText = row[6].asText
+            let isPrimaryKey = pkText != nil && pkText != "0"
 
             let column = PluginColumnInfo(
                 name: columnName,
@@ -726,16 +724,16 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         for row in result.rows {
             guard row.count >= 7,
-                  let tableName = row[0],
-                  let id = row[1],
-                  let refTable = row[2],
-                  let fromCol = row[3],
-                  let toCol = row[4] else {
+                  let tableName = row[0].asText,
+                  let id = row[1].asText,
+                  let refTable = row[2].asText,
+                  let fromCol = row[3].asText,
+                  let toCol = row[4].asText else {
                 continue
             }
 
-            let onUpdate = row[5] ?? "NO ACTION"
-            let onDelete = row[6] ?? "NO ACTION"
+            let onUpdate = row[5].asText ?? "NO ACTION"
+            let onDelete = row[6].asText ?? "NO ACTION"
 
             let fk = PluginForeignKeyInfo(
                 name: "fk_\(tableName)_\(id)",
@@ -767,17 +765,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         for row in result.rows {
             guard row.count >= 4,
-                  let indexName = row[0] else { continue }
+                  let indexName = row[0].asText else { continue }
 
-            let isUnique = row[1] == "1"
-            let origin = row[2] ?? "c"
+            let isUnique = row[1].asText == "1"
+            let origin = row[2].asText ?? "c"
 
             if let idx = indexLookup[indexName] {
-                if let colName = row[3] {
+                if let colName = row[3].asText {
                     indexMap[idx].columns.append(colName)
                 }
             } else {
-                let columns: [String] = row[3].map { [$0] } ?? []
+                let columns: [String] = row[3].asText.map { [$0] } ?? []
                 indexLookup[indexName] = indexMap.count
                 indexMap.append((
                     name: indexName,
@@ -804,17 +802,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let query = "PRAGMA foreign_key_list('\(safeTable)')"
         let result = try await execute(query: query)
 
-        return result.rows.compactMap { row in
+        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
             guard row.count >= 5,
-                  let refTable = row[2],
-                  let fromCol = row[3],
-                  let toCol = row[4] else {
+                  let refTable = row[2].asText,
+                  let fromCol = row[3].asText,
+                  let toCol = row[4].asText else {
                 return nil
             }
 
-            let id = row[0] ?? "0"
-            let onUpdate = row.count >= 6 ? (row[5] ?? "NO ACTION") : "NO ACTION"
-            let onDelete = row.count >= 7 ? (row[6] ?? "NO ACTION") : "NO ACTION"
+            let id = row[0].asText ?? "0"
+            let onUpdate = row.count >= 6 ? (row[5].asText ?? "NO ACTION") : "NO ACTION"
+            let onDelete = row.count >= 7 ? (row[6].asText ?? "NO ACTION") : "NO ACTION"
 
             return PluginForeignKeyInfo(
                 name: "fk_\(table)_\(id)",
@@ -836,7 +834,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: query)
 
         guard let firstRow = result.rows.first,
-              let ddl = firstRow[0] else {
+              let ddl = firstRow[0].asText else {
             throw SQLitePluginError.queryFailed("Failed to fetch DDL for table '\(table)'")
         }
 
@@ -853,7 +851,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: query)
 
         guard let firstRow = result.rows.first,
-              let ddl = firstRow[0] else {
+              let ddl = firstRow[0].asText else {
             throw SQLitePluginError.queryFailed("Failed to fetch definition for view '\(view)'")
         }
 
@@ -865,8 +863,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let countQuery = "SELECT COUNT(*) FROM (SELECT 1 FROM \"\(safeTableName)\" LIMIT 100001)"
         let countResult = try await execute(query: countQuery)
         let rowCount: Int64? = {
-            guard let row = countResult.rows.first, let countStr = row.first else { return nil }
-            return Int64(countStr ?? "0")
+            guard let row = countResult.rows.first, let firstCell = row.first else { return nil }
+            return Int64(firstCell.asText ?? "0")
         }()
 
         return PluginTableMetadata(

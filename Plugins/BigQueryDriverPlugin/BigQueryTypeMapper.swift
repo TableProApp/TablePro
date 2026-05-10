@@ -11,10 +11,18 @@ import TableProPluginKit
 internal struct BigQueryTypeMapper {
     // MARK: - Row Flattening
 
-    static func flattenRows(from response: BQQueryResponse, schema: BQTableSchema) -> [[String?]] {
+    static func flattenRows(from response: BQQueryResponse, schema: BQTableSchema) -> [[PluginCellValue]] {
         guard let rows = response.rows, let fields = schema.fields else { return [] }
         return rows.map { row in
-            flattenRow(cells: row.f ?? [], fields: fields)
+            let stringCells = flattenRow(cells: row.f ?? [], fields: fields)
+            return stringCells.enumerated().map { index, raw -> PluginCellValue in
+                guard let value = raw else { return .null }
+                let isBinary = (index < fields.count) && fields[index].type.uppercased() == "BYTES"
+                if isBinary, let data = Data(base64Encoded: value) {
+                    return .bytes(data)
+                }
+                return .text(value)
+            }
         }
     }
 

@@ -303,7 +303,7 @@ private actor CassandraConnectionActor {
         return extractResult(from: result, startTime: startTime)
     }
 
-    func executePrepared(_ cql: String, parameters: [String?]) throws -> CassandraRawResult {
+    func executePrepared(_ cql: String, parameters: [PluginCellValue]) throws -> CassandraRawResult {
         guard let session else {
             throw CassandraPluginError.notConnected
         }
@@ -413,7 +413,7 @@ private actor CassandraConnectionActor {
             columnTypeNames.append(Self.cassTypeName(colType))
         }
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         let iterator = cass_iterator_from_result(result)
         defer {
             if let iterator { cass_iterator_free(iterator) }
@@ -437,13 +437,18 @@ private actor CassandraConnectionActor {
             let row = cass_iterator_get_row(iterator)
             guard let row else { continue }
 
-            var rowData: [String?] = []
+            var rowData: [PluginCellValue] = []
             for col in 0..<colCount {
                 let value = cass_row_get_column(row, col)
                 if let value, cass_value_is_null(value) == cass_false {
-                    rowData.append(Self.extractStringValue(value))
+                    if cass_value_type(value) == CASS_VALUE_TYPE_BLOB,
+                       let data = Self.extractBlobValue(value) {
+                        rowData.append(.bytes(data))
+                    } else {
+                        rowData.append(PluginCellValue.fromOptional(Self.extractStringValue(value)))
+                    }
                 } else {
-                    rowData.append(nil)
+                    rowData.append(.null)
                 }
             }
             rows.append(rowData)
@@ -459,6 +464,15 @@ private actor CassandraConnectionActor {
             rowsAffected: Int(rowCount),
             executionTime: executionTime
         )
+    }
+
+    private static func extractBlobValue(_ value: OpaquePointer) -> Data? {
+        var bytes: UnsafePointer<UInt8>?
+        var length: Int = 0
+        guard cass_value_get_bytes(value, &bytes, &length) == CASS_OK, let bytes else {
+            return nil
+        }
+        return Data(bytes: bytes, count: length)
     }
 
     private static func extractStringValue(_ value: OpaquePointer) -> String? {
@@ -546,10 +560,7 @@ private actor CassandraConnectionActor {
             return nil
 
         case CASS_VALUE_TYPE_BLOB:
-            var bytes: UnsafePointer<UInt8>?
-            var length: Int = 0
-            if cass_value_get_bytes(value, &bytes, &length) == CASS_OK, let bytes {
-                let data = Data(bytes: bytes, count: length)
+            if let data = extractBlobValue(value) {
                 return "0x" + data.map { String(format: "%02x", $0) }.joined()
             }
             return nil
@@ -782,13 +793,18 @@ private actor CassandraConnectionActor {
                     let row = cass_iterator_get_row(iterator)
                     guard let row else { continue }
 
-                    var rowData: [String?] = []
+                    var rowData: [PluginCellValue] = []
                     for col in 0..<colCount {
                         let value = cass_row_get_column(row, col)
                         if let value, cass_value_is_null(value) == cass_false {
-                            rowData.append(Self.extractStringValue(value))
+                            if cass_value_type(value) == CASS_VALUE_TYPE_BLOB,
+                               let data = Self.extractBlobValue(value) {
+                                rowData.append(.bytes(data))
+                            } else {
+                                rowData.append(PluginCellValue.fromOptional(Self.extractStringValue(value)))
+                            }
                         } else {
-                            rowData.append(nil)
+                            rowData.append(.null)
                         }
                     }
                     continuation.yield(.rows([rowData]))
@@ -826,7 +842,7 @@ private actor CassandraConnectionActor {
 private struct CassandraRawResult: Sendable {
     let columns: [String]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let rowsAffected: Int
     let executionTime: TimeInterval
 }
@@ -938,7 +954,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func executeParameterized(
         query: String,
-        parameters: [String?]
+        parameters: [PluginCellValue]
     ) async throws -> PluginQueryResult {
         let rawResult = try await connectionActor.executePrepared(query, parameters: parameters)
         return PluginQueryResult(

@@ -138,7 +138,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         return mapRawResult(payload, executionTime: executionTime)
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else {
             return try await execute(query: query)
         }
@@ -149,7 +149,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let startTime = Date()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let anyParams: [Any?] = parameters.map { $0 as Any? }
+        let anyParams: [Any?] = parameters.map { param -> Any? in
+            switch param {
+            case .null: return nil
+            case .text(let s): return s
+            case .bytes(let d): return d.base64EncodedString()
+            }
+        }
         let payload = try await client.executeRaw(sql: trimmed, params: anyParams)
         let executionTime = Date().timeIntervalSince(startTime)
         return mapRawResult(payload, executionTime: executionTime)
@@ -776,7 +782,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         let columns = payload.results.columns ?? []
         let rawRows = payload.results.rows ?? []
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         var truncated = false
 
         for rawRow in rawRows {
@@ -784,7 +790,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
                 truncated = true
                 break
             }
-            let row = rawRow.map(\.stringValue)
+            let row = rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
             rows.append(row)
         }
 

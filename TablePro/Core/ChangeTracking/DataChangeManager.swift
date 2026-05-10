@@ -393,22 +393,27 @@ final class DataChangeManager: ChangeManaging {
                         case .delete: return .delete
                         }
                     }(),
-                    cellChanges: change.cellChanges.map {
-                        ($0.columnIndex, $0.columnName, $0.oldValue, $0.newValue)
+                    cellChanges: change.cellChanges.map { c -> (columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue) in
+                        (c.columnIndex, c.columnName, PluginCellValue.fromOptional(c.oldValue), PluginCellValue.fromOptional(c.newValue))
                     },
-                    originalRow: change.originalRow
+                    originalRow: change.originalRow.map { row in
+                        row.map(PluginCellValue.fromOptional)
+                    }
                 )
+            }
+            let pluginInsertedRowData: [Int: [PluginCellValue]] = insertedRowData.mapValues { row in
+                row.map(PluginCellValue.fromOptional)
             }
             if let statements = pluginDriver.generateStatements(
                 table: tableName,
                 columns: columns,
                 primaryKeyColumns: primaryKeyColumns,
                 changes: pluginChanges,
-                insertedRowData: insertedRowData,
+                insertedRowData: pluginInsertedRowData,
                 deletedRowIndices: deletedRowIndices,
                 insertedRowIndices: insertedRowIndices
             ) {
-                return statements.map { ParameterizedStatement(sql: $0.statement, parameters: $0.parameters) }
+                return statements.map { ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map { $0.asText }) }
             }
         }
 

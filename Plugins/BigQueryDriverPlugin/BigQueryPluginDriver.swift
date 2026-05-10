@@ -173,7 +173,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["ok"],
                 columnTypeNames: ["INT64"],
-                rows: [["1"]],
+                rows: [[.text("1")]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -193,10 +193,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
                 columns: ["Metric", "Value"],
                 columnTypeNames: ["STRING", "STRING"],
                 rows: [
-                    ["Total Bytes Processed", formatBytes(bytesProcessed)],
-                    ["Total Bytes Billed", formatBytes(bytesBilled)],
-                    ["Cache Hit", cacheHit],
-                    ["Estimated Cost (USD)", estimateCost(bytesBilled)]
+                    [.text("Total Bytes Processed"), .text(formatBytes(bytesProcessed))],
+                    [.text("Total Bytes Billed"), .text(formatBytes(bytesBilled))],
+                    [.text("Cache Hit"), .text(cacheHit)],
+                    [.text("Estimated Cost (USD)"), .text(estimateCost(bytesBilled))]
                 ],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
@@ -227,7 +227,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["STRING"],
-                rows: [["Statement executed"]],
+                rows: [[.text("Statement executed")]],
                 rowsAffected: result.dmlAffectedRows,
                 executionTime: Date().timeIntervalSince(startTime),
                 statusMessage: buildCostMessage(result)
@@ -533,10 +533,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])]? {
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
         guard let conn = connection else { return nil }
 
         let dataset = lock.withLock { _currentDataset } ?? ""

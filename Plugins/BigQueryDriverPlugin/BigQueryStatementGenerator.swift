@@ -24,11 +24,11 @@ internal struct BigQueryStatementGenerator {
 
     func generateStatements(
         from changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])] {
-        var statements: [(statement: String, parameters: [String?])] = []
+    ) -> [(statement: String, parameters: [PluginCellValue])] {
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         for change in changes {
             switch change.type {
@@ -56,17 +56,17 @@ internal struct BigQueryStatementGenerator {
 
     private func generateInsert(
         for change: PluginRowChange,
-        insertedRowData: [Int: [String?]]
-    ) -> (statement: String, parameters: [String?])? {
+        insertedRowData: [Int: [PluginCellValue]]
+    ) -> (statement: String, parameters: [PluginCellValue])? {
         var values: [String: String?] = [:]
 
         if let rowData = insertedRowData[change.rowIndex] {
             for (index, column) in columns.enumerated() where index < rowData.count {
-                values[column] = rowData[index]
+                values[column] = rowData[index].asText
             }
         } else {
             for cellChange in change.cellChanges {
-                values[cellChange.columnName] = cellChange.newValue
+                values[cellChange.columnName] = cellChange.newValue.asText
             }
         }
 
@@ -95,7 +95,7 @@ internal struct BigQueryStatementGenerator {
 
     private func generateUpdate(
         for change: PluginRowChange
-    ) -> (statement: String, parameters: [String?])? {
+    ) -> (statement: String, parameters: [PluginCellValue])? {
         guard !change.cellChanges.isEmpty else { return nil }
 
         guard let whereClause = buildWhereClause(from: change) else {
@@ -107,7 +107,7 @@ internal struct BigQueryStatementGenerator {
         for cellChange in change.cellChanges {
             let typeIndex = columns.firstIndex(of: cellChange.columnName) ?? 0
             let typeName = typeIndex < columnTypeNames.count ? columnTypeNames[typeIndex] : "STRING"
-            let formattedValue = formatValue(cellChange.newValue, typeName: typeName)
+            let formattedValue = formatValue(cellChange.newValue.asText, typeName: typeName)
             setClauses.append("\(quoteIdentifier(cellChange.columnName)) = \(formattedValue)")
         }
 
@@ -119,7 +119,7 @@ internal struct BigQueryStatementGenerator {
 
     private func generateDelete(
         for change: PluginRowChange
-    ) -> (statement: String, parameters: [String?])? {
+    ) -> (statement: String, parameters: [PluginCellValue])? {
         guard let whereClause = buildWhereClause(from: change) else {
             Self.logger.warning("Skipping DELETE - cannot build WHERE clause")
             return nil
@@ -139,7 +139,7 @@ internal struct BigQueryStatementGenerator {
             guard index < originalRow.count else { continue }
             let typeName = index < columnTypeNames.count ? columnTypeNames[index] : "STRING"
 
-            if let value = originalRow[index] {
+            if let value = originalRow[index].asText {
                 // Skip complex types (STRUCT/ARRAY/RECORD) — BigQuery cannot compare with =
                 let trimmed = value.trimmingCharacters(in: .whitespaces)
                 if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {

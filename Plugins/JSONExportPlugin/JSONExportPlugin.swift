@@ -87,7 +87,7 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
                             for (colIndex, column) in columns.enumerated() {
                                 if colIndex < row.count {
                                     let value = row[colIndex]
-                                    if settings.includeNullValues || value != nil {
+                                    if settings.includeNullValues || !value.isNull {
                                         if !isFirstField {
                                             rowString += ", "
                                         }
@@ -136,8 +136,18 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
 
     // MARK: - Private
 
-    private func formatJSONValue(_ value: String?, columnTypeName: String, preserveAsString: Bool) -> String {
-        guard let val = value else { return "null" }
+    private func formatJSONValue(_ value: PluginCellValue, columnTypeName: String, preserveAsString: Bool) -> String {
+        switch value {
+        case .null:
+            return "null"
+        case .bytes(let data):
+            return "\"\(data.base64EncodedString())\""
+        case .text(let val):
+            return formatJSONTextValue(val, columnTypeName: columnTypeName, preserveAsString: preserveAsString)
+        }
+    }
+
+    private func formatJSONTextValue(_ val: String, columnTypeName: String, preserveAsString: Bool) -> String {
 
         if preserveAsString {
             return "\"\(PluginExportUtilities.escapeJSONString(val))\""

@@ -1,6 +1,6 @@
 import Foundation
 
-public typealias PluginRow = [String?]
+public typealias PluginRow = [PluginCellValue]
 
 public struct PluginStreamHeader: Sendable {
     public let columns: [String]

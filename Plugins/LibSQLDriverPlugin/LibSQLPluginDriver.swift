@@ -117,7 +117,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return mapExecuteResult(result, executionTime: executionTime)
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else {
             return try await execute(query: query)
         }
@@ -128,7 +128,14 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let startTime = Date()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result = try await client.execute(sql: trimmed, args: parameters)
+        let stringArgs: [String?] = parameters.map { param -> String? in
+            switch param {
+            case .null: return nil
+            case .text(let s): return s
+            case .bytes(let d): return "X'" + d.map { String(format: "%02X", $0) }.joined() + "'"
+            }
+        }
+        let result = try await client.execute(sql: trimmed, args: stringArgs)
         let executionTime = Date().timeIntervalSince(startTime)
         return mapExecuteResult(result, executionTime: executionTime)
     }
@@ -670,7 +677,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let columns = result.cols.map(\.name)
         let columnTypeNames = result.cols.map { $0.decltype ?? "" }
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         var truncated = false
 
         for rawRow in result.rows {
@@ -678,7 +685,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 truncated = true
                 break
             }
-            let row = rawRow.map(\.stringValue)
+            let row = rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
             rows.append(row)
         }
 

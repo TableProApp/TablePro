@@ -93,7 +93,7 @@ extension PostgreSQLPluginDriver {
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
-            guard row.count >= 5, let tableName = row[0] else { continue }
+            guard row.count >= 5, let tableName = row[0].asText else { continue }
             if let column = mapPgColumnRow(row, tableNameOffset: 1) {
                 allColumns[tableName, default: []].append(column)
             }
@@ -105,7 +105,7 @@ extension PostgreSQLPluginDriver {
         str.replacingOccurrences(of: "'", with: "''")
     }
 
-    fileprivate func mapPgColumnRow(_ row: [String?], tableNameOffset: Int) -> PluginColumnInfo? {
+    fileprivate func mapPgColumnRow(_ row: [PluginCellValue], tableNameOffset: Int) -> PluginColumnInfo? {
         let nameIdx = tableNameOffset
         let typeIdx = tableNameOffset + 1
         let nullableIdx = tableNameOffset + 2
@@ -118,11 +118,11 @@ extension PostgreSQLPluginDriver {
         let generatedIdx = tableNameOffset + 9
 
         guard row.count > typeIdx,
-              let name = row[nameIdx],
-              let rawDataType = row[typeIdx]
+              let name = row[nameIdx].asText,
+              let rawDataType = row[typeIdx].asText
         else { return nil }
 
-        let udtName = row.count > udtIdx ? row[udtIdx] : nil
+        let udtName = row.count > udtIdx ? row[udtIdx].asText : nil
         let dataType: String
         if rawDataType.uppercased() == "USER-DEFINED", let udt = udtName {
             dataType = "ENUM(\(udt))"
@@ -130,13 +130,13 @@ extension PostgreSQLPluginDriver {
             dataType = rawDataType.uppercased()
         }
 
-        let isNullable = row.count > nullableIdx && row[nullableIdx] == "YES"
-        let defaultValue = row.count > defaultIdx ? row[defaultIdx] : nil
-        let collation = row.count > collationIdx ? row[collationIdx] : nil
-        let comment = row.count > commentIdx ? row[commentIdx] : nil
-        let isPk = row.count > pkIdx && row[pkIdx] == "YES"
-        let attidentity = row.count > identityIdx ? row[identityIdx] : nil
-        let attgenerated = row.count > generatedIdx ? row[generatedIdx] : nil
+        let isNullable = row.count > nullableIdx && row[nullableIdx].asText == "YES"
+        let defaultValue = row.count > defaultIdx ? row[defaultIdx].asText : nil
+        let collation = row.count > collationIdx ? row[collationIdx].asText : nil
+        let comment = row.count > commentIdx ? row[commentIdx].asText : nil
+        let isPk = row.count > pkIdx && row[pkIdx].asText == "YES"
+        let attidentity = row.count > identityIdx ? row[identityIdx].asText : nil
+        let attgenerated = row.count > generatedIdx ? row[generatedIdx].asText : nil
 
         let charset: String? = {
             guard let coll = collation, coll.contains(".") else { return nil }

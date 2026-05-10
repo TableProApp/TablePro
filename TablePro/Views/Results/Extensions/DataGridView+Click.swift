@@ -35,17 +35,24 @@ extension TableViewCoordinator {
             }
         }
 
+        // Column-type guards run BEFORE content checks. Binary cells contain bytes
+        // that may incidentally match line-break or JSON heuristics; routing them
+        // through the text/overlay editor would corrupt the bytes on save.
+        if columnIndex < tableRows.columnTypes.count {
+            let ct = tableRows.columnTypes[columnIndex]
+            if ct.isBlobType {
+                showBlobEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
+                return
+            }
+            if ct.isBooleanType || ct.isDateType || ct.isEnumType || ct.isSetType {
+                return
+            }
+        }
+
         let value = cellValue(at: row, column: columnIndex)
         if let value, value.containsLineBreak {
             showOverlayEditor(tableView: sender, row: row, column: column, columnIndex: columnIndex, value: value)
             return
-        }
-
-        if columnIndex < tableRows.columnTypes.count {
-            let ct = tableRows.columnTypes[columnIndex]
-            if ct.isBooleanType || ct.isDateType || ct.isBlobType || ct.isEnumType || ct.isSetType {
-                return
-            }
         }
         if let value, value.looksLikeJson {
             showJSONEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)

@@ -112,8 +112,8 @@ struct BigQueryTypeMapperRowTests {
         ], totalRows: "1")
         let rows = BigQueryTypeMapper.flattenRows(from: resp, schema: schema)
         let value = rows[0][0]
-        #expect(value != nil)
-        #expect(value!.contains("2021-03-31") || value!.contains("2021-04-01"))
+        #expect(value != .null)
+        #expect(value.asText?.contains("2021-03-31") == true || value.asText?.contains("2021-04-01") == true)
     }
 
     @Test("Boolean values normalize to lowercase")
@@ -144,9 +144,9 @@ struct BigQueryTypeMapperRowTests {
             ])
         ], totalRows: "1")
         let value = BigQueryTypeMapper.flattenRows(from: resp, schema: schema)[0][0]
-        #expect(value != nil)
-        #expect(value!.contains("\"city\""))
-        #expect(value!.contains("\"NYC\""))
+        #expect(value != .null)
+        #expect(value.asText?.contains("\"city\"") == true)
+        #expect(value.asText?.contains("\"NYC\"") == true)
     }
 
     @Test("REPEATED array flattens to JSON array string")
@@ -158,9 +158,9 @@ struct BigQueryTypeMapperRowTests {
             ])
         ], totalRows: "1")
         let value = BigQueryTypeMapper.flattenRows(from: resp, schema: schema)[0][0]
-        #expect(value != nil)
-        #expect(value!.contains("red"))
-        #expect(value!.contains("blue"))
+        #expect(value != .null)
+        #expect(value.asText?.contains("red") == true)
+        #expect(value.asText?.contains("blue") == true)
     }
 
     @Test("Empty response returns empty rows")

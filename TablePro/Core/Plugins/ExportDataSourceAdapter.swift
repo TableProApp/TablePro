@@ -110,7 +110,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypes.map { $0.rawType ?? "" },
-            rows: result.rows,
+            rows: result.rows.map { row in row.map(PluginCellValue.fromOptional) },
             rowsAffected: result.rowsAffected,
             executionTime: result.executionTime
         )

@@ -12,7 +12,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
 
     private let columns: [String]
     private let columnTypeNames: [String]
-    private let rows: [[String?]]
+    private let rows: [[PluginCellValue]]
     private let driver: DatabaseDriver?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryResultExportDataSource")
@@ -22,7 +22,9 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         self.driver = driver
         self.columns = tableRows.columns
         self.columnTypeNames = tableRows.columnTypes.map { $0.rawType ?? "" }
-        self.rows = tableRows.rows.map { Array($0.values) }
+        self.rows = tableRows.rows.map { row in
+            Array(row.values).map(PluginCellValue.fromOptional)
+        }
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

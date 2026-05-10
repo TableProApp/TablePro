@@ -100,16 +100,22 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
     // MARK: - Private
 
     private func writeCSVRow(
-        _ row: [String?],
+        _ row: [PluginCellValue],
         options: CSVExportOptions,
         to fileHandle: FileHandle
     ) throws {
         let delimiter = options.delimiter.actualValue
         let lineBreak = options.lineBreak.value
 
-        let rowLine = row.map { value -> String in
-            guard let val = value else {
+        let rowLine = row.map { cell -> String in
+            let val: String
+            switch cell {
+            case .null:
                 return options.convertNullToEmpty ? "" : "NULL"
+            case .text(let s):
+                val = s
+            case .bytes(let d):
+                val = "0x" + d.map { String(format: "%02X", $0) }.joined()
             }
 
             var processed = val

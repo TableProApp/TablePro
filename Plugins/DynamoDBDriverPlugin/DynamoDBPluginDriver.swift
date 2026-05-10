@@ -113,7 +113,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["ok"],
                 columnTypeNames: ["Int32"],
-                rows: [["1"]],
+                rows: [[.text("1")]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -128,7 +128,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         return try await executePartiQL(trimmed, conn: conn, startTime: startTime)
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         let startTime = Date()
 
         guard let conn = connection else {
@@ -143,15 +143,18 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         }
 
         // Convert parameters to DynamoDB attribute value dictionaries
-        let dynamoParams: [[String: Any]] = parameters.map { param in
-            guard let value = param else {
-                return ["NULL": true] as [String: Any]
+        let dynamoParams: [[String: Any]] = parameters.map { param -> [String: Any] in
+            switch param {
+            case .null:
+                return ["NULL": true]
+            case .bytes(let data):
+                return ["B": data.base64EncodedString()]
+            case .text(let value):
+                if Double(value) != nil {
+                    return ["N": value]
+                }
+                return ["S": value]
             }
-            // Treat as number if it looks numeric
-            if Double(value) != nil {
-                return ["N": value]
-            }
-            return ["S": value]
         }
 
         let response = try await conn.executeStatement(statement: trimmed, parameters: dynamoParams)
@@ -161,7 +164,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Statement executed"]],
+                rows: [[.text("Statement executed")]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -486,10 +489,10 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])]? {
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let keySchema = lock.withLock {
             extractKeySchema(from: _tableDescriptionCache[table])
         }
@@ -798,7 +801,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Count"],
                 columnTypeNames: ["Int64"],
-                rows: [[String(count)]],
+                rows: [[.text(String(count))]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -982,7 +985,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Item inserted successfully"]],
+                rows: [[.text("Item inserted successfully")]],
                 rowsAffected: 1,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -991,7 +994,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Item updated successfully"]],
+                rows: [[.text("Item updated successfully")]],
                 rowsAffected: 1,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -1000,7 +1003,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Item deleted successfully"]],
+                rows: [[.text("Item deleted successfully")]],
                 rowsAffected: 1,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -1022,7 +1025,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Statement executed"]],
+                rows: [[.text("Statement executed")]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )

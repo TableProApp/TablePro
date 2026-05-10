@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct DynamoDBItemFlattener {
     /// Maximum serialized JSON length for nested values
@@ -47,12 +48,15 @@ struct DynamoDBItemFlattener {
 
     // MARK: - Flattening
 
-    /// Convert items to a 2D grid of string values. Missing attributes become nil.
-    static func flatten(items: [[String: DynamoDBAttributeValue]], columns: [String]) -> [[String?]] {
+    /// Convert items to a 2D grid of cell values. Missing attributes become null.
+    static func flatten(items: [[String: DynamoDBAttributeValue]], columns: [String]) -> [[PluginCellValue]] {
         items.map { item in
             columns.map { column in
-                guard let value = item[column] else { return nil }
-                return attributeValueToString(value)
+                guard let value = item[column] else { return PluginCellValue.null }
+                if case .binary(let data) = value {
+                    return .bytes(data)
+                }
+                return .text(attributeValueToString(value))
             }
         }
     }

@@ -59,7 +59,7 @@ extension OracleError: PluginDriverError {
 struct OracleQueryResult {
     let columns: [String]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let affectedRows: Int
     let isTruncated: Bool
 }
@@ -239,20 +239,23 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             osLogger.debug("Oracle columns: \(columns.count) — \(columns.joined(separator: ", "))")
 
             var columnTypeNames: [String] = []
-            var allRows: [[String?]] = []
+            var allRows: [[PluginCellValue]] = []
             var didReadTypes = false
             var truncated = false
 
             for try await row in stream {
-                var rowValues: [String?] = []
+                var rowValues: [PluginCellValue] = []
                 for cell in row {
                     if !didReadTypes {
                         columnTypeNames.append(oracleTypeName(cell.dataType))
                     }
                     if cell.bytes == nil {
-                        rowValues.append(nil)
+                        rowValues.append(.null)
+                    } else if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
+                              let bytes = cell.bytes {
+                        rowValues.append(.bytes(Data(bytes.readableBytesView)))
                     } else {
-                        rowValues.append(decodeCell(cell))
+                        rowValues.append(PluginCellValue.fromOptional(decodeCell(cell)))
                     }
                 }
                 didReadTypes = true
@@ -325,15 +328,18 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                     return
                 }
 
-                var rowValues: [String?] = []
+                var rowValues: [PluginCellValue] = []
                 for cell in row {
                     if !headerSent {
                         columnTypeNames.append(oracleTypeName(cell.dataType))
                     }
                     if cell.bytes == nil {
-                        rowValues.append(nil)
+                        rowValues.append(.null)
+                    } else if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
+                              let bytes = cell.bytes {
+                        rowValues.append(.bytes(Data(bytes.readableBytesView)))
                     } else {
-                        rowValues.append(decodeCell(cell))
+                        rowValues.append(PluginCellValue.fromOptional(decodeCell(cell)))
                     }
                 }
 
