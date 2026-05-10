@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- iOS: VoiceOver "Delete row" / "Delete group" / "Delete tag" custom actions on rows whose only deletion path was a swipe gesture
+- iOS: empty Groups and Tags screens show a Create button so the action is reachable without opening the toolbar
+- iOS: "No Results" empty state in Query Editor explains the query returned no rows
 - iOS: iCloud sync runs every 30 minutes in the background via `BGAppRefreshTask` while the app is closed (gated by the iCloud Sync setting); iOS schedules the actual cadence based on usage and battery
 - iOS: Cmd+F focuses the search field in Tables and Data Browser (iPad keyboard canonical)
 - iOS: search text in Tables and Data Browser persists across process kill via `@SceneStorage` (per-window on iPad)

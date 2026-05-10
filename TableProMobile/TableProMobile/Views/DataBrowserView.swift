@@ -267,6 +267,11 @@ struct DataBrowserView: View {
                 .tint(.red)
             }
         }
+        .accessibilityAction(named: Text("Delete row")) {
+            guard !isView, viewModel.hasPrimaryKeys, !connection.safeModeLevel.blocksWrites else { return }
+            deleteTarget = viewModel.primaryKeyValues(for: row)
+            showDeleteConfirmation = true
+        }
     }
 
     @ViewBuilder

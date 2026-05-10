@@ -47,6 +47,10 @@ struct TagManagementView: View {
                             }
                         }
                     }
+                    .accessibilityAction(named: Text("Delete tag")) {
+                        guard !tag.isPreset else { return }
+                        appState.deleteTag(tag.id)
+                    }
                 }
             }
             .overlay {
@@ -55,6 +59,9 @@ struct TagManagementView: View {
                         Label("No Tags", systemImage: "tag")
                     } description: {
                         Text("Create a tag to organize your connections.")
+                    } actions: {
+                        Button("Create Tag") { showingAddTag = true }
+                            .buttonStyle(.borderedProminent)
                     }
                 }
             }

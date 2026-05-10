@@ -207,8 +207,12 @@ struct QueryEditorView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.legacyRows.isEmpty {
-                    ContentUnavailableView("No Results", systemImage: "tray")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "tray",
+                        description: Text("The query returned no rows.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     resultList
                 }

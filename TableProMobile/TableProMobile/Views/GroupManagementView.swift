@@ -46,6 +46,9 @@ struct GroupManagementView: View {
                         }
                         .tint(.red)
                     }
+                    .accessibilityAction(named: Text("Delete group")) {
+                        groupToDelete = group
+                    }
                 }
                 .onMove { source, destination in
                     var sorted = appState.groups.sorted(by: { $0.sortOrder < $1.sortOrder })
@@ -62,6 +65,9 @@ struct GroupManagementView: View {
                         Label("No Groups", systemImage: "folder")
                     } description: {
                         Text("Create a group to organize your connections.")
+                    } actions: {
+                        Button("Create Group") { showingAddGroup = true }
+                            .buttonStyle(.borderedProminent)
                     }
                 }
             }
