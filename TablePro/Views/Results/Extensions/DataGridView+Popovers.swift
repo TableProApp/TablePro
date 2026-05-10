@@ -146,7 +146,13 @@ extension TableViewCoordinator {
     }
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let currentValue = cellValue(at: row, column: columnIndex)
+        let typed = cellTypedValue(at: row, column: columnIndex)
+        let currentValue: String?
+        switch typed {
+        case .null: currentValue = nil
+        case .text(let s): currentValue = s
+        case .bytes(let data): currentValue = String(data: data, encoding: .isoLatin1)
+        }
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
