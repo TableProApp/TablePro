@@ -6,6 +6,7 @@
 #if canImport(CLibMongoc)
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

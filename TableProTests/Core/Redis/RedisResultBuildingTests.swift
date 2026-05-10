@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 // MARK: - Private Local Helpers (copied from RedisDriverPlugin)

@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import SwiftUI
 import Testing
 

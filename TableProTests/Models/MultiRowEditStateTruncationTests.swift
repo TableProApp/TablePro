@@ -5,6 +5,7 @@
 //  Tests for truncation support in MultiRowEditState.
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

@@ -76,13 +76,3 @@ enum UndoAction {
     case batchRowDeletion(rows: [(rowIndex: Int, originalRow: [PluginCellValue])])
     case batchRowInsertion(rowIndices: [Int], rowValues: [[PluginCellValue]])
 }
-
-// Note: TabChangeSnapshot is defined in QueryTab.swift
-
-// MARK: - Array Extension
-
-extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
-}

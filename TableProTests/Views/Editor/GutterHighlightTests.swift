@@ -13,6 +13,7 @@ import AppKit
 import CodeEditLanguages
 @testable import CodeEditSourceEditor
 import CodeEditTextView
+import TableProPluginKit
 import Testing
 
 @MainActor

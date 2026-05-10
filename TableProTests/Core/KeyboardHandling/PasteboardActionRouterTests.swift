@@ -5,6 +5,7 @@
 
 import AppKit
 import CodeEditTextView
+import TableProPluginKit
 import Testing
 @testable import TablePro
 

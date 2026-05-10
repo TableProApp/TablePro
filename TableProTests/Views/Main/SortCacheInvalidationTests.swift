@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -44,7 +45,7 @@ struct SortCacheInvalidationTests {
         let columns = ["id", "name"]
         let rows = (0..<count).map { i in ["\(i)", "name\(i)"] }
         let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
-        let tableRows = TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
+        let tableRows = TableRows.from(queryRows: rows.map { row in row.map { PluginCellValue.text($0) } }, columns: columns, columnTypes: columnTypes)
         coordinator.setActiveTableRows(tableRows, for: tabId)
     }
 

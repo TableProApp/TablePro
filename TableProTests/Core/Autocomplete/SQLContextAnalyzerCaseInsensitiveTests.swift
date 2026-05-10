@@ -6,6 +6,7 @@
 //  after removal of uppercased() normalization.
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

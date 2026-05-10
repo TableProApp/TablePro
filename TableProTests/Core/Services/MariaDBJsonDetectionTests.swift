@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -120,7 +121,7 @@ struct MariaDBJsonDetectionTests {
         func jsonValueNotHexFormatted() {
             let jsonValue = "{\"name\":\"test\"}"
             let columnType = ColumnType.json(rawType: "JSON")
-            let display = CellDisplayFormatter.format(jsonValue, columnType: columnType)
+            let display = CellDisplayFormatter.format(.text(jsonValue), columnType: columnType)
             #expect(display == jsonValue)
         }
 
@@ -128,7 +129,7 @@ struct MariaDBJsonDetectionTests {
         func textValueNotHexFormatted() {
             let textValue = "{\"name\":\"test\"}"
             let columnType = ColumnType.text(rawType: "LONGTEXT")
-            let display = CellDisplayFormatter.format(textValue, columnType: columnType)
+            let display = CellDisplayFormatter.format(.text(textValue), columnType: columnType)
             #expect(display == textValue)
         }
 
@@ -136,7 +137,7 @@ struct MariaDBJsonDetectionTests {
         func blobValueIsHexFormatted() {
             let blobValue = "hello"
             let columnType = ColumnType.blob(rawType: "BLOB")
-            let display = CellDisplayFormatter.format(blobValue, columnType: columnType)
+            let display = CellDisplayFormatter.format(.text(blobValue), columnType: columnType)
             #expect(display != blobValue)
         }
 
@@ -144,7 +145,7 @@ struct MariaDBJsonDetectionTests {
         func jsonWithNewlinesSanitized() {
             let jsonValue = "{\n  \"name\": \"test\"\n}"
             let columnType = ColumnType.json(rawType: "JSON")
-            let display = CellDisplayFormatter.format(jsonValue, columnType: columnType)
+            let display = CellDisplayFormatter.format(.text(jsonValue), columnType: columnType)
             // Newlines replaced by sanitizedForCellDisplay, but no hex encoding
             #expect(display?.contains("0x") != true)
             #expect(display?.contains("name") == true)

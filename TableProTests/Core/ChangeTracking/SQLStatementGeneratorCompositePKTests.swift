@@ -5,6 +5,7 @@
 //  Tests for composite primary key support in UPDATE and DELETE generation.
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -40,9 +41,11 @@ struct SQLStatementGeneratorCompositePKTests {
             type: .update,
             cellChanges: [CellChange(
                 rowIndex: rowIndex, columnIndex: columnIndex,
-                columnName: columnName, oldValue: oldValue, newValue: newValue
+                columnName: columnName,
+                oldValue: PluginCellValue.fromOptional(oldValue),
+                newValue: PluginCellValue.fromOptional(newValue)
             )],
-            originalRow: originalRow
+            originalRow: originalRow.map(PluginCellValue.fromOptional)
         )
     }
 
@@ -55,12 +58,15 @@ struct SQLStatementGeneratorCompositePKTests {
             rowIndex: rowIndex,
             type: .update,
             cellChanges: cellChanges,
-            originalRow: originalRow
+            originalRow: originalRow.map(PluginCellValue.fromOptional)
         )
     }
 
     private func makeDeleteChange(rowIndex: Int = 0, originalRow: [String?]) -> RowChange {
-        RowChange(rowIndex: rowIndex, type: .delete, cellChanges: [], originalRow: originalRow)
+        RowChange(
+            rowIndex: rowIndex, type: .delete, cellChanges: [],
+            originalRow: originalRow.map(PluginCellValue.fromOptional)
+        )
     }
 
     private func generate(

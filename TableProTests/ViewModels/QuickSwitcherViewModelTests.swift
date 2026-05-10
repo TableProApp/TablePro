@@ -5,6 +5,7 @@
 //  Tests for QuickSwitcherViewModel filtering and navigation
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

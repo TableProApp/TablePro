@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 @testable import TablePro
 import Testing
@@ -110,7 +111,7 @@ struct JsonRowConverterTests {
     func validJsonColumn() {
         let converter = makeConverter(columns: ["data"], columnTypes: [.json(rawType: nil)])
         let jsonValue = "{\"key\":\"value\"}"
-        let result = converter.generateJson(rows: [[jsonValue]])
+        let result = converter.generateJson(rows: [[.text(jsonValue)]])
         #expect(result.contains(": {\"key\":\"value\"}"))
     }
 
@@ -167,7 +168,7 @@ struct JsonRowConverterTests {
     func rowCap() {
         let converter = makeConverter(columns: ["id"], columnTypes: [.text(rawType: nil)])
         let marker = "MARKER_VAL"
-        let rows = Array(repeating: [marker] as [String?], count: 50_001)
+        let rows = Array(repeating: [PluginCellValue.text(marker)], count: 50_001)
         let result = converter.generateJson(rows: rows)
         let count = result.components(separatedBy: marker).count - 1
         #expect(count == 50_000)

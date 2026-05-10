@@ -1,4 +1,5 @@
 import AppKit
+import TableProPluginKit
 import Testing
 @testable import TablePro
 

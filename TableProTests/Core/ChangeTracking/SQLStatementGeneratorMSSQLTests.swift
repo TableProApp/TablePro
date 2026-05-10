@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -46,11 +47,11 @@ struct SQLStatementGeneratorMSSQLTests {
                     rowIndex: rowIndex,
                     columnIndex: 1,
                     columnName: columnName,
-                    oldValue: oldValue,
-                    newValue: newValue
+                    oldValue: PluginCellValue.fromOptional(oldValue),
+                    newValue: PluginCellValue.fromOptional(newValue)
                 )
             ],
-            originalRow: originalRow
+            originalRow: originalRow.map { row in row.map(PluginCellValue.fromOptional) }
         )
     }
 
@@ -58,7 +59,10 @@ struct SQLStatementGeneratorMSSQLTests {
         rowIndex: Int = 0,
         originalRow: [String?]? = ["1", "John", "john@example.com"]
     ) -> RowChange {
-        RowChange(rowIndex: rowIndex, type: .delete, cellChanges: [], originalRow: originalRow)
+        RowChange(
+            rowIndex: rowIndex, type: .delete, cellChanges: [],
+            originalRow: originalRow.map { row in row.map(PluginCellValue.fromOptional) }
+        )
     }
 
     // MARK: - Placeholder Tests
@@ -66,7 +70,7 @@ struct SQLStatementGeneratorMSSQLTests {
     @Test("INSERT statement uses question mark placeholders")
     func insertUsesQuestionMarkPlaceholders() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
             insertedRowData: insertedRowData,
@@ -99,7 +103,7 @@ struct SQLStatementGeneratorMSSQLTests {
     @Test("INSERT uses bracket-quoted table and column names")
     func insertBracketQuoting() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
             insertedRowData: insertedRowData,
@@ -118,7 +122,7 @@ struct SQLStatementGeneratorMSSQLTests {
     @Test("INSERT with multiple columns produces correct number of placeholders")
     func insertMultipleColumnsPlaceholders() throws {
         let generator = try makeGenerator(columns: ["id", "name", "email"])
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
             insertedRowData: insertedRowData,

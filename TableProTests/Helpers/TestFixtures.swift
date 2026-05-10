@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
@@ -60,8 +61,8 @@ enum TestFixtures {
             rowIndex: row,
             columnIndex: col,
             columnName: colName,
-            oldValue: old,
-            newValue: new
+            oldValue: PluginCellValue.fromOptional(old),
+            newValue: PluginCellValue.fromOptional(new)
         )
     }
 
@@ -75,7 +76,7 @@ enum TestFixtures {
             rowIndex: row,
             type: type,
             cellChanges: cells,
-            originalRow: originalRow
+            originalRow: originalRow.map { row in row.map(PluginCellValue.fromOptional) }
         )
     }
 
@@ -211,8 +212,9 @@ enum TestFixtures {
 
     static func makeTableRows(rowCount: Int = 3, columns: [String] = ["id", "name", "email"]) -> TableRows {
         let rows = makeRows(count: rowCount, columns: columns)
+        let typedRows = rows.map { row in row.map(PluginCellValue.fromOptional) }
         let columnTypes = Array(repeating: ColumnType.text(rawType: nil), count: columns.count)
-        return TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
+        return TableRows.from(queryRows: typedRows, columns: columns, columnTypes: columnTypes)
     }
 
     static func makeForeignKeyInfo(

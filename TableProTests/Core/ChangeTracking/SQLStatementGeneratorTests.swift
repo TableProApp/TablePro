@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
@@ -34,7 +35,7 @@ struct SQLStatementGeneratorTests {
     @Test("Simple insert from insertedRowData (MySQL)")
     func testSimpleInsertMySQL() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -70,7 +71,7 @@ struct SQLStatementGeneratorTests {
     @Test("Insert with NULL value")
     func testInsertWithNullValue() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", nil]
         ]
         let changes: [RowChange] = [
@@ -92,7 +93,7 @@ struct SQLStatementGeneratorTests {
     @Test("Insert skips __DEFAULT__ columns")
     func testInsertSkipsDefaultColumns() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["__DEFAULT__", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -117,7 +118,7 @@ struct SQLStatementGeneratorTests {
     @Test("Insert with all __DEFAULT__ returns empty")
     func testInsertAllDefaultReturnsEmpty() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["__DEFAULT__", "__DEFAULT__", "__DEFAULT__"]
         ]
         let changes: [RowChange] = [
@@ -164,7 +165,7 @@ struct SQLStatementGeneratorTests {
     @Test("Insert with SQL function is inlined")
     func testInsertWithSQLFunction() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "NOW()"]
         ]
         let changes: [RowChange] = [
@@ -187,7 +188,7 @@ struct SQLStatementGeneratorTests {
     @Test("PostgreSQL insert uses $1, $2 placeholders")
     func testInsertPostgreSQLPlaceholders() throws {
         let generator = try makeGenerator(databaseType: .postgresql)
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -210,7 +211,7 @@ struct SQLStatementGeneratorTests {
     @Test("Table name is quoted with identifier quote")
     func testTableNameQuoted() throws {
         let generator = try makeGenerator(tableName: "my_table")
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -231,7 +232,7 @@ struct SQLStatementGeneratorTests {
     @Test("Column names are quoted")
     func testColumnNamesQuoted() throws {
         let generator = try makeGenerator(columns: ["user_id", "full_name", "email_address"])
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -255,7 +256,7 @@ struct SQLStatementGeneratorTests {
     @Test("Insert multiple rows generates separate statements")
     func testInsertMultipleRows() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"],
             1: ["2", "Jane", "jane@example.com"]
         ]
@@ -642,7 +643,7 @@ struct SQLStatementGeneratorTests {
             ),
             RowChange(rowIndex: 2, type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
         ]
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["3", "Bob", "bob@example.com"]
         ]
 
@@ -661,7 +662,7 @@ struct SQLStatementGeneratorTests {
     @Test("MySQL uses ? for all placeholders")
     func testMySQLPlaceholders() throws {
         let generator = try makeGenerator(databaseType: .mysql)
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -684,7 +685,7 @@ struct SQLStatementGeneratorTests {
     @Test("PostgreSQL uses $1, $2, $3 sequentially")
     func testPostgreSQLSequentialPlaceholders() throws {
         let generator = try makeGenerator(databaseType: .postgresql)
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -709,7 +710,7 @@ struct SQLStatementGeneratorTests {
     @Test("SQLite uses ? placeholders")
     func testSQLitePlaceholders() throws {
         let generator = try makeGenerator(databaseType: .sqlite)
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -731,7 +732,7 @@ struct SQLStatementGeneratorTests {
     @Test("MariaDB uses ? placeholders")
     func testMariaDBPlaceholders() throws {
         let generator = try makeGenerator(databaseType: .mariadb)
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -755,7 +756,7 @@ struct SQLStatementGeneratorTests {
     @Test("Insert only processes rows in insertedRowIndices set")
     func testInsertOnlyProcessesInsertedRows() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"],
             1: ["2", "Jane", "jane@example.com"]
         ]
@@ -798,7 +799,7 @@ struct SQLStatementGeneratorTests {
     @Test("Row not in insertedRowIndices is skipped")
     func testRowNotInInsertedRowIndicesSkipped() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -849,7 +850,7 @@ struct SQLStatementGeneratorTests {
             ),
             RowChange(rowIndex: 2, type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
         ]
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["3", "Bob", "bob@example.com"]
         ]
 
@@ -909,7 +910,7 @@ struct SQLStatementGeneratorTests {
     @Test("Redshift insert uses $1, $2 placeholders")
     func testInsertRedshiftPlaceholders() throws {
         let generator = try makeGenerator(databaseType: .redshift)
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -934,7 +935,7 @@ struct SQLStatementGeneratorTests {
     @Test("Redshift insert uses double-quote identifier quoting")
     func testInsertRedshiftQuoting() throws {
         let generator = try makeGenerator(databaseType: .redshift)
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -1010,7 +1011,7 @@ struct SQLStatementGeneratorTests {
     @Test("Redshift uses $1, $2, $3 sequentially for insert")
     func testRedshiftSequentialPlaceholders() throws {
         let generator = try makeGenerator(databaseType: .redshift)
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
@@ -1107,7 +1108,7 @@ struct SQLStatementGeneratorTests {
             columns: ["id", "database", "order"],
             primaryKeyColumns: ["id"]
         )
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["1", "mydb", "5"]
         ]
         let changes: [RowChange] = [

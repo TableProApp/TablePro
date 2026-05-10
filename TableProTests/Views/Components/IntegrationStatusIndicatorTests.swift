@@ -1,3 +1,4 @@
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

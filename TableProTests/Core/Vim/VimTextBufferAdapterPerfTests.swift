@@ -8,6 +8,7 @@
 
 import AppKit
 import CodeEditTextView
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

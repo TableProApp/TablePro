@@ -5,6 +5,7 @@
 //  Regression tests for VimKeyInterceptor focus lifecycle
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

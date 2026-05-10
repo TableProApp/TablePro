@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 
 actor RecordingResponderSink: MCPResponderSink {

@@ -5,6 +5,7 @@
 //  Tests for FuzzyMatcher fuzzy string matching
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

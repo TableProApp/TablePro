@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -34,7 +35,7 @@ struct MainContentCoordinatorSortTests {
     ) {
         let rows = (0..<rowCount).map { i in columns.map { "\($0)_\(i)" as String? } }
         let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
-        let tableRows = TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
+        let tableRows = TableRows.from(queryRows: rows.map { row in row.map(PluginCellValue.fromOptional) }, columns: columns, columnTypes: columnTypes)
         coordinator.setActiveTableRows(tableRows, for: tabId)
     }
 

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @Suite("Cloudflare D1 Driver Helpers")

@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @Suite("PostgreSQLSchemaQueries.listSchemas")
