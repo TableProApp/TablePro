@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage(AppPreferences.cloudSyncEnabledKey) private var cloudSyncEnabled = true
     @AppStorage(AppPreferences.defaultPageSizeKey) private var defaultPageSize = 100
     @AppStorage(AppPreferences.defaultSafeModeKey) private var defaultSafeModeRaw = SafeModeLevel.off.rawValue
+    @AppStorage(AppPreferences.hideQueryPreviewInActivityKey) private var hideQueryPreviewInActivity = false
 
     private let auth = BiometricAuthService()
 
@@ -17,12 +18,18 @@ struct SettingsView: View {
             syncSection
             defaultsSection
 
-            Section("Privacy") {
+            Section {
                 Toggle(String(localized: "Share anonymous usage data"), isOn: $shareAnalytics)
 
                 Text("Help improve TablePro by sharing anonymous usage statistics (no personal data or queries).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Toggle(String(localized: "Hide query in Live Activities"), isOn: $hideQueryPreviewInActivity)
+            } header: {
+                Text("Privacy")
+            } footer: {
+                Text("When on, the lock screen and Dynamic Island show \"Running query\" instead of the SQL preview.")
             }
 
             Section("About") {

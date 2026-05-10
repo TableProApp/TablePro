@@ -1263,7 +1263,14 @@
       }
     },
     "Create Group" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tạo nhóm"
+          }
+        }
+      }
     },
     "Create New Database" : {
       "localizations" : {
@@ -1282,7 +1289,14 @@
       }
     },
     "Create Tag" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tạo thẻ"
+          }
+        }
+      }
     },
     "Database" : {
       "localizations" : {
@@ -1469,7 +1483,14 @@
       }
     },
     "Delete group" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa nhóm"
+          }
+        }
+      }
     },
     "Delete Group" : {
       "localizations" : {
@@ -1488,7 +1509,14 @@
       }
     },
     "Delete row" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa hàng"
+          }
+        }
+      }
     },
     "Delete Row" : {
       "localizations" : {
@@ -1507,7 +1535,14 @@
       }
     },
     "Delete tag" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa thẻ"
+          }
+        }
+      }
     },
     "Descending" : {
       "localizations" : {
@@ -4226,7 +4261,14 @@
       }
     },
     "The query returned no rows." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn không trả về hàng nào."
+          }
+        }
+      }
     },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
@@ -4684,6 +4726,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编写SQL并点击运行按钮。"
+          }
+        }
+      }
+    },
+    "Hide query in Live Activities" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ẩn truy vấn trong Live Activity"
+          }
+        }
+      }
+    },
+    "When on, the lock screen and Dynamic Island show \"Running query\" instead of the SQL preview." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khi bật, màn hình khóa và Dynamic Island hiển thị \"Đang chạy truy vấn\" thay cho nội dung SQL."
+          }
+        }
+      }
+    },
+    "Running query" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang chạy truy vấn"
           }
         }
       }

@@ -428,10 +428,13 @@ struct QueryEditorView: View {
 
     private func startQueryActivity(trimmed: String, startedAt: Date) -> Activity<QueryActivityAttributes>? {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return nil }
+        let preview: String = AppPreferences.hidesQueryPreviewInActivity
+            ? String(localized: "Running query")
+            : String(trimmed.prefix(60))
         let attributes = QueryActivityAttributes(
             connectionId: coordinator.connection.id,
             connectionName: coordinator.displayName,
-            queryPreview: String(trimmed.prefix(60))
+            queryPreview: preview
         )
         let initialState = QueryActivityAttributes.ContentState(
             startedAt: startedAt,

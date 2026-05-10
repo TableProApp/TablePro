@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS: iCloud sync runs every 30 minutes in the background via `BGAppRefreshTask` while the app is closed (gated by the iCloud Sync setting); iOS schedules the actual cadence based on usage and battery
 - iOS: Cmd+F focuses the search field in Tables and Data Browser (iPad keyboard canonical)
 - iOS: search text in Tables and Data Browser persists across process kill via `@SceneStorage` (per-window on iPad)
-- iOS Settings: iCloud Sync toggle (off keeps connections, groups, and tags on this device only and disables the sync toolbar button), Rows per Page picker (50/100/200/500, applied to new data browser sessions), Default Safe Mode picker (applied when adding a new connection)
+- iOS Settings: iCloud Sync toggle (off keeps connections, groups, and tags on this device only and disables the sync toolbar button), Rows per Page picker (50/100/200/500, applied to new data browser sessions), Default Safe Mode picker (applied when adding a new connection), "Hide query in Live Activities" toggle that swaps the SQL preview for a generic "Running query" label on the lock screen and Dynamic Island
 - iOS: alert when the active connection is deleted mid-session (for example via iCloud sync from another device), so a stale screen no longer fails silently on the next action
 - iOS: Face ID, Touch ID, or Optic ID lock with cold-launch protection and idle timeout (1, 5, 15, or 60 minutes), opt-in from Settings
 - iOS: Connection Info tab replaces the per-connection Settings tab, showing host, SSL, SSH tunnel, active database, and live connection status

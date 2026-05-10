@@ -5,6 +5,7 @@ enum AppPreferences {
     static let cloudSyncEnabledKey = "com.TablePro.settings.cloudSyncEnabled"
     static let defaultPageSizeKey = "com.TablePro.settings.defaultPageSize"
     static let defaultSafeModeKey = "com.TablePro.settings.defaultSafeMode"
+    static let hideQueryPreviewInActivityKey = "com.TablePro.settings.hideQueryPreviewInActivity"
 
     static let pageSizeOptions: [Int] = [50, 100, 200, 500]
 
@@ -22,5 +23,9 @@ enum AppPreferences {
         guard let raw = UserDefaults.standard.string(forKey: defaultSafeModeKey),
               let level = SafeModeLevel(rawValue: raw) else { return .off }
         return level
+    }
+
+    static var hidesQueryPreviewInActivity: Bool {
+        UserDefaults.standard.bool(forKey: hideQueryPreviewInActivityKey)
     }
 }
