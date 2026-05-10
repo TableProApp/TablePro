@@ -74,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- iOS: row detail pager no longer carries the index-based row iteration that caused the build 11 filter crash. A recent refactor reintroduced the pattern; row detail now uses the same identity-based row wrapping the data browser does.
 - Tables in the sidebar now load automatically after a slow connect. SQL Server connections previously showed "No Tables" until the user manually picked a schema; the same race could affect other engines on slow networks. The post-connect listener now triggers the schema load once the driver is bound.
 - SQL Server `switchDatabase` now actually switches the database (`USE <database>`) instead of being routed through a schema switch. Switching from a saved tab pointing at a different database used to overwrite the current schema with the database name and leave the table list empty until the user manually re-picked a schema.
 - SQL Server cell edits now save without "Conversion failed when converting date and/or time from character string." Tables with primary keys use a PK-only WHERE clause (no longer including every column), and DATETIME / DATETIME2 / SMALLDATETIME values round-trip as ISO 8601 instead of FreeTDS's `MMM d yyyy h:mm:ss:fffAM` format that SQL Server's parser rejects.

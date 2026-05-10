@@ -46,9 +46,9 @@ struct RowDetailView: View {
                 rowContent(at: viewModel.currentIndex)
             } else {
                 TabView(selection: $viewModel.currentIndex) {
-                    ForEach(viewModel.rows.indices, id: \.self) { index in
-                        rowContent(at: index)
-                            .tag(index)
+                    ForEach(IndexedRow.wrap(viewModel.rows)) { item in
+                        rowContent(at: item.id)
+                            .tag(item.id)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
