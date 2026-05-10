@@ -8,6 +8,7 @@
 
 import os
 import SwiftUI
+import TableProPluginKit
 
 extension MainContentView {
     // MARK: - Event Handlers
@@ -168,7 +169,7 @@ extension MainContentView {
         }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
 
-        var allRows: [[String?]] = []
+        var allRows: [[PluginCellValue]] = []
         for index in selectedIndices.sorted() {
             if index < tableRows.rows.count {
                 allRows.append(Array(tableRows.rows[index].values))
@@ -206,9 +207,10 @@ extension MainContentView {
         let pkColumns = Set(tab.tableContext.primaryKeyColumns)
         let fkColumns = Set(tableRows.columnForeignKeys.keys)
 
+        let stringRows: [[String?]] = allRows.map { row in row.map { $0.asText } }
         rightPanelState.editState.configure(
             selectedRowIndices: selectedIndices,
-            allRows: allRows,
+            allRows: stringRows,
             columns: tableRows.columns,
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
@@ -234,13 +236,15 @@ extension MainContentView {
                 guard rowIndex < tableRows.rows.count else { continue }
                 let originalRow = Array(tableRows.rows[rowIndex].values)
 
-                let oldValue: String?
+                let oldValue: PluginCellValue
                 if columnIndex < capturedEditState.fields.count,
                     !capturedEditState.fields[columnIndex].isTruncated
                 {
-                    oldValue = capturedEditState.fields[columnIndex].originalValue
+                    oldValue = PluginCellValue.fromOptional(capturedEditState.fields[columnIndex].originalValue)
+                } else if columnIndex < originalRow.count {
+                    oldValue = originalRow[columnIndex]
                 } else {
-                    oldValue = columnIndex < originalRow.count ? originalRow[columnIndex] : nil
+                    oldValue = .null
                 }
 
                 capturedCoordinator.changeManager.recordCellChange(
@@ -248,7 +252,7 @@ extension MainContentView {
                     columnIndex: columnIndex,
                     columnName: columnName,
                     oldValue: oldValue,
-                    newValue: newValue,
+                    newValue: PluginCellValue.fromOptional(newValue),
                     originalRow: originalRow
                 )
             }
@@ -280,7 +284,7 @@ extension MainContentView {
             let row = tableRows.rows[rowIndex].values
             if let pkColIndex = tableRows.columns.firstIndex(of: pkColumn),
                 pkColIndex < row.count,
-                let pkValue = row[pkColIndex]
+                let pkValue = row[pkColIndex].asText
             {
                 let excludedList = Array(excludedNames)
 

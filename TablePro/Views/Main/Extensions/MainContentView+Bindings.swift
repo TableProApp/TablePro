@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 extension MainContentView {
     // MARK: - Selected Row Data for Sidebar
@@ -27,10 +28,9 @@ extension MainContentView {
         let tblName = tab.tableContext.tableName
 
         for (i, col) in tableRows.columns.enumerated() {
-            var value = i < row.count ? row[i] : nil
+            var value: String? = i < row.count ? row[i].asText : nil
             let type = i < tableRows.columnTypes.count ? tableRows.columnTypes[i].displayName : "string"
 
-            // Apply display format if active
             if let rawValue = value {
                 let format = service.effectiveFormat(columnName: col, connectionId: connId, tableName: tblName)
                 if format != .raw {

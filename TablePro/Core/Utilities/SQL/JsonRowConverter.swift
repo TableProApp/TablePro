@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 internal struct JsonRowConverter {
     internal let columns: [String]
@@ -11,7 +12,7 @@ internal struct JsonRowConverter {
 
     private static let maxRows = 50_000
 
-    func generateJson(rows: [[String?]]) -> String {
+    func generateJson(rows: [[PluginCellValue]]) -> String {
         let cappedRows = rows.prefix(Self.maxRows)
         let rowCount = cappedRows.count
 
@@ -19,7 +20,6 @@ internal struct JsonRowConverter {
             return "[]"
         }
 
-        // Estimate capacity: ~100 bytes per cell as rough heuristic
         var result = String()
         result.reserveCapacity(rowCount * columns.count * 100)
 
@@ -33,11 +33,24 @@ internal struct JsonRowConverter {
                 result.append(escapeString(column))
                 result.append("\": ")
 
-                guard row.indices.contains(colIdx), let value = row[colIdx] else {
+                guard row.indices.contains(colIdx) else {
                     result.append("null")
                     appendPropertySuffix(to: &result, colIdx: colIdx)
                     continue
                 }
+
+                let cell = row[colIdx]
+                if cell.isNull {
+                    result.append("null")
+                    appendPropertySuffix(to: &result, colIdx: colIdx)
+                    continue
+                }
+                if case .bytes(let data) = cell {
+                    result.append("\"\(data.base64EncodedString())\"")
+                    appendPropertySuffix(to: &result, colIdx: colIdx)
+                    continue
+                }
+                let value = cell.asText ?? ""
 
                 let colType: ColumnType
                 if columnTypes.indices.contains(colIdx) {
@@ -78,9 +91,7 @@ internal struct JsonRowConverter {
             return formatBoolean(value)
         case .json:
             return formatJson(value)
-        case .blob:
-            return formatBlob(value)
-        case .text, .date, .timestamp, .datetime, .enumType, .set, .spatial:
+        case .blob, .text, .date, .timestamp, .datetime, .enumType, .set, .spatial:
             return quotedEscaped(value)
         }
     }
@@ -179,14 +190,6 @@ internal struct JsonRowConverter {
         } catch {
             return quotedEscaped(value)
         }
-    }
-
-    private func formatBlob(_ value: String) -> String {
-        guard let data = value.data(using: .utf8) else {
-            return quotedEscaped(value)
-        }
-        let encoded = data.base64EncodedString()
-        return "\"\(encoded)\""
     }
 
     private func quotedEscaped(_ value: String) -> String {

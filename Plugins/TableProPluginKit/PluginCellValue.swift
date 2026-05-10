@@ -37,6 +37,14 @@ public extension PluginCellValue {
         if case .bytes(let value) = self { return value }
         return nil
     }
+
+    var asAny: Any? {
+        switch self {
+        case .null: return nil
+        case .text(let s): return s
+        case .bytes(let d): return d
+        }
+    }
 }
 
 extension PluginCellValue: Codable {

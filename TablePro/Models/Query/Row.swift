@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 enum RowID: Hashable, Sendable {
     case existing(Int)
@@ -17,10 +18,10 @@ enum RowID: Hashable, Sendable {
 
 struct Row: Equatable, Sendable {
     var id: RowID
-    var values: ContiguousArray<String?>
+    var values: ContiguousArray<PluginCellValue>
 
-    subscript(column: Int) -> String? {
-        get { column >= 0 && column < values.count ? values[column] : nil }
+    subscript(column: Int) -> PluginCellValue {
+        get { column >= 0 && column < values.count ? values[column] : .null }
         set {
             guard column >= 0, column < values.count else { return }
             values[column] = newValue

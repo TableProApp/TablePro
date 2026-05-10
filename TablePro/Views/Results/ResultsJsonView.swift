@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 internal struct ResultsJsonView: View {
     let tableRows: TableRows
@@ -184,8 +185,8 @@ internal struct ResultsJsonView: View {
         rows: ContiguousArray<Row>,
         selectedIndices: Set<Int>
     ) -> (json: String, pretty: String, parseResult: Result<JSONTreeNode, JSONTreeParseError>) {
-        let allRows: [[String?]] = rows.map { Array($0.values) }
-        let displayRows: [[String?]]
+        let allRows: [[PluginCellValue]] = rows.map { Array($0.values) }
+        let displayRows: [[PluginCellValue]]
         if selectedIndices.isEmpty {
             displayRows = allRows
         } else {

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 @MainActor @Observable
 final class GridSelectionState {
@@ -40,7 +41,7 @@ struct TabChangeSnapshot: Equatable {
     var deletedRowIndices: Set<Int>
     var insertedRowIndices: Set<Int>
     var modifiedCells: [Int: Set<Int>]
-    var insertedRowData: [Int: [String?]]  // Lazy storage for inserted row values
+    var insertedRowData: [Int: [PluginCellValue]]
     var primaryKeyColumns: [String]
     var columns: [String]
 

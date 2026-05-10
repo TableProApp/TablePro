@@ -191,7 +191,7 @@ final class PaginationCoordinator {
                     }
 
                     let replaceDelta = parent.mutateActiveTableRows(for: tabId) { rows in
-                        rows.replace(rows: result.rows.map { row in row.map { $0.asText } })
+                        rows.replace(rows: result.rows)
                     }
                     parent.tabManager.mutate(at: idx) { tab in
                         tab.execution.executionTime = result.executionTime

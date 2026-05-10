@@ -8,6 +8,7 @@
 
 import Foundation
 import Observation
+import TableProPluginKit
 
 /// Manager for tracking and applying schema changes
 @MainActor @Observable
@@ -822,9 +823,9 @@ final class StructureChangeManager: ChangeManaging {
         rowIndex: Int,
         columnIndex: Int,
         columnName: String,
-        oldValue: String?,
-        newValue: String?,
-        originalRow: [String?]?
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?
     ) {}
 
     func undoRowDeletion(rowIndex: Int) {}

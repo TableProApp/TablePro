@@ -100,9 +100,8 @@ extension QueryExecutionCoordinator {
             }
         }
 
-        let stringRows = rows.map { row in row.map { $0.asText } }
         let newTableRows = TableRows.from(
-            queryRows: stringRows,
+            queryRows: rows,
             columns: columns,
             columnTypes: columnTypes,
             columnDefaults: columnDefaults,

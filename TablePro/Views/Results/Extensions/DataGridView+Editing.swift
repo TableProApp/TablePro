@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 extension TableViewCoordinator {
     enum EditEligibility {
@@ -42,7 +43,7 @@ extension TableViewCoordinator {
         let value: String
         if let displayRow = displayRow(at: row),
            columnIndex < displayRow.values.count,
-           let raw = displayRow.values[columnIndex] {
+           let raw = displayRow.values[columnIndex].asText {
             value = raw
         } else {
             value = ""

@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import TableProPluginKit
 
 // MARK: - Coordinator
 
@@ -258,7 +259,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return displayIndex
     }
 
-    func displayValue(forID id: RowID, column: Int, rawValue: String?, columnType: ColumnType?) -> String? {
+    func displayValue(forID id: RowID, column: Int, rawValue: PluginCellValue, columnType: ColumnType?) -> String? {
         let key = RowIDKey(id)
         if let box = displayCache.object(forKey: key),
            column >= 0, column < box.values.count,
@@ -266,7 +267,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             return cached
         }
         let format = column >= 0 && column < columnDisplayFormats.count ? columnDisplayFormats[column] : nil
-        let formatted = CellDisplayFormatter.format(rawValue, columnType: columnType, displayFormat: format) ?? rawValue
+        let formatted = CellDisplayFormatter.format(rawValue, columnType: columnType, displayFormat: format) ?? rawValue.asText
 
         let neededCount = max(column + 1, columnDisplayFormats.count, cachedColumnCount)
         let box: RowDisplayBox
@@ -329,7 +330,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                     row.values[col],
                     columnType: columnType,
                     displayFormat: format
-                ) ?? row.values[col]
+                ) ?? row.values[col].asText
             }
             let box = RowDisplayBox(values)
             displayCache.setObject(box, forKey: key, cost: displayCacheCost(values))

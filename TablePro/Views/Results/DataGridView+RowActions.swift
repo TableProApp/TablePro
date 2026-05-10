@@ -7,6 +7,7 @@
 
 import AppKit
 import os
+import TableProPluginKit
 
 private let rowActionsLogger = Logger(subsystem: "com.TablePro", category: "DataGridView+RowActions")
 
@@ -87,9 +88,16 @@ extension TableViewCoordinator {
         guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
         guard let row = displayRow(at: rowIndex), columnIndex < row.values.count else { return }
 
-        let value = row.values[columnIndex] ?? "NULL"
+        let cell = row.values[columnIndex]
         let columnTypes = tableRows.columnTypes
         let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
+
+        if case .bytes(let data) = cell {
+            ClipboardService.shared.writeText(BlobFormattingService.shared.format(data, for: .copy) ?? "")
+            return
+        }
+
+        let value = cell.asText ?? "NULL"
 
         if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw {
             let formatted = ValueDisplayFormatService.applyFormat(value, format: format)
@@ -114,7 +122,8 @@ extension TableViewCoordinator {
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let rows: [[String?]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+            let typedRows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+            let rows: [[String?]] = typedRows.map { row in row.map { $0.asText } }
             guard !rows.isEmpty else { return }
             ClipboardService.shared.writeText(converter.generateInserts(rows: rows))
         } catch {
@@ -135,7 +144,8 @@ extension TableViewCoordinator {
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let rows: [[String?]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+            let typedRows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+            let rows: [[String?]] = typedRows.map { row in row.map { $0.asText } }
             guard !rows.isEmpty else { return }
             ClipboardService.shared.writeText(converter.generateUpdates(rows: rows))
         } catch {
@@ -144,7 +154,7 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let rows: [[String?]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+        let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
         let columnTypes = tableRows.columnTypes
@@ -152,11 +162,17 @@ extension TableViewCoordinator {
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
 
-    private func formatRowValues(values: [String?], columnTypes: [ColumnType]?) -> [String] {
-        values.enumerated().map { index, value in
-            guard let value else { return "NULL" }
-            let columnType = columnTypes.flatMap { $0.indices.contains(index) ? $0[index] : nil }
-            return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
+    private func formatRowValues(values: [PluginCellValue], columnTypes: [ColumnType]?) -> [String] {
+        values.enumerated().map { index, cell in
+            switch cell {
+            case .null:
+                return "NULL"
+            case .text(let value):
+                let columnType = columnTypes.flatMap { $0.indices.contains(index) ? $0[index] : nil }
+                return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
+            case .bytes(let data):
+                return BlobFormattingService.shared.format(data, for: .copy) ?? ""
+            }
         }
     }
 

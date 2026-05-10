@@ -1209,7 +1209,7 @@ final class MainContentCoordinator {
             let sortColumns = newState.columns
             let colTypes = tableRows.columnTypes
             let storageRows = tableRows.rows
-            let snapshotRows: [(id: RowID, values: [String?])] = storageRows.map { ($0.id, Array($0.values)) }
+            let snapshotRows: [(id: RowID, values: [PluginCellValue])] = storageRows.map { ($0.id, Array($0.values)) }
 
             if storageRows.count > 1_000 {
                 activeSortTasks[tabId]?.cancel()
@@ -1284,11 +1284,10 @@ final class MainContentCoordinator {
 
     /// Multi-column sort returning a permutation of `RowID` (nonisolated for background thread).
     nonisolated private static func multiColumnSortedIDs(
-        rows: [(id: RowID, values: [String?])],
+        rows: [(id: RowID, values: [PluginCellValue])],
         sortColumns: [SortColumn],
         columnTypes: [ColumnType] = []
     ) -> [RowID] {
-        // Fast path: single-column sort avoids intermediate key array allocation
         if sortColumns.count == 1 {
             let col = sortColumns[0]
             let colIndex = col.columnIndex
@@ -1298,8 +1297,8 @@ final class MainContentCoordinator {
             indices.sort { i1, i2 in
                 let row1 = rows[i1].values
                 let row2 = rows[i2].values
-                let v1 = colIndex < row1.count ? (row1[colIndex] ?? "") : ""
-                let v2 = colIndex < row2.count ? (row2[colIndex] ?? "") : ""
+                let v1 = colIndex < row1.count ? (row1[colIndex].asText ?? "") : ""
+                let v2 = colIndex < row2.count ? (row2[colIndex].asText ?? "") : ""
                 let cmp = RowSortComparator.compare(v1, v2, columnType: colType)
                 return ascending ? cmp == .orderedAscending : cmp == .orderedDescending
             }
@@ -1311,8 +1310,8 @@ final class MainContentCoordinator {
             let row1 = rows[i1].values
             let row2 = rows[i2].values
             for sortCol in sortColumns {
-                let v1 = sortCol.columnIndex < row1.count ? (row1[sortCol.columnIndex] ?? "") : ""
-                let v2 = sortCol.columnIndex < row2.count ? (row2[sortCol.columnIndex] ?? "") : ""
+                let v1 = sortCol.columnIndex < row1.count ? (row1[sortCol.columnIndex].asText ?? "") : ""
+                let v2 = sortCol.columnIndex < row2.count ? (row2[sortCol.columnIndex].asText ?? "") : ""
                 let colType = sortCol.columnIndex < columnTypes.count
                     ? columnTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(v1, v2, columnType: colType)

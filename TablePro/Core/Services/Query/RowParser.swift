@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Protocol for parsing row data from text
 protocol RowDataParser {
@@ -56,12 +57,12 @@ struct TSVRowParser: RowDataParser {
                 values = Array(values.prefix(schema.columnCount))
             }
 
-            // Set primary key to __DEFAULT__ (let DB auto-generate)
             if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
                 values[pkIndex] = "__DEFAULT__"
             }
 
-            let parsedRow = ParsedRow(values: values, sourceLineNumber: lineNumber)
+            let typedValues = values.map(PluginCellValue.fromOptional)
+            let parsedRow = ParsedRow(values: typedValues, sourceLineNumber: lineNumber)
             parsedRows.append(parsedRow)
         }
 
@@ -72,11 +73,6 @@ struct TSVRowParser: RowDataParser {
         return .success(parsedRows)
     }
 
-    // MARK: - Private Helpers
-
-    /// Normalize a single value from clipboard
-    /// - Parameter rawValue: Raw string value
-    /// - Returns: Normalized value (nil for NULL, trimmed string otherwise)
     private func normalizeValue(_ rawValue: String) -> String? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespaces)
 
@@ -132,12 +128,12 @@ struct CSVRowParser: RowDataParser {
                 values = Array(values.prefix(schema.columnCount))
             }
 
-            // Set primary key to __DEFAULT__ (let DB auto-generate)
             if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
                 values[pkIndex] = "__DEFAULT__"
             }
 
-            parsedRows.append(ParsedRow(values: values, sourceLineNumber: lineNumber))
+            let typedValues = values.map(PluginCellValue.fromOptional)
+            parsedRows.append(ParsedRow(values: typedValues, sourceLineNumber: lineNumber))
         }
 
         guard !parsedRows.isEmpty else {

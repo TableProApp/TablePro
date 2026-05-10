@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import TableProPluginKit
 
 @MainActor
 final class DataGridCellFactory {
@@ -37,7 +38,7 @@ final class DataGridCellFactory {
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
 
         for i in stride(from: 0, to: totalRows, by: step) {
-            guard let value = tableRows.value(at: i, column: columnIndex) else { continue }
+            guard let value = tableRows.value(at: i, column: columnIndex).asText else { continue }
 
             let charCount = min((value as NSString).length, Self.maxMeasureChars)
             let cellWidth = CGFloat(charCount) * charWidth + 16
@@ -66,7 +67,7 @@ final class DataGridCellFactory {
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
 
         for i in stride(from: 0, to: totalRows, by: step) {
-            guard let value = tableRows.value(at: i, column: columnIndex) else { continue }
+            guard let value = tableRows.value(at: i, column: columnIndex).asText else { continue }
 
             let charCount = (value as NSString).length
             let cellWidth = CGFloat(charCount) * charWidth + 16

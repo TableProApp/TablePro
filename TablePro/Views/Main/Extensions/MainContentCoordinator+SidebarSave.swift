@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
     // MARK: - Sidebar Save
@@ -26,20 +27,23 @@ extension MainContentCoordinator {
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         let changes: [RowChange] = selectionState.indices.sorted().compactMap { rowIndex -> RowChange? in
             guard rowIndex < tableRows.rows.count else { return nil }
-            let originalRow = tableRows.rows[rowIndex].values
+            let originalRow = Array(tableRows.rows[rowIndex].values)
             return RowChange(
                 rowIndex: rowIndex,
                 type: .update,
                 cellChanges: editedFields.map { field in
-                    CellChange(
+                    let oldValue: PluginCellValue = field.columnIndex < originalRow.count
+                        ? originalRow[field.columnIndex]
+                        : .null
+                    return CellChange(
                         rowIndex: rowIndex,
                         columnIndex: field.columnIndex,
                         columnName: field.columnName,
-                        oldValue: field.columnIndex < originalRow.count ? originalRow[field.columnIndex] : nil,
-                        newValue: field.newValue
+                        oldValue: oldValue,
+                        newValue: PluginCellValue.fromOptional(field.newValue)
                     )
                 },
-                originalRow: Array(originalRow)
+                originalRow: originalRow
             )
         }
 

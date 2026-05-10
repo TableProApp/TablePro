@@ -250,8 +250,9 @@ final class StructureRowProvider {
 extension StructureRowProvider {
     /// Creates a TableRows snapshot from structure data
     func asTableRows() -> TableRows {
-        TableRows.from(
-            queryRows: rows,
+        let typedRows = rows.map { row in row.map(PluginCellValue.fromOptional) }
+        return TableRows.from(
+            queryRows: typedRows,
             columns: columns,
             columnTypes: columnTypes
         )

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct TableRows: Sendable {
     var rows: ContiguousArray<Row>
@@ -36,8 +37,8 @@ struct TableRows: Sendable {
 
     var count: Int { rows.count }
 
-    func value(at row: Int, column: Int) -> String? {
-        guard row >= 0, row < rows.count else { return nil }
+    func value(at row: Int, column: Int) -> PluginCellValue {
+        guard row >= 0, row < rows.count else { return .null }
         return rows[row][column]
     }
 
@@ -51,7 +52,7 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func edit(row: Int, column: Int, value: String?) -> Delta {
+    mutating func edit(row: Int, column: Int, value: PluginCellValue) -> Delta {
         guard row >= 0, row < rows.count else { return .none }
         guard column >= 0, column < columns.count else { return .none }
         guard column < rows[row].values.count else { return .none }
@@ -61,7 +62,7 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func editMany(_ edits: [(row: Int, column: Int, value: String?)]) -> Delta {
+    mutating func editMany(_ edits: [(row: Int, column: Int, value: PluginCellValue)]) -> Delta {
         var changed: Set<CellPosition> = []
         for edit in edits {
             guard edit.row >= 0, edit.row < rows.count else { continue }
@@ -76,7 +77,7 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func appendInsertedRow(values: [String?]) -> Delta {
+    mutating func appendInsertedRow(values: [PluginCellValue]) -> Delta {
         let normalized = Self.normalize(values: values, toCount: columns.count)
         let row = Row(id: .inserted(UUID()), values: normalized)
         let newIndex = rows.count
@@ -86,7 +87,7 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func insertInsertedRow(at index: Int, values: [String?]) -> Delta {
+    mutating func insertInsertedRow(at index: Int, values: [PluginCellValue]) -> Delta {
         guard index >= 0, index <= rows.count else { return .none }
         let normalized = Self.normalize(values: values, toCount: columns.count)
         let row = Row(id: .inserted(UUID()), values: normalized)
@@ -98,7 +99,7 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func appendPage(_ pageRows: [[String?]], startingAt offset: Int) -> Delta {
+    mutating func appendPage(_ pageRows: [[PluginCellValue]], startingAt offset: Int) -> Delta {
         guard !pageRows.isEmpty else { return .none }
         let firstIndex = rows.count
         rows.reserveCapacity(rows.count + pageRows.count)
@@ -132,7 +133,7 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func replace(rows replacementRows: [[String?]], offset: Int = 0) -> Delta {
+    mutating func replace(rows replacementRows: [[PluginCellValue]], offset: Int = 0) -> Delta {
         var rebuilt = ContiguousArray<Row>()
         rebuilt.reserveCapacity(replacementRows.count)
         var rebuiltIndex = [RowID: Int]()
@@ -181,7 +182,7 @@ struct TableRows: Sendable {
     }
 
     static func from(
-        queryRows: [[String?]],
+        queryRows: [[PluginCellValue]],
         columns: [String],
         columnTypes: [ColumnType],
         columnDefaults: [String: String?] = [:],
@@ -221,17 +222,17 @@ struct TableRows: Sendable {
         return .rowsRemoved(indices)
     }
 
-    private static func normalize(values: [String?], toCount targetCount: Int) -> ContiguousArray<String?> {
+    private static func normalize(values: [PluginCellValue], toCount targetCount: Int) -> ContiguousArray<PluginCellValue> {
         if values.count == targetCount {
             return ContiguousArray(values)
         }
-        var result = ContiguousArray<String?>()
+        var result = ContiguousArray<PluginCellValue>()
         result.reserveCapacity(targetCount)
         if values.count > targetCount {
             result.append(contentsOf: values.prefix(targetCount))
         } else {
             result.append(contentsOf: values)
-            result.append(contentsOf: ContiguousArray(repeating: nil, count: targetCount - values.count))
+            result.append(contentsOf: ContiguousArray(repeating: .null, count: targetCount - values.count))
         }
         return result
     }

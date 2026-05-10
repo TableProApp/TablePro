@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
     func addNewRow() {
@@ -43,6 +44,10 @@ extension MainContentCoordinator {
     }
 
     func updateCellInTab(rowIndex: Int, columnIndex: Int, value: String?) {
-        rowEditingCoordinator.updateCellInTab(rowIndex: rowIndex, columnIndex: columnIndex, value: value)
+        rowEditingCoordinator.updateCellInTab(
+            rowIndex: rowIndex,
+            columnIndex: columnIndex,
+            value: PluginCellValue.fromOptional(value)
+        )
     }
 }

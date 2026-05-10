@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 struct CellPosition: Hashable {
     let row: Int

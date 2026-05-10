@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProPluginKit
 
 extension TableViewCoordinator {
     func commitCellEdit(row: Int, columnIndex: Int, newValue: String?) {
@@ -14,7 +15,8 @@ extension TableViewCoordinator {
         guard let displayRowValues = displayRow(at: row) else { return }
         guard columnIndex < displayRowValues.values.count else { return }
         let oldValue = displayRowValues.values[columnIndex]
-        guard oldValue != newValue else { return }
+        let typedNewValue = PluginCellValue.fromOptional(newValue)
+        guard oldValue != typedNewValue else { return }
 
         isCommittingCellEdit = true
         defer { isCommittingCellEdit = false }
@@ -27,14 +29,14 @@ extension TableViewCoordinator {
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: oldValue,
-            newValue: newValue,
+            newValue: typedNewValue,
             originalRow: originalRow
         )
 
         var delta: Delta = .none
         if let storageRow {
             tableRowsMutator { tableRows in
-                delta = tableRows.edit(row: storageRow, column: columnIndex, value: newValue)
+                delta = tableRows.edit(row: storageRow, column: columnIndex, value: typedNewValue)
             }
         }
         delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)

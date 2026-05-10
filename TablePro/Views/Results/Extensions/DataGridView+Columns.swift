@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 extension TableViewCoordinator {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -73,10 +74,11 @@ extension TableViewCoordinator {
             isDropdownColumn: resolvedDropdown
         )
 
-        let accessibilityValue = rawValue ?? String(localized: "NULL")
+        let rawText = rawValue.asText
+        let accessibilityValue = rawText ?? String(localized: "NULL")
         let content = DataGridCellContent(
             displayText: formattedValue ?? "",
-            rawValue: rawValue,
+            rawValue: rawText,
             placeholder: placeholderKind(for: rawValue),
             accessibilityLabel: String(
                 format: String(localized: "Row %d, column %d: %@"),
@@ -99,11 +101,17 @@ extension TableViewCoordinator {
         return cell
     }
 
-    private func placeholderKind(for rawValue: String?) -> DataGridCellPlaceholder? {
-        guard let rawValue else { return .null }
-        if rawValue == "__DEFAULT__" { return .defaultMarker }
-        if rawValue.isEmpty { return .empty }
-        return nil
+    private func placeholderKind(for rawValue: PluginCellValue) -> DataGridCellPlaceholder? {
+        switch rawValue {
+        case .null:
+            return .null
+        case .text(let s):
+            if s == "__DEFAULT__" { return .defaultMarker }
+            if s.isEmpty { return .empty }
+            return nil
+        case .bytes:
+            return nil
+        }
     }
 
     func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
@@ -112,7 +120,7 @@ extension TableViewCoordinator {
         guard let columnIndex = dataColumnIndex(from: tableColumn.identifier) else { return nil }
         guard let displayRow = displayRow(at: row) else { return nil }
         guard columnIndex < displayRow.values.count else { return nil }
-        return displayRow.values[columnIndex]
+        return displayRow.values[columnIndex].asText
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {

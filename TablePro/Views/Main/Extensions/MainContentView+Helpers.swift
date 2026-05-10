@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 extension MainContentView {
     // MARK: - Helper Methods
@@ -118,7 +119,7 @@ extension MainContentView {
 
         for row in displayRows {
             let values = columns.indices.map { i in
-                let raw = i < row.values.count ? (row.values[i] ?? "NULL") : "NULL"
+                let raw = i < row.values.count ? (row.values[i].asText ?? "NULL") : "NULL"
                 return (raw as NSString).length > 200 ? String(raw.prefix(200)) + "..." : raw
             }
             lines.append(values.joined(separator: " | "))

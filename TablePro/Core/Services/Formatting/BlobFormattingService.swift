@@ -6,8 +6,8 @@
 //
 
 import Foundation
+import TableProPluginKit
 
-/// Display context for BLOB formatting.
 enum BlobDisplayContext {
     /// Data grid cell: compact single-line "0x48656C6C6F..."
     case grid
@@ -25,7 +25,6 @@ final class BlobFormattingService {
 
     private init() {}
 
-    /// Format a raw BLOB string value for the given display context.
     func format(_ value: String, for context: BlobDisplayContext) -> String? {
         switch context {
         case .grid, .copy:
@@ -35,6 +34,11 @@ final class BlobFormattingService {
         case .edit:
             return value.formattedAsEditableHex()
         }
+    }
+
+    func format(_ data: Data, for context: BlobDisplayContext) -> String? {
+        let value = String(data: data, encoding: .isoLatin1) ?? ""
+        return format(value, for: context)
     }
 
     /// Parse an edited hex string back to a raw binary string.

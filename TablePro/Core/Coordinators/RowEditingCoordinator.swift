@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 @MainActor @Observable
 final class RowEditingCoordinator {
@@ -185,7 +186,7 @@ final class RowEditingCoordinator {
     func copySelectedRowsAsJson(indices: Set<Int>) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
-        let rows = indices.sorted().compactMap { idx -> [String?]? in
+        let rows = indices.sorted().compactMap { idx -> [PluginCellValue]? in
             guard idx >= 0, idx < tableRows.count else { return nil }
             return Array(tableRows.rows[idx].values)
         }
@@ -229,7 +230,7 @@ final class RowEditingCoordinator {
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(pasteResult.delta)
     }
 
-    func updateCellInTab(rowIndex: Int, columnIndex: Int, value: String?) {
+    func updateCellInTab(rowIndex: Int, columnIndex: Int, value: PluginCellValue) {
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
         let tabId = tab.id
         let delta = parent.mutateActiveTableRows(for: tabId) { rows in

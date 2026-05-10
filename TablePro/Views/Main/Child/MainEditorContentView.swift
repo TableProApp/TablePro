@@ -9,6 +9,7 @@
 import AppKit
 import CodeEditSourceEditor
 import SwiftUI
+import TableProPluginKit
 
 /// Identity for the visibility-scoped lazy-load `.task(id:)` modifier on
 /// `MainEditorContentView`. Changes to either field cancel the previous
@@ -608,8 +609,8 @@ struct MainEditorContentView: View {
 
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if smartDetectionEnabled {
-            let sampleRows: [[String?]]? = {
-                let rows: [[String?]] = tableRows?.rows.prefix(10).map { Array($0.values) } ?? []
+            let sampleRows: [[PluginCellValue]]? = {
+                let rows: [[PluginCellValue]] = tableRows?.rows.prefix(10).map { Array($0.values) } ?? []
                 return rows.isEmpty ? nil : rows
             }()
             detected = ValueDisplayDetector.detect(
@@ -690,9 +691,9 @@ struct MainEditorContentView: View {
             let row2 = storageRows[idx2].values
             for sortCol in sortColumns {
                 let val1 = sortCol.columnIndex < row1.count
-                    ? (row1[sortCol.columnIndex] ?? "") : ""
+                    ? (row1[sortCol.columnIndex].asText ?? "") : ""
                 let val2 = sortCol.columnIndex < row2.count
-                    ? (row2[sortCol.columnIndex] ?? "") : ""
+                    ? (row2[sortCol.columnIndex].asText ?? "") : ""
                 let colType = sortCol.columnIndex < colTypes.count
                     ? colTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(val1, val2, columnType: colType)
