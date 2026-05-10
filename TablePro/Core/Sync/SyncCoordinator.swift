@@ -88,6 +88,10 @@ final class SyncCoordinator {
             Self.logger.info("syncNow: canSync() returned false, skipping")
             return
         }
+        guard !syncStatus.isSyncing else {
+            Self.logger.info("syncNow: another sync is already in progress, skipping")
+            return
+        }
 
         syncStatus = .syncing
 
@@ -614,9 +618,13 @@ final class SyncCoordinator {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
-                guard syncStatus.isEnabled, !syncStatus.isSyncing else { return }
-                syncTask?.cancel()
+                guard syncStatus.isEnabled else { return }
+                let previousTask = syncTask
+                previousTask?.cancel()
                 syncTask = Task {
+                    // Wait for the cancelled previous task to unwind before scheduling
+                    // the new debounce window, so we never have two sync tasks live.
+                    _ = await previousTask?.value
                     try? await Task.sleep(for: .seconds(2))
                     guard !Task.isCancelled else { return }
                     await self.syncNow()

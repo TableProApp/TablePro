@@ -360,7 +360,6 @@ final class MainContentCoordinator {
         self.persistence = TabPersistenceCoordinator(connectionId: connection.id)
 
         _ = services.schemaProviderRegistry.getOrCreate(for: connection.id)
-        services.schemaProviderRegistry.retain(for: connection.id)
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
@@ -427,7 +426,14 @@ final class MainContentCoordinator {
 
     func markActivated() {
         let start = Date()
-        _didActivate.withLock { $0 = true }
+        let wasAlreadyActive = _didActivate.withLock { current -> Bool in
+            let prior = current
+            current = true
+            return prior
+        }
+        if !wasAlreadyActive {
+            services.schemaProviderRegistry.retain(for: connection.id)
+        }
         registerForPersistence()
         setupPluginDriver()
         startFileWatcherIfNeeded()
@@ -602,17 +608,13 @@ final class MainContentCoordinator {
         let alreadyHandled = _didTeardown.withLock { $0 } || _teardownScheduled.withLock { $0 }
 
         // Never-activated coordinators are throwaway instances created by SwiftUI
-        // during body re-evaluation — @State only keeps the first, rest are discarded
+        // during body re-evaluation — @State only keeps the first, rest are discarded.
+        // Retain is paired with `markActivated`, so a never-activated coordinator
+        // never retained the schema provider and must not release it here.
         guard _didActivate.withLock({ $0 }) else {
             let id = instanceId
             Task { @MainActor in
                 Self.activeCoordinators.removeValue(forKey: id)
-            }
-            if !alreadyHandled {
-                Task { @MainActor in
-                    services.schemaProviderRegistry.release(for: connectionId)
-                    services.schemaProviderRegistry.purgeUnused()
-                }
             }
             return
         }

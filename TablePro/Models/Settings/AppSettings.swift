@@ -5,7 +5,6 @@
 //  Application settings models - pure data structures
 //
 
-import AppKit
 import Foundation
 import SwiftUI
 

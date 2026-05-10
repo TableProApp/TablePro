@@ -375,13 +375,11 @@ final class PluginManager {
             }
         }
 
-        if source == .userInstalled {
-            if pluginKitVersion < currentPluginKitVersion {
-                throw PluginError.pluginOutdated(
-                    pluginVersion: pluginKitVersion,
-                    requiredVersion: currentPluginKitVersion
-                )
-            }
+        if pluginKitVersion < currentPluginKitVersion {
+            throw PluginError.pluginOutdated(
+                pluginVersion: pluginKitVersion,
+                requiredVersion: currentPluginKitVersion
+            )
         }
     }
 

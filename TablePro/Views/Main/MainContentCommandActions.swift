@@ -859,16 +859,19 @@ final class MainContentCommandActions {
     }
 
     private func handleDatabaseDidConnect() {
-        Task {
-            if let driver = DatabaseManager.shared.driver(for: self.connection.id) {
-                coordinator?.toolbarState.databaseVersion = driver.serverVersion
+        Task { [weak coordinator] in
+            guard let coordinator, !coordinator.isTearingDown else { return }
+            if let driver = DatabaseManager.shared.driver(for: coordinator.connection.id) {
+                coordinator.toolbarState.databaseVersion = driver.serverVersion
             }
-            if case .loading = SchemaService.shared.state(for: self.connection.id) {
-                coordinator?.initRedisKeyTreeIfNeeded()
+            if case .loading = SchemaService.shared.state(for: coordinator.connection.id) {
+                coordinator.initRedisKeyTreeIfNeeded()
                 return
             }
-            await coordinator?.refreshTables()
-            coordinator?.initRedisKeyTreeIfNeeded()
+            await coordinator.refreshTables()
+            // Re-check after await: the user may have disconnected mid-fetch.
+            guard !coordinator.isTearingDown else { return }
+            coordinator.initRedisKeyTreeIfNeeded()
         }
     }
 
