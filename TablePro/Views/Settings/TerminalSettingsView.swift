@@ -150,19 +150,21 @@ struct TerminalSettingsView: View {
     }
 
     @ViewBuilder
-    private var pgDumpPathRow: some View {
-        let key = TerminalSettings.pgDumpCliPathKey
+    private func postgresToolRow(key: String, binaryName: String) -> some View {
         let binding = Binding<String>(
             get: { settings.cliPaths[key] ?? "" },
             set: { settings.cliPaths[key] = $0.isEmpty ? nil : $0 }
         )
-        let resolved = resolvedPaths[key] ?? "pg_dump"
-        TextField("pg_dump", text: binding, prompt: Text(resolved))
+        let resolved = resolvedPaths[key] ?? binaryName
+        TextField(binaryName, text: binding, prompt: Text(resolved))
     }
 
     private func resolveAllCliPaths() async {
         let dbTypes = Self.terminalDatabaseTypes
-        let pgDumpKey = TerminalSettings.pgDumpCliPathKey
+        let postgresTools: [(key: String, binary: String)] = [
+            (TerminalSettings.pgDumpCliPathKey, "pg_dump"),
+            (TerminalSettings.pgRestoreCliPathKey, "pg_restore")
+        ]
         let results = await withTaskGroup(of: (String, String).self) { group in
             for dbType in dbTypes {
                 group.addTask {
@@ -173,11 +175,13 @@ struct TerminalSettingsView: View {
                     return (dbType.rawValue, resolved ?? name)
                 }
             }
-            group.addTask {
-                let resolved = await Task.detached(priority: .utility) {
-                    CLICommandResolver.findExecutable("pg_dump")
-                }.value
-                return (pgDumpKey, resolved ?? "pg_dump")
+            for tool in postgresTools {
+                group.addTask {
+                    let resolved = await Task.detached(priority: .utility) {
+                        CLICommandResolver.findExecutable(tool.binary)
+                    }.value
+                    return (tool.key, resolved ?? tool.binary)
+                }
             }
             var paths: [String: String] = [:]
             for await (key, value) in group {
