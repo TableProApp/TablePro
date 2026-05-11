@@ -1113,6 +1113,7 @@ final class MainContentCoordinator {
                     }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
+                    if error is CancellationError || Task.isCancelled { return }
                     guard capturedGeneration == queryGeneration else { return }
                     handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }

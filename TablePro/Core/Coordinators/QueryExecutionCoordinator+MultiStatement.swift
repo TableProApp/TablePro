@@ -137,7 +137,9 @@ extension QueryExecutionCoordinator {
                     }
                 }
 
-                if capturedGeneration != parent.queryGeneration {
+                if capturedGeneration != parent.queryGeneration
+                    || error is CancellationError
+                    || Task.isCancelled {
                     await MainActor.run { [weak self] in
                         guard let self else { return }
                         parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }

@@ -462,7 +462,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
                 columnTypeNames.append(mysqlTypeToString(fields + i))
-                columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
+                columnIsBinary.append(
+                    MariaDBFieldClassifier.isBinary(
+                        typeRaw: field.type.rawValue,
+                        charset: field.charsetnr
+                    )
+                )
             }
         }
 
@@ -488,7 +493,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         sqlState: nil)
                 }
                 mysql_free_result(resultPtr)
-                throw MariaDBPluginError(code: 0, message: "Query cancelled", sqlState: nil)
+                throw CancellationError()
             }
 
             if rows.count >= maxRows {
@@ -672,7 +677,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             if shouldCancel { _isCancelled = false }
             stateLock.unlock()
             if shouldCancel {
-                throw MariaDBPluginError(code: 0, message: "Query cancelled", sqlState: nil)
+                throw CancellationError()
             }
 
             if rows.count >= maxRows {
@@ -808,7 +813,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
                 columnTypeNames.append(mysqlTypeToString(fields + i))
-                columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
+                columnIsBinary.append(
+                    MariaDBFieldClassifier.isBinary(
+                        typeRaw: field.type.rawValue,
+                        charset: field.charsetnr
+                    )
+                )
             }
         }
 
@@ -907,7 +917,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                         columnTypes.append(fieldType)
                         columnTypeNames.append(mysqlTypeToString(fields + i))
-                        columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
+                        columnIsBinary.append(
+                            MariaDBFieldClassifier.isBinary(
+                                typeRaw: field.type.rawValue,
+                                charset: field.charsetnr
+                            )
+                        )
                     }
                 }
 

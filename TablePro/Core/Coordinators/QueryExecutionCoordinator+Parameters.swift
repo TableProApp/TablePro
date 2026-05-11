@@ -162,6 +162,7 @@ extension QueryExecutionCoordinator {
                     }
                     parent.currentQueryTask = nil
                     parent.toolbarState.setExecuting(false)
+                    if error is CancellationError || Task.isCancelled { return }
                     guard capturedGeneration == parent.queryGeneration else { return }
                     handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }

@@ -368,7 +368,7 @@ final class MongoDBConnection: @unchecked Sendable {
         if cancelled { _isCancelled = false }
         stateLock.unlock()
         if cancelled {
-            throw MongoDBError(code: 0, message: String(localized: "Query cancelled"))
+            throw CancellationError()
         }
     }
 

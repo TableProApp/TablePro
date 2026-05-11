@@ -12853,6 +12853,9 @@
     "Could not save the connection. Check disk space and permissions, then try again." : {
 
     },
+    "Could not start a new TablePro instance. Quit and reopen manually." : {
+
+    },
     "Could not write to file. Check that the file is writable." : {
 
     },
@@ -36592,6 +36595,9 @@
         }
       }
     },
+    "Quit & Reopen" : {
+
+    },
     "Quit Anyway" : {
       "localizations" : {
         "tr" : {
@@ -37688,6 +37694,9 @@
       }
     },
     "Relational" : {
+
+    },
+    "Relaunch Failed" : {
 
     },
     "Reload" : {
