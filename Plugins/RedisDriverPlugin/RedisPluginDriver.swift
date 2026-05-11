@@ -65,10 +65,11 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         let sslConfig = config.ssl
         let redisDb = Int(config.additionalFields["redisDatabase"] ?? "") ?? Int(config.database) ?? 0
+        let (host, port) = try await resolveDataPlaneAddress(sslConfig: sslConfig)
 
         let conn = RedisPluginConnection(
-            host: config.host,
-            port: config.port,
+            host: host,
+            port: port,
             username: config.username.isEmpty ? nil : config.username,
             password: config.password.isEmpty ? nil : config.password,
             database: redisDb,
@@ -77,6 +78,68 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         try await conn.connect()
         redisConnection = conn
+    }
+
+    private func resolveDataPlaneAddress(sslConfig: RedisSSLConfig) async throws -> (String, Int) {
+        let mode = config.additionalFields["redisMode"] ?? "single"
+        switch mode {
+        case "sentinel":
+            return try await resolveSentinelMaster(sslConfig: sslConfig)
+        default:
+            return (config.host, config.port)
+        }
+    }
+
+    private func resolveSentinelMaster(sslConfig: RedisSSLConfig) async throws -> (String, Int) {
+        let hostsRaw = config.additionalFields["redisSentinelHosts"] ?? ""
+        let sentinels = RedisSentinelResolver.parseSentinelHostList(hostsRaw, defaultPort: 26_379)
+        let masterName = (config.additionalFields["redisSentinelMasterName"] ?? "")
+            .trimmingCharacters(in: .whitespaces)
+        let sentinelUsername = config.additionalFields["redisSentinelUsername"]
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        let sentinelPassword = config.additionalFields["redisSentinelPassword"]
+            .flatMap { $0.isEmpty ? nil : $0 }
+
+        let resolver = RedisSentinelResolver(
+            sentinels: sentinels,
+            masterName: masterName,
+            sentinelUsername: sentinelUsername,
+            sentinelPassword: sentinelPassword,
+            transport: HiredisSentinelTransport(sslConfig: sslConfig)
+        )
+
+        do {
+            let address = try await resolver.resolveMaster()
+            Self.logger.info("Sentinel resolved master \(masterName) to \(address.host):\(address.port)")
+            return (address.host, address.port)
+        } catch let error as RedisSentinelResolutionError {
+            throw Self.makeSentinelError(error)
+        }
+    }
+
+    private static func makeSentinelError(_ error: RedisSentinelResolutionError) -> RedisPluginError {
+        switch error {
+        case .noSentinelsConfigured:
+            return sentinelError(String(localized: "Sentinel mode requires at least one Sentinel node."))
+        case .emptyMasterName:
+            return sentinelError(String(localized: "Sentinel mode requires a master name."))
+        case .masterUnknown(let name, let tried):
+            let triedList = tried.map { "\($0.host):\($0.port)" }.joined(separator: ", ")
+            let template = String(localized: "None of the configured Sentinels know master \"%@\". Tried: %@")
+            return sentinelError(String(format: template, name, triedList))
+        case .allSentinelsUnreachable(let attempts):
+            let attemptsList = attempts.map { "\($0.host):\($0.port)" }.joined(separator: ", ")
+            let template = String(localized: "All Sentinels were unreachable. Tried: %@")
+            return sentinelError(String(format: template, attemptsList))
+        case .malformedReply(let sentinel, let detail):
+            let template = String(localized: "Malformed Sentinel reply from %@:%d (%@)")
+            return sentinelError(String(format: template, sentinel.host, sentinel.port, detail))
+        }
+    }
+
+    private static func sentinelError(_ message: String) -> RedisPluginError {
+        RedisPluginError(code: 0, message: message)
     }
 
     func disconnect() {

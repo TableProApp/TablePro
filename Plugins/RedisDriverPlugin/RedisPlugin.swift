@@ -13,7 +13,7 @@ import TableProPluginKit
 
 final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Redis Driver"
-    static let pluginVersion = "1.0.0"
+    static let pluginVersion = "1.1.0"
     static let pluginDescription = "Redis support via hiredis"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
@@ -22,6 +22,46 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "redis-icon"
     static let defaultPort = 6379
     static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: "redisMode",
+            label: String(localized: "Connection Mode"),
+            defaultValue: "single",
+            fieldType: .dropdown(options: [
+                .init(value: "single", label: String(localized: "Single Node")),
+                .init(value: "sentinel", label: String(localized: "Sentinel")),
+            ]),
+            section: .connection
+        ),
+        ConnectionField(
+            id: "redisSentinelHosts",
+            label: String(localized: "Sentinel Nodes"),
+            placeholder: "127.0.0.1:26379",
+            required: true,
+            fieldType: .hostList,
+            section: .connection,
+            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+        ),
+        ConnectionField(
+            id: "redisSentinelMasterName",
+            label: String(localized: "Master Group Name"),
+            placeholder: "mymaster",
+            defaultValue: "mymaster",
+            section: .connection,
+            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+        ),
+        ConnectionField(
+            id: "redisSentinelUsername",
+            label: String(localized: "Sentinel User"),
+            section: .connection,
+            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+        ),
+        ConnectionField(
+            id: "redisSentinelPassword",
+            label: String(localized: "Sentinel Password"),
+            fieldType: .secure,
+            section: .connection,
+            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+        ),
         ConnectionField(
             id: "redisDatabase",
             label: String(localized: "Database Index"),

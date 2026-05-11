@@ -5386,6 +5386,35 @@
         }
       }
     },
+    "All Sentinels were unreachable. Tried: %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "All Sentinels were unreachable. Tried: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tüm Sentinel'lere ulaşılamadı. Denendi: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể kết nối tới Sentinel nào. Đã thử: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有 Sentinel 节点都无法连接。已尝试：%@"
+          }
+        }
+      }
+    },
     "All tables and data will be permanently deleted." : {
       "localizations" : {
         "tr" : {
@@ -11336,6 +11365,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "连接丢失"
+          }
+        }
+      }
+    },
+    "Connection Mode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Connection Mode"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı Modu"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chế độ kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接模式"
           }
         }
       }
@@ -27914,6 +27971,35 @@
         }
       }
     },
+    "Malformed Sentinel reply from %@:%d (%@)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Malformed Sentinel reply from %@:%d (%@)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@:%2$d Sentinel'inden bozuk yanıt (%3$@)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel %1$@:%2$d trả về phản hồi không hợp lệ (%3$@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel %1$@:%2$d 返回了无效响应（%3$@）"
+          }
+        }
+      }
+    },
     "Manage Connections" : {
       "localizations" : {
         "tr" : {
@@ -28024,6 +28110,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "巨大"
+          }
+        }
+      }
+    },
+    "Master Group Name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Master Group Name"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ana Grup Adı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tên nhóm chính"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主节点组名"
           }
         }
       }
@@ -31667,6 +31781,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无（顶级）"
+          }
+        }
+      }
+    },
+    "None of the configured Sentinels know master \"%@\". Tried: %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "None of the configured Sentinels know master \"%@\". Tried: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yapılandırılmış Sentinel'lerin hiçbiri \"%1$@\" ana grubunu tanımıyor. Denendi: %2$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không Sentinel nào nhận diện nhóm chính \"%1$@\". Đã thử: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有配置的 Sentinel 节点都不识别主节点组 \"%1$@\"。已尝试：%2$@"
           }
         }
       }
@@ -41630,6 +41773,176 @@
         }
       }
     },
+    "Sentinel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sentinel"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel"
+          }
+        }
+      }
+    },
+    "Sentinel mode requires a master name." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sentinel mode requires a master name."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel modu için bir ana adı gereklidir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chế độ Sentinel cần tên của nhóm chính."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel 模式需要填写主节点组名。"
+          }
+        }
+      }
+    },
+    "Sentinel mode requires at least one Sentinel node." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sentinel mode requires at least one Sentinel node."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel modu en az bir Sentinel düğümü gerektirir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chế độ Sentinel cần ít nhất một nút Sentinel."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel 模式至少需要一个 Sentinel 节点。"
+          }
+        }
+      }
+    },
+    "Sentinel Nodes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sentinel Nodes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel Düğümleri"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các nút Sentinel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel 节点"
+          }
+        }
+      }
+    },
+    "Sentinel Password" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sentinel Password"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel Parolası"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu Sentinel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel 密码"
+          }
+        }
+      }
+    },
+    "Sentinel User" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sentinel User"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel Kullanıcısı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Người dùng Sentinel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentinel 用户"
+          }
+        }
+      }
+    },
     "Server" : {
       "localizations" : {
         "tr" : {
@@ -42921,6 +43234,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "静默"
+          }
+        }
+      }
+    },
+    "Single Node" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Single Node"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tek Düğüm"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Một nút"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单节点"
           }
         }
       }

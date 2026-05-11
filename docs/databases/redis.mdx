@@ -22,8 +22,9 @@ TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated names
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Host** | `localhost` | |
-| **Port** | `6379` | |
+| **Connection Mode** | `Single Node` | Choose `Sentinel` for HA deployments |
+| **Host** | `localhost` | Single Node only |
+| **Port** | `6379` | Single Node only |
 | **Password** | - | Leave empty for local dev |
 | **Database** | `0` | 0-15 |
 | **Key Separator** | `:` | Groups keys by prefix in sidebar |
@@ -31,6 +32,27 @@ TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated names
 <Tip>
 Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your browser. See [Connection URL Reference](/databases/connection-urls#redis).
 </Tip>
+
+## Connection Modes
+
+### Single Node
+
+Default. Connects directly to one Redis instance using the Host and Port fields.
+
+### Sentinel
+
+For HA deployments fronted by [Redis Sentinel](https://redis.io/docs/management/sentinel/). TablePro queries the Sentinel quorum for the current master address, then opens the data connection to it. On a dropped connection, the health monitor re-queries Sentinel and reconnects to whichever node is the new master.
+
+| Field | Notes |
+|-------|-------|
+| **Sentinel Nodes** | One or more `host:port` entries. Default port `26379`. |
+| **Master Group Name** | The name configured in `sentinel.conf` (defaults to `mymaster`). |
+| **Sentinel User** | Optional. Only set if Sentinel has its own ACL user (Redis 6.2+). |
+| **Sentinel Password** | Optional. Only set if Sentinel has its own AUTH. |
+
+The Host and Port fields are ignored in Sentinel mode. The Username and Password under the Authentication section are used for the data plane (master and replicas), which is assumed to share one credential across the master set.
+
+If every Sentinel is unreachable, or none of them know the master name, you get a connection error naming which Sentinels were tried.
 
 ## Example Configurations
 
@@ -109,6 +131,6 @@ DBSIZE
 
 **Timeout**: Verify host/port, check network and firewall, whitelist IP for cloud-hosted Redis.
 
-**Limitations**: Cluster mode unsupported, Pub/Sub and Streams limited in grid (work in CLI), large keys paginated.
+**Limitations**: Cluster mode not yet supported (planned, see [issue #1021](https://github.com/TableProApp/TablePro/issues/1021)), Pub/Sub and Streams limited in grid (work in CLI), large keys paginated.
 
 **Performance**: Use namespace browsing for filtering, use `SCAN` instead of `KEYS` in CLI, check memory with `INFO memory`.
