@@ -28,7 +28,7 @@ struct SidebarView: View {
     }
 
     private var routines: [RoutineInfo] {
-        []
+        schemaService.routines(for: connectionId)
     }
 
     private var pluginCapabilities: PluginCapabilities {
