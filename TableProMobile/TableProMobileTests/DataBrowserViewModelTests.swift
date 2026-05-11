@@ -92,6 +92,32 @@ struct DataBrowserViewModelTests {
         #expect(vm.activeSearchText == "")
     }
 
+    @Test("clearSearch with existing rows replaces them without leaving loading flags stuck")
+    func clearSearchReplacesRowsCleanly() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+        #expect(vm.legacyRows.count == 1)
+        #expect(vm.isLoading == false)
+        #expect(vm.isPageLoading == false)
+
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"], ["2", "Bob"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["2"]], rowsAffected: 0, executionTime: 0))
+        ]
+        await vm.clearSearch()
+
+        #expect(vm.isLoading == false)
+        #expect(vm.isPageLoading == false)
+        #expect(vm.legacyRows.count == 2)
+    }
+
     @Test("pagination prev/next clamps at boundaries")
     func paginationClamps() async {
         let driver = MockDatabaseDriver()
