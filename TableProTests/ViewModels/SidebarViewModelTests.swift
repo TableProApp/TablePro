@@ -247,3 +247,256 @@ struct SidebarViewModelTests {
         }
     }
 }
+
+// MARK: - Multi-Section Sidebar
+
+@MainActor
+private func makeViewModel(
+    connectionId: UUID = UUID(),
+    databaseType: DatabaseType = .postgresql
+) -> SidebarViewModel {
+    var selectedState: Set<TableInfo> = []
+    var truncates: Set<String> = []
+    var deletes: Set<String> = []
+    var options: [String: TableOperationOptions] = [:]
+    let selectedBinding = Binding(get: { selectedState }, set: { selectedState = $0 })
+    let truncatesBinding = Binding(get: { truncates }, set: { truncates = $0 })
+    let deletesBinding = Binding(get: { deletes }, set: { deletes = $0 })
+    let optionsBinding = Binding(get: { options }, set: { options = $0 })
+    return SidebarViewModel(
+        selectedTables: selectedBinding,
+        pendingTruncates: truncatesBinding,
+        pendingDeletes: deletesBinding,
+        tableOperationOptions: optionsBinding,
+        databaseType: databaseType,
+        connectionId: connectionId
+    )
+}
+
+@Suite("SidebarViewModel multi-section")
+struct SidebarViewModelMultiSectionTests {
+    @Test("tables of kind splits by TableType raw value")
+    @MainActor
+    func splitsTablesByKind() {
+        let vm = makeViewModel()
+        let userTable = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let profileView = TestFixtures.makeTableInfo(name: "profiles", type: .view)
+        let mixed = [userTable, profileView]
+
+        let tablesOnly = vm.tables(of: .table, from: mixed)
+        let viewsOnly = vm.tables(of: .view, from: mixed)
+        let matviews = vm.tables(of: .materializedView, from: mixed)
+
+        #expect(tablesOnly.map(\.name) == ["users"])
+        #expect(viewsOnly.map(\.name) == ["profiles"])
+        #expect(matviews.isEmpty)
+    }
+
+    @Test("system tables fall into the table bucket")
+    @MainActor
+    func systemTablesBucketAsTables() {
+        let vm = makeViewModel()
+        let sysTable = TestFixtures.makeTableInfo(name: "pg_stat_user_tables", type: .systemTable)
+
+        let tablesOnly = vm.tables(of: .table, from: [sysTable])
+        let viewsOnly = vm.tables(of: .view, from: [sysTable])
+
+        #expect(tablesOnly.map(\.name) == ["pg_stat_user_tables"])
+        #expect(viewsOnly.isEmpty)
+    }
+
+    @Test("routine kinds return empty when querying tables(of:)")
+    @MainActor
+    func routinesEmptyInTablesOf() {
+        let vm = makeViewModel()
+        let table = TestFixtures.makeTableInfo(name: "users", type: .table)
+
+        #expect(vm.tables(of: .procedure, from: [table]).isEmpty)
+        #expect(vm.tables(of: .function, from: [table]).isEmpty)
+    }
+
+    @Test("filteredTables(of:) honors search across kinds")
+    @MainActor
+    func filteredTablesAcrossKinds() {
+        let vm = makeViewModel()
+        let users = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let userView = TestFixtures.makeTableInfo(name: "user_profile_view", type: .view)
+        let orders = TestFixtures.makeTableInfo(name: "orders", type: .table)
+        let mixed = [users, userView, orders]
+        vm.searchText = "user"
+
+        let tableMatches = vm.filteredTables(of: .table, from: mixed)
+        let viewMatches = vm.filteredTables(of: .view, from: mixed)
+
+        #expect(tableMatches.map(\.name) == ["users"])
+        #expect(viewMatches.map(\.name) == ["user_profile_view"])
+    }
+
+    @Test("filteredRoutines filters by name across kinds")
+    @MainActor
+    func filteredRoutinesByKind() {
+        let vm = makeViewModel()
+        let getUser = RoutineInfo(name: "get_user_by_id", schema: "public", kind: .procedure, signature: nil)
+        let calcAge = RoutineInfo(name: "calculate_age", schema: "public", kind: .function, signature: nil)
+        let mixed = [getUser, calcAge]
+
+        let procs = vm.filteredRoutines(of: .procedure, from: mixed)
+        let funcs = vm.filteredRoutines(of: .function, from: mixed)
+
+        #expect(procs.map(\.name) == ["get_user_by_id"])
+        #expect(funcs.map(\.name) == ["calculate_age"])
+    }
+
+    @Test("filteredRoutines search matches name case insensitively")
+    @MainActor
+    func filteredRoutinesSearch() {
+        let vm = makeViewModel()
+        let getUser = RoutineInfo(name: "GET_USER_BY_ID", schema: nil, kind: .procedure, signature: nil)
+        let other = RoutineInfo(name: "log_event", schema: nil, kind: .procedure, signature: nil)
+        vm.searchText = "user"
+
+        let procs = vm.filteredRoutines(of: .procedure, from: [getUser, other])
+
+        #expect(procs.map(\.name) == ["GET_USER_BY_ID"])
+    }
+
+    @Test("effectiveExpanded honors stored state when search empty")
+    @MainActor
+    func effectiveExpandedRespectsStored() {
+        let vm = makeViewModel()
+        vm.expanded[.view] = false
+
+        #expect(vm.effectiveExpanded(kind: .view, hasMatches: false) == false)
+        #expect(vm.effectiveExpanded(kind: .table, hasMatches: false) == true)
+    }
+
+    @Test("effectiveExpanded auto-expands when search has matches")
+    @MainActor
+    func effectiveExpandedAutoExpandsOnSearch() {
+        let vm = makeViewModel()
+        vm.expanded[.procedure] = false
+        vm.searchText = "user"
+
+        let result = vm.effectiveExpanded(kind: .procedure, hasMatches: true)
+
+        #expect(result == true)
+    }
+
+    @Test("effectiveExpanded stays collapsed when search has no matches")
+    @MainActor
+    func effectiveExpandedStaysCollapsedWithoutMatches() {
+        let vm = makeViewModel()
+        vm.expanded[.function] = false
+        vm.searchText = "nonexistent"
+
+        let result = vm.effectiveExpanded(kind: .function, hasMatches: false)
+
+        #expect(result == false)
+    }
+
+    @Test("sectionShouldRender always shows tables")
+    @MainActor
+    func tablesAlwaysShown() {
+        let vm = makeViewModel()
+        let empty: PluginCapabilities = []
+
+        #expect(vm.sectionShouldRender(kind: .table, itemCount: 0, capabilities: empty))
+        #expect(vm.sectionShouldRender(kind: .table, itemCount: 5, capabilities: empty))
+    }
+
+    @Test("sectionShouldRender hides matview when capability missing")
+    @MainActor
+    func hidesMatviewWithoutCapability() {
+        let vm = makeViewModel()
+        let result = vm.sectionShouldRender(
+            kind: .materializedView,
+            itemCount: 10,
+            capabilities: []
+        )
+        #expect(result == false)
+    }
+
+    @Test("sectionShouldRender shows matview when capability present and items exist")
+    @MainActor
+    func showsMatviewWithCapability() {
+        let vm = makeViewModel()
+        let result = vm.sectionShouldRender(
+            kind: .materializedView,
+            itemCount: 3,
+            capabilities: [.materializedViews]
+        )
+        #expect(result == true)
+    }
+
+    @Test("sectionShouldRender hides matview when no items even with capability")
+    @MainActor
+    func hidesEmptyMatviewWithCapability() {
+        let vm = makeViewModel()
+        let result = vm.sectionShouldRender(
+            kind: .materializedView,
+            itemCount: 0,
+            capabilities: [.materializedViews]
+        )
+        #expect(result == false)
+    }
+
+    @Test("default expansion is true for tables only")
+    @MainActor
+    func defaultExpansionTablesOnly() {
+        let vm = makeViewModel()
+
+        #expect(vm.expanded[.table] == true)
+        #expect(vm.expanded[.view] == false)
+        #expect(vm.expanded[.materializedView] == false)
+        #expect(vm.expanded[.foreignTable] == false)
+        #expect(vm.expanded[.procedure] == false)
+        #expect(vm.expanded[.function] == false)
+    }
+
+    @Test("expansion writes persist to per-kind UserDefaults keys")
+    @MainActor
+    func expansionWritesPersist() {
+        let connectionId = UUID()
+        let vm = makeViewModel(connectionId: connectionId)
+        let key = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .procedure)
+        UserDefaults.standard.removeObject(forKey: key)
+
+        vm.expanded[.procedure] = true
+
+        #expect(UserDefaults.standard.bool(forKey: key) == true)
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    @Test("expansion seeds .table from legacy per-connection key on first init")
+    @MainActor
+    func legacyMigrationFromPerConnectionKey() {
+        let connectionId = UUID()
+        let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .table)
+        let legacyKey = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
+        UserDefaults.standard.removeObject(forKey: perKindKey)
+        UserDefaults.standard.set(false, forKey: legacyKey)
+
+        let vm = makeViewModel(connectionId: connectionId)
+
+        #expect(vm.expanded[.table] == false)
+        UserDefaults.standard.removeObject(forKey: perKindKey)
+        UserDefaults.standard.removeObject(forKey: legacyKey)
+    }
+
+    @Test("expansion seeds .table from global legacy key when no per-connection key set")
+    @MainActor
+    func legacyMigrationFromGlobalKey() {
+        let connectionId = UUID()
+        let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .table)
+        let perConnLegacy = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
+        UserDefaults.standard.removeObject(forKey: perKindKey)
+        UserDefaults.standard.removeObject(forKey: perConnLegacy)
+        UserDefaults.standard.set(false, forKey: SidebarPersistenceKey.legacyTablesExpanded)
+
+        let vm = makeViewModel(connectionId: connectionId)
+
+        #expect(vm.expanded[.table] == false)
+        UserDefaults.standard.removeObject(forKey: perKindKey)
+        UserDefaults.standard.removeObject(forKey: SidebarPersistenceKey.legacyTablesExpanded)
+    }
+}
