@@ -35,6 +35,7 @@ struct VimModeIndicatorView: View {
         switch mode {
         case .normal: return .secondary
         case .insert: return .white
+        case .replace: return .white
         case .visual: return .white
         case .commandLine: return .white
         }
@@ -44,6 +45,7 @@ struct VimModeIndicatorView: View {
         switch mode {
         case .normal: return Color(nsColor: .controlBackgroundColor)
         case .insert: return .accentColor
+        case .replace: return .red
         case .visual: return .orange
         case .commandLine: return .purple
         }

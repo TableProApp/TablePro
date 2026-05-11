@@ -112,7 +112,7 @@ struct AIChatViewModelMentionsTests {
     func resolveTurnForWireExpands() async {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .mysql)
-        let raw = ChatTurnWire(role: .user, blocks: [
+        let raw = ChatTurn(role: .user, blocks: [
             .text("Explain"),
             .attachment(.currentQuery(text: "SELECT * FROM Customer"))
         ])

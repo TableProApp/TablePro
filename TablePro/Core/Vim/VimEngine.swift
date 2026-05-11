@@ -13,6 +13,11 @@ enum VimOperator {
     case delete
     case yank
     case change
+    case lowercase
+    case uppercase
+    case toggleCase
+    case indent
+    case outdent
 }
 
 /// Core Vim editing engine — deterministic state machine
@@ -42,6 +47,9 @@ final class VimEngine {
 
     /// Visual mode anchor offset
     private var visualAnchor: Int = 0
+
+    /// Cursor offset when insert mode was last exited — used by `gi`
+    private var lastInsertOffset: Int?
 
     private var buffer: VimTextBuffer?
 
@@ -73,6 +81,8 @@ final class VimEngine {
             consumed = processNormal(char, shift: shift)
         case .insert:
             consumed = processInsert(char)
+        case .replace:
+            consumed = processReplace(char)
         case .visual:
             consumed = processVisual(char, shift: shift)
         case .commandLine(let commandBuffer):
@@ -403,6 +413,7 @@ final class VimEngine {
     private func processInsert(_ char: Character) -> Bool {
         // Only Escape exits insert mode — all other keys pass through
         if char == "\u{1B}" {
+            lastInsertOffset = buffer?.selectedRange().location
             mode = .normal
             // Move cursor back one position (Vim convention)
             if let buffer, buffer.selectedRange().location > 0 {
@@ -415,6 +426,34 @@ final class VimEngine {
             return true
         }
         return false // Pass through to text view
+    }
+
+    private func processReplace(_ char: Character) -> Bool {
+        guard let buffer else { return false }
+        if char == "\u{1B}" {
+            mode = .normal
+            let pos = buffer.selectedRange().location
+            let lineRange = buffer.lineRange(forOffset: pos)
+            if pos > lineRange.location {
+                buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
+            }
+            return true
+        }
+        if char == "\r" || char == "\n" {
+            return false
+        }
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        if pos < contentEnd {
+            buffer.replaceCharacters(in: NSRange(location: pos, length: 1), with: String(char))
+        } else {
+            buffer.replaceCharacters(in: NSRange(location: pos, length: 0), with: String(char))
+        }
+        return true
     }
 
     // MARK: - Visual Mode
@@ -872,21 +911,81 @@ final class VimEngine {
     private func executeOperatorOnRange(_ op: VimOperator, range: NSRange, linewise: Bool, in buffer: VimTextBuffer) {
         guard range.length > 0 else { return }
 
-        register.text = buffer.string(in: range)
-        register.isLinewise = linewise
-        register.syncToPasteboard()
-
         switch op {
         case .delete:
+            register.text = buffer.string(in: range)
+            register.isLinewise = linewise
+            register.syncToPasteboard()
             buffer.replaceCharacters(in: range, with: "")
             let newPos = min(range.location, max(0, buffer.length - 1))
             buffer.setSelectedRange(NSRange(location: max(0, newPos), length: 0))
         case .yank:
+            register.text = buffer.string(in: range)
+            register.isLinewise = linewise
+            register.syncToPasteboard()
             buffer.setSelectedRange(NSRange(location: range.location, length: 0))
         case .change:
+            register.text = buffer.string(in: range)
+            register.isLinewise = linewise
+            register.syncToPasteboard()
             buffer.replaceCharacters(in: range, with: "")
             buffer.setSelectedRange(NSRange(location: range.location, length: 0))
             mode = .insert
+        case .lowercase:
+            let transformed = buffer.string(in: range).lowercased()
+            buffer.replaceCharacters(in: range, with: transformed)
+            buffer.setSelectedRange(NSRange(location: range.location, length: 0))
+        case .uppercase:
+            let transformed = buffer.string(in: range).uppercased()
+            buffer.replaceCharacters(in: range, with: transformed)
+            buffer.setSelectedRange(NSRange(location: range.location, length: 0))
+        case .toggleCase:
+            let transformed = toggleCaseTransform(buffer.string(in: range))
+            buffer.replaceCharacters(in: range, with: transformed)
+            buffer.setSelectedRange(NSRange(location: range.location, length: 0))
+        case .indent:
+            applyIndent(in: range, outdent: false, in: buffer)
+        case .outdent:
+            applyIndent(in: range, outdent: true, in: buffer)
         }
+    }
+
+    private func toggleCaseTransform(_ text: String) -> String {
+        var result = ""
+        result.reserveCapacity(text.count)
+        for scalar in text.unicodeScalars {
+            let char = Character(scalar)
+            if char.isUppercase {
+                result.append(char.lowercased())
+            } else if char.isLowercase {
+                result.append(char.uppercased())
+            } else {
+                result.append(char)
+            }
+        }
+        return result
+    }
+
+    private func applyIndent(in range: NSRange, outdent: Bool, in buffer: VimTextBuffer) {
+        let indent = buffer.indentString()
+        let nsText = buffer.string(in: range) as NSString
+        var lines: [String] = []
+        var lineStart = 0
+        while lineStart < nsText.length {
+            let lineRange = nsText.lineRange(for: NSRange(location: lineStart, length: 0))
+            lines.append(nsText.substring(with: lineRange))
+            lineStart = lineRange.location + lineRange.length
+        }
+        let transformed = lines.map { line -> String in
+            if outdent {
+                if line.hasPrefix(indent) { return String(line.dropFirst(indent.count)) }
+                let stripped = line.drop(while: { $0 == " " || $0 == "\t" })
+                return String(stripped)
+            }
+            return indent + line
+        }.joined()
+        buffer.replaceCharacters(in: range, with: transformed)
+        let firstNonBlank = firstNonBlankOffset(from: range.location, in: buffer)
+        buffer.setSelectedRange(NSRange(location: firstNonBlank, length: 0))
     }
 }
