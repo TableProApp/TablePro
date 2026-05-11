@@ -20,7 +20,7 @@ struct AIChatMessageView: View {
 
     private var attachedContextItems: [ContextItem] {
         message.blocks.compactMap { block in
-            if case .attachment(let item) = block { return item }
+            if case .attachment(let item) = block.kind { return item }
             return nil
         }
     }
@@ -138,15 +138,21 @@ struct AIChatMessageView: View {
 
     @ViewBuilder
     private var messageContent: some View {
-        let renderable = renderableBlocks
-        if renderable.isEmpty {
-            TypingIndicatorView()
+        let visibleBlocks = message.blocks.filter { block in
+            switch block.kind {
+            case .text(let text): return !text.isEmpty
+            case .toolUse, .toolResult: return true
+            case .attachment: return false
+            }
+        }
+        if visibleBlocks.isEmpty {
+            ChatTypingIndicatorView()
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(renderable.enumerated()), id: \.offset) { _, block in
-                    switch block {
+                ForEach(visibleBlocks) { block in
+                    switch block.kind {
                     case .text(let text):
                         Markdown(text)
                             .markdownTheme(.tableProChat)
@@ -163,26 +169,6 @@ struct AIChatMessageView: View {
             }
             .padding(.vertical, 6)
         }
-    }
-
-    private var renderableBlocks: [ChatContentBlock] {
-        var result: [ChatContentBlock] = []
-        for block in message.blocks {
-            switch block {
-            case .text(let text):
-                if text.isEmpty { continue }
-                if case .text(let existing) = result.last {
-                    result[result.count - 1] = .text(existing + text)
-                } else {
-                    result.append(.text(text))
-                }
-            case .toolUse, .toolResult:
-                result.append(block)
-            case .attachment:
-                continue
-            }
-        }
-        return result
     }
 }
 
@@ -245,10 +231,7 @@ extension MarkdownUI.Theme {
         }
 }
 
-// MARK: - Typing Indicator
-
-/// Animated three-dot typing indicator
-private struct TypingIndicatorView: View {
+struct ChatTypingIndicatorView: View {
     @State private var animating = false
 
     var body: some View {
@@ -267,8 +250,6 @@ private struct TypingIndicatorView: View {
             }
         }
         .frame(height: 16)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
         .onAppear { animating = true }
     }
 }

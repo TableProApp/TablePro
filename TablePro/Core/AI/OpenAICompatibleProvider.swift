@@ -353,11 +353,11 @@ final class OpenAICompatibleProvider: ChatTransport {
 
     func encodeTurn(_ turn: ChatTurn) -> [[String: Any]] {
         let toolUseBlocks = turn.blocks.compactMap { block -> ToolUseBlock? in
-            if case .toolUse(let useBlock) = block { return useBlock }
+            if case .toolUse(let useBlock) = block.kind { return useBlock }
             return nil
         }
         let toolResultBlocks = turn.blocks.compactMap { block -> ToolResultBlock? in
-            if case .toolResult(let resultBlock) = block { return resultBlock }
+            if case .toolResult(let resultBlock) = block.kind { return resultBlock }
             return nil
         }
         let textContent = turn.plainText

@@ -211,7 +211,7 @@ final class GeminiProvider: ChatTransport {
         var parts: [[String: Any]] = []
 
         for block in turn.blocks {
-            switch block {
+            switch block.kind {
             case .text(let text):
                 guard !text.isEmpty else { continue }
                 parts.append(["text": text])
@@ -251,7 +251,7 @@ final class GeminiProvider: ChatTransport {
     func resolveToolName(forToolUseId id: String, in priorTurns: [ChatTurn]) -> String? {
         for turn in priorTurns.reversed() {
             for block in turn.blocks {
-                if case .toolUse(let useBlock) = block, useBlock.id == id {
+                if case .toolUse(let useBlock) = block.kind, useBlock.id == id {
                     return useBlock.name
                 }
             }

@@ -12,7 +12,7 @@ extension AIChatViewModel {
 
         inputText = message.plainText
         attachedContext = message.blocks.compactMap { block in
-            if case .attachment(let item) = block { return item }
+            if case .attachment(let item) = block.kind { return item }
             return nil
         }
         messages.removeSubrange(idx...)
@@ -21,7 +21,7 @@ extension AIChatViewModel {
 
     func resolveTurnForWire(_ turn: ChatTurn) async -> ChatTurn {
         let attachments = turn.blocks.compactMap { block -> ContextItem? in
-            if case .attachment(let item) = block { return item }
+            if case .attachment(let item) = block.kind { return item }
             return nil
         }
         guard !attachments.isEmpty else { return turn }
@@ -31,7 +31,7 @@ extension AIChatViewModel {
         }
 
         let typed = turn.blocks.compactMap { block -> String? in
-            if case .text(let value) = block { return value }
+            if case .text(let value) = block.kind { return value }
             return nil
         }.joined()
 

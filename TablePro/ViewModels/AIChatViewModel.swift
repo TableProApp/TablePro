@@ -74,6 +74,53 @@ final class AIChatViewModel {
     @ObservationIgnored nonisolated(unsafe) var streamingTask: Task<Void, Never>?
     @ObservationIgnored var prepTask: Task<Void, Never>?
 
+    @ObservationIgnored private var streamingBuffer: String = ""
+    private(set) var streamingTick: Int = 0
+    private(set) var streamingAssistantID: UUID?
+
+    var streamingText: String { streamingBuffer }
+
+    func beginStreamingBuffer(for assistantID: UUID) {
+        streamingBuffer = ""
+        streamingAssistantID = assistantID
+        streamingTick &+= 1
+    }
+
+    func appendStreamingText(_ chunk: String, into assistantID: UUID) {
+        guard !chunk.isEmpty else { return }
+        if streamingAssistantID != assistantID {
+            streamingBuffer = ""
+            streamingAssistantID = assistantID
+        }
+        streamingBuffer.append(chunk)
+        streamingTick &+= 1
+    }
+
+    @discardableResult
+    func commitStreamingBuffer(into assistantID: UUID) -> String {
+        guard streamingAssistantID == assistantID, !streamingBuffer.isEmpty else {
+            if streamingAssistantID == assistantID {
+                streamingAssistantID = nil
+                streamingTick &+= 1
+            }
+            return ""
+        }
+        let committed = streamingBuffer
+        if let idx = messages.firstIndex(where: { $0.id == assistantID }) {
+            messages[idx].appendText(committed)
+        }
+        streamingBuffer = ""
+        streamingAssistantID = nil
+        streamingTick &+= 1
+        return committed
+    }
+
+    func discardStreamingBuffer() {
+        streamingBuffer = ""
+        streamingAssistantID = nil
+        streamingTick &+= 1
+    }
+
     @ObservationIgnored let services: AppServices
     var chatStorage: AIChatStorage { services.aiChatStorage }
     var sessionApprovedConnections: Set<UUID> = []
@@ -136,10 +183,14 @@ final class AIChatViewModel {
         streamingTask = nil
         ToolApprovalCenter.shared.cancelAll()
 
-        if case .streaming(let assistantID) = streamingState,
-           let idx = messages.firstIndex(where: { $0.id == assistantID }),
-           messages[idx].plainText.isEmpty {
-            messages.remove(at: idx)
+        if case .streaming(let assistantID) = streamingState {
+            commitStreamingBuffer(into: assistantID)
+            if let idx = messages.firstIndex(where: { $0.id == assistantID }),
+               messages[idx].blocks.isEmpty {
+                messages.remove(at: idx)
+            }
+        } else {
+            discardStreamingBuffer()
         }
         streamingState = .idle
         persistCurrentConversation()
@@ -202,6 +253,7 @@ final class AIChatViewModel {
         streamingTask?.cancel()
         streamingTask = nil
         AIProviderFactory.invalidateCache()
+        discardStreamingBuffer()
         connection = nil
         columnsByTable = [:]
         foreignKeysByTable = [:]

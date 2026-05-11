@@ -69,27 +69,35 @@ extension AIChatViewModel {
         trimMessagesIfNeeded()
         let assistantID = assistantMessage.id
         streamingState = .streaming(assistantID: assistantID)
+        beginStreamingBuffer(for: assistantID)
 
-        prepTask = Task { [weak self] in
+        prepTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             if settings.includeSchema {
                 await self.ensureSchemaLoaded()
             }
-            guard !Task.isCancelled else { return }
-            let promptContext = self.capturePromptContext(settings: settings)
+            if Task.isCancelled { return }
+            let snapshot: (PromptContext?, [ChatTurn]) = await MainActor.run {
+                let ctx = self.capturePromptContext(settings: settings)
+                let prior = Array(self.messages.dropLast())
+                return (ctx, prior)
+            }
             var chatMessages: [ChatTurn] = []
-            for turn in self.messages.dropLast() {
+            for turn in snapshot.1 {
+                if Task.isCancelled { return }
                 chatMessages.append(await self.resolveTurnForWire(turn))
             }
-            guard !Task.isCancelled else { return }
-            self.runStream(
-                chatMessages: chatMessages,
-                promptContext: promptContext,
-                resolved: resolved,
-                assistantID: assistantID,
-                settings: settings
-            )
-            self.prepTask = nil
+            if Task.isCancelled { return }
+            await MainActor.run {
+                self.runStream(
+                    chatMessages: chatMessages,
+                    promptContext: snapshot.0,
+                    resolved: resolved,
+                    assistantID: assistantID,
+                    settings: settings
+                )
+                self.prepTask = nil
+            }
         }
     }
 
@@ -102,6 +110,7 @@ extension AIChatViewModel {
     ) {
         let chatMode = settings.chatMode
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
+            var currentAssistantID = assistantID
             do {
                 let systemPrompt = Self.buildSystemPrompt(promptContext, mode: chatMode)
                 guard let self else { return }
@@ -114,7 +123,6 @@ extension AIChatViewModel {
 
                 let toolSpecs = await MainActor.run { ChatToolRegistry.shared.allSpecs(for: chatMode) }
                 var workingTurns = chatMessages
-                var currentAssistantID = assistantID
 
                 for roundtrip in 0..<Self.maxToolRoundtrips {
                     let round = try await self.consumeStreamRound(
@@ -176,13 +184,16 @@ extension AIChatViewModel {
                 }
 
                 guard !Task.isCancelled else { return }
+                let finalAssistantID = currentAssistantID
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    self.commitStreamingBuffer(into: finalAssistantID)
                     self.streamingState = .idle
                     self.streamingTask = nil
                     self.persistCurrentConversation()
                 }
             } catch {
+                let failedAssistantID = currentAssistantID
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if !Task.isCancelled {
@@ -190,11 +201,13 @@ extension AIChatViewModel {
                         self.errorMessage = error.localizedDescription
                         self.streamingState = .failed(error as? AIProviderError)
 
-                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
-                           self.messages[idx].plainText.isEmpty {
+                        self.commitStreamingBuffer(into: failedAssistantID)
+                        if let idx = self.messages.firstIndex(where: { $0.id == failedAssistantID }),
+                           self.messages[idx].blocks.isEmpty {
                             self.messages.remove(at: idx)
                         }
                     } else {
+                        self.discardStreamingBuffer()
                         self.streamingState = .idle
                     }
                     self.streamingTask = nil
@@ -300,8 +313,9 @@ extension AIChatViewModel {
             self.errorMessage = String(
                 localized: "AI made too many tool calls in one response. Try simplifying the request."
             )
+            self.commitStreamingBuffer(into: assistantID)
             if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
-               self.messages[idx].plainText.isEmpty {
+               self.messages[idx].blocks.isEmpty {
                 self.messages.remove(at: idx)
             }
             self.streamingState = .failed(nil)
@@ -315,6 +329,7 @@ extension AIChatViewModel {
         resolved: AIProviderFactory.ResolvedProvider
     ) async -> ToolRoundtripContinuation {
         await MainActor.run { [weak self] () -> ToolRoundtripContinuation in
+            self?.commitStreamingBuffer(into: assistantIDForRound)
             let assistantText: String = {
                 guard let self,
                       let idx = self.messages.firstIndex(where: { $0.id == assistantIDForRound })
@@ -344,6 +359,7 @@ extension AIChatViewModel {
             self?.messages.append(userTurn)
             self?.messages.append(nextAssistant)
             self?.streamingState = .streaming(assistantID: nextAssistant.id)
+            self?.beginStreamingBuffer(for: nextAssistant.id)
             return ToolRoundtripContinuation(
                 nextAssistantID: nextAssistant.id,
                 assistantTurn: assistantTurn,
@@ -355,13 +371,12 @@ extension AIChatViewModel {
     func flushPending(content: String, usage: AITokenUsage?, into assistantID: UUID) async {
         guard !content.isEmpty || usage != nil else { return }
         await MainActor.run { [weak self] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID })
-            else { return }
+            guard let self else { return }
             if !content.isEmpty {
-                self.messages[idx].appendText(content)
+                self.appendStreamingText(content, into: assistantID)
             }
-            if let usage {
+            if let usage,
+               let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
                 self.messages[idx].usage = usage
             }
         }
@@ -376,6 +391,7 @@ extension AIChatViewModel {
             self.errorMessage = String(
                 localized: "Message too large. Try disabling 'Include schema' or 'Include query results' in AI settings."
             )
+            self.discardStreamingBuffer()
             if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
                 self.messages.remove(at: idx)
             }

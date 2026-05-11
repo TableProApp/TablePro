@@ -259,7 +259,7 @@ final class AnthropicProvider: ChatTransport {
     static func encodeTurn(_ turn: ChatTurn) throws -> [String: Any]? {
         let blocks = turn.blocks
         let needsTypedBlocks = blocks.contains { block in
-            switch block {
+            switch block.kind {
             case .toolUse, .toolResult:
                 return true
             case .text, .attachment:
@@ -279,7 +279,7 @@ final class AnthropicProvider: ChatTransport {
     }
 
     static func encodeBlock(_ block: ChatContentBlock) throws -> [String: Any]? {
-        switch block {
+        switch block.kind {
         case .text(let text):
             guard !text.isEmpty else { return nil }
             return ["type": "text", "text": text]

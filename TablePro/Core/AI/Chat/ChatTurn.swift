@@ -14,7 +14,8 @@ enum ChatRole: String, Codable, Sendable {
 struct ChatTurn: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     var role: ChatRole
-    var blocks: [ChatContentBlock]
+    private(set) var blocks: [ChatContentBlock]
+    private(set) var plainText: String
     let timestamp: Date
     var usage: AITokenUsage?
     var modelId: String?
@@ -31,7 +32,9 @@ struct ChatTurn: Codable, Equatable, Identifiable, Sendable {
     ) {
         self.id = id
         self.role = role
-        self.blocks = blocks
+        let normalized = Self.normalize(blocks)
+        self.blocks = normalized
+        self.plainText = Self.computePlainText(from: normalized)
         self.timestamp = timestamp
         self.usage = usage
         self.modelId = modelId
@@ -47,16 +50,31 @@ struct ChatTurn: Codable, Equatable, Identifiable, Sendable {
         modelId = try container.decodeIfPresent(String.self, forKey: .modelId)
         providerId = try container.decodeIfPresent(String.self, forKey: .providerId)
 
-        if let decodedBlocks = try container.decodeIfPresent([ChatContentBlock].self, forKey: .blocks) {
-            blocks = decodedBlocks
+        let decodedBlocks: [ChatContentBlock]
+        if let blocksFromContainer = try container.decodeIfPresent([ChatContentBlock].self, forKey: .blocks) {
+            decodedBlocks = blocksFromContainer
         } else {
             let legacyContainer = try decoder.container(keyedBy: LegacyKeys.self)
             if let legacyText = try legacyContainer.decodeIfPresent(String.self, forKey: .content) {
-                blocks = [.text(legacyText)]
+                decodedBlocks = [.text(legacyText)]
             } else {
-                blocks = []
+                decodedBlocks = []
             }
         }
+        let normalized = Self.normalize(decodedBlocks)
+        blocks = normalized
+        plainText = Self.computePlainText(from: normalized)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(role, forKey: .role)
+        try container.encode(blocks, forKey: .blocks)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(usage, forKey: .usage)
+        try container.encodeIfPresent(modelId, forKey: .modelId)
+        try container.encodeIfPresent(providerId, forKey: .providerId)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -67,66 +85,139 @@ struct ChatTurn: Codable, Equatable, Identifiable, Sendable {
         case content
     }
 
-    var plainText: String {
-        blocks.compactMap { block in
-            if case .text(let text) = block { return text }
-            return nil
-        }.joined()
-    }
-
     mutating func appendText(_ text: String) {
         guard !text.isEmpty else { return }
-        if case .text(let existing) = blocks.last {
-            blocks[blocks.count - 1] = .text(existing + text)
+        if let last = blocks.last, case .text(let existing) = last.kind {
+            blocks[blocks.count - 1] = ChatContentBlock(id: last.id, kind: .text(existing + text))
         } else {
             blocks.append(.text(text))
         }
+        plainText.append(text)
+    }
+
+    mutating func appendBlock(_ block: ChatContentBlock) {
+        if case .text(let text) = block.kind {
+            if let last = blocks.last, case .text(let existing) = last.kind {
+                blocks[blocks.count - 1] = ChatContentBlock(id: last.id, kind: .text(existing + text))
+            } else {
+                blocks.append(block)
+            }
+            plainText.append(text)
+        } else {
+            blocks.append(block)
+        }
+    }
+
+    mutating func replaceBlock(at index: Int, with block: ChatContentBlock) {
+        guard blocks.indices.contains(index) else { return }
+        let oldKind = blocks[index].kind
+        blocks[index] = block
+        if case .text = oldKind {
+            plainText = Self.computePlainText(from: blocks)
+        } else if case .text = block.kind {
+            plainText = Self.computePlainText(from: blocks)
+        }
+    }
+
+    private static func normalize(_ blocks: [ChatContentBlock]) -> [ChatContentBlock] {
+        var result: [ChatContentBlock] = []
+        result.reserveCapacity(blocks.count)
+        for block in blocks {
+            if case .text(let text) = block.kind,
+               let last = result.last,
+               case .text(let existing) = last.kind {
+                result[result.count - 1] = ChatContentBlock(id: last.id, kind: .text(existing + text))
+            } else {
+                result.append(block)
+            }
+        }
+        return result
+    }
+
+    private static func computePlainText(from blocks: [ChatContentBlock]) -> String {
+        var result = ""
+        for block in blocks {
+            if case .text(let text) = block.kind {
+                result.append(text)
+            }
+        }
+        return result
     }
 }
 
-enum ChatContentBlock: Codable, Equatable, Sendable {
-    case text(String)
-    case toolUse(ToolUseBlock)
-    case toolResult(ToolResultBlock)
-    case attachment(ContextItem)
+struct ChatContentBlock: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let kind: Kind
 
-    private enum CodingKeys: String, CodingKey {
-        case kind, text, toolUse, toolResult, attachment
+    init(id: UUID = UUID(), kind: Kind) {
+        self.id = id
+        self.kind = kind
     }
 
-    private enum Kind: String, Codable {
+    static func text(_ text: String) -> ChatContentBlock {
+        ChatContentBlock(kind: .text(text))
+    }
+
+    static func toolUse(_ block: ToolUseBlock) -> ChatContentBlock {
+        ChatContentBlock(kind: .toolUse(block))
+    }
+
+    static func toolResult(_ block: ToolResultBlock) -> ChatContentBlock {
+        ChatContentBlock(kind: .toolResult(block))
+    }
+
+    static func attachment(_ item: ContextItem) -> ChatContentBlock {
+        ChatContentBlock(kind: .attachment(item))
+    }
+
+    enum Kind: Codable, Equatable, Sendable {
+        case text(String)
+        case toolUse(ToolUseBlock)
+        case toolResult(ToolResultBlock)
+        case attachment(ContextItem)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case blockId, kind, text, toolUse, toolResult, attachment
+    }
+
+    private enum KindMarker: String, Codable {
         case text, toolUse, toolResult, attachment
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let kind = try container.decode(Kind.self, forKey: .kind)
-        switch kind {
+        let resolvedID = (try container.decodeIfPresent(UUID.self, forKey: .blockId)) ?? UUID()
+        let marker = try container.decode(KindMarker.self, forKey: .kind)
+        let resolvedKind: Kind
+        switch marker {
         case .text:
-            self = .text(try container.decode(String.self, forKey: .text))
+            resolvedKind = .text(try container.decode(String.self, forKey: .text))
         case .toolUse:
-            self = .toolUse(try container.decode(ToolUseBlock.self, forKey: .toolUse))
+            resolvedKind = .toolUse(try container.decode(ToolUseBlock.self, forKey: .toolUse))
         case .toolResult:
-            self = .toolResult(try container.decode(ToolResultBlock.self, forKey: .toolResult))
+            resolvedKind = .toolResult(try container.decode(ToolResultBlock.self, forKey: .toolResult))
         case .attachment:
-            self = .attachment(try container.decode(ContextItem.self, forKey: .attachment))
+            resolvedKind = .attachment(try container.decode(ContextItem.self, forKey: .attachment))
         }
+        self.init(id: resolvedID, kind: resolvedKind)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        switch self {
+        try container.encode(id, forKey: .blockId)
+        switch kind {
         case .text(let text):
-            try container.encode(Kind.text, forKey: .kind)
+            try container.encode(KindMarker.text, forKey: .kind)
             try container.encode(text, forKey: .text)
         case .toolUse(let block):
-            try container.encode(Kind.toolUse, forKey: .kind)
+            try container.encode(KindMarker.toolUse, forKey: .kind)
             try container.encode(block, forKey: .toolUse)
         case .toolResult(let block):
-            try container.encode(Kind.toolResult, forKey: .kind)
+            try container.encode(KindMarker.toolResult, forKey: .kind)
             try container.encode(block, forKey: .toolResult)
         case .attachment(let item):
-            try container.encode(Kind.attachment, forKey: .kind)
+            try container.encode(KindMarker.attachment, forKey: .kind)
             try container.encode(item, forKey: .attachment)
         }
     }

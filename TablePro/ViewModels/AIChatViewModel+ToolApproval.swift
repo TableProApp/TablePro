@@ -91,7 +91,7 @@ extension AIChatViewModel {
     func appendPendingToolUseBlocks(_ blocks: [ToolUseBlock], assistantID: UUID) {
         guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
         for block in blocks {
-            messages[idx].blocks.append(.toolUse(block))
+            messages[idx].appendBlock(.toolUse(block))
         }
     }
 
@@ -99,9 +99,10 @@ extension AIChatViewModel {
     func updateApprovalState(blockID: String, newState: ToolApprovalState, assistantID: UUID) {
         guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
         for blockIdx in messages[idx].blocks.indices {
-            if case .toolUse(var block) = messages[idx].blocks[blockIdx], block.id == blockID {
+            if case .toolUse(var block) = messages[idx].blocks[blockIdx].kind, block.id == blockID {
                 block.approvalState = newState
-                messages[idx].blocks[blockIdx] = .toolUse(block)
+                let oldID = messages[idx].blocks[blockIdx].id
+                messages[idx].replaceBlock(at: blockIdx, with: ChatContentBlock(id: oldID, kind: .toolUse(block)))
                 return
             }
         }
