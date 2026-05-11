@@ -27,11 +27,17 @@ extension PostgreSQLPluginDriver: PluginProcedureFunctionSupport {
         let schemaLiteral = escapeStringLiteral(schema ?? currentSchema ?? "public")
         let typeLiteral = escapeStringLiteral(routineType)
         let query = """
-            SELECT routine_name, data_type, external_language
-            FROM information_schema.routines
-            WHERE routine_schema = '\(schemaLiteral)'
-              AND routine_type = '\(typeLiteral)'
-            ORDER BY routine_name
+            SELECT r.routine_name, r.data_type, r.external_language
+            FROM information_schema.routines r
+            JOIN pg_proc p ON p.proname = r.routine_name
+            JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = r.routine_schema
+            WHERE r.routine_schema = '\(schemaLiteral)'
+              AND r.routine_type = '\(typeLiteral)'
+              AND NOT EXISTS (
+                SELECT 1 FROM pg_depend d
+                WHERE d.objid = p.oid AND d.deptype = 'e'
+              )
+            ORDER BY r.routine_name
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginRoutineInfo? in

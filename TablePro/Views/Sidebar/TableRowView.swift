@@ -2,17 +2,33 @@
 //  TableRowView.swift
 //  TablePro
 //
-//  Row view for a single table in the sidebar.
-//
 
 import SwiftUI
 
-/// Extracted logic from TableRow for testability
 enum TableRowLogic {
+    static func iconName(for type: TableInfo.TableType) -> String {
+        switch type {
+        case .table:            return "tablecells"
+        case .view:             return "eye"
+        case .materializedView: return "square.stack.3d.up"
+        case .foreignTable:     return "link"
+        case .systemTable:      return "tablecells.badge.ellipsis"
+        }
+    }
+
+    static func accessibilityKindLabel(for type: TableInfo.TableType) -> String {
+        switch type {
+        case .table:            return String(localized: "Table")
+        case .view:             return String(localized: "View")
+        case .materializedView: return String(localized: "Materialized View")
+        case .foreignTable:     return String(localized: "Foreign Table")
+        case .systemTable:      return String(localized: "System Table")
+        }
+    }
+
     static func accessibilityLabel(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool) -> String {
-        var label = table.type == .view
-            ? String(format: String(localized: "View: %@"), table.name)
-            : String(format: String(localized: "Table: %@"), table.name)
+        let kind = accessibilityKindLabel(for: table.type)
+        var label = String(format: String(localized: "%@: %@"), kind, table.name)
         if isPendingDelete {
             label += ", " + String(localized: "pending delete")
         } else if isPendingTruncate {
@@ -24,7 +40,13 @@ enum TableRowLogic {
     static func iconColor(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool) -> Color {
         if isPendingDelete { return Color(nsColor: .systemRed) }
         if isPendingTruncate { return Color(nsColor: .systemOrange) }
-        return table.type == .view ? Color(nsColor: .systemPurple) : Color(nsColor: .systemBlue)
+        switch table.type {
+        case .table:            return Color(nsColor: .systemBlue)
+        case .view:             return Color(nsColor: .systemPurple)
+        case .materializedView: return Color(nsColor: .systemTeal)
+        case .foreignTable:     return Color(nsColor: .systemIndigo)
+        case .systemTable:      return Color(nsColor: .systemGray)
+        }
     }
 
     static func textColor(isPendingDelete: Bool, isPendingTruncate: Bool) -> Color {
@@ -34,7 +56,6 @@ enum TableRowLogic {
     }
 }
 
-/// Row view for a single table
 struct TableRow: View {
     let table: TableInfo
     let isPendingTruncate: Bool
@@ -42,9 +63,8 @@ struct TableRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Icon with status indicator
             ZStack(alignment: .bottomTrailing) {
-                Image(systemName: table.type == .view ? "eye" : "tablecells")
+                Image(systemName: TableRowLogic.iconName(for: table.type))
                     .foregroundStyle(TableRowLogic.iconColor(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
                     .frame(width: 14)
 

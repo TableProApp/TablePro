@@ -62,41 +62,91 @@ struct SidebarContextMenuLogicTests {
 
     @Test("Import visible for table with import support")
     func importVisibleForTable() {
-        #expect(SidebarContextMenuLogic.importVisible(isView: false, supportsImport: true))
+        let table = TestFixtures.makeTableInfo(name: "t", type: .table)
+        #expect(SidebarContextMenuLogic.importVisible(clickedTable: table, supportsImport: true))
     }
 
     @Test("Import hidden for view")
     func importHiddenForView() {
-        #expect(!SidebarContextMenuLogic.importVisible(isView: true, supportsImport: true))
+        let view = TestFixtures.makeTableInfo(name: "v", type: .view)
+        #expect(!SidebarContextMenuLogic.importVisible(clickedTable: view, supportsImport: true))
+    }
+
+    @Test("Import hidden for materialized view")
+    func importHiddenForMaterializedView() {
+        let mv = TestFixtures.makeTableInfo(name: "mv", type: .materializedView)
+        #expect(!SidebarContextMenuLogic.importVisible(clickedTable: mv, supportsImport: true))
+    }
+
+    @Test("Import hidden for foreign table")
+    func importHiddenForForeignTable() {
+        let ft = TestFixtures.makeTableInfo(name: "ft", type: .foreignTable)
+        #expect(!SidebarContextMenuLogic.importVisible(clickedTable: ft, supportsImport: true))
     }
 
     @Test("Import hidden when import not supported")
     func importHiddenWhenNotSupported() {
-        #expect(!SidebarContextMenuLogic.importVisible(isView: false, supportsImport: false))
+        let table = TestFixtures.makeTableInfo(name: "t", type: .table)
+        #expect(!SidebarContextMenuLogic.importVisible(clickedTable: table, supportsImport: false))
     }
 
     // MARK: - Truncate Visibility
 
     @Test("Truncate visible for table")
     func truncateVisibleForTable() {
-        #expect(SidebarContextMenuLogic.truncateVisible(isView: false))
+        let table = TestFixtures.makeTableInfo(name: "t", type: .table)
+        #expect(SidebarContextMenuLogic.truncateVisible(clickedTable: table))
     }
 
     @Test("Truncate hidden for view")
     func truncateHiddenForView() {
-        #expect(!SidebarContextMenuLogic.truncateVisible(isView: true))
+        let view = TestFixtures.makeTableInfo(name: "v", type: .view)
+        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: view))
     }
 
-    // MARK: - Delete Label
+    @Test("Truncate hidden for materialized view")
+    func truncateHiddenForMaterializedView() {
+        let mv = TestFixtures.makeTableInfo(name: "mv", type: .materializedView)
+        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: mv))
+    }
+
+    @Test("Truncate hidden for foreign table")
+    func truncateHiddenForForeignTable() {
+        let ft = TestFixtures.makeTableInfo(name: "ft", type: .foreignTable)
+        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: ft))
+    }
+
+    @Test("Truncate hidden for system table")
+    func truncateHiddenForSystemTable() {
+        let sys = TestFixtures.makeTableInfo(name: "s", type: .systemTable)
+        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: sys))
+    }
+
+    // MARK: - Delete Label per Kind
 
     @Test("Delete label for table")
     func deleteLabelForTable() {
-        #expect(SidebarContextMenuLogic.deleteLabel(isView: false) == "Delete")
+        #expect(SidebarContextMenuLogic.deleteLabel(for: .table) == "Delete")
     }
 
     @Test("Delete label for view")
     func deleteLabelForView() {
-        #expect(SidebarContextMenuLogic.deleteLabel(isView: true) == "Drop View")
+        #expect(SidebarContextMenuLogic.deleteLabel(for: .view) == "Drop View")
+    }
+
+    @Test("Delete label for materialized view")
+    func deleteLabelForMaterializedView() {
+        #expect(SidebarContextMenuLogic.deleteLabel(for: .materializedView) == "Drop Materialized View")
+    }
+
+    @Test("Delete label for foreign table")
+    func deleteLabelForForeignTable() {
+        #expect(SidebarContextMenuLogic.deleteLabel(for: .foreignTable) == "Drop Foreign Table")
+    }
+
+    @Test("Delete label for nil falls back to Delete")
+    func deleteLabelForNil() {
+        #expect(SidebarContextMenuLogic.deleteLabel(for: nil) == "Delete")
     }
 
     // MARK: - Disabled State Combinations

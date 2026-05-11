@@ -8,7 +8,6 @@
 import SwiftUI
 import TableProPluginKit
 
-/// Extracted logic from SidebarContextMenu for testability
 enum SidebarContextMenuLogic {
     static func hasSelection(selectedTables: Set<TableInfo>, clickedTable: TableInfo?) -> Bool {
         !selectedTables.isEmpty || clickedTable != nil
@@ -18,16 +17,33 @@ enum SidebarContextMenuLogic {
         clickedTable?.type == .view
     }
 
-    static func importVisible(isView: Bool, supportsImport: Bool) -> Bool {
-        !isView && supportsImport
+    /// True when the object cannot be modified via DML (INSERT/UPDATE/DELETE).
+    static func isReadOnlyKind(_ type: TableInfo.TableType?) -> Bool {
+        switch type {
+        case .view, .materializedView, .foreignTable, .systemTable:
+            return true
+        case .table, .none:
+            return false
+        }
     }
 
-    static func truncateVisible(isView: Bool) -> Bool {
-        !isView
+    static func importVisible(clickedTable: TableInfo?, supportsImport: Bool) -> Bool {
+        guard supportsImport else { return false }
+        return !isReadOnlyKind(clickedTable?.type)
     }
 
-    static func deleteLabel(isView: Bool) -> String {
-        isView ? String(localized: "Drop View") : String(localized: "Delete")
+    static func truncateVisible(clickedTable: TableInfo?) -> Bool {
+        !isReadOnlyKind(clickedTable?.type)
+    }
+
+    static func deleteLabel(for type: TableInfo.TableType?) -> String {
+        switch type {
+        case .view:             return String(localized: "Drop View")
+        case .materializedView: return String(localized: "Drop Materialized View")
+        case .foreignTable:     return String(localized: "Drop Foreign Table")
+        case .systemTable:      return String(localized: "Drop")
+        case .table, .none:     return String(localized: "Delete")
+        }
     }
 }
 
@@ -99,7 +115,7 @@ struct SidebarContextMenu: View {
         .disabled(!hasSelection)
 
         if SidebarContextMenuLogic.importVisible(
-            isView: isView,
+            clickedTable: clickedTable,
             supportsImport: PluginManager.shared.supportsImport(
                 for: coordinator?.connection.type ?? .mysql
             )
@@ -125,7 +141,7 @@ struct SidebarContextMenu: View {
 
         Divider()
 
-        if !isView {
+        if SidebarContextMenuLogic.truncateVisible(clickedTable: clickedTable) {
             Button("Truncate") {
                 onBatchToggleTruncate(effectiveTableNames)
             }
@@ -133,7 +149,7 @@ struct SidebarContextMenu: View {
         }
 
         Button(
-            isView ? String(localized: "Drop View") : String(localized: "Delete"),
+            SidebarContextMenuLogic.deleteLabel(for: clickedTable?.type),
             role: .destructive
         ) {
             onBatchToggleDelete(effectiveTableNames)

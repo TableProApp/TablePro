@@ -233,6 +233,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let query = """
             SELECT table_name, table_type FROM information_schema.tables
             WHERE table_schema = '\(schemaLiteral)'
+              AND table_type IN ('BASE TABLE', 'VIEW')
             UNION ALL
             SELECT matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type
             FROM pg_matviews
@@ -250,14 +251,11 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             guard let name = row[0].asText else { return nil }
             let typeStr = row[1].asText ?? "BASE TABLE"
             let type: String
-            if typeStr == "MATERIALIZED VIEW" {
-                type = "MATERIALIZED VIEW"
-            } else if typeStr == "FOREIGN TABLE" {
-                type = "FOREIGN TABLE"
-            } else if typeStr.contains("VIEW") {
-                type = "VIEW"
-            } else {
-                type = "TABLE"
+            switch typeStr {
+            case "MATERIALIZED VIEW": type = "MATERIALIZED VIEW"
+            case "FOREIGN TABLE":     type = "FOREIGN TABLE"
+            case "VIEW":              type = "VIEW"
+            default:                  type = "TABLE"
             }
             return PluginTableInfo(name: name, type: type)
         }

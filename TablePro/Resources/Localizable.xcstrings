@@ -12611,6 +12611,9 @@
         }
       }
     },
+    "Copy with Signature" : {
+
+    },
     "Corner Radius" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -16552,6 +16555,12 @@
           }
         }
       }
+    },
+    "Drop Foreign Table" : {
+
+    },
+    "Drop Materialized View" : {
+
     },
     "Drop Partition" : {
       "localizations" : {
@@ -22083,6 +22092,12 @@
         }
       }
     },
+    "Foreign Table" : {
+
+    },
+    "Foreign Tables" : {
+
+    },
     "Forever" : {
       "localizations" : {
         "tr" : {
@@ -22369,6 +22384,9 @@
           }
         }
       }
+    },
+    "Functions" : {
+
     },
     "General" : {
       "localizations" : {
@@ -27901,6 +27919,12 @@
           }
         }
       }
+    },
+    "Materialized View" : {
+
+    },
+    "Materialized Views" : {
+
     },
     "Max %lld characters" : {
       "localizations" : {
@@ -35709,6 +35733,12 @@
         }
       }
     },
+    "Procedure" : {
+
+    },
+    "Procedures" : {
+
+    },
     "Process exited with code %d" : {
       "localizations" : {
         "tr" : {
@@ -42153,6 +42183,9 @@
         }
       }
     },
+    "Show DDL" : {
+
+    },
     "Show details" : {
 
     },
@@ -45908,6 +45941,7 @@
 
     },
     "Table: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -51183,6 +51217,7 @@
       }
     },
     "View: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -51203,6 +51238,9 @@
           }
         }
       }
+    },
+    "Views" : {
+
     },
     "VIEWS" : {
 
