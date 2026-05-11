@@ -1052,7 +1052,26 @@ final class VimEngine {
             }
             pos = next
         }
+        if !isOperator { pos = clampToContentPosition(pos, in: buffer) }
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    /// Snap a motion target back to a valid normal-mode cursor position — never past
+    /// the buffer end and never on a newline character (vim's normal mode keeps the
+    /// cursor on a content character of some line).
+    private func clampToContentPosition(_ offset: Int, in buffer: VimTextBuffer) -> Int {
+        guard buffer.length > 0 else { return 0 }
+        var pos = min(max(0, offset), buffer.length - 1)
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let endsInNewline = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A
+        let contentEnd = endsInNewline ? lineEnd - 1 : lineEnd
+        if pos >= contentEnd && contentEnd > lineRange.location {
+            pos = contentEnd - 1
+        }
+        return pos
     }
 
     private func wordBackward(_ count: Int, in buffer: VimTextBuffer) {
@@ -1416,7 +1435,9 @@ final class VimEngine {
 
     private func bigWordForward(_ count: Int, in buffer: VimTextBuffer) {
         var pos = buffer.selectedRange().location
+        let isOperator = pendingOperator != nil
         for _ in 0..<count { pos = buffer.bigWordBoundary(forward: true, from: pos) }
+        if !isOperator { pos = clampToContentPosition(pos, in: buffer) }
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
     }
 

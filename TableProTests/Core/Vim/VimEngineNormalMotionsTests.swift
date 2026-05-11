@@ -206,6 +206,35 @@ final class VimEngineNormalMotionsTests: XCTestCase {
         XCTAssertEqual(pos, 19, "3w advances three word-starts: hello → world → second → line (offset 19)")
     }
 
+    func testWAtLastWordOfBufferStaysOnLastChar() {
+        // "SELECT * FROM users;" — no next word after ';'. Pressing w from ';' must
+        // not advance past the last char; the cursor stays on ';'.
+        buffer = VimTextBufferMock(text: "SELECT * FROM users;")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 19, length: 0))
+        keys("w")
+        XCTAssertEqual(pos, 19, "w from the last word of the buffer must stay on the last content char")
+    }
+
+    func testWAtLastWordSingleLineWithoutNewline() {
+        // Single-word buffer "hello" with no newline. w from 'h' should land on the
+        // last content char 'o' (vim's last-word-on-last-line clamp).
+        buffer = VimTextBufferMock(text: "hello")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("w")
+        XCTAssertEqual(pos, 4, "w with no next word should land on the last content char, not past it")
+    }
+
+    func testWClampsToLastCharOnLineWithTrailingNewline() {
+        // "hello\n" — single word followed by newline, no further content.
+        buffer = VimTextBufferMock(text: "hello\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("w")
+        XCTAssertEqual(pos, 4, "w on a single-word buffer with trailing newline lands on 'o'")
+    }
+
     func testCapitalWTreatsPunctuationAsWordChar() {
         // W (WORD) moves by whitespace-delimited tokens — punctuation is not a boundary.
         buffer = VimTextBufferMock(text: "hello,world foo\n")
