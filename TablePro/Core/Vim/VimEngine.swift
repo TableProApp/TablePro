@@ -42,6 +42,7 @@ final class VimEngine {
     private var register = VimRegister()
     private var pendingOperator: VimOperator?
     private var countPrefix: Int = 0
+    private var operatorCount: Int = 0
     private var goalColumn: Int?
     private var pendingG: Bool = false
 
@@ -109,17 +110,23 @@ final class VimEngine {
     func reset() {
         pendingOperator = nil
         countPrefix = 0
+        operatorCount = 0
         pendingG = false
         mode = .normal
     }
 
     // MARK: - Effective Count
 
-    /// Returns the effective count (1 if no count was entered) and resets the prefix
+    /// Returns the effective count and resets both prefixes.
+    /// When an operator is pending, the operator count multiplies the motion count
+    /// so `2d3w` deletes 6 words (2 × 3).
     private func consumeCount() -> Int {
-        let count = countPrefix > 0 ? countPrefix : 1
+        let motionCount = countPrefix > 0 ? countPrefix : 1
+        let opCount = operatorCount > 0 ? operatorCount : 1
+        let total = motionCount * opCount
         countPrefix = 0
-        return count
+        operatorCount = 0
+        return total
     }
 
     // MARK: - Normal Mode
@@ -141,19 +148,7 @@ final class VimEngine {
         // Handle pending g
         if pendingG {
             pendingG = false
-            if char == "g" {
-                // gg — go to beginning
-                let count = consumeCount()
-                if count > 1 {
-                    goToLine(count - 1, in: buffer)
-                } else {
-                    buffer.setSelectedRange(NSRange(location: 0, length: 0))
-                }
-                goalColumn = nil
-                return true
-            }
-            countPrefix = 0
-            return true // Consume unknown g-prefixed keys
+            return handlePendingG(char, in: buffer)
         }
 
         switch char {
@@ -229,17 +224,18 @@ final class VimEngine {
             pendingG = true
             return true
         case "G":
-            // G — go to end (or line N with count)
-            let count = countPrefix
-            countPrefix = 0
-            if count > 0 {
-                goToLine(count - 1, in: buffer)
-            } else {
-                let lastOffset = max(0, buffer.length - 1)
-                let lineRange = buffer.lineRange(forOffset: lastOffset)
-                buffer.setSelectedRange(NSRange(location: lineRange.location, length: 0))
-            }
-            goalColumn = nil
+            return handleG(in: buffer)
+        case "W":
+            let count = consumeCount()
+            executeMotion(in: buffer) { self.bigWordForward(count, in: buffer) }
+            return true
+        case "B":
+            let count = consumeCount()
+            executeMotion(in: buffer) { self.bigWordBackward(count, in: buffer) }
+            return true
+        case "E":
+            let count = consumeCount()
+            executeMotion(in: buffer, inclusive: true) { self.bigWordEndMotion(count, in: buffer) }
             return true
 
         // -- Insert mode entry --
@@ -320,33 +316,54 @@ final class VimEngine {
         // -- Operators --
         case "d":
             if pendingOperator == .delete {
-                // dd — delete current line
                 deleteLine(consumeCount(), in: buffer)
                 pendingOperator = nil
                 return true
             }
-            pendingOperator = .delete
-            // Don't consume countPrefix — it's used by the second keystroke (dd, dw, etc.)
+            beginOperator(.delete)
             return true
         case "y":
             if pendingOperator == .yank {
-                // yy — yank current line
                 yankLine(consumeCount(), in: buffer)
                 pendingOperator = nil
                 return true
             }
-            pendingOperator = .yank
-            // Don't consume countPrefix — it's used by the second keystroke (yy, yw, etc.)
+            beginOperator(.yank)
             return true
         case "c":
             if pendingOperator == .change {
-                // cc — change current line
                 changeLine(consumeCount(), in: buffer)
                 pendingOperator = nil
                 return true
             }
-            pendingOperator = .change
-            // Don't consume countPrefix — it's used by the second keystroke (cc, cw, etc.)
+            beginOperator(.change)
+            return true
+
+        // -- Shortcuts: D = d$, Y = yy, C = c$ --
+        case "D":
+            beginOperator(.delete)
+            executeMotion(in: buffer, inclusive: true) { self.moveToLineEnd(in: buffer) }
+            return true
+        case "Y":
+            yankLine(consumeCount(), in: buffer)
+            return true
+        case "C":
+            beginOperator(.change)
+            executeMotion(in: buffer, inclusive: true) { self.moveToLineEnd(in: buffer) }
+            return true
+
+        // -- X: delete char before cursor (with count) --
+        case "X":
+            deleteCharBeforeCursor(consumeCount(), in: buffer)
+            return true
+
+        // -- s/S substitute --
+        case "s":
+            let count = consumeCount()
+            substituteChars(count, in: buffer)
+            return true
+        case "S":
+            changeLine(consumeCount(), in: buffer)
             return true
 
         // -- Paste --
@@ -377,21 +394,7 @@ final class VimEngine {
 
         // -- x: delete character under cursor --
         case "x":
-            let count = consumeCount()
-            let pos = buffer.selectedRange().location
-            let lineRange = buffer.lineRange(forOffset: pos)
-            let lineEnd = lineRange.location + lineRange.length
-            let contentEnd = lineEnd > lineRange.location
-                && lineEnd <= buffer.length
-                && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
-            let deleteCount = min(count, max(0, contentEnd - pos))
-            if deleteCount > 0 {
-                let range = NSRange(location: pos, length: deleteCount)
-                register.text = buffer.string(in: range)
-                register.isLinewise = false
-                register.syncToPasteboard()
-                buffer.replaceCharacters(in: range, with: "")
-            }
+            deleteCharUnderCursor(consumeCount(), in: buffer)
             return true
 
         default:
@@ -898,8 +901,9 @@ final class VimEngine {
 
         let rangeStart = min(startPos, endPos)
         var rangeEnd = max(startPos, endPos)
-        // Inclusive motions (like `e`) include the character at the end position
-        if inclusive && rangeEnd < buffer.length {
+        // Inclusive motions (like `e`, `$`) include the character at the end position,
+        // unless that character is a newline (operators must not consume line terminators).
+        if inclusive && rangeEnd < buffer.length && buffer.character(at: rangeEnd) != 0x0A {
             rangeEnd += 1
         }
         let range = NSRange(location: rangeStart, length: rangeEnd - rangeStart)
@@ -987,5 +991,196 @@ final class VimEngine {
         buffer.replaceCharacters(in: range, with: transformed)
         let firstNonBlank = firstNonBlankOffset(from: range.location, in: buffer)
         buffer.setSelectedRange(NSRange(location: firstNonBlank, length: 0))
+    }
+
+    // MARK: - Pending Operator Setup
+
+    /// Capture the current count into operatorCount and set the pending operator.
+    private func beginOperator(_ op: VimOperator) {
+        operatorCount = countPrefix
+        countPrefix = 0
+        pendingOperator = op
+    }
+
+    /// Run a motion closure, optionally as the target of a pending operator. Inclusive
+    /// motions extend the deleted/yanked/changed range by one character at the end.
+    private func executeMotion(in buffer: VimTextBuffer, inclusive: Bool = false, _ motion: () -> Void) {
+        if let op = pendingOperator {
+            executeOperatorWithMotion(op, motion: motion, inclusive: inclusive, in: buffer)
+        } else {
+            motion()
+        }
+        goalColumn = nil
+    }
+
+    // MARK: - Pending g Dispatch
+
+    private func handlePendingG(_ char: Character, in buffer: VimTextBuffer) -> Bool {
+        switch char {
+        case "g":
+            let count = countPrefix
+            countPrefix = 0
+            operatorCount = 0
+            if let op = pendingOperator {
+                executeLinewiseOperator(op, fromOffset: buffer.selectedRange().location,
+                                        toLine: count > 0 ? count - 1 : 0, in: buffer)
+                pendingOperator = nil
+            } else {
+                if count > 1 {
+                    goToLine(count - 1, in: buffer)
+                } else {
+                    let target = firstNonBlankOffset(from: 0, in: buffer)
+                    buffer.setSelectedRange(NSRange(location: target, length: 0))
+                }
+            }
+            goalColumn = nil
+            return true
+        case "e":
+            let count = consumeCount()
+            executeMotion(in: buffer, inclusive: true) { self.wordEndBackwardMotion(count, in: buffer) }
+            return true
+        case "E":
+            let count = consumeCount()
+            executeMotion(in: buffer, inclusive: true) { self.bigWordEndBackwardMotion(count, in: buffer) }
+            return true
+        case "i":
+            countPrefix = 0
+            operatorCount = 0
+            if let target = lastInsertOffset {
+                let clamped = min(max(0, target), buffer.length)
+                buffer.setSelectedRange(NSRange(location: clamped, length: 0))
+            }
+            mode = .insert
+            return true
+        default:
+            countPrefix = 0
+            operatorCount = 0
+            return true
+        }
+    }
+
+    // MARK: - G Handling
+
+    private func handleG(in buffer: VimTextBuffer) -> Bool {
+        let count = countPrefix
+        countPrefix = 0
+        let targetLine: Int
+        if count > 0 {
+            targetLine = min(max(0, count - 1), buffer.lineCount - 1)
+        } else {
+            targetLine = max(0, buffer.lineCount - 1)
+        }
+        if let op = pendingOperator {
+            executeLinewiseOperator(op, fromOffset: buffer.selectedRange().location,
+                                    toLine: targetLine, in: buffer)
+            pendingOperator = nil
+            operatorCount = 0
+        } else {
+            let lineStart = buffer.offset(forLine: targetLine, column: 0)
+            let target = firstNonBlankOffset(from: lineStart, in: buffer)
+            buffer.setSelectedRange(NSRange(location: target, length: 0))
+        }
+        goalColumn = nil
+        return true
+    }
+
+    /// Apply an operator linewise from the current line to the line of the target offset.
+    private func executeLinewiseOperator(_ op: VimOperator, fromOffset: Int, toLine: Int, in buffer: VimTextBuffer) {
+        let startLineRange = buffer.lineRange(forOffset: fromOffset)
+        let targetOffset = buffer.offset(forLine: toLine, column: 0)
+        let endLineRange = buffer.lineRange(forOffset: targetOffset)
+        let rangeStart = min(startLineRange.location, endLineRange.location)
+        let rangeEnd = max(startLineRange.location + startLineRange.length,
+                          endLineRange.location + endLineRange.length)
+        let range = NSRange(location: rangeStart, length: rangeEnd - rangeStart)
+        executeOperatorOnRange(op, range: range, linewise: true, in: buffer)
+    }
+
+    // MARK: - Big-Word Motions
+
+    private func bigWordForward(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count { pos = buffer.bigWordBoundary(forward: true, from: pos) }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    private func bigWordBackward(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count { pos = buffer.bigWordBoundary(forward: false, from: pos) }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    private func bigWordEndMotion(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count { pos = buffer.bigWordEnd(from: pos) }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    private func wordEndBackwardMotion(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count { pos = buffer.wordEndBackward(from: pos) }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    private func bigWordEndBackwardMotion(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count { pos = buffer.bigWordEndBackward(from: pos) }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    // MARK: - x / X / s
+
+    private func deleteCharUnderCursor(_ count: Int, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        let deleteCount = min(count, max(0, contentEnd - pos))
+        guard deleteCount > 0 else { return }
+        let range = NSRange(location: pos, length: deleteCount)
+        register.text = buffer.string(in: range)
+        register.isLinewise = false
+        register.syncToPasteboard()
+        buffer.replaceCharacters(in: range, with: "")
+        let newContentEnd = contentEnd - deleteCount
+        if pos >= newContentEnd && newContentEnd > lineRange.location {
+            buffer.setSelectedRange(NSRange(location: newContentEnd - 1, length: 0))
+        } else {
+            buffer.setSelectedRange(NSRange(location: pos, length: 0))
+        }
+    }
+
+    private func deleteCharBeforeCursor(_ count: Int, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let deleteCount = min(count, pos - lineRange.location)
+        guard deleteCount > 0 else { return }
+        let start = pos - deleteCount
+        let range = NSRange(location: start, length: deleteCount)
+        register.text = buffer.string(in: range)
+        register.isLinewise = false
+        register.syncToPasteboard()
+        buffer.replaceCharacters(in: range, with: "")
+        buffer.setSelectedRange(NSRange(location: start, length: 0))
+    }
+
+    private func substituteChars(_ count: Int, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        let deleteCount = min(count, max(0, contentEnd - pos))
+        guard deleteCount > 0 else { mode = .insert; return }
+        let range = NSRange(location: pos, length: deleteCount)
+        register.text = buffer.string(in: range)
+        register.isLinewise = false
+        register.syncToPasteboard()
+        buffer.replaceCharacters(in: range, with: "")
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+        mode = .insert
     }
 }

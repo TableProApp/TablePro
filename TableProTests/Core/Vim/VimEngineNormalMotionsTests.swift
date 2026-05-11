@@ -203,7 +203,7 @@ final class VimEngineNormalMotionsTests: XCTestCase {
     func testWWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("3w")
-        XCTAssertEqual(pos, 12, "3w from 'hello' should land at 'second'")
+        XCTAssertEqual(pos, 19, "3w advances three word-starts: hello → world → second → line (offset 19)")
     }
 
     func testCapitalWTreatsPunctuationAsWordChar() {
