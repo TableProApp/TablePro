@@ -64,6 +64,12 @@ internal final class QuickSwitcherViewModel {
             case .view:
                 kind = .view
                 subtitle = String(localized: "View")
+            case .materializedView:
+                kind = .view
+                subtitle = String(localized: "Materialized View")
+            case .foreignTable:
+                kind = .table
+                subtitle = String(localized: "Foreign Table")
             case .systemTable:
                 kind = .systemTable
                 subtitle = String(localized: "System")

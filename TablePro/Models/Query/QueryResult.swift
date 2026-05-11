@@ -81,6 +81,8 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     enum TableType: String, Sendable {
         case table = "TABLE"
         case view = "VIEW"
+        case materializedView = "MATERIALIZED VIEW"
+        case foreignTable = "FOREIGN TABLE"
         case systemTable = "SYSTEM TABLE"
     }
 
