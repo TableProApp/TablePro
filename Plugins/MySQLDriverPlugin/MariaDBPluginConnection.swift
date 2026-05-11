@@ -78,11 +78,15 @@ func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
     let flags = UInt(field.flags)
     let length = field.length
 
-    // MariaDB extended metadata: detect JSON stored as LONGTEXT (best-effort)
+    // MariaDB extended metadata: detect JSON stored as LONGTEXT.
+    // `MARIADB_CONST_STRING` is length-prefixed (not null-terminated), so we must read
+    // exactly `attr.length` bytes. `String(cString:)` would scan past the buffer into
+    // adjacent memory and intermittently fail the comparison when that memory is non-zero.
     var attr = MARIADB_CONST_STRING()
     if mariadb_field_attr(&attr, fieldPtr, MARIADB_FIELD_ATTR_FORMAT_NAME) == 0,
        let str = attr.str, attr.length > 0,
-       String(cString: str) == "json" {
+       let value = String(data: Data(bytes: str, count: Int(attr.length)), encoding: .utf8),
+       value == "json" {
         return "JSON"
     }
 
