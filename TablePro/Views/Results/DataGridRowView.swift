@@ -57,20 +57,29 @@ class DataGridRowView: NSTableRowView {
     override var isSelected: Bool {
         didSet {
             guard isSelected != oldValue else { return }
-            invalidateCellSubviews()
+            propagateEmphasisToCells()
         }
     }
 
     override var isEmphasized: Bool {
         didSet {
             guard isEmphasized != oldValue else { return }
-            invalidateCellSubviews()
+            propagateEmphasisToCells()
         }
     }
 
-    private func invalidateCellSubviews() {
-        for subview in subviews where subview is DataGridCellView {
-            subview.needsDisplay = true
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        guard let cell = subview as? DataGridCellView else { return }
+        cell.applyEmphasizedSelection(isSelected && isEmphasized)
+    }
+
+    private func propagateEmphasisToCells() {
+        let emphasized = isSelected && isEmphasized
+        for subview in subviews {
+            guard let cell = subview as? DataGridCellView else { continue }
+            cell.applyEmphasizedSelection(emphasized)
+            cell.needsDisplay = true
         }
     }
 

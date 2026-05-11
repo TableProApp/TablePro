@@ -35,8 +35,7 @@ final class DateFormattingService {
         self.currentFormat = .iso8601
         self.formatter = Self.createFormatter(for: .iso8601)
         self.parsers = Self.createParsers()
-        // Limit cache to 10,000 entries to bound memory usage
-        formatCache.countLimit = 10_000
+        formatCache.countLimit = 100_000
     }
 
     // MARK: - Public Methods

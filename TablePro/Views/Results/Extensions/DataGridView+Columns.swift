@@ -32,7 +32,7 @@ extension TableViewCoordinator {
             return nil
         }
 
-        guard let displayRow = displayRow(at: row),
+        guard let displayRow = displayRow(at: row, in: tableRows),
               columnIndex < displayRow.values.count else {
             return nil
         }
@@ -74,18 +74,10 @@ extension TableViewCoordinator {
             isDropdownColumn: resolvedDropdown
         )
 
-        let rawText = rawValue.asText
-        let accessibilityValue = rawText ?? String(localized: "NULL")
         let content = DataGridCellContent(
             displayText: formattedValue ?? "",
-            rawValue: rawText,
-            placeholder: placeholderKind(for: rawValue),
-            accessibilityLabel: String(
-                format: String(localized: "Row %d, column %d: %@"),
-                row + 1,
-                columnIndex + 1,
-                accessibilityValue
-            )
+            rawValue: rawValue.asText,
+            placeholder: placeholderKind(for: rawValue)
         )
         let cellState = DataGridCellState(
             visualState: state,

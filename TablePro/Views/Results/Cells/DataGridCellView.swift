@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import CoreText
 
 @MainActor
 final class DataGridCellView: NSView {
@@ -22,7 +23,7 @@ final class DataGridCellView: NSView {
     private var isLargeDataset: Bool = false
     private var isEditableCell: Bool = false
 
-    private var textFont: NSFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    private var textFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
     private var textColor: NSColor = .labelColor
     private var modifiedColumnTint: NSColor?
 
@@ -30,28 +31,24 @@ final class DataGridCellView: NSView {
     private var isFocusedCell: Bool = false
     private var onEmphasizedSelection: Bool = false
 
-    private var attributedCache: NSAttributedString?
+    private var cachedLine: CTLine?
 
     private var accessoryHitRect: NSRect = .zero
 
-    private static let chevronNormal = makeAccessoryImage("chevron.up.chevron.down", pointSize: 10, color: .secondaryLabelColor)
-    private static let chevronEmphasized = makeAccessoryImage("chevron.up.chevron.down", pointSize: 10, color: .alternateSelectedControlTextColor)
-    private static let chevronDisabled = makeAccessoryImage("chevron.up.chevron.down", pointSize: 10, color: .tertiaryLabelColor)
-    private static let fkArrowNormal = makeAccessoryImage("arrow.right.circle.fill", pointSize: 14, color: .secondaryLabelColor)
-    private static let fkArrowEmphasized = makeAccessoryImage("arrow.right.circle.fill", pointSize: 14, color: .alternateSelectedControlTextColor)
+    private static let chevronNormal = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .secondaryLabelColor)
+    private static let chevronEmphasized = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .alternateSelectedControlTextColor)
+    private static let chevronDisabled = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .tertiaryLabelColor)
+    private static let fkArrowNormal = makeAccessoryCGImage("arrow.right.circle.fill", pointSize: 14, color: .secondaryLabelColor)
+    private static let fkArrowEmphasized = makeAccessoryCGImage("arrow.right.circle.fill", pointSize: 14, color: .alternateSelectedControlTextColor)
 
-    private static func makeAccessoryImage(_ name: String, pointSize: CGFloat, color: NSColor) -> NSImage {
+    private static func makeAccessoryCGImage(_ name: String, pointSize: CGFloat, color: NSColor) -> CGImage? {
         let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
             .applying(.init(hierarchicalColor: color))
-        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) ?? NSImage()
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return nil }
+        var rect = CGRect(origin: .zero, size: image.size)
+        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
     }
-
-    private static let placeholderParagraph: NSParagraphStyle = {
-        let p = NSMutableParagraphStyle()
-        p.lineBreakMode = .byTruncatingTail
-        return p
-    }()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -128,7 +125,7 @@ final class DataGridCellView: NSView {
             displayText = nextDisplayText
             textFont = nextFont
             textColor = nextColor
-            attributedCache = nil
+            cachedLine = nil
         }
 
         rawValue = content.rawValue
@@ -154,30 +151,26 @@ final class DataGridCellView: NSView {
             updateFocusPresentation()
         }
 
-        setAccessibilityLabel(content.accessibilityLabel)
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
 
         needsDisplay = true
     }
 
-    private func currentEmphasizedSelection() -> Bool {
-        var view: NSView? = superview
-        while let candidate = view {
-            if let row = candidate as? NSTableRowView {
-                return row.isSelected && row.isEmphasized
-            }
-            view = candidate.superview
-        }
-        return false
+    override func accessibilityLabel() -> String? {
+        let value = rawValue ?? String(localized: "NULL")
+        return String(
+            format: String(localized: "Row %d, column %d: %@"),
+            cellRow + 1,
+            cellColumnIndex + 1,
+            value
+        )
     }
 
-    override func viewWillDraw() {
-        super.viewWillDraw()
-        let nextEmphasized = currentEmphasizedSelection()
-        guard nextEmphasized != onEmphasizedSelection else { return }
-        onEmphasizedSelection = nextEmphasized
-        attributedCache = nil
+    func applyEmphasizedSelection(_ value: Bool) {
+        guard onEmphasizedSelection != value else { return }
+        onEmphasizedSelection = value
+        cachedLine = nil
         updateFocusPresentation()
     }
 
@@ -220,22 +213,35 @@ final class DataGridCellView: NSView {
 
     private func drawText(reservingTrailingWidth trailing: CGFloat) {
         guard !displayText.isEmpty else { return }
-        let attr = cachedAttributedString()
-        var rect = bounds.insetBy(dx: DataGridMetrics.cellHorizontalInset, dy: 0)
-        rect.size.width -= trailing
-        guard rect.width > 0 else { return }
-        let lineHeight = textFont.ascender - textFont.descender + textFont.leading
-        rect.origin.y = max(0, (bounds.height - lineHeight) / 2)
-        rect.size.height = lineHeight + 2
-        attr.draw(with: rect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin], context: nil)
+        let availableWidth = bounds.width - 2 * DataGridMetrics.cellHorizontalInset - trailing
+        guard availableWidth > 0 else { return }
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+
+        let fullLine = cachedCTLine()
+        let lineToDraw: CTLine
+        let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
+        if typographicWidth > Double(availableWidth) {
+            let ellipsis = makeEllipsisLine()
+            lineToDraw = CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis) ?? fullLine
+        } else {
+            lineToDraw = fullLine
+        }
+
+        let baselineY = (bounds.height - textFont.ascender + textFont.descender - textFont.leading) / 2 + textFont.ascender
+
+        context.saveGState()
+        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        context.textPosition = CGPoint(x: DataGridMetrics.cellHorizontalInset, y: baselineY)
+        CTLineDraw(lineToDraw, context)
+        context.restoreGState()
     }
 
     private func resolvedTextColor() -> NSColor {
         onEmphasizedSelection ? .alternateSelectedControlTextColor : textColor
     }
 
-    private func cachedAttributedString() -> NSAttributedString {
-        if let cached = attributedCache { return cached }
+    private func cachedCTLine() -> CTLine {
+        if let cached = cachedLine { return cached }
         let textNS = displayText as NSString
         let truncated: String
         if textNS.length > 300 {
@@ -243,14 +249,27 @@ final class DataGridCellView: NSView {
         } else {
             truncated = displayText
         }
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: textFont,
-            .foregroundColor: resolvedTextColor(),
-            .paragraphStyle: Self.placeholderParagraph
-        ]
-        let str = NSAttributedString(string: truncated, attributes: attrs)
-        attributedCache = str
-        return str
+        let attr = NSAttributedString(
+            string: truncated,
+            attributes: [
+                .font: textFont,
+                .foregroundColor: resolvedTextColor()
+            ]
+        )
+        let line = CTLineCreateWithAttributedString(attr as CFAttributedString)
+        cachedLine = line
+        return line
+    }
+
+    private func makeEllipsisLine() -> CTLine {
+        let attr = NSAttributedString(
+            string: "\u{2026}",
+            attributes: [
+                .font: textFont,
+                .foregroundColor: resolvedTextColor()
+            ]
+        )
+        return CTLineCreateWithAttributedString(attr as CFAttributedString)
     }
 
     private func computeAccessoryRect() -> NSRect {
@@ -274,7 +293,7 @@ final class DataGridCellView: NSView {
 
     private func drawAccessory(in rect: NSRect) {
         guard !rect.isEmpty else { return }
-        let image: NSImage
+        let image: CGImage?
         switch kind {
         case .text:
             return
@@ -289,7 +308,12 @@ final class DataGridCellView: NSView {
                 image = Self.chevronNormal
             }
         }
-        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0, respectFlipped: true, hints: nil)
+        guard let cgImage = image, let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        context.translateBy(x: rect.minX, y: rect.maxY)
+        context.scaleBy(x: 1, y: -1)
+        context.draw(cgImage, in: CGRect(origin: .zero, size: rect.size))
+        context.restoreGState()
     }
 
     private func drawFocusBorder() {
