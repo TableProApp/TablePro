@@ -162,8 +162,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         let pluginTables = try await pluginDriver.fetchTables(schema: pluginDriver.currentSchema)
         return pluginTables.map { table in
             let tableType: TableInfo.TableType = switch table.type.lowercased() {
+            case "table", "base table", "prefix": .table
             case "view": .view
-            case "system table": .systemTable
+            case "system table", "system base table", "system view": .systemTable
             default: .table
             }
             return TableInfo(name: table.name, type: tableType, rowCount: table.rowCount)
