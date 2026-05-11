@@ -4,14 +4,14 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("AIConversation")
 struct AIConversationTests {
-    private func makeUserTurn(_ text: String) -> ChatTurn {
-        ChatTurn(role: .user, blocks: [.text(text)])
+    private func makeUserTurn(_ text: String) -> ChatTurnWire {
+        ChatTurnWire(role: .user, blocks: [.text(text)])
     }
 
     @Test("updateTitle truncates long content")

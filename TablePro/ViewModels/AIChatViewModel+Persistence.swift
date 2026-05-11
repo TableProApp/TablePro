@@ -15,7 +15,7 @@ extension AIChatViewModel {
                 self.conversations = loaded
                 if let mostRecent = loaded.first {
                     self.activeConversationID = mostRecent.id
-                    self.messages = mostRecent.messages
+                    self.messages = mostRecent.messages.map { ChatTurn(wire: $0) }
                 }
             }
         }
@@ -45,10 +45,11 @@ extension AIChatViewModel {
 
     func persistCurrentConversation() {
         guard !messages.isEmpty else { return }
+        let wireMessages = messages.map { $0.wireSnapshot }
 
         if let existingID = activeConversationID,
            var conversation = conversations.first(where: { $0.id == existingID }) {
-            conversation.messages = messages
+            conversation.messages = wireMessages
             conversation.updatedAt = Date()
             conversation.updateTitle()
             conversation.connectionName = connection?.name
@@ -59,7 +60,7 @@ extension AIChatViewModel {
             }
         } else {
             var conversation = AIConversation(
-                messages: messages,
+                messages: wireMessages,
                 connectionName: connection?.name
             )
             conversation.updateTitle()

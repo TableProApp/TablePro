@@ -96,11 +96,7 @@ struct AIChatPanelView: View {
     // MARK: - Message List
 
     private var messageList: some View {
-        let streamingID = viewModel.streamingAssistantID
-        let visibleMessages = viewModel.messages.filter { message in
-            if message.id == streamingID, message.blocks.isEmpty { return false }
-            return isVisibleInMessageList(message)
-        }
+        let visibleMessages = viewModel.messages.filter { isVisibleInMessageList($0) }
         let spacedMessageIDs: Set<UUID> = {
             var ids = Set<UUID>()
             for i in 1..<visibleMessages.count
@@ -109,9 +105,6 @@ struct AIChatPanelView: View {
             }
             return ids
         }()
-        let streamingMessage = streamingID.flatMap { id in
-            viewModel.messages.first(where: { $0.id == id })
-        }
 
         return ScrollViewReader { proxy in
             ZStack(alignment: .bottom) {
@@ -131,14 +124,6 @@ struct AIChatPanelView: View {
                             )
                             .padding(.vertical, 4)
                             .id(message.id)
-                        }
-
-                        if let streamingMessage {
-                            AIStreamingBubbleView(
-                                viewModel: viewModel,
-                                timestamp: streamingMessage.timestamp
-                            )
-                            .id(streamingMessage.id)
                         }
 
                         Color.clear

@@ -34,7 +34,7 @@ final class AIChatInlineSource: InlineSuggestionSource {
 
         let userMessage = AIPromptTemplates.inlineSuggest(textBefore: context.textBefore, fullQuery: context.fullText)
         let turns = [
-            ChatTurn(role: .user, blocks: [.text(userMessage)])
+            ChatTurnWire(role: .user, blocks: [.text(userMessage)])
         ]
 
         let systemPrompt = await buildSystemPrompt()

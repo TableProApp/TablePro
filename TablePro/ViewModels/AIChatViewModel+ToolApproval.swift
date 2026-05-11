@@ -98,11 +98,10 @@ extension AIChatViewModel {
     @MainActor
     func updateApprovalState(blockID: String, newState: ToolApprovalState, assistantID: UUID) {
         guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
-        for blockIdx in messages[idx].blocks.indices {
-            if case .toolUse(var block) = messages[idx].blocks[blockIdx].kind, block.id == blockID {
+        for chatBlock in messages[idx].blocks {
+            if case .toolUse(var block) = chatBlock.kind, block.id == blockID {
                 block.approvalState = newState
-                let oldID = messages[idx].blocks[blockIdx].id
-                messages[idx].replaceBlock(at: blockIdx, with: ChatContentBlock(id: oldID, kind: .toolUse(block)))
+                chatBlock.setKind(.toolUse(block))
                 return
             }
         }

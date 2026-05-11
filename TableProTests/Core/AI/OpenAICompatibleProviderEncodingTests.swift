@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("OpenAICompatibleProvider wire encoding")
@@ -36,7 +36,7 @@ struct OpenAICompatibleProviderEncodingTests {
 
     @Test("Plain text turn renders flat content string")
     func plainTextTurn() {
-        let turn = ChatTurn(role: .user, blocks: [.text("hello")])
+        let turn = ChatTurnWire(role: .user, blocks: [.text("hello")])
         let encoded = makeProvider().encodeTurn(turn)
         #expect(encoded.count == 1)
         #expect(encoded[0]["role"] as? String == "user")
@@ -46,7 +46,7 @@ struct OpenAICompatibleProviderEncodingTests {
     @Test("Assistant turn with toolUse emits tool_calls with arguments-as-string")
     func assistantWithToolUse() {
         let toolUse = ToolUseBlock(id: "call_1", name: "list_tables", input: .object([:]))
-        let turn = ChatTurn(role: .assistant, blocks: [.text("checking"), .toolUse(toolUse)])
+        let turn = ChatTurnWire(role: .assistant, blocks: [.text("checking"), .toolUse(toolUse)])
         let messages = makeProvider().encodeTurn(turn)
         #expect(messages.count == 1)
         let message = messages[0]
@@ -65,7 +65,7 @@ struct OpenAICompatibleProviderEncodingTests {
     @Test("Assistant turn with toolUse but no text emits content: NSNull")
     func assistantWithoutText() {
         let toolUse = ToolUseBlock(id: "call_1", name: "list_tables", input: .object([:]))
-        let turn = ChatTurn(role: .assistant, blocks: [.toolUse(toolUse)])
+        let turn = ChatTurnWire(role: .assistant, blocks: [.toolUse(toolUse)])
         let messages = makeProvider().encodeTurn(turn)
         #expect(messages[0]["content"] is NSNull)
     }
@@ -73,7 +73,7 @@ struct OpenAICompatibleProviderEncodingTests {
     @Test("User turn with toolResult emits role:tool with tool_call_id")
     func toolResultBecomesToolMessage() {
         let result = ToolResultBlock(toolUseId: "call_1", content: "rows", isError: false)
-        let turn = ChatTurn(role: .user, blocks: [.toolResult(result)])
+        let turn = ChatTurnWire(role: .user, blocks: [.toolResult(result)])
         let messages = makeProvider().encodeTurn(turn)
         #expect(messages.count == 1)
         #expect(messages[0]["role"] as? String == "tool")
@@ -85,7 +85,7 @@ struct OpenAICompatibleProviderEncodingTests {
     func multipleToolResults() {
         let r1 = ToolResultBlock(toolUseId: "call_1", content: "a", isError: false)
         let r2 = ToolResultBlock(toolUseId: "call_2", content: "b", isError: false)
-        let turn = ChatTurn(role: .user, blocks: [.toolResult(r1), .toolResult(r2)])
+        let turn = ChatTurnWire(role: .user, blocks: [.toolResult(r1), .toolResult(r2)])
         let messages = makeProvider().encodeTurn(turn)
         #expect(messages.count == 2)
         #expect(messages[0]["tool_call_id"] as? String == "call_1")
@@ -94,7 +94,7 @@ struct OpenAICompatibleProviderEncodingTests {
 
     @Test("Empty text turn returns no messages")
     func emptyTurnYieldsNothing() {
-        let turn = ChatTurn(role: .user, blocks: [.text("")])
+        let turn = ChatTurnWire(role: .user, blocks: [.text("")])
         let messages = makeProvider().encodeTurn(turn)
         #expect(messages.isEmpty)
     }

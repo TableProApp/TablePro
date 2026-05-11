@@ -7,7 +7,7 @@ import Foundation
 
 protocol ChatTransport: AnyObject, Sendable {
     func streamChat(
-        turns: [ChatTurn],
+        turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error>
 
