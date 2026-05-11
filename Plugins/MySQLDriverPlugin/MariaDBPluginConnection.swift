@@ -131,8 +131,8 @@ func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
         } else {
             return length > 65_535 ? "LONGTEXT" : "TEXT"
         }
-    case 253: return "VARCHAR"
-    case 254: return "CHAR"
+    case 253: return isBinary ? "VARBINARY" : "VARCHAR"
+    case 254: return isBinary ? "BINARY" : "CHAR"
     case 255: return "GEOMETRY"
     default: return "UNKNOWN"
     }
