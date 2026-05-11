@@ -27,8 +27,7 @@ struct SidebarView: View {
     }
 
     private var filteredTables: [TableInfo] {
-        guard !viewModel.searchText.isEmpty else { return tables }
-        return tables.filter { $0.name.localizedCaseInsensitiveContains(viewModel.searchText) }
+        viewModel.filteredTables(from: tables)
     }
 
     private var selectedTablesBinding: Binding<Set<TableInfo>> {

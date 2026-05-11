@@ -15,7 +15,9 @@ import SwiftUI
 final class SidebarViewModel {
     // MARK: - Published State
 
-    var searchText = ""
+    var searchText = "" {
+        didSet { invalidateFilteredTablesCache() }
+    }
     var isTablesExpanded: Bool = {
         let key = "sidebar.isTablesExpanded"
         if UserDefaults.standard.object(forKey: key) != nil {
@@ -175,5 +177,34 @@ final class SidebarViewModel {
         guard !selectedTables.isEmpty else { return }
         let names = selectedTables.map { $0.name }.sorted()
         ClipboardService.shared.writeText(names.joined(separator: ","))
+    }
+
+    // MARK: - Filtering
+
+    @ObservationIgnored private var cachedFilteredTables: [TableInfo]?
+    @ObservationIgnored private var cachedFilterInputs: (count: Int, hash: Int, query: String)?
+
+    func filteredTables(from tables: [TableInfo]) -> [TableInfo] {
+        let query = searchText
+        let fingerprint = (count: tables.count, hash: tables.hashValue, query: query)
+        if let cache = cachedFilteredTables,
+           let inputs = cachedFilterInputs,
+           inputs == fingerprint {
+            return cache
+        }
+        let result: [TableInfo]
+        if query.isEmpty {
+            result = tables
+        } else {
+            result = tables.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        }
+        cachedFilteredTables = result
+        cachedFilterInputs = fingerprint
+        return result
+    }
+
+    private func invalidateFilteredTablesCache() {
+        cachedFilteredTables = nil
+        cachedFilterInputs = nil
     }
 }
