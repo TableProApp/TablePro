@@ -126,7 +126,8 @@ struct TerminalSettingsView: View {
                 ForEach(Self.terminalDatabaseTypes, id: \.rawValue) { dbType in
                     cliPathRow(for: dbType)
                 }
-                pgDumpPathRow
+                postgresToolRow(key: TerminalSettings.pgDumpCliPathKey, binaryName: "pg_dump")
+                postgresToolRow(key: TerminalSettings.pgRestoreCliPathKey, binaryName: "pg_restore")
             }
         } footer: {
             Text("Override auto-detected CLI paths per database type.")

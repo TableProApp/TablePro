@@ -304,6 +304,15 @@ struct AppMenuCommands: Commands {
                 actions?.backupDatabase()
             }
             .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsBackup ?? false))
+
+            Button(String(localized: "Restore...")) {
+                actions?.restoreDatabase()
+            }
+            .disabled(
+                !(actions?.isConnected ?? false)
+                    || !(actions?.supportsRestore ?? false)
+                    || actions?.isReadOnly ?? false
+            )
         }
 
         // Query menu

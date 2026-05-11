@@ -2,11 +2,20 @@
 //  BackupProgressSheet.swift
 //  TablePro
 //
+//  Shared progress sheet for the backup and restore flows.
+//
 
 import SwiftUI
 
 struct BackupProgressSheet: View {
+    enum Kind {
+        case backup
+        case restore
+    }
+
+    let kind: Kind
     let database: String
+    /// Number of bytes written so far. Only shown for `.backup`; ignored for `.restore`.
     let bytesWritten: Int64
     let isCancelling: Bool
     let onCancel: () -> Void
@@ -15,7 +24,7 @@ struct BackupProgressSheet: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Backing Up Database")
+            Text(titleString)
                 .font(.title3.weight(.semibold))
 
             VStack(spacing: 8) {
@@ -25,10 +34,12 @@ struct BackupProgressSheet: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
-                    Text(byteCountString)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                    if kind == .backup {
+                        Text(byteCountString)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
                 }
 
                 ProgressView()
@@ -53,11 +64,39 @@ struct BackupProgressSheet: View {
         .frame(width: 420)
         .background(Color(nsColor: .windowBackgroundColor))
         .interactiveDismissDisabled()
-        .alert(String(localized: "Cancel Backup?"), isPresented: $showCancelConfirmation) {
+        .alert(cancelAlertTitle, isPresented: $showCancelConfirmation) {
             Button(String(localized: "Continue"), role: .cancel) { }
-            Button(String(localized: "Cancel Backup"), role: .destructive) { onCancel() }
+            Button(cancelAlertConfirmLabel, role: .destructive) { onCancel() }
         } message: {
-            Text("The partial backup file will be removed.")
+            Text(cancelAlertMessage)
+        }
+    }
+
+    private var titleString: String {
+        switch kind {
+        case .backup: return String(localized: "Backing Up Database")
+        case .restore: return String(localized: "Restoring Database")
+        }
+    }
+
+    private var cancelAlertTitle: String {
+        switch kind {
+        case .backup: return String(localized: "Cancel Backup?")
+        case .restore: return String(localized: "Cancel Restore?")
+        }
+    }
+
+    private var cancelAlertConfirmLabel: String {
+        switch kind {
+        case .backup: return String(localized: "Cancel Backup")
+        case .restore: return String(localized: "Cancel Restore")
+        }
+    }
+
+    private var cancelAlertMessage: String {
+        switch kind {
+        case .backup: return String(localized: "The partial backup file will be removed.")
+        case .restore: return String(localized: "The target database may be left in a partial state.")
         }
     }
 
@@ -66,10 +105,21 @@ struct BackupProgressSheet: View {
     }
 }
 
-#Preview {
+#Preview("Backup") {
     BackupProgressSheet(
+        kind: .backup,
         database: "production",
         bytesWritten: 12_345_678,
+        isCancelling: false,
+        onCancel: {}
+    )
+}
+
+#Preview("Restore") {
+    BackupProgressSheet(
+        kind: .restore,
+        database: "production",
+        bytesWritten: 0,
         isCancelling: false,
         onCancel: {}
     )
