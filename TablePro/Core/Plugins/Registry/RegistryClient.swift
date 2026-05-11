@@ -70,17 +70,9 @@ final class RegistryClient {
     private static func migrateLegacyKeys() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: legacyETagKey) != nil {
-            if defaults.string(forKey: etagKey) == nil,
-               let legacyETag = defaults.string(forKey: legacyETagKey) {
-                defaults.set(legacyETag, forKey: etagKey)
-            }
             defaults.removeObject(forKey: legacyETagKey)
         }
         if defaults.object(forKey: legacyLastFetchKey) != nil {
-            if defaults.object(forKey: lastFetchKey) == nil,
-               let legacyDate = defaults.object(forKey: legacyLastFetchKey) as? Date {
-                defaults.set(legacyDate, forKey: lastFetchKey)
-            }
             defaults.removeObject(forKey: legacyLastFetchKey)
         }
         if defaults.object(forKey: legacyManifestCacheKey) != nil {
@@ -136,6 +128,12 @@ final class RegistryClient {
             switch httpResponse.statusCode {
             case 304:
                 Self.logger.debug("Registry manifest not modified (304)")
+                if manifest == nil {
+                    Self.logger.warning("Got 304 but no cached manifest in memory; retrying without If-None-Match")
+                    cachedETag = nil
+                    await fetchManifest(forceRefresh: true)
+                    return
+                }
                 fetchState = .loaded
 
             case 200...299:
