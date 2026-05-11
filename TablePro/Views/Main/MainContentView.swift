@@ -205,13 +205,12 @@ struct MainContentView: View {
                 initialDatabase: DatabaseManager.shared.session(for: connection.id)?.currentDatabase
                     ?? connection.database
             )
-        case .restoreDatabase(let fileURL):
+        case .restoreDatabase:
             RestoreDatabaseFlow(
                 isPresented: dismissBinding,
                 connection: connectionWithCurrentDatabase,
                 initialDatabase: DatabaseManager.shared.session(for: connection.id)?.currentDatabase
-                    ?? connection.database,
-                sourceURL: fileURL
+                    ?? connection.database
             )
         case .maintenance(let operation, let tableName):
             MaintenanceSheet(

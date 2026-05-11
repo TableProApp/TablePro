@@ -703,24 +703,7 @@ final class MainContentCommandActions {
     var supportsRestore: Bool { supportsBackup }
 
     func restoreDatabase() {
-        Task { @MainActor in
-            let openPanel = NSOpenPanel()
-            openPanel.canChooseFiles = true
-            openPanel.canChooseDirectories = false
-            openPanel.allowsMultipleSelection = false
-            openPanel.title = String(localized: "Choose Backup File")
-            openPanel.prompt = String(localized: "Choose")
-            openPanel.message = String(localized: "Select a backup file created with pg_dump custom or directory format.")
-
-            let response: NSApplication.ModalResponse
-            if let window = self.window {
-                response = await openPanel.beginSheetModal(for: window)
-            } else {
-                response = openPanel.runModal()
-            }
-            guard response == .OK, let url = openPanel.url else { return }
-            coordinator?.activeSheet = .restoreDatabase(fileURL: url)
-        }
+        coordinator?.activeSheet = .restoreDatabase
     }
 
     func saveAsFavorite() {

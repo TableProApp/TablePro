@@ -15,8 +15,13 @@ struct BackupProgressSheet: View {
 
     let kind: Kind
     let database: String
-    /// Number of bytes written so far. Only shown for `.backup`; ignored for `.restore`.
+    /// Bytes processed so far. For `.backup` this is the dump file size on disk.
     let bytesWritten: Int64
+    /// Upper bound used to render a determinate bar. For backup this is
+    /// `pg_database_size`, which over-estimates the dump file (compression),
+    /// so the bar is capped at ~95% until the process exits. `nil` keeps the
+    /// bar indeterminate (used for restore).
+    let totalBytes: Int64?
     let isCancelling: Bool
     let onCancel: () -> Void
 
@@ -42,8 +47,7 @@ struct BackupProgressSheet: View {
                     }
                 }
 
-                ProgressView()
-                    .progressViewStyle(.linear)
+                progressBar
             }
 
             HStack(spacing: 8) {
@@ -65,10 +69,36 @@ struct BackupProgressSheet: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .interactiveDismissDisabled()
         .alert(cancelAlertTitle, isPresented: $showCancelConfirmation) {
-            Button(String(localized: "Continue"), role: .cancel) { }
+            Button(keepGoingLabel, role: .cancel) { }
             Button(cancelAlertConfirmLabel, role: .destructive) { onCancel() }
         } message: {
             Text(cancelAlertMessage)
+        }
+    }
+
+    @ViewBuilder
+    private var progressBar: some View {
+        if let totalBytes, totalBytes > 0 {
+            ProgressView(value: progressFraction)
+                .progressViewStyle(.linear)
+        } else {
+            ProgressView()
+                .progressViewStyle(.linear)
+        }
+    }
+
+    /// Bytes / totalBytes, capped at 0.95 so the bar doesn't appear "done" while
+    /// pg_dump is still finalizing the archive trailer.
+    private var progressFraction: Double {
+        guard let totalBytes, totalBytes > 0 else { return 0 }
+        let raw = Double(bytesWritten) / Double(totalBytes)
+        return min(raw, 0.95)
+    }
+
+    private var keepGoingLabel: String {
+        switch kind {
+        case .backup: return String(localized: "Keep Backing Up")
+        case .restore: return String(localized: "Keep Restoring")
         }
     }
 
@@ -105,11 +135,23 @@ struct BackupProgressSheet: View {
     }
 }
 
-#Preview("Backup") {
+#Preview("Backup determinate") {
     BackupProgressSheet(
         kind: .backup,
         database: "production",
         bytesWritten: 12_345_678,
+        totalBytes: 50_000_000,
+        isCancelling: false,
+        onCancel: {}
+    )
+}
+
+#Preview("Backup indeterminate") {
+    BackupProgressSheet(
+        kind: .backup,
+        database: "production",
+        bytesWritten: 12_345_678,
+        totalBytes: nil,
         isCancelling: false,
         onCancel: {}
     )
@@ -120,6 +162,7 @@ struct BackupProgressSheet: View {
         kind: .restore,
         database: "production",
         bytesWritten: 0,
+        totalBytes: nil,
         isCancelling: false,
         onCancel: {}
     )
