@@ -117,7 +117,7 @@ struct GeneralPaneView: View {
         let connectionFields = coordinator.network.connectionFields
         if coordinator.network.hasHostListField {
             ForEach(connectionFields, id: \.id) { field in
-                if case .hostList = field.fieldType {
+                if case .hostList = field.fieldType, coordinator.network.isFieldVisible(field) {
                     HostListFieldRow(
                         label: field.label,
                         placeholder: field.placeholder,

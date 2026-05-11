@@ -72,7 +72,9 @@ final class AuthPaneViewModel {
         let type = coordinator?.value?.network.type ?? .mysql
         let registry = PluginManager.shared.additionalConnectionFields(for: type)
         let defaultValue = registry.first { $0.id == rule.fieldId }?.defaultValue ?? ""
-        let currentValue = additionalFieldValues[rule.fieldId] ?? defaultValue
+        let currentValue = additionalFieldValues[rule.fieldId]
+            ?? coordinator?.value?.network.additionalFieldValues[rule.fieldId]
+            ?? defaultValue
         return rule.values.contains(currentValue)
     }
 

@@ -29,8 +29,8 @@ final class NetworkPaneViewModel {
 
     var hasHostListField: Bool {
         connectionFields.contains { field in
-            if case .hostList = field.fieldType { return true }
-            return false
+            guard case .hostList = field.fieldType else { return false }
+            return isFieldVisible(field)
         }
     }
 
