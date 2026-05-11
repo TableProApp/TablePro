@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Data grid: max main-thread stall during wide-table scroll drops from 3.5s to about 1.3s. Cell `configure` now skips `needsDisplay = true` when the visible state is unchanged; the display cache is a Swift `Dictionary<RowID, RowDisplayBox>` with O(1) head-index eviction instead of `NSCache` with a per-call `RowIDKey` wrapper allocation; the date parser memoizes the most recent successful index so consecutive cells in the same column hit the right format first try; `viewFor:row:` is wrapped in `autoreleasepool` to drain transient NSString/NSAttributedString allocations per cell; and `DataGridCellView` no longer takes its own backing layer, letting the row view's layer absorb cell drawing
 - Sidebar: selected row icon and label tint to white so kind colors (indigo, teal, purple) stay readable on the blue selection background
 - Sidebar: drop the per-section item count; empty optional-kind sections are already hidden, so the count was visual noise that also jittered next to the hover-revealed disclosure chevron
 - Internal: sidebar rows use `Label` instead of hand-rolled `HStack`, and the selection-aware tint lives in a single `sidebarTint(_:)` modifier shared by table and routine rows

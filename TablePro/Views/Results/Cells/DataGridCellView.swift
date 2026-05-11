@@ -61,9 +61,6 @@ final class DataGridCellView: NSView {
     }
 
     private func commonInit() {
-        wantsLayer = true
-        layerContentsRedrawPolicy = .onSetNeedsDisplay
-        canDrawSubviewsIntoLayer = true
         setAccessibilityElement(true)
         setAccessibilityRole(.cell)
     }
@@ -71,27 +68,18 @@ final class DataGridCellView: NSView {
     override var allowsVibrancy: Bool { false }
     override var isFlipped: Bool { true }
 
-    override func makeBackingLayer() -> CALayer {
-        let layer = super.makeBackingLayer()
-        layer.actions = Self.disabledLayerActions
-        return layer
-    }
-
-    private static let disabledLayerActions: [String: any CAAction] = [
-        "position": NSNull(),
-        "bounds": NSNull(),
-        "frame": NSNull(),
-        "contents": NSNull(),
-        "hidden": NSNull(),
-    ]
-
     func configure(
         kind: DataGridCellKind,
         content: DataGridCellContent,
         state: DataGridCellState,
         palette: DataGridCellPalette
     ) {
-        self.kind = kind
+        var needsRedraw = false
+
+        if self.kind != kind {
+            self.kind = kind
+            needsRedraw = true
+        }
         cellRow = state.row
         cellColumnIndex = state.columnIndex
 
@@ -126,9 +114,13 @@ final class DataGridCellView: NSView {
             textFont = nextFont
             textColor = nextColor
             cachedLine = nil
+            needsRedraw = true
         }
 
-        rawValue = content.rawValue
+        if rawValue != content.rawValue {
+            rawValue = content.rawValue
+            needsRedraw = true
+        }
         placeholder = content.placeholder
         isLargeDataset = state.isLargeDataset
         isEditableCell = state.isEditable
@@ -143,18 +135,25 @@ final class DataGridCellView: NSView {
         }
         if !colorsEqual(modifiedColumnTint, nextTint) {
             modifiedColumnTint = nextTint
+            needsRedraw = true
         }
 
-        visualState = state.visualState
+        if visualState != state.visualState {
+            visualState = state.visualState
+            needsRedraw = true
+        }
         if isFocusedCell != state.isFocused {
             isFocusedCell = state.isFocused
             updateFocusPresentation()
+            needsRedraw = true
         }
 
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
 
-        needsDisplay = true
+        if needsRedraw {
+            needsDisplay = true
+        }
     }
 
     override func accessibilityLabel() -> String? {

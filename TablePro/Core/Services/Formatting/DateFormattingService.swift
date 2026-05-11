@@ -24,6 +24,10 @@ final class DateFormattingService {
     /// Parsers for common database date formats (ISO 8601, MySQL, PostgreSQL, SQLite)
     private let parsers: [DateFormatter]
 
+    /// Index of the parser that succeeded most recently. Tried first on the next parse
+    /// because consecutive cells in the same column share the same wire format.
+    private var lastSuccessfulParserIndex: Int = 0
+
     /// Cache for formatted date strings to avoid repeated parsing
     private let formatCache = NSCache<NSString, NSString>()
 
@@ -67,9 +71,14 @@ final class DateFormattingService {
             return cached.length == 0 ? nil : cached as String
         }
 
-        // Try parsing with each parser
-        for parser in parsers {
-            if let date = parser.date(from: dateString) {
+        if let date = parsers[lastSuccessfulParserIndex].date(from: dateString) {
+            let result = format(date)
+            formatCache.setObject(result as NSString, forKey: cacheKey)
+            return result
+        }
+        for index in parsers.indices where index != lastSuccessfulParserIndex {
+            if let date = parsers[index].date(from: dateString) {
+                lastSuccessfulParserIndex = index
                 let result = format(date)
                 formatCache.setObject(result as NSString, forKey: cacheKey)
                 return result
