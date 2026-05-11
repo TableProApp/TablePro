@@ -149,11 +149,13 @@ final class VimEngineCommandLineTests: XCTestCase {
         XCTAssertEqual(dispatchedCommand, "write file.sql")
     }
 
-    func testEnterDispatchesSearchPattern() {
+    func testSearchDoesNotDispatchToOnCommand() {
+        // The engine now runs search natively via runSearch instead of forwarding
+        // the pattern to onCommand. onCommand is reserved for `:`-style ex commands.
         keys("/hello")
         enter()
-        XCTAssertEqual(dispatchedCommand, "hello",
-            "Search pattern (after /) should be dispatched too — handler decides what to do")
+        XCTAssertNil(dispatchedCommand,
+            "/pattern should be handled internally and not surface to onCommand")
     }
 
     func testEnterOnEmptyCommandDispatchesEmptyString() {

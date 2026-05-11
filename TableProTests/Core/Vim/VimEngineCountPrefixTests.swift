@@ -114,8 +114,11 @@ final class VimEngineCountPrefixTests: XCTestCase {
     // MARK: - Count Cleared by Unknown Key
 
     func testUnknownKeyClearsCount() {
+        // Q is a genuinely unknown key in our engine. Using it after the count
+        // prefix should consume the count without applying any motion. The next
+        // `l` then moves by 1, not by 3.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
-        keys("3z") // z is unknown — should clear count
+        keys("3Q")
         keys("l")
         XCTAssertEqual(pos, 1)
     }

@@ -49,9 +49,12 @@ final class VimEngineSentenceParagraphTests: XCTestCase {
     }
 
     func testRightParenWithCount() {
+        // "First. Second. Third.\n" — offsets: F(0)…(5).(6) (7)S…(14).(15) T(16)…
+        // 2) advances two sentences from 0 → past 'First. ' → 'S' at 7, then past
+        // 'Second. ' → 'T' at 15.
         make("First. Second. Third.\n", at: 0)
         keys("2)")
-        XCTAssertEqual(pos, 14, "2) should advance two sentences")
+        XCTAssertEqual(pos, 15, "2) should advance two sentences (to 'T' at offset 15)")
     }
 
     // MARK: - ( Backward Sentence
@@ -71,9 +74,13 @@ final class VimEngineSentenceParagraphTests: XCTestCase {
     }
 
     func testRightBraceFromBlankLineAdvancesToNextParagraphEnd() {
+        // "para one\n\npara two\nstill two\n\npara three\n"
+        // Offsets: 'p'(0) 'a'(1) 'r'(2) 'a'(3) ' '(4) 'o'(5) 'n'(6) 'e'(7) '\n'(8) '\n'(9)
+        //          'p'(10) … 't'(15) 'w'(16) 'o'(17) '\n'(18) 's'(19) … 't'(28) 'w'(29) 'o'(30) '\n'(31) '\n'(32)
+        // } from blank line at 9 advances to the next blank line at 32.
         make("para one\n\npara two\nstill two\n\npara three\n", at: 9)
         keys("}")
-        XCTAssertEqual(pos, 28, "} from a blank line should advance to the next paragraph break")
+        XCTAssertEqual(pos, 29, "} from a blank line should advance to the next paragraph break (offset 29 is the blank line)")
     }
 
     func testRightBraceWithCount() {

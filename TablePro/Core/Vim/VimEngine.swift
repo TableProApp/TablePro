@@ -76,6 +76,9 @@ final class VimEngine {
     private var pendingMarkJumpExact: Bool?
     private var pendingRegisterSelect: Bool = false
     private var pendingReplaceCharForVisual: Bool = false
+    private var pendingZ: Bool = false
+    private var pendingTextObject: Bool = false
+    private var pendingTextObjectAround: Bool = false
     private var selectedRegister: Character?
     private var lastFindChar: VimLastFindChar?
     private var lastDotKind: VimDotKind?
@@ -87,6 +90,20 @@ final class VimEngine {
     private var editsOnCurrentLine: Int = 0
     private var lastEditedLine: Int?
     private var lastJumpOrigin: Int?
+    private var lastVisualStart: Int?
+    private var lastVisualEnd: Int?
+    private var lastVisualLinewise: Bool = false
+    private var lastSearchPattern: String?
+    private var lastSearchForward: Bool = true
+    private var macroRecording: Character?
+    private var macroBuffers: [Character: [(Character, Bool)]] = [:]
+    private var lastInvokedMacro: Character?
+    private var pendingMacroTarget: MacroPendingKind?
+    private var pendingMacroCount: Int = 1
+    private var macroPlaybackDepth: Int = 0
+    private enum MacroPendingKind { case recordTarget, replayTarget }
+    private var pendingBracket: BracketPending?
+    private enum BracketPending { case openBracket, closeBracket }
 
     /// Visual mode anchor offset
     private var visualAnchor: Int = 0
@@ -118,6 +135,7 @@ final class VimEngine {
     ///   - shift: Whether shift was held
     /// - Returns: `true` if the key was consumed (event should be swallowed)
     func process(_ char: Character, shift: Bool) -> Bool {
+        let recordingTarget = macroRecording
         let consumed: Bool
         switch mode {
         case .normal:
@@ -130,6 +148,11 @@ final class VimEngine {
             consumed = processVisual(char, shift: shift)
         case .commandLine(let commandBuffer):
             consumed = processCommandLine(char, buffer: commandBuffer)
+        }
+        // Append to the active macro register if we were recording before this key
+        // ran (so the register-arm `q{a}` keystroke itself is not captured).
+        if let target = recordingTarget, macroRecording == target {
+            macroBuffers[target, default: []].append((char, shift))
         }
         // Keep cursorOffset in sync for non-visual modes
         if !mode.isVisual, let buffer {
@@ -176,6 +199,11 @@ final class VimEngine {
     private func processNormal(_ char: Character, shift: Bool) -> Bool { // swiftlint:disable:this function_body_length cyclomatic_complexity
         guard let buffer else { return false }
 
+        // Ctrl-prefixed normal-mode commands: number adjust and scroll motions.
+        if let consumed = handleNormalControl(char, in: buffer) {
+            return consumed
+        }
+
         // Pending char-after-prefix sequences
         if let req = pendingFindChar {
             pendingFindChar = nil
@@ -204,6 +232,36 @@ final class VimEngine {
             if char == "\u{1B}" { return true }
             selectedRegister = char
             return true
+        }
+        if pendingZ {
+            pendingZ = false
+            switch char {
+            case "t", "z", "b": return true
+            default: return true
+            }
+        }
+        if pendingTextObject {
+            pendingTextObject = false
+            if char == "\u{1B}" {
+                pendingOperator = nil
+                return true
+            }
+            return executeTextObject(char, around: pendingTextObjectAround, in: buffer)
+        }
+        if let kind = pendingMacroTarget {
+            pendingMacroTarget = nil
+            if char == "\u{1B}" { return true }
+            handleMacroTarget(kind: kind, register: char)
+            return true
+        }
+        if let bracketKind = pendingBracket {
+            pendingBracket = nil
+            if char == "\u{1B}" { return true }
+            switch (bracketKind, char) {
+            case (.openBracket, "["): sectionBackward(in: buffer); return true
+            case (.closeBracket, "]"): sectionForward(in: buffer); return true
+            default: return true
+            }
         }
 
         // Count prefix accumulation (1-9 start, 0-9 continue)
@@ -314,21 +372,31 @@ final class VimEngine {
 
         // -- Insert mode entry --
         case "i":
+            if pendingOperator != nil {
+                pendingTextObject = true
+                pendingTextObjectAround = false
+                return true
+            }
             countPrefix = 0
+            mode = .insert
+            return true
+        case "a":
+            if pendingOperator != nil {
+                pendingTextObject = true
+                pendingTextObjectAround = true
+                return true
+            }
+            countPrefix = 0
+            let pos = buffer.selectedRange().location
+            if pos < buffer.length {
+                buffer.setSelectedRange(NSRange(location: pos + 1, length: 0))
+            }
             mode = .insert
             return true
         case "I":
             countPrefix = 0
             let target = firstNonBlankOffset(from: buffer.selectedRange().location, in: buffer)
             buffer.setSelectedRange(NSRange(location: target, length: 0))
-            mode = .insert
-            return true
-        case "a":
-            countPrefix = 0
-            let pos = buffer.selectedRange().location
-            if pos < buffer.length {
-                buffer.setSelectedRange(NSRange(location: pos + 1, length: 0))
-            }
             mode = .insert
             return true
         case "A":
@@ -521,6 +589,22 @@ final class VimEngine {
             jumpToMatchingBracket(in: buffer)
             return true
 
+        // -- Search repeat / word-under-cursor --
+        case "n":
+            let count = consumeCount()
+            for _ in 0..<count { searchNext(in: buffer, reverseDirection: false) }
+            return true
+        case "N":
+            let count = consumeCount()
+            for _ in 0..<count { searchNext(in: buffer, reverseDirection: true) }
+            return true
+        case "*":
+            searchWordUnderCursor(forward: true, in: buffer)
+            return true
+        case "#":
+            searchWordUnderCursor(forward: false, in: buffer)
+            return true
+
         // -- Marks and register selection --
         case "m":
             pendingMarkSet = true
@@ -541,6 +625,39 @@ final class VimEngine {
             replayLastDot(count: count, in: buffer)
             return true
 
+        // -- Sentence / paragraph / section motions --
+        case "(":
+            sentenceBackward(consumeCount(), in: buffer)
+            return true
+        case ")":
+            sentenceForward(consumeCount(), in: buffer)
+            return true
+        case "{":
+            paragraphBackward(consumeCount(), in: buffer)
+            return true
+        case "}":
+            paragraphForward(consumeCount(), in: buffer)
+            return true
+        case "[":
+            pendingBracket = .openBracket
+            return true
+        case "]":
+            pendingBracket = .closeBracket
+            return true
+
+        // -- Macros --
+        case "q":
+            if macroRecording != nil {
+                macroRecording = nil
+            } else {
+                pendingMacroTarget = .recordTarget
+            }
+            return true
+        case "@":
+            pendingMacroCount = consumeCount()
+            pendingMacroTarget = .replayTarget
+            return true
+
         // -- H/M/L screen motions --
         case "H":
             jumpToVisibleLine(.top, in: buffer)
@@ -550,6 +667,11 @@ final class VimEngine {
             return true
         case "L":
             jumpToVisibleLine(.bottom, in: buffer)
+            return true
+
+        // -- z* viewport-positioning commands --
+        case "z":
+            pendingZ = true
             return true
 
         // -- Paste --
@@ -629,11 +751,9 @@ final class VimEngine {
     // MARK: - Insert Mode
 
     private func processInsert(_ char: Character) -> Bool {
-        // Only Escape exits insert mode — all other keys pass through
         if char == "\u{1B}" {
             lastInsertOffset = buffer?.selectedRange().location
             mode = .normal
-            // Move cursor back one position (Vim convention)
             if let buffer, buffer.selectedRange().location > 0 {
                 let pos = buffer.selectedRange().location
                 let lineRange = buffer.lineRange(forOffset: pos)
@@ -641,6 +761,9 @@ final class VimEngine {
                     buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
                 }
             }
+            return true
+        }
+        if let buffer, handleInsertModeControl(char, in: buffer) {
             return true
         }
         return false // Pass through to text view
@@ -657,6 +780,7 @@ final class VimEngine {
             }
             return true
         }
+        if handleInsertModeControl(char, in: buffer) { return true }
         if char == "\r" || char == "\n" {
             return false
         }
@@ -674,6 +798,77 @@ final class VimEngine {
         return true
     }
 
+    /// Handle Ctrl-prefixed editing commands available in insert and replace modes.
+    /// Returns true when the engine consumed the keystroke.
+    private func handleInsertModeControl(_ char: Character, in buffer: VimTextBuffer) -> Bool {
+        switch char {
+        case "\u{17}": // Ctrl+W — delete previous word
+            deleteWordBackwardInInsert(in: buffer)
+            return true
+        case "\u{15}": // Ctrl+U — delete to line start
+            deleteToLineStartInInsert(in: buffer)
+            return true
+        case "\u{08}": // Ctrl+H — backspace
+            backspaceInInsert(in: buffer)
+            return true
+        case "\u{14}": // Ctrl+T — indent current line
+            indentLineInInsert(outdent: false, in: buffer)
+            return true
+        case "\u{04}": // Ctrl+D — outdent current line
+            indentLineInInsert(outdent: true, in: buffer)
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func deleteWordBackwardInInsert(in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        guard pos > 0 else { return }
+        let lineStart = buffer.lineRange(forOffset: pos).location
+        guard pos > lineStart else { return }
+        let target = max(lineStart, buffer.wordBoundary(forward: false, from: pos))
+        let range = NSRange(location: target, length: pos - target)
+        buffer.replaceCharacters(in: range, with: "")
+        buffer.setSelectedRange(NSRange(location: target, length: 0))
+    }
+
+    private func deleteToLineStartInInsert(in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let lineStart = buffer.lineRange(forOffset: pos).location
+        guard pos > lineStart else { return }
+        let range = NSRange(location: lineStart, length: pos - lineStart)
+        buffer.replaceCharacters(in: range, with: "")
+        buffer.setSelectedRange(NSRange(location: lineStart, length: 0))
+    }
+
+    private func backspaceInInsert(in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        guard pos > 0 else { return }
+        buffer.replaceCharacters(in: NSRange(location: pos - 1, length: 1), with: "")
+        buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
+    }
+
+    private func indentLineInInsert(outdent: Bool, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let indent = buffer.indentString()
+        if outdent {
+            let line = buffer.string(in: lineRange) as NSString
+            var stripCount = 0
+            while stripCount < indent.count && stripCount < line.length
+                && (line.character(at: stripCount) == 0x20 || line.character(at: stripCount) == 0x09) {
+                stripCount += 1
+            }
+            guard stripCount > 0 else { return }
+            buffer.replaceCharacters(in: NSRange(location: lineRange.location, length: stripCount), with: "")
+            buffer.setSelectedRange(NSRange(location: max(lineRange.location, pos - stripCount), length: 0))
+        } else {
+            buffer.replaceCharacters(in: NSRange(location: lineRange.location, length: 0), with: indent)
+            buffer.setSelectedRange(NSRange(location: pos + indent.count, length: 0))
+        }
+    }
+
     // MARK: - Visual Mode
 
     private func processVisual(_ char: Character, shift: Bool) -> Bool { // swiftlint:disable:this function_body_length cyclomatic_complexity
@@ -684,6 +879,11 @@ final class VimEngine {
             if char == "\u{1B}" { return true }
             replaceVisualSelectionWithChar(char, in: buffer)
             return true
+        }
+        if pendingTextObject {
+            pendingTextObject = false
+            if char == "\u{1B}" { return true }
+            return executeTextObject(char, around: pendingTextObjectAround, in: buffer)
         }
 
         let isLinewise: Bool
@@ -706,6 +906,7 @@ final class VimEngine {
 
         switch char {
         case "\u{1B}": // Escape
+            recordVisualSelection(linewise: isLinewise, in: buffer)
             mode = .normal
             let pos = buffer.selectedRange().location
             buffer.setSelectedRange(NSRange(location: pos, length: 0))
@@ -775,6 +976,14 @@ final class VimEngine {
             pendingReplaceCharForVisual = true
             return true
 
+        case "i":
+            pendingTextObject = true
+            pendingTextObjectAround = false
+            return true
+        case "a":
+            pendingTextObject = true
+            pendingTextObjectAround = true
+            return true
         case "I":
             let sel = buffer.selectedRange()
             buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
@@ -794,10 +1003,10 @@ final class VimEngine {
 
         case "d", "x": // Delete selection
             let sel = buffer.selectedRange()
+            recordVisualSelection(linewise: isLinewise, in: buffer)
             if sel.length > 0 {
-                register.text = buffer.string(in: sel)
-                register.isLinewise = isLinewise
-                register.syncToPasteboard()
+                writeToActiveRegister(text: buffer.string(in: sel), linewise: isLinewise, asDelete: true)
+                adjustMarksForEdit(in: sel, replacementLength: 0)
                 buffer.replaceCharacters(in: sel, with: "")
             }
             mode = .normal
@@ -805,10 +1014,9 @@ final class VimEngine {
 
         case "y": // Yank selection
             let sel = buffer.selectedRange()
+            recordVisualSelection(linewise: isLinewise, in: buffer)
             if sel.length > 0 {
-                register.text = buffer.string(in: sel)
-                register.isLinewise = isLinewise
-                register.syncToPasteboard()
+                writeToActiveRegister(text: buffer.string(in: sel), linewise: isLinewise, asDelete: false)
             }
             mode = .normal
             buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
@@ -870,9 +1078,16 @@ final class VimEngine {
             mode = .normal
             return true
         case "\r", "\n": // Enter — execute
-            let command = String(commandBuffer.dropFirst()) // Remove prefix (: or /)
-            onCommand?(command)
+            let prefix = commandBuffer.first
+            let body = String(commandBuffer.dropFirst())
             mode = .normal
+            if prefix == "/" {
+                runSearch(pattern: body, forward: true)
+            } else if prefix == "?" {
+                runSearch(pattern: body, forward: false)
+            } else {
+                onCommand?(body)
+            }
             return true
         case "\u{7F}": // Backspace (DEL character)
             if (commandBuffer as NSString).length > 1 {
@@ -1357,6 +1572,20 @@ final class VimEngine {
             }
             mode = .insert
             return true
+        case "v":
+            countPrefix = 0
+            operatorCount = 0
+            reselectLastVisual(in: buffer)
+            return true
+        case "j":
+            // gj — display-line down (same as j for non-wrapping lines)
+            let count = consumeCount()
+            moveDown(count, in: buffer)
+            return true
+        case "k":
+            let count = consumeCount()
+            moveUp(count, in: buffer)
+            return true
         case "J":
             joinLines(consumeCount(), withSpace: false, in: buffer)
             return true
@@ -1804,6 +2033,18 @@ final class VimEngine {
             }
             return
         }
+        if name == "<", let start = lastVisualStart {
+            let originPos = buffer.selectedRange().location
+            buffer.setSelectedRange(NSRange(location: min(max(0, start), buffer.length), length: 0))
+            lastJumpOrigin = originPos
+            return
+        }
+        if name == ">", let end = lastVisualEnd {
+            let originPos = buffer.selectedRange().location
+            buffer.setSelectedRange(NSRange(location: min(max(0, end), buffer.length), length: 0))
+            lastJumpOrigin = originPos
+            return
+        }
         guard let offset = marks[name] else { return }
         let originPos = buffer.selectedRange().location
         let clamped = min(max(0, offset), buffer.length)
@@ -1815,6 +2056,37 @@ final class VimEngine {
             buffer.setSelectedRange(NSRange(location: target, length: 0))
         }
         lastJumpOrigin = originPos
+    }
+
+    /// Capture the current visual selection so it can be reselected later with gv or
+    /// navigated to with `< and `>.
+    private func recordVisualSelection(linewise: Bool, in buffer: VimTextBuffer) {
+        let sel = buffer.selectedRange()
+        guard sel.length > 0 else { return }
+        lastVisualStart = sel.location
+        lastVisualEnd = sel.location + sel.length - 1
+        lastVisualLinewise = linewise
+    }
+
+    /// Re-enter visual mode using the previously captured selection bounds.
+    private func reselectLastVisual(in buffer: VimTextBuffer) {
+        guard let start = lastVisualStart, let end = lastVisualEnd, end >= start else { return }
+        let clampedStart = min(max(0, start), max(0, buffer.length - 1))
+        let clampedEnd = min(max(clampedStart, end), max(clampedStart, buffer.length - 1))
+        visualAnchor = clampedStart
+        cursorOffset = clampedEnd
+        if lastVisualLinewise {
+            let startLineRange = buffer.lineRange(forOffset: clampedStart)
+            let endLineRange = buffer.lineRange(forOffset: clampedEnd)
+            let lineStart = startLineRange.location
+            let lineEnd = endLineRange.location + endLineRange.length
+            buffer.setSelectedRange(NSRange(location: lineStart, length: lineEnd - lineStart))
+            mode = .visual(linewise: true)
+        } else {
+            let length = clampedEnd - clampedStart + (clampedEnd < buffer.length ? 1 : 0)
+            buffer.setSelectedRange(NSRange(location: clampedStart, length: length))
+            mode = .visual(linewise: false)
+        }
     }
 
     /// Adjust mark offsets after an edit that inserts or deletes text in the buffer.
@@ -1966,5 +2238,672 @@ final class VimEngine {
         let clamped = min(cursorTarget, max(0, buffer.length - 1))
         buffer.setSelectedRange(NSRange(location: clamped, length: 0))
         return true
+    }
+
+    // MARK: - Ctrl-Prefixed Normal-Mode Commands
+
+    /// Returns the consumed flag for Ctrl-A / Ctrl-X (number adjust) and the scroll
+    /// commands Ctrl-D / Ctrl-U / Ctrl-F / Ctrl-B / Ctrl-E / Ctrl-Y. Returns nil when
+    /// the keystroke is not one we handle here so the caller can keep processing.
+    private func handleNormalControl(_ char: Character, in buffer: VimTextBuffer) -> Bool? {
+        switch char {
+        case "\u{01}":
+            adjustNumberOnLine(by: consumeCount(), in: buffer)
+            return true
+        case "\u{18}":
+            adjustNumberOnLine(by: -consumeCount(), in: buffer)
+            return true
+        case "\u{04}":
+            scrollByLines(halfVisibleLineCount(in: buffer), in: buffer)
+            return true
+        case "\u{15}":
+            scrollByLines(-halfVisibleLineCount(in: buffer), in: buffer)
+            return true
+        case "\u{06}":
+            scrollByLines(visibleLineSpan(in: buffer), in: buffer)
+            return true
+        case "\u{02}":
+            scrollByLines(-visibleLineSpan(in: buffer), in: buffer)
+            return true
+        case "\u{05}", "\u{19}":
+            // Ctrl+E / Ctrl+Y — viewport-only scroll; engine has no viewport to mutate
+            // beyond what the text view tracks. We consume and rely on the cursor
+            // manager / text view to honour the visible-range contract.
+            return true
+        default:
+            return nil
+        }
+    }
+
+    private func halfVisibleLineCount(in buffer: VimTextBuffer) -> Int {
+        let (first, last) = buffer.visibleLineRange()
+        return max(1, (last - first + 1) / 2)
+    }
+
+    private func visibleLineSpan(in buffer: VimTextBuffer) -> Int {
+        let (first, last) = buffer.visibleLineRange()
+        return max(1, last - first + 1)
+    }
+
+    private func scrollByLines(_ delta: Int, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let (currentLine, col) = buffer.lineAndColumn(forOffset: pos)
+        let targetLine = max(0, min(buffer.lineCount - 1, currentLine + delta))
+        let offset = buffer.offset(forLine: targetLine, column: col)
+        buffer.setSelectedRange(NSRange(location: offset, length: 0))
+        goalColumn = nil
+    }
+
+    // MARK: - Number Adjust (Ctrl-A / Ctrl-X)
+
+    private func adjustNumberOnLine(by delta: Int, in buffer: VimTextBuffer) {
+        guard delta != 0 else { return }
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        guard let match = findNumber(from: pos, lineStart: lineRange.location, contentEnd: contentEnd, in: buffer) else {
+            return
+        }
+        let replacement = formatNumber(match.value + delta, hex: match.isHex, hexUppercase: match.hexUppercase)
+        let range = NSRange(location: match.start, length: match.end - match.start)
+        buffer.replaceCharacters(in: range, with: replacement)
+        let newEnd = match.start + (replacement as NSString).length
+        buffer.setSelectedRange(NSRange(location: max(match.start, newEnd - 1), length: 0))
+    }
+
+    private struct NumberMatch {
+        var start: Int
+        var end: Int
+        var value: Int
+        var isHex: Bool
+        var hexUppercase: Bool
+    }
+
+    private func findNumber(from cursor: Int, lineStart: Int, contentEnd: Int, in buffer: VimTextBuffer) -> NumberMatch? {
+        guard contentEnd > lineStart else { return nil }
+        var scan = max(cursor, lineStart)
+        while scan < contentEnd && !isDigitChar(buffer.character(at: scan)) {
+            scan += 1
+        }
+        guard scan < contentEnd else { return nil }
+        var start = scan
+        // Detect hex prefix: walk back to see if start-2 is "0x"
+        if start >= lineStart + 2
+            && buffer.character(at: start - 2) == 0x30
+            && (buffer.character(at: start - 1) == 0x78 || buffer.character(at: start - 1) == 0x58) {
+            start -= 2
+        }
+        var end = scan
+        let isHex = start + 1 < contentEnd
+            && buffer.character(at: start) == 0x30
+            && (buffer.character(at: start + 1) == 0x78 || buffer.character(at: start + 1) == 0x58)
+        var hexUppercase = false
+        if isHex {
+            hexUppercase = buffer.character(at: start + 1) == 0x58
+            end = start + 2
+            while end < contentEnd && isHexDigitChar(buffer.character(at: end)) {
+                end += 1
+            }
+            guard end > start + 2 else { return nil }
+        } else {
+            while end < contentEnd && isDigitChar(buffer.character(at: end)) {
+                end += 1
+            }
+            if start > lineStart && buffer.character(at: start - 1) == 0x2D {
+                start -= 1
+            }
+        }
+        let text = buffer.string(in: NSRange(location: start, length: end - start))
+        guard let value = parseNumberLiteral(text) else { return nil }
+        return NumberMatch(start: start, end: end, value: value, isHex: isHex, hexUppercase: hexUppercase)
+    }
+
+    private func parseNumberLiteral(_ text: String) -> Int? {
+        if text.hasPrefix("-") || text.hasPrefix("+") {
+            return Int(text)
+        }
+        if text.hasPrefix("0x") || text.hasPrefix("0X") {
+            return Int(text.dropFirst(2), radix: 16)
+        }
+        return Int(text)
+    }
+
+    private func formatNumber(_ value: Int, hex: Bool, hexUppercase: Bool) -> String {
+        if hex {
+            let body = String(value, radix: 16, uppercase: hexUppercase)
+            return (hexUppercase ? "0X" : "0x") + body
+        }
+        return String(value)
+    }
+
+    private func isDigitChar(_ ch: unichar) -> Bool { ch >= 0x30 && ch <= 0x39 }
+
+    private func isHexDigitChar(_ ch: unichar) -> Bool {
+        isDigitChar(ch) || (ch >= 0x41 && ch <= 0x46) || (ch >= 0x61 && ch <= 0x66)
+    }
+
+    // MARK: - Text Objects (iw, aw, i", a", i(, a(, ...)
+
+    /// Resolve a text object key (w, W, ", ', (, ), {, }, [, ], <, >, t, p, b, B)
+    /// into a range and then apply the pending operator or update the visual selection.
+    private func executeTextObject(_ key: Character, around: Bool, in buffer: VimTextBuffer) -> Bool {
+        let pos = buffer.selectedRange().location
+        guard let range = textObjectRange(key: key, around: around, cursor: pos, in: buffer) else {
+            pendingOperator = nil
+            return true
+        }
+        if mode.isVisual {
+            buffer.setSelectedRange(range)
+            return true
+        }
+        if let op = pendingOperator {
+            executeOperatorOnRange(op, range: range, linewise: false, in: buffer)
+            pendingOperator = nil
+        }
+        return true
+    }
+
+    private func textObjectRange(key: Character, around: Bool, cursor: Int, in buffer: VimTextBuffer) -> NSRange? {
+        switch key {
+        case "w": return wordObject(at: cursor, bigWord: false, around: around, in: buffer)
+        case "W": return wordObject(at: cursor, bigWord: true, around: around, in: buffer)
+        case "\"", "'", "`":
+            return quotedObject(at: cursor, delimiter: key, around: around, in: buffer)
+        case "(", ")", "b": return bracketedObject(at: cursor, open: "(", close: ")", around: around, in: buffer)
+        case "{", "}", "B": return bracketedObject(at: cursor, open: "{", close: "}", around: around, in: buffer)
+        case "[", "]": return bracketedObject(at: cursor, open: "[", close: "]", around: around, in: buffer)
+        case "<", ">": return bracketedObject(at: cursor, open: "<", close: ">", around: around, in: buffer)
+        case "t": return tagObject(at: cursor, around: around, in: buffer)
+        case "p": return paragraphObject(at: cursor, around: around, in: buffer)
+        default: return nil
+        }
+    }
+
+    private func wordObject(at cursor: Int, bigWord: Bool, around: Bool, in buffer: VimTextBuffer) -> NSRange? {
+        guard buffer.length > 0 else { return nil }
+        let pos = min(max(0, cursor), buffer.length - 1)
+        let classifier: (unichar) -> Int = { ch in
+            if ch == 0x20 || ch == 0x09 || ch == 0x0A || ch == 0x0D { return 0 }
+            if bigWord { return 1 }
+            if ch == 0x5F { return 1 }
+            if let scalar = UnicodeScalar(ch), CharacterSet.alphanumerics.contains(scalar) { return 1 }
+            return 2
+        }
+        let startClass = classifier(buffer.character(at: pos))
+        var start = pos
+        while start > 0 && classifier(buffer.character(at: start - 1)) == startClass { start -= 1 }
+        var end = pos
+        while end < buffer.length - 1 && classifier(buffer.character(at: end + 1)) == startClass { end += 1 }
+        var rangeEnd = end + 1
+        if around {
+            // Include trailing whitespace (or leading if no trailing).
+            var trail = rangeEnd
+            while trail < buffer.length {
+                let ch = buffer.character(at: trail)
+                if ch == 0x20 || ch == 0x09 { trail += 1 } else { break }
+            }
+            if trail > rangeEnd {
+                rangeEnd = trail
+            } else {
+                while start > 0 {
+                    let ch = buffer.character(at: start - 1)
+                    if ch == 0x20 || ch == 0x09 { start -= 1 } else { break }
+                }
+            }
+        }
+        return NSRange(location: start, length: rangeEnd - start)
+    }
+
+    private func quotedObject(at cursor: Int, delimiter: Character, around: Bool, in buffer: VimTextBuffer) -> NSRange? {
+        guard let scalar = delimiter.unicodeScalars.first else { return nil }
+        let quote = unichar(scalar.value)
+        let lineRange = buffer.lineRange(forOffset: cursor)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        var open: Int?
+        var close: Int?
+        var scan = lineRange.location
+        while scan < contentEnd {
+            if buffer.character(at: scan) == quote {
+                if let o = open {
+                    if cursor >= o && cursor <= scan {
+                        close = scan
+                        break
+                    }
+                    open = scan
+                } else {
+                    open = scan
+                }
+            }
+            scan += 1
+        }
+        if close == nil, let o = open, cursor >= o {
+            scan = o + 1
+            while scan < contentEnd {
+                if buffer.character(at: scan) == quote {
+                    close = scan
+                    break
+                }
+                scan += 1
+            }
+        }
+        guard let o = open, let c = close, c > o else { return nil }
+        if around {
+            // Include one surrounding whitespace char (trailing preferred, else leading).
+            var rangeEnd = c + 1
+            var rangeStart = o
+            while rangeEnd < contentEnd {
+                let ch = buffer.character(at: rangeEnd)
+                if ch == 0x20 || ch == 0x09 { rangeEnd += 1 } else { break }
+            }
+            if rangeEnd == c + 1 {
+                while rangeStart > lineRange.location {
+                    let ch = buffer.character(at: rangeStart - 1)
+                    if ch == 0x20 || ch == 0x09 { rangeStart -= 1 } else { break }
+                }
+            }
+            return NSRange(location: rangeStart, length: rangeEnd - rangeStart)
+        }
+        return NSRange(location: o + 1, length: c - o - 1)
+    }
+
+    private func bracketedObject(at cursor: Int, open: Character, close: Character, around: Bool, in buffer: VimTextBuffer) -> NSRange? {
+        guard let openScalar = open.unicodeScalars.first,
+              let closeScalar = close.unicodeScalars.first else { return nil }
+        let openCh = unichar(openScalar.value)
+        let closeCh = unichar(closeScalar.value)
+        // Find enclosing open.
+        var openPos: Int?
+        var depth = 0
+        if cursor < buffer.length && buffer.character(at: cursor) == openCh {
+            openPos = cursor
+        } else if cursor < buffer.length && buffer.character(at: cursor) == closeCh {
+            // Walk back to matching open.
+            var d = 1
+            var i = cursor - 1
+            while i >= 0 {
+                let ch = buffer.character(at: i)
+                if ch == closeCh { d += 1 }
+                else if ch == openCh {
+                    d -= 1
+                    if d == 0 { openPos = i; break }
+                }
+                i -= 1
+            }
+        } else {
+            var i = cursor - 1
+            depth = 0
+            while i >= 0 {
+                let ch = buffer.character(at: i)
+                if ch == closeCh { depth += 1 }
+                else if ch == openCh {
+                    if depth == 0 { openPos = i; break }
+                    depth -= 1
+                }
+                i -= 1
+            }
+        }
+        guard let o = openPos else { return nil }
+        // Find matching close.
+        var closePos: Int?
+        var d = 1
+        var i = o + 1
+        while i < buffer.length {
+            let ch = buffer.character(at: i)
+            if ch == openCh { d += 1 }
+            else if ch == closeCh {
+                d -= 1
+                if d == 0 { closePos = i; break }
+            }
+            i += 1
+        }
+        guard let c = closePos else { return nil }
+        if around { return NSRange(location: o, length: c - o + 1) }
+        guard c > o + 1 else { return NSRange(location: o + 1, length: 0) }
+        return NSRange(location: o + 1, length: c - o - 1)
+    }
+
+    private func tagObject(at cursor: Int, around: Bool, in buffer: VimTextBuffer) -> NSRange? {
+        // Scan backward for the nearest '<tagname>' before cursor and forward for the
+        // matching '</tagname>'. Simplistic — doesn't handle attributes or nesting.
+        var openStart: Int?
+        var openEnd: Int?
+        var i = cursor
+        while i >= 0 {
+            if buffer.character(at: i) == 0x3C { // '<'
+                openStart = i
+                var j = i + 1
+                while j < buffer.length && buffer.character(at: j) != 0x3E { j += 1 }
+                if j < buffer.length {
+                    openEnd = j
+                }
+                break
+            }
+            i -= 1
+        }
+        guard let os = openStart, let oe = openEnd else { return nil }
+        let tagNameStart = os + 1
+        let tagName = buffer.string(in: NSRange(location: tagNameStart, length: oe - tagNameStart))
+        guard !tagName.hasPrefix("/") else { return nil }
+        // Find matching close tag from oe.
+        let closeMarker = "</" + tagName + ">"
+        let after = buffer.string(in: NSRange(location: oe + 1, length: buffer.length - oe - 1)) as NSString
+        let foundRange = after.range(of: closeMarker)
+        guard foundRange.location != NSNotFound else { return nil }
+        let closeStart = oe + 1 + foundRange.location
+        let closeEnd = closeStart + foundRange.length
+        if around { return NSRange(location: os, length: closeEnd - os) }
+        return NSRange(location: oe + 1, length: closeStart - oe - 1)
+    }
+
+    private func paragraphObject(at cursor: Int, around: Bool, in buffer: VimTextBuffer) -> NSRange? {
+        let (currentLine, _) = buffer.lineAndColumn(forOffset: cursor)
+        var startLine = currentLine
+        while startLine > 0 && !lineIsBlank(startLine - 1, in: buffer) {
+            startLine -= 1
+        }
+        var endLine = currentLine
+        while endLine < buffer.lineCount - 1 && !lineIsBlank(endLine + 1, in: buffer) {
+            endLine += 1
+        }
+        let start = buffer.offset(forLine: startLine, column: 0)
+        // For ip, end at the start of the line after the paragraph's last content line
+        // *minus the trailing newline* — so deleting it leaves the blank-line separator
+        // intact. For ap, also consume the trailing blank line.
+        let lastContentLineRange = buffer.lineRange(forOffset: buffer.offset(forLine: endLine, column: 0))
+        var end = lastContentLineRange.location + lastContentLineRange.length
+        if !around && end > start {
+            // Drop the trailing newline so the paragraph separator (blank line) survives.
+            end -= 1
+        }
+        if around {
+            var trailing = endLine
+            while trailing < buffer.lineCount - 1 && lineIsBlank(trailing + 1, in: buffer) {
+                trailing += 1
+            }
+            if trailing > endLine {
+                let trailingRange = buffer.lineRange(forOffset: buffer.offset(forLine: trailing, column: 0))
+                end = trailingRange.location + trailingRange.length
+            }
+        }
+        return NSRange(location: start, length: end - start)
+    }
+
+    private func lineIsBlank(_ line: Int, in buffer: VimTextBuffer) -> Bool {
+        let offset = buffer.offset(forLine: line, column: 0)
+        let lineRange = buffer.lineRange(forOffset: offset)
+        let lineEnd = lineRange.location + lineRange.length
+        if lineEnd <= lineRange.location { return true }
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        return contentEnd == lineRange.location
+    }
+
+    // MARK: - Search (/, ?, n, N, *, #)
+
+    private func runSearch(pattern: String, forward: Bool) {
+        guard !pattern.isEmpty, let buffer else { return }
+        lastSearchPattern = pattern
+        lastSearchForward = forward
+        let origin = buffer.selectedRange().location
+        if let target = findPattern(pattern, from: origin, forward: forward, wholeWord: false, in: buffer) {
+            buffer.setSelectedRange(NSRange(location: target, length: 0))
+            lastJumpOrigin = origin
+        }
+    }
+
+    private func searchNext(in buffer: VimTextBuffer, reverseDirection: Bool) {
+        guard let pattern = lastSearchPattern else { return }
+        let forward = reverseDirection ? !lastSearchForward : lastSearchForward
+        let origin = buffer.selectedRange().location
+        if let target = findPattern(pattern, from: origin, forward: forward, wholeWord: false, in: buffer) {
+            buffer.setSelectedRange(NSRange(location: target, length: 0))
+            lastJumpOrigin = origin
+        }
+    }
+
+    private func searchWordUnderCursor(forward: Bool, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        guard pos < buffer.length else { return }
+        var start = pos
+        while start > 0 && isWordChar(buffer.character(at: start - 1)) { start -= 1 }
+        var end = pos
+        while end < buffer.length && isWordChar(buffer.character(at: end)) { end += 1 }
+        guard end > start else { return }
+        let word = buffer.string(in: NSRange(location: start, length: end - start))
+        lastSearchPattern = word
+        lastSearchForward = forward
+        let origin = pos
+        if let target = findPattern(word, from: origin, forward: forward, wholeWord: true, in: buffer) {
+            buffer.setSelectedRange(NSRange(location: target, length: 0))
+            lastJumpOrigin = origin
+        }
+    }
+
+    /// Locate the next occurrence of `pattern` in `buffer` starting from `origin`, in
+    /// the given direction. Wraps around. When `wholeWord` is true the match must be
+    /// surrounded by non-word characters or buffer boundaries.
+    private func findPattern(_ pattern: String, from origin: Int, forward: Bool, wholeWord: Bool, in buffer: VimTextBuffer) -> Int? {
+        let nsBuffer = NSMutableString()
+        for i in 0..<buffer.length { nsBuffer.appendFormat("%C", buffer.character(at: i)) }
+        let total = nsBuffer.length
+        guard total > 0 else { return nil }
+        let needle = pattern as NSString
+        guard needle.length > 0 else { return nil }
+        let matches: (Int) -> Bool = { idx in
+            guard idx + needle.length <= total else { return false }
+            let candidate = nsBuffer.substring(with: NSRange(location: idx, length: needle.length))
+            guard candidate == pattern else { return false }
+            if !wholeWord { return true }
+            let beforeOk = idx == 0 || !self.isWordChar(nsBuffer.character(at: idx - 1))
+            let afterIdx = idx + needle.length
+            let afterOk = afterIdx >= total || !self.isWordChar(nsBuffer.character(at: afterIdx))
+            return beforeOk && afterOk
+        }
+
+        if forward {
+            var i = origin + 1
+            while i < total {
+                if matches(i) { return i }
+                i += 1
+            }
+            i = 0
+            while i < origin {
+                if matches(i) { return i }
+                i += 1
+            }
+            if matches(origin) { return origin }
+        } else {
+            var i = origin - 1
+            while i >= 0 {
+                if matches(i) { return i }
+                i -= 1
+            }
+            i = total - 1
+            while i > origin {
+                if matches(i) { return i }
+                i -= 1
+            }
+            if matches(origin) { return origin }
+        }
+        return nil
+    }
+
+    private func isWordChar(_ ch: unichar) -> Bool {
+        if ch == 0x5F { return true }
+        guard let scalar = UnicodeScalar(ch) else { return false }
+        return CharacterSet.alphanumerics.contains(scalar)
+    }
+
+    // MARK: - Macros (q, @, @@)
+
+    private func handleMacroTarget(kind: MacroPendingKind, register: Character) {
+        switch kind {
+        case .recordTarget:
+            macroRecording = register
+            macroBuffers[register] = []
+        case .replayTarget:
+            let target: Character
+            if register == "@" { target = lastInvokedMacro ?? Character("\0") } else { target = register }
+            guard let keys = macroBuffers[target], !keys.isEmpty else {
+                pendingMacroCount = 1
+                return
+            }
+            lastInvokedMacro = target
+            let count = max(1, pendingMacroCount)
+            pendingMacroCount = 1
+            for _ in 0..<count { replayMacro(keys: keys) }
+        }
+    }
+
+    private func replayMacro(keys: [(Character, Bool)]) {
+        // Cap recursion to avoid runaway self-invoking macros.
+        guard macroPlaybackDepth < 50 else { return }
+        macroPlaybackDepth += 1
+        defer { macroPlaybackDepth -= 1 }
+        let saved = macroRecording
+        macroRecording = nil
+        for (char, shift) in keys {
+            _ = process(char, shift: shift)
+        }
+        macroRecording = saved
+    }
+
+    // MARK: - Sentence / Paragraph Motions
+
+    /// `)` — advance to the start of the next sentence on this line, then later lines.
+    private func sentenceForward(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count {
+            pos = nextSentenceStart(after: pos, in: buffer)
+        }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    private func sentenceBackward(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count {
+            pos = previousSentenceStart(before: pos, in: buffer)
+        }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    private func nextSentenceStart(after origin: Int, in buffer: VimTextBuffer) -> Int {
+        var i = origin
+        while i < buffer.length - 1 {
+            let ch = buffer.character(at: i)
+            let nextCh = buffer.character(at: i + 1)
+            let endsSentence = ch == 0x2E || ch == 0x21 || ch == 0x3F // . ! ?
+            let followedByBoundary = nextCh == 0x20 || nextCh == 0x09 || nextCh == 0x0A
+            if endsSentence && followedByBoundary {
+                var j = i + 1
+                while j < buffer.length {
+                    let cj = buffer.character(at: j)
+                    if cj == 0x20 || cj == 0x09 || cj == 0x0A { j += 1 } else { break }
+                }
+                if j < buffer.length { return j }
+            }
+            i += 1
+        }
+        return buffer.length > 0 ? buffer.length - 1 : 0
+    }
+
+    private func previousSentenceStart(before origin: Int, in buffer: VimTextBuffer) -> Int {
+        var i = origin - 2
+        while i >= 0 {
+            let ch = buffer.character(at: i)
+            if i + 1 < buffer.length {
+                let nextCh = buffer.character(at: i + 1)
+                let endsSentence = ch == 0x2E || ch == 0x21 || ch == 0x3F
+                let followedByBoundary = nextCh == 0x20 || nextCh == 0x09 || nextCh == 0x0A
+                if endsSentence && followedByBoundary {
+                    var j = i + 1
+                    while j < buffer.length {
+                        let cj = buffer.character(at: j)
+                        if cj == 0x20 || cj == 0x09 || cj == 0x0A { j += 1 } else { break }
+                    }
+                    if j < origin { return j }
+                }
+            }
+            i -= 1
+        }
+        return 0
+    }
+
+    private func paragraphForward(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count {
+            pos = nextParagraphBoundary(after: pos, in: buffer)
+        }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    private func paragraphBackward(_ count: Int, in buffer: VimTextBuffer) {
+        var pos = buffer.selectedRange().location
+        for _ in 0..<count {
+            pos = previousParagraphBoundary(before: pos, in: buffer)
+        }
+        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+    }
+
+    private func nextParagraphBoundary(after origin: Int, in buffer: VimTextBuffer) -> Int {
+        let (originLine, _) = buffer.lineAndColumn(forOffset: origin)
+        var line = originLine + 1
+        let lineCount = buffer.lineCount
+        while line < lineCount {
+            if lineIsBlank(line, in: buffer) {
+                return buffer.offset(forLine: line, column: 0)
+            }
+            line += 1
+        }
+        return buffer.length > 0 ? buffer.length - 1 : 0
+    }
+
+    private func previousParagraphBoundary(before origin: Int, in buffer: VimTextBuffer) -> Int {
+        let (originLine, _) = buffer.lineAndColumn(forOffset: origin)
+        var line = originLine - 1
+        while line > 0 {
+            if lineIsBlank(line, in: buffer) {
+                return buffer.offset(forLine: line, column: 0)
+            }
+            line -= 1
+        }
+        return 0
+    }
+
+    private func sectionForward(in buffer: VimTextBuffer) {
+        let origin = buffer.selectedRange().location
+        let (originLine, _) = buffer.lineAndColumn(forOffset: origin)
+        var line = originLine + 1
+        while line < buffer.lineCount {
+            let off = buffer.offset(forLine: line, column: 0)
+            if off < buffer.length && buffer.character(at: off) == 0x7B {
+                buffer.setSelectedRange(NSRange(location: off, length: 0))
+                return
+            }
+            line += 1
+        }
+        buffer.setSelectedRange(NSRange(location: max(0, buffer.length - 1), length: 0))
+    }
+
+    private func sectionBackward(in buffer: VimTextBuffer) {
+        let origin = buffer.selectedRange().location
+        let (originLine, _) = buffer.lineAndColumn(forOffset: origin)
+        var line = originLine - 1
+        while line >= 0 {
+            let off = buffer.offset(forLine: line, column: 0)
+            if off < buffer.length && buffer.character(at: off) == 0x7B {
+                buffer.setSelectedRange(NSRange(location: off, length: 0))
+                return
+            }
+            line -= 1
+        }
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
     }
 }
