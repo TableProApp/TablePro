@@ -260,6 +260,9 @@ extension AIChatViewModel {
                     pendingUsage = nil
                     lastFlushTime = .now
                 }
+                await MainActor.run { [weak self] in
+                    self?.finalizeStreamingMessage(id: assistantID)
+                }
                 if toolUseInputs[id] == nil {
                     toolUseOrder.append(id)
                     toolUseInputs[id] = ""

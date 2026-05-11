@@ -416,15 +416,22 @@ enum MarkdownBlockParser {
 
         lines.removeFirst(2)
         var rows: [[String]] = []
-        while let line = lines.first, line.contains("|") {
+        while let line = lines.first, looksLikeTableRow(line, columnCount: headers.count) {
             let row = splitTableRow(line)
-            guard !row.isEmpty else { break }
             var padded = row
             while padded.count < headers.count { padded.append("") }
             rows.append(Array(padded.prefix(headers.count)))
             lines.removeFirst()
         }
         return MarkdownBlock(kind: .table(headers: headers, alignments: alignments, rows: rows))
+    }
+
+    private static func looksLikeTableRow(_ line: String, columnCount: Int) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("|") else { return false }
+        guard trimmed.hasPrefix("|") || trimmed.hasSuffix("|") else { return false }
+        let segments = splitTableRow(line)
+        return segments.count >= max(2, columnCount - 1)
     }
 
     private static func isTableSeparator(_ line: String) -> Bool {

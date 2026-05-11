@@ -127,7 +127,6 @@ struct ChatTurn: Identifiable {
         )
     }
 
-    /// Appends a streaming token to the trailing streaming text block, or opens a new one if needed.
     mutating func appendStreamingToken(_ chunk: String) {
         guard !chunk.isEmpty else { return }
         if let last = blocks.last, case .text = last.kind, last.isStreaming {
@@ -137,14 +136,12 @@ struct ChatTurn: Identifiable {
         }
     }
 
-    /// Marks the trailing streaming text block as committed, so the next non-text block lands after it.
     mutating func finishStreamingTextBlock() {
         if let last = blocks.last, case .text = last.kind, last.isStreaming {
             last.finishStreaming()
         }
     }
 
-    /// Appends a non-text block, finalizing any in-flight streaming text first to preserve emission order.
     mutating func appendBlock(_ block: ChatContentBlock) {
         finishStreamingTextBlock()
         blocks.append(block)
