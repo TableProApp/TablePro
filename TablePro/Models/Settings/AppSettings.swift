@@ -349,11 +349,15 @@ struct TerminalSettings: Codable, Equatable {
 
     /// Per-database CLI path overrides (empty = auto-detect).
     /// Keys are `DatabaseType.rawValue` for interactive CLIs, plus
-    /// `TerminalSettings.pgDumpCliPathKey` for the pg_dump backup binary.
+    /// `TerminalSettings.pgDumpCliPathKey` and `TerminalSettings.pgRestoreCliPathKey`
+    /// for the PostgreSQL backup/restore binaries.
     var cliPaths: [String: String] = [:]
 
     /// Key under `cliPaths` for the pg_dump backup binary path.
     static let pgDumpCliPathKey = "pg_dump"
+
+    /// Key under `cliPaths` for the pg_restore binary path.
+    static let pgRestoreCliPathKey = "pg_restore"
 
     static let `default` = TerminalSettings()
 

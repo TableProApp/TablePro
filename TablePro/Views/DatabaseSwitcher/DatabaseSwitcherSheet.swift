@@ -12,10 +12,19 @@ import TableProPluginKit
 
 struct DatabaseSwitcherSheet: View {
     /// What the sheet is being used for. `switch` (default) switches the active
-    /// database/schema; `backup` picks a database to feed into a backup flow.
+    /// database/schema; `backup` picks a database to feed into a backup flow;
+    /// `restore` picks the target database for a restore flow.
     enum Mode {
         case `switch`
         case backup
+        case restore
+    }
+
+    /// Modes that pick a database for an out-of-band flow (backup / restore).
+    /// These share UI affordances: schemas tab hidden, create/drop hidden,
+    /// the primary button doesn't auto-dismiss.
+    private var isHandoffMode: Bool {
+        mode == .backup || mode == .restore
     }
 
     @Binding var isPresented: Bool
@@ -77,8 +86,8 @@ struct DatabaseSwitcherSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Databases / Schemas toggle (PostgreSQL only); always Databases in backup mode.
-            if mode == .switch, PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
+            // Databases / Schemas toggle (PostgreSQL only); hidden for handoff flows.
+            if !isHandoffMode, PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
                 Picker("", selection: $viewModel.mode) {
                     Text(String(localized: "Databases"))
                         .tag(DatabaseSwitcherViewModel.Mode.database)
@@ -184,7 +193,7 @@ struct DatabaseSwitcherSheet: View {
             .buttonStyle(.borderless)
             .help(String(localized: "Refresh database list"))
 
-            if mode == .switch, !isSchemaMode, supportsCreateDatabase {
+            if !isHandoffMode, !isSchemaMode, supportsCreateDatabase {
                 Button(action: { showCreateDialog = true }) {
                     Image(systemName: "plus")
                         .frame(width: 24, height: 24)
@@ -194,7 +203,7 @@ struct DatabaseSwitcherSheet: View {
             }
 
             // Drop
-            if mode == .switch, !isSchemaMode, PluginManager.shared.supportsDropDatabase(for: databaseType) {
+            if !isHandoffMode, !isSchemaMode, PluginManager.shared.supportsDropDatabase(for: databaseType) {
                 Button(action: { initiateDropForSelected() }) {
                     Image(systemName: "trash")
                         .frame(width: 24, height: 24)
@@ -379,6 +388,8 @@ struct DatabaseSwitcherSheet: View {
                 : String(localized: "Open Database")
         case .backup:
             return String(localized: "Back Up Database")
+        case .restore:
+            return String(localized: "Restore Database")
         }
     }
 
@@ -386,13 +397,14 @@ struct DatabaseSwitcherSheet: View {
         switch mode {
         case .switch: return String(localized: "Open")
         case .backup: return String(localized: "Back Up\u{2026}")
+        case .restore: return String(localized: "Restore\u{2026}")
         }
     }
 
     private var primaryButtonDisabled: Bool {
         guard let selected = viewModel.selectedDatabase else { return true }
         // In switch mode, picking the already-active database/schema is a no-op.
-        // In backup mode, the active database is a perfectly fine target.
+        // In backup/restore modes the active database is a valid target.
         if mode == .switch, selected == activeName { return true }
         return false
     }
@@ -447,10 +459,10 @@ struct DatabaseSwitcherSheet: View {
     private func openSelectedDatabase() {
         guard let database = viewModel.selectedDatabase else { return }
 
-        // Backup mode: hand the selection off to the parent flow without
+        // Backup/restore: hand the selection off to the parent flow without
         // dismissing. The host sheet stays mounted and transitions to the
-        // next step (save panel, then progress).
-        if mode == .backup {
+        // next step (save/open panel, then progress).
+        if isHandoffMode {
             onSelect(database)
             return
         }

@@ -41,6 +41,7 @@ struct BackupDatabaseFlow: View {
                 pickerView
             case .running(let database):
                 BackupProgressSheet(
+                    kind: .backup,
                     database: database,
                     bytesWritten: bytesWritten,
                     isCancelling: service.state == .cancelling,
@@ -48,18 +49,21 @@ struct BackupDatabaseFlow: View {
                 )
             case .finished(let database, let destination, let bytes):
                 BackupResultSheet(
-                    outcome: .success(database: database, destination: destination, bytes: bytes),
+                    kind: .backup,
+                    outcome: .backupSuccess(database: database, destination: destination, bytes: bytes),
                     onClose: { isPresented = false },
                     onShowInFinder: { NSWorkspace.shared.activateFileViewerSelecting([destination]) }
                 )
             case .failed(let message):
                 BackupResultSheet(
+                    kind: .backup,
                     outcome: .failure(message: message),
                     onClose: { isPresented = false },
                     onShowInFinder: nil
                 )
             case .cancelled:
                 BackupResultSheet(
+                    kind: .backup,
                     outcome: .cancelled,
                     onClose: { isPresented = false },
                     onShowInFinder: nil

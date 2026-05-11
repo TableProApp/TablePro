@@ -2,16 +2,25 @@
 //  BackupResultSheet.swift
 //  TablePro
 //
+//  Shared result sheet for the backup and restore flows.
+//
 
 import SwiftUI
 
 struct BackupResultSheet: View {
+    enum Kind {
+        case backup
+        case restore
+    }
+
     enum Outcome {
-        case success(database: String, destination: URL, bytes: Int64)
+        case backupSuccess(database: String, destination: URL, bytes: Int64)
+        case restoreSuccess(database: String, source: URL)
         case failure(message: String)
         case cancelled
     }
 
+    let kind: Kind
     let outcome: Outcome
     let onClose: () -> Void
     let onShowInFinder: (() -> Void)?
@@ -37,7 +46,7 @@ struct BackupResultSheet: View {
             }
 
             HStack(spacing: 12) {
-                if case .success = outcome, let onShowInFinder {
+                if case .backupSuccess = outcome, let onShowInFinder {
                     Button(String(localized: "Show in Finder")) {
                         onShowInFinder()
                         onClose()
@@ -58,7 +67,7 @@ struct BackupResultSheet: View {
     @ViewBuilder
     private var icon: some View {
         switch outcome {
-        case .success:
+        case .backupSuccess, .restoreSuccess:
             Image(systemName: "checkmark.circle.fill")
         case .failure:
             Image(systemName: "exclamationmark.triangle.fill")
@@ -69,7 +78,7 @@ struct BackupResultSheet: View {
 
     private var tintColor: Color {
         switch outcome {
-        case .success: return Color(nsColor: .systemGreen)
+        case .backupSuccess, .restoreSuccess: return Color(nsColor: .systemGreen)
         case .failure: return Color(nsColor: .systemOrange)
         case .cancelled: return Color(nsColor: .systemGray)
         }
@@ -77,15 +86,26 @@ struct BackupResultSheet: View {
 
     private var title: String {
         switch outcome {
-        case .success: return String(localized: "Backup Complete")
-        case .failure: return String(localized: "Backup Failed")
-        case .cancelled: return String(localized: "Backup Cancelled")
+        case .backupSuccess:
+            return String(localized: "Backup Complete")
+        case .restoreSuccess:
+            return String(localized: "Restore Complete")
+        case .failure:
+            switch kind {
+            case .backup: return String(localized: "Backup Failed")
+            case .restore: return String(localized: "Restore Failed")
+            }
+        case .cancelled:
+            switch kind {
+            case .backup: return String(localized: "Backup Cancelled")
+            case .restore: return String(localized: "Restore Cancelled")
+            }
         }
     }
 
     private var detail: String? {
         switch outcome {
-        case .success(let database, let destination, let bytes):
+        case .backupSuccess(let database, let destination, let bytes):
             let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
             return String(
                 format: String(localized: "Saved %@ of \u{201C}%@\u{201D} to %@"),
@@ -93,17 +113,28 @@ struct BackupResultSheet: View {
                 database,
                 destination.path
             )
+        case .restoreSuccess(let database, let source):
+            return String(
+                format: String(localized: "Restored \u{201C}%@\u{201D} from %@"),
+                database,
+                source.path
+            )
         case .failure(let message):
             return message
         case .cancelled:
-            return nil
+            switch kind {
+            case .backup: return nil
+            case .restore:
+                return String(localized: "The target database may be in a partial state. Review the database and clean up as needed.")
+            }
         }
     }
 }
 
-#Preview("Success") {
+#Preview("Backup Success") {
     BackupResultSheet(
-        outcome: .success(
+        kind: .backup,
+        outcome: .backupSuccess(
             database: "production",
             destination: URL(fileURLWithPath: "/Users/me/Desktop/production-2025-05-11-120000.dump"),
             bytes: 12_345_678
@@ -113,9 +144,22 @@ struct BackupResultSheet: View {
     )
 }
 
-#Preview("Failure") {
+#Preview("Restore Success") {
     BackupResultSheet(
-        outcome: .failure(message: "pg_dump: error: connection to server failed: FATAL: password authentication failed for user \"postgres\""),
+        kind: .restore,
+        outcome: .restoreSuccess(
+            database: "production",
+            source: URL(fileURLWithPath: "/Users/me/Desktop/production.dump")
+        ),
+        onClose: {},
+        onShowInFinder: nil
+    )
+}
+
+#Preview("Restore Failure") {
+    BackupResultSheet(
+        kind: .restore,
+        outcome: .failure(message: "pg_restore: error: could not connect to database \"missing\": FATAL: database does not exist"),
         onClose: {},
         onShowInFinder: nil
     )

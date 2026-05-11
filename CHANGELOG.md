@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - File > Backup... for PostgreSQL and Redshift connections: pick a database from the current connection, choose a destination, and run `pg_dump` in custom archive format (`-Fc`) with progress and cancel. Reuses the existing SSH tunnel when one is active, and honors a custom pg_dump path under Settings > Terminal > CLI Paths.
+- File > Restore... for PostgreSQL and Redshift connections: pick a `pg_dump` backup file, pick a target database on the current connection, and run `pg_restore --no-owner --no-acl` with progress and cancel. Reuses the existing SSH tunnel, and honors a custom pg_restore path under Settings > Terminal > CLI Paths.
 - Sidebar groups database objects into Tables, Views, Materialized Views, Foreign Tables, Procedures, and Functions sections; routines load automatically on connect for Postgres and MySQL, each section header has its own Refresh action, and "Show DDL" on a procedure or function opens its definition in a new query tab (#1038)
 - iOS: Live Activity for running queries shows query preview, elapsed time, and row count on the lock screen and Dynamic Island
 - iOS: multi-window support on iPad - drag a tab off to open a second window, each window remembers its own selected connection across launches
