@@ -15,4 +15,8 @@ enum SidebarPersistenceKey {
     static func selectedTab(connectionId: UUID) -> String {
         "sidebar.selectedTab.\(connectionId.uuidString)"
     }
+
+    static func expanded(connectionId: UUID, kind: SidebarObjectKind) -> String {
+        "sidebar.\(connectionId.uuidString).\(kind.rawValue).expanded"
+    }
 }
