@@ -115,12 +115,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var isCommittingCellEdit = false
     var layoutPersistTask: Task<Void, Never>?
     var lastUpdateSnapshot: DataGridUpdateSnapshot?
-    private var lastColumnMetadataFingerprint = ColumnMetadataFingerprint.empty
     private var prewarmTask: Task<Void, Never>?
     private var prewarmResumeTask: Task<Void, Never>?
     private var scrollObservers: [NSObjectProtocol] = []
-    private static let prewarmFrameBudgetMs: Int = 2
-    private static let prewarmResumeDelayMs: Int = 300
+    private static let prewarmFrameBudget: Duration = .milliseconds(2)
+    private static let prewarmResumeDelay: Duration = .milliseconds(300)
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
     let visualIndex = RowVisualIndex()
@@ -211,7 +210,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         cachedColumnCount = 0
         sortedIDs = nil
         lastUpdateSnapshot = nil
-        lastColumnMetadataFingerprint = .empty
         columnPool.detachFromTableView()
         if let tableView {
             while let col = tableView.tableColumns.last {
@@ -337,11 +335,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
-    /// Populates the entire display cache off the scroll hot path by iterating all
-    /// rows in frame-budgeted batches and yielding between batches. Subsequent
-    /// `tableView(_:viewFor:row:)` calls then hit the cache instead of running
-    /// `CellDisplayFormatter.format` (and its `NSDateFormatter` parse) on the main
-    /// thread during scroll. Replaces any in-flight prewarm task.
+    /// Fills displayCache off the scroll hot path so viewFor:row: stays a cache hit.
     func startBackgroundPrewarm() {
         prewarmResumeTask?.cancel()
         prewarmResumeTask = nil
@@ -351,10 +345,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
-    /// Subscribes to the scroll view's live-scroll notifications so the prewarm
-    /// task can be paused while the user is actively scrolling. The task resumes
-    /// after a short debounce so quick successive scrolls do not restart and
-    /// cancel the work repeatedly.
+    /// Pauses prewarm during live scroll; resumes after a debounce so rapid scrolls do not restart it repeatedly.
     func attachScrollObservers(scrollView: NSScrollView) {
         detachScrollObservers()
         let start = NotificationCenter.default.addObserver(
@@ -362,7 +353,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: scrollView,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.pausePrewarmForScroll()
             }
         }
@@ -371,7 +362,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: scrollView,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.schedulePrewarmResume()
             }
         }
@@ -395,7 +386,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private func schedulePrewarmResume() {
         prewarmResumeTask?.cancel()
         prewarmResumeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(Self.prewarmResumeDelayMs))
+            try? await Task.sleep(for: Self.prewarmResumeDelay)
             guard !Task.isCancelled, let self else { return }
             self.startBackgroundPrewarm()
         }
@@ -408,8 +399,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             let displayCount = sortedIDs?.count ?? tableRows.count
             guard nextIndex < displayCount else { return }
 
-            let frameBudget = ContinuousClock.Instant.Duration.milliseconds(Self.prewarmFrameBudgetMs)
-            let deadline = ContinuousClock.now.advanced(by: frameBudget)
+            let deadline = ContinuousClock.now.advanced(by: Self.prewarmFrameBudget)
             while nextIndex < displayCount {
                 if Task.isCancelled { return }
                 cacheDisplayRow(at: nextIndex, in: tableRows)
@@ -628,17 +618,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let nextSchema = ColumnIdentitySchema(columns: columns)
         let schemaChanged = nextSchema != identitySchema
 
-        let fingerprint = ColumnMetadataFingerprint(
-            columnsCount: columns.count,
-            columnTypesCount: tableRows.columnTypes.count,
-            foreignKeyKeysCount: tableRows.columnForeignKeys.count,
-            enumValuesKeysCount: tableRows.columnEnumValues.count
-        )
-        let metadataChanged = schemaChanged || fingerprint != lastColumnMetadataFingerprint
-        if metadataChanged {
-            rebuildKindSets(from: tableRows)
-            lastColumnMetadataFingerprint = fingerprint
-        }
+        rebuildKindSets(from: tableRows)
 
         guard schemaChanged else { return false }
         identitySchema = nextSchema
