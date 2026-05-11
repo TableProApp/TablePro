@@ -41,15 +41,16 @@ struct RoutineRowView: View {
     let routine: RoutineInfo
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: RoutineRowLogic.iconName(for: routine.kind))
-                .foregroundStyle(RoutineRowLogic.iconColor(for: routine.kind))
-                .frame(width: 14)
-
+        Label {
             Text(routine.name)
                 .font(.system(.callout, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .sidebarTint(.primary)
+        } icon: {
+            Image(systemName: RoutineRowLogic.iconName(for: routine.kind))
+                .sidebarTint(RoutineRowLogic.iconColor(for: routine.kind))
+                .frame(width: 14)
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)

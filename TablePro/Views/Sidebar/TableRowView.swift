@@ -61,31 +61,38 @@ struct TableRow: View {
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
 
+    private var iconColor: Color {
+        TableRowLogic.iconColor(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate)
+    }
+
+    private var textColor: Color {
+        TableRowLogic.textColor(isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate)
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
+        Label {
+            Text(table.name)
+                .font(.system(.callout, design: .monospaced))
+                .lineLimit(1)
+                .sidebarTint(textColor)
+        } icon: {
             ZStack(alignment: .bottomTrailing) {
                 Image(systemName: TableRowLogic.iconName(for: table.type))
-                    .foregroundStyle(TableRowLogic.iconColor(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
+                    .sidebarTint(iconColor)
                     .frame(width: 14)
 
-                // Pending operation indicator
                 if isPendingDelete {
                     Image(systemName: "minus.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemRed))
+                        .sidebarTint(Color(nsColor: .systemRed))
                         .offset(x: 4, y: 4)
                 } else if isPendingTruncate {
                     Image(systemName: "exclamationmark.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemOrange))
+                        .sidebarTint(Color(nsColor: .systemOrange))
                         .offset(x: 4, y: 4)
                 }
             }
-
-            Text(table.name)
-                .font(.system(.callout, design: .monospaced))
-                .lineLimit(1)
-                .foregroundStyle(TableRowLogic.textColor(isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)

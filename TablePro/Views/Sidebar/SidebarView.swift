@@ -239,7 +239,7 @@ struct SidebarView: View {
             Section(isExpanded: isExpanded) {
                 sectionRows(for: kind)
             } header: {
-                sectionHeader(for: kind, count: count)
+                sectionHeader(for: kind)
             }
         }
     }
@@ -258,7 +258,9 @@ struct SidebarView: View {
                 RoutineRowView(routine: routine)
                     .tag(routine)
                     .contextMenu {
-                        RoutineContextMenu(routine: routine) { _ in }
+                        RoutineContextMenu(routine: routine) { selected in
+                            coordinator?.showRoutineDDL(selected)
+                        }
                     }
             }
         } else {
@@ -288,26 +290,17 @@ struct SidebarView: View {
         }
     }
 
-    private func sectionHeader(for kind: SidebarObjectKind, count: Int) -> some View {
+    private func sectionHeader(for kind: SidebarObjectKind) -> some View {
         let title = sectionTitle(for: kind)
         let helpLabel = String(
             format: String(localized: "Right-click to show all %@"),
             title.lowercased()
         )
-        return HStack(spacing: 8) {
-            Text(title)
-            Spacer()
-            if count > 0 {
-                Text("\(count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+        return Text(title)
+            .help(helpLabel)
+            .contextMenu {
+                sectionHeaderMenu(for: kind, title: title)
             }
-        }
-        .help(helpLabel)
-        .contextMenu {
-            sectionHeaderMenu(for: kind, title: title)
-        }
     }
 
     @ViewBuilder

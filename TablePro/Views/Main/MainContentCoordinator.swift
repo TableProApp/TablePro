@@ -523,6 +523,43 @@ final class MainContentCoordinator {
         await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
     }
 
+    func showRoutineDDL(_ routine: RoutineInfo) {
+        guard let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter else {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Cannot Show DDL"),
+                message: String(localized: "This driver does not expose routine DDL."),
+                window: nil
+            )
+            return
+        }
+        Task { [connectionId = connection.id, routine] in
+            do {
+                let ddl = try await adapter.fetchRoutineDDL(routine: routine)
+                let titleFormat: String = routine.kind == .procedure
+                    ? String(localized: "Procedure: %@")
+                    : String(localized: "Function: %@")
+                let payload = EditorTabPayload(
+                    connectionId: connectionId,
+                    tabType: .query,
+                    initialQuery: ddl,
+                    skipAutoExecute: true,
+                    tabTitle: String(format: titleFormat, routine.name)
+                )
+                await MainActor.run {
+                    WindowManager.shared.openTab(payload: payload)
+                }
+            } catch {
+                await MainActor.run {
+                    AlertHelper.showErrorSheet(
+                        title: String(localized: "Failed to Fetch DDL"),
+                        message: error.localizedDescription,
+                        window: nil
+                    )
+                }
+            }
+        }
+    }
+
     /// Push the SchemaService table list into the autocomplete provider and prune sidebar
     /// state for tables that no longer exist.
     private func reconcilePostSchemaLoad() async {

@@ -323,6 +323,23 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         }
     }
 
+    func fetchRoutineDDL(routine: RoutineInfo) async throws -> String {
+        guard let support = pluginDriver as? PluginProcedureFunctionSupport else {
+            throw NSError(
+                domain: "PluginDriverAdapter",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "This driver does not expose routine DDL.")]
+            )
+        }
+        let resolvedSchema = routine.schema ?? pluginDriver.currentSchema
+        switch routine.kind {
+        case .procedure:
+            return try await support.fetchProcedureDDL(name: routine.name, schema: resolvedSchema)
+        case .function:
+            return try await support.fetchFunctionDDL(name: routine.name, schema: resolvedSchema)
+        }
+    }
+
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
         return DatabaseMetadata(

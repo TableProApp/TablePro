@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Sidebar groups database objects into Tables, Views, Materialized Views, Foreign Tables, Procedures, and Functions sections; routines load automatically on connect for Postgres and MySQL, and each section header has its own Refresh action (#1038)
+- Sidebar groups database objects into Tables, Views, Materialized Views, Foreign Tables, Procedures, and Functions sections; routines load automatically on connect for Postgres and MySQL, each section header has its own Refresh action, and "Show DDL" on a procedure or function opens its definition in a new query tab (#1038)
 - iOS: Live Activity for running queries shows query preview, elapsed time, and row count on the lock screen and Dynamic Island
 - iOS: multi-window support on iPad - drag a tab off to open a second window, each window remembers its own selected connection across launches
 - iOS: VoiceOver "Delete row" / "Delete group" / "Delete tag" custom actions on rows whose only deletion path was a swipe gesture
@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Sidebar: selected row icon and label tint to white so kind colors (indigo, teal, purple) stay readable on the blue selection background
+- Sidebar: drop the per-section item count; empty optional-kind sections are already hidden, so the count was visual noise that also jittered next to the hover-revealed disclosure chevron
+- Internal: sidebar rows use `Label` instead of hand-rolled `HStack`, and the selection-aware tint lives in a single `sidebarTint(_:)` modifier shared by table and routine rows
 - Data grid: skip the structural update pipeline when the inputs to `updateNSView` are unchanged, and pull binding and selection synchronization out so they always run cheaply
 - Data grid: theme changes now reload visible rows so the direct-draw cell picks up the new palette; the legacy `updateVisibleCellFonts` path is removed
 - Data grid: background prewarm fills the display cache in frame-budgeted batches after each structural reload, so scrolling stays a cache hit instead of running the date formatter on the main thread

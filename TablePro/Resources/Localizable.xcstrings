@@ -8369,6 +8369,9 @@
         }
       }
     },
+    "Cannot Show DDL" : {
+
+    },
     "Cap user query results at the configured row count" : {
       "localizations" : {
         "tr" : {
@@ -20184,6 +20187,9 @@
         }
       }
     },
+    "Failed to Fetch DDL" : {
+
+    },
     "Failed to fetch models from %@" : {
 
     },
@@ -22384,6 +22390,9 @@
           }
         }
       }
+    },
+    "Function: %@" : {
+
     },
     "Functions" : {
 
@@ -35736,6 +35745,9 @@
     "Procedure" : {
 
     },
+    "Procedure: %@" : {
+
+    },
     "Procedures" : {
 
     },
@@ -47121,6 +47133,9 @@
       }
     },
     "This discards your edits to the Chinook sample and restores the original copy." : {
+
+    },
+    "This driver does not expose routine DDL." : {
 
     },
     "This DROP query will permanently remove database objects. This action cannot be undone." : {
