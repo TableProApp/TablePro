@@ -89,8 +89,12 @@ struct PasteboardCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .selectAll))
 
             Button("Clear Selection") {
-                // Use responder chain - cancelOperation is the standard ESC action
-                NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
+                // Route the Esc key equivalent to Vim first when the active editor is
+                // in a non-normal mode — the menu shortcut otherwise preempts the
+                // local event monitor and Vim never sees the keystroke.
+                if !EditorEventRouter.shared.handleVimEscapeFromMenu() {
+                    NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
+                }
             }
             .optionalKeyboardShortcut(shortcut(for: .clearSelection))
         }

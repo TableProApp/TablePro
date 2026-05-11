@@ -5,6 +5,7 @@
 //  Regression tests for VimKeyInterceptor focus lifecycle
 //
 
+import Foundation
 import TableProPluginKit
 @testable import TablePro
 import Testing
@@ -72,5 +73,39 @@ struct VimKeyInterceptorFocusTests {
         interceptor.editorDidFocus()
         interceptor.editorDidFocus()
         #expect(interceptor.isEditorFocused == true)
+    }
+
+    @Test("handleEscapeFromExternalSource returns false when engine already in normal mode")
+    func externalEscapeNoopsInNormalMode() {
+        let buffer = VimTextBufferMock(text: "hello")
+        let engine = VimEngine(buffer: buffer)
+        let interceptor = VimKeyInterceptor(engine: engine, inlineSuggestionManager: nil)
+        #expect(engine.mode == .normal)
+        #expect(interceptor.handleEscapeFromExternalSource() == false)
+        #expect(engine.mode == .normal)
+    }
+
+    @Test("handleEscapeFromExternalSource switches insert → normal and reports consumed")
+    func externalEscapeSwitchesInsertToNormal() {
+        let buffer = VimTextBufferMock(text: "SELECT * FROM users;")
+        buffer.setSelectedRange(NSRange(location: 20, length: 0))
+        let engine = VimEngine(buffer: buffer)
+        let interceptor = VimKeyInterceptor(engine: engine, inlineSuggestionManager: nil)
+        _ = engine.process("i", shift: false)
+        #expect(engine.mode == .insert)
+        #expect(interceptor.handleEscapeFromExternalSource() == true)
+        #expect(engine.mode == .normal)
+        #expect(buffer.selectedRange().location == 19)
+    }
+
+    @Test("handleEscapeFromExternalSource switches replace → normal")
+    func externalEscapeSwitchesReplaceToNormal() {
+        let buffer = VimTextBufferMock(text: "hello")
+        let engine = VimEngine(buffer: buffer)
+        let interceptor = VimKeyInterceptor(engine: engine, inlineSuggestionManager: nil)
+        _ = engine.process("R", shift: true)
+        #expect(engine.mode == .replace)
+        #expect(interceptor.handleEscapeFromExternalSource() == true)
+        #expect(engine.mode == .normal)
     }
 }

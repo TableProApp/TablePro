@@ -74,6 +74,18 @@ final class VimKeyInterceptor {
         removeMonitor()
     }
 
+    /// Route an Escape press from outside the local event monitor (e.g. a SwiftUI menu
+    /// key equivalent that preempts the event before the monitor fires). Returns true
+    /// when the engine was in a non-normal mode and consumed the escape.
+    @discardableResult
+    func handleEscapeFromExternalSource() -> Bool {
+        guard engine.mode != .normal else { return false }
+        inlineSuggestionManager?.dismissSuggestion()
+        closeSuggestionPopup()
+        _ = engine.process("\u{1B}", shift: false)
+        return true
+    }
+
     /// Remove all monitors and observers
     func uninstall() {
         isEditorFocused = false
@@ -119,22 +131,22 @@ final class VimKeyInterceptor {
             return event
         }
 
-        let eventInOurWindow = event.window === editorWindow
-        let eventInChildPopup = event.window.map { window in
-            editorWindow.childWindows?.contains(where: { $0 === window }) ?? false
-        } ?? false
-
-        // Esc must reach the engine whenever it would dismiss a child popup of our
-        // editor window — otherwise the popup eats the keystroke and Vim mode stays
-        // stuck in insert. We route Esc through the engine first, then let the event
-        // propagate to the popup so the popup also closes naturally.
-        if event.keyCode == 53, engine.mode != .normal, (eventInOurWindow || eventInChildPopup) {
+        // Esc must always reach the engine while the editor is focused and we are not
+        // already in normal mode. We get here only when `isEditorFocused` is true (the
+        // local monitor's outer guard), so the editor *is* the focused editor of this
+        // app. event.window can be nil (synthesized) or a child popup window — in any
+        // of those cases the keystroke would otherwise miss the engine and Vim would
+        // get stuck in insert (the symptom: pressing Esc just after typing ';' at the
+        // very end of the buffer when an autocomplete or inline-suggestion path is up).
+        if event.keyCode == 53, engine.mode != .normal {
             inlineSuggestionManager?.dismissSuggestion()
+            closeSuggestionPopup()
             _ = engine.process("\u{1B}", shift: false)
-            return eventInChildPopup ? event : nil
+            return nil
         }
 
-        guard eventInOurWindow, textView.window?.firstResponder === textView else {
+        guard event.window === editorWindow,
+              textView.window?.firstResponder === textView else {
             return event
         }
 

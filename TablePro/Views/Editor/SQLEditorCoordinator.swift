@@ -400,6 +400,15 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
     }
 
+    // MARK: - Vim External Escape Routing
+
+    /// Called by the menu's "Clear Selection" (Esc) shortcut so a SwiftUI key
+    /// equivalent that preempts the local event monitor still flips Vim back to
+    /// normal mode instead of getting silently swallowed.
+    func handleVimEscapeFromMenu() -> Bool {
+        vimKeyInterceptor?.handleEscapeFromExternalSource() ?? false
+    }
+
     // MARK: - First Responder Tracking
 
     func checkFirstResponderChange() {
