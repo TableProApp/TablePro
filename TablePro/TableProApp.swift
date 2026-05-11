@@ -653,6 +653,7 @@ struct TableProApp: App {
 
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
             ConnectionFormView(connectionId: editingId ?? nil)
+                .background(WindowOpenerBridge())
                 .background(WindowChromeConfigurator(restorable: false))
                 .environment(\.appServices, .live)
         }
@@ -662,6 +663,7 @@ struct TableProApp: App {
 
         Window("Integrations Activity", id: SceneId.integrationsActivity) {
             IntegrationsActivityView()
+                .background(WindowOpenerBridge())
                 .environment(\.appServices, .live)
         }
         .windowResizability(.contentMinSize)
@@ -676,6 +678,7 @@ struct TableProApp: App {
 
         Settings {
             SettingsView()
+                .background(WindowOpenerBridge())
                 .environment(updaterBridge)
                 .environment(\.appServices, .live)
         }

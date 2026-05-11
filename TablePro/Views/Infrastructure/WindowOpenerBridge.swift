@@ -13,7 +13,7 @@ internal struct WindowOpenerBridge: View {
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .onAppear { wireUp() }
+            .task { wireUp() }
     }
 
     private func wireUp() {

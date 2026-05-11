@@ -98,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Welcome window sometimes failed to open on launch (and Dock-icon clicks did nothing) when the previous session restored only main connection windows. `WindowOpenerBridge` was mounted only in the Welcome scene and used `.onAppear`, so if Welcome got `orderOut`'d before its first appearance the bridge never wired and every `openWelcome()` call queued forever. The bridge now mounts in all four SwiftUI scenes (Welcome, ConnectionForm, IntegrationsActivity, Settings) and uses `.task` so wiring fires reliably whenever any scene materializes
 - Plugin upgrades for built-in drivers (MySQL, PostgreSQL, SQLite, ClickHouse, Redis, etc.) no longer revert to the bundled version after restart. Discovery now scans both built-in and user plugin directories, picks the newest version by `CFBundleShortVersionString`, and only prunes user copies that are older than or equal to the built-in (#1192)
 - Concurrent plugin installs from the registry can no longer race past the `isInstalling` guard; the lock now wraps `installFromRegistry` and `updateFromRegistry` end-to-end
 - Plugin manager's `waitForInitialLoad` no longer leaks a continuation when its 10-second timeout fires before initial load completes
