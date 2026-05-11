@@ -4,6 +4,10 @@
 <dict>
 	<key>AnalyticsHMACSecret</key>
 	<string>$(ANALYTICS_HMAC_SECRET)</string>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>EongGFyuahKlYPZwgmnFx8nW3s1CqWlSSU5BDqY6n6Q=</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -82,38 +86,143 @@
 			</array>
 		</dict>
 		<dict>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>duckdb</string>
-				<string>ddb</string>
-			</array>
 			<key>CFBundleTypeName</key>
 			<string>DuckDB Database</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>duckdb</string>
+				<string>ddb</string>
+			</array>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.tablepro.duckdb</string>
 			</array>
 		</dict>
 	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.sql</string>
+			<key>UTTypeDescription</key>
+			<string>SQL File</string>
+			<key>UTTypeIconFile</key>
+			<string>SQLDocument</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.sql</string>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>sql</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.sqlite-db</string>
+			<key>UTTypeDescription</key>
+			<string>SQLite Database</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.apple.sqlite3</string>
+				<string>public.database</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>sqlite</string>
+					<string>sqlite3</string>
+					<string>db3</string>
+					<string>s3db</string>
+					<string>sl3</string>
+					<string>sqlitedb</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.duckdb</string>
+			<key>UTTypeDescription</key>
+			<string>DuckDB Database</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.database</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>duckdb</string>
+					<string>ddb</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.connection-share</string>
+			<key>UTTypeDescription</key>
+			<string>TablePro Connection</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tablepro</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.plugin</string>
+			<key>UTTypeDescription</key>
+			<string>TablePro Plugin</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.apple.bundle</string>
+				<string>com.apple.package</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tableplugin</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>com.TablePro.viewConnection</string>
+		<string>com.TablePro.viewTable</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
 			<key>CFBundleURLName</key>
 			<string>com.TablePro.deeplink</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>tablepro</string>
 			</array>
-		</dict>
-		<dict>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
+		</dict>
+		<dict>
 			<key>CFBundleURLName</key>
 			<string>com.TablePro.database-url</string>
 			<key>CFBundleURLSchemes</key>
@@ -143,117 +252,8 @@
 				<string>d1</string>
 				<string>libsql</string>
 			</array>
-		</dict>
-	</array>
-	<key>NSUserActivityTypes</key>
-	<array>
-		<string>com.TablePro.viewConnection</string>
-		<string>com.TablePro.viewTable</string>
-	</array>
-	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>EongGFyuahKlYPZwgmnFx8nW3s1CqWlSSU5BDqY6n6Q=</string>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.sql</string>
-				<string>public.plain-text</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>SQL File</string>
-			<key>UTTypeIconFile</key>
-			<string>SQLDocument</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.sql</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>sql</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>com.apple.sqlite3</string>
-				<string>public.database</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>SQLite Database</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.sqlite-db</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>sqlite</string>
-					<string>sqlite3</string>
-					<string>db3</string>
-					<string>s3db</string>
-					<string>sl3</string>
-					<string>sqlitedb</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.database</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>DuckDB Database</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.duckdb</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>duckdb</string>
-					<string>ddb</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.json</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>TablePro Connection</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.connection-share</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>tablepro</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>com.apple.bundle</string>
-				<string>com.apple.package</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>TablePro Plugin</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.plugin</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>tableplugin</string>
-				</array>
-			</dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
 		</dict>
 	</array>
 </dict>
