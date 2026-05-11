@@ -105,7 +105,7 @@ extension PluginManager {
 
         try FileManager.default.moveItem(at: tempDownloadURL, to: tempZipURL)
 
-        let entry = try await performInstall(from: tempZipURL)
+        let entry = try await performInstallAssumingLock(from: tempZipURL)
 
         saveRegistryMetadata(
             pluginId: registryPlugin.id,

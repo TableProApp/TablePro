@@ -71,8 +71,6 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var serverVersion: String? { get }
     var parameterStyle: ParameterStyle { get }
 
-    /// Whether string literals require backslash escaping for `\`, `\n`, `\r`, `\t`, and `\Z`.
-    /// MySQL/MariaDB: true. PostgreSQL (with `standard_conforming_strings = on`), SQLite, MSSQL: false.
     var requiresBackslashEscapingInLiterals: Bool { get }
 
     // Batch operations

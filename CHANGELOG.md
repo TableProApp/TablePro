@@ -7,23 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Plugin upgrades for built-in drivers (MySQL, PostgreSQL, SQLite, ClickHouse, Redis, etc.) no longer revert to the bundled version after restart. Discovery now scans both built-in and user plugin directories, picks the newest version by `CFBundleShortVersionString`, and only prunes user copies that are older than or equal to the built-in (#1192)
-- Concurrent plugin installs from the registry can no longer race past the `isInstalling` guard; the lock now wraps `installFromRegistry` and `updateFromRegistry` end-to-end
-- Plugin manager's `waitForInitialLoad` no longer leaks a continuation when its 10-second timeout fires before initial load completes
-- Multi-bundle ZIP archives are now rejected with a clear error instead of silently installing only the last bundle
-
-### Changed
-
-- Plugin registry manifest cache moved from `UserDefaults` to `~/Library/Caches/<bundle-id>/registry-manifest.json`; legacy keys are removed on first launch
-- Plugin signing requirement reads the team identifier from the running app's signature at runtime instead of a hardcoded value, with a documented fallback
-- Plugin install loading happens off the main actor; large dylibs no longer hitch the UI during install
-- "Restart TablePro" banner gets a Quit & Reopen button that relaunches via `NSWorkspace.openApplication`
-- Completed plugin install badges auto-clear after 3 seconds (failed installs still persist until dismissed)
-- Default `escapeStringLiteral` in `TableProPluginKit` no longer escapes backslashes; drivers that need MySQL-style escaping opt in via `requiresBackslashEscapingInLiterals`
-- `needsRestart` flag is in-memory only; stale "restart needed" banners no longer persist across launches
-
 ### Added
 
 - Sidebar groups database objects into Tables, Views, Materialized Views, Foreign Tables, Procedures, and Functions sections; routines load automatically on connect for Postgres and MySQL, each section header has its own Refresh action, and "Show DDL" on a procedure or function opens its definition in a new query tab (#1038)
@@ -104,9 +87,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Result-grid cells render via direct `draw(_:)` on a layer-backed `NSView` instead of an `NSTableCellView` wrapping an `NSTextField` plus an `NSButton` accessory. Per cell during scroll there is no Auto Layout solving, no `NSTextField` re-layout, and no `NSButton` tracking-area work. Editing for plain-text columns now opens the overlay editor (the same surface previously used for multi-line cells) rather than an inline text field.
 - Plugin contract: `PluginQueryResult.rows` carries typed `PluginCellValue` cells (`.null` / `.text(String)` / `.bytes(Data)`) instead of `String?`. Driver plugins emit `.bytes(Data)` for binary columns (PostgreSQL BYTEA, Oracle RAW/LONG_RAW/BLOB, MySQL BLOB family, SQLite BLOB, MSSQL VARBINARY/IMAGE, DuckDB BLOB, Cassandra blob, MongoDB BSON binary, DynamoDB B, BigQuery BYTES). The typed value flows end-to-end: read display, sidebar, hex editor, change tracking, SQL emission. Hex-editor saves bind raw `Data` through libpq's binary parameter format instead of UTF-8 re-encoded text. Fixes wrong BYTEA hex preview, wrong byte count, and corrupted bytes on save for high-byte binary cells (#1188).
 - Double-click and Return on a binary cell now open the hex editor directly. Type-based routing runs before the line-break/JSON content heuristics so binary bytes that incidentally contain 0x0C or `{` no longer route through the multi-line text editor and corrupt the value.
+- Plugin registry manifest cache moved from `UserDefaults` to `~/Library/Caches/<bundle-id>/registry-manifest.json`; legacy keys are removed on first launch
+- Plugin signing requirement reads the team identifier from the running app's signature at runtime instead of a hardcoded value, with a documented fallback
+- Plugin install loading happens off the main actor; large dylibs no longer hitch the UI during install
+- "Restart TablePro" banner gets a Quit & Reopen button that relaunches via `NSWorkspace.openApplication`; if the relaunch fails the user sees an alert and the running instance stays alive
+- Completed plugin install badges auto-clear after 3 seconds (failed installs still persist until dismissed)
+- Default `escapeStringLiteral` in `TableProPluginKit` no longer escapes backslashes; drivers that need MySQL-style escaping opt in via `requiresBackslashEscapingInLiterals`
+- `needsRestart` flag is in-memory only; stale "restart needed" banners no longer persist across launches
 
 ### Fixed
 
+- Plugin upgrades for built-in drivers (MySQL, PostgreSQL, SQLite, ClickHouse, Redis, etc.) no longer revert to the bundled version after restart. Discovery now scans both built-in and user plugin directories, picks the newest version by `CFBundleShortVersionString`, and only prunes user copies that are older than or equal to the built-in (#1192)
+- Concurrent plugin installs from the registry can no longer race past the `isInstalling` guard; the lock now wraps `installFromRegistry` and `updateFromRegistry` end-to-end
+- Plugin manager's `waitForInitialLoad` no longer leaks a continuation when its 10-second timeout fires before initial load completes
+- Multi-bundle ZIP archives are now rejected with a clear error instead of silently installing only the last bundle
 - MySQL/MariaDB: numeric, decimal, date and time columns display their values again instead of rendering as hex bytes (e.g. `1` instead of `0x31`, `12.50` instead of `0x31322E3530`). The typed `PluginCellValue` refactor in #1190 routed any column with charset 63 to the binary path, but MariaDB reports charset 63 for every non-character type. The binary check now also requires a BLOB or BINARY/VARBINARY field type
 - Structure tab: double-click and Return on dropdown / type-picker columns (Nullable, Primary Key, Auto Increment, Unique, On Delete, On Update, Type) now enter inline text edit so the user can type a value the picker doesn't list (e.g. a custom column type, a numeric default). Previously these gestures appeared to do nothing because `editEligibility` blocked dropdown/type-picker columns from inline edit. The chevron button continues to open the picker; the cell body opens the text editor.
 - Structure tab: pressing Cmd+Shift+N (or any path that adds a column / index / foreign key while changes already exist) now displays the new row in the grid. Previously the row was added to the change manager and the SQL Preview reflected it, but the grid kept the old row count because `TableStructureView` only observed `hasChanges` (which had already been true). The view now also observes `reloadVersion` and re-evaluates the grid snapshot on every mutation.

@@ -46,10 +46,10 @@ extension PluginManager {
         }
         isInstalling = true
         defer { isInstalling = false }
-        return try await performInstall(from: url)
+        return try await performInstallAssumingLock(from: url)
     }
 
-    func performInstall(from url: URL) async throws -> PluginEntry {
+    func performInstallAssumingLock(from url: URL) async throws -> PluginEntry {
         if url.pathExtension == "tableplugin" {
             return try await installBundle(from: url)
         } else {

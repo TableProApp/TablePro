@@ -122,18 +122,6 @@ final class PluginManager {
 
     private struct RegistryMetadata: Codable {
         let pluginId: String
-        let version: String?
-
-        enum CodingKeys: String, CodingKey {
-            case pluginId
-            case version
-        }
-
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(pluginId, forKey: .pluginId)
-            try container.encodeIfPresent(version, forKey: .version)
-        }
     }
 
     nonisolated private static func metadataURL(for pluginURL: URL) -> URL {
@@ -155,7 +143,7 @@ final class PluginManager {
     }
 
     func saveRegistryMetadata(pluginId: String, pluginURL: URL) {
-        let metadata = RegistryMetadata(pluginId: pluginId, version: nil)
+        let metadata = RegistryMetadata(pluginId: pluginId)
         let url = Self.metadataURL(for: pluginURL)
         do {
             let data = try JSONEncoder().encode(metadata)
@@ -601,12 +589,14 @@ final class PluginManager {
             do {
                 try fm.removeItem(at: candidate.url)
                 Self.removeRegistryMetadataFile(for: candidate.url)
+                let order = candidate.version.compare(winner.version, options: .numeric)
+                let reason = order == .orderedSame ? "equal version" : "older version"
                 Self.logger.info(
-                    "Pruned outdated user-installed '\(candidate.bundleId)' v\(candidate.version) (built-in v\(winner.version) takes precedence)"
+                    "Pruned user-installed '\(candidate.bundleId)' v\(candidate.version) (\(reason); \(winner.source == .builtIn ? "built-in" : "winning") v\(winner.version) takes precedence)"
                 )
             } catch {
                 Self.logger.warning(
-                    "Failed to prune outdated user copy '\(candidate.bundleId)' at \(candidate.url.lastPathComponent): \(error.localizedDescription)"
+                    "Failed to prune user copy '\(candidate.bundleId)' at \(candidate.url.lastPathComponent): \(error.localizedDescription)"
                 )
             }
         }
