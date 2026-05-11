@@ -35,10 +35,12 @@ extension PostgreSQLPluginDriver: PluginProcedureFunctionSupport {
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginRoutineInfo? in
-            guard row.count >= 1, let name = row[0].asText else { return nil }
-            let returnType = row.count > 1 ? row[1].asText : nil
-            let language = row.count > 2 ? row[2].asText : nil
-            return PluginRoutineInfo(name: name, returnType: returnType, language: language)
+            guard let name = row[safe: 0]?.asText else { return nil }
+            return PluginRoutineInfo(
+                name: name,
+                returnType: row[safe: 1]?.asText,
+                language: row[safe: 2]?.asText
+            )
         }
     }
 
@@ -58,7 +60,7 @@ extension PostgreSQLPluginDriver: PluginProcedureFunctionSupport {
             LIMIT 1
             """
         let result = try await execute(query: query)
-        guard let firstRow = result.rows.first, !firstRow.isEmpty, let ddl = firstRow[0].asText else {
+        guard let ddl = result.rows.first?[safe: 0]?.asText else {
             throw NSError(
                 domain: "PostgreSQLDriverPlugin",
                 code: -1,
