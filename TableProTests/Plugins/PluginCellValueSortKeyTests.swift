@@ -36,4 +36,38 @@ struct PluginCellValueSortKeyTests {
         #expect(b < c)
         #expect(a != b)
     }
+
+    // MARK: - asText contract
+    //
+    // `asText` MUST return nil for `.bytes` so callers cannot accidentally treat
+    // binary cells as editable text. Returning empty string instead would cause
+    // the inline cell editor to display the empty field on click and commit ""
+    // on focus-out, silently wiping the original bytes (regression for #1217).
+
+    @Test(".text.asText returns the text verbatim")
+    func textAsText() {
+        #expect(PluginCellValue.text("hello").asText == "hello")
+        #expect(PluginCellValue.text("").asText == "")
+    }
+
+    @Test(".bytes.asText returns nil so inline edit is gated")
+    func bytesAsTextIsNil() {
+        #expect(PluginCellValue.bytes(Data([0xDE, 0xAD])).asText == nil)
+        #expect(PluginCellValue.bytes(Data()).asText == nil)
+    }
+
+    @Test(".null.asText returns nil")
+    func nullAsText() {
+        #expect(PluginCellValue.null.asText == nil)
+    }
+
+    // MARK: - asBytes contract
+
+    @Test(".bytes.asBytes returns the data; other cases return nil")
+    func asBytes() {
+        let data = Data([0x01, 0x02, 0x03])
+        #expect(PluginCellValue.bytes(data).asBytes == data)
+        #expect(PluginCellValue.text("hello").asBytes == nil)
+        #expect(PluginCellValue.null.asBytes == nil)
+    }
 }
