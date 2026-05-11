@@ -166,11 +166,13 @@ final class VimEngineFindCharTests: XCTestCase {
     }
 
     func testCapitalTWithCount() {
+        // From offset 18 ('r' in 'bar'), prior 'o' occurrences are at 14, 13, 7, 4.
+        // 2T finds the 2nd backward (offset 13), till lands one after → offset 14.
         buffer.setSelectedRange(NSRange(location: 18, length: 0))
         keys("2")
         key("T", shift: true)
         key("o")
-        XCTAssertEqual(pos, 8, "2To from offset 18 should land one after the second prior 'o' (offset 8)")
+        XCTAssertEqual(pos, 14, "2To from offset 18 should land one after the second prior 'o' (offset 14)")
     }
 
     // MARK: - ; (Repeat Last f/F/t/T)
@@ -220,18 +222,23 @@ final class VimEngineFindCharTests: XCTestCase {
     }
 
     func testCommaReversesBackwardFind() {
+        // From offset 18 ('r'), Fo finds 'o' at 14. There is no 'o' after offset 14 on
+        // this line, so reverse-search (forward) is a no-op and the cursor stays at 14.
         buffer.setSelectedRange(NSRange(location: 18, length: 0))
         key("F", shift: true)
-        key("o")    // backward → 14
-        keys(",")   // reverse direction (forward) → 17
-        XCTAssertEqual(pos, 17, ", after F should reverse to find 'o' forward at offset 17")
+        key("o")
+        XCTAssertEqual(pos, 14)
+        keys(",")
+        XCTAssertEqual(pos, 14, ", reverse from 14 has no later 'o' on the line so cursor stays")
     }
 
     func testCommaWithCount() {
+        // From offset 13 ('o'), fo lands at 14. 2, reverses direction (backward) twice:
+        // 14 → 13 → 7. Final cursor at 7.
         buffer.setSelectedRange(NSRange(location: 13, length: 0))
-        keys("fo")  // → 14
-        keys("2,") // reverse twice → 7 then 4
-        XCTAssertEqual(pos, 4)
+        keys("fo")
+        keys("2,")
+        XCTAssertEqual(pos, 7, "2, after fo should walk backward through two 'o' occurrences")
     }
 
     // MARK: - Combined with Operators

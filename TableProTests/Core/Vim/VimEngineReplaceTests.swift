@@ -105,21 +105,17 @@ final class VimEngineReplaceTests: XCTestCase {
     func testCapitalREntersReplaceMode() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("R", shift: true)
-        // Replace mode is a kind of insert mode that overwrites instead of inserting.
-        // For now we expect it to enter insert mode at minimum.
-        XCTAssertEqual(engine.mode, .insert,
-            "R should enter a replace/insert state where keys overwrite chars")
+        XCTAssertEqual(engine.mode, .replace,
+            "R should enter the dedicated .replace mode (overwrite, distinct from insert)")
     }
 
-    func testCapitalRReplacesCharactersAsTyped() {
-        // Note: this exercises text-view-side behavior; the engine should consume R entry
-        // and downstream text input handles the overwrite. We assert at minimum that R
-        // moves the buffer into insert/replace mode and does not corrupt content.
+    func testCapitalROverwritesCharactersAsTyped() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("R", shift: true)
-        // Simulate two replace operations (would normally be handled by overwrite logic).
-        // For engine-level test, just verify state transition.
-        XCTAssertEqual(engine.mode, .insert)
+        _ = engine.process("X", shift: true)
+        _ = engine.process("Y", shift: true)
+        XCTAssertEqual(buffer.text, "XYllo world\nsecond line\n",
+            "Replace mode should overwrite chars at the cursor as the user types")
     }
 
     func testCapitalREscapeReturnsToNormal() {

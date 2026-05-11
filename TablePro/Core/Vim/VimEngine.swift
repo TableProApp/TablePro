@@ -20,6 +20,20 @@ enum VimOperator {
     case outdent
 }
 
+/// f/F/t/T pending state — captures whether the next char is a forward/backward find,
+/// and whether it lands on the match (`f`) or just before/after it (`t`).
+struct VimFindCharRequest {
+    let forward: Bool
+    let till: Bool
+}
+
+/// The last executed f/F/t/T — used by `;` (repeat) and `,` (reverse).
+struct VimLastFindChar {
+    let char: Character
+    let forward: Bool
+    let till: Bool
+}
+
 /// Core Vim editing engine — deterministic state machine
 @MainActor
 final class VimEngine {
@@ -45,6 +59,9 @@ final class VimEngine {
     private var operatorCount: Int = 0
     private var goalColumn: Int?
     private var pendingG: Bool = false
+    private var pendingFindChar: VimFindCharRequest?
+    private var pendingReplaceChar: Bool = false
+    private var lastFindChar: VimLastFindChar?
 
     /// Visual mode anchor offset
     private var visualAnchor: Int = 0
@@ -131,8 +148,20 @@ final class VimEngine {
 
     // MARK: - Normal Mode
 
-    private func processNormal(_ char: Character, shift: Bool) -> Bool { // swiftlint:disable:this function_body_length
+    private func processNormal(_ char: Character, shift: Bool) -> Bool { // swiftlint:disable:this function_body_length cyclomatic_complexity
         guard let buffer else { return false }
+
+        // Pending char-after-prefix sequences
+        if let req = pendingFindChar {
+            pendingFindChar = nil
+            if char == "\u{1B}" { return true }
+            return executeFindChar(char, request: req, in: buffer)
+        }
+        if pendingReplaceChar {
+            pendingReplaceChar = false
+            if char == "\u{1B}" { return true }
+            return executeReplaceChar(char, in: buffer)
+        }
 
         // Count prefix accumulation (1-9 start, 0-9 continue)
         if char.isNumber {
@@ -245,7 +274,8 @@ final class VimEngine {
             return true
         case "I":
             countPrefix = 0
-            moveToLineStart(in: buffer)
+            let target = firstNonBlankOffset(from: buffer.selectedRange().location, in: buffer)
+            buffer.setSelectedRange(NSRange(location: target, length: 0))
             mode = .insert
             return true
         case "a":
@@ -371,6 +401,92 @@ final class VimEngine {
             joinLines(consumeCount(), withSpace: true, in: buffer)
             return true
 
+        // -- f/F/t/T find-character --
+        case "f":
+            pendingFindChar = VimFindCharRequest(forward: true, till: false)
+            return true
+        case "F":
+            pendingFindChar = VimFindCharRequest(forward: false, till: false)
+            return true
+        case "t":
+            pendingFindChar = VimFindCharRequest(forward: true, till: true)
+            return true
+        case "T":
+            pendingFindChar = VimFindCharRequest(forward: false, till: true)
+            return true
+        case ";":
+            guard let last = lastFindChar else { return true }
+            let req = VimFindCharRequest(forward: last.forward, till: last.till)
+            _ = executeFindChar(last.char, request: req, in: buffer)
+            return true
+        case ",":
+            guard let last = lastFindChar else { return true }
+            let req = VimFindCharRequest(forward: !last.forward, till: last.till)
+            _ = executeFindChar(last.char, request: req, in: buffer)
+            return true
+
+        // -- r{char} single-char replace --
+        case "r":
+            pendingReplaceChar = true
+            return true
+        // -- R: enter Replace overwrite mode --
+        case "R":
+            countPrefix = 0
+            operatorCount = 0
+            mode = .replace
+            return true
+
+        // -- ~: toggle case under cursor (count chars), or g~~ line variant --
+        case "~":
+            if pendingOperator == .toggleCase {
+                applyCaseToLine(.toggleCase, count: consumeCount(), in: buffer)
+                pendingOperator = nil
+                return true
+            }
+            toggleCaseUnderCursor(consumeCount(), in: buffer)
+            return true
+
+        // -- >> and <<: indent / outdent line --
+        case ">":
+            if pendingOperator == .indent {
+                indentLine(consumeCount(), outdent: false, in: buffer)
+                pendingOperator = nil
+                return true
+            }
+            beginOperator(.indent)
+            return true
+        case "<":
+            if pendingOperator == .outdent {
+                indentLine(consumeCount(), outdent: true, in: buffer)
+                pendingOperator = nil
+                return true
+            }
+            beginOperator(.outdent)
+            return true
+
+        // -- ? reverse search --
+        case "?":
+            countPrefix = 0
+            operatorCount = 0
+            mode = .commandLine(buffer: "?")
+            return true
+
+        // -- % bracket match --
+        case "%":
+            jumpToMatchingBracket(in: buffer)
+            return true
+
+        // -- H/M/L screen motions --
+        case "H":
+            jumpToVisibleLine(.top, in: buffer)
+            return true
+        case "M":
+            jumpToVisibleLine(.middle, in: buffer)
+            return true
+        case "L":
+            jumpToVisibleLine(.bottom, in: buffer)
+            return true
+
         // -- Paste --
         case "p":
             countPrefix = 0
@@ -391,10 +507,24 @@ final class VimEngine {
             mode = .commandLine(buffer: ":")
             return true
 
-        // -- Undo --
+        // -- Undo / line undo / case-line --
         case "u":
-            countPrefix = 0
-            buffer.undo()
+            if pendingOperator == .lowercase {
+                applyCaseToLine(.lowercase, count: consumeCount(), in: buffer)
+                pendingOperator = nil
+                return true
+            }
+            let count = consumeCount()
+            for _ in 0..<count { buffer.undo() }
+            return true
+        case "U":
+            if pendingOperator == .uppercase {
+                applyCaseToLine(.uppercase, count: consumeCount(), in: buffer)
+                pendingOperator = nil
+                return true
+            }
+            let count = consumeCount()
+            for _ in 0..<count { buffer.undo() }
             return true
 
         // -- x: delete character under cursor --
@@ -1068,9 +1198,34 @@ final class VimEngine {
         case "J":
             joinLines(consumeCount(), withSpace: false, in: buffer)
             return true
+        case "u":
+            if pendingOperator == .lowercase {
+                applyCaseToLine(.lowercase, count: consumeCount(), in: buffer)
+                pendingOperator = nil
+                return true
+            }
+            beginOperator(.lowercase)
+            return true
+        case "U":
+            if pendingOperator == .uppercase {
+                applyCaseToLine(.uppercase, count: consumeCount(), in: buffer)
+                pendingOperator = nil
+                return true
+            }
+            beginOperator(.uppercase)
+            return true
+        case "~":
+            if pendingOperator == .toggleCase {
+                applyCaseToLine(.toggleCase, count: consumeCount(), in: buffer)
+                pendingOperator = nil
+                return true
+            }
+            beginOperator(.toggleCase)
+            return true
         default:
             countPrefix = 0
             operatorCount = 0
+            pendingOperator = nil
             return true
         }
     }
@@ -1212,6 +1367,188 @@ final class VimEngine {
         for _ in 0..<joinCount {
             guard performSingleJoin(withSpace: withSpace, in: buffer) else { return }
         }
+    }
+
+    // MARK: - Find Character (f/F/t/T)
+
+    private func executeFindChar(_ char: Character, request: VimFindCharRequest, in buffer: VimTextBuffer) -> Bool {
+        lastFindChar = VimLastFindChar(char: char, forward: request.forward, till: request.till)
+        guard let scalar = char.unicodeScalars.first else { return true }
+        let target = unichar(scalar.value)
+        let count = consumeCount()
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+
+        var resolved: Int?
+        if request.forward {
+            // For `t` (till) we skip the adjacent target so already-adjacent doesn't no-op.
+            let initial = request.till ? pos + 2 : pos + 1
+            var scanStart = min(initial, contentEnd)
+            for _ in 0..<count {
+                resolved = nil
+                var idx = scanStart
+                while idx < contentEnd {
+                    if buffer.character(at: idx) == target {
+                        resolved = idx
+                        scanStart = idx + 1
+                        break
+                    }
+                    idx += 1
+                }
+                if resolved == nil { break }
+            }
+        } else {
+            let initial = request.till ? pos - 2 : pos - 1
+            var scanStart = initial
+            for _ in 0..<count {
+                resolved = nil
+                var idx = scanStart
+                while idx >= lineRange.location {
+                    if buffer.character(at: idx) == target {
+                        resolved = idx
+                        scanStart = idx - 1
+                        break
+                    }
+                    idx -= 1
+                }
+                if resolved == nil { break }
+            }
+        }
+
+        guard var finalPos = resolved else { return true }
+        if request.till {
+            finalPos += request.forward ? -1 : 1
+        }
+        executeMotion(in: buffer, inclusive: true) {
+            buffer.setSelectedRange(NSRange(location: finalPos, length: 0))
+        }
+        return true
+    }
+
+    // MARK: - r{char} Replace
+
+    private func executeReplaceChar(_ char: Character, in buffer: VimTextBuffer) -> Bool {
+        let count = consumeCount()
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        guard pos + count <= contentEnd else { return true }
+        let replacement: String
+        if char == "\r" || char == "\n" {
+            replacement = String(repeating: "\n", count: count)
+        } else {
+            replacement = String(repeating: char, count: count)
+        }
+        let range = NSRange(location: pos, length: count)
+        buffer.replaceCharacters(in: range, with: replacement)
+        buffer.setSelectedRange(NSRange(location: pos + count - 1, length: 0))
+        return true
+    }
+
+    // MARK: - ~ Toggle Case under Cursor
+
+    private func toggleCaseUnderCursor(_ count: Int, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        let toggleCount = min(count, max(0, contentEnd - pos))
+        guard toggleCount > 0 else { return }
+        let range = NSRange(location: pos, length: toggleCount)
+        let transformed = toggleCaseTransform(buffer.string(in: range))
+        buffer.replaceCharacters(in: range, with: transformed)
+        let newPos = min(pos + toggleCount, contentEnd > lineRange.location ? contentEnd - 1 : lineRange.location)
+        buffer.setSelectedRange(NSRange(location: newPos, length: 0))
+    }
+
+    private func applyCaseToLine(_ op: VimOperator, count: Int, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let startRange = buffer.lineRange(forOffset: pos)
+        var endOffset = startRange.location + startRange.length
+        for _ in 1..<count {
+            if endOffset < buffer.length {
+                let nextLineRange = buffer.lineRange(forOffset: endOffset)
+                endOffset = nextLineRange.location + nextLineRange.length
+            }
+        }
+        let lineEnd = endOffset
+        let contentEnd = lineEnd > startRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        let range = NSRange(location: startRange.location, length: contentEnd - startRange.location)
+        guard range.length > 0 else { return }
+        let original = buffer.string(in: range)
+        let transformed: String
+        switch op {
+        case .lowercase: transformed = original.lowercased()
+        case .uppercase: transformed = original.uppercased()
+        case .toggleCase: transformed = toggleCaseTransform(original)
+        default: return
+        }
+        buffer.replaceCharacters(in: range, with: transformed)
+        buffer.setSelectedRange(NSRange(location: startRange.location, length: 0))
+    }
+
+    // MARK: - Indent Line (>>, <<)
+
+    private func indentLine(_ count: Int, outdent: Bool, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let startRange = buffer.lineRange(forOffset: pos)
+        var endOffset = startRange.location + startRange.length
+        for _ in 1..<count {
+            if endOffset < buffer.length {
+                let nextLineRange = buffer.lineRange(forOffset: endOffset)
+                endOffset = nextLineRange.location + nextLineRange.length
+            }
+        }
+        let range = NSRange(location: startRange.location, length: endOffset - startRange.location)
+        applyIndent(in: range, outdent: outdent, in: buffer)
+    }
+
+    // MARK: - % Matching Bracket
+
+    private func jumpToMatchingBracket(in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        let contentEnd = lineEnd > lineRange.location
+            && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        var scan = pos
+        while scan < contentEnd {
+            if let target = buffer.matchingBracket(at: scan) {
+                buffer.setSelectedRange(NSRange(location: target, length: 0))
+                return
+            }
+            scan += 1
+        }
+    }
+
+    // MARK: - H/M/L Screen Motions
+
+    private enum ScreenPosition { case top, middle, bottom }
+
+    private func jumpToVisibleLine(_ position: ScreenPosition, in buffer: VimTextBuffer) {
+        let (firstLine, lastLine) = buffer.visibleLineRange()
+        let targetLine: Int
+        switch position {
+        case .top: targetLine = firstLine
+        case .bottom: targetLine = lastLine
+        case .middle: targetLine = (firstLine + lastLine) / 2
+        }
+        let lineStart = buffer.offset(forLine: targetLine, column: 0)
+        let target = firstNonBlankOffset(from: lineStart, in: buffer)
+        buffer.setSelectedRange(NSRange(location: target, length: 0))
+        goalColumn = nil
     }
 
     /// Join every line covered by the current visual selection. After joining, return to

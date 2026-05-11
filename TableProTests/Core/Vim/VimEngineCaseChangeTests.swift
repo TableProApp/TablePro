@@ -59,9 +59,11 @@ final class VimEngineCaseChangeTests: XCTestCase {
     }
 
     func testTildeDoesNotCrossNewline() {
+        // Cursor at offset 8 ('r' in 'World'). 99~ should toggle from cursor to end of
+        // line — 'r','l','d' → 'R','L','D'. The newline must not be consumed.
         buffer.setSelectedRange(NSRange(location: 8, length: 0))
         keys("99~")
-        XCTAssertEqual(buffer.text, "Hello WORLD\nsecond LINE\n",
+        XCTAssertEqual(buffer.text, "Hello WoRLD\nsecond LINE\n",
             "~ with count should clamp at end of current line")
     }
 
