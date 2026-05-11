@@ -16,28 +16,48 @@ final class SidebarViewModel {
     // MARK: - Published State
 
     var searchText = ""
-    var isTablesExpanded: Bool = {
-        let key = "sidebar.isTablesExpanded"
-        if UserDefaults.standard.object(forKey: key) != nil {
-            return UserDefaults.standard.bool(forKey: key)
+    var isTablesExpanded: Bool {
+        didSet {
+            UserDefaults.standard.set(isTablesExpanded, forKey: Self.tablesExpandedKey(connectionId: connectionId))
         }
-        return true
-    }() {
-        didSet { UserDefaults.standard.set(isTablesExpanded, forKey: "sidebar.isTablesExpanded") }
     }
-    var isRedisKeysExpanded: Bool = {
-        let key = "sidebar.isRedisKeysExpanded"
-        if UserDefaults.standard.object(forKey: key) != nil {
-            return UserDefaults.standard.bool(forKey: key)
+    var isRedisKeysExpanded: Bool {
+        didSet {
+            UserDefaults.standard.set(isRedisKeysExpanded, forKey: Self.redisKeysExpandedKey(connectionId: connectionId))
         }
-        return true
-    }() {
-        didSet { UserDefaults.standard.set(isRedisKeysExpanded, forKey: "sidebar.isRedisKeysExpanded") }
     }
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
     var showOperationDialog = false
     var pendingOperationType: TableOperationType?
     var pendingOperationTables: [String] = []
+
+    private static let legacyTablesExpandedKey = "sidebar.isTablesExpanded"
+    private static let legacyRedisKeysExpandedKey = "sidebar.isRedisKeysExpanded"
+
+    private static func tablesExpandedKey(connectionId: UUID) -> String {
+        "sidebar.\(connectionId.uuidString).tables.expanded"
+    }
+
+    private static func redisKeysExpandedKey(connectionId: UUID) -> String {
+        "sidebar.\(connectionId.uuidString).redisKeys.expanded"
+    }
+
+    private static func loadExpansion(
+        perConnectionKey: String,
+        legacyKey: String,
+        defaultValue: Bool
+    ) -> Bool {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: perConnectionKey) != nil {
+            return defaults.bool(forKey: perConnectionKey)
+        }
+        if defaults.object(forKey: legacyKey) != nil {
+            let seeded = defaults.bool(forKey: legacyKey)
+            defaults.set(seeded, forKey: perConnectionKey)
+            return seeded
+        }
+        return defaultValue
+    }
 
     // MARK: - Binding Storage
 
@@ -89,6 +109,16 @@ final class SidebarViewModel {
         self.tableOperationOptionsBinding = tableOperationOptions
         self.databaseType = databaseType
         self.connectionId = connectionId
+        self.isTablesExpanded = Self.loadExpansion(
+            perConnectionKey: Self.tablesExpandedKey(connectionId: connectionId),
+            legacyKey: Self.legacyTablesExpandedKey,
+            defaultValue: true
+        )
+        self.isRedisKeysExpanded = Self.loadExpansion(
+            perConnectionKey: Self.redisKeysExpandedKey(connectionId: connectionId),
+            legacyKey: Self.legacyRedisKeysExpandedKey,
+            defaultValue: true
+        )
     }
 
     // MARK: - Batch Operations
