@@ -123,7 +123,10 @@ final class DataGridCellView: NSView {
         }
         placeholder = content.placeholder
         isLargeDataset = state.isLargeDataset
-        isEditableCell = state.isEditable
+        if isEditableCell != state.isEditable {
+            isEditableCell = state.isEditable
+            needsRedraw = true
+        }
 
         let nextTint: NSColor?
         if state.visualState.isDeleted || state.visualState.isInserted {
