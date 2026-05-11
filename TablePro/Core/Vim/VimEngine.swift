@@ -366,6 +366,11 @@ final class VimEngine {
             changeLine(consumeCount(), in: buffer)
             return true
 
+        // -- J: Join lines (with space) --
+        case "J":
+            joinLines(consumeCount(), withSpace: true, in: buffer)
+            return true
+
         // -- Paste --
         case "p":
             countPrefix = 0
@@ -475,6 +480,10 @@ final class VimEngine {
                 updateVisualSelection(cursorPos: 0, linewise: isLinewise, in: buffer)
                 return true
             }
+            if char == "J" {
+                joinSelectedLines(withSpace: false, in: buffer)
+                return true
+            }
             return true // Consume unknown g-prefixed keys
         }
 
@@ -525,6 +534,10 @@ final class VimEngine {
         case "g":
             // gg in visual mode
             pendingG = true
+            return true
+
+        case "J":
+            joinSelectedLines(withSpace: true, in: buffer)
             return true
 
         case "d", "x": // Delete selection
@@ -1052,6 +1065,9 @@ final class VimEngine {
             }
             mode = .insert
             return true
+        case "J":
+            joinLines(consumeCount(), withSpace: false, in: buffer)
+            return true
         default:
             countPrefix = 0
             operatorCount = 0
@@ -1182,5 +1198,78 @@ final class VimEngine {
         buffer.replaceCharacters(in: range, with: "")
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
         mode = .insert
+    }
+
+    // MARK: - Join Lines (J, gJ)
+
+    /// Join `count` lines starting from the current line into one.
+    /// `withSpace = true` is `J` — inserts a single space at each join unless the join
+    /// is adjacent to whitespace, the next-line content is empty, or starts with `)`.
+    /// `withSpace = false` is `gJ` — never inserts a space and preserves leading whitespace.
+    /// Minimum count is two lines (default count of 1 still joins one line below).
+    func joinLines(_ count: Int, withSpace: Bool, in buffer: VimTextBuffer) {
+        let joinCount = max(count - 1, 1)
+        for _ in 0..<joinCount {
+            guard performSingleJoin(withSpace: withSpace, in: buffer) else { return }
+        }
+    }
+
+    /// Join every line covered by the current visual selection. After joining, return to
+    /// normal mode.
+    private func joinSelectedLines(withSpace: Bool, in buffer: VimTextBuffer) {
+        let sel = buffer.selectedRange()
+        let startLineRange = buffer.lineRange(forOffset: sel.location)
+        let lastInclusiveOffset = max(sel.location, sel.location + sel.length - 1)
+        let endLineRange = buffer.lineRange(forOffset: lastInclusiveOffset)
+        let startLine = buffer.lineAndColumn(forOffset: startLineRange.location).line
+        let endLine = buffer.lineAndColumn(forOffset: endLineRange.location).line
+        let linesCovered = max(1, endLine - startLine + 1)
+        buffer.setSelectedRange(NSRange(location: startLineRange.location, length: 0))
+        let joins = max(linesCovered - 1, 1)
+        for _ in 0..<joins {
+            guard performSingleJoin(withSpace: withSpace, in: buffer) else { break }
+        }
+        mode = .normal
+    }
+
+    /// Performs one join (current line + next). Returns false if no next line.
+    private func performSingleJoin(withSpace: Bool, in buffer: VimTextBuffer) -> Bool {
+        let pos = buffer.selectedRange().location
+        let lineRange = buffer.lineRange(forOffset: pos)
+        let lineEnd = lineRange.location + lineRange.length
+        guard lineEnd < buffer.length else { return false }
+        guard lineEnd > lineRange.location && buffer.character(at: lineEnd - 1) == 0x0A else {
+            return false
+        }
+        let newlineOffset = lineEnd - 1
+        var stripStart = lineEnd
+        if withSpace {
+            while stripStart < buffer.length {
+                let ch = buffer.character(at: stripStart)
+                if ch == 0x20 || ch == 0x09 { stripStart += 1 } else { break }
+            }
+        }
+        let nextLineIsEmpty = stripStart >= buffer.length
+            || buffer.character(at: stripStart) == 0x0A
+        let lastContentOffset = newlineOffset
+        let lastContent: unichar? = lastContentOffset > lineRange.location
+            ? buffer.character(at: lastContentOffset - 1) : nil
+        let lastIsWhitespace = lastContent == 0x20 || lastContent == 0x09
+        let currentLineIsEmpty = lineEnd == lineRange.location + 1 && lastContent == nil
+        let nextChar: unichar? = stripStart < buffer.length
+            ? buffer.character(at: stripStart) : nil
+        let nextIsClosingParen = nextChar == 0x29
+        let shouldInsertSpace = withSpace
+            && !nextLineIsEmpty
+            && !lastIsWhitespace
+            && !nextIsClosingParen
+            && !currentLineIsEmpty
+        let replacementRange = NSRange(location: newlineOffset, length: stripStart - newlineOffset)
+        let replacement = shouldInsertSpace ? " " : ""
+        buffer.replaceCharacters(in: replacementRange, with: replacement)
+        let cursorTarget = shouldInsertSpace ? newlineOffset : newlineOffset
+        let clamped = min(cursorTarget, max(0, buffer.length - 1))
+        buffer.setSelectedRange(NSRange(location: clamped, length: 0))
+        return true
     }
 }
