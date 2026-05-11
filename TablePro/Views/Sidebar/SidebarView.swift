@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 // MARK: - SidebarView
 
@@ -26,8 +27,18 @@ struct SidebarView: View {
         schemaService.tables(for: connectionId)
     }
 
-    private var filteredTables: [TableInfo] {
-        viewModel.filteredTables(from: tables)
+    private var routines: [RoutineInfo] {
+        []
+    }
+
+    private var pluginCapabilities: PluginCapabilities {
+        viewModel.capabilities(for: connectionId)
+    }
+
+    private var hasAnyMatch: Bool {
+        SidebarObjectKind.allCases.contains { kind in
+            countFor(kind: kind) > 0
+        }
     }
 
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
@@ -96,7 +107,6 @@ struct SidebarView: View {
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
-            // Update toolbar version if driver connected before this window's observer was set up
             if let driver = DatabaseManager.shared.driver(for: connectionId),
                coordinator?.toolbarState.databaseVersion == nil {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
@@ -129,9 +139,9 @@ struct SidebarView: View {
             loadingState
         case .failed(let message):
             errorState(message: message)
-        case .loaded where !viewModel.searchText.isEmpty && filteredTables.isEmpty:
+        case .loaded where !viewModel.searchText.isEmpty && !hasAnyMatch:
             noMatchState
-        case .loaded(let allTables) where allTables.isEmpty:
+        case .loaded(let allTables) where allTables.isEmpty && routines.isEmpty:
             emptyState
         case .loaded, .loading:
             tableList
@@ -179,42 +189,9 @@ struct SidebarView: View {
     // MARK: - Table List
 
     private var tableList: some View {
-        let entityLabel = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
-        let helpLabel = String(format: String(localized: "Right-click to show all %@"), entityLabel.lowercased())
-        let showAllLabel = String(format: String(localized: "Show All %@"), entityLabel)
-        return List(selection: selectedTablesBinding) {
-            Section(isExpanded: $viewModel.isTablesExpanded) {
-                ForEach(filteredTables) { table in
-                    TableRow(
-                        table: table,
-                        isPendingTruncate: pendingTruncates.contains(table.name),
-                        isPendingDelete: pendingDeletes.contains(table.name)
-                    )
-                    .tag(table)
-                    .overlay {
-                        DoubleClickDetector {
-                            onDoubleClick?(table)
-                        }
-                    }
-                    .contextMenu {
-                        SidebarContextMenu(
-                            clickedTable: table,
-                            selectedTables: sidebarState.selectedTables,
-                            isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                            onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                            onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                            coordinator: coordinator
-                        )
-                    }
-                }
-            } header: {
-                Text(entityLabel)
-                    .help(helpLabel)
-                    .contextMenu {
-                        Button(showAllLabel) {
-                            coordinator?.showAllTablesMetadata()
-                        }
-                    }
+        List(selection: selectedTablesBinding) {
+            ForEach(SidebarObjectKind.allCases, id: \.self) { kind in
+                sectionView(for: kind)
             }
 
             if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
@@ -250,6 +227,116 @@ struct SidebarView: View {
         .onExitCommand {
             sidebarState.selectedTables.removeAll()
         }
+    }
+
+    // MARK: - Section View
+
+    @ViewBuilder
+    private func sectionView(for kind: SidebarObjectKind) -> some View {
+        let count = countFor(kind: kind)
+        if viewModel.sectionShouldRender(kind: kind, itemCount: count, capabilities: pluginCapabilities) {
+            let isExpanded = sectionExpandedBinding(kind: kind, hasMatches: count > 0)
+            Section(isExpanded: isExpanded) {
+                sectionRows(for: kind)
+            } header: {
+                sectionHeader(for: kind, count: count)
+            }
+        }
+    }
+
+    private func sectionExpandedBinding(kind: SidebarObjectKind, hasMatches: Bool) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.effectiveExpanded(kind: kind, hasMatches: hasMatches) },
+            set: { viewModel.expanded[kind] = $0 }
+        )
+    }
+
+    @ViewBuilder
+    private func sectionRows(for kind: SidebarObjectKind) -> some View {
+        if kind.isRoutine {
+            ForEach(viewModel.filteredRoutines(of: kind, from: routines)) { routine in
+                RoutineRowView(routine: routine)
+                    .tag(routine)
+                    .contextMenu {
+                        RoutineContextMenu(routine: routine) { _ in }
+                    }
+            }
+        } else {
+            ForEach(viewModel.filteredTables(of: kind, from: tables)) { table in
+                TableRow(
+                    table: table,
+                    isPendingTruncate: pendingTruncates.contains(table.name),
+                    isPendingDelete: pendingDeletes.contains(table.name)
+                )
+                .tag(table)
+                .overlay {
+                    DoubleClickDetector {
+                        onDoubleClick?(table)
+                    }
+                }
+                .contextMenu {
+                    SidebarContextMenu(
+                        clickedTable: table,
+                        selectedTables: sidebarState.selectedTables,
+                        isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+                        onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                        onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+                        coordinator: coordinator
+                    )
+                }
+            }
+        }
+    }
+
+    private func sectionHeader(for kind: SidebarObjectKind, count: Int) -> some View {
+        let title = sectionTitle(for: kind)
+        let helpLabel = String(
+            format: String(localized: "Right-click to show all %@"),
+            title.lowercased()
+        )
+        return HStack(spacing: 8) {
+            Text(title)
+            Spacer()
+            if count > 0 {
+                Text("\(count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .help(helpLabel)
+        .contextMenu {
+            sectionHeaderMenu(for: kind, title: title)
+        }
+    }
+
+    @ViewBuilder
+    private func sectionHeaderMenu(for kind: SidebarObjectKind, title: String) -> some View {
+        if !kind.isRoutine {
+            Button(String(format: String(localized: "Show All %@"), title)) {
+                if kind == .table {
+                    coordinator?.showAllTablesMetadata()
+                }
+            }
+            .disabled(kind != .table)
+        }
+        Button(String(localized: "Refresh")) {
+            Task { await coordinator?.refreshTables() }
+        }
+    }
+
+    private func sectionTitle(for kind: SidebarObjectKind) -> String {
+        if kind == .table {
+            return PluginManager.shared.tableEntityName(for: viewModel.databaseType)
+        }
+        return kind.pluralDisplayName
+    }
+
+    private func countFor(kind: SidebarObjectKind) -> Int {
+        if kind.isRoutine {
+            return viewModel.filteredRoutines(of: kind, from: routines).count
+        }
+        return viewModel.filteredTables(of: kind, from: tables).count
     }
 }
 
