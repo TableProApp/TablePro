@@ -34,6 +34,17 @@ struct VimLastFindChar {
     let till: Bool
 }
 
+/// The kind of edit recorded for the `.` repeat command.
+enum VimDotKind {
+    case deleteCharForward(count: Int)
+    case deleteCharBackward(count: Int)
+    case operatorWithMotion(op: VimOperator, motion: Character, shift: Bool, count: Int)
+    case operatorDoubled(op: VimOperator, count: Int)
+    case toggleCase(count: Int)
+    case joinLines(withSpace: Bool, count: Int)
+    case replaceChar(char: Character, count: Int)
+}
+
 /// Core Vim editing engine — deterministic state machine
 @MainActor
 final class VimEngine {
@@ -61,7 +72,21 @@ final class VimEngine {
     private var pendingG: Bool = false
     private var pendingFindChar: VimFindCharRequest?
     private var pendingReplaceChar: Bool = false
+    private var pendingMarkSet: Bool = false
+    private var pendingMarkJumpExact: Bool?
+    private var pendingRegisterSelect: Bool = false
+    private var pendingReplaceCharForVisual: Bool = false
+    private var selectedRegister: Character?
     private var lastFindChar: VimLastFindChar?
+    private var lastDotKind: VimDotKind?
+    private var marks: [Character: Int] = [:]
+    private var namedRegisters: [Character: VimRegister] = [:]
+    /// Numbered registers "0..."9 — "0 holds last yank, "1 holds most recent delete with
+    /// older deletes rotating into "2..."9.
+    private var numberedRegisters: [VimRegister] = Array(repeating: VimRegister(), count: 10)
+    private var editsOnCurrentLine: Int = 0
+    private var lastEditedLine: Int?
+    private var lastJumpOrigin: Int?
 
     /// Visual mode anchor offset
     private var visualAnchor: Int = 0
@@ -162,6 +187,24 @@ final class VimEngine {
             if char == "\u{1B}" { return true }
             return executeReplaceChar(char, in: buffer)
         }
+        if pendingMarkSet {
+            pendingMarkSet = false
+            if char == "\u{1B}" { return true }
+            marks[char] = buffer.selectedRange().location
+            return true
+        }
+        if let exact = pendingMarkJumpExact {
+            pendingMarkJumpExact = nil
+            if char == "\u{1B}" { return true }
+            jumpToMark(char, exact: exact, in: buffer)
+            return true
+        }
+        if pendingRegisterSelect {
+            pendingRegisterSelect = false
+            if char == "\u{1B}" { return true }
+            selectedRegister = char
+            return true
+        }
 
         // Count prefix accumulation (1-9 start, 0-9 continue)
         if char.isNumber {
@@ -196,8 +239,10 @@ final class VimEngine {
             return true
         case "w":
             let count = consumeCount()
-            if let op = pendingOperator {
+            let op = pendingOperator
+            if let op {
                 executeOperatorWithMotion(op, motion: { self.wordForward(count, in: buffer) }, in: buffer)
+                recordDot(.operatorWithMotion(op: op, motion: "w", shift: false, count: count))
             } else {
                 wordForward(count, in: buffer)
             }
@@ -476,6 +521,26 @@ final class VimEngine {
             jumpToMatchingBracket(in: buffer)
             return true
 
+        // -- Marks and register selection --
+        case "m":
+            pendingMarkSet = true
+            return true
+        case "'":
+            pendingMarkJumpExact = false
+            return true
+        case "`":
+            pendingMarkJumpExact = true
+            return true
+        case "\"":
+            pendingRegisterSelect = true
+            return true
+
+        // -- . repeat last change --
+        case ".":
+            let count = consumeCount()
+            replayLastDot(count: count, in: buffer)
+            return true
+
         // -- H/M/L screen motions --
         case "H":
             jumpToVisibleLine(.top, in: buffer)
@@ -489,12 +554,12 @@ final class VimEngine {
 
         // -- Paste --
         case "p":
-            countPrefix = 0
-            paste(after: true, in: buffer)
+            let count = consumeCount()
+            for _ in 0..<count { paste(after: true, in: buffer) }
             return true
         case "P":
-            countPrefix = 0
-            paste(after: false, in: buffer)
+            let count = consumeCount()
+            for _ in 0..<count { paste(after: false, in: buffer) }
             return true
 
         // -- Search / Command line --
@@ -523,13 +588,28 @@ final class VimEngine {
                 pendingOperator = nil
                 return true
             }
-            let count = consumeCount()
-            for _ in 0..<count { buffer.undo() }
+            // U (without count) undoes every edit made on the current line since the
+            // cursor arrived. A user-provided count overrides this.
+            let explicitCount = countPrefix
+            countPrefix = 0
+            operatorCount = 0
+            let undoCount: Int
+            if explicitCount > 0 {
+                undoCount = explicitCount
+            } else if editsOnCurrentLine > 0 {
+                undoCount = editsOnCurrentLine
+            } else {
+                undoCount = 1
+            }
+            for _ in 0..<undoCount { buffer.undo() }
+            editsOnCurrentLine = 0
             return true
 
         // -- x: delete character under cursor --
         case "x":
-            deleteCharUnderCursor(consumeCount(), in: buffer)
+            let count = consumeCount()
+            deleteCharUnderCursor(count, in: buffer)
+            recordDot(.deleteCharForward(count: count))
             return true
 
         default:
@@ -596,8 +676,15 @@ final class VimEngine {
 
     // MARK: - Visual Mode
 
-    private func processVisual(_ char: Character, shift: Bool) -> Bool {
+    private func processVisual(_ char: Character, shift: Bool) -> Bool { // swiftlint:disable:this function_body_length cyclomatic_complexity
         guard let buffer else { return false }
+
+        if pendingReplaceCharForVisual {
+            pendingReplaceCharForVisual = false
+            if char == "\u{1B}" { return true }
+            replaceVisualSelectionWithChar(char, in: buffer)
+            return true
+        }
 
         let isLinewise: Bool
         if case .visual(let lw) = mode { isLinewise = lw } else { isLinewise = false }
@@ -670,6 +757,41 @@ final class VimEngine {
             joinSelectedLines(withSpace: true, in: buffer)
             return true
 
+        case "o":
+            swapVisualAnchorAndCursor(in: buffer, linewise: isLinewise)
+            return true
+
+        case "~":
+            applyCaseToVisualSelection(.toggleCase, linewise: isLinewise, in: buffer)
+            return true
+        case "u":
+            applyCaseToVisualSelection(.lowercase, linewise: isLinewise, in: buffer)
+            return true
+        case "U":
+            applyCaseToVisualSelection(.uppercase, linewise: isLinewise, in: buffer)
+            return true
+
+        case "r":
+            pendingReplaceCharForVisual = true
+            return true
+
+        case "I":
+            let sel = buffer.selectedRange()
+            buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
+            mode = .insert
+            return true
+        case "A":
+            let sel = buffer.selectedRange()
+            let endPos = sel.location + sel.length
+            let clamped = min(endPos, buffer.length)
+            buffer.setSelectedRange(NSRange(location: clamped, length: 0))
+            mode = .insert
+            return true
+
+        case "p", "P":
+            pasteOverVisualSelection(in: buffer)
+            return true
+
         case "d", "x": // Delete selection
             let sel = buffer.selectedRange()
             if sel.length > 0 {
@@ -698,7 +820,17 @@ final class VimEngine {
                 register.text = buffer.string(in: sel)
                 register.isLinewise = isLinewise
                 register.syncToPasteboard()
-                buffer.replaceCharacters(in: sel, with: "")
+                if isLinewise {
+                    // Keep the trailing newline so the line scaffold survives the edit.
+                    let trimmed = sel.length > 0
+                        && sel.location + sel.length - 1 < buffer.length
+                        && buffer.character(at: sel.location + sel.length - 1) == 0x0A
+                        ? NSRange(location: sel.location, length: sel.length - 1) : sel
+                    buffer.replaceCharacters(in: trimmed, with: "")
+                    buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
+                } else {
+                    buffer.replaceCharacters(in: sel, with: "")
+                }
             }
             mode = .insert
             return true
@@ -902,8 +1034,23 @@ final class VimEngine {
 
     private func wordForward(_ count: Int, in buffer: VimTextBuffer) {
         var pos = buffer.selectedRange().location
-        for _ in 0..<count {
-            pos = buffer.wordBoundary(forward: true, from: pos)
+        let isOperator = pendingOperator != nil
+        for i in 0..<count {
+            let prev = pos
+            let next = buffer.wordBoundary(forward: true, from: pos)
+            if isOperator && i == count - 1 {
+                let prevLineRange = buffer.lineRange(forOffset: prev)
+                let nextLineRange = buffer.lineRange(forOffset: min(next, buffer.length))
+                if prevLineRange.location != nextLineRange.location {
+                    let lineEnd = prevLineRange.location + prevLineRange.length
+                    let contentEnd = lineEnd > prevLineRange.location
+                        && lineEnd <= buffer.length
+                        && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+                    pos = contentEnd
+                    break
+                }
+            }
+            pos = next
         }
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
     }
@@ -937,9 +1084,8 @@ final class VimEngine {
             }
         }
         let deleteRange = NSRange(location: startRange.location, length: endOffset - startRange.location)
-        register.text = buffer.string(in: deleteRange)
-        register.isLinewise = true
-        register.syncToPasteboard()
+        writeToActiveRegister(text: buffer.string(in: deleteRange), linewise: true, asDelete: true)
+        adjustMarksForEdit(in: deleteRange, replacementLength: 0)
         buffer.replaceCharacters(in: deleteRange, with: "")
         // Position cursor at start of next line (or current position if at end)
         let newPos = min(startRange.location, max(0, buffer.length - 1))
@@ -961,9 +1107,7 @@ final class VimEngine {
             }
         }
         let yankRange = NSRange(location: startRange.location, length: endOffset - startRange.location)
-        register.text = buffer.string(in: yankRange)
-        register.isLinewise = true
-        register.syncToPasteboard()
+        writeToActiveRegister(text: buffer.string(in: yankRange), linewise: true, asDelete: false)
     }
 
     private func changeLine(_ count: Int, in buffer: VimTextBuffer) {
@@ -980,9 +1124,8 @@ final class VimEngine {
         let deleteEnd = endOffset > startRange.location && endOffset <= buffer.length
             && buffer.character(at: endOffset - 1) == 0x0A ? endOffset - 1 : endOffset
         let deleteRange = NSRange(location: startRange.location, length: deleteEnd - startRange.location)
-        register.text = buffer.string(in: deleteRange)
-        register.isLinewise = true
-        register.syncToPasteboard()
+        writeToActiveRegister(text: buffer.string(in: deleteRange), linewise: true, asDelete: true)
+        adjustMarksForEdit(in: deleteRange, replacementLength: 0)
         buffer.replaceCharacters(in: deleteRange, with: "")
         buffer.setSelectedRange(NSRange(location: startRange.location, length: 0))
         mode = .insert
@@ -991,15 +1134,16 @@ final class VimEngine {
     // MARK: - Paste
 
     private func paste(after: Bool, in buffer: VimTextBuffer) {
-        guard !register.text.isEmpty else { return }
+        let source = activePasteRegister()
+        guard !source.text.isEmpty else { return }
 
         let pos = buffer.selectedRange().location
 
-        if register.isLinewise {
+        if source.isLinewise {
             if after {
                 let lineRange = buffer.lineRange(forOffset: pos)
                 let insertPos = lineRange.location + lineRange.length
-                var text = register.text
+                var text = source.text
                 let nsText = text as NSString
                 if nsText.length == 0 || nsText.character(at: nsText.length - 1) != 0x0A {
                     text += "\n"
@@ -1008,7 +1152,7 @@ final class VimEngine {
                 buffer.setSelectedRange(NSRange(location: insertPos, length: 0))
             } else {
                 let lineRange = buffer.lineRange(forOffset: pos)
-                var text = register.text
+                var text = source.text
                 let nsText = text as NSString
                 if nsText.length == 0 || nsText.character(at: nsText.length - 1) != 0x0A {
                     text += "\n"
@@ -1019,12 +1163,12 @@ final class VimEngine {
         } else {
             if after {
                 let insertPos = min(pos + 1, buffer.length)
-                buffer.replaceCharacters(in: NSRange(location: insertPos, length: 0), with: register.text)
-                let newPos = insertPos + (register.text as NSString).length - 1
+                buffer.replaceCharacters(in: NSRange(location: insertPos, length: 0), with: source.text)
+                let newPos = insertPos + (source.text as NSString).length - 1
                 buffer.setSelectedRange(NSRange(location: max(insertPos, newPos), length: 0))
             } else {
-                buffer.replaceCharacters(in: NSRange(location: pos, length: 0), with: register.text)
-                let newPos = pos + (register.text as NSString).length - 1
+                buffer.replaceCharacters(in: NSRange(location: pos, length: 0), with: source.text)
+                let newPos = pos + (source.text as NSString).length - 1
                 buffer.setSelectedRange(NSRange(location: max(pos, newPos), length: 0))
             }
         }
@@ -1060,22 +1204,21 @@ final class VimEngine {
 
         switch op {
         case .delete:
-            register.text = buffer.string(in: range)
-            register.isLinewise = linewise
-            register.syncToPasteboard()
+            let text = buffer.string(in: range)
+            writeToActiveRegister(text: text, linewise: linewise, asDelete: true)
             buffer.replaceCharacters(in: range, with: "")
+            adjustMarksForEdit(in: range, replacementLength: 0)
             let newPos = min(range.location, max(0, buffer.length - 1))
             buffer.setSelectedRange(NSRange(location: max(0, newPos), length: 0))
         case .yank:
-            register.text = buffer.string(in: range)
-            register.isLinewise = linewise
-            register.syncToPasteboard()
+            let text = buffer.string(in: range)
+            writeToActiveRegister(text: text, linewise: linewise, asDelete: false)
             buffer.setSelectedRange(NSRange(location: range.location, length: 0))
         case .change:
-            register.text = buffer.string(in: range)
-            register.isLinewise = linewise
-            register.syncToPasteboard()
+            let text = buffer.string(in: range)
+            writeToActiveRegister(text: text, linewise: linewise, asDelete: true)
             buffer.replaceCharacters(in: range, with: "")
+            adjustMarksForEdit(in: range, replacementLength: 0)
             buffer.setSelectedRange(NSRange(location: range.location, length: 0))
             mode = .insert
         case .lowercase:
@@ -1247,9 +1390,11 @@ final class VimEngine {
             pendingOperator = nil
             operatorCount = 0
         } else {
+            let origin = buffer.selectedRange().location
             let lineStart = buffer.offset(forLine: targetLine, column: 0)
             let target = firstNonBlankOffset(from: lineStart, in: buffer)
             buffer.setSelectedRange(NSRange(location: target, length: 0))
+            lastJumpOrigin = origin
         }
         goalColumn = nil
         return true
@@ -1311,9 +1456,9 @@ final class VimEngine {
         let deleteCount = min(count, max(0, contentEnd - pos))
         guard deleteCount > 0 else { return }
         let range = NSRange(location: pos, length: deleteCount)
-        register.text = buffer.string(in: range)
-        register.isLinewise = false
-        register.syncToPasteboard()
+        writeToActiveRegister(text: buffer.string(in: range), linewise: false, asDelete: true)
+        adjustMarksForEdit(in: range, replacementLength: 0)
+        noteEdit(at: pos, in: buffer)
         buffer.replaceCharacters(in: range, with: "")
         let newContentEnd = contentEnd - deleteCount
         if pos >= newContentEnd && newContentEnd > lineRange.location {
@@ -1567,6 +1712,198 @@ final class VimEngine {
             guard performSingleJoin(withSpace: withSpace, in: buffer) else { break }
         }
         mode = .normal
+    }
+
+    // MARK: - Edit Tracking (for U line undo)
+
+    private func noteEdit(at offset: Int, in buffer: VimTextBuffer) {
+        let line = buffer.lineAndColumn(forOffset: offset).line
+        if let last = lastEditedLine, last == line {
+            editsOnCurrentLine += 1
+        } else {
+            editsOnCurrentLine = 1
+            lastEditedLine = line
+        }
+    }
+
+    // MARK: - Register Routing
+
+    /// Write the captured text to the appropriate register(s):
+    /// - The unnamed register (always)
+    /// - Numbered "0 (for yank) or "1 with rotation (for delete)
+    /// - The user-selected named register if `"a`..`"z` was active
+    /// - Lowercase named registers overwrite; uppercase named registers append
+    private func writeToActiveRegister(text: String, linewise: Bool, asDelete: Bool) {
+        let entry = VimRegister(text: text, isLinewise: linewise)
+        register = entry
+        register.syncToPasteboard()
+        if asDelete {
+            for i in stride(from: 9, to: 1, by: -1) {
+                numberedRegisters[i] = numberedRegisters[i - 1]
+            }
+            numberedRegisters[1] = entry
+        } else {
+            numberedRegisters[0] = entry
+        }
+        if let name = selectedRegister, name != "_" {
+            let isAppend = name.isUppercase
+            let key: Character = isAppend ? Character(name.lowercased()) : name
+            if isAppend, let existing = namedRegisters[key], !existing.text.isEmpty {
+                let merged = existing.text + text
+                namedRegisters[key] = VimRegister(text: merged, isLinewise: existing.isLinewise || linewise)
+            } else {
+                namedRegisters[key] = entry
+            }
+        }
+        selectedRegister = nil
+    }
+
+    /// Returns the register that p/P should read from — falls back to the unnamed register.
+    private func activePasteRegister() -> VimRegister {
+        defer { selectedRegister = nil }
+        if let name = selectedRegister {
+            if let digit = name.wholeNumberValue, digit >= 0 && digit < 10 {
+                return numberedRegisters[digit]
+            }
+            let key = name.isUppercase ? Character(name.lowercased()) : name
+            return namedRegisters[key] ?? VimRegister()
+        }
+        return register
+    }
+
+    // MARK: - Marks
+
+    private func jumpToMark(_ name: Character, exact: Bool, in buffer: VimTextBuffer) {
+        if name == "'" || name == "`" {
+            if let origin = lastJumpOrigin {
+                let originPos = buffer.selectedRange().location
+                let clamped = min(max(0, origin), buffer.length)
+                buffer.setSelectedRange(NSRange(location: clamped, length: 0))
+                lastJumpOrigin = originPos
+            }
+            return
+        }
+        guard let offset = marks[name] else { return }
+        let originPos = buffer.selectedRange().location
+        let clamped = min(max(0, offset), buffer.length)
+        if exact {
+            buffer.setSelectedRange(NSRange(location: clamped, length: 0))
+        } else {
+            let lineStart = buffer.lineRange(forOffset: clamped).location
+            let target = firstNonBlankOffset(from: lineStart, in: buffer)
+            buffer.setSelectedRange(NSRange(location: target, length: 0))
+        }
+        lastJumpOrigin = originPos
+    }
+
+    /// Adjust mark offsets after an edit that inserts or deletes text in the buffer.
+    private func adjustMarksForEdit(in editRange: NSRange, replacementLength: Int) {
+        let delta = replacementLength - editRange.length
+        guard delta != 0 else { return }
+        for (key, offset) in marks {
+            if offset >= editRange.location + editRange.length {
+                marks[key] = offset + delta
+            } else if offset >= editRange.location {
+                marks[key] = editRange.location
+            }
+        }
+    }
+
+    // MARK: - Visual Selection Operations
+
+    private func swapVisualAnchorAndCursor(in buffer: VimTextBuffer, linewise: Bool) {
+        let sel = buffer.selectedRange()
+        let cursor = visualCursorEnd(buffer: buffer)
+        let otherEnd = cursor == sel.location
+            ? sel.location + max(0, sel.length - 1)
+            : sel.location
+        visualAnchor = cursor
+        cursorOffset = otherEnd
+        updateVisualSelection(cursorPos: otherEnd, linewise: linewise, in: buffer)
+    }
+
+    private func applyCaseToVisualSelection(_ op: VimOperator, linewise: Bool, in buffer: VimTextBuffer) {
+        let sel = buffer.selectedRange()
+        guard sel.length > 0 else { mode = .normal; return }
+        let original = buffer.string(in: sel)
+        let transformed: String
+        switch op {
+        case .lowercase: transformed = original.lowercased()
+        case .uppercase: transformed = original.uppercased()
+        case .toggleCase: transformed = toggleCaseTransform(original)
+        default: return
+        }
+        buffer.replaceCharacters(in: sel, with: transformed)
+        buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
+        mode = .normal
+    }
+
+    private func replaceVisualSelectionWithChar(_ char: Character, in buffer: VimTextBuffer) {
+        let sel = buffer.selectedRange()
+        guard sel.length > 0 else { mode = .normal; return }
+        var replacement = ""
+        replacement.reserveCapacity(sel.length)
+        for i in 0..<sel.length {
+            let original = buffer.character(at: sel.location + i)
+            if original == 0x0A {
+                replacement.append("\n")
+            } else {
+                replacement.append(char)
+            }
+        }
+        buffer.replaceCharacters(in: sel, with: replacement)
+        buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
+        mode = .normal
+    }
+
+    private func pasteOverVisualSelection(in buffer: VimTextBuffer) {
+        let sel = buffer.selectedRange()
+        let text = register.text
+        guard sel.length > 0 else { mode = .normal; return }
+        buffer.replaceCharacters(in: sel, with: text)
+        let newPos = sel.location + (text as NSString).length - 1
+        buffer.setSelectedRange(NSRange(location: max(sel.location, newPos), length: 0))
+        mode = .normal
+    }
+
+    // MARK: - . Repeat
+
+    private func recordDot(_ kind: VimDotKind) {
+        lastDotKind = kind
+    }
+
+    private func replayLastDot(count: Int, in buffer: VimTextBuffer) {
+        guard let kind = lastDotKind else { return }
+        for _ in 0..<count {
+            switch kind {
+            case .deleteCharForward(let original):
+                deleteCharUnderCursor(original, in: buffer)
+            case .deleteCharBackward(let original):
+                deleteCharBeforeCursor(original, in: buffer)
+            case .operatorWithMotion(let op, let motion, let shift, let original):
+                operatorCount = 0
+                countPrefix = original
+                pendingOperator = op
+                _ = processNormal(motion, shift: shift)
+            case .operatorDoubled(let op, let original):
+                switch op {
+                case .delete: deleteLine(original, in: buffer)
+                case .yank: yankLine(original, in: buffer)
+                case .change: changeLine(original, in: buffer)
+                default: break
+                }
+            case .toggleCase(let original):
+                toggleCaseUnderCursor(original, in: buffer)
+            case .joinLines(let withSpace, let original):
+                joinLines(original, withSpace: withSpace, in: buffer)
+            case .replaceChar(let ch, let original):
+                let req = VimFindCharRequest(forward: true, till: false)
+                pendingReplaceChar = true
+                _ = executeReplaceChar(ch, in: buffer)
+                _ = req
+                _ = original
+            }
+        }
     }
 
     /// Performs one join (current line + next). Returns false if no next line.
