@@ -347,8 +347,13 @@ struct TerminalSettings: Codable, Equatable {
     var bellEnabled: Bool = true
     var themeName: String = ""
 
-    /// Per-database CLI path overrides (empty = auto-detect)
+    /// Per-database CLI path overrides (empty = auto-detect).
+    /// Keys are `DatabaseType.rawValue` for interactive CLIs, plus
+    /// `TerminalSettings.pgDumpCliPathKey` for the pg_dump backup binary.
     var cliPaths: [String: String] = [:]
+
+    /// Key under `cliPaths` for the pg_dump backup binary path.
+    static let pgDumpCliPathKey = "pg_dump"
 
     static let `default` = TerminalSettings()
 

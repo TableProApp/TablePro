@@ -299,6 +299,11 @@ struct AppMenuCommands: Commands {
                     || actions?.isReadOnly ?? false
                     || !(actions.map { PluginManager.shared.supportsImport(for: $0.currentDatabaseType) } ?? true)
             )
+
+            Button(String(localized: "Backup...")) {
+                actions?.backupDatabase()
+            }
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsBackup ?? false))
         }
 
         // Query menu
