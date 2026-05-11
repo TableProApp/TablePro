@@ -198,6 +198,13 @@ struct MainContentView: View {
                 connection: connection,
                 initialFileURL: coordinator.importFileURL
             )
+        case .backupDatabase:
+            BackupDatabaseFlow(
+                isPresented: dismissBinding,
+                connection: connectionWithCurrentDatabase,
+                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.currentDatabase
+                    ?? connection.database
+            )
         case .maintenance(let operation, let tableName):
             MaintenanceSheet(
                 operation: operation,

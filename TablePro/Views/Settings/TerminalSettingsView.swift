@@ -126,6 +126,7 @@ struct TerminalSettingsView: View {
                 ForEach(Self.terminalDatabaseTypes, id: \.rawValue) { dbType in
                     cliPathRow(for: dbType)
                 }
+                pgDumpPathRow
             }
         } footer: {
             Text("Override auto-detected CLI paths per database type.")
@@ -147,8 +148,20 @@ struct TerminalSettingsView: View {
         TextField(dbType.displayName, text: binding, prompt: Text(resolved))
     }
 
+    @ViewBuilder
+    private var pgDumpPathRow: some View {
+        let key = TerminalSettings.pgDumpCliPathKey
+        let binding = Binding<String>(
+            get: { settings.cliPaths[key] ?? "" },
+            set: { settings.cliPaths[key] = $0.isEmpty ? nil : $0 }
+        )
+        let resolved = resolvedPaths[key] ?? "pg_dump"
+        TextField("pg_dump", text: binding, prompt: Text(resolved))
+    }
+
     private func resolveAllCliPaths() async {
         let dbTypes = Self.terminalDatabaseTypes
+        let pgDumpKey = TerminalSettings.pgDumpCliPathKey
         let results = await withTaskGroup(of: (String, String).self) { group in
             for dbType in dbTypes {
                 group.addTask {
@@ -158,6 +171,12 @@ struct TerminalSettingsView: View {
                     }.value
                     return (dbType.rawValue, resolved ?? name)
                 }
+            }
+            group.addTask {
+                let resolved = await Task.detached(priority: .utility) {
+                    CLICommandResolver.findExecutable("pg_dump")
+                }.value
+                return (pgDumpKey, resolved ?? "pg_dump")
             }
             var paths: [String: String] = [:]
             for await (key, value) in group {

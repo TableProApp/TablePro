@@ -688,6 +688,15 @@ final class MainContentCommandActions {
         coordinator?.openImportDialog()
     }
 
+    func backupDatabase() {
+        coordinator?.activeSheet = .backupDatabase
+    }
+
+    /// Backups currently ship for PostgreSQL and Redshift (both use pg_dump).
+    var supportsBackup: Bool {
+        connection.type == .postgresql || connection.type == .redshift
+    }
+
     func saveAsFavorite() {
         coordinator?.saveCurrentQueryAsFavorite()
     }
