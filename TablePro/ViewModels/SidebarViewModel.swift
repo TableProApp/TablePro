@@ -17,22 +17,26 @@ final class SidebarViewModel {
 
     var searchText = ""
     var isTablesExpanded: Bool = {
-        let key = "sidebar.isTablesExpanded"
+        let key = SidebarPersistenceKey.isTablesExpanded
         if UserDefaults.standard.object(forKey: key) != nil {
             return UserDefaults.standard.bool(forKey: key)
         }
         return true
     }() {
-        didSet { UserDefaults.standard.set(isTablesExpanded, forKey: "sidebar.isTablesExpanded") }
+        didSet {
+            UserDefaults.standard.set(isTablesExpanded, forKey: SidebarPersistenceKey.isTablesExpanded)
+        }
     }
     var isRedisKeysExpanded: Bool = {
-        let key = "sidebar.isRedisKeysExpanded"
+        let key = SidebarPersistenceKey.isRedisKeysExpanded
         if UserDefaults.standard.object(forKey: key) != nil {
             return UserDefaults.standard.bool(forKey: key)
         }
         return true
     }() {
-        didSet { UserDefaults.standard.set(isRedisKeysExpanded, forKey: "sidebar.isRedisKeysExpanded") }
+        didSet {
+            UserDefaults.standard.set(isRedisKeysExpanded, forKey: SidebarPersistenceKey.isRedisKeysExpanded)
+        }
     }
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
     var showOperationDialog = false
