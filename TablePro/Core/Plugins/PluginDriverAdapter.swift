@@ -163,11 +163,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         return pluginTables.map { table in
             let tableType: TableInfo.TableType
             switch table.type.lowercased() {
-            case "table":
+            case "table", "base table", "prefix":
                 tableType = .table
             case "view":
                 tableType = .view
-            case "system table":
+            case "system table", "system base table", "system view":
                 tableType = .systemTable
             default:
                 Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")

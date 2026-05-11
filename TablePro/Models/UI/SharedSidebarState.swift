@@ -24,7 +24,7 @@ final class SharedSidebarState {
         didSet {
             UserDefaults.standard.set(
                 selectedSidebarTab.rawValue,
-                forKey: "sidebar.selectedTab.\(connectionId.uuidString)"
+                forKey: SidebarPersistenceKey.selectedTab(connectionId: connectionId)
             )
         }
     }
@@ -33,7 +33,7 @@ final class SharedSidebarState {
 
     private init(connectionId: UUID) {
         self.connectionId = connectionId
-        let key = "sidebar.selectedTab.\(connectionId.uuidString)"
+        let key = SidebarPersistenceKey.selectedTab(connectionId: connectionId)
         if let raw = UserDefaults.standard.string(forKey: key),
            let tab = SidebarTab(rawValue: raw) {
             self.selectedSidebarTab = tab

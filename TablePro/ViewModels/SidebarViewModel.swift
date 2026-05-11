@@ -15,49 +15,29 @@ import SwiftUI
 final class SidebarViewModel {
     // MARK: - Published State
 
-    var searchText = ""
+    var searchText = "" {
+        didSet { invalidateFilteredTablesCache() }
+    }
     var isTablesExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(isTablesExpanded, forKey: Self.tablesExpandedKey(connectionId: connectionId))
+            UserDefaults.standard.set(
+                isTablesExpanded,
+                forKey: SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
+            )
         }
     }
     var isRedisKeysExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(isRedisKeysExpanded, forKey: Self.redisKeysExpandedKey(connectionId: connectionId))
+            UserDefaults.standard.set(
+                isRedisKeysExpanded,
+                forKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId)
+            )
         }
     }
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
     var showOperationDialog = false
     var pendingOperationType: TableOperationType?
     var pendingOperationTables: [String] = []
-
-    private static let legacyTablesExpandedKey = "sidebar.isTablesExpanded"
-    private static let legacyRedisKeysExpandedKey = "sidebar.isRedisKeysExpanded"
-
-    private static func tablesExpandedKey(connectionId: UUID) -> String {
-        "sidebar.\(connectionId.uuidString).tables.expanded"
-    }
-
-    private static func redisKeysExpandedKey(connectionId: UUID) -> String {
-        "sidebar.\(connectionId.uuidString).redisKeys.expanded"
-    }
-
-    private static func loadExpansion(
-        perConnectionKey: String,
-        legacyKey: String,
-        defaultValue: Bool
-    ) -> Bool {
-        let defaults = UserDefaults.standard
-        if defaults.object(forKey: perConnectionKey) != nil {
-            return defaults.bool(forKey: perConnectionKey)
-        }
-        if defaults.object(forKey: legacyKey) != nil {
-            let seeded = defaults.bool(forKey: legacyKey)
-            defaults.set(seeded, forKey: perConnectionKey)
-            return seeded
-        }
-        return defaultValue
-    }
 
     // MARK: - Binding Storage
 
@@ -110,15 +90,32 @@ final class SidebarViewModel {
         self.databaseType = databaseType
         self.connectionId = connectionId
         self.isTablesExpanded = Self.loadExpansion(
-            perConnectionKey: Self.tablesExpandedKey(connectionId: connectionId),
-            legacyKey: Self.legacyTablesExpandedKey,
+            perConnectionKey: SidebarPersistenceKey.tablesExpanded(connectionId: connectionId),
+            legacyKey: SidebarPersistenceKey.legacyTablesExpanded,
             defaultValue: true
         )
         self.isRedisKeysExpanded = Self.loadExpansion(
-            perConnectionKey: Self.redisKeysExpandedKey(connectionId: connectionId),
-            legacyKey: Self.legacyRedisKeysExpandedKey,
+            perConnectionKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId),
+            legacyKey: SidebarPersistenceKey.legacyRedisKeysExpanded,
             defaultValue: true
         )
+    }
+
+    private static func loadExpansion(
+        perConnectionKey: String,
+        legacyKey: String,
+        defaultValue: Bool
+    ) -> Bool {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: perConnectionKey) != nil {
+            return defaults.bool(forKey: perConnectionKey)
+        }
+        if defaults.object(forKey: legacyKey) != nil {
+            let seeded = defaults.bool(forKey: legacyKey)
+            defaults.set(seeded, forKey: perConnectionKey)
+            return seeded
+        }
+        return defaultValue
     }
 
     // MARK: - Batch Operations
@@ -127,9 +124,6 @@ final class SidebarViewModel {
         let tablesToToggle = tableNames ?? (selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name }))
         guard !tablesToToggle.isEmpty else { return }
 
-        // Check if all tables are already pending truncate - if so, remove them
-        // Cancellation doesn't require confirmation since it's a safe operation that
-        // simply removes the pending state. The stored options are intentionally discarded.
         let allAlreadyPending = tablesToToggle.allSatisfy { pendingTruncates.contains($0) }
         if allAlreadyPending {
             var updated = pendingTruncates
@@ -139,7 +133,6 @@ final class SidebarViewModel {
             }
             pendingTruncates = updated
         } else {
-            // Show dialog to confirm operation
             pendingOperationType = .truncate
             pendingOperationTables = tablesToToggle
             showOperationDialog = true
@@ -150,9 +143,6 @@ final class SidebarViewModel {
         let tablesToToggle = tableNames ?? (selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name }))
         guard !tablesToToggle.isEmpty else { return }
 
-        // Check if all tables are already pending delete - if so, remove them
-        // Cancellation doesn't require confirmation since it's a safe operation that
-        // simply removes the pending state. The stored options are intentionally discarded.
         let allAlreadyPending = tablesToToggle.allSatisfy { pendingDeletes.contains($0) }
         if allAlreadyPending {
             var updated = pendingDeletes
@@ -162,7 +152,6 @@ final class SidebarViewModel {
             }
             pendingDeletes = updated
         } else {
-            // Show dialog to confirm operation
             pendingOperationType = .drop
             pendingOperationTables = tablesToToggle
             showOperationDialog = true
@@ -177,7 +166,6 @@ final class SidebarViewModel {
         var updatedOptions = tableOperationOptions
 
         for tableName in pendingOperationTables {
-            // Remove from opposite set if present
             if operationType == .truncate {
                 updatedDeletes.remove(tableName)
                 updatedTruncates.insert(tableName)
@@ -185,8 +173,6 @@ final class SidebarViewModel {
                 updatedTruncates.remove(tableName)
                 updatedDeletes.insert(tableName)
             }
-
-            // Store options for this table
             updatedOptions[tableName] = options
         }
 
@@ -194,7 +180,6 @@ final class SidebarViewModel {
         pendingDeletes = updatedDeletes
         tableOperationOptions = updatedOptions
 
-        // Reset dialog state
         pendingOperationType = nil
         pendingOperationTables = []
     }
@@ -205,5 +190,34 @@ final class SidebarViewModel {
         guard !selectedTables.isEmpty else { return }
         let names = selectedTables.map { $0.name }.sorted()
         ClipboardService.shared.writeText(names.joined(separator: ","))
+    }
+
+    // MARK: - Filtering
+
+    @ObservationIgnored private var cachedFilteredTables: [TableInfo]?
+    @ObservationIgnored private var cachedFilterInputs: (count: Int, hash: Int, query: String)?
+
+    func filteredTables(from tables: [TableInfo]) -> [TableInfo] {
+        let query = searchText
+        let fingerprint = (count: tables.count, hash: tables.hashValue, query: query)
+        if let cache = cachedFilteredTables,
+           let inputs = cachedFilterInputs,
+           inputs == fingerprint {
+            return cache
+        }
+        let result: [TableInfo]
+        if query.isEmpty {
+            result = tables
+        } else {
+            result = tables.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        }
+        cachedFilteredTables = result
+        cachedFilterInputs = fingerprint
+        return result
+    }
+
+    private func invalidateFilteredTablesCache() {
+        cachedFilteredTables = nil
+        cachedFilterInputs = nil
     }
 }
