@@ -10,6 +10,7 @@
 import Foundation
 import Observation
 import os
+import TableProPluginKit
 
 // MARK: - Public Types
 
@@ -432,12 +433,8 @@ extension PostgresDumpService {
         let query = "SELECT pg_database_size('\(escaped)')"
         do {
             let result = try await driver.execute(query: query)
-            switch result.rows.first?.first {
-            case .text(let value):
-                return Int64(value)
-            default:
-                return nil
-            }
+            guard let text = result.rows.first?.first?.asText else { return nil }
+            return Int64(text)
         } catch {
             return nil
         }
