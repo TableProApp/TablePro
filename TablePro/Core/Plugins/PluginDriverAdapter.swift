@@ -167,6 +167,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
                 tableType = .table
             case "view":
                 tableType = .view
+            case "materialized view", "materialized_view":
+                tableType = .materializedView
+            case "foreign table", "foreign_table":
+                tableType = .foreignTable
             case "system table", "system base table", "system view":
                 tableType = .systemTable
             default:
