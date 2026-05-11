@@ -394,17 +394,17 @@ struct DatabaseSwitcherSheet: View {
                 ? String(localized: "Open Schema")
                 : String(localized: "Open Database")
         case .backup:
-            return String(localized: "Back Up Database")
+            return String(localized: "Backup Dump")
         case .restore:
-            return String(localized: "Restore Database")
+            return String(localized: "Restore Dump")
         }
     }
 
     private var primaryButtonLabel: String {
         switch mode {
         case .switch: return String(localized: "Open")
-        case .backup: return String(localized: "Back Up\u{2026}")
-        case .restore: return String(localized: "Restore\u{2026}")
+        case .backup: return String(localized: "Backup Dump\u{2026}")
+        case .restore: return String(localized: "Restore Dump\u{2026}")
         }
     }
 

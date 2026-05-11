@@ -74,22 +74,22 @@ struct BackupProgressSheet: View {
 
     private var titleString: String {
         switch kind {
-        case .backup: return String(localized: "Backing Up Database")
-        case .restore: return String(localized: "Restoring Database")
+        case .backup: return String(localized: "Creating Backup Dump")
+        case .restore: return String(localized: "Restoring Dump")
         }
     }
 
     private var cancelAlertTitle: String {
         switch kind {
-        case .backup: return String(localized: "Cancel Backup?")
-        case .restore: return String(localized: "Cancel Restore?")
+        case .backup: return String(localized: "Cancel Backup Dump?")
+        case .restore: return String(localized: "Cancel Restore Dump?")
         }
     }
 
     private var cancelAlertConfirmLabel: String {
         switch kind {
-        case .backup: return String(localized: "Cancel Backup")
-        case .restore: return String(localized: "Cancel Restore")
+        case .backup: return String(localized: "Cancel Backup Dump")
+        case .restore: return String(localized: "Cancel Restore Dump")
         }
     }
 

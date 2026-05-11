@@ -87,18 +87,18 @@ struct BackupResultSheet: View {
     private var title: String {
         switch outcome {
         case .backupSuccess:
-            return String(localized: "Backup Complete")
+            return String(localized: "Backup Dump Complete")
         case .restoreSuccess:
-            return String(localized: "Restore Complete")
+            return String(localized: "Restore Dump Complete")
         case .failure:
             switch kind {
-            case .backup: return String(localized: "Backup Failed")
-            case .restore: return String(localized: "Restore Failed")
+            case .backup: return String(localized: "Backup Dump Failed")
+            case .restore: return String(localized: "Restore Dump Failed")
             }
         case .cancelled:
             switch kind {
-            case .backup: return String(localized: "Backup Cancelled")
-            case .restore: return String(localized: "Restore Cancelled")
+            case .backup: return String(localized: "Backup Dump Cancelled")
+            case .restore: return String(localized: "Restore Dump Cancelled")
             }
         }
     }

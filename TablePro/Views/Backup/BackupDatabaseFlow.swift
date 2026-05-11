@@ -133,6 +133,9 @@ struct BackupDatabaseFlow: View {
             return
         }
 
+        // Show the progress sheet immediately so the user sees feedback while
+        // pg_dump is being located and started.
+        phase = .running(database: database)
         do {
             try await service.start(connection: connection, database: database, destination: url)
         } catch {

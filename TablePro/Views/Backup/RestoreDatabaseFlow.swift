@@ -125,6 +125,9 @@ struct RestoreDatabaseFlow: View {
     }
 
     private func startRestore(database: String) async {
+        // Show the progress sheet immediately so the user sees feedback while
+        // pg_restore is being located and started.
+        phase = .running(database: database)
         do {
             try await service.start(connection: connection, database: database, source: sourceURL)
         } catch {
