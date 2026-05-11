@@ -17,8 +17,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
     private let displayCache: NSCache<RowIDKey, RowDisplayBox> = {
         let cache = NSCache<RowIDKey, RowDisplayBox>()
-        cache.countLimit = 5_000
-        cache.totalCostLimit = 32 * 1024 * 1024
+        cache.countLimit = 50_000
+        cache.totalCostLimit = 64 * 1_024 * 1_024
         cache.name = "TablePro.DataGrid.displayCache"
         return cache
     }()
@@ -114,6 +114,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var isEscapeCancelling = false
     var isCommittingCellEdit = false
     var layoutPersistTask: Task<Void, Never>?
+    var lastUpdateSnapshot: DataGridUpdateSnapshot?
+    private var prewarmTask: Task<Void, Never>?
+    private var prewarmResumeTask: Task<Void, Never>?
+    private var scrollObservers: [NSObjectProtocol] = []
+    private static let prewarmFrameBudget: Duration = .milliseconds(2)
+    private static let prewarmResumeDelay: Duration = .milliseconds(300)
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
     let visualIndex = RowVisualIndex()
@@ -182,12 +188,16 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         themeCancellable = AppEvents.shared.themeChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                guard let self, let tableView = self.tableView else { return }
-                Self.updateVisibleCellFonts(tableView: tableView)
+                self?.reloadVisibleRowsAndStates()
             }
     }
 
     func releaseData() {
+        prewarmTask?.cancel()
+        prewarmTask = nil
+        prewarmResumeTask?.cancel()
+        prewarmResumeTask = nil
+        detachScrollObservers()
         overlayEditor?.dismiss(commit: false)
         settingsCancellable?.cancel()
         settingsCancellable = nil
@@ -199,6 +209,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         cachedRowCount = 0
         cachedColumnCount = 0
         sortedIDs = nil
+        lastUpdateSnapshot = nil
         columnPool.detachFromTableView()
         if let tableView {
             while let col = tableView.tableColumns.last {
@@ -237,10 +248,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         invalidateAllDisplayCaches()
         updateCache()
         tableView.reloadData()
+        startBackgroundPrewarm()
     }
 
     func displayRow(at displayIndex: Int) -> Row? {
-        let tableRows = tableRowsProvider()
+        displayRow(at: displayIndex, in: tableRowsProvider())
+    }
+
+    func displayRow(at displayIndex: Int, in tableRows: TableRows) -> Row? {
         if let sorted = sortedIDs {
             guard displayIndex >= 0, displayIndex < sorted.count else { return nil }
             return tableRows.row(withID: sorted[displayIndex])
@@ -315,26 +330,106 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let displayCount = sortedIDs?.count ?? tableRows.count
         let count = min(rowCount, displayCount)
         guard count > 0 else { return }
-        let columnCount = tableRows.columns.count
         for displayIndex in 0..<count {
-            guard let row = displayRow(at: displayIndex) else { continue }
-            let key = RowIDKey(row.id)
-            guard displayCache.object(forKey: key) == nil else { continue }
-            var values = ContiguousArray<String?>()
-            values.reserveCapacity(columnCount)
-            for _ in 0..<columnCount { values.append(nil) }
-            for col in 0..<min(row.values.count, columnCount) {
-                let columnType = col < tableRows.columnTypes.count ? tableRows.columnTypes[col] : nil
-                let format = col < columnDisplayFormats.count ? columnDisplayFormats[col] : nil
-                values[col] = CellDisplayFormatter.format(
-                    row.values[col],
-                    columnType: columnType,
-                    displayFormat: format
-                ) ?? row.values[col].asText
-            }
-            let box = RowDisplayBox(values)
-            displayCache.setObject(box, forKey: key, cost: displayCacheCost(values))
+            cacheDisplayRow(at: displayIndex, in: tableRows)
         }
+    }
+
+    /// Fills displayCache off the scroll hot path so viewFor:row: stays a cache hit.
+    func startBackgroundPrewarm() {
+        prewarmResumeTask?.cancel()
+        prewarmResumeTask = nil
+        prewarmTask?.cancel()
+        prewarmTask = Task { @MainActor [weak self] in
+            await self?.runBackgroundPrewarm()
+        }
+    }
+
+    /// Pauses prewarm during live scroll; resumes after a debounce so rapid scrolls do not restart it repeatedly.
+    func attachScrollObservers(scrollView: NSScrollView) {
+        detachScrollObservers()
+        let start = NotificationCenter.default.addObserver(
+            forName: NSScrollView.willStartLiveScrollNotification,
+            object: scrollView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.pausePrewarmForScroll()
+            }
+        }
+        let end = NotificationCenter.default.addObserver(
+            forName: NSScrollView.didEndLiveScrollNotification,
+            object: scrollView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.schedulePrewarmResume()
+            }
+        }
+        scrollObservers = [start, end]
+    }
+
+    private func detachScrollObservers() {
+        for observer in scrollObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        scrollObservers.removeAll()
+    }
+
+    private func pausePrewarmForScroll() {
+        prewarmResumeTask?.cancel()
+        prewarmResumeTask = nil
+        prewarmTask?.cancel()
+        prewarmTask = nil
+    }
+
+    private func schedulePrewarmResume() {
+        prewarmResumeTask?.cancel()
+        prewarmResumeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.prewarmResumeDelay)
+            guard !Task.isCancelled, let self else { return }
+            self.startBackgroundPrewarm()
+        }
+    }
+
+    private func runBackgroundPrewarm() async {
+        var nextIndex = 0
+        while !Task.isCancelled {
+            let tableRows = tableRowsProvider()
+            let displayCount = sortedIDs?.count ?? tableRows.count
+            guard nextIndex < displayCount else { return }
+
+            let deadline = ContinuousClock.now.advanced(by: Self.prewarmFrameBudget)
+            while nextIndex < displayCount {
+                if Task.isCancelled { return }
+                cacheDisplayRow(at: nextIndex, in: tableRows)
+                nextIndex += 1
+                if ContinuousClock.now >= deadline { break }
+            }
+            await Task.yield()
+        }
+    }
+
+    private func cacheDisplayRow(at displayIndex: Int, in tableRows: TableRows) {
+        guard let row = displayRow(at: displayIndex, in: tableRows) else { return }
+        let key = RowIDKey(row.id)
+        guard displayCache.object(forKey: key) == nil else { return }
+
+        let columnCount = tableRows.columns.count
+        var values = ContiguousArray<String?>()
+        values.reserveCapacity(columnCount)
+        for _ in 0..<columnCount { values.append(nil) }
+        for col in 0..<min(row.values.count, columnCount) {
+            let columnType = col < tableRows.columnTypes.count ? tableRows.columnTypes[col] : nil
+            let format = col < columnDisplayFormats.count ? columnDisplayFormats[col] : nil
+            values[col] = CellDisplayFormatter.format(
+                row.values[col],
+                columnType: columnType,
+                displayFormat: format
+            ) ?? row.values[col].asText
+        }
+        let box = RowDisplayBox(values)
+        displayCache.setObject(box, forKey: key, cost: displayCacheCost(values))
     }
 
     private func displayCacheCost(_ values: ContiguousArray<String?>) -> Int {
@@ -519,6 +614,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     @discardableResult
     func rebuildColumnMetadataCache(from tableRows: TableRows) -> Bool {
+        let columns = tableRows.columns
+        let nextSchema = ColumnIdentitySchema(columns: columns)
+        let schemaChanged = nextSchema != identitySchema
+
+        rebuildKindSets(from: tableRows)
+
+        guard schemaChanged else { return false }
+        identitySchema = nextSchema
+        displayCache.removeAllObjects()
+        return true
+    }
+
+    private func rebuildKindSets(from tableRows: TableRows) {
         var enumSet = Set<Int>()
         var fkSet = Set<Int>()
         let columns = tableRows.columns
@@ -540,40 +648,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
         enumOrSetColumns = enumSet
         fkColumns = fkSet
-
-        let nextSchema = ColumnIdentitySchema(columns: columns)
-        guard nextSchema != identitySchema else { return false }
-        identitySchema = nextSchema
-        displayCache.removeAllObjects()
-        return true
-    }
-
-    // MARK: - Font Updates
-
-    @MainActor
-    static func updateVisibleCellFonts(tableView: NSTableView) {
-        let visibleRect = tableView.visibleRect
-        let visibleRange = tableView.rows(in: visibleRect)
-        guard visibleRange.length > 0 else { return }
-
-        let columnCount = tableView.numberOfColumns
-        for row in visibleRange.location..<(visibleRange.location + visibleRange.length) {
-            for col in 0..<columnCount {
-                guard let cellView = tableView.view(atColumn: col, row: row, makeIfNecessary: false) as? NSTableCellView,
-                      let textField = cellView.textField else { continue }
-
-                switch textField.tag {
-                case DataGridFontVariant.rowNumber:
-                    textField.font = ThemeEngine.shared.dataGridFonts.rowNumber
-                case DataGridFontVariant.italic:
-                    textField.font = ThemeEngine.shared.dataGridFonts.italic
-                case DataGridFontVariant.medium:
-                    textField.font = ThemeEngine.shared.dataGridFonts.medium
-                default:
-                    textField.font = ThemeEngine.shared.dataGridFonts.regular
-                }
-            }
-        }
     }
 
     // MARK: - Row Visual State

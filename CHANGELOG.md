@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Data grid: skip the structural update pipeline when the inputs to `updateNSView` are unchanged, and pull binding and selection synchronization out so they always run cheaply
+- Data grid: theme changes now reload visible rows so the direct-draw cell picks up the new palette; the legacy `updateVisibleCellFonts` path is removed
+- Data grid: background prewarm fills the display cache in frame-budgeted batches after each structural reload, so scrolling stays a cache hit instead of running the date formatter on the main thread
+- Data grid: display cache bumped to 50,000 rows / 64 MB and date format cache to 100,000 entries to cover larger result sets without eviction churn
+- Data grid: per-cell accessibility label now resolves lazily through `accessibilityLabel()` so VoiceOver-only work no longer runs in the scroll hot path
+- Data grid: cell text rendering switched from `NSAttributedString.draw(with:options:)` to `CTLineDraw`, dropping the truncation and justification engines from the scroll redraw path
+- Data grid: cell accessory icons (chevron, foreign-key arrow) are pre-resolved to `CGImage` at startup and drawn via `CGContext.draw(_:in:)`, skipping per-draw representation selection and hint validation
+- Data grid: row view pushes emphasized-selection state directly into cells via `didAddSubview` and selection setters, so cells no longer walk the superview chain in `viewWillDraw`
+- Data grid: background prewarm pauses while the user is actively scrolling and resumes 300 ms after `didEndLiveScroll`, and the per-batch frame budget drops from 8 ms to 2 ms so prewarm work cannot crowd the scroll frame
 - iOS: drop the centered navigation title on the four connection tabs (Tables, Query, History, Info). The bottom tab bar already labels the active tab, so the centered title was redundant; removing it frees room for the database picker, schema picker, and edit button on iPhone widths.
 - iOS: Vietnamese localization completed for the iOS strings catalog (312/312 keys)
 - Internal: GitHub Actions workflow `ios-tests.yml` runs the iOS unit tests on every PR and main push that touches mobile code or shared packages

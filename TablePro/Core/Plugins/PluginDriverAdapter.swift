@@ -161,11 +161,17 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     func fetchTables() async throws -> [TableInfo] {
         let pluginTables = try await pluginDriver.fetchTables(schema: pluginDriver.currentSchema)
         return pluginTables.map { table in
-            let tableType: TableInfo.TableType = switch table.type.lowercased() {
-            case "table", "base table", "prefix": .table
-            case "view": .view
-            case "system table", "system base table", "system view": .systemTable
-            default: .table
+            let tableType: TableInfo.TableType
+            switch table.type.lowercased() {
+            case "table", "base table", "prefix":
+                tableType = .table
+            case "view":
+                tableType = .view
+            case "system table", "system base table", "system view":
+                tableType = .systemTable
+            default:
+                Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
+                tableType = .table
             }
             return TableInfo(name: table.name, type: tableType, rowCount: table.rowCount)
         }
