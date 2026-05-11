@@ -57,6 +57,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             .truncateTable,
             .multiSchema,
             .cancelQuery,
+            .materializedViews,
         ]
     }
 
