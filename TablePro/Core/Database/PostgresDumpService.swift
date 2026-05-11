@@ -432,7 +432,8 @@ extension PostgresDumpService {
         let query = "SELECT pg_database_size('\(escaped)')"
         do {
             let result = try await driver.execute(query: query)
-            guard case .text(let value) = result.rows.first?.first else { return nil }
+            guard let firstCell = result.rows.first?.first,
+                  case .text(let value) = firstCell else { return nil }
             return Int64(value)
         } catch {
             return nil
