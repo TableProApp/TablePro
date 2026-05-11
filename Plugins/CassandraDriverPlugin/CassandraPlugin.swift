@@ -991,27 +991,14 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let ks = resolveKeyspace(schema)
 
-        // Fetch tables
         let tablesQuery = """
             SELECT table_name FROM system_schema.tables WHERE keyspace_name = '\(escapeSingleQuote(ks))'
         """
         let tablesResult = try await execute(query: tablesQuery)
 
-        var tables = tablesResult.rows.compactMap { row -> PluginTableInfo? in
+        let tables = tablesResult.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0] ?? nil else { return nil }
             return PluginTableInfo(name: name, type: "TABLE")
-        }
-
-        // Fetch materialized views
-        let viewsQuery = """
-            SELECT view_name FROM system_schema.views WHERE keyspace_name = '\(escapeSingleQuote(ks))'
-        """
-        if let viewsResult = try? await execute(query: viewsQuery) {
-            let views = viewsResult.rows.compactMap { row -> PluginTableInfo? in
-                guard let name = row[safe: 0] ?? nil else { return nil }
-                return PluginTableInfo(name: name, type: "VIEW")
-            }
-            tables.append(contentsOf: views)
         }
 
         return tables.sorted { $0.name < $1.name }
