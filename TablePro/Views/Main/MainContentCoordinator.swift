@@ -513,6 +513,16 @@ final class MainContentCoordinator {
         await reconcilePostSchemaLoad()
     }
 
+    func refreshProcedures() async {
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
+    }
+
+    func refreshFunctions() async {
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+    }
+
     /// Push the SchemaService table list into the autocomplete provider and prune sidebar
     /// state for tables that no longer exist.
     private func reconcilePostSchemaLoad() async {

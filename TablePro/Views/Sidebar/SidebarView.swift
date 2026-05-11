@@ -321,7 +321,14 @@ struct SidebarView: View {
             .disabled(kind != .table)
         }
         Button(String(localized: "Refresh")) {
-            Task { await coordinator?.refreshTables() }
+            switch kind {
+            case .procedure:
+                Task { await coordinator?.refreshProcedures() }
+            case .function:
+                Task { await coordinator?.refreshFunctions() }
+            default:
+                Task { await coordinator?.refreshTables() }
+            }
         }
     }
 
