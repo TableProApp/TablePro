@@ -60,14 +60,19 @@ final class DatabaseSwitcherViewModel {
 
     init(
         connectionId: UUID, currentDatabase: String?, currentSchema: String?,
-        databaseType: DatabaseType, services: AppServices = .live
+        databaseType: DatabaseType, services: AppServices = .live,
+        initialMode: Mode? = nil
     ) {
         self.connectionId = connectionId
         self.currentDatabase = currentDatabase
         self.currentSchema = currentSchema
         self.databaseType = databaseType
         self.services = services
-        self.mode = services.pluginManager.supportsSchemaSwitching(for: databaseType) ? .schema : .database
+        if let initialMode {
+            self.mode = initialMode
+        } else {
+            self.mode = services.pluginManager.supportsSchemaSwitching(for: databaseType) ? .schema : .database
+        }
     }
 
     // MARK: - Public Methods

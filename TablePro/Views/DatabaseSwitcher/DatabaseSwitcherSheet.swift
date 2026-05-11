@@ -75,12 +75,19 @@ struct DatabaseSwitcherSheet: View {
         self.connectionId = connectionId
         self.onSelect = onSelect
         self.onSelectSchema = onSelectSchema
+        // Backup and restore always operate at the database level (pg_dump
+        // dumps a whole database). Force .database so PostgreSQL doesn't
+        // open the picker in schema mode.
+        let initialMode: DatabaseSwitcherViewModel.Mode? = (mode == .backup || mode == .restore)
+            ? .database
+            : nil
         self._viewModel = State(
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,
                 currentSchema: currentSchema,
-                databaseType: databaseType
+                databaseType: databaseType,
+                initialMode: initialMode
             ))
     }
 
