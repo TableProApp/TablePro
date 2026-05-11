@@ -39,13 +39,17 @@ final class VimKeyInterceptor {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor in
+            // Capture the triggering event synchronously — NSApp.currentEvent rotates
+            // out by the time any deferred work runs, so reading it later returns nil
+            // or a stale event and the popup-close path silently no-ops.
+            let triggeringEvent = NSApp.currentEvent
+            MainActor.assumeIsolated {
                 guard let self,
                       let closingWindow = notification.object as? NSWindow,
                       closingWindow.windowController is SuggestionController,
                       let editorWindow = self.controller?.textView.window,
                       editorWindow.childWindows?.contains(closingWindow) == true,
-                      let currentEvent = NSApp.currentEvent,
+                      let currentEvent = triggeringEvent,
                       currentEvent.type == .keyDown,
                       currentEvent.keyCode == 53,
                       self.engine.mode != .normal else {
@@ -110,10 +114,27 @@ final class VimKeyInterceptor {
     // MARK: - Event Handling
 
     private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
-        // Only intercept when our text view is first responder
         guard let textView = controller?.textView,
-              event.window === textView.window,
-              textView.window?.firstResponder === textView else {
+              let editorWindow = textView.window else {
+            return event
+        }
+
+        let eventInOurWindow = event.window === editorWindow
+        let eventInChildPopup = event.window.map { window in
+            editorWindow.childWindows?.contains(where: { $0 === window }) ?? false
+        } ?? false
+
+        // Esc must reach the engine whenever it would dismiss a child popup of our
+        // editor window — otherwise the popup eats the keystroke and Vim mode stays
+        // stuck in insert. We route Esc through the engine first, then let the event
+        // propagate to the popup so the popup also closes naturally.
+        if event.keyCode == 53, engine.mode != .normal, (eventInOurWindow || eventInChildPopup) {
+            inlineSuggestionManager?.dismissSuggestion()
+            _ = engine.process("\u{1B}", shift: false)
+            return eventInChildPopup ? event : nil
+        }
+
+        guard eventInOurWindow, textView.window?.firstResponder === textView else {
             return event
         }
 

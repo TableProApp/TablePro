@@ -227,6 +227,60 @@ final class VimEngineInsertEntryTests: XCTestCase {
         XCTAssertEqual(pos, 0)
     }
 
+    // MARK: - Escape at End-of-Buffer (regression for ";" cursor-past-last-char bug)
+
+    func testEscapePastLastCharOfBufferWithoutTrailingNewline() {
+        // Reproduces the reported bug: typing "SELECT * FROM users;" leaves the cursor
+        // at offset == length (past the last char). Pressing Esc must still switch
+        // to normal mode and step the cursor back onto the last char.
+        buffer = VimTextBufferMock(text: "SELECT * FROM users;")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 20, length: 0))
+        keys("i")
+        XCTAssertEqual(engine.mode, .insert)
+        escape()
+        XCTAssertEqual(engine.mode, .normal, "Esc at end-of-buffer must switch to normal mode")
+        XCTAssertEqual(pos, 19, "Cursor should step back from end onto ';' at offset 19")
+    }
+
+    func testEscapePastLastCharOfBufferWithTrailingNewline() {
+        // Same buffer but with a trailing newline. Cursor lands between ';' (offset 19)
+        // and '\n' (offset 20). That is the "end of last content line", not the phantom
+        // line after the newline.
+        buffer = VimTextBufferMock(text: "SELECT * FROM users;\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 20, length: 0))
+        keys("i")
+        escape()
+        XCTAssertEqual(engine.mode, .normal)
+        XCTAssertEqual(pos, 19, "Cursor steps back from line-end (just before '\\n') onto ';'")
+    }
+
+    func testEscapeOnPhantomLineAfterTrailingNewline() {
+        // Cursor at offset == length on a buffer with a trailing newline ends up on
+        // the phantom empty line after the '\n'. The Vim convention is that Esc still
+        // switches mode and does NOT cross back over the newline (since the phantom
+        // line is its own line, and there is no content to step back onto).
+        buffer = VimTextBufferMock(text: "SELECT;\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 8, length: 0))
+        keys("i")
+        escape()
+        XCTAssertEqual(engine.mode, .normal, "Esc on the phantom line must still switch to normal mode")
+        XCTAssertEqual(pos, 8, "Cursor stays on phantom line (no content to step onto)")
+    }
+
+    func testEscapeAfterTypingSemicolonAtEndIsConsumed() {
+        // The interceptor's pass-through behavior depends on the engine returning
+        // true (consumed) when Esc is processed in insert mode. Regression-safe.
+        buffer = VimTextBufferMock(text: "SELECT * FROM users;")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 20, length: 0))
+        keys("i")
+        let consumed = engine.process("\u{1B}", shift: false)
+        XCTAssertTrue(consumed, "Escape must be consumed by the engine at end-of-buffer")
+    }
+
     // MARK: - Insert Mode Pass-Through
 
     func testCharactersInInsertModeAreNotConsumed() {
