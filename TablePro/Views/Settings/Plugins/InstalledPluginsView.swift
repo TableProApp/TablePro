@@ -75,12 +75,26 @@ struct InstalledPluginsView: View {
             Text("Restart TablePro to fully unload removed plugins.")
                 .font(.callout)
             Spacer()
+            Button("Quit & Reopen") { relaunchApp() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             Button("Dismiss") { dismissedRestartBanner = true }
                 .buttonStyle(.borderless)
                 .font(.callout)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    private func relaunchApp() {
+        let bundleURL = Bundle.main.bundleURL
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, _ in
+            DispatchQueue.main.async {
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     // MARK: - Plugin List

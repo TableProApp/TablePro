@@ -27,6 +27,12 @@ final class PluginInstallTracker {
 
     func completeInstall(pluginId: String) {
         activeInstalls[pluginId]?.phase = .completed
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if case .completed = self.activeInstalls[pluginId]?.phase {
+                self.activeInstalls.removeValue(forKey: pluginId)
+            }
+        }
     }
 
     func failInstall(pluginId: String, error: String) {
