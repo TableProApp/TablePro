@@ -116,6 +116,14 @@ protocol DatabaseDriver: AnyObject {
     /// Fetch list of schemas in the current database (PostgreSQL only)
     func fetchSchemas() async throws -> [String]
 
+    /// Fetch stored procedures for the given schema (or current schema if nil).
+    /// Default implementation returns an empty list; drivers that support routines override.
+    func fetchProcedures(schema: String?) async throws -> [RoutineInfo]
+
+    /// Fetch user-defined functions for the given schema (or current schema if nil).
+    /// Default implementation returns an empty list; drivers that support routines override.
+    func fetchFunctions(schema: String?) async throws -> [RoutineInfo]
+
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
 
@@ -350,6 +358,10 @@ extension DatabaseDriver {
 
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
+
+    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] { [] }
+
+    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
 
     var supportsTransactions: Bool { true }
 

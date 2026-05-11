@@ -285,6 +285,44 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.fetchSchemas()
     }
 
+    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {
+        guard let support = pluginDriver as? PluginProcedureFunctionSupport else { return [] }
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        do {
+            let pluginRoutines = try await support.fetchProcedures(schema: resolvedSchema)
+            return pluginRoutines.map { routine in
+                RoutineInfo(
+                    name: routine.name,
+                    schema: resolvedSchema,
+                    kind: .procedure,
+                    signature: routine.returnType
+                )
+            }
+        } catch {
+            Self.logger.warning("fetchProcedures failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+
+    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] {
+        guard let support = pluginDriver as? PluginProcedureFunctionSupport else { return [] }
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        do {
+            let pluginRoutines = try await support.fetchFunctions(schema: resolvedSchema)
+            return pluginRoutines.map { routine in
+                RoutineInfo(
+                    name: routine.name,
+                    schema: resolvedSchema,
+                    kind: .function,
+                    signature: routine.returnType
+                )
+            }
+        } catch {
+            Self.logger.warning("fetchFunctions failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
         return DatabaseMetadata(
