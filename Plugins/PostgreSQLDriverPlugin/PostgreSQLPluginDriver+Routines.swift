@@ -1,0 +1,70 @@
+//
+//  PostgreSQLPluginDriver+Routines.swift
+//  PostgreSQLDriverPlugin
+//
+
+import Foundation
+import TableProPluginKit
+
+extension PostgreSQLPluginDriver: PluginProcedureFunctionSupport {
+    func fetchProcedures(schema: String?) async throws -> [PluginRoutineInfo] {
+        try await fetchRoutines(schema: schema, routineType: "PROCEDURE")
+    }
+
+    func fetchFunctions(schema: String?) async throws -> [PluginRoutineInfo] {
+        try await fetchRoutines(schema: schema, routineType: "FUNCTION")
+    }
+
+    func fetchProcedureDDL(name: String, schema: String?) async throws -> String {
+        try await fetchRoutineDDL(name: name, schema: schema, routineType: "PROCEDURE")
+    }
+
+    func fetchFunctionDDL(name: String, schema: String?) async throws -> String {
+        try await fetchRoutineDDL(name: name, schema: schema, routineType: "FUNCTION")
+    }
+
+    private func fetchRoutines(schema: String?, routineType: String) async throws -> [PluginRoutineInfo] {
+        let schemaLiteral = escapeStringLiteral(schema ?? currentSchema ?? "public")
+        let typeLiteral = escapeStringLiteral(routineType)
+        let query = """
+            SELECT routine_name, data_type, external_language
+            FROM information_schema.routines
+            WHERE routine_schema = '\(schemaLiteral)'
+              AND routine_type = '\(typeLiteral)'
+            ORDER BY routine_name
+            """
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row -> PluginRoutineInfo? in
+            guard row.count >= 1, let name = row[0].asText else { return nil }
+            let returnType = row.count > 1 ? row[1].asText : nil
+            let language = row.count > 2 ? row[2].asText : nil
+            return PluginRoutineInfo(name: name, returnType: returnType, language: language)
+        }
+    }
+
+    private func fetchRoutineDDL(name: String, schema: String?, routineType: String) async throws -> String {
+        let schemaLiteral = escapeStringLiteral(schema ?? currentSchema ?? "public")
+        let nameLiteral = escapeStringLiteral(name)
+        let typeLiteral = escapeStringLiteral(routineType)
+        let query = """
+            SELECT pg_get_functiondef(p.oid)
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            JOIN information_schema.routines r
+              ON r.specific_name = p.proname || '_' || p.oid
+            WHERE n.nspname = '\(schemaLiteral)'
+              AND p.proname = '\(nameLiteral)'
+              AND r.routine_type = '\(typeLiteral)'
+            LIMIT 1
+            """
+        let result = try await execute(query: query)
+        guard let firstRow = result.rows.first, !firstRow.isEmpty, let ddl = firstRow[0].asText else {
+            throw NSError(
+                domain: "PostgreSQLDriverPlugin",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "DDL not found for \(routineType.lowercased()) '\(name)'"]
+            )
+        }
+        return ddl
+    }
+}

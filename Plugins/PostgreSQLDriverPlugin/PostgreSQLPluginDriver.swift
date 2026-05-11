@@ -24,7 +24,18 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var parameterStyle: ParameterStyle { .dollar }
 
     var capabilities: PluginCapabilities {
-        [.parameterizedQueries, .transactions, .alterTableDDL, .multiSchema, .cancelQuery, .batchExecute]
+        [
+            .parameterizedQueries,
+            .transactions,
+            .alterTableDDL,
+            .multiSchema,
+            .cancelQuery,
+            .batchExecute,
+            .materializedViews,
+            .foreignTables,
+            .storedProcedures,
+            .userFunctions
+        ]
     }
 
     init(config: DriverConnectionConfig) {
@@ -218,17 +229,36 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        let schemaLiteral = escapeLiteral(schema ?? _currentSchema)
         let query = """
-            SELECT table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema = '\(escapedSchema)'
+            SELECT table_name, table_type FROM information_schema.tables
+            WHERE table_schema = '\(schemaLiteral)'
+            UNION ALL
+            SELECT matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type
+            FROM pg_matviews
+            WHERE schemaname = '\(schemaLiteral)'
+            UNION ALL
+            SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type
+            FROM pg_foreign_table ft
+            JOIN pg_class c ON c.oid = ft.ftrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = '\(schemaLiteral)'
             ORDER BY table_name
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[0].asText else { return nil }
             let typeStr = row[1].asText ?? "BASE TABLE"
-            let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
+            let type: String
+            if typeStr == "MATERIALIZED VIEW" {
+                type = "MATERIALIZED VIEW"
+            } else if typeStr == "FOREIGN TABLE" {
+                type = "FOREIGN TABLE"
+            } else if typeStr.contains("VIEW") {
+                type = "VIEW"
+            } else {
+                type = "TABLE"
+            }
             return PluginTableInfo(name: name, type: type)
         }
     }
