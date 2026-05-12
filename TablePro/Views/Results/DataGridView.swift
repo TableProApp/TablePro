@@ -200,6 +200,9 @@ struct DataGridView: NSViewRepresentable {
             let shouldHide = !configuration.showRowNumbers
             if rowNumCol.isHidden != shouldHide {
                 rowNumCol.isHidden = shouldHide
+                if !shouldHide {
+                    coordinator.resizeRowNumberColumnForCurrentRange()
+                }
             }
         }
 
@@ -347,11 +350,9 @@ struct DataGridView: NSViewRepresentable {
     static func makeRowNumberColumn() -> NSTableColumn {
         let column = NSTableColumn(identifier: ColumnIdentitySchema.rowNumberIdentifier)
         column.title = "#"
-        column.width = 40
-        column.minWidth = 40
-        column.maxWidth = 60
         column.isEditable = false
         column.resizingMask = []
+        sizeRowNumberColumn(column, forMaxRowNumber: 1)
         let defaultHeaderFont = column.headerCell.font
         let headerCell = SortableHeaderCell(textCell: "#")
         headerCell.font = defaultHeaderFont
@@ -359,6 +360,17 @@ struct DataGridView: NSViewRepresentable {
         headerCell.setAccessibilityLabel(String(localized: "Row number"))
         column.headerCell = headerCell
         return column
+    }
+
+    @MainActor
+    static func sizeRowNumberColumn(_ column: NSTableColumn, forMaxRowNumber maxNumber: Int) {
+        let display = "\(max(maxNumber, 1))"
+        let font = ThemeEngine.shared.dataGridFonts.rowNumber
+        let textWidth = (display as NSString).size(withAttributes: [.font: font]).width
+        let columnWidth = max(40, ceil(textWidth) + 2 * DataGridMetrics.cellHorizontalInset + 8)
+        column.minWidth = columnWidth
+        column.maxWidth = max(columnWidth, 120)
+        column.width = columnWidth
     }
 
     static let firstDataTableColumnIndex: Int = 1
