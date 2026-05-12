@@ -16,15 +16,20 @@ struct SQLReviewSheet: View {
     let statements: [String]
     let databaseType: DatabaseType
 
-    @State private var displaySQL = ""
-    @State private var isReady = false
+    @State private var prepared: Prepared?
     @State private var copied = false
     @State private var editorState = SourceEditorState()
 
-    private static let displayStatementCap = 100
+    /// Past this many characters the display is truncated; the full text stays available via Copy All.
+    private static let maxDisplayChars = 20_000
+    /// Past this many characters tree-sitter is skipped in favour of a plain monospaced view.
+    private static let treeSitterCutoff = 8_000
 
-    private var truncated: Bool {
-        statements.count > Self.displayStatementCap
+    private struct Prepared {
+        let display: String
+        let full: String
+        let truncated: Bool
+        let useTreeSitter: Bool
     }
 
     var body: some View {
@@ -35,12 +40,7 @@ struct SQLReviewSheet: View {
 
             Divider()
 
-            if statements.isEmpty {
-                emptyState
-            } else {
-                editor
-                    .padding(16)
-            }
+            content
 
             Divider()
 
@@ -50,44 +50,62 @@ struct SQLReviewSheet: View {
         }
         .frame(width: 560, height: 460)
         .background(Color(nsColor: .windowBackgroundColor))
-        .task(id: statementsFingerprint) {
-            // Build the display string off the main render pass so a 1000-statement batch
-            // doesn't burn CPU recomputing on every body call.
-            let result = await Task.detached(priority: .userInitiated) { [statements, databaseType] in
-                Self.buildDisplaySQL(statements: statements, databaseType: databaseType)
-            }.value
-            displaySQL = result
-            isReady = true
+        .task { await prepare() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if statements.isEmpty {
+            emptyState
+        } else if let prepared {
+            editor(for: prepared)
+                .padding(16)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    /// Cheap identity for .task(id:) (count + first/last hash) so the heavy join doesn't repeat
-    /// when SwiftUI rebuilds the sheet body for the same statements.
-    private var statementsFingerprint: Int {
-        var hasher = Hasher()
-        hasher.combine(statements.count)
-        if let first = statements.first { hasher.combine(first) }
-        if let last = statements.last { hasher.combine(last) }
-        return hasher.finalize()
+    private func prepare() async {
+        guard prepared == nil, !statements.isEmpty else { return }
+        let result = await Task.detached(priority: .userInitiated) { [statements, databaseType] in
+            Self.build(statements: statements, databaseType: databaseType)
+        }.value
+        prepared = result
     }
 
-    private static func buildDisplaySQL(statements: [String], databaseType: DatabaseType) -> String {
-        let limit = displayStatementCap
+    private static func build(statements: [String], databaseType: DatabaseType) -> Prepared {
         let isJS = PluginManager.shared.editorLanguage(for: databaseType) == .javascript
-
-        let visible = Array(statements.prefix(limit))
-        var joined = visible.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
-
-        if statements.count > limit {
-            let hidden = statements.count - limit
-            let note = String(format: String(localized: "-- … %d more statements not shown; use Copy All for the full output."), hidden)
-            joined += "\n\n" + note
-        }
-
+        var full = statements
+            .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
+            .joined(separator: "\n\n")
         if isJS {
-            return convertExtendedJsonToShellSyntax(joined)
+            full = convertExtendedJsonToShellSyntax(full)
         }
-        return joined
+
+        let fullCount = full.count
+        if fullCount > maxDisplayChars {
+            let head = full.prefix(maxDisplayChars)
+            let remaining = fullCount - maxDisplayChars
+            let note = String(
+                format: String(localized: "-- … %d more characters not shown; use Copy All for the full output."),
+                remaining
+            )
+            return Prepared(
+                display: String(head) + "\n\n" + note,
+                full: full,
+                truncated: true,
+                useTreeSitter: false
+            )
+        }
+
+        return Prepared(
+            display: full,
+            full: full,
+            truncated: false,
+            useTreeSitter: fullCount <= treeSitterCutoff
+        )
     }
 
     private static func convertExtendedJsonToShellSyntax(_ mql: String) -> String {
@@ -139,10 +157,10 @@ struct SQLReviewSheet: View {
     }
 
     @ViewBuilder
-    private var editor: some View {
-        if isReady {
+    private func editor(for prepared: Prepared) -> some View {
+        if prepared.useTreeSitter {
             SourceEditor(
-                .constant(displaySQL),
+                .constant(prepared.display),
                 language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
                 configuration: Self.makeConfiguration(),
                 state: $editorState
@@ -153,24 +171,31 @@ struct SQLReviewSheet: View {
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
             )
         } else {
-            Color(nsColor: .textBackgroundColor)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                )
+            plainTextEditor(prepared.display)
         }
+    }
+
+    private func plainTextEditor(_ text: String) -> some View {
+        ScrollView([.vertical, .horizontal]) {
+            Text(text)
+                .font(.system(size: 12, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
     }
 
     private var footer: some View {
         HStack(spacing: 12) {
-            if truncated {
+            if prepared?.truncated == true {
                 Label(
-                    String(
-                        format: String(localized: "Showing first %d of %d statements"),
-                        Self.displayStatementCap,
-                        statements.count
-                    ),
+                    String(localized: "Output truncated for display"),
                     systemImage: "info.circle"
                 )
                 .font(.caption)
@@ -202,25 +227,26 @@ struct SQLReviewSheet: View {
     }
 
     private func copyAll() {
+        if let prepared {
+            ClipboardService.shared.writeText(prepared.full)
+            copied = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                copied = false
+            }
+            return
+        }
+
         let snapshot = statements
         let type = databaseType
         Task.detached(priority: .userInitiated) {
-            let isJS = PluginManager.shared.editorLanguage(for: type) == .javascript
-            var joined = snapshot
-                .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
-                .joined(separator: "\n\n")
-            if isJS {
-                joined = Self.convertExtendedJsonToShellSyntax(joined)
-            }
+            let built = Self.build(statements: snapshot, databaseType: type)
             await MainActor.run {
-                ClipboardService.shared.writeText(joined)
+                ClipboardService.shared.writeText(built.full)
                 copied = true
             }
-        }
-
-        Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
-            copied = false
+            await MainActor.run { copied = false }
         }
     }
 }
