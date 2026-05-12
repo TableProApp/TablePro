@@ -198,8 +198,7 @@ struct WelcomeWindowView: View {
             WelcomeActionsPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
                 onCreateConnection: { WindowOpener.shared.openConnectionForm() },
-                onTrySample: { vm.openSampleDatabase() },
-                onImportFromFile: { vm.importConnectionsFromFile() }
+                onTrySample: { vm.openSampleDatabase() }
             )
             .frame(width: 240)
             .themeMaterial(.sidebar, .regularMaterial)

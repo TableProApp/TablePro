@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Quick Switcher rewritten as a native SwiftUI sheet matching the Database Switcher style. Adds a Recent section per connection.
 - Double-click handling in sidebar, database switcher, and connection type chooser now uses `contextMenu(forSelectionType:primaryAction:)` instead of a custom NSEvent monitor.
+- Welcome screen drops the "Import Connections..." button; both import flows remain in the `+` menu.
 
 ### Fixed
 
