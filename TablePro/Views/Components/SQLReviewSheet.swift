@@ -16,49 +16,15 @@ struct SQLReviewSheet: View {
     let statements: [String]
     let databaseType: DatabaseType
 
+    @State private var displaySQL = ""
+    @State private var isReady = false
     @State private var copied = false
-    @State private var isEditorReady = false
     @State private var editorState = SourceEditorState()
 
-    private var combinedSQL: String {
-        let joined = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
-        if PluginManager.shared.editorLanguage(for: databaseType) == .javascript {
-            return Self.convertExtendedJsonToShellSyntax(joined)
-        }
-        return joined
-    }
+    private static let displayStatementCap = 100
 
-    private static func convertExtendedJsonToShellSyntax(_ mql: String) -> String {
-        let pattern = #"\{"\$oid":\s*"([0-9a-fA-F]{24})"\}"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return mql }
-        let nsString = mql as NSString
-        return regex.stringByReplacingMatches(
-            in: mql,
-            range: NSRange(location: 0, length: nsString.length),
-            withTemplate: #"ObjectId("$1")"#
-        )
-    }
-
-    private var contentHeight: CGFloat {
-        let lineHeight: CGFloat = 18
-        let headerArea: CGFloat = 48
-        let footerArea: CGFloat = 52
-        let editorPadding: CGFloat = 32
-        let editorInsets: CGFloat = 16
-
-        let lineCount: Int = {
-            guard !statements.isEmpty else { return 1 }
-            let statementsLineCount = statements.reduce(0) { total, stmt in
-                var newlines = 0
-                for scalar in stmt.unicodeScalars where scalar == "\n" { newlines += 1 }
-                return total + newlines + 1
-            }
-            let separatorLines = (statements.count - 1) * 2
-            return statementsLineCount + separatorLines
-        }()
-        let editorHeight = CGFloat(lineCount) * lineHeight + editorInsets
-        let total = headerArea + editorHeight + editorPadding + footerArea
-        return min(max(total, 240), 560)
+    private var truncated: Bool {
+        statements.count > Self.displayStatementCap
     }
 
     var body: some View {
@@ -82,10 +48,57 @@ struct SQLReviewSheet: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
         }
-        .frame(width: 560, height: contentHeight)
+        .frame(width: 560, height: 460)
         .background(Color(nsColor: .windowBackgroundColor))
-        .task { isEditorReady = true }
-        .onDisappear { isEditorReady = false }
+        .task(id: statementsFingerprint) {
+            // Build the display string off the main render pass so a 1000-statement batch
+            // doesn't burn CPU recomputing on every body call.
+            let result = await Task.detached(priority: .userInitiated) { [statements, databaseType] in
+                Self.buildDisplaySQL(statements: statements, databaseType: databaseType)
+            }.value
+            displaySQL = result
+            isReady = true
+        }
+    }
+
+    /// Cheap identity for .task(id:) (count + first/last hash) so the heavy join doesn't repeat
+    /// when SwiftUI rebuilds the sheet body for the same statements.
+    private var statementsFingerprint: Int {
+        var hasher = Hasher()
+        hasher.combine(statements.count)
+        if let first = statements.first { hasher.combine(first) }
+        if let last = statements.last { hasher.combine(last) }
+        return hasher.finalize()
+    }
+
+    private static func buildDisplaySQL(statements: [String], databaseType: DatabaseType) -> String {
+        let limit = displayStatementCap
+        let isJS = PluginManager.shared.editorLanguage(for: databaseType) == .javascript
+
+        let visible = Array(statements.prefix(limit))
+        var joined = visible.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
+
+        if statements.count > limit {
+            let hidden = statements.count - limit
+            let note = String(format: String(localized: "-- … %d more statements not shown; use Copy All for the full output."), hidden)
+            joined += "\n\n" + note
+        }
+
+        if isJS {
+            return convertExtendedJsonToShellSyntax(joined)
+        }
+        return joined
+    }
+
+    private static func convertExtendedJsonToShellSyntax(_ mql: String) -> String {
+        let pattern = #"\{"\$oid":\s*"([0-9a-fA-F]{24})"\}"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return mql }
+        let nsString = mql as NSString
+        return regex.stringByReplacingMatches(
+            in: mql,
+            range: NSRange(location: 0, length: nsString.length),
+            withTemplate: #"ObjectId("$1")"#
+        )
     }
 
     private var header: some View {
@@ -127,9 +140,9 @@ struct SQLReviewSheet: View {
 
     @ViewBuilder
     private var editor: some View {
-        if isEditorReady {
+        if isReady {
             SourceEditor(
-                .constant(combinedSQL),
+                .constant(displaySQL),
                 language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
                 configuration: Self.makeConfiguration(),
                 state: $editorState
@@ -150,7 +163,19 @@ struct SQLReviewSheet: View {
     }
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: 12) {
+            if truncated {
+                Label(
+                    String(
+                        format: String(localized: "Showing first %d of %d statements"),
+                        Self.displayStatementCap,
+                        statements.count
+                    ),
+                    systemImage: "info.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
             Spacer()
             Button(String(localized: "Done")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
@@ -177,12 +202,21 @@ struct SQLReviewSheet: View {
     }
 
     private func copyAll() {
-        var joined = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
-        if PluginManager.shared.editorLanguage(for: databaseType) == .javascript {
-            joined = Self.convertExtendedJsonToShellSyntax(joined)
+        let snapshot = statements
+        let type = databaseType
+        Task.detached(priority: .userInitiated) {
+            let isJS = PluginManager.shared.editorLanguage(for: type) == .javascript
+            var joined = snapshot
+                .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
+                .joined(separator: "\n\n")
+            if isJS {
+                joined = Self.convertExtendedJsonToShellSyntax(joined)
+            }
+            await MainActor.run {
+                ClipboardService.shared.writeText(joined)
+                copied = true
+            }
         }
-        ClipboardService.shared.writeText(joined)
-        copied = true
 
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
