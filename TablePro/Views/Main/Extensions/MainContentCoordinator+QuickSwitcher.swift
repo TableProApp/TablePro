@@ -9,14 +9,7 @@ import Foundation
 
 extension MainContentCoordinator {
     func showQuickSwitcher() {
-        quickSwitcherPanel.show(
-            schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
-            connectionId: connection.id,
-            databaseType: connection.type,
-            onSelect: { [weak self] item in
-                self?.handleQuickSwitcherSelection(item)
-            }
-        )
+        activeSheet = .quickSwitcher
     }
 
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem) {

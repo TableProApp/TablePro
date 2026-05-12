@@ -205,6 +205,16 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 onExecute: coordinator.executeMaintenance
             )
+        case .quickSwitcher:
+            QuickSwitcherSheet(
+                isPresented: dismissBinding,
+                schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
+                connectionId: connection.id,
+                databaseType: connection.type,
+                onSelect: { [weak coordinator] item in
+                    coordinator?.handleQuickSwitcherSelection(item)
+                }
+            )
         }
     }
 

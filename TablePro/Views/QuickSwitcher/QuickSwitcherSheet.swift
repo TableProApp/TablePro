@@ -1,19 +1,18 @@
 //
-//  QuickSwitcherView.swift
+//  QuickSwitcherSheet.swift
 //  TablePro
-//
-//  SwiftUI content for the quick switcher. Hosted inside an NSPanel
-//  by `QuickSwitcherPanelController` for the Spotlight presentation pattern.
 //
 
 import SwiftUI
 
-internal struct QuickSwitcherContentView: View {
+struct QuickSwitcherSheet: View {
+    @Binding var isPresented: Bool
+    @Environment(\.dismiss) private var dismiss
+
     let schemaProvider: SQLSchemaProvider
     let connectionId: UUID
     let databaseType: DatabaseType
     let onSelect: (QuickSwitcherItem) -> Void
-    let onDismiss: () -> Void
 
     @State private var viewModel = QuickSwitcherViewModel()
 
@@ -25,19 +24,13 @@ internal struct QuickSwitcherContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("Quick Switcher")
-                .font(.body.weight(.semibold))
-                .padding(.vertical, 12)
-
-            Divider()
-
-            searchToolbar
+            toolbar
 
             Divider()
 
             if viewModel.isLoading {
                 loadingView
-            } else if viewModel.filteredItems.isEmpty {
+            } else if viewModel.flatItems.isEmpty {
                 emptyState
             } else {
                 itemList
@@ -47,7 +40,8 @@ internal struct QuickSwitcherContentView: View {
 
             footer
         }
-        .frame(width: 460, height: 480)
+        .frame(width: 460, height: 500)
+        .navigationTitle(String(localized: "Quick Switcher"))
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
             await viewModel.loadItems(
@@ -56,66 +50,62 @@ internal struct QuickSwitcherContentView: View {
                 databaseType: databaseType
             )
         }
-        .onExitCommand { onDismiss() }
-        .onKeyPress(.return) {
-            openSelectedItem()
-            return .handled
-        }
+        .onExitCommand { dismiss() }
         .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
-            viewModel.moveDown()
+            viewModel.moveSelection(by: 1)
             return .handled
         }
         .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
-            viewModel.moveUp()
+            viewModel.moveSelection(by: -1)
             return .handled
         }
     }
 
-    // MARK: - Search Toolbar
-
-    private var searchToolbar: some View {
+    private var toolbar: some View {
         NativeSearchField(
             text: $viewModel.searchText,
-            placeholder: String(localized: "Search tables, views, databases..."),
-            onMoveUp: { viewModel.moveUp() },
-            onMoveDown: { viewModel.moveDown() },
+            placeholder: String(localized: "Search tables, views, databases…"),
+            onMoveUp: { viewModel.moveSelection(by: -1) },
+            onMoveDown: { viewModel.moveSelection(by: 1) },
+            onSubmit: { openSelectedItem() },
             focusOnAppear: true
         )
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
     }
-
-    // MARK: - Item List
 
     private var itemList: some View {
         ScrollViewReader { proxy in
             List(selection: $viewModel.selectedItemId) {
-                if viewModel.searchText.isEmpty {
-                    ForEach(viewModel.groupedItems, id: \.kind) { group in
-                        Section {
-                            ForEach(group.items) { item in
-                                itemRow(item)
-                            }
-                        } header: {
-                            Text(sectionTitle(for: group.kind))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                ForEach(viewModel.groups) { group in
+                    Section {
+                        ForEach(group.items) { item in
+                            itemRow(item)
                         }
-                    }
-                } else {
-                    ForEach(viewModel.filteredItems) { item in
-                        itemRow(item)
+                    } header: {
+                        Text(sectionTitle(for: group))
                     }
                 }
             }
-            .listStyle(.sidebar)
+            .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .focused($focus, equals: .itemList)
+            .contextMenu(forSelectionType: String.self) { _ in
+                EmptyView()
+            } primaryAction: { selection in
+                guard let id = selection.first,
+                      let item = viewModel.flatItems.first(where: { $0.id == id })
+                else { return }
+                viewModel.selectedItemId = id
+                commit(item)
+            }
             .onChange(of: viewModel.selectedItemId) { _, newValue in
-                if let itemId = newValue {
-                    proxy.scrollTo(itemId, anchor: .center)
+                if let id = newValue {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
                 }
             }
         }
@@ -126,51 +116,35 @@ internal struct QuickSwitcherContentView: View {
             Image(systemName: item.iconName)
                 .font(.body)
                 .foregroundStyle(.secondary)
+                .frame(width: 18)
 
             Text(item.name)
                 .font(.body)
                 .lineLimit(1)
-                .truncationMode(.tail)
-
-            if !item.subtitle.isEmpty {
-                Text(item.subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+                .truncationMode(.middle)
 
             Spacer()
 
-            Text(item.kindLabel)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(nsColor: .quaternaryLabelColor))
-                )
+            if !item.subtitle.isEmpty {
+                Text(item.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
         .contentShape(Rectangle())
+        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .listRowSeparator(.hidden)
         .id(item.id)
         .tag(item.id)
-        .overlay(
-            DoubleClickDetector {
-                viewModel.selectedItemId = item.id
-                openSelectedItem()
-            }
-        )
     }
-
-    // MARK: - Empty States
 
     private var loadingView: some View {
         VStack(spacing: 12) {
             ProgressView()
                 .scaleEffect(0.8)
-            Text(String(localized: "Loading..."))
+            Text(String(localized: "Loading…"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -198,41 +172,46 @@ internal struct QuickSwitcherContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Footer
-
     private var footer: some View {
         HStack {
-            Button(String(localized: "Cancel")) {
-                onDismiss()
+            Button("Cancel") {
+                dismiss()
             }
 
             Spacer()
 
-            Button(String(localized: "Open")) {
+            Button("Open") {
                 openSelectedItem()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(viewModel.selectedItem == nil)
+            .disabled(viewModel.selectedItemId == nil)
+            .keyboardShortcut(.return, modifiers: [])
         }
         .padding(12)
     }
 
-    // MARK: - Helpers
-
-    private func sectionTitle(for kind: QuickSwitcherItemKind) -> String {
-        switch kind {
-        case .table: return String(localized: "TABLES")
-        case .view: return String(localized: "VIEWS")
-        case .systemTable: return String(localized: "SYSTEM TABLES")
-        case .database: return String(localized: "DATABASES")
-        case .schema: return String(localized: "SCHEMAS")
-        case .queryHistory: return String(localized: "RECENT QUERIES")
+    private func sectionTitle(for group: QuickSwitcherViewModel.Group) -> String {
+        if group.isRecent {
+            return String(localized: "Recent")
+        }
+        switch group.kind {
+        case .table: return String(localized: "Tables")
+        case .view: return String(localized: "Views")
+        case .systemTable: return String(localized: "System Tables")
+        case .database: return String(localized: "Databases")
+        case .schema: return String(localized: "Schemas")
+        case .queryHistory: return String(localized: "Recent Queries")
         }
     }
 
     private func openSelectedItem() {
-        guard let item = viewModel.selectedItem else { return }
+        guard let item = viewModel.selectedItem() else { return }
+        commit(item)
+    }
+
+    private func commit(_ item: QuickSwitcherItem) {
+        viewModel.recordSelection(item)
         onSelect(item)
-        onDismiss()
+        dismiss()
     }
 }

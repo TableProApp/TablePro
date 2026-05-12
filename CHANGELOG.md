@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Quick Switcher rewritten as a native SwiftUI sheet matching the Database Switcher style. Adds a Recent section per connection.
+- Double-click handling in sidebar, database switcher, and connection type chooser now uses `contextMenu(forSelectionType:primaryAction:)` instead of a custom NSEvent monitor.
+
 ### Fixed
 
+- Quick Switcher crash on macOS 26 caused by an NSPanel + NSHostingController constraint loop.
 - Registry updates for built-in drivers (ClickHouse, Redis) now stick after restart. Plugin builds previously kept the default `1.0` version, tying with the bundled copy so the user-installed update was pruned on load.
 
 ## [0.40.0] - 2026-05-12

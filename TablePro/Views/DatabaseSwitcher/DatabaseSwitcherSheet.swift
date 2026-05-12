@@ -209,12 +209,36 @@ struct DatabaseSwitcherSheet: View {
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .focused($focus, equals: .databaseList)
+            .contextMenu(forSelectionType: String.self) { selection in
+                contextMenuItems(for: selection)
+            } primaryAction: { selection in
+                guard let name = selection.first else { return }
+                viewModel.selectedDatabase = name
+                openSelectedDatabase()
+            }
             .onChange(of: viewModel.selectedDatabase) { _, newValue in
                 if let item = newValue {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         proxy.scrollTo(item, anchor: .center)
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenuItems(for selection: Set<String>) -> some View {
+        if !isSchemaMode,
+           PluginManager.shared.supportsDropDatabase(for: databaseType),
+           let name = selection.first,
+           let database = viewModel.filteredDatabases.first(where: { $0.name == name }),
+           !database.isSystemDatabase,
+           database.name != activeName {
+            Button(role: .destructive) {
+                databaseToDrop = database.name
+                showDropDialog = true
+            } label: {
+                Label(String(localized: "Drop Database..."), systemImage: "trash")
             }
         }
     }
@@ -250,24 +274,6 @@ struct DatabaseSwitcherSheet: View {
         .listRowSeparator(.hidden)
         .id(database.name)
         .tag(database.name)
-        .overlay(
-            DoubleClickDetector {
-                viewModel.selectedDatabase = database.name
-                openSelectedDatabase()
-            }
-        )
-        .contextMenu {
-            if !isSchemaMode && PluginManager.shared.supportsDropDatabase(for: databaseType)
-                && !database.isSystemDatabase && database.name != activeName
-            {
-                Button(role: .destructive) {
-                    databaseToDrop = database.name
-                    showDropDialog = true
-                } label: {
-                    Label(String(localized: "Drop Database..."), systemImage: "trash")
-                }
-            }
-        }
     }
 
     // MARK: - Empty States

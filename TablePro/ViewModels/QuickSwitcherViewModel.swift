@@ -2,57 +2,75 @@
 //  QuickSwitcherViewModel.swift
 //  TablePro
 //
-//  ViewModel for the quick switcher palette
-//
 
 import Foundation
 import Observation
 import os
 
-/// ViewModel managing quick switcher search, filtering, and keyboard navigation
-@MainActor @Observable
+@MainActor
+@Observable
 internal final class QuickSwitcherViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
+    struct Group: Identifiable {
+        let kind: QuickSwitcherItemKind
+        let isRecent: Bool
+        let items: [QuickSwitcherItem]
+
+        var id: String {
+            isRecent ? "recent" : "kind-\(kind.rawValue)"
+        }
+    }
+
+    @ObservationIgnored private static let logger = Logger(
+        subsystem: "com.TablePro",
+        category: "QuickSwitcherViewModel"
+    )
+    @ObservationIgnored private static let mruDefaultsKeyPrefix = "QuickSwitcher.mru."
+    @ObservationIgnored private static let mruLimit = 10
+    @ObservationIgnored private static let maxResults = 200
+    @ObservationIgnored private static let filterDebounceNanoseconds: UInt64 = 40_000_000
 
     @ObservationIgnored private let services: AppServices
+    @ObservationIgnored private let defaults: UserDefaults
 
-    // MARK: - State
-
-    var searchText = "" {
-        didSet { updateFilter() }
-    }
-
-    var allItems: [QuickSwitcherItem] = [] {
-        didSet { applyFilter() }
-    }
-    private(set) var filteredItems: [QuickSwitcherItem] = []
-    var selectedItemId: String?
-    var isLoading = false
-
+    @ObservationIgnored private var allItems: [QuickSwitcherItem] = []
+    @ObservationIgnored private var connectionId = UUID()
     @ObservationIgnored private var filterTask: Task<Void, Never>?
     @ObservationIgnored private var activeLoadId = UUID()
 
-    /// Maximum number of results to display
-    private let maxResults = 100
+    private(set) var groups: [Group] = []
+    private(set) var flatItems: [QuickSwitcherItem] = []
+    private(set) var isLoading = false
+    var selectedItemId: String?
 
-    init(services: AppServices = .live) {
-        self.services = services
+    var searchText = "" {
+        didSet {
+            guard oldValue != searchText else { return }
+            scheduleFilter()
+        }
     }
 
-    // MARK: - Loading
+    init(services: AppServices, defaults: UserDefaults = .standard) {
+        self.services = services
+        self.defaults = defaults
+    }
 
-    /// Load all searchable items from the database schema, databases, schemas, and history
+    convenience init() {
+        self.init(services: .live)
+    }
+
     func loadItems(
         schemaProvider: SQLSchemaProvider,
         connectionId: UUID,
         databaseType: DatabaseType
     ) async {
+        self.connectionId = connectionId
         isLoading = true
+
         let loadId = UUID()
         activeLoadId = loadId
+
         var items: [QuickSwitcherItem] = []
 
-        // Tables, views, system tables from cached schema
         let tables = await schemaProvider.getTables()
         for table in tables {
             let kind: QuickSwitcherItemKind
@@ -82,7 +100,6 @@ internal final class QuickSwitcherViewModel {
             ))
         }
 
-        // Databases
         if let driver = services.databaseManager.driver(for: connectionId) {
             do {
                 let databases = try await driver.fetchDatabases()
@@ -95,7 +112,7 @@ internal final class QuickSwitcherViewModel {
                     ))
                 }
             } catch {
-                Self.logger.warning("Failed to fetch databases for quick switcher: \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Failed to fetch databases: \(error.localizedDescription, privacy: .public)")
             }
 
             if services.pluginManager.supportsSchemaSwitching(for: databaseType) {
@@ -110,12 +127,11 @@ internal final class QuickSwitcherViewModel {
                         ))
                     }
                 } catch {
-                    Self.logger.warning("Failed to fetch schemas for quick switcher: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.warning("Failed to fetch schemas: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
 
-        // Recent query history (last 50)
         let historyEntries = await services.queryHistoryManager.fetchHistory(
             limit: 50,
             connectionId: connectionId
@@ -129,61 +145,109 @@ internal final class QuickSwitcherViewModel {
             ))
         }
 
-        guard activeLoadId == loadId, !Task.isCancelled else {
-            isLoading = false
-            return
-        }
+        guard activeLoadId == loadId, !Task.isCancelled else { return }
 
         allItems = items
         isLoading = false
+        applyFilter()
     }
 
-    // MARK: - Filtering
+    func selectedItem() -> QuickSwitcherItem? {
+        guard let id = selectedItemId else { return nil }
+        return flatItems.first { $0.id == id }
+    }
 
-    /// Debounced filter update
-    func updateFilter() {
+    func moveSelection(by delta: Int) {
+        guard !flatItems.isEmpty else {
+            selectedItemId = nil
+            return
+        }
+        if let id = selectedItemId, let index = flatItems.firstIndex(where: { $0.id == id }) {
+            let next = max(0, min(flatItems.count - 1, index + delta))
+            selectedItemId = flatItems[next].id
+        } else {
+            selectedItemId = flatItems.first?.id
+        }
+    }
+
+    func recordSelection(_ item: QuickSwitcherItem) {
+        var mru = loadMRU()
+        mru.removeAll { $0 == item.id }
+        mru.insert(item.id, at: 0)
+        if mru.count > Self.mruLimit {
+            mru = Array(mru.prefix(Self.mruLimit))
+        }
+        defaults.set(mru, forKey: mruKey)
+    }
+
+    private func scheduleFilter() {
         filterTask?.cancel()
-        filterTask = Task {
-            try? await Task.sleep(for: .milliseconds(50))
+        filterTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.filterDebounceNanoseconds)
             guard !Task.isCancelled else { return }
-            applyFilter()
+            self?.applyFilter()
         }
     }
 
     private func applyFilter() {
-        if searchText.isEmpty {
-            // Show all items grouped by kind: tables, views, system tables, databases, schemas, history
-            filteredItems = allItems.sorted { a, b in
-                let aOrder = kindSortOrder(a.kind)
-                let bOrder = kindSortOrder(b.kind)
-                if aOrder != bOrder { return aOrder < bOrder }
-                return a.name < b.name
-            }
-            if filteredItems.count > maxResults {
-                filteredItems = Array(filteredItems.prefix(maxResults))
-            }
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            groups = buildEmptyQueryGroups()
         } else {
-            filteredItems = allItems.compactMap { item in
-                let matchScore = FuzzyMatcher.score(query: searchText, candidate: item.name)
-                guard matchScore > 0 else { return nil }
-                var scored = item
-                scored.score = matchScore
-                return scored
-            }
-            .sorted { a, b in
-                if a.score != b.score { return a.score > b.score }
-                let aOrder = kindSortOrder(a.kind)
-                let bOrder = kindSortOrder(b.kind)
-                if aOrder != bOrder { return aOrder < bOrder }
-                return a.name < b.name
-            }
+            groups = buildFilteredGroups(for: trimmed)
+        }
+        flatItems = groups.flatMap(\.items)
+        if let current = selectedItemId, flatItems.contains(where: { $0.id == current }) {
+            return
+        }
+        selectedItemId = flatItems.first?.id
+    }
 
-            if filteredItems.count > maxResults {
-                filteredItems = Array(filteredItems.prefix(maxResults))
-            }
+    private func buildEmptyQueryGroups() -> [Group] {
+        let mruList = loadMRU()
+        let mruIds = Set(mruList)
+        let mruOrder = Dictionary(uniqueKeysWithValues: mruList.enumerated().map { ($1, $0) })
+
+        var result: [Group] = []
+
+        let recent = allItems
+            .filter { mruIds.contains($0.id) }
+            .sorted { (mruOrder[$0.id] ?? 0) < (mruOrder[$1.id] ?? 0) }
+        if !recent.isEmpty {
+            result.append(Group(kind: .table, isRecent: true, items: recent))
         }
 
-        selectedItemId = filteredItems.first?.id
+        let kindsOrder: [QuickSwitcherItemKind] = [.table, .view, .systemTable, .database, .schema, .queryHistory]
+        for kind in kindsOrder {
+            let items = allItems
+                .filter { $0.kind == kind && !mruIds.contains($0.id) }
+                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            guard !items.isEmpty else { continue }
+            result.append(Group(
+                kind: kind,
+                isRecent: false,
+                items: Array(items.prefix(Self.maxResults))
+            ))
+        }
+        return result
+    }
+
+    private func buildFilteredGroups(for query: String) -> [Group] {
+        var scored = allItems.compactMap { item -> (QuickSwitcherItem, Int)? in
+            let score = FuzzyMatcher.score(query: query, candidate: item.name)
+            guard score > 0 else { return nil }
+            return (item, score)
+        }
+        scored.sort { lhs, rhs in
+            if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+            let lOrder = kindSortOrder(lhs.0.kind)
+            let rOrder = kindSortOrder(rhs.0.kind)
+            if lOrder != rOrder { return lOrder < rOrder }
+            return lhs.0.name.localizedStandardCompare(rhs.0.name) == .orderedAscending
+        }
+        let items = Array(scored.prefix(Self.maxResults).map(\.0))
+        guard !items.isEmpty else { return [] }
+        return [Group(kind: .table, isRecent: false, items: items)]
     }
 
     private func kindSortOrder(_ kind: QuickSwitcherItemKind) -> Int {
@@ -197,36 +261,11 @@ internal final class QuickSwitcherViewModel {
         }
     }
 
-    // MARK: - Navigation
-
-    func moveUp() {
-        guard let currentId = selectedItemId,
-              let currentIndex = filteredItems.firstIndex(where: { $0.id == currentId }),
-              currentIndex > 0
-        else { return }
-        selectedItemId = filteredItems[currentIndex - 1].id
+    private var mruKey: String {
+        Self.mruDefaultsKeyPrefix + connectionId.uuidString
     }
 
-    func moveDown() {
-        guard let currentId = selectedItemId,
-              let currentIndex = filteredItems.firstIndex(where: { $0.id == currentId }),
-              currentIndex < filteredItems.count - 1
-        else { return }
-        selectedItemId = filteredItems[currentIndex + 1].id
-    }
-
-    var selectedItem: QuickSwitcherItem? {
-        guard let selectedItemId else { return nil }
-        return filteredItems.first { $0.id == selectedItemId }
-    }
-
-    /// Items grouped by kind for sectioned display
-    var groupedItems: [(kind: QuickSwitcherItemKind, items: [QuickSwitcherItem])] {
-        var groups: [QuickSwitcherItemKind: [QuickSwitcherItem]] = [:]
-        for item in filteredItems {
-            groups[item.kind, default: []].append(item)
-        }
-        return groups.sorted { kindSortOrder($0.key) < kindSortOrder($1.key) }
-            .map { (kind: $0.key, items: $0.value) }
+    private func loadMRU() -> [String] {
+        defaults.stringArray(forKey: mruKey) ?? []
     }
 }
