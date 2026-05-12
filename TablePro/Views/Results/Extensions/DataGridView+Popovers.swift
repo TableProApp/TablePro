@@ -104,7 +104,8 @@ extension TableViewCoordinator {
               let tableView else {
             return
         }
-        let newRow = tableView.selectedRow
+        let focusedRow = (tableView as? KeyHandlingTableView)?.focusedRow ?? -1
+        let newRow = focusedRow >= 0 ? focusedRow : (tableView.selectedRowIndexes.max() ?? -1)
         guard newRow >= 0,
               let tableColumnIndex = DataGridView.tableColumnIndex(
                 for: columnIndex,

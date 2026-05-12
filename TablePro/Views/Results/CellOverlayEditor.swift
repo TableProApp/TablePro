@@ -274,13 +274,13 @@ private final class OverlayContainerView: NSView {
 // MARK: - Overlay Text View
 
 private final class OverlayTextView: NSTextView {
-    private let privateUndoManager = UndoManager()
+    private let storedUndoManager = UndoManager()
 
     weak var overlayEditor: CellOverlayEditor?
 
     private static let menuKeyEquivalents: Set<String> = ["s"]
 
-    override var undoManager: UndoManager? { privateUndoManager }
+    override var undoManager: UndoManager? { storedUndoManager }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command),

@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editing a cell, dismissing the editor, then pressing Cmd+Z multiple times no longer crashes. The inline editor now keeps its typing-undo stack private instead of pushing entries onto the window's undo manager.
 - Pressing Cmd+Z right after Add Row no longer leaves a stranded cell editor floating over the removed row; the editor now dismisses whenever rows are inserted, removed, or replaced.
 - Adding a new row no longer renders the new row view on top of the auto-opened cell editor mid-animation; the editor is kept at the front of the table view's subview list whenever a sibling is added.
+- Cmd+Z and Cmd+Shift+Z while editing a cell now undo and redo typing in the editor instead of jumping straight to data-grid changes; the menu commands route through the first responder before falling back to the window's undo manager.
 
 ## [0.40.1] - 2026-05-12
 
