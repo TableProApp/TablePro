@@ -39,6 +39,28 @@ struct SQLReviewSheet: View {
         )
     }
 
+    private var contentHeight: CGFloat {
+        let lineHeight: CGFloat = 18
+        let headerArea: CGFloat = 48
+        let footerArea: CGFloat = 52
+        let editorPadding: CGFloat = 32
+        let editorInsets: CGFloat = 16
+
+        let lineCount: Int = {
+            guard !statements.isEmpty else { return 1 }
+            let statementsLineCount = statements.reduce(0) { total, stmt in
+                var newlines = 0
+                for scalar in stmt.unicodeScalars where scalar == "\n" { newlines += 1 }
+                return total + newlines + 1
+            }
+            let separatorLines = (statements.count - 1) * 2
+            return statementsLineCount + separatorLines
+        }()
+        let editorHeight = CGFloat(lineCount) * lineHeight + editorInsets
+        let total = headerArea + editorHeight + editorPadding + footerArea
+        return min(max(total, 240), 560)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -60,7 +82,7 @@ struct SQLReviewSheet: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
         }
-        .frame(width: 560, height: 420)
+        .frame(width: 560, height: contentHeight)
         .background(Color(nsColor: .windowBackgroundColor))
         .task { isEditorReady = true }
         .onDisappear { isEditorReady = false }

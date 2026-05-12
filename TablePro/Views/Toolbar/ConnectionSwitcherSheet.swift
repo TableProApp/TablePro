@@ -85,10 +85,7 @@ struct ConnectionSwitcherSheet: View {
             }
             .buttonStyle(.plain)
         }
-        .frame(
-            width: 280,
-            height: listHeight(sessions: sortedSessions.count, saved: inactiveSaved.count)
-        )
+        .frame(width: 420, height: 500)
         .onAppear {
             savedConnections = ConnectionStorage.shared.loadConnections()
             if selectedConnectionId == nil {
@@ -191,22 +188,6 @@ struct ConnectionSwitcherSheet: View {
                 }
             }
         }
-    }
-
-    // MARK: - Layout
-
-    private func listHeight(sessions: Int, saved: Int) -> CGFloat {
-        let rowHeight: CGFloat = 44
-        let sectionHeaderHeight: CGFloat = 28
-        let buttonHeight: CGFloat = 44
-        var height: CGFloat = buttonHeight
-        if sessions > 0 {
-            height += sectionHeaderHeight + CGFloat(sessions) * rowHeight
-        }
-        if saved > 0 {
-            height += sectionHeaderHeight + CGFloat(saved) * rowHeight
-        }
-        return min(height, 400)
     }
 
     private func connectionSubtitle(_ connection: DatabaseConnection) -> String {
