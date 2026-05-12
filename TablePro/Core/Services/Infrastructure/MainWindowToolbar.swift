@@ -2,17 +2,6 @@
 //  MainWindowToolbar.swift
 //  TablePro
 //
-//  NSToolbar + NSToolbarDelegate for the main editor window. Replaces the
-//  SwiftUI `.toolbar { ... }` modifier (`TableProToolbarView.openTableToolbar`)
-//  which only produces a visible toolbar inside a SwiftUI WindowGroup scene.
-//  Under AppKit-imperative window management (TabWindowController hosting
-//  ContentView via NSHostingView), SwiftUI has no scene to attach its toolbar
-//  items to — NSToolbar must be constructed directly on NSWindow.
-//
-//  Each item's content is still authored in SwiftUI (`NSHostingView(rootView:)`)
-//  so existing subviews (ConnectionStatusView, SafeModeBadgeView, popovers,x
-//  etc.) are reused verbatim.
-//
 
 import AppKit
 import Combine
@@ -24,50 +13,29 @@ import TableProPluginKit
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    /// The coordinator whose toolbar state drives every item. Held weak so a
-    /// closed window's delegate doesn't retain a torn-down coordinator.
-    private weak var coordinator: MainContentCoordinator?
+    weak var coordinator: MainContentCoordinator?
 
-    /// The NSToolbar this delegate manages. Exposed so the controller can
-    /// verify `window.toolbar === managedToolbar` after install — macOS may
-    /// silently discard an assignment made during tab-group merge.
     internal let managedToolbar: NSToolbar
 
-    /// Retain the hosting controllers — without this, NSHostingController
-    /// deallocs immediately and its view becomes orphaned, producing zero-size
-    /// items that get pushed right by flexibleSpace.
+    /// Retain hosting controllers per item identifier. NSHostingController is not retained by NSToolbarItem,
+    /// so without this its view orphans and the toolbar item collapses to zero width.
     internal var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
-    private var sidebarButtons: [NSButton] = []
-    private var sidebarObservationTask: Task<Void, Never>?
-    private var splitViewObserver: NSObjectProtocol?
+    var sidebarButtons: [NSButton] = []
+    var sidebarObservationTask: Task<Void, Never>?
+    var splitViewObserver: NSObjectProtocol?
 
     internal init(coordinator: MainContentCoordinator) {
         self.coordinator = coordinator
-        // Unique identifier per toolbar instance. With a shared identifier
-        // across tab-group members, macOS collapses them into one toolbar and
-        // only the first window's items render — subsequent tabs show an
-        // empty toolbar.
+        // Unique identifier per toolbar instance prevents tab-group merging that would collapse
+        // all tabs into one toolbar and leave subsequent windows blank.
         self.managedToolbar = NSToolbar(identifier: "com.TablePro.main.toolbar.\(UUID().uuidString)")
         super.init()
         self.managedToolbar.delegate = self
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
         self.managedToolbar.autosavesConfiguration = false
-        // Per WWDC 2023 / Apple Music pattern: do NOT use
-        // `centeredItemIdentifiers` together with a right cluster that should
-        // justify against `inspectorTrackingSeparator`. The centered API
-        // anchors the principal to region center and collapses any trailing
-        // flex to zero — so right items end up packed just right of the
-        // principal instead of at the inspector edge. With plain
-        // `[flex, principal, flex, …rightItems, inspectorSep, inspector]`
-        // and NO centered identifier, the two flexes balance naturally:
-        // principal floats to center, right items pack against the
-        // inspectorTrackingSeparator (right edge).
-
     }
 
-    /// Release all hosted toolbar views and sever the coordinator reference.
-    /// Called by TabWindowController.windowWillClose before coordinator teardown.
     func invalidate() {
         sidebarObservationTask?.cancel()
         sidebarObservationTask = nil
@@ -82,25 +50,25 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     // MARK: - Identifiers
 
-    private static let connectionGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.connectionGroup")
-    private static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
-    private static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
-    private static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
-    private static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
-    private static let principal = NSToolbarItem.Identifier("com.TablePro.toolbar.principal")
-    private static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
-    private static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
-    private static let filters = NSToolbarItem.Identifier("com.TablePro.toolbar.filters")
-    private static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
-    private static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
-    private static let inspector = NSToolbarItem.Identifier.toggleInspector
-    private static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
-    private static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
-    private static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
-    private static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
-    private static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
-    private static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
-    private static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
+    static let connectionGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.connectionGroup")
+    static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
+    static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
+    static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
+    static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
+    static let principal = NSToolbarItem.Identifier("com.TablePro.toolbar.principal")
+    static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
+    static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
+    static let filters = NSToolbarItem.Identifier("com.TablePro.toolbar.filters")
+    static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
+    static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
+    static let inspector = NSToolbarItem.Identifier.toggleInspector
+    static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
+    static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
+    static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
+    static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
+    static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
+    static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
+    static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
 
     // MARK: - NSToolbarDelegate
 
@@ -122,14 +90,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        // Default + secondary actions hidden by default. Available via menus
-        // and keyboard shortcuts:
-        // - Results toggle (Cmd+Opt+R) — contextual to query tabs only
-        //   (invisible on table tabs, disabled with no tabs); auto-expands
-        //   when a query produces new results, so the manual toggle is
-        //   rarely needed.
-        // - Export/Import (File menu, Cmd+Shift+E/I)
-        // - Dashboard/History (View menu, Cmd+Y for history)
         toolbarDefaultItemIdentifiers(toolbar) + [
             Self.results,
             Self.exportImportGroup,
@@ -155,19 +115,12 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             return makeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Connection"),
-                subitems: [
-                    makeConnectionItem(coordinator: coordinator),
-                    makeDatabaseItem(coordinator: coordinator)
-                ],
+                subitems: [subitemConnection(), subitemDatabase()],
                 content: HStack(spacing: 4) {
                     ConnectionToolbarButton(coordinator: coordinator)
                     DatabaseToolbarButton(coordinator: coordinator)
                 }
             )
-        case Self.refresh:
-            return makeRefreshItem(coordinator: coordinator)
-        case Self.saveChanges:
-            return makeSaveChangesItem(coordinator: coordinator)
         case Self.principal:
             let item = hostingItem(
                 id: itemIdentifier,
@@ -259,18 +212,11 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                 modifiers: .command,
                 content: HistoryToolbarButton(coordinator: coordinator)
             )
-        case Self.exportTables:
-            return makeExportItem(coordinator: coordinator)
-        case Self.importTables:
-            return makeImportItem(coordinator: coordinator)
         case Self.refreshSaveGroup:
             return makeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Refresh & Save"),
-                subitems: [
-                    makeRefreshItem(coordinator: coordinator),
-                    makeSaveChangesItem(coordinator: coordinator)
-                ],
+                subitems: [subitemRefresh(), subitemSaveChanges()],
                 content: HStack(spacing: 4) {
                     RefreshToolbarButton(coordinator: coordinator)
                     SaveChangesToolbarButton(coordinator: coordinator)
@@ -280,10 +226,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             return makeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Export & Import"),
-                subitems: [
-                    makeExportItem(coordinator: coordinator),
-                    makeImportItem(coordinator: coordinator)
-                ],
+                subitems: [subitemExport(), subitemImport()],
                 content: HStack(spacing: 4) {
                     ExportToolbarButton(coordinator: coordinator)
                     ImportToolbarButton(coordinator: coordinator)
@@ -293,451 +236,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             return nil
         }
     }
-
-    // MARK: - Item Builders
-
-    private func makeConnectionItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
-        hostingItem(
-            id: Self.connection,
-            label: String(localized: "Connection"),
-            symbol: "network",
-            action: #selector(performOpenConnectionSwitcher(_:)),
-            keyEquivalent: "c",
-            modifiers: [.command, .option],
-            content: ConnectionToolbarButton(coordinator: coordinator)
-        )
-    }
-
-    private func makeDatabaseItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
-        hostingItem(
-            id: Self.database,
-            label: String(localized: "Database"),
-            symbol: "cylinder",
-            action: #selector(performOpenDatabaseSwitcher(_:)),
-            keyEquivalent: "k",
-            modifiers: .command,
-            content: DatabaseToolbarButton(coordinator: coordinator)
-        )
-    }
-
-    private func makeRefreshItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
-        hostingItem(
-            id: Self.refresh,
-            label: String(localized: "Refresh"),
-            symbol: "arrow.clockwise",
-            action: #selector(performRefresh(_:)),
-            keyEquivalent: "r",
-            modifiers: .command,
-            content: RefreshToolbarButton(coordinator: coordinator)
-        )
-    }
-
-    private func makeSaveChangesItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
-        hostingItem(
-            id: Self.saveChanges,
-            label: String(localized: "Save Changes"),
-            symbol: "checkmark.circle.fill",
-            action: #selector(performSaveChanges(_:)),
-            keyEquivalent: "s",
-            modifiers: .command,
-            content: SaveChangesToolbarButton(coordinator: coordinator)
-        )
-    }
-
-    private func makeExportItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
-        hostingItem(
-            id: Self.exportTables,
-            label: String(localized: "Export"),
-            symbol: "square.and.arrow.up",
-            action: #selector(performExport(_:)),
-            keyEquivalent: "e",
-            modifiers: [.command, .shift],
-            content: ExportToolbarButton(coordinator: coordinator)
-        )
-    }
-
-    private func makeImportItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
-        hostingItem(
-            id: Self.importTables,
-            label: String(localized: "Import"),
-            symbol: "square.and.arrow.down",
-            action: #selector(performImport(_:)),
-            keyEquivalent: "i",
-            modifiers: [.command, .shift],
-            content: ImportToolbarButton(coordinator: coordinator)
-        )
-    }
-
-    // MARK: - Helpers
-
-    private func hostingItem<Content: View>(
-        id: NSToolbarItem.Identifier,
-        label: String,
-        symbol: String?,
-        action: Selector?,
-        keyEquivalent: String,
-        modifiers: NSEvent.ModifierFlags,
-        content: Content
-    ) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: id)
-        item.label = label
-        item.paletteLabel = label
-
-        let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
-        controller.sizingOptions = .intrinsicContentSize
-        hostingControllers[id] = controller
-        item.view = controller.view
-
-        if let symbol {
-            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-        }
-        if let action {
-            item.target = self
-            item.action = action
-            item.autovalidates = true
-            let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
-            menuItem.keyEquivalentModifierMask = modifiers
-            menuItem.target = self
-            menuItem.image = item.image
-            item.menuFormRepresentation = menuItem
-        }
-
-        return item
-    }
-
-    private func makeGroup<Content: View>(
-        id: NSToolbarItem.Identifier,
-        label: String,
-        subitems: [NSToolbarItem],
-        content: Content
-    ) -> NSToolbarItemGroup {
-        let group = NSToolbarItemGroup(itemIdentifier: id)
-        group.label = label
-        group.paletteLabel = label
-
-        let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
-        controller.sizingOptions = .intrinsicContentSize
-        hostingControllers[id] = controller
-        group.view = controller.view
-
-        group.subitems = subitems
-        return group
-    }
 }
 
-// MARK: - Action Selectors
-
-fileprivate extension MainWindowToolbar {
-    @objc func performOpenConnectionSwitcher(_ sender: Any?) {
-        coordinator?.commandActions?.openConnectionSwitcher()
-    }
-
-    @objc func performOpenDatabaseSwitcher(_ sender: Any?) {
-        coordinator?.commandActions?.openDatabaseSwitcher()
-    }
-
-    @objc func performRefresh(_ sender: Any?) {
-        AppCommands.shared.refreshData.send(nil)
-    }
-
-    @objc func performSaveChanges(_ sender: Any?) {
-        coordinator?.commandActions?.saveChanges()
-    }
-
-    @objc func performOpenQuickSwitcher(_ sender: Any?) {
-        coordinator?.commandActions?.openQuickSwitcher()
-    }
-
-    @objc func performNewTab(_ sender: Any?) {
-        NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
-    }
-
-    @objc func performToggleFilters(_ sender: Any?) {
-        coordinator?.commandActions?.toggleFilterPanel()
-    }
-
-    @objc func performPreviewSQL(_ sender: Any?) {
-        coordinator?.commandActions?.previewSQL()
-    }
-
-    @objc func performToggleResults(_ sender: Any?) {
-        coordinator?.commandActions?.toggleResults()
-    }
-
-    @objc func performShowDashboard(_ sender: Any?) {
-        coordinator?.commandActions?.showServerDashboard()
-    }
-
-    @objc func performToggleHistory(_ sender: Any?) {
-        coordinator?.commandActions?.toggleHistoryPanel()
-    }
-
-    @objc func performExport(_ sender: Any?) {
-        coordinator?.commandActions?.exportTables()
-    }
-
-    @objc func performImport(_ sender: Any?) {
-        coordinator?.commandActions?.importTables()
-    }
-}
-
-// MARK: - Validation
-
-extension MainWindowToolbar: NSToolbarItemValidation {
-    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        guard let state = coordinator?.toolbarState else { return false }
-        let connected = state.connectionState == .connected
-        let fileBased = PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
-
-        switch item.itemIdentifier {
-        case Self.connection:
-            return true
-        case Self.database:
-            return connected
-                && !fileBased
-                && PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
-        case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables:
-            return connected
-        case Self.saveChanges:
-            return state.hasPendingChanges && connected && !state.safeModeLevel.blocksAllWrites
-        case Self.filters:
-            return connected && state.isTableTab
-        case Self.previewSQL:
-            return state.hasDataPendingChanges && connected
-        case Self.results:
-            return connected && !state.isTableTab
-        case Self.dashboard:
-            return connected && (coordinator?.commandActions?.supportsServerDashboard ?? false)
-        case Self.history:
-            return true
-        case Self.importTables:
-            return connected
-                && !state.safeModeLevel.blocksAllWrites
-                && PluginManager.shared.supportsImport(for: state.databaseType)
-        default:
-            return true
-        }
-    }
-}
-
-// MARK: - Item SwiftUI Views
-
-private struct ConnectionToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        Button {
-            coordinator.commandActions?.openConnectionSwitcher()
-        } label: {
-            Label("Connection", systemImage: "network")
-        }
-        .help(String(localized: "Switch Connection (⌘⌥C)"))
-    }
-}
-
-private struct DatabaseToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        let supportsSwitch = PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
-        if supportsSwitch {
-            Button {
-                coordinator.commandActions?.openDatabaseSwitcher()
-            } label: {
-                Label("Database", systemImage: "cylinder")
-            }
-            .help(String(localized: "Open Database (⌘K)"))
-            .disabled(
-                state.connectionState != .connected
-                    || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
-            )
-        }
-    }
-}
-
-private struct RefreshToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            AppCommands.shared.refreshData.send(nil)
-        } label: {
-            Label("Refresh", systemImage: "arrow.clockwise")
-        }
-        .help(String(localized: "Refresh (⌘R)"))
-        .disabled(state.connectionState != .connected)
-    }
-}
-
-private struct SaveChangesToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.saveChanges()
-        } label: {
-            Label("Save Changes", systemImage: "checkmark.circle.fill")
-        }
-        .help(String(localized: "Save Changes (⌘S)"))
-        // Match menu: also disable when read-only (safe mode blocks writes).
-        .disabled(
-            !state.hasPendingChanges
-                || state.connectionState != .connected
-                || state.safeModeLevel.blocksAllWrites
-        )
-        .tint(.accentColor)
-    }
-}
-
-private struct QuickSwitcherToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.openQuickSwitcher()
-        } label: {
-            Label("Quick Switcher", systemImage: "magnifyingglass")
-        }
-        .help(String(localized: "Quick Switcher (⇧⌘O)"))
-        .disabled(state.connectionState != .connected)
-    }
-}
-
-private struct NewTabToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
-        } label: {
-            Label("New Tab", systemImage: "plus.rectangle")
-        }
-        .help(String(localized: "New Query Tab (⌘T)"))
-        .disabled(state.connectionState != .connected)
-    }
-}
-
-private struct FiltersToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.toggleFilterPanel()
-        } label: {
-            Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
-        }
-        .help(String(localized: "Toggle Filters (⇧⌘F)"))
-        .disabled(state.connectionState != .connected || !state.isTableTab)
-    }
-}
-
-private struct PreviewSQLToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.previewSQL()
-        } label: {
-            let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
-            Label(String(format: String(localized: "Preview %@"), langName), systemImage: "eye")
-        }
-        .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
-        .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
-    }
-}
-
-private struct ResultsToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.toggleResults()
-        } label: {
-            Label(
-                "Results",
-                systemImage: state.isResultsCollapsed
-                    ? "rectangle.bottomhalf.inset.filled"
-                    : "rectangle.inset.filled"
-            )
-        }
-        .help(String(localized: "Toggle Results (⌘⌥R)"))
-        .disabled(state.connectionState != .connected || state.isTableTab)
-    }
-}
-
-private struct DashboardToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        let supportsDashboard = coordinator.commandActions?.supportsServerDashboard ?? false
-        Button {
-            coordinator.commandActions?.showServerDashboard()
-        } label: {
-            Label(String(localized: "Dashboard"), systemImage: "gauge.with.dots.needle.33percent")
-        }
-        .help(String(localized: "Server Dashboard"))
-        .disabled(state.connectionState != .connected || !supportsDashboard)
-    }
-}
-
-private struct HistoryToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        Button {
-            coordinator.commandActions?.toggleHistoryPanel()
-        } label: {
-            Label("History", systemImage: "clock")
-        }
-        .help(String(localized: "Toggle Query History (⌘Y)"))
-    }
-}
-
-private struct ExportToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.exportTables()
-        } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
-        }
-        .help(String(localized: "Export Data (⌘⇧E)"))
-        .disabled(state.connectionState != .connected)
-    }
-}
-
-private struct ImportToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        if PluginManager.shared.supportsImport(for: state.databaseType) {
-            Button {
-                coordinator.commandActions?.importTables()
-            } label: {
-                Label("Import", systemImage: "square.and.arrow.down")
-            }
-            .help(String(localized: "Import Data (⌘⇧I)"))
-            .disabled(
-                state.connectionState != .connected
-                    || state.safeModeLevel.blocksAllWrites
-            )
-        }
-    }
-}
-
-// MARK: - Sidebar Toggle (Pure AppKit)
+// MARK: - Sidebar Toggle
 
 extension MainWindowToolbar {
     fileprivate func makeSidebarToggleItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
@@ -817,7 +318,6 @@ extension MainWindowToolbar {
     fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
         sidebarObservationTask?.cancel()
 
-        // Observe @Observable state changes (selected tab, connection state)
         sidebarObservationTask = Task { [weak self, weak coordinator] in
             guard let coordinator else { return }
             while !Task.isCancelled {
@@ -837,8 +337,6 @@ extension MainWindowToolbar {
             }
         }
 
-        // Observe NSSplitView resize to catch sidebar collapse/expand from
-        // keyboard shortcut, drag, or any non-button path.
         splitViewObserver = NotificationCenter.default.addObserver(
             forName: NSSplitView.didResizeSubviewsNotification,
             object: coordinator.splitViewController?.splitView,
