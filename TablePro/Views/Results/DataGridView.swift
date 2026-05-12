@@ -367,9 +367,12 @@ struct DataGridView: NSViewRepresentable {
         let display = "\(max(maxNumber, 1))"
         let font = ThemeEngine.shared.dataGridFonts.rowNumber
         let textWidth = (display as NSString).size(withAttributes: [.font: font]).width
-        let columnWidth = max(40, ceil(textWidth) + 2 * DataGridMetrics.cellHorizontalInset + 8)
+        let measured = ceil(textWidth)
+            + 2 * DataGridMetrics.cellHorizontalInset
+            + DataGridMetrics.rowNumberHeaderPadding
+        let columnWidth = max(DataGridMetrics.rowNumberColumnMinWidth, measured)
         column.minWidth = columnWidth
-        column.maxWidth = max(columnWidth, 120)
+        column.maxWidth = columnWidth
         column.width = columnWidth
     }
 
