@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Row numbers in the data grid now continue across pages instead of resetting to 1, matching the pagination footer (page 2 with a page size of 1000 shows 1001-2000).
 - The connection window shows the connecting state inline with a Cancel button instead of an empty sidebar.
 - Date, datetime, and timestamp cells use the same inline text editor as other columns; the popover date picker is removed.
 - The foreign key preview popover now follows the selected row when you arrow up or down, refreshing both the anchor and the displayed reference row. Arrow left or right (column change) and row mutations dismiss the popover.

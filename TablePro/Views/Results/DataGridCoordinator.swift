@@ -11,6 +11,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
+    var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     var isEditable: Bool
     var sortedIDs: [RowID]?

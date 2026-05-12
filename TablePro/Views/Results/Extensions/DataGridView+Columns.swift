@@ -22,6 +22,7 @@ extension TableViewCoordinator {
             return cellRegistry.makeRowNumberCell(
                 in: tableView,
                 row: row,
+                pageOffset: paginationOffsetProvider(),
                 cachedRowCount: displayCount,
                 visualState: visualState(for: row)
             )

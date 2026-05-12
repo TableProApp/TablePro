@@ -30,6 +30,7 @@ struct RowVisualState: Equatable {
 struct DataGridView: NSViewRepresentable {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
+    var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     let isEditable: Bool
     var configuration: DataGridConfiguration = .init()
@@ -112,6 +113,7 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableRowsController.attach(tableView)
         context.coordinator.tableRowsProvider = tableRowsProvider
         context.coordinator.tableRowsMutator = tableRowsMutator
+        context.coordinator.paginationOffsetProvider = paginationOffsetProvider
         context.coordinator.sortedIDs = sortedIDs
         // Intentionally do not prime cachedRowCount/cachedColumnCount here.
         // They represent what NSTableView has actually rendered. Leaving them
@@ -143,6 +145,7 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.tableRowsProvider = tableRowsProvider
         coordinator.tableRowsMutator = tableRowsMutator
+        coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.changeManager = changeManager
 
         let latestRows = tableRowsProvider()

@@ -561,6 +561,9 @@ struct MainEditorContentView: View {
                     return .none
                 }
             },
+            paginationOffsetProvider: { [coordinator] in
+                coordinator.tabManager.tabs.first(where: { $0.id == tabId })?.pagination.currentOffset ?? 0
+            },
             changeManager: currentChangeManager,
             isEditable: isEditable,
             configuration: DataGridConfiguration(
