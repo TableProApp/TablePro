@@ -27431,7 +27431,6 @@
       }
     },
     "Loading..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -40608,7 +40607,6 @@
       }
     },
     "Search tables, views, databases..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -40629,9 +40627,6 @@
           }
         }
       }
-    },
-    "Search tables, views, databases…" : {
-
     },
     "Search text (full-text matched against the query column)" : {
 

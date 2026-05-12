@@ -211,9 +211,7 @@ struct MainContentView: View {
                 schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
                 connectionId: connection.id,
                 databaseType: connection.type,
-                onSelect: { [weak coordinator] item in
-                    coordinator?.handleQuickSwitcherSelection(item)
-                }
+                onSelect: coordinator.handleQuickSwitcherSelection
             )
         }
     }

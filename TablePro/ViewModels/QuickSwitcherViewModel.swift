@@ -11,34 +11,28 @@ import os
 @Observable
 internal final class QuickSwitcherViewModel {
     struct Group: Identifiable {
-        let kind: QuickSwitcherItemKind
-        let isRecent: Bool
+        let id: String
+        let header: String?
         let items: [QuickSwitcherItem]
-
-        var id: String {
-            isRecent ? "recent" : "kind-\(kind.rawValue)"
-        }
     }
 
-    @ObservationIgnored private static let logger = Logger(
-        subsystem: "com.TablePro",
-        category: "QuickSwitcherViewModel"
-    )
-    @ObservationIgnored private static let mruDefaultsKeyPrefix = "QuickSwitcher.mru."
-    @ObservationIgnored private static let mruLimit = 10
-    @ObservationIgnored private static let maxResults = 200
-    @ObservationIgnored private static let filterDebounceNanoseconds: UInt64 = 40_000_000
+    private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
+    private static let mruDefaultsKeyPrefix = "QuickSwitcher.mru."
+    private static let mruLimit = 10
+    private static let maxResults = 200
+    private static let filterDebounceNanoseconds: UInt64 = 40_000_000
 
     @ObservationIgnored private let services: AppServices
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let connectionId: UUID
 
-    @ObservationIgnored private var allItems: [QuickSwitcherItem] = []
-    @ObservationIgnored private var connectionId = UUID()
+    @ObservationIgnored internal var allItems: [QuickSwitcherItem] = [] {
+        didSet { applyFilter() }
+    }
     @ObservationIgnored private var filterTask: Task<Void, Never>?
     @ObservationIgnored private var activeLoadId = UUID()
 
     private(set) var groups: [Group] = []
-    private(set) var flatItems: [QuickSwitcherItem] = []
     private(set) var isLoading = false
     var selectedItemId: String?
 
@@ -49,21 +43,24 @@ internal final class QuickSwitcherViewModel {
         }
     }
 
-    init(services: AppServices, defaults: UserDefaults = .standard) {
+    var flatItems: [QuickSwitcherItem] {
+        groups.flatMap(\.items)
+    }
+
+    init(connectionId: UUID, services: AppServices, defaults: UserDefaults = .standard) {
+        self.connectionId = connectionId
         self.services = services
         self.defaults = defaults
     }
 
-    convenience init() {
-        self.init(services: .live)
+    convenience init(connectionId: UUID = UUID()) {
+        self.init(connectionId: connectionId, services: .live)
     }
 
     func loadItems(
         schemaProvider: SQLSchemaProvider,
-        connectionId: UUID,
         databaseType: DatabaseType
     ) async {
-        self.connectionId = connectionId
         isLoading = true
 
         let loadId = UUID()
@@ -147,9 +144,8 @@ internal final class QuickSwitcherViewModel {
 
         guard activeLoadId == loadId, !Task.isCancelled else { return }
 
-        allItems = items
         isLoading = false
-        applyFilter()
+        allItems = items
     }
 
     func selectedItem() -> QuickSwitcherItem? {
@@ -158,15 +154,16 @@ internal final class QuickSwitcherViewModel {
     }
 
     func moveSelection(by delta: Int) {
-        guard !flatItems.isEmpty else {
+        let items = flatItems
+        guard !items.isEmpty else {
             selectedItemId = nil
             return
         }
-        if let id = selectedItemId, let index = flatItems.firstIndex(where: { $0.id == id }) {
-            let next = max(0, min(flatItems.count - 1, index + delta))
-            selectedItemId = flatItems[next].id
+        if let id = selectedItemId, let index = items.firstIndex(where: { $0.id == id }) {
+            let next = max(0, min(items.count - 1, index + delta))
+            selectedItemId = items[next].id
         } else {
-            selectedItemId = flatItems.first?.id
+            selectedItemId = items.first?.id
         }
     }
 
@@ -191,16 +188,14 @@ internal final class QuickSwitcherViewModel {
 
     private func applyFilter() {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty {
-            groups = buildEmptyQueryGroups()
-        } else {
-            groups = buildFilteredGroups(for: trimmed)
-        }
-        flatItems = groups.flatMap(\.items)
-        if let current = selectedItemId, flatItems.contains(where: { $0.id == current }) {
+        groups = trimmed.isEmpty
+            ? buildEmptyQueryGroups()
+            : buildFilteredGroups(for: trimmed)
+        let items = flatItems
+        if let current = selectedItemId, items.contains(where: { $0.id == current }) {
             return
         }
-        selectedItemId = flatItems.first?.id
+        selectedItemId = items.first?.id
     }
 
     private func buildEmptyQueryGroups() -> [Group] {
@@ -214,18 +209,17 @@ internal final class QuickSwitcherViewModel {
             .filter { mruIds.contains($0.id) }
             .sorted { (mruOrder[$0.id] ?? 0) < (mruOrder[$1.id] ?? 0) }
         if !recent.isEmpty {
-            result.append(Group(kind: .table, isRecent: true, items: recent))
+            result.append(Group(id: "recent", header: String(localized: "Recent"), items: recent))
         }
 
-        let kindsOrder: [QuickSwitcherItemKind] = [.table, .view, .systemTable, .database, .schema, .queryHistory]
-        for kind in kindsOrder {
+        for kind in QuickSwitcherItemKind.displayOrder {
             let items = allItems
                 .filter { $0.kind == kind && !mruIds.contains($0.id) }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             guard !items.isEmpty else { continue }
             result.append(Group(
-                kind: kind,
-                isRecent: false,
+                id: "kind-\(kind.rawValue)",
+                header: kind.sectionTitle,
                 items: Array(items.prefix(Self.maxResults))
             ))
         }
@@ -240,25 +234,14 @@ internal final class QuickSwitcherViewModel {
         }
         scored.sort { lhs, rhs in
             if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
-            let lOrder = kindSortOrder(lhs.0.kind)
-            let rOrder = kindSortOrder(rhs.0.kind)
+            let lOrder = QuickSwitcherItemKind.displayOrder.firstIndex(of: lhs.0.kind) ?? Int.max
+            let rOrder = QuickSwitcherItemKind.displayOrder.firstIndex(of: rhs.0.kind) ?? Int.max
             if lOrder != rOrder { return lOrder < rOrder }
             return lhs.0.name.localizedStandardCompare(rhs.0.name) == .orderedAscending
         }
         let items = Array(scored.prefix(Self.maxResults).map(\.0))
         guard !items.isEmpty else { return [] }
-        return [Group(kind: .table, isRecent: false, items: items)]
-    }
-
-    private func kindSortOrder(_ kind: QuickSwitcherItemKind) -> Int {
-        switch kind {
-        case .table: return 0
-        case .view: return 1
-        case .systemTable: return 2
-        case .database: return 3
-        case .schema: return 4
-        case .queryHistory: return 5
-        }
+        return [Group(id: "results", header: nil, items: items)]
     }
 
     private var mruKey: String {
@@ -267,5 +250,22 @@ internal final class QuickSwitcherViewModel {
 
     private func loadMRU() -> [String] {
         defaults.stringArray(forKey: mruKey) ?? []
+    }
+}
+
+private extension QuickSwitcherItemKind {
+    static let displayOrder: [QuickSwitcherItemKind] = [
+        .table, .view, .systemTable, .database, .schema, .queryHistory
+    ]
+
+    var sectionTitle: String {
+        switch self {
+        case .table: return String(localized: "Tables")
+        case .view: return String(localized: "Views")
+        case .systemTable: return String(localized: "System Tables")
+        case .database: return String(localized: "Databases")
+        case .schema: return String(localized: "Schemas")
+        case .queryHistory: return String(localized: "Recent Queries")
+        }
     }
 }

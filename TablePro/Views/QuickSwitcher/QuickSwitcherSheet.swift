@@ -14,13 +14,22 @@ struct QuickSwitcherSheet: View {
     let databaseType: DatabaseType
     let onSelect: (QuickSwitcherItem) -> Void
 
-    @State private var viewModel = QuickSwitcherViewModel()
+    @State private var viewModel: QuickSwitcherViewModel
 
-    private enum FocusField {
-        case itemList
+    init(
+        isPresented: Binding<Bool>,
+        schemaProvider: SQLSchemaProvider,
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        onSelect: @escaping (QuickSwitcherItem) -> Void
+    ) {
+        self._isPresented = isPresented
+        self.schemaProvider = schemaProvider
+        self.connectionId = connectionId
+        self.databaseType = databaseType
+        self.onSelect = onSelect
+        self._viewModel = State(wrappedValue: QuickSwitcherViewModel(connectionId: connectionId))
     }
-
-    @FocusState private var focus: FocusField?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,7 +55,6 @@ struct QuickSwitcherSheet: View {
         .task {
             await viewModel.loadItems(
                 schemaProvider: schemaProvider,
-                connectionId: connectionId,
                 databaseType: databaseType
             )
         }
@@ -66,10 +74,9 @@ struct QuickSwitcherSheet: View {
     private var toolbar: some View {
         NativeSearchField(
             text: $viewModel.searchText,
-            placeholder: String(localized: "Search tables, views, databases…"),
+            placeholder: String(localized: "Search tables, views, databases..."),
             onMoveUp: { viewModel.moveSelection(by: -1) },
             onMoveDown: { viewModel.moveSelection(by: 1) },
-            onSubmit: { openSelectedItem() },
             focusOnAppear: true
         )
         .padding(.horizontal, 12)
@@ -80,18 +87,23 @@ struct QuickSwitcherSheet: View {
         ScrollViewReader { proxy in
             List(selection: $viewModel.selectedItemId) {
                 ForEach(viewModel.groups) { group in
-                    Section {
+                    if let header = group.header {
+                        Section {
+                            ForEach(group.items) { item in
+                                itemRow(item)
+                            }
+                        } header: {
+                            Text(header)
+                        }
+                    } else {
                         ForEach(group.items) { item in
                             itemRow(item)
                         }
-                    } header: {
-                        Text(sectionTitle(for: group))
                     }
                 }
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
-            .focused($focus, equals: .itemList)
             .contextMenu(forSelectionType: String.self) { _ in
                 EmptyView()
             } primaryAction: { selection in
@@ -144,7 +156,7 @@ struct QuickSwitcherSheet: View {
         VStack(spacing: 12) {
             ProgressView()
                 .scaleEffect(0.8)
-            Text(String(localized: "Loading…"))
+            Text(String(localized: "Loading..."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -188,20 +200,6 @@ struct QuickSwitcherSheet: View {
             .keyboardShortcut(.return, modifiers: [])
         }
         .padding(12)
-    }
-
-    private func sectionTitle(for group: QuickSwitcherViewModel.Group) -> String {
-        if group.isRecent {
-            return String(localized: "Recent")
-        }
-        switch group.kind {
-        case .table: return String(localized: "Tables")
-        case .view: return String(localized: "Views")
-        case .systemTable: return String(localized: "System Tables")
-        case .database: return String(localized: "Databases")
-        case .schema: return String(localized: "Schemas")
-        case .queryHistory: return String(localized: "Recent Queries")
-        }
     }
 
     private func openSelectedItem() {
