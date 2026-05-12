@@ -18,6 +18,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private let displayCache = RowDisplayCache()
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
+    var activeFKPreviewModel: FKPreviewModel?
+    var activeFKPreviewColumnIndex: Int?
     var dropdownColumns: Set<Int>?
     var typePickerColumns: Set<Int>?
     var customDropdownOptions: [Int: [String]]?
@@ -214,7 +216,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         tableRowsController.detach()
         delegate = nil
         activeFKPreviewPopover?.close()
-        activeFKPreviewPopover = nil
+        clearFKPreviewState()
     }
 
     func updateCache() {
@@ -477,13 +479,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }
+            overlayEditor?.dismiss(commit: false)
+            dismissFKPreviewOnColumnChange()
             appendInsertedIDsToSortedIDs(at: indices)
             applyInsertedRows(indices)
         case .rowsRemoved(let indices):
             guard !indices.isEmpty else { return }
+            overlayEditor?.dismiss(commit: false)
+            dismissFKPreviewOnColumnChange()
             removeMissingIDsFromSortedIDs()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
+            overlayEditor?.dismiss(commit: false)
+            dismissFKPreviewOnColumnChange()
             sortedIDs = nil
             applyFullReplace()
         }

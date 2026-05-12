@@ -52,6 +52,8 @@ extension TableViewCoordinator {
         if keyTableView.focusedColumn != newFocus.column {
             keyTableView.focusedColumn = newFocus.column
         }
+
+        refreshFKPreviewForRowChange()
     }
 
     private func resolvedFocus(

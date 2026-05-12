@@ -9,9 +9,25 @@ import os
 import SwiftUI
 import TableProPluginKit
 
-struct ForeignKeyPreviewView: View {
+@MainActor
+@Observable
+final class FKPreviewModel {
+    var cellValue: String?
+    var fkInfo: ForeignKeyInfo
+
+    init(cellValue: String?, fkInfo: ForeignKeyInfo) {
+        self.cellValue = cellValue
+        self.fkInfo = fkInfo
+    }
+}
+
+private struct FKPreviewTaskKey: Equatable {
+    let column: String
     let cellValue: String?
-    let fkInfo: ForeignKeyInfo
+}
+
+struct ForeignKeyPreviewView: View {
+    let model: FKPreviewModel
     let connectionId: UUID
     let databaseType: DatabaseType
     let onNavigate: () -> Void
@@ -23,6 +39,9 @@ struct ForeignKeyPreviewView: View {
     @State private var errorMessage: String?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "FKPreview")
+
+    private var fkInfo: ForeignKeyInfo { model.fkInfo }
+    private var cellValue: String? { model.cellValue }
 
     private var referencedTableDisplay: String {
         if let schema = fkInfo.referencedSchema {
@@ -41,7 +60,17 @@ struct ForeignKeyPreviewView: View {
         }
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
-        .task { await fetchReferencedRow() }
+        .task(id: FKPreviewTaskKey(column: fkInfo.column, cellValue: cellValue)) {
+            await reloadReferencedRow()
+        }
+    }
+
+    private func reloadReferencedRow() async {
+        columns = []
+        values = []
+        errorMessage = nil
+        isLoading = true
+        await fetchReferencedRow()
     }
 
     // MARK: - Header

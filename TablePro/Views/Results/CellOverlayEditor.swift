@@ -26,6 +26,14 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
 
     var isActive: Bool { container != nil }
 
+    var containerView: NSView? { container }
+
+    func raiseToFront() {
+        guard let container, let tableView, container.superview === tableView else { return }
+        guard tableView.subviews.last !== container else { return }
+        tableView.addSubview(container)
+    }
+
     // MARK: - Show / Dismiss
 
     func show(
@@ -143,7 +151,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
                 object: clipView,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     self?.dismiss(commit: true)
                 }
             }
@@ -154,7 +162,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
             object: tableView,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.dismiss(commit: false)
             }
         }
@@ -164,7 +172,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.dismiss(commit: true)
             }
         }
@@ -175,7 +183,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
                 object: editorWindow,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     self?.dismiss(commit: true)
                 }
             }
@@ -266,9 +274,13 @@ private final class OverlayContainerView: NSView {
 // MARK: - Overlay Text View
 
 private final class OverlayTextView: NSTextView {
+    private let privateUndoManager = UndoManager()
+
     weak var overlayEditor: CellOverlayEditor?
 
     private static let menuKeyEquivalents: Set<String> = ["s"]
+
+    override var undoManager: UndoManager? { privateUndoManager }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command),

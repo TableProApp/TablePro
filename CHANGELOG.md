@@ -9,12 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Right-click Set Value submenu on date, datetime, and timestamp cells now lists the SQL function presets `NOW()`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, and `CURRENT_TIME`, filtered by column type.
+- Right-click Set Value submenu on date, datetime, and timestamp cells now offers current-value SQL function presets (`CURRENT_DATE` for date columns, `CURRENT_TIME` for time columns, `NOW()` and `CURRENT_TIMESTAMP` for datetime and timestamp columns).
 
 ### Changed
 
 - The connection window shows the connecting state inline with a Cancel button instead of an empty sidebar.
 - Date, datetime, and timestamp cells use the same inline text editor as other columns; the popover date picker is removed.
+- The foreign key preview popover now follows the selected row when you arrow up or down, refreshing both the anchor and the displayed reference row. Arrow left or right (column change) and row mutations dismiss the popover.
 
 ### Fixed
 
@@ -24,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Double-clicking an enum, set, or boolean cell now opens the inline text editor; the chevron still opens the picker popover.
 - Double-clicking another cell while editing no longer delays the new editor or silently drops pending changes on the previous cell.
 - DATE columns no longer render a phantom `00:00:00` time suffix; the display now matches the stored value and the editor.
+- Editing a cell, dismissing the editor, then pressing Cmd+Z multiple times no longer crashes. The inline editor now keeps its typing-undo stack private instead of pushing entries onto the window's undo manager.
+- Pressing Cmd+Z right after Add Row no longer leaves a stranded cell editor floating over the removed row; the editor now dismisses whenever rows are inserted, removed, or replaced.
+- Adding a new row no longer renders the new row view on top of the auto-opened cell editor mid-animation; the editor is kept at the front of the table view's subview list whenever a sibling is added.
 
 ## [0.40.1] - 2026-05-12
 
