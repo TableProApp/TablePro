@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Right-click Set Value submenu on date, datetime, and timestamp cells now offers current-value SQL function presets (`CURRENT_DATE` for date columns, `CURRENT_TIME` for time columns, `NOW()` and `CURRENT_TIMESTAMP` for datetime and timestamp columns).
+- Welcome screen left pane gains an Import from Other App button next to Create Connection and Try Sample Database, opening the existing TablePlus / Sequel Ace / DBeaver import flow.
 
 ### Changed
 

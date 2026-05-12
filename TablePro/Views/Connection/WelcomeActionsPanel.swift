@@ -8,6 +8,7 @@ import SwiftUI
 struct WelcomeActionsPanel: View {
     let onActivateLicense: () -> Void
     let onCreateConnection: () -> Void
+    let onImportFromApp: () -> Void
     let onTrySample: () -> Void
 
     private let updaterBridge = UpdaterBridge.shared
@@ -41,6 +42,13 @@ struct WelcomeActionsPanel: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Button(action: onImportFromApp) {
+                    Label(String(localized: "Import from Other App..."), systemImage: "square.and.arrow.down.on.square")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.bordered)
                 .controlSize(.large)
 
                 Button(action: onTrySample) {

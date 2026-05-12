@@ -198,6 +198,7 @@ struct WelcomeWindowView: View {
             WelcomeActionsPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
                 onCreateConnection: { WindowOpener.shared.openConnectionForm() },
+                onImportFromApp: { vm.importConnectionsFromApp() },
                 onTrySample: { vm.openSampleDatabase() }
             )
             .frame(width: 240)
