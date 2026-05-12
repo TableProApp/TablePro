@@ -100,7 +100,7 @@ final class DateFormattingService {
         case .date:
             return dateOnlyFormatter
         case .timestamp, .datetime:
-            return isTimeOnly(columnType) ? timeOnlyFormatter : formatter
+            return columnType?.isTimeOnly == true ? timeOnlyFormatter : formatter
         default:
             return formatter
         }
@@ -109,17 +109,9 @@ final class DateFormattingService {
     private func formatBucket(for columnType: ColumnType?) -> String {
         switch columnType {
         case .date: return "d"
-        case .timestamp, .datetime: return isTimeOnly(columnType) ? "t" : "dt"
+        case .timestamp, .datetime: return columnType?.isTimeOnly == true ? "t" : "dt"
         default: return "dt"
         }
-    }
-
-    private func isTimeOnly(_ columnType: ColumnType?) -> Bool {
-        let raw = columnType?.rawType?.uppercased() ?? ""
-        return raw == "TIME"
-            || raw == "TIMETZ"
-            || raw == "TIME WITHOUT TIME ZONE"
-            || raw == "TIME WITH TIME ZONE"
     }
 
     // MARK: - Private Helper Methods

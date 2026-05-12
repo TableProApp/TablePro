@@ -356,26 +356,17 @@ class DataGridRowView: NSTableRowView {
         coordinator?.setCellValueAtColumn(context.value, at: rowIndex, columnIndex: context.columnIndex)
     }
 
-    private static func dateValueFunctions(for columnType: ColumnType) -> [String] {
+    static func dateValueFunctions(for columnType: ColumnType) -> [String] {
         switch columnType {
         case .date:
-            return ["NOW()", "CURRENT_DATE", "CURRENT_TIMESTAMP"]
+            return ["CURRENT_DATE"]
         case .timestamp, .datetime:
-            if isTimeOnly(columnType) {
-                return ["NOW()", "CURRENT_TIME", "CURRENT_TIMESTAMP"]
-            }
-            return ["NOW()", "CURRENT_TIMESTAMP", "CURRENT_DATE"]
+            return columnType.isTimeOnly
+                ? ["CURRENT_TIME"]
+                : ["NOW()", "CURRENT_TIMESTAMP"]
         default:
-            return ["NOW()", "CURRENT_TIMESTAMP"]
+            return []
         }
-    }
-
-    private static func isTimeOnly(_ columnType: ColumnType) -> Bool {
-        let raw = columnType.rawType?.uppercased() ?? ""
-        return raw == "TIME"
-            || raw == "TIMETZ"
-            || raw == "TIME WITHOUT TIME ZONE"
-            || raw == "TIME WITH TIME ZONE"
     }
 
     @objc private func copyAsInsert() {
