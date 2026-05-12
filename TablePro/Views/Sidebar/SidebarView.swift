@@ -214,15 +214,11 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .contextMenu {
-            SidebarContextMenu(
-                clickedTable: nil,
-                selectedTables: sidebarState.selectedTables,
-                isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                coordinator: coordinator
-            )
+        .contextMenu(forSelectionType: TableInfo.self) { _ in
+            EmptyView()
+        } primaryAction: { selection in
+            guard let table = selection.first else { return }
+            onDoubleClick?(table)
         }
         .onExitCommand {
             sidebarState.selectedTables.removeAll()
@@ -271,11 +267,6 @@ struct SidebarView: View {
                     isPendingDelete: pendingDeletes.contains(table.name)
                 )
                 .tag(table)
-                .overlay {
-                    DoubleClickDetector {
-                        onDoubleClick?(table)
-                    }
-                }
                 .contextMenu {
                     SidebarContextMenu(
                         clickedTable: table,

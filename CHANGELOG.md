@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.40.2] - 2026-05-12
+
+### Added
+
+- Right-click Set Value on date, datetime, and timestamp cells now offers `CURRENT_DATE`, `CURRENT_TIME`, `NOW()`, and `CURRENT_TIMESTAMP`, filtered by column type.
+- Welcome screen left pane gains an Import from Other App button.
+
+### Changed
+
+- Row numbers in the data grid continue across pages and the `#` column auto-sizes to fit the widest visible number.
+- Date, datetime, and timestamp cells use the standard inline text editor; the popover date picker is removed.
+- Foreign key preview popover follows the selected row as you arrow up or down.
+- The connection window shows the connecting state inline with a Cancel button.
+
+### Fixed
+
+- Closing the connection window during a slow connect no longer leaves a stuck "Connecting…" window or a stray failure alert (#1185).
+- Cmd+Z while editing a cell now undoes typing in the editor; pressing it after dismissing the editor no longer crashes.
+- Cmd+Z right after Add Row no longer leaves a stranded editor floating over the removed row.
+- Editing a NULL cell and dismissing without typing no longer flips the value to an empty string.
+- Double-clicking another cell while editing no longer delays the new editor or drops pending changes on the previous one.
+- Double-clicking an enum, set, or boolean cell now opens the inline text editor; the chevron still opens the picker popover.
+- Chevron-accessory cells (enum, boolean, JSON, blob) no longer truncate short values that fit the full cell width.
+- DATE columns no longer render a phantom `00:00:00` time suffix.
+- Adding a new row no longer renders the row on top of the auto-opened cell editor mid-animation.
+
+## [0.40.1] - 2026-05-12
+
+### Changed
+
+- Quick Switcher matches the Open Database dialog and shows a Recent section per connection.
+- Connection Switcher and SQL Preview open as sheets so they work from the toolbar, overflow menu, and keyboard shortcuts.
+- Filters button moved out of the toolbar; the bottom-bar Filters control remains.
+- Welcome screen drops the Import Connections button; both import flows remain in the + menu.
+
+### Fixed
+
+- Toolbar overflow menu entries now fire their action when the window is narrowed.
+- SQL Preview no longer freezes when previewing a very large batch.
+- Quick Switcher crash on macOS 26.
+- Registry updates for bundled drivers (ClickHouse, Redis) now persist after restart.
+
+## [0.40.0] - 2026-05-12
+
 ### Added
 
 - File > Backup... for PostgreSQL and Redshift connections: pick a database from the current connection, choose a destination, and run `pg_dump` in custom archive format (`-Fc`) with progress and cancel. Reuses the existing SSH tunnel when one is active, and honors a custom pg_dump path under Settings > Terminal > CLI Paths.
@@ -25,119 +69,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS: Face ID, Touch ID, or Optic ID lock with cold-launch protection and idle timeout (1, 5, 15, or 60 minutes), opt-in from Settings
 - iOS: Connection Info tab replaces the per-connection Settings tab, showing host, SSL, SSH tunnel, active database, and live connection status
 - MCP Setup sheet adds Zed alongside Claude Desktop, Claude Code, and Cursor with a one-paste `context_servers` snippet
+- Vim mode in the SQL editor (motions, operators, text objects, registers, macros, marks, search)
+- Sidebar groups views, materialized views, foreign tables, procedures, and functions; Show DDL opens in a new tab (#1038)
+- iOS: Live Activity for running queries
+- iOS: multi-window on iPad
+- iOS: Face ID / Touch ID / Optic ID app lock with idle timeout
+- iOS: background iCloud sync
+- iOS: Connection Info tab
+- iOS: Cmd+F focuses search; search text persists across kill
+- iOS: VoiceOver delete actions; Create button on empty Groups/Tags; No Results empty state; alert when active connection is deleted mid-session
+- iOS Settings: iCloud Sync, Rows per Page, Default Safe Mode, Hide query in Live Activities
+- MCP Setup adds Zed
 
 ### Changed
 
-- Sidebar: selected row icon and label tint to white so kind colors (indigo, teal, purple) stay readable on the blue selection background
-- Sidebar: drop the per-section item count; empty optional-kind sections are already hidden, so the count was visual noise that also jittered next to the hover-revealed disclosure chevron
-- Internal: sidebar rows use `Label` instead of hand-rolled `HStack`, and the selection-aware tint lives in a single `sidebarTint(_:)` modifier shared by table and routine rows
-- Data grid: skip the structural update pipeline when the inputs to `updateNSView` are unchanged, and pull binding and selection synchronization out so they always run cheaply
-- Data grid: theme changes now reload visible rows so the direct-draw cell picks up the new palette; the legacy `updateVisibleCellFonts` path is removed
-- Data grid: background prewarm fills the display cache in frame-budgeted batches after each structural reload, so scrolling stays a cache hit instead of running the date formatter on the main thread
-- Data grid: display cache bumped to 50,000 rows / 64 MB and date format cache to 100,000 entries to cover larger result sets without eviction churn
-- Data grid: per-cell accessibility label now resolves lazily through `accessibilityLabel()` so VoiceOver-only work no longer runs in the scroll hot path
-- Data grid: cell text rendering switched from `NSAttributedString.draw(with:options:)` to `CTLineDraw`, dropping the truncation and justification engines from the scroll redraw path
-- Data grid: cell accessory icons (chevron, foreign-key arrow) are pre-resolved to `CGImage` at startup and drawn via `CGContext.draw(_:in:)`, skipping per-draw representation selection and hint validation
-- Data grid: row view pushes emphasized-selection state directly into cells via `didAddSubview` and selection setters, so cells no longer walk the superview chain in `viewWillDraw`
-- Data grid: background prewarm pauses while the user is actively scrolling and resumes 300 ms after `didEndLiveScroll`, and the per-batch frame budget drops from 8 ms to 2 ms so prewarm work cannot crowd the scroll frame
-- iOS: drop the centered navigation title on the four connection tabs (Tables, Query, History, Info). The bottom tab bar already labels the active tab, so the centered title was redundant; removing it frees room for the database picker, schema picker, and edit button on iPhone widths.
-- iOS: Vietnamese localization completed for the iOS strings catalog (312/312 keys)
-- Internal: GitHub Actions workflow `ios-tests.yml` runs the iOS unit tests on every PR and main push that touches mobile code or shared packages
-- Internal: Swift Testing tests for `DataBrowserViewModel`, `ConnectionFormViewModel`, and `RowDetailViewModel` covering load lifecycle, pagination, sort/filter/search, delete, hydration, validation, edit lifecycle, save paths, and lazy cell load. Runs against in-memory `DatabaseDriver` and `SecureStore` mocks. `loadStoredCredentials`, `testConnection`, `save` on `ConnectionFormViewModel` now accept `any SecureStore` so the keychain backend can be substituted under test
-- Internal: extract `RowItemLabel` shared row component for the connection list and table list, dropping the inline HStack scaffolding from both
-- Internal: move per-database-type constants (`defaultPort`, `mobileDisplayName`, `mobileSupportedTypes`) onto a `DatabaseType` extension; the connection form picker and info screen read from the same source instead of duplicating the type-to-string switch
-- iOS: SQL syntax highlighter uses Swift Regex literals for static patterns (numbers, comments, strings) and consolidates the six per-pattern enumeration loops into a single typed helper
-- iOS: VoiceOver now reads connection rows and table rows as a single combined element with type, name, host or row count, and includes a hint about what tapping does
-- iOS: toolbar icon-only buttons (Add Connection, Sync with iCloud, Settings) gain accessibility labels for VoiceOver
-- Internal: per-connection `UserDefaults` keys (`lastTab.<uuid>`, `lastDB.<uuid>`, `lastSchema.<uuid>`, `lastQuery.<uuid>`) clear when a connection is deleted, so they no longer accumulate over time
-- Internal: drop redundant 4-line Xcode-generated file headers from every iOS source file (~58 files)
-- Internal: iOS query editor uses a `Binding<Bool>` focus channel into `SQLHighlightTextView` to dismiss the keyboard before running a query, replacing the `UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder))` call. Keyboard behavior is unchanged
-- Internal: iOS row detail (edit lifecycle, save SQL build, lazy cell value load, primary key extraction, success-toast auto-dismiss) moves out of the View into `RowDetailViewModel`. The View now keeps only sheet flags and haptic triggers; behavior is unchanged
-- Internal: iOS connection form (test connection, save, file picker handlers, default port resolution, credential hydration) moves out of the View into `ConnectionFormViewModel`. The View drops from 53 to 5 `@State` properties; behavior is unchanged
-- Internal: iOS data browser business logic (page load, pagination, sort, filter, search, delete, foreign-key fetch, memory pressure) moves out of the View into `DataBrowserViewModel`. The View drops 30 of its 33 `@State` properties and a dozen private functions; behavior is unchanged
-- iOS: metadata badges (column types, primary key markers, row counts) cap at the first accessibility size so they stay readable without breaking layouts at the largest Dynamic Type sizes
-- iOS: SQL editor keyboard accessory uses the system keyboard input view, dropping the deprecated screen-width measurement
-- iOS: Edit Connection moves to the navigation bar trailing pencil icon so the floating tab bar never covers it
-- PostgreSQL SQL export emits foreign key constraints via `ALTER TABLE ... ADD CONSTRAINT` after data load and resyncs sequences via `setval` so a re-imported dump round-trips cleanly even when child tables sort before parents (#1114)
-- SQL import parser uses bounded streaming and run-length string append, reducing memory and CPU on large files (#1114)
-- AI inline suggestions: debounce now uses structured Swift concurrency, and the delay is configurable via the `inlineSuggestionDebounceMs` setting (default 500ms)
-- Copilot LSP shutdown caps at 10 seconds, closes pipes explicitly, and strips the quarantine attribute from the downloaded binary
-- AI Chat: streaming view model split into focused extensions backed by a single `streamingState` enum
-- MCP HTTP server: split transport into connection, router, and SSE writer files; pairing exchange store moved to a Swift actor; SSE streams send a 30-second keep-alive
-- AI providers: shared endpoint normalization and JSON encoding helpers; consistent 5s timeout and known-model fallback when listing models
-- AI settings: include schema and current query default to on for new installs, matching the previous decoded fallback
-- AI Chat: persisted conversations now carry a schema version so future migrations can read older files cleanly
-- AI Chat: custom slash commands reject duplicate names, including case-insensitive collisions on rename
-- Internal: unify JSON value type used by AI tools and MCP wire
-- Internal: shared schema builder for AI chat tools, removes ~100 lines of duplicated JSON Schema boilerplate
-- Internal: AI chat tools declare their access mode (read-only, write, agent-only) rather than relying on a hardcoded allowlist; new tools are picked up automatically
-- AI providers: Anthropic test connection uses the configured model, known model list updated through Claude 4.7, and Ollama detection now logs the actual error category instead of swallowing every failure as 'not running'
-- AI Chat views: replace custom pill buttons with native `.borderless` styles, switch hardcoded text colors to semantic system colors, use relative font sizing in Markdown rendering, align spacing to the 8-pt grid, and add accessibility labels to icon-only buttons
-- Translucent backgrounds (Welcome sidebar, settings banners, ER diagram toolbar, JSON editor controls, Pro feature scrim) honor the system Reduce Transparency and Increase Contrast accessibility settings, swapping the material for a solid surface color when either is on
-- Internal: result-grid sortable header drops the custom resize cursor handling that duplicated AppKit's built-in column-edge resize, and consolidates three sort delegate methods into one that carries the full sort state. No user-facing change; multi-column sort, shift-click cycle, and the column resize cursor still work the same.
-- Internal: drop four 1-to-1 PassthroughSubject buses (`saveAsFavoriteRequested`, `focusConnectionFormWindowRequested`, `openSampleDatabaseRequested`, `resetSampleDatabaseRequested`) for direct ownership. The favorite-edit dialog query is now observable state on `MainContentCoordinator`, the connection-form focus lookup is inlined in `WelcomeViewModel`, and the sample-database menu items call `SampleDatabaseLauncher` directly. `AppDelegate` no longer needs `commandCancellables`.
-- Internal: tighten dependency injection in the four files that already accept `services: AppServices`. `ConnectionFormCoordinator`, `MainContentCoordinator`, `WelcomeViewModel`, and `ERDiagramViewModel` now read `services.appEvents.*` instead of mixing in raw `AppEvents.shared.*` for events they were already supposed to thread through the container.
-- Internal: extend `AppServices` with `appSettingsStorage`, `schemaProviderRegistry`, `aiKeyStorage`, `groupStorage`, `favoritesExpansionState`, and `linkedFolderWatcher`. Convert the raw `.shared` reads of those types in `AIChatViewModel`, `FavoritesSidebarViewModel`, `WelcomeViewModel`, and `MainContentCoordinator` to `services.*`.
-- Internal: thread `KeychainHelper` through `ConnectionStorage`, `SSHProfileStorage`, `AIKeyStorage`, and `LicenseStorage` via init (default `.shared`). The 24 raw `KeychainHelper.shared` reads inside those classes are gone, matching the existing injected-dependency pattern (`syncTracker`, `appSettings`).
-- Internal: extend `AppServices` with `queryHistoryManager`, `dateFormattingService`, `copilotService`, and `mcpServerManager`. `AppSettingsManager` now takes its eight cross-singleton dependencies (`AppSettingsStorage`, `ThemeEngine`, `SyncChangeTracker`, `AppEvents`, `DateFormattingService`, `QueryHistoryManager`, `MCPServerManager`, `CopilotService`) via init with `.shared` defaults. The 32 raw `.shared` reads inside `AppSettingsManager` are gone, including the four `Task { ... }` capture closures that previously dialed `CopilotService.shared` / `MCPServerManager.shared` mid-`didSet`. The 49 caller-side `AppSettingsManager.shared` reads are unchanged in this PR; they will be threaded as their owners adopt `services` in subsequent waves.
-- Internal: `AppEvents.connectionUpdated` payload changes from `Void` to `UUID?`. Single-connection senders (`ConnectionFormCoordinator`, sample-DB launcher, per-connection iCloud-sync toggle) now pass the affected id; bulk senders (sync pull, multi-import, multi-select sync toggle) pass `nil`. The current `WelcomeViewModel` subscriber refreshes on every event regardless, but per-connection subscribers added in the future can filter by id without re-shaping the bus.
-- Internal: `AppEvents.sqlFavoritesDidUpdate` payload changes from `Void` to `UUID?` and the per-connection subscribers (`ConnectionDataCache`, `SQLEditorView`) now filter on it. Previously, editing a favorite for connection A in one window forced `ConnectionDataCache` for every other open connection to refetch its favorite list and `SQLEditorView` for every other window to refresh its keyword map. The senders pass `favorite.connectionId` / `folder.connectionId` for adds and updates, and `nil` for deletes (where the affected connection isn't easily recoverable post-delete). `nil` payloads still trigger a refresh on every subscriber, preserving correctness for cross-connection favorites and bulk deletes.
-- Internal: `AppEvents.queryHistoryDidUpdate` and `AppEvents.linkedSQLFoldersDidUpdate` payloads change from `Void` to `UUID?` for the same reason. `addHistory` passes `entry.connectionId`; `deleteHistory` and `clearAllHistory` pass `nil`. `SQLFolderWatcher` rescans across all enabled folders so it always passes `nil`. Subscribers (`HistoryPanelView`, `ConnectionDataCache`, `MainContentCoordinator.checkOpenTabsForExternalModification`, `SQLEditorView`) now skip events that don't match their `connectionId`. Adding history for connection A in one window no longer redraws connection B's history panel, refreshes connection B's SQL keyword map, or rechecks connection B's open tabs for external modification.
-- Internal: `QueryHistoryStorage` and `SQLFavoriteStorage` no longer expose `static let shared`; the public surface for both domains is the corresponding `Manager` (`QueryHistoryManager.shared`, `SQLFavoriteManager.shared`). `QueryHistoryManager` gains an `addHistory(_:)` method that the previous direct-Storage callers (MCP audit logging, history panel UI delete/clear, MCP query-history tools) now use, and the manager posts `queryHistoryDidUpdate` after each write so deleting from the history panel propagates to other windows. `AppServices.queryHistoryStorage` is removed; consumers thread `services.queryHistoryManager`.
-- Internal: extend `AppServices` with `tagStorage`, `sshProfileStorage`, `licenseManager`, `conflictResolver`, and `syncMetadataStorage`. `SyncCoordinator` now takes `services: AppServices` in init (default `.live`); 34 raw `.shared` reads of those types inside `SyncCoordinator` are routed through `services.*`.
-- Internal: Redis sidebar key tree uses SwiftUI `OutlineGroup` instead of recursive `DisclosureGroup` + `ForEach` wrapped in `AnyView`. Expansion state is now managed natively per branch identifier; the explicit `expandedPrefixes` set is gone.
-- Result-grid cells render via direct `draw(_:)` on a layer-backed `NSView` instead of an `NSTableCellView` wrapping an `NSTextField` plus an `NSButton` accessory. Per cell during scroll there is no Auto Layout solving, no `NSTextField` re-layout, and no `NSButton` tracking-area work. Editing for plain-text columns now opens the overlay editor (the same surface previously used for multi-line cells) rather than an inline text field.
-- Plugin contract: `PluginQueryResult.rows` carries typed `PluginCellValue` cells (`.null` / `.text(String)` / `.bytes(Data)`) instead of `String?`. Driver plugins emit `.bytes(Data)` for binary columns (PostgreSQL BYTEA, Oracle RAW/LONG_RAW/BLOB, MySQL BLOB family, SQLite BLOB, MSSQL VARBINARY/IMAGE, DuckDB BLOB, Cassandra blob, MongoDB BSON binary, DynamoDB B, BigQuery BYTES). The typed value flows end-to-end: read display, sidebar, hex editor, change tracking, SQL emission. Hex-editor saves bind raw `Data` through libpq's binary parameter format instead of UTF-8 re-encoded text. Fixes wrong BYTEA hex preview, wrong byte count, and corrupted bytes on save for high-byte binary cells (#1188).
-- Double-click and Return on a binary cell now open the hex editor directly. Type-based routing runs before the line-break/JSON content heuristics so binary bytes that incidentally contain 0x0C or `{` no longer route through the multi-line text editor and corrupt the value.
+- Wide-table scroll faster (max main-thread stall 3.5s to 1.3s); display cache 50k rows / 64 MB
+- Sidebar: white tint on selected row; per-section count removed
+- Edits in one window no longer refresh unrelated windows (favorites, history, linked folders)
+- iOS: Vietnamese localization complete
+- iOS: centered nav title dropped on connection tabs
+- iOS accessibility: combined VoiceOver row labels, icon-button labels, badge size caps
+- iOS: SQL editor uses the system keyboard input view; Edit Connection moved to the nav bar
+- PostgreSQL SQL export round-trips foreign keys and sequences cleanly (#1114)
+- SQL import parser streams large files (#1114)
+- AI inline-suggestion debounce configurable (default 500 ms)
+- Copilot LSP: 10s shutdown cap; quarantine attribute stripped
+- MCP HTTP: 30-second SSE keep-alive
+- AI providers: 5s timeout, known-model fallback, model list through Claude 4.7
+- AI Chat: per-tool access modes; duplicate slash command names rejected
+- AI Chat views: native button styles, semantic colors, 8-pt grid, a11y labels
+- Translucent surfaces honor Reduce Transparency and Increase Contrast
+- Result grid: direct-draw cells on a layer-backed view
+- Plugin contract: typed binary cells across all engines (#1188)
+- Double-click and Return on a binary cell open the hex editor
+- Plugin registry cache moved to `~/Library/Caches`
+- Plugin install off the main actor; signing reads team id at runtime
+- Restart TablePro banner gains Quit & Reopen; state in-memory only
+- Default PluginKit escape no longer escapes backslashes
 
 ### Fixed
 
-- Structure tab: double-click and Return on dropdown / type-picker columns (Nullable, Primary Key, Auto Increment, Unique, On Delete, On Update, Type) now enter inline text edit so the user can type a value the picker doesn't list (e.g. a custom column type, a numeric default). Previously these gestures appeared to do nothing because `editEligibility` blocked dropdown/type-picker columns from inline edit. The chevron button continues to open the picker; the cell body opens the text editor.
-- Structure tab: pressing Cmd+Shift+N (or any path that adds a column / index / foreign key while changes already exist) now displays the new row in the grid. Previously the row was added to the change manager and the SQL Preview reflected it, but the grid kept the old row count because `TableStructureView` only observed `hasChanges` (which had already been true). The view now also observes `reloadVersion` and re-evaluates the grid snapshot on every mutation.
-- Structure tab: pressing Delete on a row now turns the entire row red, not just the focused cell. `StructureRowViewWithMenu` inherits from `DataGridRowView` so it gets the deleted-row tint, layer-backing optimization, and the cell-emphasis invalidation that all data-tab rows already had. The grid's `tableView(_:rowViewForRow:)` also now applies the visual state to delegate-provided row views, so recycled rows pick up state changes. `StructureGridDelegate.dataGridDeleteRows` calls `tableView.reloadData(forRowIndexes:columnIndexes:)` for visible rows so the soft-deleted row repaints (existing-column deletes leave the row in place with a red tint, so row count alone doesn't trigger a reload).
-- Structure tab: editing a cell now shows the new value in that cell and tints only the cells the user actually edited, matching the data tab. Previously the change manager recorded the edit (SQL Preview reflected it, partial yellow tint appeared), but the cell still displayed the pre-edit value and the tint cut off mid-row, then the prior fix tinted the entire row even when only one field changed. Two fixes: (1) `tableRowsProvider` is now a closure that rebuilds the snapshot from the change manager on every call (mirrors the data tab's `coordinator.tabSessionRegistry.existingTableRows(for:)` pattern), so `tableView.reloadData(forRowIndexes:)` after an edit re-fetches the post-edit row. (2) Per-cell modified tinting is computed by diffing the working entity against `currentColumns` / `currentIndexes` / `currentForeignKeys` field-by-field, mapped to grid column indices via the tab's `orderedFields`. `StructureEditingSupport` gains `columnModifiedIndices`, `indexModifiedIndices`, and `foreignKeyModifiedIndices` helpers; `StructureGridDelegate.dataGridVisualState(forRow:)` calls them and only the changed cells get the yellow tint. `StructureGridDelegate.dataGridAttach(tableViewCoordinator:)` and `CreateTableGridDelegate.dataGridAttach(tableViewCoordinator:)` store the grid coordinator weakly so the delegate can issue the targeted reload after edits, soft-deletes, undo, and redo.
-- Structure tab: Cmd+Z no longer leaves the row's yellow modified background in place after the change reverts. The view observes `reloadVersion` to bump `displayVersion`, and `dataGridUndo` / `dataGridRedo` ask the table view to reload its visible rows so the cell text and modified-tint follow the change manager. The SQL Preview popover also clears its content when the change set returns to empty, so reopening the popover after undo correctly shows "no changes" instead of stale SQL.
-- Structure tab: saving or discarding changes now clears the yellow modified tint on the affected rows. After save, `StructureChangeManager.loadSchema` resets working state and bumps `reloadVersion`, but `DataGridView.updateNSView` only calls `reloadData` when row count or column schema changes — a column rename leaves the row count identical so cells kept their pre-save visual state. The save and discard paths in `TableStructureView+Schema` now call the new `StructureGridDelegate.reloadAllVisibleRows()` after the manager resets.
-- Structure tab: deleted rows now paint the red strikethrough tint and right-click "Undo Delete" undeletes the specific row, matching the data tab. `NSTableView.reloadData(forRowIndexes:columnIndexes:)` only refreshes cell views, not row views, so the per-row deleted-state tint and context-menu state went stale after every model mutation. `TableViewCoordinator` now exposes `reloadVisibleRowsAndStates()` and `reloadRowAndState(at:)` that pair `reloadData(forRowIndexes:)` with `enumerateAvailableRowViews` and `applyVisualState`, so cells and row decoration refresh together. `DataGridRowView` stores the full `RowVisualState` as the source of truth, and `StructureRowViewWithMenu` reads `visualState.isDeleted` directly instead of a shadow `isRowDeleted` flag that was only assigned on row-view creation. `StructureChangeManager.undoDelete(for:at:)` clears the per-row deletion mark without touching the global NSUndoManager stack, so the right-click affordance and Cmd+Z stay independent, matching the separation the data tab already uses.
-- Cmd+Shift+N (Add Row) on a Structure tab no longer routes to the data-tab row-editing coordinator (which silently did nothing or added a data row). `MainContentCommandActions.addNewRow` now branches on `resultsViewMode == .structure` and dispatches to the Structure grid delegate.
-- Create Table: foreign-key on-delete / on-update referential-action dropdowns and the index-type dropdown now render as dropdowns. Previously `CreateTableView` constructed `DataGridConfiguration` without `customDropdownOptions`, so those columns showed plain text values without the picker affordance.
-- iOS: row detail pager no longer carries the index-based row iteration that caused the build 11 filter crash. A recent refactor reintroduced the pattern; row detail now uses the same identity-based row wrapping the data browser does.
-- Tables in the sidebar now load automatically after a slow connect. SQL Server connections previously showed "No Tables" until the user manually picked a schema; the same race could affect other engines on slow networks. The post-connect listener now triggers the schema load once the driver is bound.
-- SQL Server `switchDatabase` now actually switches the database (`USE <database>`) instead of being routed through a schema switch. Switching from a saved tab pointing at a different database used to overwrite the current schema with the database name and leave the table list empty until the user manually re-picked a schema.
-- SQL Server cell edits now save without "Conversion failed when converting date and/or time from character string." Tables with primary keys use a PK-only WHERE clause (no longer including every column), and DATETIME / DATETIME2 / SMALLDATETIME values round-trip as ISO 8601 instead of FreeTDS's `MMM d yyyy h:mm:ss:fffAM` format that SQL Server's parser rejects.
-- SQL Server INSERTs skip IDENTITY columns automatically. Adding a new row no longer fails with "Cannot insert explicit value for identity column ... when IDENTITY_INSERT is set to OFF". The server allocates the value and TablePro omits the column from the INSERT.
-- Toolbar database/schema chip reflects the correct unit from the moment a connection is established. SQL Server, PostgreSQL, Oracle, and BigQuery connections show the active schema; MySQL, SQLite, Redis, and other database-grouped engines show the active database.
-- SQL Server connections use the server-reported default schema (`SELECT SCHEMA_NAME()`) rather than a hardcoded `dbo`, so users with a non-default schema in `sys.database_principals` see their tables on connect. The connection form's Schema field still acts as an explicit override.
-- Holding Cmd+Return at safe-mode level `.silent` no longer stacks two confirmation sheets and runs the dangerous query twice. The `.silent` branch in `QueryExecutionCoordinator.dispatchStatements` and `dispatchParameterizedStatements` now sets the same `isShowingSafeModePrompt` re-entry flag synchronously that the `requiresConfirmation` branch already used; the flag is cleared in a `defer` inside the spawned `Task`.
-- LSP `cancelRequest` no longer leaks a pending continuation when the underlying transport is mid-shutdown. The previous `try? writeMessage(data)` swallowed the failure, leaving the local handler stuck waiting for a response the LSP server would never produce. The new path logs the failure and resolves the pending entry with `CancellationError`, so AI inline-suggestion / Copilot LSP teardown no longer leaks completion handlers across the lifetime of the LSP process.
-- Plugin auto-update no longer drops new rejection entries that arrive from concurrent operations (e.g., a manual install failure during the auto-update loop). `PluginManager.autoUpdateRejectedPlugins` previously snapshotted `rejectedPlugins` at entry, looped through awaits that could mutate it, then assigned the stale snapshot back at the end. The fix replaces only the entries it processed and preserves any concurrent additions.
-- The schema provider for a connection no longer leaks when a SwiftUI body re-evaluation creates a throwaway `MainContentCoordinator` that is discarded before `markActivated` runs. `retain(for:)` moves from `init` to `markActivated` so it is paired with the matching `release` in `teardown` / `deinit`. Throwaway coordinators that never activated also no longer over-release a provider they never retained.
-- Reconnecting then immediately disconnecting a session no longer writes the post-refresh table list into a tearing-down coordinator. `MainContentCommandActions.handleDatabaseDidConnect` captures `coordinator` weakly and rechecks `isTearingDown` before the initial work and again after the `await refreshTables()`, so the trailing `initRedisKeyTreeIfNeeded()` is skipped if the user disconnected mid-fetch.
-- `SyncCoordinator.observeLocalChanges` no longer schedules a new debounce window before the previous (just-cancelled) sync task has unwound, so there are never two live sync tasks. `syncNow` also now guards against re-entrant invocation, returning early when a sync is already in progress instead of relying on the call-site `!isSyncing` check that could race with the actor hop.
-- Built-in plugins now enforce the same `pluginKitVersion == currentPluginKitVersion` check that user-installed plugins did. Previously a built-in whose `Info.plist` `TableProPluginKitVersion` fell behind the host's `currentPluginKitVersion` would load anyway and crash on the first new protocol-witness method call. Built-ins ship together so this catches developer error before release.
-
-- When saving the connections file fails (disk full, sandbox denied, encoding error), TablePro now aborts the dependent steps instead of continuing as if the save had succeeded. Previously a failed delete could remove the keychain password and queue a CloudKit tombstone for a record that was still on disk; on next sync the connection would be nuked from iCloud as well. Now: delete, add, update, duplicate, batch-delete, sync-pull, group-cleanup, and the plugin secure field migration all check the persistence result and skip the downstream side effects on failure. The connection form surfaces a localized error and keeps the form open instead of dismissing.
-- iCloud sync no longer silently substitutes empty defaults when an SSH config, SSL config, jump-host list, or driver-specific field stored in a synced record fails to decode. A device on an older app build that pulled a record written by a newer build would previously end up with a connection missing its SSH/SSL config, then push that empty config back to iCloud and overwrite the authoritative copy. Decode failures now skip the record entirely and log which field failed; the cloud copy stays intact until the device is updated.
-- iCloud sync of app settings (general, appearance, editor, data grid, history, tabs, keyboard, AI) no longer silently does nothing when a category's payload fails to decode. Each of the eight category branches previously wrapped the decode in `try?`, so a record written by a newer schema version would fall through with no log, no error, and no UI signal: the user would think their settings synced when they hadn't. Decode failures now skip the category and log which one failed and why.
-- Keychain reads no longer collapse a cancelled Touch ID prompt, a failed biometric auth, or any unknown OSStatus into "not found". The `KeychainResult` enum now distinguishes `.userCancelled`, `.authFailed`, and `.error(OSStatus)` from `.notFound`, and the read paths in connection passwords, SSH profile secrets, AI provider keys, and the license key log each case with its own message. Previously a cancelled prompt looked identical to a missing entry, so the caller would treat the password as gone and silently re-save with an empty string on the next write, producing duplicate keychain entries or a connection saved with a blank password.
-- Terminal PTY writes retry on `EINTR` instead of treating any non-positive return as "we're done". A signal mid-write previously truncated the input the user typed; the loop would exit silently and the keystrokes were partially sent. The new path retries on `EINTR`, logs the byte position and errno on any other non-recoverable failure, and reports a return value of zero distinctly so the cause is visible in Console.
-- MCP HTTP transport no longer writes an empty body when JSON encoding of the response envelope fails. Five sites in `MCPInboundExchange` and `MCPHttpRequestRouter` previously fell back to `Data()`, sending zero bytes to the client which then saw a protocol violation and either disconnected or hung. The encode-failure paths now log and substitute a static `{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"internal_error"}}` envelope; the pairing-exchange success path falls back to `internalServerError` with a small JSON error body.
-- Closing the last window for a connection no longer flashes "Connection lost" and clears that session's cached schema. The health monitor's reconnect loop previously transitioned to `.failed` when its task was cancelled (clean teardown), and the session-level observer treated `.failed` as a real error: it overwrote `session.status` with the lost-connection alert and called `clearCachedData()`. The `.failed` state was never reachable through any non-cancellation path, so it has been removed from `HealthState` along with the orphaned `resetAfterManualReconnect` reset method that only existed to reset from it. Cancellation now logs cleanly and returns without touching session state.
-- Smart-quote, dash, and text substitution no longer corrupt user input in cell editors and filter inputs. Six SwiftUI `TextField` sites (single-line cell editor, multi-line cell editor, blob hex editor, filter row second value, filter preset name, create-table table name) gain `.autocorrectionDisabled(true)`, and the AppKit `FilterValueTextField` now subclasses `NSTextField` to disable all four substitution flags on the live field editor in `becomeFirstResponder()`. Previously the macOS field editor turned typed straight quotes into curly quotes and `--` into an em-dash, silently corrupting filter operands, identifiers, and edited cell values.
-- Connecting one window no longer triggers `fetchTables()` in every other window for an unrelated connection. Three subscribers to `AppEvents.databaseDidConnect` (`MainContentCommandActions`, `MainContentCoordinator`'s plugin-driver retry, and `ERDiagramViewModel.waitForConnection`) discarded the `connectionId` payload that was already on the event and acted on their own connection. With three windows open against three different databases, opening a fourth caused nine `fetchTables()` calls; if the existing remotes were slow, every window stalled until the new connection's broadcast was processed. Subscribers now compare the payload's `connectionId` against their own and skip otherwise. The ER diagram view also stops resuming `waitForConnection` when an unrelated database connects, which previously made the diagram fail with "No database connection" instead of waiting for its own driver.
-- Result-grid cells on rows marked for deletion keep their dropdown / date / JSON / blob chevron visible at reduced opacity instead of hiding it, so the cell type is still legible while clearly inactive. Click on the dimmed chevron is a no-op; FK arrow navigation is unchanged. Matches the macOS HIG "disabled appearance" guideline.
-- Foreign key navigation from a table with unsaved edits opens the referenced table in a new window tab to preserve the edit buffer. Closing that new tab no longer wipes the original tab's data grid. Previously the new tab's teardown broadcast a connection-scoped event that other coordinators on the same connection received, causing them to release their cell data.
-- Tables sidebar refreshes automatically after a successful SQL import; the refresh notification now fires after the success sheet's dismissal animation, so the main window is key when the observer runs (#1114)
-- PostgreSQL connections honor the import dialog's "Disable foreign key checks" option via `SET session_replication_role = replica` (requires REPLICATION role or superuser; managed Postgres typically rejects it) (#1114)
-- PostgreSQL SQL exports preserve GENERATED ALWAYS AS IDENTITY values on round-trip (using OVERRIDING SYSTEM VALUE) and skip GENERATED ... STORED columns (#1114)
-- PostgreSQL SQL imports no longer fail on values ending in backslash or containing dollar-quoted blocks (#1114)
-- PostgreSQL/Redshift: schema picker no longer hides user schemas whose names start with `pg` (`pgboss`, `pgcrypto`, `pgvector`, `pgaudit`, etc.). The system-schema filter now escapes the underscore in `LIKE 'pg\_%'` so it is matched literally instead of as SQL LIKE's single-character wildcard.
-- AI Chat: `@` mention detection no longer breaks when the cursor sits right after an emoji or other non-BMP character
-- AI Chat: Fix Error prompt now reads "MongoDB query" and "Redis command" using the database display name, instead of the raw query language label
-- Internal: tab session registry binds automatically when a coordinator falls back to creating its own registry, so unit tests no longer trip the filter-state debug assertion
-- Connection-only payloads no longer create an empty `Query 1` tab when there is no query, title, or source file to populate it
-- Import from Other App: cancelling a macOS keychain prompt now stops the import loop instead of silently continuing through every remaining password. The loading screen has a Cancel button, and an explainer alert before reading passwords sets expectations about the per-item prompts (#1134)
-- Structure view: switching between Columns / Indexes / Foreign Keys no longer shows stale data from the previous tab. The data grid now invalidates its display cache on schema change, scopes column widths and row selection per tab, and refresh re-fetches all tabs so badge counts persist (#1110)
+- Vim: Shift+J joins lines; `w`/`W` no longer overshoot; Esc switches mode after `;` (#1222)
+- AI Chat: Copilot Agent mode persists across turns
+- AI Chat: streaming no longer hangs at 100% CPU; pre-tool text shows above the tool card; native Markdown renderer (#1205)
+- AI Chat: `@` mentions handle emoji at the cursor
+- AI Chat: Fix Error prompt uses the database display name
+- iOS: data browser no longer flashes No Data during reload
+- iOS: row detail pager crash on filter
+- MySQL/MariaDB: `BINARY(N)`/`VARBINARY(N)` route to blob editor; numeric/date/time render as values; stable JSON detection
+- Data grid chevrons refresh on editability change and dim on deleted rows
+- Welcome window opens reliably on launch and Dock click
+- Plugin upgrades for built-in drivers persist after restart (#1192)
+- Plugin install: end-to-end install lock; no continuation leak; multi-bundle ZIP rejected; auto-update preserves concurrent rejections
+- Built-in plugins enforce the PluginKit version check
+- Query cancelled alert no longer appears on tab supersession, refresh, or teardown
+- Structure tab: tinting repaints on edit, delete, undo, save, discard; right-click Undo Delete; dropdown columns enter inline edit; Cmd+Shift+N adds a row
+- Structure view: switching Columns / Indexes / Foreign Keys no longer shows stale data (#1110)
+- Create Table: foreign-key and index-type columns render as dropdowns
+- Sidebar tables load after a slow connect
+- SQL Server: `USE <database>` switches DB; IDENTITY skipped on INSERT; default schema from `SELECT SCHEMA_NAME()`; DATETIME round-trips as ISO 8601
+- Toolbar database/schema chip correct on connect
+- Safe Mode silent: Cmd+Return no longer double-fires
+- LSP `cancelRequest` no longer leaks continuations
+- Schema provider no longer leaks via throwaway coordinator
+- Reconnect-then-disconnect no longer writes into a tearing-down coordinator
+- Sync coordinator: no overlapping tasks; `syncNow` is re-entrant-safe
+- Failed connections-file save aborts dependent steps; form stays open with error
+- iCloud sync: decode failures skip the record/category and log; cloud copy preserved
+- Keychain reads distinguish cancelled prompts, failed biometrics, and not-found
+- Terminal PTY writes retry on `EINTR`
+- MCP HTTP: structured internal-error envelope on encode failure
+- Closing the last window no longer flashes Connection lost
+- Smart-quote and dash substitution in cell editors and filter inputs
+- Connecting one window no longer fetches tables in unrelated windows
+- Foreign-key navigation from a tab with unsaved edits opens in a new tab without wiping the original
+- SQL import: tables sidebar refreshes; PostgreSQL Disable foreign key checks; identity columns and dollar-quoted blocks round-trip (#1114)
+- PostgreSQL/Redshift: schema picker no longer hides `pg*` user schemas
+- Connection-only payloads no longer create an empty `Query 1` tab
+- Import from Other App: Cancel button stops the keychain prompt loop (#1134)
 
 ## [0.39.1] - 2026-05-08
 
@@ -1789,7 +1798,10 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.39.1...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.40.2...HEAD
+[0.40.2]: https://github.com/TableProApp/TablePro/compare/v0.40.1...v0.40.2
+[0.40.1]: https://github.com/TableProApp/TablePro/compare/v0.40.0...v0.40.1
+[0.40.0]: https://github.com/TableProApp/TablePro/compare/v0.39.1...v0.40.0
 [0.39.1]: https://github.com/TableProApp/TablePro/compare/v0.39.0...v0.39.1
 [0.39.0]: https://github.com/TableProApp/TablePro/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/TableProApp/TablePro/compare/v0.37.0...v0.38.0

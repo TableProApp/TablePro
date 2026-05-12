@@ -39,7 +39,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     func streamChat(
-        turns: [ChatTurn],
+        turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -299,7 +299,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     private func buildChatCompletionRequest(
-        turns: [ChatTurn],
+        turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
         let chatPath = providerType == .ollama
@@ -351,13 +351,13 @@ final class OpenAICompatibleProvider: ChatTransport {
         return request
     }
 
-    func encodeTurn(_ turn: ChatTurn) -> [[String: Any]] {
+    func encodeTurn(_ turn: ChatTurnWire) -> [[String: Any]] {
         let toolUseBlocks = turn.blocks.compactMap { block -> ToolUseBlock? in
-            if case .toolUse(let useBlock) = block { return useBlock }
+            if case .toolUse(let useBlock) = block.kind { return useBlock }
             return nil
         }
         let toolResultBlocks = turn.blocks.compactMap { block -> ToolResultBlock? in
-            if case .toolResult(let resultBlock) = block { return resultBlock }
+            if case .toolResult(let resultBlock) = block.kind { return resultBlock }
             return nil
         }
         let textContent = turn.plainText

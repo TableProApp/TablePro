@@ -89,6 +89,9 @@
         }
       }
     },
+    "-- … %d more characters not shown; use Copy All for the full output." : {
+
+    },
     "—" : {
       "localizations" : {
         "tr" : {
@@ -11172,6 +11175,9 @@
         }
       }
     },
+    "Connecting to %@" : {
+
+    },
     "Connecting..." : {
       "localizations" : {
         "tr" : {
@@ -12923,6 +12929,9 @@
     "Could not save the connection. Check disk space and permissions, then try again." : {
 
     },
+    "Could not start a new TablePro instance. Quit and reopen manually." : {
+
+    },
     "Could not write to file. Check that the file is writable." : {
 
     },
@@ -14523,9 +14532,6 @@
           }
         }
       }
-    },
-    "DATABASES" : {
-
     },
     "Date format:" : {
       "localizations" : {
@@ -33342,6 +33348,9 @@
     "Outcome: %@" : {
 
     },
+    "Output truncated for display" : {
+
+    },
     "Override auto-detected CLI paths per database type." : {
       "localizations" : {
         "tr" : {
@@ -36680,6 +36689,9 @@
         }
       }
     },
+    "Quit & Reopen" : {
+
+    },
     "Quit Anyway" : {
       "localizations" : {
         "tr" : {
@@ -37204,6 +37216,9 @@
         }
       }
     },
+    "Recent" : {
+
+    },
     "RECENT" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -37249,7 +37264,7 @@
         }
       }
     },
-    "RECENT QUERIES" : {
+    "Recent Queries" : {
 
     },
     "Recent query history for a connection (supports ?limit=, ?search=, ?date_filter=)" : {
@@ -37776,6 +37791,9 @@
       }
     },
     "Relational" : {
+
+    },
+    "Relaunch Failed" : {
 
     },
     "Reload" : {
@@ -40443,9 +40461,6 @@
           }
         }
       }
-    },
-    "SCHEMAS" : {
-
     },
     "Scroll to latest message" : {
 
@@ -45909,7 +45924,7 @@
         }
       }
     },
-    "SYSTEM TABLES" : {
+    "System Tables" : {
 
     },
     "Tab Behavior" : {
@@ -46191,9 +46206,6 @@
           }
         }
       }
-    },
-    "TABLES" : {
-
     },
     "Tables with more estimated rows use approximate counts to avoid slow COUNT(*) queries" : {
       "localizations" : {
@@ -51420,9 +51432,6 @@
       }
     },
     "Views" : {
-
-    },
-    "VIEWS" : {
 
     },
     "Vim mode" : {

@@ -519,7 +519,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Compaction completed at revision \(revision)"]],
+                rows: [[.text("Compaction completed at revision \(revision)")]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -845,7 +845,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return PluginQueryResult(
             columns: ["Version", "DbSize", "Leader", "RaftIndex", "RaftTerm", "Errors"],
             columnTypeNames: ["String", "String", "String", "String", "String", "String"],
-            rows: [[version, dbSize, leader, raftIndex, raftTerm, errors.isEmpty ? nil : errors]],
+            rows: [[version, dbSize, leader, raftIndex, raftTerm, errors.isEmpty ? nil : errors].asCells],
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)
         )
@@ -881,7 +881,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return PluginQueryResult(
                 columns: ["Count"],
                 columnTypeNames: ["Int64"],
-                rows: [[String(count)]],
+                rows: [[.text(String(count))]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -1058,7 +1058,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         PluginQueryResult(
             columns: ["Result"],
             columnTypeNames: ["String"],
-            rows: [[message]],
+            rows: [[.text(message)]],
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)
         )

@@ -1,20 +1,18 @@
 //
-//  ConnectionSwitcherPopover.swift
+//  ConnectionSwitcherSheet.swift
 //  TablePro
-//
-//  Quick-switch popover for active and saved connections.
-//  Shown from the toolbar connection button.
 //
 
 import AppKit
 import SwiftUI
 import TableProPluginKit
 
-struct ConnectionSwitcherPopover: View {
+struct ConnectionSwitcherSheet: View {
+    @Binding var isPresented: Bool
+    @Environment(\.dismiss) private var dismiss
+
     @State private var savedConnections: [DatabaseConnection] = []
     @State private var selectedConnectionId: UUID?
-
-    var onDismiss: (() -> Void)?
 
     private var activeSessions: [UUID: ConnectionSession] {
         DatabaseManager.shared.activeSessions
@@ -71,7 +69,7 @@ struct ConnectionSwitcherPopover: View {
             Divider()
 
             Button {
-                onDismiss?()
+                dismiss()
                 WindowOpener.shared.openWelcome()
             } label: {
                 HStack {
@@ -87,17 +85,14 @@ struct ConnectionSwitcherPopover: View {
             }
             .buttonStyle(.plain)
         }
-        .frame(
-            width: 280,
-            height: listHeight(sessions: sortedSessions.count, saved: inactiveSaved.count)
-        )
+        .frame(width: 420, height: 500)
         .onAppear {
             savedConnections = ConnectionStorage.shared.loadConnections()
             if selectedConnectionId == nil {
                 selectedConnectionId = currentSessionId ?? sortedSessions.first?.id ?? inactiveSaved.first?.id
             }
         }
-        .onExitCommand { onDismiss?() }
+        .onExitCommand { dismiss() }
         .onKeyPress(.return) {
             activateSelected()
             return .handled
@@ -179,7 +174,7 @@ struct ConnectionSwitcherPopover: View {
     }
 
     private func activate(connectionId: UUID) {
-        onDismiss?()
+        dismiss()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connectionId))
@@ -193,22 +188,6 @@ struct ConnectionSwitcherPopover: View {
                 }
             }
         }
-    }
-
-    // MARK: - Layout
-
-    private func listHeight(sessions: Int, saved: Int) -> CGFloat {
-        let rowHeight: CGFloat = 44
-        let sectionHeaderHeight: CGFloat = 28
-        let buttonHeight: CGFloat = 44
-        var height: CGFloat = buttonHeight
-        if sessions > 0 {
-            height += sectionHeaderHeight + CGFloat(sessions) * rowHeight
-        }
-        if saved > 0 {
-            height += sectionHeaderHeight + CGFloat(saved) * rowHeight
-        }
-        return min(height, 400)
     }
 
     private func connectionSubtitle(_ connection: DatabaseConnection) -> String {

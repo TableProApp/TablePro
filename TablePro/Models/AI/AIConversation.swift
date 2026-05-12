@@ -5,12 +5,12 @@
 
 import Foundation
 
-struct AIConversation: Codable, Equatable, Identifiable {
+struct AIConversation: Codable, Equatable, Identifiable, Sendable {
     static let currentSchemaVersion = 1
 
     let id: UUID
     var title: String
-    var messages: [ChatTurn]
+    var messages: [ChatTurnWire]
     let createdAt: Date
     var updatedAt: Date
     var connectionName: String?
@@ -19,7 +19,7 @@ struct AIConversation: Codable, Equatable, Identifiable {
     init(
         id: UUID = UUID(),
         title: String = "",
-        messages: [ChatTurn] = [],
+        messages: [ChatTurnWire] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         connectionName: String? = nil,
@@ -38,7 +38,7 @@ struct AIConversation: Codable, Equatable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
-        messages = try container.decodeIfPresent([ChatTurn].self, forKey: .messages) ?? []
+        messages = try container.decodeIfPresent([ChatTurnWire].self, forKey: .messages) ?? []
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         connectionName = try container.decodeIfPresent(String.self, forKey: .connectionName)

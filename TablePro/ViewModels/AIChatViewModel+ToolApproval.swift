@@ -91,17 +91,17 @@ extension AIChatViewModel {
     func appendPendingToolUseBlocks(_ blocks: [ToolUseBlock], assistantID: UUID) {
         guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
         for block in blocks {
-            messages[idx].blocks.append(.toolUse(block))
+            messages[idx].appendBlock(.toolUse(block))
         }
     }
 
     @MainActor
     func updateApprovalState(blockID: String, newState: ToolApprovalState, assistantID: UUID) {
         guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
-        for blockIdx in messages[idx].blocks.indices {
-            if case .toolUse(var block) = messages[idx].blocks[blockIdx], block.id == blockID {
+        for chatBlock in messages[idx].blocks {
+            if case .toolUse(var block) = chatBlock.kind, block.id == blockID {
                 block.approvalState = newState
-                messages[idx].blocks[blockIdx] = .toolUse(block)
+                chatBlock.setKind(.toolUse(block))
                 return
             }
         }

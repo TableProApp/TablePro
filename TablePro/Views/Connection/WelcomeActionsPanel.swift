@@ -8,8 +8,8 @@ import SwiftUI
 struct WelcomeActionsPanel: View {
     let onActivateLicense: () -> Void
     let onCreateConnection: () -> Void
+    let onImportFromApp: () -> Void
     let onTrySample: () -> Void
-    let onImportFromFile: () -> Void
 
     private let updaterBridge = UpdaterBridge.shared
 
@@ -44,15 +44,15 @@ struct WelcomeActionsPanel: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Button(action: onTrySample) {
-                    Label(String(localized: "Try Sample Database"), systemImage: "cylinder.split.1x2")
+                Button(action: onImportFromApp) {
+                    Label(String(localized: "Import from Other App..."), systemImage: "square.and.arrow.down.on.square")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
 
-                Button(action: onImportFromFile) {
-                    Label(String(localized: "Import Connections..."), systemImage: "square.and.arrow.down")
+                Button(action: onTrySample) {
+                    Label(String(localized: "Try Sample Database"), systemImage: "cylinder.split.1x2")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.bordered)

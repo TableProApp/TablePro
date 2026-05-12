@@ -145,6 +145,127 @@ final class VimTextBufferMock: VimTextBuffer {
         return min(pos, nsString.length - 1)
     }
 
+    func wordEndBackward(from offset: Int) -> Int {
+        let nsString = text as NSString
+        guard nsString.length > 0 else { return 0 }
+        var pos = min(max(0, offset), nsString.length - 1)
+        if pos > 0 { pos -= 1 }
+        if charClass(nsString.character(at: pos)) == .whitespace {
+            while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
+                pos -= 1
+            }
+            return pos
+        }
+        let cls = charClass(nsString.character(at: pos))
+        while pos > 0 && charClass(nsString.character(at: pos - 1)) == cls {
+            pos -= 1
+        }
+        guard pos > 0 else { return 0 }
+        pos -= 1
+        while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
+            pos -= 1
+        }
+        return pos
+    }
+
+    func bigWordBoundary(forward: Bool, from offset: Int) -> Int {
+        let nsString = text as NSString
+        guard nsString.length > 0 else { return 0 }
+        if forward {
+            var pos = min(offset, nsString.length - 1)
+            if isWhitespace(nsString.character(at: pos)) {
+                while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
+                    pos += 1
+                }
+            } else {
+                while pos < nsString.length && !isWhitespace(nsString.character(at: pos)) {
+                    pos += 1
+                }
+                while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
+                    pos += 1
+                }
+            }
+            return min(pos, nsString.length)
+        }
+        var pos = min(offset, nsString.length)
+        if pos > 0 { pos -= 1 }
+        while pos > 0 && isWhitespace(nsString.character(at: pos)) {
+            pos -= 1
+        }
+        while pos > 0 && !isWhitespace(nsString.character(at: pos - 1)) {
+            pos -= 1
+        }
+        return max(0, pos)
+    }
+
+    func bigWordEnd(from offset: Int) -> Int {
+        let nsString = text as NSString
+        guard nsString.length > 0 else { return 0 }
+        var pos = min(offset + 1, nsString.length - 1)
+        while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
+            pos += 1
+        }
+        guard pos < nsString.length else { return nsString.length - 1 }
+        while pos < nsString.length - 1 && !isWhitespace(nsString.character(at: pos + 1)) {
+            pos += 1
+        }
+        return min(pos, nsString.length - 1)
+    }
+
+    func bigWordEndBackward(from offset: Int) -> Int {
+        let nsString = text as NSString
+        guard nsString.length > 0 else { return 0 }
+        var pos = min(max(0, offset), nsString.length - 1)
+        if pos > 0 { pos -= 1 }
+        if isWhitespace(nsString.character(at: pos)) {
+            while pos > 0 && isWhitespace(nsString.character(at: pos)) {
+                pos -= 1
+            }
+            return pos
+        }
+        while pos > 0 && !isWhitespace(nsString.character(at: pos - 1)) {
+            pos -= 1
+        }
+        guard pos > 0 else { return 0 }
+        pos -= 1
+        while pos > 0 && isWhitespace(nsString.character(at: pos)) {
+            pos -= 1
+        }
+        return pos
+    }
+
+    func matchingBracket(at offset: Int) -> Int? {
+        let nsString = text as NSString
+        guard offset >= 0 && offset < nsString.length else { return nil }
+        let ch = nsString.character(at: offset)
+        let pairs: [unichar: (close: unichar, forward: Bool)] = [
+            0x28: (0x29, true), 0x5B: (0x5D, true), 0x7B: (0x7D, true),
+            0x29: (0x28, false), 0x5D: (0x5B, false), 0x7D: (0x7B, false)
+        ]
+        guard let pair = pairs[ch] else { return nil }
+        let step = pair.forward ? 1 : -1
+        var depth = 1
+        var pos = offset + step
+        while pos >= 0 && pos < nsString.length {
+            let cur = nsString.character(at: pos)
+            if cur == ch {
+                depth += 1
+            } else if cur == pair.close {
+                depth -= 1
+                if depth == 0 { return pos }
+            }
+            pos += step
+        }
+        return nil
+    }
+
+    func visibleLineRange() -> (firstLine: Int, lastLine: Int) {
+        (0, max(0, lineCount - 1))
+    }
+
+    func indentString() -> String { "    " }
+    func indentWidth() -> Int { 4 }
+
     func selectedRange() -> NSRange {
         _selectedRange
     }
@@ -186,13 +307,15 @@ final class VimTextBufferMock: VimTextBuffer {
     }
 
     private func charClass(_ char: unichar) -> CharClass {
-        if char == 0x20 || char == 0x09 || char == 0x0A || char == 0x0D {
-            return .whitespace
-        }
+        if isWhitespace(char) { return .whitespace }
         guard let scalar = UnicodeScalar(char) else { return .punctuation }
         if CharacterSet.alphanumerics.contains(scalar) || char == 0x5F {
             return .word
         }
         return .punctuation
+    }
+
+    private func isWhitespace(_ char: unichar) -> Bool {
+        char == 0x20 || char == 0x09 || char == 0x0A || char == 0x0D
     }
 }

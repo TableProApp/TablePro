@@ -9,6 +9,10 @@ import TableProPluginKit
 
 extension TableViewCoordinator {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        autoreleasepool { viewForCell(in: tableView, column: tableColumn, row: row) }
+    }
+
+    private func viewForCell(in tableView: NSTableView, column tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let column = tableColumn else { return nil }
 
         let tableRows = tableRowsProvider()
@@ -18,6 +22,7 @@ extension TableViewCoordinator {
             return cellRegistry.makeRowNumberCell(
                 in: tableView,
                 row: row,
+                pageOffset: paginationOffsetProvider(),
                 cachedRowCount: displayCount,
                 visualState: visualState(for: row)
             )

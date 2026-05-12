@@ -1,72 +1,234 @@
 ---
 title: Vim Mode
-description: Modal editing in the SQL editor with Normal, Insert, Visual, and command-line modes.
+description: Modal editing in the SQL editor.
 ---
 
 # Vim Mode
 
-Modal editing in the SQL editor. The current mode shows in the editor status bar.
-
-## Enable
-
-Open Settings (`Cmd+,`) > Editor and toggle **Vim mode**. The mode indicator (`NORMAL`, `INSERT`, `VISUAL`, `VISUAL LINE`) appears next to the editor when the toggle is on.
+Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor shows the current mode.
 
 ## Modes
 
-| Mode | Enter | Use for |
-|------|-------|---------|
-| Normal | `Esc` | Navigation, deletion, yank |
-| Insert | `i`, `a`, `o`, `I`, `A`, `O` | Typing SQL |
-| Visual | `v` | Character-wise selection |
-| Visual Line | `V` | Line-wise selection |
-| Command-line | `:` or `/` | Run a command or start a search |
+| Mode | How to enter |
+|------|--------------|
+| Normal | `Esc` |
+| Insert | `i`, `I`, `a`, `A`, `o`, `O`, `s`, `S`, `c`, `C`, `gi` |
+| Replace | `R` |
+| Visual | `v` |
+| Visual Line | `V` |
+| Command line | `:`, `/`, `?` |
 
-## Motions
+`gi` puts you back where you last left insert.
 
-| Key | Motion |
-|-----|--------|
+## Move the cursor
+
+### Characters
+
+| Key | Goes to |
+|-----|---------|
 | `h` `j` `k` `l` | Left, down, up, right |
-| `w` | Next word start |
-| `b` | Previous word start |
-| `e` | Word end |
-| `0` | Line start |
+| `0` | Start of line |
 | `^` `_` | First non-blank on line |
-| `$` | Line end |
-| `gg` | Buffer start |
-| `G` | Buffer end |
-| `{count}G` | Line `{count}` |
+| `$` | End of line |
 
-Counts work with motions: `5j` moves down five lines, `3w` moves three words forward.
+### Words
 
-## Operators
+| Key | Goes to |
+|-----|---------|
+| `w` `b` `e` | Next word, prev word, word end |
+| `W` `B` `E` | Same, whitespace-only word boundary |
+| `ge` `gE` | Prev word end, prev WORD end |
+
+### Lines and pages
+
+| Key | Goes to |
+|-----|---------|
+| `gg` | First line |
+| `G` | Last line |
+| `5G` | Line 5 |
+| `H` `M` `L` | Top, middle, bottom of view |
+| `%` | Matching `()`, `[]`, `{}` |
+
+### Find a character
+
+| Key | Goes to |
+|-----|---------|
+| `f{c}` | Next `{c}` on this line |
+| `F{c}` | Prev `{c}` on this line |
+| `t{c}` | Just before next `{c}` |
+| `T{c}` | Just after prev `{c}` |
+| `;` `,` | Repeat last find, reverse last find |
+
+### Sentences and paragraphs
+
+| Key | Goes to |
+|-----|---------|
+| `(` `)` | Prev sentence, next sentence |
+| `{` `}` | Prev blank line, next blank line |
+| `[[` `]]` | Prev `{`-at-col-0, next `{`-at-col-0 |
+
+Counts work: `3w` moves three words, `5j` moves five lines down.
+
+## Edit
 
 | Key | Action |
 |-----|--------|
-| `d` | Delete (with motion) |
-| `dd` | Delete line |
-| `c` | Change (with motion) |
-| `cc` | Change line |
-| `y` | Yank (with motion) |
-| `yy` | Yank line |
-| `x` | Delete character under cursor |
-| `p` | Paste after cursor |
-| `P` | Paste before cursor |
+| `d{m}` | Delete (with motion) |
+| `c{m}` | Change (delete then enter insert) |
+| `y{m}` | Yank |
+| `dd` `cc` `yy` | Same on the whole line |
+| `D` `C` `Y` | Same as `d$`, `c$`, `yy` |
+| `x` `X` | Delete one char under, one before cursor |
+| `s` `S` | Replace one char or whole line, then insert |
+| `r{c}` | Replace one char with `{c}`, stay in normal |
+| `~` | Toggle case under cursor |
+| `g~{m}` `gu{m}` `gU{m}` | Toggle, lower, upper with motion |
+| `g~~` `guu` `gUU` | Same on the whole line |
+| `>>` `<<` | Indent, outdent line |
+| `>{m}` `<{m}` | Indent, outdent with motion |
+| `J` | Join next line with a space |
+| `gJ` | Join next line, no space |
+
+`2d3w` deletes six words. `3yy` yanks three lines. `5>>` indents five lines.
+
+Yank, delete, and change all write to the system clipboard.
+
+## Text objects
+
+Use after `d`, `c`, `y`, or in visual mode.
+
+| Object | Inside | Around |
+|--------|--------|--------|
+| Word | `iw` | `aw` |
+| WORD | `iW` | `aW` |
+| `"` `'` `` ` `` string | `i"` `i'` `` i` `` | `a"` `a'` `` a` `` |
+| `(` `)` parens | `i(` `ib` | `a(` `ab` |
+| `{` `}` braces | `i{` `iB` | `a{` `aB` |
+| `[` `]` brackets | `i[` | `a[` |
+| `<` `>` angles | `i<` | `a<` |
+| HTML tag | `it` | `at` |
+| Paragraph | `ip` | `ap` |
+
+`ciw` rewrites the current word. `da"` removes a quoted string and its trailing space. `yip` copies the current paragraph.
+
+## Paste
+
+| Key | Action |
+|-----|--------|
+| `p` | After cursor (or below the line for linewise yank) |
+| `P` | Before cursor (or above the line) |
+| `3p` | Paste three times |
+
+In visual mode, `p` and `P` replace the selection with the register.
+
+## Registers
+
+Prefix with `"{a-z}` to pick a register.
+
+| Register | Holds |
+|----------|-------|
+| `"` | Last yank or delete |
+| `"a` … `"z` | Named, overwrite |
+| `"A` … `"Z` | Same, append |
+| `"0` | Last yank only |
+| `"1` … `"9` | Delete ring, rotates on each delete |
+
+`"ayy` stores a line in `a`. `"ap` pastes it back later.
+
+## Marks
+
+| Key | Action |
+|-----|--------|
+| `m{a-z}` | Set mark |
+| `` `{a-z} `` | Jump to exact mark |
+| `'{a-z}` | Jump to first non-blank of the mark's line |
+| `` `< `` `` `> `` | Start, end of last visual selection |
+| `''` `` `` `` | Back to position before the last jump |
+
+Marks shift when you insert or delete text before them.
+
+## Search
+
+| Key | Action |
+|-----|--------|
+| `/pattern` `Enter` | Forward search |
+| `?pattern` `Enter` | Backward search |
+| `n` `N` | Next, previous match |
+| `*` `#` | Search word under cursor, forward or back |
+
+Searches wrap around.
+
+## Repeat and undo
+
+| Key | Action |
+|-----|--------|
+| `.` | Repeat last change |
 | `u` | Undo |
-| `Ctrl+r` | Redo |
+| `U` | Undo all edits on this line |
+| `Ctrl+R` | Redo |
 
-Operators combine with motions: `dw` deletes to next word, `c$` changes to end of line, `y3j` yanks the next three lines.
+`5.` repeats the last change five times.
 
-Yank, delete, and change all sync to the system pasteboard.
+## Macros
 
-## Visual Mode
+| Key | Action |
+|-----|--------|
+| `q{a-z}` | Start recording into a register |
+| `q` | Stop recording |
+| `@{a-z}` | Play back |
+| `@@` | Play back the last macro |
+| `3@a` | Play three times |
 
-In Visual or Visual Line mode the same motion keys extend the selection. Press `d`, `c`, or `y` to operate on the selection. Press `v` or `V` again to leave the mode, or `Esc` to cancel.
+Recursion is capped at 50 to keep self-calling macros safe.
 
-## Command-line
+## Scroll
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+D` `Ctrl+U` | Half page down, up |
+| `Ctrl+F` `Ctrl+B` | Full page down, up |
+| `Ctrl+E` `Ctrl+Y` | One line down, up |
+| `zt` `zz` `zb` | Put current line at top, middle, bottom |
+| `gj` `gk` | Down, up by visual line |
+
+## Visual mode
+
+Motions extend the selection. Then:
+
+| Key | Action |
+|-----|--------|
+| `d` `x` | Delete |
+| `c` | Delete and insert |
+| `y` | Yank |
+| `J` `gJ` | Join lines |
+| `~` `u` `U` | Toggle, lower, upper case |
+| `r{c}` | Replace each char with `{c}` |
+| `>` `<` | Indent, outdent |
+| `o` | Move cursor to the other end |
+| `I` `A` | Insert at start, end of selection |
+| `gv` | Reselect the last visual selection |
+
+## Insert mode shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+W` | Delete the previous word |
+| `Ctrl+U` | Delete back to line start |
+| `Ctrl+H` | Backspace |
+| `Ctrl+T` | Indent line |
+| `Ctrl+D` | Outdent line |
+| `Esc` | Back to normal |
+
+## Numbers
+
+`Ctrl+A` adds one to the next number on the line. `Ctrl+X` subtracts one. Both honour a count (`5 Ctrl+A`), negative numbers, and `0x` hex.
+
+## Command line
 
 | Command | Action |
 |---------|--------|
-| `:w` | Execute the current query |
-| `:q` | Close the current tab |
+| `:w` | Run the current query |
+| `:q` | Close the tab |
+| `:wq` `:x` | Both |
 
-Other command-line input is parsed but ignored.
+`/` and `?` are search. Other `:` commands are parsed and ignored.

@@ -24,7 +24,7 @@ final class AnthropicProvider: ChatTransport {
     }
 
     func streamChat(
-        turns: [ChatTurn],
+        turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -111,7 +111,7 @@ final class AnthropicProvider: ChatTransport {
 
     func testConnection() async throws -> Bool {
         let testModel = model.isEmpty ? (Self.knownModels.first ?? "") : model
-        let testTurn = ChatTurn(role: .user, blocks: [.text("Hi")])
+        let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
         let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 1)
         let request = try buildMessagesRequest(turns: [testTurn], options: testOptions, stream: false)
 
@@ -136,7 +136,7 @@ final class AnthropicProvider: ChatTransport {
     }
 
     private func buildMessagesRequest(
-        turns: [ChatTurn],
+        turns: [ChatTurnWire],
         options: ChatTransportOptions,
         stream: Bool = true
     ) throws -> URLRequest {
@@ -256,10 +256,10 @@ final class AnthropicProvider: ChatTransport {
         ]
     }
 
-    static func encodeTurn(_ turn: ChatTurn) throws -> [String: Any]? {
+    static func encodeTurn(_ turn: ChatTurnWire) throws -> [String: Any]? {
         let blocks = turn.blocks
         let needsTypedBlocks = blocks.contains { block in
-            switch block {
+            switch block.kind {
             case .toolUse, .toolResult:
                 return true
             case .text, .attachment:
@@ -278,8 +278,8 @@ final class AnthropicProvider: ChatTransport {
         return ["role": turn.role.rawValue, "content": text]
     }
 
-    static func encodeBlock(_ block: ChatContentBlock) throws -> [String: Any]? {
-        switch block {
+    static func encodeBlock(_ block: ChatContentBlockWire) throws -> [String: Any]? {
+        switch block.kind {
         case .text(let text):
             guard !text.isEmpty else { return nil }
             return ["type": "text", "text": text]

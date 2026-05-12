@@ -12,43 +12,44 @@ extension AIChatViewModel {
 
         inputText = message.plainText
         attachedContext = message.blocks.compactMap { block in
-            if case .attachment(let item) = block { return item }
+            if case .attachment(let item) = block.kind { return item }
             return nil
         }
         messages.removeSubrange(idx...)
         persistCurrentConversation()
     }
 
-    func resolveTurnForWire(_ turn: ChatTurn) async -> ChatTurn {
-        let attachments = turn.blocks.compactMap { block -> ContextItem? in
-            if case .attachment(let item) = block { return item }
+    func resolveTurnForWire(_ turn: ChatTurn) async -> ChatTurnWire {
+        let snapshot = turn.wireSnapshot
+        let attachments = snapshot.blocks.compactMap { block -> ContextItem? in
+            if case .attachment(let item) = block.kind { return item }
             return nil
         }
-        guard !attachments.isEmpty else { return turn }
+        guard !attachments.isEmpty else { return snapshot }
 
         for item in attachments {
             await primeAttachmentData(for: item)
         }
 
-        let typed = turn.blocks.compactMap { block -> String? in
-            if case .text(let value) = block { return value }
+        let typed = snapshot.blocks.compactMap { block -> String? in
+            if case .text(let value) = block.kind { return value }
             return nil
         }.joined()
 
         let resolved = attachments
             .compactMap { resolveAttachment($0) }
             .joined(separator: "\n\n")
-        if resolved.isEmpty { return turn }
+        if resolved.isEmpty { return snapshot }
 
         let combined = typed.isEmpty ? resolved : typed + "\n\n---\n\n" + resolved
-        return ChatTurn(
-            id: turn.id,
-            role: turn.role,
+        return ChatTurnWire(
+            id: snapshot.id,
+            role: snapshot.role,
             blocks: [.text(combined)],
-            timestamp: turn.timestamp,
-            usage: turn.usage,
-            modelId: turn.modelId,
-            providerId: turn.providerId
+            timestamp: snapshot.timestamp,
+            usage: snapshot.usage,
+            modelId: snapshot.modelId,
+            providerId: snapshot.providerId
         )
     }
 

@@ -71,6 +71,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var serverVersion: String? { get }
     var parameterStyle: ParameterStyle { get }
 
+    var requiresBackslashEscapingInLiterals: Bool { get }
+
     // Batch operations
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
@@ -178,6 +180,8 @@ public extension PluginDatabaseDriver {
     var serverVersion: String? { nil }
 
     var parameterStyle: ParameterStyle { .questionMark }
+
+    var requiresBackslashEscapingInLiterals: Bool { false }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? { nil }
 
@@ -319,15 +323,15 @@ public extension PluginDatabaseDriver {
         let sql: String
         switch parameterStyle {
         case .questionMark:
-            sql = Self.substituteQuestionMarks(query: query, parameters: parameters)
+            sql = substituteQuestionMarks(query: query, parameters: parameters)
         case .dollar:
-            sql = Self.substituteDollarParams(query: query, parameters: parameters)
+            sql = substituteDollarParams(query: query, parameters: parameters)
         }
 
         return try await execute(query: sql)
     }
 
-    private static func substituteQuestionMarks(query: String, parameters: [PluginCellValue]) -> String {
+    private func substituteQuestionMarks(query: String, parameters: [PluginCellValue]) -> String {
         let nsQuery = query as NSString
         let length = nsQuery.length
         var sql = ""
@@ -390,7 +394,7 @@ public extension PluginDatabaseDriver {
         return sql
     }
 
-    private static func substituteDollarParams(query: String, parameters: [PluginCellValue]) -> String {
+    private func substituteDollarParams(query: String, parameters: [PluginCellValue]) -> String {
         let nsQuery = query as NSString
         let length = nsQuery.length
         var sql = ""
@@ -466,7 +470,7 @@ public extension PluginDatabaseDriver {
         return sql
     }
 
-    static func sqlLiteral(for value: PluginCellValue) -> String {
+    func sqlLiteral(for value: PluginCellValue) -> String {
         switch value {
         case .null:
             return "NULL"
@@ -483,28 +487,29 @@ public extension PluginDatabaseDriver {
         }
     }
 
-    static func escapedParameterValue(_ value: String) -> String {
-        if isNumericLiteral(value) {
+    func escapedParameterValue(_ value: String) -> String {
+        if Self.isNumericLiteral(value) {
             return value
         }
         var escaped = ""
         escaped.reserveCapacity(value.count + 2)
         escaped.append("'")
+        let escapeBackslashes = requiresBackslashEscapingInLiterals
         for char in value {
             switch char {
             case "'":
                 escaped.append("''")
             case "\0":
                 continue
-            case "\\":
+            case "\\" where escapeBackslashes:
                 escaped.append("\\\\")
-            case "\n":
+            case "\n" where escapeBackslashes:
                 escaped.append("\\n")
-            case "\r":
+            case "\r" where escapeBackslashes:
                 escaped.append("\\r")
-            case "\t":
+            case "\t" where escapeBackslashes:
                 escaped.append("\\t")
-            case "\u{1A}":
+            case "\u{1A}" where escapeBackslashes:
                 escaped.append("\\Z")
             default:
                 escaped.append(char)

@@ -19,11 +19,20 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
     private(set) var row: Int = -1
     private(set) var column: Int = -1
     private(set) var columnIndex: Int = -1
+    private var initialValue: String = ""
 
     var onCommit: ((_ row: Int, _ columnIndex: Int, _ newValue: String) -> Void)?
     var onTabNavigation: ((_ row: Int, _ column: Int, _ forward: Bool) -> Void)?
 
     var isActive: Bool { container != nil }
+
+    var containerView: NSView? { container }
+
+    func raiseToFront() {
+        guard let container, let tableView, container.superview === tableView else { return }
+        guard tableView.subviews.last !== container else { return }
+        tableView.addSubview(container)
+    }
 
     // MARK: - Show / Dismiss
 
@@ -34,12 +43,13 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         columnIndex: Int,
         value: String
     ) {
-        dismiss(commit: false)
+        dismiss(commit: true)
 
         self.tableView = tableView
         self.row = row
         self.column = column
         self.columnIndex = columnIndex
+        self.initialValue = value
 
         let cellFrame = tableView.frameOfCell(atColumn: column, row: row)
         guard !cellFrame.isEmpty else { return }
@@ -112,18 +122,20 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         guard let activeContainer = container, let activeTextView = textView else { return }
 
         let newValue = activeTextView.string
+        let originalValue = initialValue
 
         removeDismissObservers()
 
         activeContainer.removeFromSuperview()
         container = nil
         textView = nil
+        initialValue = ""
 
         if let tableView {
             tableView.window?.makeFirstResponder(tableView)
         }
 
-        if commit {
+        if commit, newValue != originalValue {
             onCommit?(row, columnIndex, newValue)
         }
     }
@@ -139,7 +151,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
                 object: clipView,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     self?.dismiss(commit: true)
                 }
             }
@@ -150,7 +162,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
             object: tableView,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.dismiss(commit: false)
             }
         }
@@ -160,7 +172,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.dismiss(commit: true)
             }
         }
@@ -171,15 +183,14 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
                 object: editorWindow,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     self?.dismiss(commit: true)
                 }
             }
         }
 
         outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self else { return event }
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.handleOutsideClick(event: event)
             }
             return event
@@ -263,9 +274,13 @@ private final class OverlayContainerView: NSView {
 // MARK: - Overlay Text View
 
 private final class OverlayTextView: NSTextView {
+    private let storedUndoManager = UndoManager()
+
     weak var overlayEditor: CellOverlayEditor?
 
     private static let menuKeyEquivalents: Set<String> = ["s"]
+
+    override var undoManager: UndoManager? { storedUndoManager }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command),

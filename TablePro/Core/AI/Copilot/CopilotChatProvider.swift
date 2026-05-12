@@ -23,7 +23,7 @@ final class CopilotChatProvider: ChatTransport {
     )
 
     func streamChat(
-        turns: [ChatTurn],
+        turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -69,6 +69,7 @@ final class CopilotChatProvider: ChatTransport {
 
                     let userMessage = turns.last(where: { $0.role == .user })?.plainText ?? ""
                     let effectiveModel: String? = options.model.isEmpty ? nil : options.model
+                    let toolsAvailable = !options.tools.isEmpty && !self.registeredToolNames.isEmpty
 
                     if self.conversationId == nil {
                         let systemPrefix = options.systemPrompt.map { $0 + "\n\n" } ?? ""
@@ -77,7 +78,6 @@ final class CopilotChatProvider: ChatTransport {
                             response: "",
                             turnId: ""
                         )]
-                        let toolsAvailable = !options.tools.isEmpty && !self.registeredToolNames.isEmpty
                         let params = CopilotConversationCreateParams(
                             workDoneToken: token,
                             turns: conversationTurns,
@@ -103,7 +103,10 @@ final class CopilotChatProvider: ChatTransport {
                             message: userMessage,
                             source: "panel",
                             model: effectiveModel,
-                            workspaceFolders: nil
+                            workspaceFolders: nil,
+                            chatMode: toolsAvailable ? "Agent" : nil,
+                            customChatModeId: toolsAvailable ? "Agent" : nil,
+                            needToolCallConfirmation: toolsAvailable ? false : nil
                         )
                         let result = try await client.conversationTurn(params: params)
                         self.turnIds.append(result.turnId)

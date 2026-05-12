@@ -44,7 +44,8 @@ extension TableViewCoordinator {
                 showBlobEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
                 return
             }
-            if ct.isBooleanType || ct.isDateType || ct.isEnumType || ct.isSetType {
+            if ct.isJsonType {
+                showJSONEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
                 return
             }
         }
@@ -97,8 +98,6 @@ extension TableViewCoordinator {
             showEnumPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if ct.isSetType, let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
             showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-        } else if ct.isDateType {
-            showDatePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if ct.isJsonType {
             showJSONEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if ct.isBlobType {

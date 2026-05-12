@@ -94,10 +94,15 @@ final class DataBrowserViewModel {
                 underlying: nil
             )
             isLoading = false
+            isPageLoading = false
             return
         }
 
-        if isInitial || legacyRows.isEmpty { isLoading = true }
+        if isInitial || legacyRows.isEmpty {
+            isLoading = true
+        } else {
+            isPageLoading = true
+        }
         loadError = nil
 
         do {
@@ -119,6 +124,7 @@ final class DataBrowserViewModel {
             if case .error(let err) = phase {
                 loadError = err
                 isLoading = false
+                isPageLoading = false
                 return
             }
 
@@ -139,12 +145,14 @@ final class DataBrowserViewModel {
             }
 
             isLoading = false
+            isPageLoading = false
         } catch {
             loadError = ErrorClassifier.classify(
                 error,
                 context: ErrorContext(operation: "loadData", databaseType: databaseType, host: host)
             )
             isLoading = false
+            isPageLoading = false
         }
     }
 
@@ -246,9 +254,7 @@ final class DataBrowserViewModel {
     }
 
     private func navigatePage() async {
-        isPageLoading = true
         await load()
-        isPageLoading = false
     }
 
     // MARK: - Sort / Filter / Search

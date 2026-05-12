@@ -3,6 +3,301 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.40.2</title>
+            <pubDate>Tue, 12 May 2026 13:39:58 +0000</pubDate>
+            <sparkle:version>82</sparkle:version>
+            <sparkle:shortVersionString>0.40.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Right-click Set Value on date, datetime, and timestamp cells now offers `CURRENT_DATE`, `CURRENT_TIME`, `NOW()`, and `CURRENT_TIMESTAMP`, filtered by column type.</li>
+<li>Welcome screen left pane gains an Import from Other App button.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Row numbers in the data grid continue across pages and the `#` column auto-sizes to fit the widest visible number.</li>
+<li>Date, datetime, and timestamp cells use the standard inline text editor; the popover date picker is removed.</li>
+<li>Foreign key preview popover follows the selected row as you arrow up or down.</li>
+<li>The connection window shows the connecting state inline with a Cancel button.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Closing the connection window during a slow connect no longer leaves a stuck "Connecting…" window or a stray failure alert (#1185).</li>
+<li>Cmd+Z while editing a cell now undoes typing in the editor; pressing it after dismissing the editor no longer crashes.</li>
+<li>Cmd+Z right after Add Row no longer leaves a stranded editor floating over the removed row.</li>
+<li>Editing a NULL cell and dismissing without typing no longer flips the value to an empty string.</li>
+<li>Double-clicking another cell while editing no longer delays the new editor or drops pending changes on the previous one.</li>
+<li>Double-clicking an enum, set, or boolean cell now opens the inline text editor; the chevron still opens the picker popover.</li>
+<li>Chevron-accessory cells (enum, boolean, JSON, blob) no longer truncate short values that fit the full cell width.</li>
+<li>DATE columns no longer render a phantom `00:00:00` time suffix.</li>
+<li>Adding a new row no longer renders the row on top of the auto-opened cell editor mid-animation.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.40.2/TablePro-0.40.2-arm64.zip" length="20859947" type="application/octet-stream" sparkle:edSignature="WdCliaccGeJi4vP6dKQ94f98IOk4nxifqD32eLo3E//uOsBQKPFfOg2xFHmmbfQfwCGYE5jXpIvO/k5rtRlVDQ=="/>
+        </item>
+        <item>
+            <title>0.40.2</title>
+            <pubDate>Tue, 12 May 2026 13:39:59 +0000</pubDate>
+            <sparkle:version>82</sparkle:version>
+            <sparkle:shortVersionString>0.40.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Right-click Set Value on date, datetime, and timestamp cells now offers `CURRENT_DATE`, `CURRENT_TIME`, `NOW()`, and `CURRENT_TIMESTAMP`, filtered by column type.</li>
+<li>Welcome screen left pane gains an Import from Other App button.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Row numbers in the data grid continue across pages and the `#` column auto-sizes to fit the widest visible number.</li>
+<li>Date, datetime, and timestamp cells use the standard inline text editor; the popover date picker is removed.</li>
+<li>Foreign key preview popover follows the selected row as you arrow up or down.</li>
+<li>The connection window shows the connecting state inline with a Cancel button.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Closing the connection window during a slow connect no longer leaves a stuck "Connecting…" window or a stray failure alert (#1185).</li>
+<li>Cmd+Z while editing a cell now undoes typing in the editor; pressing it after dismissing the editor no longer crashes.</li>
+<li>Cmd+Z right after Add Row no longer leaves a stranded editor floating over the removed row.</li>
+<li>Editing a NULL cell and dismissing without typing no longer flips the value to an empty string.</li>
+<li>Double-clicking another cell while editing no longer delays the new editor or drops pending changes on the previous one.</li>
+<li>Double-clicking an enum, set, or boolean cell now opens the inline text editor; the chevron still opens the picker popover.</li>
+<li>Chevron-accessory cells (enum, boolean, JSON, blob) no longer truncate short values that fit the full cell width.</li>
+<li>DATE columns no longer render a phantom `00:00:00` time suffix.</li>
+<li>Adding a new row no longer renders the row on top of the auto-opened cell editor mid-animation.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.40.2/TablePro-0.40.2-x86_64.zip" length="22104518" type="application/octet-stream" sparkle:edSignature="DsPPoCITf8i5HWoD/6ifeWjDnJXqCKbOg4H+rc6hUSXHJF4ZhX37oP+73VpVZrM6GFI+gagoIrewpbMbbMH+Ag=="/>
+        </item>
+        <item>
+            <title>0.40.1</title>
+            <pubDate>Tue, 12 May 2026 06:27:15 +0000</pubDate>
+            <sparkle:version>81</sparkle:version>
+            <sparkle:shortVersionString>0.40.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Changed</h3>
+<ul>
+<li>Quick Switcher matches the Open Database dialog and shows a Recent section per connection.</li>
+<li>Connection Switcher and SQL Preview open as sheets so they work from the toolbar, overflow menu, and keyboard shortcuts.</li>
+<li>Filters button moved out of the toolbar; the bottom-bar Filters control remains.</li>
+<li>Welcome screen drops the Import Connections button; both import flows remain in the + menu.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Toolbar overflow menu entries now fire their action when the window is narrowed.</li>
+<li>SQL Preview no longer freezes when previewing a very large batch.</li>
+<li>Quick Switcher crash on macOS 26.</li>
+<li>Registry updates for bundled drivers (ClickHouse, Redis) now persist after restart.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.40.1/TablePro-0.40.1-arm64.zip" length="20849463" type="application/octet-stream" sparkle:edSignature="cGyMlou/Kad39luVXnLrIdLUiXXs+8tuKssEeXZGLxp04Bw6X1De2piaD3eE5h/8Pq96mqx6yR3L5XenJzIHBg=="/>
+        </item>
+        <item>
+            <title>0.40.1</title>
+            <pubDate>Tue, 12 May 2026 06:27:16 +0000</pubDate>
+            <sparkle:version>81</sparkle:version>
+            <sparkle:shortVersionString>0.40.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Changed</h3>
+<ul>
+<li>Quick Switcher matches the Open Database dialog and shows a Recent section per connection.</li>
+<li>Connection Switcher and SQL Preview open as sheets so they work from the toolbar, overflow menu, and keyboard shortcuts.</li>
+<li>Filters button moved out of the toolbar; the bottom-bar Filters control remains.</li>
+<li>Welcome screen drops the Import Connections button; both import flows remain in the + menu.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Toolbar overflow menu entries now fire their action when the window is narrowed.</li>
+<li>SQL Preview no longer freezes when previewing a very large batch.</li>
+<li>Quick Switcher crash on macOS 26.</li>
+<li>Registry updates for bundled drivers (ClickHouse, Redis) now persist after restart.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.40.1/TablePro-0.40.1-x86_64.zip" length="22085709" type="application/octet-stream" sparkle:edSignature="QG1xzuQVMj2JIAA7bmCRx8Zp0HFgGrM2UtKCACTNC07gcDuZAImt2ymTO4DeEQGogRGygYoM8DWLK49Ink+MAg=="/>
+        </item>
+        <item>
+            <title>0.40.0</title>
+            <pubDate>Mon, 11 May 2026 17:38:50 +0000</pubDate>
+            <sparkle:version>80</sparkle:version>
+            <sparkle:shortVersionString>0.40.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Vim mode in the SQL editor (motions, operators, text objects, registers, macros, marks, search)</li>
+<li>Sidebar groups views, materialized views, foreign tables, procedures, and functions; Show DDL opens in a new tab (#1038)</li>
+<li>iOS: Live Activity for running queries</li>
+<li>iOS: multi-window on iPad</li>
+<li>iOS: Face ID / Touch ID / Optic ID app lock with idle timeout</li>
+<li>iOS: background iCloud sync</li>
+<li>iOS: Connection Info tab</li>
+<li>iOS: Cmd+F focuses search; search text persists across kill</li>
+<li>iOS: VoiceOver delete actions; Create button on empty Groups/Tags; No Results empty state; alert when active connection is deleted mid-session</li>
+<li>iOS Settings: iCloud Sync, Rows per Page, Default Safe Mode, Hide query in Live Activities</li>
+<li>MCP Setup adds Zed</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Wide-table scroll faster (max main-thread stall 3.5s to 1.3s); display cache 50k rows / 64 MB</li>
+<li>Sidebar: white tint on selected row; per-section count removed</li>
+<li>Edits in one window no longer refresh unrelated windows (favorites, history, linked folders)</li>
+<li>iOS: Vietnamese localization complete</li>
+<li>iOS: centered nav title dropped on connection tabs</li>
+<li>iOS accessibility: combined VoiceOver row labels, icon-button labels, badge size caps</li>
+<li>iOS: SQL editor uses the system keyboard input view; Edit Connection moved to the nav bar</li>
+<li>PostgreSQL SQL export round-trips foreign keys and sequences cleanly (#1114)</li>
+<li>SQL import parser streams large files (#1114)</li>
+<li>AI inline-suggestion debounce configurable (default 500 ms)</li>
+<li>Copilot LSP: 10s shutdown cap; quarantine attribute stripped</li>
+<li>MCP HTTP: 30-second SSE keep-alive</li>
+<li>AI providers: 5s timeout, known-model fallback, model list through Claude 4.7</li>
+<li>AI Chat: per-tool access modes; duplicate slash command names rejected</li>
+<li>AI Chat views: native button styles, semantic colors, 8-pt grid, a11y labels</li>
+<li>Translucent surfaces honor Reduce Transparency and Increase Contrast</li>
+<li>Result grid: direct-draw cells on a layer-backed view</li>
+<li>Plugin contract: typed binary cells across all engines (#1188)</li>
+<li>Double-click and Return on a binary cell open the hex editor</li>
+<li>Plugin registry cache moved to `~/Library/Caches`</li>
+<li>Plugin install off the main actor; signing reads team id at runtime</li>
+<li>Restart TablePro banner gains Quit & Reopen; state in-memory only</li>
+<li>Default PluginKit escape no longer escapes backslashes</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Vim: Shift+J joins lines; `w`/`W` no longer overshoot; Esc switches mode after `;` (#1222)</li>
+<li>AI Chat: Copilot Agent mode persists across turns</li>
+<li>AI Chat: streaming no longer hangs at 100% CPU; pre-tool text shows above the tool card; native Markdown renderer (#1205)</li>
+<li>AI Chat: `@` mentions handle emoji at the cursor</li>
+<li>AI Chat: Fix Error prompt uses the database display name</li>
+<li>iOS: data browser no longer flashes No Data during reload</li>
+<li>iOS: row detail pager crash on filter</li>
+<li>MySQL/MariaDB: `BINARY(N)`/`VARBINARY(N)` route to blob editor; numeric/date/time render as values; stable JSON detection</li>
+<li>Data grid chevrons refresh on editability change and dim on deleted rows</li>
+<li>Welcome window opens reliably on launch and Dock click</li>
+<li>Plugin upgrades for built-in drivers persist after restart (#1192)</li>
+<li>Plugin install: end-to-end install lock; no continuation leak; multi-bundle ZIP rejected; auto-update preserves concurrent rejections</li>
+<li>Built-in plugins enforce the PluginKit version check</li>
+<li>Query cancelled alert no longer appears on tab supersession, refresh, or teardown</li>
+<li>Structure tab: tinting repaints on edit, delete, undo, save, discard; right-click Undo Delete; dropdown columns enter inline edit; Cmd+Shift+N adds a row</li>
+<li>Structure view: switching Columns / Indexes / Foreign Keys no longer shows stale data (#1110)</li>
+<li>Create Table: foreign-key and index-type columns render as dropdowns</li>
+<li>Sidebar tables load after a slow connect</li>
+<li>SQL Server: `USE <database>` switches DB; IDENTITY skipped on INSERT; default schema from `SELECT SCHEMA_NAME()`; DATETIME round-trips as ISO 8601</li>
+<li>Toolbar database/schema chip correct on connect</li>
+<li>Safe Mode silent: Cmd+Return no longer double-fires</li>
+<li>LSP `cancelRequest` no longer leaks continuations</li>
+<li>Schema provider no longer leaks via throwaway coordinator</li>
+<li>Reconnect-then-disconnect no longer writes into a tearing-down coordinator</li>
+<li>Sync coordinator: no overlapping tasks; `syncNow` is re-entrant-safe</li>
+<li>Failed connections-file save aborts dependent steps; form stays open with error</li>
+<li>iCloud sync: decode failures skip the record/category and log; cloud copy preserved</li>
+<li>Keychain reads distinguish cancelled prompts, failed biometrics, and not-found</li>
+<li>Terminal PTY writes retry on `EINTR`</li>
+<li>MCP HTTP: structured internal-error envelope on encode failure</li>
+<li>Closing the last window no longer flashes Connection lost</li>
+<li>Smart-quote and dash substitution in cell editors and filter inputs</li>
+<li>Connecting one window no longer fetches tables in unrelated windows</li>
+<li>Foreign-key navigation from a tab with unsaved edits opens in a new tab without wiping the original</li>
+<li>SQL import: tables sidebar refreshes; PostgreSQL Disable foreign key checks; identity columns and dollar-quoted blocks round-trip (#1114)</li>
+<li>PostgreSQL/Redshift: schema picker no longer hides `pg*` user schemas</li>
+<li>Connection-only payloads no longer create an empty `Query 1` tab</li>
+<li>Import from Other App: Cancel button stops the keychain prompt loop (#1134)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.40.0/TablePro-0.40.0-arm64.zip" length="20837564" type="application/octet-stream" sparkle:edSignature="gA17JJkIWrSfDgnYMpCnIeGkKBMJCSCIODIlxGgnqT1NArBCaQWT9E2dwv6209KWKgA9cwQsET+XZwpkdssHDA=="/>
+        </item>
+        <item>
+            <title>0.40.0</title>
+            <pubDate>Mon, 11 May 2026 17:38:51 +0000</pubDate>
+            <sparkle:version>80</sparkle:version>
+            <sparkle:shortVersionString>0.40.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Vim mode in the SQL editor (motions, operators, text objects, registers, macros, marks, search)</li>
+<li>Sidebar groups views, materialized views, foreign tables, procedures, and functions; Show DDL opens in a new tab (#1038)</li>
+<li>iOS: Live Activity for running queries</li>
+<li>iOS: multi-window on iPad</li>
+<li>iOS: Face ID / Touch ID / Optic ID app lock with idle timeout</li>
+<li>iOS: background iCloud sync</li>
+<li>iOS: Connection Info tab</li>
+<li>iOS: Cmd+F focuses search; search text persists across kill</li>
+<li>iOS: VoiceOver delete actions; Create button on empty Groups/Tags; No Results empty state; alert when active connection is deleted mid-session</li>
+<li>iOS Settings: iCloud Sync, Rows per Page, Default Safe Mode, Hide query in Live Activities</li>
+<li>MCP Setup adds Zed</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Wide-table scroll faster (max main-thread stall 3.5s to 1.3s); display cache 50k rows / 64 MB</li>
+<li>Sidebar: white tint on selected row; per-section count removed</li>
+<li>Edits in one window no longer refresh unrelated windows (favorites, history, linked folders)</li>
+<li>iOS: Vietnamese localization complete</li>
+<li>iOS: centered nav title dropped on connection tabs</li>
+<li>iOS accessibility: combined VoiceOver row labels, icon-button labels, badge size caps</li>
+<li>iOS: SQL editor uses the system keyboard input view; Edit Connection moved to the nav bar</li>
+<li>PostgreSQL SQL export round-trips foreign keys and sequences cleanly (#1114)</li>
+<li>SQL import parser streams large files (#1114)</li>
+<li>AI inline-suggestion debounce configurable (default 500 ms)</li>
+<li>Copilot LSP: 10s shutdown cap; quarantine attribute stripped</li>
+<li>MCP HTTP: 30-second SSE keep-alive</li>
+<li>AI providers: 5s timeout, known-model fallback, model list through Claude 4.7</li>
+<li>AI Chat: per-tool access modes; duplicate slash command names rejected</li>
+<li>AI Chat views: native button styles, semantic colors, 8-pt grid, a11y labels</li>
+<li>Translucent surfaces honor Reduce Transparency and Increase Contrast</li>
+<li>Result grid: direct-draw cells on a layer-backed view</li>
+<li>Plugin contract: typed binary cells across all engines (#1188)</li>
+<li>Double-click and Return on a binary cell open the hex editor</li>
+<li>Plugin registry cache moved to `~/Library/Caches`</li>
+<li>Plugin install off the main actor; signing reads team id at runtime</li>
+<li>Restart TablePro banner gains Quit & Reopen; state in-memory only</li>
+<li>Default PluginKit escape no longer escapes backslashes</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Vim: Shift+J joins lines; `w`/`W` no longer overshoot; Esc switches mode after `;` (#1222)</li>
+<li>AI Chat: Copilot Agent mode persists across turns</li>
+<li>AI Chat: streaming no longer hangs at 100% CPU; pre-tool text shows above the tool card; native Markdown renderer (#1205)</li>
+<li>AI Chat: `@` mentions handle emoji at the cursor</li>
+<li>AI Chat: Fix Error prompt uses the database display name</li>
+<li>iOS: data browser no longer flashes No Data during reload</li>
+<li>iOS: row detail pager crash on filter</li>
+<li>MySQL/MariaDB: `BINARY(N)`/`VARBINARY(N)` route to blob editor; numeric/date/time render as values; stable JSON detection</li>
+<li>Data grid chevrons refresh on editability change and dim on deleted rows</li>
+<li>Welcome window opens reliably on launch and Dock click</li>
+<li>Plugin upgrades for built-in drivers persist after restart (#1192)</li>
+<li>Plugin install: end-to-end install lock; no continuation leak; multi-bundle ZIP rejected; auto-update preserves concurrent rejections</li>
+<li>Built-in plugins enforce the PluginKit version check</li>
+<li>Query cancelled alert no longer appears on tab supersession, refresh, or teardown</li>
+<li>Structure tab: tinting repaints on edit, delete, undo, save, discard; right-click Undo Delete; dropdown columns enter inline edit; Cmd+Shift+N adds a row</li>
+<li>Structure view: switching Columns / Indexes / Foreign Keys no longer shows stale data (#1110)</li>
+<li>Create Table: foreign-key and index-type columns render as dropdowns</li>
+<li>Sidebar tables load after a slow connect</li>
+<li>SQL Server: `USE <database>` switches DB; IDENTITY skipped on INSERT; default schema from `SELECT SCHEMA_NAME()`; DATETIME round-trips as ISO 8601</li>
+<li>Toolbar database/schema chip correct on connect</li>
+<li>Safe Mode silent: Cmd+Return no longer double-fires</li>
+<li>LSP `cancelRequest` no longer leaks continuations</li>
+<li>Schema provider no longer leaks via throwaway coordinator</li>
+<li>Reconnect-then-disconnect no longer writes into a tearing-down coordinator</li>
+<li>Sync coordinator: no overlapping tasks; `syncNow` is re-entrant-safe</li>
+<li>Failed connections-file save aborts dependent steps; form stays open with error</li>
+<li>iCloud sync: decode failures skip the record/category and log; cloud copy preserved</li>
+<li>Keychain reads distinguish cancelled prompts, failed biometrics, and not-found</li>
+<li>Terminal PTY writes retry on `EINTR`</li>
+<li>MCP HTTP: structured internal-error envelope on encode failure</li>
+<li>Closing the last window no longer flashes Connection lost</li>
+<li>Smart-quote and dash substitution in cell editors and filter inputs</li>
+<li>Connecting one window no longer fetches tables in unrelated windows</li>
+<li>Foreign-key navigation from a tab with unsaved edits opens in a new tab without wiping the original</li>
+<li>SQL import: tables sidebar refreshes; PostgreSQL Disable foreign key checks; identity columns and dollar-quoted blocks round-trip (#1114)</li>
+<li>PostgreSQL/Redshift: schema picker no longer hides `pg*` user schemas</li>
+<li>Connection-only payloads no longer create an empty `Query 1` tab</li>
+<li>Import from Other App: Cancel button stops the keychain prompt loop (#1134)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.40.0/TablePro-0.40.0-x86_64.zip" length="22078267" type="application/octet-stream" sparkle:edSignature="m3fxx804+LGUPvBDFMio4gy1mykMRa50/aiKPHxzOvesKkNktqCOCsEkDSuJ9qu5japSmIL9FXyJNEloVNBTBQ=="/>
+        </item>
+        <item>
             <title>0.39.1</title>
             <pubDate>Thu, 07 May 2026 19:08:49 +0000</pubDate>
             <sparkle:version>79</sparkle:version>

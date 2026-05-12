@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("AIChatViewModel @-mentions")
@@ -52,7 +52,7 @@ struct AIChatViewModelMentionsTests {
         let userTurn = vm.messages.first(where: { $0.role == .user })
         #expect(userTurn != nil)
         let attachmentBlocks = userTurn?.blocks.compactMap { block -> ContextItem? in
-            if case .attachment(let item) = block { return item }
+            if case .attachment(let item) = block.kind { return item }
             return nil
         }
         #expect(attachmentBlocks?.count == 1)
@@ -104,7 +104,7 @@ struct AIChatViewModelMentionsTests {
         let userTurn = vm.messages.first(where: { $0.role == .user })
         #expect(userTurn?.plainText == "Explain")
         #expect(userTurn?.blocks.contains(where: {
-            if case .attachment = $0 { return true } else { return false }
+            if case .attachment = $0.kind { return true } else { return false }
         }) == true)
     }
 

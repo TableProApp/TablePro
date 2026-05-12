@@ -8,7 +8,7 @@ import os
 
 @MainActor
 final class TabWindowRestoration: NSObject, NSWindowRestoration {
-    private nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "WindowRestoration")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WindowRestoration")
     nonisolated static let connectionIdKey = "TablePro.connectionId"
 
     nonisolated static func restoreWindow(
@@ -71,7 +71,7 @@ final class TabWindowRestoration: NSObject, NSWindowRestoration {
         case windowNotCreated = 3
     }
 
-    private nonisolated static func restorationError(_ failure: RestorationFailure) -> NSError {
+    nonisolated private static func restorationError(_ failure: RestorationFailure) -> NSError {
         NSError(
             domain: "com.TablePro.WindowRestoration",
             code: failure.rawValue,

@@ -61,9 +61,6 @@ final class DataGridCellView: NSView {
     }
 
     private func commonInit() {
-        wantsLayer = true
-        layerContentsRedrawPolicy = .onSetNeedsDisplay
-        canDrawSubviewsIntoLayer = true
         setAccessibilityElement(true)
         setAccessibilityRole(.cell)
     }
@@ -71,27 +68,18 @@ final class DataGridCellView: NSView {
     override var allowsVibrancy: Bool { false }
     override var isFlipped: Bool { true }
 
-    override func makeBackingLayer() -> CALayer {
-        let layer = super.makeBackingLayer()
-        layer.actions = Self.disabledLayerActions
-        return layer
-    }
-
-    private static let disabledLayerActions: [String: any CAAction] = [
-        "position": NSNull(),
-        "bounds": NSNull(),
-        "frame": NSNull(),
-        "contents": NSNull(),
-        "hidden": NSNull(),
-    ]
-
     func configure(
         kind: DataGridCellKind,
         content: DataGridCellContent,
         state: DataGridCellState,
         palette: DataGridCellPalette
     ) {
-        self.kind = kind
+        var needsRedraw = false
+
+        if self.kind != kind {
+            self.kind = kind
+            needsRedraw = true
+        }
         cellRow = state.row
         cellColumnIndex = state.columnIndex
 
@@ -126,12 +114,19 @@ final class DataGridCellView: NSView {
             textFont = nextFont
             textColor = nextColor
             cachedLine = nil
+            needsRedraw = true
         }
 
-        rawValue = content.rawValue
+        if rawValue != content.rawValue {
+            rawValue = content.rawValue
+            needsRedraw = true
+        }
         placeholder = content.placeholder
         isLargeDataset = state.isLargeDataset
-        isEditableCell = state.isEditable
+        if isEditableCell != state.isEditable {
+            isEditableCell = state.isEditable
+            needsRedraw = true
+        }
 
         let nextTint: NSColor?
         if state.visualState.isDeleted || state.visualState.isInserted {
@@ -143,18 +138,25 @@ final class DataGridCellView: NSView {
         }
         if !colorsEqual(modifiedColumnTint, nextTint) {
             modifiedColumnTint = nextTint
+            needsRedraw = true
         }
 
-        visualState = state.visualState
+        if visualState != state.visualState {
+            visualState = state.visualState
+            needsRedraw = true
+        }
         if isFocusedCell != state.isFocused {
             isFocusedCell = state.isFocused
             updateFocusPresentation()
+            needsRedraw = true
         }
 
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
 
-        needsDisplay = true
+        if needsRedraw {
+            needsDisplay = true
+        }
     }
 
     override func accessibilityLabel() -> String? {
@@ -213,13 +215,18 @@ final class DataGridCellView: NSView {
 
     private func drawText(reservingTrailingWidth trailing: CGFloat) {
         guard !displayText.isEmpty else { return }
-        let availableWidth = bounds.width - 2 * DataGridMetrics.cellHorizontalInset - trailing
-        guard availableWidth > 0 else { return }
+        let totalAvailable = bounds.width - 2 * DataGridMetrics.cellHorizontalInset
+        guard totalAvailable > 0 else { return }
         guard let context = NSGraphicsContext.current?.cgContext else { return }
 
         let fullLine = cachedCTLine()
-        let lineToDraw: CTLine
         let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
+
+        let availableWidth: CGFloat = typographicWidth > Double(totalAvailable)
+            ? totalAvailable - trailing
+            : totalAvailable
+
+        let lineToDraw: CTLine
         if typographicWidth > Double(availableWidth) {
             let ellipsis = makeEllipsisLine()
             lineToDraw = CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis) ?? fullLine
@@ -282,7 +289,7 @@ final class DataGridCellView: NSView {
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
             let y = (bounds.height - size.height) / 2
             return NSRect(x: x, y: y, width: size.width, height: size.height)
-        case .dropdown, .boolean, .date, .json, .blob:
+        case .dropdown, .boolean, .json, .blob:
             guard isEditableCell else { return .zero }
             let size = NSSize(width: 12, height: 14)
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
@@ -299,7 +306,7 @@ final class DataGridCellView: NSView {
             return
         case .foreignKey:
             image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
-        case .dropdown, .boolean, .date, .json, .blob:
+        case .dropdown, .boolean, .json, .blob:
             if visualState.isDeleted {
                 image = Self.chevronDisabled
             } else if onEmphasizedSelection {
@@ -330,7 +337,7 @@ final class DataGridCellView: NSView {
             case .foreignKey:
                 accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
                 return
-            case .dropdown, .boolean, .date, .json, .blob:
+            case .dropdown, .boolean, .json, .blob:
                 guard !visualState.isDeleted else {
                     super.mouseDown(with: event)
                     return

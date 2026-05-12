@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("GeminiProvider wire encoding")
@@ -19,7 +19,7 @@ struct GeminiProviderEncodingTests {
 
     @Test("Plain text user turn becomes parts:[{text:...}] with role user")
     func plainTextTurn() throws {
-        let turn = ChatTurn(role: .user, blocks: [.text("hello")])
+        let turn = ChatTurnWire(role: .user, blocks: [.text("hello")])
         let encoded = try #require(makeProvider().encodeTurn(turn, priorTurns: []))
         #expect(encoded["role"] as? String == "user")
         let parts = encoded["parts"] as? [[String: Any]]
@@ -29,7 +29,7 @@ struct GeminiProviderEncodingTests {
 
     @Test("Assistant role maps to model")
     func assistantRoleMapsToModel() throws {
-        let turn = ChatTurn(role: .assistant, blocks: [.text("hi")])
+        let turn = ChatTurnWire(role: .assistant, blocks: [.text("hi")])
         let encoded = try #require(makeProvider().encodeTurn(turn, priorTurns: []))
         #expect(encoded["role"] as? String == "model")
     }
@@ -41,7 +41,7 @@ struct GeminiProviderEncodingTests {
             name: "list_tables",
             input: .object(["connection_id": .string("abc")])
         )
-        let turn = ChatTurn(role: .assistant, blocks: [.toolUse(toolUse)])
+        let turn = ChatTurnWire(role: .assistant, blocks: [.toolUse(toolUse)])
         let encoded = try #require(makeProvider().encodeTurn(turn, priorTurns: []))
         let parts = encoded["parts"] as? [[String: Any]]
         let functionCall = (parts?[0])?["functionCall"] as? [String: Any]
@@ -54,9 +54,9 @@ struct GeminiProviderEncodingTests {
     @Test("toolResult resolves the originating tool name from prior turns")
     func toolResultLookupAcrossTurns() throws {
         let toolUse = ToolUseBlock(id: "call_1", name: "list_tables", input: .object([:]))
-        let assistantTurn = ChatTurn(role: .assistant, blocks: [.toolUse(toolUse)])
-        let interveningTurn = ChatTurn(role: .user, blocks: [.text("ok")])
-        let resultTurn = ChatTurn(
+        let assistantTurn = ChatTurnWire(role: .assistant, blocks: [.toolUse(toolUse)])
+        let interveningTurn = ChatTurnWire(role: .user, blocks: [.text("ok")])
+        let resultTurn = ChatTurnWire(
             role: .user,
             blocks: [.toolResult(ToolResultBlock(toolUseId: "call_1", content: "rows", isError: false))]
         )
@@ -74,7 +74,7 @@ struct GeminiProviderEncodingTests {
 
     @Test("toolResult with no matching toolUse falls back to toolUseId as name")
     func toolResultFallback() throws {
-        let resultTurn = ChatTurn(
+        let resultTurn = ChatTurnWire(
             role: .user,
             blocks: [.toolResult(ToolResultBlock(toolUseId: "unknown", content: "x", isError: false))]
         )
@@ -86,8 +86,8 @@ struct GeminiProviderEncodingTests {
 
     @Test("System turns are skipped from encoded contents")
     func systemTurnsSkipped() {
-        let system = ChatTurn(role: .system, blocks: [.text("ignored")])
-        let user = ChatTurn(role: .user, blocks: [.text("hello")])
+        let system = ChatTurnWire(role: .system, blocks: [.text("ignored")])
+        let user = ChatTurnWire(role: .user, blocks: [.text("hello")])
         let contents = makeProvider().encodeContents(turns: [system, user])
         #expect(contents.count == 1)
         #expect(contents[0]["role"] as? String == "user")

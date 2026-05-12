@@ -207,6 +207,15 @@ final class WelcomeViewModel {
         }
         if let pendingImport = WelcomeRouter.shared.consumePendingImport() {
             activeSheet = .deeplinkImport(pendingImport)
+            return
+        }
+        if let pendingInstall = WelcomeRouter.shared.consumePendingPluginInstall() {
+            pluginInstallConnection = pendingInstall
+            return
+        }
+        if let pendingError = WelcomeRouter.shared.consumePendingError() {
+            connectionError = pendingError.message
+            showConnectionError = true
         }
     }
 
@@ -229,6 +238,8 @@ final class WelcomeViewModel {
                 withObservationTracking({
                     _ = WelcomeRouter.shared.pendingImport
                     _ = WelcomeRouter.shared.pendingConnectionShare
+                    _ = WelcomeRouter.shared.pendingError
+                    _ = WelcomeRouter.shared.pendingPluginInstall
                 }, onChange: {
                     box.resume(with: true)
                 })
@@ -281,36 +292,14 @@ final class WelcomeViewModel {
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
-            } catch is CancellationError {
-                closeConnectionWindows(for: connection.id)
-                WindowOpener.shared.openWelcome()
             } catch {
-                if case PluginError.pluginNotInstalled = error {
-                    Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
-                    handleMissingPlugin(connection: connection)
-                } else {
-                    Self.logger.error(
-                        "Failed to connect: \(error.localizedDescription, privacy: .public)")
-                    handleConnectionFailure(error: error, connectionId: connection.id)
-                }
+                handleConnectError(error, connection: connection)
             }
         }
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
-        Task {
-            do {
-                try await TabRouter.shared.route(.openConnection(connection.id))
-            } catch is CancellationError {
-                closeConnectionWindows(for: connection.id)
-                WindowOpener.shared.openWelcome()
-            } catch {
-                Self.logger.error(
-                    "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")
-                handleConnectionFailure(error: error, connectionId: connection.id)
-            }
-        }
+        connectToDatabase(connection)
     }
 
     func connectToLinkedConnection(_ linked: LinkedConnection) {
@@ -594,23 +583,28 @@ final class WelcomeViewModel {
 
     // MARK: - Private Helpers
 
-    private func handleConnectionFailure(error: Error, connectionId: UUID) {
-        closeConnectionWindows(for: connectionId)
+    private func handleConnectError(_ error: Error, connection: DatabaseConnection) {
+        if error is CancellationError {
+            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .public)")
+            return
+        }
+
+        if !WindowManager.shared.hasOpenWindow(for: connection.id) {
+            Self.logger.info(
+                "Connection failed after window was closed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        if case PluginError.pluginNotInstalled = error {
+            Self.logger.info("Plugin not installed for \(connection.type.rawValue, privacy: .public)")
+            WindowManager.shared.closeWindow(for: connection.id)
+            pluginInstallConnection = connection
+            return
+        }
+
+        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        WindowManager.shared.closeWindow(for: connection.id)
         connectionError = error.localizedDescription
         showConnectionError = true
-        WindowOpener.shared.openWelcome()
-    }
-
-    private func handleMissingPlugin(connection: DatabaseConnection) {
-        closeConnectionWindows(for: connection.id)
-        WindowOpener.shared.openWelcome()
-        pluginInstallConnection = connection
-    }
-
-    /// Close windows for a specific connection only, preserving other connections' windows.
-    private func closeConnectionWindows(for connectionId: UUID) {
-        for window in WindowLifecycleMonitor.shared.windows(for: connectionId) {
-            window.close()
-        }
     }
 }

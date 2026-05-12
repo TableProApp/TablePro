@@ -89,8 +89,12 @@ struct PasteboardCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .selectAll))
 
             Button("Clear Selection") {
-                // Use responder chain - cancelOperation is the standard ESC action
-                NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
+                // Route the Esc key equivalent to Vim first when the active editor is
+                // in a non-normal mode — the menu shortcut otherwise preempts the
+                // local event monitor and Vim never sees the keystroke.
+                if !EditorEventRouter.shared.handleVimEscapeFromMenu() {
+                    NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
+                }
             }
             .optionalKeyboardShortcut(shortcut(for: .clearSelection))
         }
@@ -667,6 +671,7 @@ struct TableProApp: App {
 
         WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
             ConnectionFormView(connectionId: editingId ?? nil)
+                .background(WindowOpenerBridge())
                 .background(WindowChromeConfigurator(restorable: false))
                 .environment(\.appServices, .live)
         }
@@ -676,6 +681,7 @@ struct TableProApp: App {
 
         Window("Integrations Activity", id: SceneId.integrationsActivity) {
             IntegrationsActivityView()
+                .background(WindowOpenerBridge())
                 .environment(\.appServices, .live)
         }
         .windowResizability(.contentMinSize)
@@ -690,6 +696,7 @@ struct TableProApp: App {
 
         Settings {
             SettingsView()
+                .background(WindowOpenerBridge())
                 .environment(updaterBridge)
                 .environment(\.appServices, .live)
         }

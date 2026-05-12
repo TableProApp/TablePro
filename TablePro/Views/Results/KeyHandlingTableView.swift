@@ -3,8 +3,24 @@ import AppKit
 final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
 
+    private var isRaisingOverlayEditor = false
+
     override var acceptsFirstResponder: Bool {
         true
+    }
+
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        guard !isRaisingOverlayEditor else { return }
+        guard let editor = coordinator?.overlayEditor,
+              editor.isActive,
+              let container = editor.containerView,
+              container !== subview,
+              container.superview === self,
+              subviews.last !== container else { return }
+        isRaisingOverlayEditor = true
+        editor.raiseToFront()
+        isRaisingOverlayEditor = false
     }
 
     var selection = TableSelection() {
@@ -245,6 +261,7 @@ final class KeyHandlingTableView: NSTableView {
             : previousVisibleDataColumn(before: focusedColumn)
         guard DataGridView.isDataTableColumn(target) else { return }
         focusedColumn = target
+        coordinator?.dismissFKPreviewOnColumnChange()
         if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 
@@ -254,6 +271,7 @@ final class KeyHandlingTableView: NSTableView {
             : firstVisibleDataColumn()
         guard DataGridView.isDataTableColumn(target) else { return }
         focusedColumn = target
+        coordinator?.dismissFKPreviewOnColumnChange()
         if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 

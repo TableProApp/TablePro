@@ -137,9 +137,11 @@ final class AIChatViewModel {
         ToolApprovalCenter.shared.cancelAll()
 
         if case .streaming(let assistantID) = streamingState,
-           let idx = messages.firstIndex(where: { $0.id == assistantID }),
-           messages[idx].plainText.isEmpty {
-            messages.remove(at: idx)
+           let idx = messages.firstIndex(where: { $0.id == assistantID }) {
+            messages[idx].finishStreamingTextBlock()
+            if messages[idx].blocks.isEmpty {
+                messages.remove(at: idx)
+            }
         }
         streamingState = .idle
         persistCurrentConversation()
@@ -190,7 +192,7 @@ final class AIChatViewModel {
         AIProviderFactory.resetCopilotConversation()
         cancelStream()
         persistCurrentConversation()
-        messages = conversation.messages
+        messages = conversation.messages.map { ChatTurn(wire: $0) }
         activeConversationID = conversation.id
         clearError()
     }

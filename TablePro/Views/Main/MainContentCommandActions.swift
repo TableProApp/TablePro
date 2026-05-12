@@ -810,7 +810,7 @@ final class MainContentCommandActions {
     }
 
     func openConnectionSwitcher() {
-        coordinator?.toolbarState.showConnectionSwitcher = true
+        coordinator?.activeSheet = .connectionSwitcher
     }
 
     // MARK: - Undo/Redo (Group A — Called Directly)
@@ -818,17 +818,23 @@ final class MainContentCommandActions {
     func undoChange() {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
-        } else {
-            coordinator?.contentWindow?.undoManager?.undo()
+            return
         }
+        if NSApp.sendAction(NSSelectorFromString("undo:"), to: nil, from: nil) {
+            return
+        }
+        coordinator?.contentWindow?.undoManager?.undo()
     }
 
     func redoChange() {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
-        } else {
-            coordinator?.contentWindow?.undoManager?.redo()
+            return
         }
+        if NSApp.sendAction(NSSelectorFromString("redo:"), to: nil, from: nil) {
+            return
+        }
+        coordinator?.contentWindow?.undoManager?.redo()
     }
 
     // MARK: - Group B Broadcast Subscribers

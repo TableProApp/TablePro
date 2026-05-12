@@ -337,9 +337,18 @@ private actor CassandraConnectionActor {
         defer { cass_statement_free(statement) }
 
         for (index, param) in parameters.enumerated() {
-            if let value = param {
+            switch param {
+            case .text(let value):
                 cass_statement_bind_string(statement, index, value)
-            } else {
+            case .bytes(let data):
+                data.withUnsafeBytes { rawBuffer in
+                    if let base = rawBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) {
+                        cass_statement_bind_bytes(statement, index, base, data.count)
+                    } else {
+                        cass_statement_bind_null(statement, index)
+                    }
+                }
+            case .null:
                 cass_statement_bind_null(statement, index)
             }
         }
@@ -384,7 +393,7 @@ private actor CassandraConnectionActor {
 
     func serverVersion() throws -> String? {
         let result = try executeQuery("SELECT release_version FROM system.local WHERE key = 'local'")
-        return result.rows.first?.first ?? nil
+        return result.rows.first?.first?.asText
     }
 
     // MARK: - Private Helpers
@@ -997,7 +1006,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let tablesResult = try await execute(query: tablesQuery)
 
         let tables = tablesResult.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[safe: 0] ?? nil else { return nil }
+            guard let name = row[safe: 0]?.asText else { return nil }
             return PluginTableInfo(name: name, type: "TABLE")
         }
 
@@ -1024,12 +1033,12 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
 
         let rawColumns = result.rows.compactMap { row -> RawColumn? in
-            guard let name = row[safe: 0] ?? nil,
-                  let dataType = row[safe: 1] ?? nil else {
+            guard let name = row[safe: 0]?.asText,
+                  let dataType = row[safe: 1]?.asText else {
                 return nil
             }
-            let kind = (row[safe: 2] ?? nil) ?? "regular"
-            let position = Int((row[safe: 4] ?? nil) ?? "0") ?? 0
+            let kind = row[safe: 2]?.asText ?? "regular"
+            let position = Int(row[safe: 4]?.asText ?? "0") ?? 0
             let isPrimaryKey = kind == "partition_key" || kind == "clustering"
             return RawColumn(name: name, dataType: dataType, kind: kind, position: position, isPrimaryKey: isPrimaryKey)
         }.sorted { lhs, rhs in
@@ -1062,12 +1071,12 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         var allColumns: [String: [PluginColumnInfo]] = [:]
 
         for row in result.rows {
-            guard let tableName = row[safe: 0] ?? nil,
-                  let columnName = row[safe: 1] ?? nil,
-                  let dataType = row[safe: 2] ?? nil else {
+            guard let tableName = row[safe: 0]?.asText,
+                  let columnName = row[safe: 1]?.asText,
+                  let dataType = row[safe: 2]?.asText else {
                 continue
             }
-            let kind = row[safe: 3] ?? nil
+            let kind = row[safe: 3]?.asText
             let isPrimaryKey = kind == "partition_key" || kind == "clustering"
 
             let column = PluginColumnInfo(
@@ -1096,9 +1105,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         do {
             let result = try await execute(query: query)
             return result.rows.compactMap { row in
-                guard let name = row[safe: 0] ?? nil else { return nil }
-                let kind = (row[safe: 1] ?? nil) ?? "COMPOSITES"
-                let options = (row[safe: 2] ?? nil) ?? ""
+                guard let name = row[safe: 0]?.asText else { return nil }
+                let kind = row[safe: 1]?.asText ?? "COMPOSITES"
+                let options = row[safe: 2]?.asText ?? ""
 
                 // Extract target column from options map
                 var targetColumns: [String] = []
@@ -1170,8 +1179,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             throw CassandraPluginError.queryFailed("View '\(view)' not found")
         }
 
-        let baseTable = (row[safe: 0] ?? nil) ?? "unknown"
-        let whereClause = (row[safe: 1] ?? nil) ?? ""
+        let baseTable = row[safe: 0]?.asText ?? "unknown"
+        let whereClause = row[safe: 1]?.asText ?? ""
 
         let columns = try await fetchColumns(table: view, schema: ks)
         let colNames = columns.map { "\"\(escapeIdentifier($0.name))\"" }.joined(separator: ", ")
@@ -1195,8 +1204,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let countQuery = "SELECT COUNT(*) FROM \"\(escapeIdentifier(ks))\".\"\(escapeIdentifier(table))\" LIMIT 100001"
         let countResult = try? await execute(query: countQuery)
         let rowCount: Int64? = {
-            guard let row = countResult?.rows.first, let countStr = row.first else { return nil }
-            return Int64(countStr ?? "0")
+            guard let row = countResult?.rows.first, let countStr = row.first?.asText else { return nil }
+            return Int64(countStr)
         }()
 
         return PluginTableMetadata(
@@ -1215,7 +1224,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             "system", "system_schema", "system_auth",
             "system_distributed", "system_traces", "system_virtual_schema",
         ]
-        return result.rows.compactMap { $0[safe: 0] ?? nil }
+        return result.rows.compactMap { $0[safe: 0]?.asText }
             .filter { !systemKeyspaces.contains($0) }
             .sorted()
     }

@@ -4,6 +4,99 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="May 12, 2026" description="v0.40.2">
+  ### New Features
+
+  - **Set Value SQL Presets**: Right-click a date, datetime, or timestamp cell to insert `CURRENT_DATE`, `CURRENT_TIME`, `NOW()`, or `CURRENT_TIMESTAMP`, filtered by column type
+  - **Import from Other App on Welcome Screen**: One-click button on the welcome left pane to import connections from TablePlus, Sequel Ace, or DBeaver
+
+  ### Improvements
+
+  - **Row Numbers Continue Across Pages**: The `#` column reads `1001-2000` on page 2 instead of restarting at 1, and auto-sizes so long numbers no longer clip
+  - **Foreign Key Preview Follows Selection**: Press Space on an FK cell, then arrow up or down — the popover slides to the next row and refreshes its content
+  - **Inline Editor for Date Cells**: Double-click a `DATE`, `DATETIME`, or `TIMESTAMP` cell to type a new value directly; the popover date picker is removed
+  - **Inline Connecting State**: The connection window shows the connecting state with a Cancel button instead of an empty sidebar
+
+  ### Bug Fixes
+
+  - Closing the connection window during a slow connect no longer leaves a stuck "Connecting…" window or a stray failure alert (#1185)
+  - Cmd+Z while editing a cell now undoes typing in the editor; pressing it after dismissing no longer crashes
+  - Cmd+Z right after Add Row no longer leaves a stranded editor over the removed row
+  - Editing a NULL cell and dismissing without typing no longer flips the value to an empty string
+  - Double-clicking another cell while editing no longer drops pending changes or stalls the new editor
+  - Double-clicking an enum, set, or boolean cell now opens the inline text editor; the chevron still opens the picker
+  - Chevron-accessory cells (enum, boolean, JSON, blob) no longer truncate short values that fit the full width
+  - DATE columns no longer render a phantom `00:00:00` time suffix
+  - Adding a new row no longer renders the row on top of the auto-opened editor mid-animation
+</Update>
+
+<Update label="May 12, 2026" description="v0.40.1">
+  ### Improvements
+
+  - **Quick Switcher**: Matches the Open Database dialog and shows a Recent section per connection
+  - **Connection Switcher and SQL Preview**: Open as sheets so they work from the toolbar, overflow menu, and keyboard shortcuts
+  - **Toolbar**: Filters button moved out; the bottom-bar Filters control remains
+  - **Welcome Screen**: Drops the Import Connections button; both import flows remain in the + menu
+
+  ### Bug Fixes
+
+  - Toolbar overflow menu entries now fire their action when the window is narrowed
+  - SQL Preview no longer freezes when previewing a very large batch
+  - Quick Switcher crash on macOS 26
+  - Registry updates for bundled drivers (ClickHouse, Redis) now persist after restart
+</Update>
+
+<Update label="May 12, 2026" description="v0.40.0">
+  ### New Features
+
+  - **Vim Mode**: Full standard command surface in the SQL editor. Motions, operators, text objects, named and numbered registers, macros, marks, search, dot-repeat, scroll, and `gv` all behave like vim
+  - **Sidebar Object Groups**: Database objects split into Tables, Views, Materialized Views, Foreign Tables, Procedures, and Functions. Routines load on connect for Postgres and MySQL; "Show DDL" opens in a new query tab (#1038)
+  - **iOS Live Activity**: Running queries show preview, elapsed time, and row count on the lock screen and Dynamic Island
+  - **iOS iPad Multi-Window**: Drag a tab off to open a second window; each window remembers its own selected connection
+  - **iOS App Lock**: Face ID, Touch ID, or Optic ID with cold-launch protection and idle timeout (1, 5, 15, or 60 minutes)
+  - **iOS Background iCloud Sync**: Sync runs every 30 minutes while the app is closed
+  - **iOS Connection Info Tab**: Host, SSL, SSH tunnel, active database, and live connection status in one place
+  - **iOS Search Persistence**: Search text in Tables and Data Browser persists across process kill; Cmd+F focuses the search field
+  - **iOS Settings**: New toggles for iCloud Sync, Rows per Page (50/100/200/500), Default Safe Mode, and "Hide query in Live Activities"
+  - **MCP Zed Support**: MCP Setup sheet adds Zed alongside Claude Desktop, Claude Code, and Cursor
+
+  ### Improvements
+
+  - **Faster Wide-Table Scroll**: Max main-thread stall during scroll drops from 3.5s to about 1.3s. Display cache raised to 50,000 rows / 64 MB; date format cache to 100,000 entries
+  - **Quieter Cross-Window Events**: Editing a favorite, query-history entry, or linked SQL folder in one window no longer refreshes other windows on unrelated connections
+  - **iOS Vietnamese Localization**: 312/312 keys translated
+  - **iOS Accessibility**: VoiceOver reads connection and table rows as combined elements with tap hints; icon-only toolbar buttons gain labels; metadata badges cap at the first accessibility text size
+  - **PostgreSQL Round-Trip Export**: Foreign keys emitted via `ALTER TABLE ... ADD CONSTRAINT` after data load; sequences re-synced via `setval` so re-imported dumps round-trip cleanly (#1114)
+  - **Streaming SQL Import**: Bounded streaming and run-length string append reduce memory and CPU on large files (#1114)
+  - **AI Chat Refinements**: Inline-suggestion debounce configurable (default 500 ms); 30-second SSE keep-alive on MCP HTTP; Anthropic model list through Claude 4.7; per-tool access modes; native button styles and accessibility labels
+  - **Translucent Surfaces**: Welcome sidebar, settings banners, ER diagram toolbar, JSON editor, and Pro scrim swap to solid surfaces when Reduce Transparency or Increase Contrast is on
+  - **Typed Binary Cells**: Engines that expose binary types (PostgreSQL BYTEA, Oracle RAW/LONG_RAW/BLOB, MySQL BLOB, SQLite BLOB, MSSQL VARBINARY/IMAGE, DuckDB BLOB, Cassandra blob, MongoDB BSON, DynamoDB B, BigQuery BYTES) route through a typed pipeline; hex editor saves bind raw bytes through the driver's binary parameter format (#1188)
+  - **Plugin Restart UX**: "Restart TablePro" banner gains a Quit & Reopen button with an alert on relaunch failure; install badges auto-clear after 3 seconds; the restart-needed flag no longer persists across launches
+
+  ### Bug Fixes
+
+  - **Vim Shift+J**: Joins lines as expected; gJ joins without a space, count prefixes work, J in visual mode joins every selected line. `w` and `W` no longer overshoot; Esc switches mode after typing `;` (#1222)
+  - **AI Chat Agent Mode**: Copilot Agent persists across follow-up turns instead of reverting to plain chat after the first message
+  - **AI Chat Streaming**: No longer hangs at 100% CPU; Agent-mode text emitted before a tool call now shows above the tool card; Markdown rendering moved to a native renderer (#1205)
+  - **AI Chat Mentions**: `@` mention detection handles emoji and other non-BMP characters at the cursor
+  - **iOS Data Browser Reload**: No longer flashes "No Data" mid-reload when search, filter, sort, or page size changes
+  - **iOS Row Detail Crash**: Filtered row detail pager no longer crashes (build 11 regression)
+  - **MySQL/MariaDB Cells**: `BINARY(N)` and `VARBINARY(N)` route through the blob editor; numeric, decimal, date, and time columns render as values instead of hex bytes; JSON column detection no longer flickers across refreshes
+  - **Plugin Install**: Built-in driver upgrades persist after restart (#1192); concurrent installs no longer race past the install guard; multi-bundle ZIPs rejected with a clear error; auto-update preserves concurrent rejection entries
+  - **Structure Tab Tinting**: Edit, delete, undo, save, and discard repaint correctly; right-click "Undo Delete" works; dropdown columns enter inline edit; Cmd+Shift+N adds a row
+  - **SQL Server**: `USE <database>` switches databases; INSERTs skip IDENTITY columns; default schema comes from `SELECT SCHEMA_NAME()`; DATETIME edits round-trip as ISO 8601
+  - **PostgreSQL SQL Round-Trip**: Tables sidebar refreshes after import; "Disable foreign key checks" sets `session_replication_role = replica`; `GENERATED ALWAYS AS IDENTITY` columns round-trip via `OVERRIDING SYSTEM VALUE`; values ending in backslash and dollar-quoted blocks parse correctly (#1114)
+  - **Welcome Window**: Opens reliably on launch and Dock-icon clicks
+  - **Safe Mode Silent**: Holding Cmd+Return no longer stacks two confirmations or runs the query twice
+  - **iCloud Sync Resilience**: Decode failures for SSH, SSL, jump-host, or driver-specific fields no longer overwrite the cloud copy with empty defaults; app settings decode failures are logged instead of silently dropped
+  - **Keychain Errors**: Cancelled prompts, failed biometrics, and unknown OSStatus values are distinguished from "not found", preventing silent password loss
+  - **Smart Substitution**: Smart quotes, dashes, and text substitution no longer corrupt typed input in cell editors and filter inputs
+  - **Cross-Window Fetches**: Connecting one window no longer triggers a table fetch in unrelated windows
+  - **Foreign-Key Navigation**: From a tab with unsaved edits, the referenced table opens in a new window tab without wiping the original grid
+  - **Schema Picker**: PostgreSQL and Redshift schema pickers no longer hide user schemas starting with `pg` (`pgboss`, `pgcrypto`, `pgvector`, `pgaudit`)
+  - **Import from Other App**: Cancel button stops the keychain prompt loop instead of silently continuing (#1134)
+</Update>
+
 <Update label="May 8, 2026" description="v0.39.1">
   ### Bug Fixes
 

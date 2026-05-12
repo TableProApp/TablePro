@@ -43,7 +43,6 @@ final class DataGridCellRegistry {
         if isDropdownColumn { return .dropdown }
         if let type = columnType {
             if type.isBooleanType { return .boolean }
-            if type.isDateType { return .date }
             if type.isJsonType { return .json }
             if type.isBlobType { return .blob }
         }
@@ -69,6 +68,7 @@ final class DataGridCellRegistry {
     func makeRowNumberCell(
         in tableView: NSTableView,
         row: Int,
+        pageOffset: Int,
         cachedRowCount: Int,
         visualState: RowVisualState
     ) -> NSView {
@@ -112,9 +112,10 @@ final class DataGridCellRegistry {
             return cellView
         }
 
-        cell.stringValue = "\(row + 1)"
+        let displayNumber = row + pageOffset + 1
+        cell.stringValue = "\(displayNumber)"
         cell.textColor = visualState.isDeleted ? ThemeEngine.shared.colors.dataGrid.deletedText : .secondaryLabelColor
-        cellView.setAccessibilityLabel(String(format: String(localized: "Row %d"), row + 1))
+        cellView.setAccessibilityLabel(String(format: String(localized: "Row %d"), displayNumber))
         cellView.setAccessibilityRowIndexRange(NSRange(location: row, length: 1))
 
         return cellView

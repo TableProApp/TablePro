@@ -22,7 +22,7 @@ final class GeminiProvider: ChatTransport {
     }
 
     func streamChat(
-        turns: [ChatTurn],
+        turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -155,7 +155,7 @@ final class GeminiProvider: ChatTransport {
     }
 
     private func buildStreamRequest(
-        turns: [ChatTurn],
+        turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
         guard let encodedModel = options.model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
@@ -196,7 +196,7 @@ final class GeminiProvider: ChatTransport {
         return request
     }
 
-    func encodeContents(turns: [ChatTurn]) -> [[String: Any]] {
+    func encodeContents(turns: [ChatTurnWire]) -> [[String: Any]] {
         var encoded: [[String: Any]] = []
         for (index, turn) in turns.enumerated() where turn.role != .system {
             let priorTurns = Array(turns.prefix(index))
@@ -206,12 +206,12 @@ final class GeminiProvider: ChatTransport {
         return encoded
     }
 
-    func encodeTurn(_ turn: ChatTurn, priorTurns: [ChatTurn]) -> [String: Any]? {
+    func encodeTurn(_ turn: ChatTurnWire, priorTurns: [ChatTurnWire]) -> [String: Any]? {
         let role = turn.role == .assistant ? "model" : "user"
         var parts: [[String: Any]] = []
 
         for block in turn.blocks {
-            switch block {
+            switch block.kind {
             case .text(let text):
                 guard !text.isEmpty else { continue }
                 parts.append(["text": text])
@@ -248,10 +248,10 @@ final class GeminiProvider: ChatTransport {
         return ["role": role, "parts": parts]
     }
 
-    func resolveToolName(forToolUseId id: String, in priorTurns: [ChatTurn]) -> String? {
+    func resolveToolName(forToolUseId id: String, in priorTurns: [ChatTurnWire]) -> String? {
         for turn in priorTurns.reversed() {
             for block in turn.blocks {
-                if case .toolUse(let useBlock) = block, useBlock.id == id {
+                if case .toolUse(let useBlock) = block.kind, useBlock.id == id {
                     return useBlock.name
                 }
             }

@@ -219,6 +219,22 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 onExecute: coordinator.executeMaintenance
             )
+        case .quickSwitcher:
+            QuickSwitcherSheet(
+                isPresented: dismissBinding,
+                schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
+                connectionId: connection.id,
+                databaseType: connection.type,
+                onSelect: coordinator.handleQuickSwitcherSelection
+            )
+        case .connectionSwitcher:
+            ConnectionSwitcherSheet(isPresented: dismissBinding)
+        case .sqlPreview:
+            SQLReviewSheet(
+                isPresented: dismissBinding,
+                statements: coordinator.toolbarState.previewStatements,
+                databaseType: coordinator.toolbarState.databaseType
+            )
         }
     }
 

@@ -12,8 +12,8 @@ extension AIChatViewModel {
 
     struct ToolRoundtripContinuation {
         let nextAssistantID: UUID
-        let assistantTurn: ChatTurn
-        let userTurn: ChatTurn
+        let assistantTurn: ChatTurnWire
+        let userTurn: ChatTurnWire
     }
 
     private struct StreamRoundResult {
@@ -70,31 +70,39 @@ extension AIChatViewModel {
         let assistantID = assistantMessage.id
         streamingState = .streaming(assistantID: assistantID)
 
-        prepTask = Task { [weak self] in
+        prepTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             if settings.includeSchema {
                 await self.ensureSchemaLoaded()
             }
-            guard !Task.isCancelled else { return }
-            let promptContext = self.capturePromptContext(settings: settings)
-            var chatMessages: [ChatTurn] = []
-            for turn in self.messages.dropLast() {
+            if Task.isCancelled { return }
+            let priorTurns: [ChatTurn] = await MainActor.run {
+                Array(self.messages.dropLast())
+            }
+            var chatMessages: [ChatTurnWire] = []
+            for turn in priorTurns {
+                if Task.isCancelled { return }
                 chatMessages.append(await self.resolveTurnForWire(turn))
             }
-            guard !Task.isCancelled else { return }
-            self.runStream(
-                chatMessages: chatMessages,
-                promptContext: promptContext,
-                resolved: resolved,
-                assistantID: assistantID,
-                settings: settings
-            )
-            self.prepTask = nil
+            if Task.isCancelled { return }
+            let promptContext: PromptContext? = await MainActor.run {
+                self.capturePromptContext(settings: settings)
+            }
+            await MainActor.run {
+                self.runStream(
+                    chatMessages: chatMessages,
+                    promptContext: promptContext,
+                    resolved: resolved,
+                    assistantID: assistantID,
+                    settings: settings
+                )
+                self.prepTask = nil
+            }
         }
     }
 
     func runStream(
-        chatMessages: [ChatTurn],
+        chatMessages: [ChatTurnWire],
         promptContext: PromptContext?,
         resolved: AIProviderFactory.ResolvedProvider,
         assistantID: UUID,
@@ -102,6 +110,7 @@ extension AIChatViewModel {
     ) {
         let chatMode = settings.chatMode
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
+            var currentAssistantID = assistantID
             do {
                 let systemPrompt = Self.buildSystemPrompt(promptContext, mode: chatMode)
                 guard let self else { return }
@@ -114,7 +123,6 @@ extension AIChatViewModel {
 
                 let toolSpecs = await MainActor.run { ChatToolRegistry.shared.allSpecs(for: chatMode) }
                 var workingTurns = chatMessages
-                var currentAssistantID = assistantID
 
                 for roundtrip in 0..<Self.maxToolRoundtrips {
                     let round = try await self.consumeStreamRound(
@@ -176,25 +184,29 @@ extension AIChatViewModel {
                 }
 
                 guard !Task.isCancelled else { return }
+                let finalAssistantID = currentAssistantID
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    self.finalizeStreamingMessage(id: finalAssistantID)
                     self.streamingState = .idle
                     self.streamingTask = nil
                     self.persistCurrentConversation()
                 }
             } catch {
+                let failedAssistantID = currentAssistantID
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if !Task.isCancelled {
                         Self.logger.error("Streaming failed: \(error.localizedDescription)")
                         self.errorMessage = error.localizedDescription
                         self.streamingState = .failed(error as? AIProviderError)
-
-                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
-                           self.messages[idx].plainText.isEmpty {
+                        self.finalizeStreamingMessage(id: failedAssistantID)
+                        if let idx = self.messages.firstIndex(where: { $0.id == failedAssistantID }),
+                           self.messages[idx].blocks.isEmpty {
                             self.messages.remove(at: idx)
                         }
                     } else {
+                        self.finalizeStreamingMessage(id: failedAssistantID)
                         self.streamingState = .idle
                     }
                     self.streamingTask = nil
@@ -203,11 +215,17 @@ extension AIChatViewModel {
         }
     }
 
+    @MainActor
+    func finalizeStreamingMessage(id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].finishStreamingTextBlock()
+    }
+
     private func consumeStreamRound(
         resolved: AIProviderFactory.ResolvedProvider,
         systemPrompt: String?,
         toolSpecs: [ChatToolSpec],
-        workingTurns: [ChatTurn],
+        workingTurns: [ChatTurnWire],
         assistantID: UUID,
         chatMode: AIChatMode
     ) async throws -> StreamRoundResult {
@@ -236,6 +254,15 @@ extension AIChatViewModel {
             case .usage(let usage):
                 pendingUsage = usage
             case .toolUseStart(let id, let name):
+                if !pendingContent.isEmpty {
+                    await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
+                    pendingContent = ""
+                    pendingUsage = nil
+                    lastFlushTime = .now
+                }
+                await MainActor.run { [weak self] in
+                    self?.finalizeStreamingMessage(id: assistantID)
+                }
                 if toolUseInputs[id] == nil {
                     toolUseOrder.append(id)
                     toolUseInputs[id] = ""
@@ -300,8 +327,9 @@ extension AIChatViewModel {
             self.errorMessage = String(
                 localized: "AI made too many tool calls in one response. Try simplifying the request."
             )
+            self.finalizeStreamingMessage(id: assistantID)
             if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
-               self.messages[idx].plainText.isEmpty {
+               self.messages[idx].blocks.isEmpty {
                 self.messages.remove(at: idx)
             }
             self.streamingState = .failed(nil)
@@ -315,23 +343,22 @@ extension AIChatViewModel {
         resolved: AIProviderFactory.ResolvedProvider
     ) async -> ToolRoundtripContinuation {
         await MainActor.run { [weak self] () -> ToolRoundtripContinuation in
-            let assistantText: String = {
+            self?.finalizeStreamingMessage(id: assistantIDForRound)
+            let assistantWire: ChatTurnWire = {
                 guard let self,
                       let idx = self.messages.firstIndex(where: { $0.id == assistantIDForRound })
-                else { return "" }
-                return self.messages[idx].plainText
+                else {
+                    return ChatTurnWire(
+                        id: assistantIDForRound,
+                        role: .assistant,
+                        blocks: [],
+                        modelId: resolved.model,
+                        providerId: resolved.config.id.uuidString
+                    )
+                }
+                return self.messages[idx].wireSnapshot
             }()
-            var assistantBlocks: [ChatContentBlock] = []
-            if !assistantText.isEmpty { assistantBlocks.append(.text(assistantText)) }
-            assistantBlocks.append(contentsOf: toolUseBlocks.map { .toolUse($0) })
-            let assistantTurn = ChatTurn(
-                id: assistantIDForRound,
-                role: .assistant,
-                blocks: assistantBlocks,
-                modelId: resolved.model,
-                providerId: resolved.config.id.uuidString
-            )
-            let userTurn = ChatTurn(
+            let userTurn = ChatTurnWire(
                 role: .user,
                 blocks: toolResultBlocks.map { .toolResult($0) }
             )
@@ -341,12 +368,13 @@ extension AIChatViewModel {
                 modelId: resolved.model,
                 providerId: resolved.config.id.uuidString
             )
-            self?.messages.append(userTurn)
+            let nextAssistantID = nextAssistant.id
+            self?.messages.append(ChatTurn(wire: userTurn))
             self?.messages.append(nextAssistant)
-            self?.streamingState = .streaming(assistantID: nextAssistant.id)
+            self?.streamingState = .streaming(assistantID: nextAssistantID)
             return ToolRoundtripContinuation(
-                nextAssistantID: nextAssistant.id,
-                assistantTurn: assistantTurn,
+                nextAssistantID: nextAssistantID,
+                assistantTurn: assistantWire,
                 userTurn: userTurn
             )
         }
@@ -359,7 +387,7 @@ extension AIChatViewModel {
                   let idx = self.messages.firstIndex(where: { $0.id == assistantID })
             else { return }
             if !content.isEmpty {
-                self.messages[idx].appendText(content)
+                self.messages[idx].appendStreamingToken(content)
             }
             if let usage {
                 self.messages[idx].usage = usage
@@ -367,7 +395,7 @@ extension AIChatViewModel {
         }
     }
 
-    func preflightCheck(systemPrompt: String?, turns: [ChatTurn], assistantID: UUID) async -> Bool {
+    func preflightCheck(systemPrompt: String?, turns: [ChatTurnWire], assistantID: UUID) async -> Bool {
         let totalSize = ((systemPrompt ?? "") as NSString).length
             + turns.reduce(0) { $0 + ($1.plainText as NSString).length }
         guard totalSize > 100_000 else { return true }

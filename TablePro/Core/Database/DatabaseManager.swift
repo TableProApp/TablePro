@@ -103,5 +103,4 @@ final class DatabaseManager {
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
     }
-
 }

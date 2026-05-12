@@ -12,4 +12,14 @@ extension DatabaseManager {
             try await self.connectToSession(connection)
         }
     }
+
+    func cancelEnsureConnected(_ connectionId: UUID) async {
+        await ensureConnectedDedup.cancel(key: connectionId)
+        if let session = activeSessions[connectionId], session.driver == nil {
+            removeSessionEntry(for: connectionId)
+            if currentSessionId == connectionId {
+                currentSessionId = nil
+            }
+        }
+    }
 }

@@ -24,6 +24,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
+    var requiresBackslashEscapingInLiterals: Bool { true }
 
     var capabilities: PluginCapabilities {
         [

@@ -79,7 +79,7 @@ internal struct ResultsJsonView: View {
                 copyCooldownTask?.cancel()
                 copyCooldownTask = Task { @MainActor in
                     do {
-                        try await Task.sleep(for: .milliseconds(1500))
+                        try await Task.sleep(for: .milliseconds(1_500))
                         copied = false
                     } catch {
                         // cancelled by next press

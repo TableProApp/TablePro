@@ -638,7 +638,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let count = try await conn.countDocuments(database: db, collection: collection, filter: filter)
             return PluginQueryResult(
                 columns: ["count"], columnTypeNames: ["Int64"],
-                rows: [[String(count)]], rowsAffected: 0,
+                rows: [[.text(String(count))]], rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -646,7 +646,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let insertedId = try await conn.insertOne(database: db, collection: collection, document: document)
             return PluginQueryResult(
                 columns: ["insertedId"], columnTypeNames: ["ObjectId"],
-                rows: [[insertedId ?? "null"]], rowsAffected: 1,
+                rows: [[.text(insertedId ?? "null")]], rowsAffected: 1,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -656,7 +656,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let inserted = (result.first?["n"] as? Int) ?? 0
             return PluginQueryResult(
                 columns: ["insertedCount"], columnTypeNames: ["Int32"],
-                rows: [[String(inserted)]], rowsAffected: inserted,
+                rows: [[.text(String(inserted))]], rowsAffected: inserted,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -664,7 +664,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let modified = try await conn.updateOne(database: db, collection: collection, filter: filter, update: update)
             return PluginQueryResult(
                 columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(modified)]], rowsAffected: Int(modified),
+                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -678,7 +678,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
             return PluginQueryResult(
                 columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(modified)]], rowsAffected: Int(modified),
+                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -692,7 +692,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
             return PluginQueryResult(
                 columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(modified)]], rowsAffected: Int(modified),
+                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -700,7 +700,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let deleted = try await conn.deleteOne(database: db, collection: collection, filter: filter)
             return PluginQueryResult(
                 columns: ["deletedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(deleted)]], rowsAffected: Int(deleted),
+                rows: [[.text(String(deleted))]], rowsAffected: Int(deleted),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -714,7 +714,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ?? (result.first?["n"] as? Int).map(Int64.init) ?? 0
             return PluginQueryResult(
                 columns: ["deletedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(deleted)]], rowsAffected: Int(deleted),
+                rows: [[.text(String(deleted))]], rowsAffected: Int(deleted),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -768,7 +768,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let collections = try await conn.listCollections(database: db)
             return PluginQueryResult(
                 columns: ["collection"], columnTypeNames: ["String"],
-                rows: collections.map { [$0] }, rowsAffected: 0,
+                rows: collections.map { [.text($0)] }, rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -776,7 +776,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let databases = try await conn.listDatabases()
             return PluginQueryResult(
                 columns: ["database"], columnTypeNames: ["String"],
-                rows: databases.map { [$0] }, rowsAffected: 0,
+                rows: databases.map { [.text($0)] }, rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 

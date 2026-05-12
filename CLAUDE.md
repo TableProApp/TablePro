@@ -21,7 +21,9 @@ These govern every decision — code, architecture, tooling, and process:
 TablePro is a native macOS database client (SwiftUI + AppKit) — a fast, lightweight alternative to TablePlus. macOS 14.0+, Swift 5.9, Universal Binary (arm64 + x86_64).
 
 - **Source**: `TablePro/` — `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/`, `Theme/`
-- **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework. Built-in (bundled in app): MySQL, PostgreSQL, SQLite, ClickHouse, Redis, CSV, JSON, SQL export, XLSX export, MQL export, SQL import. Separately distributed via plugin registry: MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL
+- **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework.
+    - **Bundled in app**: MySQL, PostgreSQL, SQLite, ClickHouse, Redis, CSV, JSON, SQL export, XLSX export, MQL export, SQL import. Shipped only inside the app bundle. **Never publish bundled plugins to the registry.** Updates ride with the next app release.
+    - **Registry-only**: MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL. Distributed via [TableProApp/plugins](https://github.com/TableProApp/plugins) `plugins.json`, installed into the user plugins directory.
 - **C bridges**: Each plugin contains its own C bridge module (e.g., `Plugins/MySQLDriverPlugin/CMariaDB/`, `Plugins/PostgreSQLDriverPlugin/CLibPQ/`)
 - **Static libs**: `Libs/` — pre-built `.a` files. `Libs/ios/` — xcframeworks for iOS. Both downloaded via `scripts/download-libs.sh` (not in git)
 - **SPM deps**: CodeEditSourceEditor (`main` branch, tree-sitter editor), Sparkle (2.8.1, auto-update), OracleNIO. Managed via Xcode, no `Package.swift`.
@@ -95,6 +97,12 @@ When adding a new driver: create a new plugin bundle under `Plugins/`, implement
 When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`.
 
 **PluginKit ABI versioning**: When `DriverPlugin` or `PluginDatabaseDriver` protocol changes (new methods, changed signatures), bump `currentPluginKitVersion` in `PluginManager.swift` AND `TableProPluginKitVersion` in every plugin's `Info.plist`. Stale user-installed plugins with mismatched versions crash on load with `EXC_BAD_INSTRUCTION` (not catchable in Swift). Removing protocol methods that have default `nil` implementations does NOT require a version bump. Adding new `static var` or `func` requirements to `DriverPlugin` DOES require a version bump even with default implementations via protocol extension — Swift protocol witness tables are compiled statically.
+
+**Post-ABI-bump checklist (mandatory)**: After bumping `currentPluginKitVersion`, every registry-published plugin must be re-tagged and republished — otherwise users see "Plugin was built with PluginKit version N, but version M is required" when they try to update. `PluginManager` rejects any user-installed plugin whose `TableProPluginKitVersion` does not match exactly (`PluginManager.swift:387`).
+1. Re-tag every registry plugin with a bumped patch version (MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL). Bundled plugins (Redis, ClickHouse, etc.) are NOT re-tagged; they ship with the next app release. Push tags individually because `build-plugin.yml` only fires once per multi-tag push.
+2. Wait for CI to publish each ZIP to its `plugin-<name>-v<version>` GitHub Release.
+3. Update `plugins.json` in [TableProApp/plugins](https://github.com/TableProApp/plugins): bump `version`, `downloadURL`, and both architecture `sha256` entries for every plugin.
+4. Verify by installing one plugin from registry on the new app build.
 
 ### DatabaseType (String-Based Struct)
 

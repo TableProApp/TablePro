@@ -329,7 +329,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
             if cancelledBetweenResults { _isCancelled = false }
             lock.unlock()
             if cancelledBetweenResults {
-                throw MSSQLPluginError.queryFailed("Query cancelled")
+                throw CancellationError()
             }
 
             let resCode = dbresults(proc)
@@ -367,7 +367,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
                 if cancelled { _isCancelled = false }
                 lock.unlock()
                 if cancelled {
-                    throw MSSQLPluginError.queryFailed("Query cancelled")
+                    throw CancellationError()
                 }
 
                 var row: [PluginCellValue] = []

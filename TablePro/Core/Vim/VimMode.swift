@@ -9,6 +9,7 @@
 enum VimMode: Equatable {
     case normal
     case insert
+    case replace
     case visual(linewise: Bool)
     case commandLine(buffer: String)
 
@@ -17,15 +18,18 @@ enum VimMode: Equatable {
         switch self {
         case .normal: return "NORMAL"
         case .insert: return "INSERT"
+        case .replace: return "REPLACE"
         case .visual(let linewise): return linewise ? "VISUAL LINE" : "VISUAL"
         case .commandLine(let buffer): return buffer
         }
     }
 
-    /// Whether this mode is an insert mode (text input passes through)
+    /// Whether this mode passes text input through to the text view (insert or replace)
     var isInsert: Bool {
-        if case .insert = self { return true }
-        return false
+        switch self {
+        case .insert, .replace: return true
+        default: return false
+        }
     }
 
     /// Whether this mode is a visual selection mode

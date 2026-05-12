@@ -225,64 +225,12 @@ For keyboards without dedicated arrow keys (e.g., HHKB), Ctrl+HJKL works as arro
 
 ## Vim Mode Keybindings
 
-When Vim mode is enabled (**Settings** > **Editor** > **Editing** > **Vim mode**), the SQL editor uses modal keybindings. A mode indicator badge appears in the toolbar.
+Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor shows the current mode.
 
-### Modes
-
-| Key | Action |
-|-----|--------|
-| `Escape` | Return to Normal mode |
-| `i` / `I` | Insert before cursor / at line start |
-| `a` / `A` | Append after cursor / at line end |
-| `o` / `O` | Open line below / above |
-| `v` | Visual mode (character-wise) |
-| `V` | Visual Line mode (line-wise) |
-| `:` | Command-line mode |
-
-### Navigation (Normal Mode)
-
-| Key | Action |
-|-----|--------|
-| `h` / `j` / `k` / `l` | Left / Down / Up / Right |
-| `w` / `b` / `e` | Next word / Previous word / End of word |
-| `0` / `$` | Beginning / End of line |
-| `^` / `_` | First non-blank character of line |
-| `gg` / `G` | First line / Last line |
-
-### Operators (Normal Mode)
-
-| Key | Action |
-|-----|--------|
-| `dd` | Delete line |
-| `yy` | Yank (copy) line |
-| `cc` | Change line |
-| `x` | Delete character |
-| `p` / `P` | Paste after / before cursor |
-| `d` + motion | Delete with motion |
-| `y` + motion | Yank with motion |
-| `c` + motion | Change with motion |
-
-### Visual Mode
-
-| Key | Action |
-|-----|--------|
-| `d` | Delete selection |
-| `y` | Yank selection |
-| `c` | Change selection |
-
-### Command-Line Mode
-
-| Command | Action |
-|---------|--------|
-| `:w` | Execute query (`Cmd+Enter`) |
-| `:q` | Close tab |
-
-### Count Prefixes
-
-Prefix motions and operators with a number: `3j` (down 3 lines), `2dd` (delete 2 lines), `5x` (delete 5 characters).
+See the [Vim Mode](/features/vim-mode) page for the full key reference.
 
 <Note>
-Vim mode keybindings only apply in the SQL editor. They don't affect the data grid or other panels. Standard shortcuts like `Cmd+Enter` work in all modes.
+Vim keys only apply in the SQL editor. The data grid and other panels keep their standard shortcuts. `Cmd+Enter` runs the query in any mode.
 </Note>
 
 ## Filtering

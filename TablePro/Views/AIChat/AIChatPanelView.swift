@@ -18,7 +18,6 @@ struct AIChatPanelView: View {
     @Bindable var viewModel: AIChatViewModel
     private let settingsManager = AppSettingsManager.shared
     @State private var isUserScrolledUp = false
-    @State private var lastAutoScrollTime: Date = .distantPast
     @State private var mentionState = MentionPopoverState()
 
     private var hasConfiguredProvider: Bool {
@@ -148,13 +147,6 @@ struct AIChatPanelView: View {
                 .onChange(of: viewModel.activeConversationID) {
                     isUserScrolledUp = false
                     scrollToBottom(proxy: proxy, animated: true)
-                }
-                .onChange(of: viewModel.messages.last?.plainText) {
-                    guard !isUserScrolledUp else { return }
-                    let now = Date()
-                    guard now.timeIntervalSince(lastAutoScrollTime) >= 0.1 else { return }
-                    lastAutoScrollTime = now
-                    scrollToBottom(proxy: proxy)
                 }
                 .onChange(of: viewModel.isStreaming) { _, newValue in
                     if !newValue, !isUserScrolledUp {
@@ -517,7 +509,7 @@ struct AIChatPanelView: View {
         guard message.role != .system else { return false }
         if message.role == .user {
             let hasUserContent = message.blocks.contains { block in
-                switch block {
+                switch block.kind {
                 case .text(let value): return !value.isEmpty
                 case .attachment: return true
                 case .toolUse, .toolResult: return false

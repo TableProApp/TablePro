@@ -75,7 +75,6 @@ struct DatabaseTypeChooserSheet: View {
                                 )
                                 .tag(type)
                                 .contentShape(Rectangle())
-                                .background { DoubleClickDetector { commit(type) } }
                                 .id(type)
                                 .listRowSeparator(.hidden)
                             }
@@ -85,6 +84,11 @@ struct DatabaseTypeChooserSheet: View {
                     }
                 }
                 .listStyle(.inset)
+                .contextMenu(forSelectionType: DatabaseType.self) { _ in
+                    EmptyView()
+                } primaryAction: { selection in
+                    if let type = selection.first { commit(type) }
+                }
                 .onAppear {
                     if let initialType {
                         proxy.scrollTo(initialType, anchor: .center)

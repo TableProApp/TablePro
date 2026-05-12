@@ -76,6 +76,14 @@ enum ColumnType: Equatable {
         }
     }
 
+    var isTimeOnly: Bool {
+        guard isDateType, let raw = rawType?.uppercased() else { return false }
+        return raw == "TIME"
+            || raw == "TIMETZ"
+            || raw == "TIME WITHOUT TIME ZONE"
+            || raw == "TIME WITH TIME ZONE"
+    }
+
     /// Whether this type represents long text that should use multi-line editor
     /// Checks for TEXT, LONGTEXT, MEDIUMTEXT, TINYTEXT, CLOB types
     var isLongText: Bool {

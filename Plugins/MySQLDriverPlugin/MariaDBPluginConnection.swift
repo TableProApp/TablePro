@@ -12,10 +12,10 @@ import OSLog
 import TableProPluginKit
 
 // MySQL/MariaDB field flag and charset constants
-private let mysqlBinaryFlag: UInt = 0x0080
-private let mysqlEnumFlag: UInt = 0x0100
-private let mysqlSetFlag: UInt = 0x0800
-private let mysqlBinaryCharset: UInt32 = 63
+internal let mysqlBinaryFlag: UInt = 0x0080
+internal let mysqlEnumFlag: UInt = 0x0100
+internal let mysqlSetFlag: UInt = 0x0800
+internal let mysqlBinaryCharset: UInt32 = 63
 
 private let logger = Logger(subsystem: "com.TablePro", category: "MariaDBPluginConnection")
 
@@ -78,22 +78,43 @@ func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
     let flags = UInt(field.flags)
     let length = field.length
 
-    // MariaDB extended metadata: detect JSON stored as LONGTEXT (best-effort)
+    // MariaDB extended metadata: detect JSON stored as LONGTEXT.
+    // `MARIADB_CONST_STRING` is length-prefixed (not null-terminated), so we must read
+    // exactly `attr.length` bytes. `String(cString:)` would scan past the buffer into
+    // adjacent memory and intermittently fail the comparison when that memory is non-zero.
     var attr = MARIADB_CONST_STRING()
     if mariadb_field_attr(&attr, fieldPtr, MARIADB_FIELD_ATTR_FORMAT_NAME) == 0,
        let str = attr.str, attr.length > 0,
-       String(cString: str) == "json" {
+       let value = String(data: Data(bytes: str, count: Int(attr.length)), encoding: .utf8),
+       value == "json" {
         return "JSON"
     }
 
     if (flags & mysqlEnumFlag) != 0 { return "ENUM" }
     if (flags & mysqlSetFlag) != 0 { return "SET" }
 
+    return mariaDBTypeName(
+        typeRaw: field.type.rawValue,
+        flags: flags,
+        charsetnr: field.charsetnr,
+        length: field.length
+    )
+}
+
+/// Pure mapping from raw MySQL/MariaDB field type code + flags to TablePro's
+/// column-type-name string. Separated from `mysqlTypeToString` so it can be
+/// unit-tested without an actual `MYSQL_FIELD` struct.
+internal func mariaDBTypeName(
+    typeRaw: UInt32,
+    flags: UInt,
+    charsetnr: UInt32,
+    length: UInt
+) -> String {
     // Binary flag alone is insufficient — MariaDB sets it on text columns with
     // binary collation (e.g. utf8mb4_bin for JSON). Only charset 63 is truly binary.
-    let isBinary = (flags & mysqlBinaryFlag) != 0 && field.charsetnr == mysqlBinaryCharset
+    let isBinary = (flags & mysqlBinaryFlag) != 0 && charsetnr == mysqlBinaryCharset
 
-    switch field.type.rawValue {
+    switch typeRaw {
     case 0: return "DECIMAL"
     case 1: return "TINYINT"
     case 2: return "SMALLINT"
@@ -127,8 +148,8 @@ func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
         } else {
             return length > 65_535 ? "LONGTEXT" : "TEXT"
         }
-    case 253: return "VARCHAR"
-    case 254: return "CHAR"
+    case 253: return isBinary ? "VARBINARY" : "VARCHAR"
+    case 254: return isBinary ? "BINARY" : "CHAR"
     case 255: return "GEOMETRY"
     default: return "UNKNOWN"
     }
@@ -462,7 +483,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
                 columnTypeNames.append(mysqlTypeToString(fields + i))
-                columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
+                columnIsBinary.append(
+                    MariaDBFieldClassifier.isBinary(
+                        typeRaw: field.type.rawValue,
+                        charset: field.charsetnr
+                    )
+                )
             }
         }
 
@@ -488,7 +514,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         sqlState: nil)
                 }
                 mysql_free_result(resultPtr)
-                throw MariaDBPluginError(code: 0, message: "Query cancelled", sqlState: nil)
+                throw CancellationError()
             }
 
             if rows.count >= maxRows {
@@ -672,7 +698,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             if shouldCancel { _isCancelled = false }
             stateLock.unlock()
             if shouldCancel {
-                throw MariaDBPluginError(code: 0, message: "Query cancelled", sqlState: nil)
+                throw CancellationError()
             }
 
             if rows.count >= maxRows {
@@ -808,7 +834,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
                 columnTypeNames.append(mysqlTypeToString(fields + i))
-                columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
+                columnIsBinary.append(
+                    MariaDBFieldClassifier.isBinary(
+                        typeRaw: field.type.rawValue,
+                        charset: field.charsetnr
+                    )
+                )
             }
         }
 
@@ -907,7 +938,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                         columnTypes.append(fieldType)
                         columnTypeNames.append(mysqlTypeToString(fields + i))
-                        columnIsBinary.append(field.charsetnr == mysqlBinaryCharset)
+                        columnIsBinary.append(
+                            MariaDBFieldClassifier.isBinary(
+                                typeRaw: field.type.rawValue,
+                                charset: field.charsetnr
+                            )
+                        )
                     }
                 }
 

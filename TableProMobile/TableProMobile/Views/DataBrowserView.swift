@@ -69,7 +69,7 @@ struct DataBrowserView: View {
                 ]
             }
             .toolbar { topToolbar }
-            .toolbar(rows.isEmpty && !viewModel.hasActiveSearch && !viewModel.hasActiveFilters ? .hidden : .visible, for: .bottomBar)
+            .toolbar(rows.isEmpty && !viewModel.hasActiveSearch && !viewModel.hasActiveFilters && !viewModel.isPageLoading ? .hidden : .visible, for: .bottomBar)
             .toolbar { paginationToolbar }
             .task {
                 viewModel.attach(session: session, table: table, databaseType: connection.type, host: connection.host)
@@ -199,6 +199,9 @@ struct DataBrowserView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let appError = viewModel.loadError {
             ErrorView(error: appError) { await viewModel.load() }
+        } else if rows.isEmpty, viewModel.isPageLoading {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if rows.isEmpty, viewModel.hasActiveSearch {
             ContentUnavailableView.search(text: viewModel.activeSearchText)
         } else if rows.isEmpty {

@@ -30,6 +30,7 @@ struct RowVisualState: Equatable {
 struct DataGridView: NSViewRepresentable {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
+    var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     let isEditable: Bool
     var configuration: DataGridConfiguration = .init()
@@ -112,6 +113,7 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableRowsController.attach(tableView)
         context.coordinator.tableRowsProvider = tableRowsProvider
         context.coordinator.tableRowsMutator = tableRowsMutator
+        context.coordinator.paginationOffsetProvider = paginationOffsetProvider
         context.coordinator.sortedIDs = sortedIDs
         // Intentionally do not prime cachedRowCount/cachedColumnCount here.
         // They represent what NSTableView has actually rendered. Leaving them
@@ -143,6 +145,7 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.tableRowsProvider = tableRowsProvider
         coordinator.tableRowsMutator = tableRowsMutator
+        coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.changeManager = changeManager
 
         let latestRows = tableRowsProvider()
@@ -197,6 +200,9 @@ struct DataGridView: NSViewRepresentable {
             let shouldHide = !configuration.showRowNumbers
             if rowNumCol.isHidden != shouldHide {
                 rowNumCol.isHidden = shouldHide
+                if !shouldHide {
+                    coordinator.resizeRowNumberColumnForCurrentRange()
+                }
             }
         }
 
@@ -344,11 +350,9 @@ struct DataGridView: NSViewRepresentable {
     static func makeRowNumberColumn() -> NSTableColumn {
         let column = NSTableColumn(identifier: ColumnIdentitySchema.rowNumberIdentifier)
         column.title = "#"
-        column.width = 40
-        column.minWidth = 40
-        column.maxWidth = 60
         column.isEditable = false
         column.resizingMask = []
+        sizeRowNumberColumn(column, forMaxRowNumber: 1)
         let defaultHeaderFont = column.headerCell.font
         let headerCell = SortableHeaderCell(textCell: "#")
         headerCell.font = defaultHeaderFont
@@ -356,6 +360,20 @@ struct DataGridView: NSViewRepresentable {
         headerCell.setAccessibilityLabel(String(localized: "Row number"))
         column.headerCell = headerCell
         return column
+    }
+
+    @MainActor
+    static func sizeRowNumberColumn(_ column: NSTableColumn, forMaxRowNumber maxNumber: Int) {
+        let display = "\(max(maxNumber, 1))"
+        let font = ThemeEngine.shared.dataGridFonts.rowNumber
+        let textWidth = (display as NSString).size(withAttributes: [.font: font]).width
+        let measured = ceil(textWidth)
+            + 2 * DataGridMetrics.cellHorizontalInset
+            + DataGridMetrics.rowNumberHeaderPadding
+        let columnWidth = max(DataGridMetrics.rowNumberColumnMinWidth, measured)
+        column.minWidth = columnWidth
+        column.maxWidth = columnWidth
+        column.width = columnWidth
     }
 
     static let firstDataTableColumnIndex: Int = 1

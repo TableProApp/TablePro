@@ -2,19 +2,28 @@
 //  QuickSwitcherViewModelTests.swift
 //  TableProTests
 //
-//  Tests for QuickSwitcherViewModel filtering and navigation
-//
 
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
 struct QuickSwitcherViewModelTests {
-    // MARK: - Helpers
+    private func makeDefaults() -> UserDefaults {
+        guard let suite = UserDefaults(suiteName: "QuickSwitcherTests.\(UUID().uuidString)") else {
+            return .standard
+        }
+        return suite
+    }
 
-    private func makeViewModel(items: [QuickSwitcherItem]) -> QuickSwitcherViewModel {
-        let vm = QuickSwitcherViewModel()
+    private func makeViewModel(
+        items: [QuickSwitcherItem],
+        connectionId: UUID = UUID(),
+        defaults: UserDefaults? = nil
+    ) -> QuickSwitcherViewModel {
+        let suite = defaults ?? makeDefaults()
+        let vm = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
         vm.allItems = items
         return vm
     }
@@ -23,157 +32,137 @@ struct QuickSwitcherViewModelTests {
         [
             QuickSwitcherItem(id: "t1", name: "users", kind: .table, subtitle: ""),
             QuickSwitcherItem(id: "t2", name: "orders", kind: .table, subtitle: ""),
-            QuickSwitcherItem(id: "v1", name: "active_users", kind: .view, subtitle: ""),
+            QuickSwitcherItem(id: "v1", name: "active_users", kind: .view, subtitle: "View"),
             QuickSwitcherItem(id: "d1", name: "production", kind: .database, subtitle: "Database"),
-            QuickSwitcherItem(id: "h1", name: "SELECT * FROM users;", kind: .queryHistory, subtitle: "mydb"),
+            QuickSwitcherItem(id: "h1", name: "SELECT * FROM users;", kind: .queryHistory, subtitle: "mydb")
         ]
     }
 
-    // MARK: - Filtering
-
-    @Test("Empty search shows all items")
-    func emptySearchShowsAll() {
+    @Test("Empty search builds one group per kind")
+    func emptySearchGroupsByKind() {
         let vm = makeViewModel(items: sampleItems())
-        vm.searchText = ""
-        // Trigger immediate filter (bypass debounce)
-        #expect(vm.filteredItems.count == 5)
+        let kinds = vm.groups.compactMap { $0.header }
+        #expect(kinds.contains(String(localized: "Tables")))
+        #expect(kinds.contains(String(localized: "Views")))
+        #expect(kinds.contains(String(localized: "Databases")))
+        #expect(kinds.contains(String(localized: "Recent Queries")))
     }
 
-    @Test("Search filters by name")
-    func searchFiltersByName() async throws {
+    @Test("Filtered search returns one headerless group of best matches")
+    func filteredGroupHasNoHeader() async throws {
         let vm = makeViewModel(items: sampleItems())
         vm.searchText = "users"
-        // Wait for debounce
-        try await Task.sleep(for: .milliseconds(100))
-        // "users" and "active_users" should match, plus the history item containing "users"
-        #expect(vm.filteredItems.count >= 2)
-        #expect(vm.filteredItems.allSatisfy { $0.score > 0 })
+        try await Task.sleep(nanoseconds: 80_000_000)
+        #expect(vm.groups.count == 1)
+        #expect(vm.groups.first?.header == nil)
+        #expect(vm.flatItems.allSatisfy { $0.name.localizedCaseInsensitiveContains("u") })
     }
 
-    @Test("Non-matching search returns empty")
-    func nonMatchingSearchReturnsEmpty() async throws {
-        let vm = makeViewModel(items: sampleItems())
-        vm.searchText = "zzz"
-        try await Task.sleep(for: .milliseconds(100))
-        #expect(vm.filteredItems.isEmpty)
-    }
-
-    @Test("Filter caps at 100 results")
-    func filterCapsAtMaxResults() {
+    @Test("Filter caps at maxResults")
+    func filterCaps() {
         var items: [QuickSwitcherItem] = []
-        for i in 0..<200 {
-            items.append(QuickSwitcherItem(id: "t\(i)", name: "table_\(i)", kind: .table, subtitle: ""))
+        for index in 0..<300 {
+            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
         }
         let vm = makeViewModel(items: items)
-        vm.searchText = ""
-        #expect(vm.filteredItems.count == 100)
+        #expect(vm.flatItems.count == 200)
     }
 
-    // MARK: - Navigation
-
-    @Test("moveDown selects next item")
-    func moveDownSelectsNext() {
+    @Test("moveSelection by 1 advances to next item")
+    func moveDownAdvances() {
         let vm = makeViewModel(items: sampleItems())
-        vm.searchText = ""
-        // After setting items, first item is auto-selected
-        #expect(vm.selectedItemId == vm.filteredItems.first?.id)
-        vm.moveDown()
-        #expect(vm.selectedItemId == vm.filteredItems[1].id)
+        let first = vm.flatItems.first?.id
+        #expect(vm.selectedItemId == first)
+        vm.moveSelection(by: 1)
+        #expect(vm.selectedItemId == vm.flatItems[1].id)
     }
 
-    @Test("moveUp selects previous item")
-    func moveUpSelectsPrevious() {
+    @Test("moveSelection clamps at the bounds")
+    func moveSelectionClamps() {
         let vm = makeViewModel(items: sampleItems())
-        vm.searchText = ""
-        vm.selectedItemId = vm.filteredItems[2].id
-        vm.moveUp()
-        #expect(vm.selectedItemId == vm.filteredItems[1].id)
+        vm.selectedItemId = vm.flatItems.first?.id
+        vm.moveSelection(by: -1)
+        #expect(vm.selectedItemId == vm.flatItems.first?.id)
+        vm.selectedItemId = vm.flatItems.last?.id
+        vm.moveSelection(by: 1)
+        #expect(vm.selectedItemId == vm.flatItems.last?.id)
     }
 
-    @Test("moveUp clamps to first item")
-    func moveUpClampsToFirst() {
-        let vm = makeViewModel(items: sampleItems())
-        vm.searchText = ""
-        vm.selectedItemId = vm.filteredItems.first?.id
-        vm.moveUp()
-        #expect(vm.selectedItemId == vm.filteredItems.first?.id)
-    }
-
-    @Test("moveDown clamps to last item")
-    func moveDownClampsToEnd() {
-        let vm = makeViewModel(items: sampleItems())
-        vm.searchText = ""
-        vm.selectedItemId = vm.filteredItems.last?.id
-        vm.moveDown()
-        #expect(vm.selectedItemId == vm.filteredItems.last?.id)
-    }
-
-    @Test("selectedItem returns correct item")
-    func selectedItemReturnsCorrectItem() {
-        let vm = makeViewModel(items: sampleItems())
-        vm.searchText = ""
-        let secondItem = vm.filteredItems[1]
-        vm.selectedItemId = secondItem.id
-        #expect(vm.selectedItem?.id == secondItem.id)
-        #expect(vm.selectedItem?.name == secondItem.name)
-    }
-
-    @Test("selectedItem returns nil for empty list")
-    func selectedItemReturnsNilForEmpty() {
+    @Test("moveSelection on empty list yields nil")
+    func moveSelectionOnEmpty() {
         let vm = makeViewModel(items: [])
-        #expect(vm.selectedItem == nil)
+        vm.moveSelection(by: 1)
+        #expect(vm.selectedItemId == nil)
     }
 
-    @Test("Search resets selection to first item")
-    func searchResetsSelection() async throws {
+    @Test("selectedItem returns the current selection")
+    func selectedItemReturnsCurrent() {
         let vm = makeViewModel(items: sampleItems())
-        vm.searchText = ""
-        vm.selectedItemId = vm.filteredItems[3].id
+        let target = vm.flatItems[2]
+        vm.selectedItemId = target.id
+        #expect(vm.selectedItem()?.id == target.id)
+    }
+
+    @Test("selectedItem is nil when no selection")
+    func selectedItemNilWhenNone() {
+        let vm = makeViewModel(items: sampleItems())
+        vm.selectedItemId = nil
+        #expect(vm.selectedItem() == nil)
+    }
+
+    @Test("recordSelection inserts MRU and Recent group appears next time")
+    func recordSelectionAddsRecent() {
+        let suite = makeDefaults()
+        let connectionId = UUID()
+        let items = sampleItems()
+        let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
+        let chosen = items[1]
+        vm.recordSelection(chosen)
+
+        let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
+        vm2.allItems = items
+        let recentGroup = vm2.groups.first { $0.header == String(localized: "Recent") }
+        #expect(recentGroup?.items.first?.id == chosen.id)
+    }
+
+    @Test("recordSelection trims MRU to 10 entries")
+    func mruTrimsToLimit() {
+        let suite = makeDefaults()
+        let connectionId = UUID()
+        var items: [QuickSwitcherItem] = []
+        for index in 0..<15 {
+            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
+        }
+        let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
+        for item in items {
+            vm.recordSelection(item)
+        }
+        let stored = suite.stringArray(forKey: "QuickSwitcher.mru.\(connectionId.uuidString)") ?? []
+        #expect(stored.count == 10)
+        #expect(stored.first == items.last?.id)
+    }
+
+    @Test("Search keeps selection if still in results")
+    func searchKeepsSelectionWhenPresent() async throws {
+        let vm = makeViewModel(items: sampleItems())
+        guard let usersItem = vm.flatItems.first(where: { $0.id == "t1" }) else {
+            Issue.record("Expected t1 to be present")
+            return
+        }
+        vm.selectedItemId = usersItem.id
         vm.searchText = "users"
-        try await Task.sleep(for: .milliseconds(100))
-        #expect(vm.selectedItemId == vm.filteredItems.first?.id)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        #expect(vm.flatItems.contains(where: { $0.id == usersItem.id }))
+        #expect(vm.selectedItemId == usersItem.id)
     }
 
-    // MARK: - Grouped Items
-
-    @Test("groupedItems returns correct section kinds when not searching")
-    func groupedItemsReturnsSections() {
+    @Test("Search resets selection when previous selection is filtered out")
+    func searchResetsSelectionWhenAbsent() async throws {
         let vm = makeViewModel(items: sampleItems())
-        vm.searchText = ""
-        let groups = vm.groupedItems
-        let kinds = groups.map(\.kind)
-        #expect(kinds.contains(.table))
-        #expect(kinds.contains(.view))
-        #expect(kinds.contains(.database))
-        #expect(kinds.contains(.queryHistory))
-    }
-
-    @Test("groupedItems is empty when no items")
-    func groupedItemsEmptyWhenNoItems() {
-        let vm = makeViewModel(items: [])
-        #expect(vm.groupedItems.isEmpty)
-    }
-
-    @Test("selectedItem returns nil when selectedItemId does not match any item")
-    func selectedItemNilForBogusId() {
-        let vm = makeViewModel(items: sampleItems())
-        vm.selectedItemId = "nonexistent_id"
-        #expect(vm.selectedItem == nil)
-    }
-
-    @Test("moveUp does nothing when selectedItemId is nil")
-    func moveUpDoesNothingWhenNil() {
-        let vm = makeViewModel(items: sampleItems())
-        vm.selectedItemId = nil
-        vm.moveUp()
-        #expect(vm.selectedItemId == nil)
-    }
-
-    @Test("moveDown does nothing when selectedItemId is nil")
-    func moveDownDoesNothingWhenNil() {
-        let vm = makeViewModel(items: sampleItems())
-        vm.selectedItemId = nil
-        vm.moveDown()
-        #expect(vm.selectedItemId == nil)
+        vm.selectedItemId = "d1"
+        vm.searchText = "users"
+        try await Task.sleep(nanoseconds: 80_000_000)
+        #expect(vm.flatItems.contains(where: { $0.id == "d1" }) == false)
+        #expect(vm.selectedItemId == vm.flatItems.first?.id)
     }
 }

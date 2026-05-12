@@ -10,7 +10,6 @@ enum DataGridCellKind: Equatable {
     case foreignKey
     case dropdown
     case boolean
-    case date
     case json
     case blob
 }

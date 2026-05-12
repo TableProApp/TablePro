@@ -109,6 +109,21 @@ enum DateFormatOption: String, Codable, CaseIterable, Identifiable {
     }
 
     var formatString: String { rawValue }
+
+    var dateOnlyFormatString: String {
+        switch self {
+        case .iso8601, .iso8601Date: return "yyyy-MM-dd"
+        case .usLong, .usShort: return "MM/dd/yyyy"
+        case .euLong, .euShort: return "dd/MM/yyyy"
+        }
+    }
+
+    var timeOnlyFormatString: String {
+        switch self {
+        case .usLong: return "hh:mm:ss a"
+        default: return "HH:mm:ss"
+        }
+    }
 }
 
 /// Data grid settings
