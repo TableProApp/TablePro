@@ -176,13 +176,16 @@ struct SQLReviewSheet: View {
     }
 
     private func plainTextEditor(_ text: String) -> some View {
-        ScrollView([.vertical, .horizontal]) {
+        ScrollView(.vertical) {
             Text(text)
                 .font(.system(size: 12, design: .monospaced))
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(8)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
