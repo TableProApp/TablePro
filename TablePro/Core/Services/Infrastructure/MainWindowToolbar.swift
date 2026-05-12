@@ -521,11 +521,6 @@ extension MainWindowToolbar: NSToolbarItemValidation {
 }
 
 // MARK: - Item SwiftUI Views
-//
-// Each view reads state from `coordinator.toolbarState` (@Observable → automatic
-// re-render) and invokes actions via `coordinator.commandActions` (set by
-// MainContentView.onAppear). SQLReviewPopover + ConnectionSwitcherPopover are
-// re-used verbatim from the SwiftUI toolbar.
 
 private struct ConnectionToolbarButton: View {
     let coordinator: MainContentCoordinator

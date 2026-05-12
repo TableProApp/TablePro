@@ -3,7 +3,11 @@
 //  TablePro
 //
 
+import AppKit
+import CodeEditLanguages
+import CodeEditSourceEditor
 import SwiftUI
+import TableProPluginKit
 
 struct SQLReviewSheet: View {
     @Binding var isPresented: Bool
@@ -12,19 +16,155 @@ struct SQLReviewSheet: View {
     let statements: [String]
     let databaseType: DatabaseType
 
+    @State private var copied = false
+    @State private var isEditorReady = false
+    @State private var editorState = SourceEditorState()
+
+    private var combinedSQL: String {
+        let joined = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
+        if PluginManager.shared.editorLanguage(for: databaseType) == .javascript {
+            return Self.convertExtendedJsonToShellSyntax(joined)
+        }
+        return joined
+    }
+
+    private static func convertExtendedJsonToShellSyntax(_ mql: String) -> String {
+        let pattern = #"\{"\$oid":\s*"([0-9a-fA-F]{24})"\}"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return mql }
+        let nsString = mql as NSString
+        return regex.stringByReplacingMatches(
+            in: mql,
+            range: NSRange(location: 0, length: nsString.length),
+            withTemplate: #"ObjectId("$1")"#
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            SQLReviewPopover(statements: statements, databaseType: databaseType)
+            header
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
 
             Divider()
 
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
+            if statements.isEmpty {
+                emptyState
+            } else {
+                editor
+                    .padding(16)
             }
-            .padding(12)
+
+            Divider()
+
+            footer
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
         }
-        .frame(minWidth: 520, minHeight: 320)
+        .frame(width: 560, height: 420)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .task { isEditorReady = true }
+        .onDisappear { isEditorReady = false }
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("\(PluginManager.shared.queryLanguageName(for: databaseType)) Preview")
+                .font(.body.weight(.semibold))
+            if !statements.isEmpty {
+                Text(
+                    "(\(statements.count) \(statements.count == 1 ? String(localized: "statement") : String(localized: "statements")))"
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if !statements.isEmpty {
+                Button(action: copyAll) {
+                    Label(
+                        copied ? String(localized: "Copied") : String(localized: "Copy All"),
+                        systemImage: copied ? "checkmark" : "doc.on.doc"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "doc.plaintext")
+                .font(.title)
+                .foregroundStyle(.tertiary)
+            Text(String(localized: "No pending changes"))
+                .font(.body)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var editor: some View {
+        if isEditorReady {
+            SourceEditor(
+                .constant(combinedSQL),
+                language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
+                configuration: Self.makeConfiguration(),
+                state: $editorState
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            )
+        } else {
+            Color(nsColor: .textBackgroundColor)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                )
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            Spacer()
+            Button(String(localized: "Done")) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+    }
+
+    private static func makeConfiguration() -> SourceEditorConfiguration {
+        SourceEditorConfiguration(
+            appearance: .init(
+                theme: TableProEditorTheme.make(),
+                font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                wrapLines: true
+            ),
+            behavior: .init(isEditable: false),
+            layout: .init(
+                contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+            ),
+            peripherals: .init(
+                showGutter: false,
+                showMinimap: false,
+                showFoldingRibbon: false
+            )
+        )
+    }
+
+    private func copyAll() {
+        var joined = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
+        if PluginManager.shared.editorLanguage(for: databaseType) == .javascript {
+            joined = Self.convertExtendedJsonToShellSyntax(joined)
+        }
+        ClipboardService.shared.writeText(joined)
+        copied = true
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
     }
 }
