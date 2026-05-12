@@ -74,6 +74,16 @@ build_plugin() {
 
     echo "Built: $plugin_bundle" >&2
 
+    if [ -n "$PLUGIN_VERSION" ]; then
+        actual_version=$(plutil -extract CFBundleShortVersionString raw -o - "$plugin_bundle/Contents/Info.plist" 2>/dev/null || echo "")
+        if [ "$actual_version" != "$PLUGIN_VERSION" ]; then
+            echo "FATAL: Built bundle CFBundleShortVersionString='$actual_version' but expected '$PLUGIN_VERSION'" >&2
+            echo "       MARKETING_VERSION injection failed. Users would see 'Update to v$PLUGIN_VERSION' loops." >&2
+            exit 1
+        fi
+        echo "Bundle version verified: CFBundleShortVersionString=$actual_version" >&2
+    fi
+
     # Strip the plugin binary to reduce size
     local plugin_name
     plugin_name=$(basename "$plugin_bundle" .tableplugin)
