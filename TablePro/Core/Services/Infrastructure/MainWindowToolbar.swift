@@ -83,6 +83,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     // MARK: - Identifiers
 
     private static let connectionGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.connectionGroup")
+    private static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
+    private static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
     private static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
     private static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
     private static let principal = NSToolbarItem.Identifier("com.TablePro.toolbar.principal")
@@ -150,103 +152,371 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         case Self.sidebarToggle:
             return makeSidebarToggleItem(coordinator: coordinator)
         case Self.connectionGroup:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Connection"),
-                               content: HStack(spacing: 4) {
-                                   ConnectionToolbarButton(coordinator: coordinator)
-                                   DatabaseToolbarButton(coordinator: coordinator)
-                               })
+            return makeGroup(
+                id: itemIdentifier,
+                label: String(localized: "Connection"),
+                subitems: [
+                    makeConnectionItem(coordinator: coordinator),
+                    makeDatabaseItem(coordinator: coordinator)
+                ],
+                content: HStack(spacing: 4) {
+                    ConnectionToolbarButton(coordinator: coordinator)
+                    DatabaseToolbarButton(coordinator: coordinator)
+                }
+            )
         case Self.refresh:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Refresh"),
-                               content: RefreshToolbarButton(coordinator: coordinator))
+            return makeRefreshItem(coordinator: coordinator)
         case Self.saveChanges:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Save Changes"),
-                               content: SaveChangesToolbarButton(coordinator: coordinator))
+            return makeSaveChangesItem(coordinator: coordinator)
         case Self.principal:
-            return hostingItem(id: itemIdentifier, label: "",
-                               content: ToolbarPrincipalContent(
-                                   state: coordinator.toolbarState,
-                                   onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
-                                   onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() }
-                               ))
+            let item = hostingItem(
+                id: itemIdentifier,
+                label: "",
+                symbol: nil,
+                action: nil,
+                keyEquivalent: "",
+                modifiers: [],
+                content: ToolbarPrincipalContent(
+                    state: coordinator.toolbarState,
+                    onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
+                    onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() }
+                )
+            )
+            item.visibilityPriority = .high
+            return item
         case Self.quickSwitcher:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Quick Switcher"),
-                               content: QuickSwitcherToolbarButton(coordinator: coordinator))
+            return hostingItem(
+                id: itemIdentifier,
+                label: String(localized: "Quick Switcher"),
+                symbol: "magnifyingglass",
+                action: #selector(performOpenQuickSwitcher(_:)),
+                keyEquivalent: "o",
+                modifiers: [.command, .shift],
+                content: QuickSwitcherToolbarButton(coordinator: coordinator)
+            )
         case Self.newTab:
-            return hostingItem(id: itemIdentifier, label: String(localized: "New Tab"),
-                               content: NewTabToolbarButton(coordinator: coordinator))
+            return hostingItem(
+                id: itemIdentifier,
+                label: String(localized: "New Tab"),
+                symbol: "plus.rectangle",
+                action: #selector(performNewTab(_:)),
+                keyEquivalent: "t",
+                modifiers: .command,
+                content: NewTabToolbarButton(coordinator: coordinator)
+            )
         case Self.filters:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Filters"),
-                               content: FiltersToolbarButton(coordinator: coordinator))
+            return hostingItem(
+                id: itemIdentifier,
+                label: String(localized: "Filters"),
+                symbol: "line.3.horizontal.decrease.circle",
+                action: #selector(performToggleFilters(_:)),
+                keyEquivalent: "f",
+                modifiers: [.command, .shift],
+                content: FiltersToolbarButton(coordinator: coordinator)
+            )
         case Self.previewSQL:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Preview"),
-                               content: PreviewSQLToolbarButton(coordinator: coordinator))
+            return hostingItem(
+                id: itemIdentifier,
+                label: String(localized: "Preview"),
+                symbol: "eye",
+                action: #selector(performPreviewSQL(_:)),
+                keyEquivalent: "p",
+                modifiers: [.command, .shift],
+                content: PreviewSQLToolbarButton(coordinator: coordinator)
+            )
         case Self.results:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Results"),
-                               content: ResultsToolbarButton(coordinator: coordinator))
+            return hostingItem(
+                id: itemIdentifier,
+                label: String(localized: "Results"),
+                symbol: "rectangle.bottomhalf.inset.filled",
+                action: #selector(performToggleResults(_:)),
+                keyEquivalent: "r",
+                modifiers: [.command, .option],
+                content: ResultsToolbarButton(coordinator: coordinator)
+            )
         case Self.inspector:
             let item = NSToolbarItem(itemIdentifier: Self.inspector)
             item.label = String(localized: "Inspector")
             item.paletteLabel = String(localized: "Inspector")
             return item
         case Self.dashboard:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Dashboard"),
-                               content: DashboardToolbarButton(coordinator: coordinator))
+            return hostingItem(
+                id: itemIdentifier,
+                label: String(localized: "Dashboard"),
+                symbol: "gauge.with.dots.needle.33percent",
+                action: #selector(performShowDashboard(_:)),
+                keyEquivalent: "",
+                modifiers: [],
+                content: DashboardToolbarButton(coordinator: coordinator)
+            )
         case Self.history:
-            return hostingItem(id: itemIdentifier, label: String(localized: "History"),
-                               content: HistoryToolbarButton(coordinator: coordinator))
+            return hostingItem(
+                id: itemIdentifier,
+                label: String(localized: "History"),
+                symbol: "clock",
+                action: #selector(performToggleHistory(_:)),
+                keyEquivalent: "y",
+                modifiers: .command,
+                content: HistoryToolbarButton(coordinator: coordinator)
+            )
         case Self.exportTables:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Export"),
-                               content: ExportToolbarButton(coordinator: coordinator))
+            return makeExportItem(coordinator: coordinator)
         case Self.importTables:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Import"),
-                               content: ImportToolbarButton(coordinator: coordinator))
+            return makeImportItem(coordinator: coordinator)
         case Self.refreshSaveGroup:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Refresh & Save"),
-                               content: HStack(spacing: 4) {
-                                   RefreshToolbarButton(coordinator: coordinator)
-                                   SaveChangesToolbarButton(coordinator: coordinator)
-                               })
+            return makeGroup(
+                id: itemIdentifier,
+                label: String(localized: "Refresh & Save"),
+                subitems: [
+                    makeRefreshItem(coordinator: coordinator),
+                    makeSaveChangesItem(coordinator: coordinator)
+                ],
+                content: HStack(spacing: 4) {
+                    RefreshToolbarButton(coordinator: coordinator)
+                    SaveChangesToolbarButton(coordinator: coordinator)
+                }
+            )
         case Self.exportImportGroup:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Export & Import"),
-                               content: HStack(spacing: 4) {
-                                   ExportToolbarButton(coordinator: coordinator)
-                                   ImportToolbarButton(coordinator: coordinator)
-                               })
+            return makeGroup(
+                id: itemIdentifier,
+                label: String(localized: "Export & Import"),
+                subitems: [
+                    makeExportItem(coordinator: coordinator),
+                    makeImportItem(coordinator: coordinator)
+                ],
+                content: HStack(spacing: 4) {
+                    ExportToolbarButton(coordinator: coordinator)
+                    ImportToolbarButton(coordinator: coordinator)
+                }
+            )
         default:
             return nil
         }
     }
 
+    // MARK: - Item Builders
+
+    private func makeConnectionItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
+        hostingItem(
+            id: Self.connection,
+            label: String(localized: "Connection"),
+            symbol: "network",
+            action: #selector(performOpenConnectionSwitcher(_:)),
+            keyEquivalent: "c",
+            modifiers: [.command, .option],
+            content: ConnectionToolbarButton(coordinator: coordinator)
+        )
+    }
+
+    private func makeDatabaseItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
+        hostingItem(
+            id: Self.database,
+            label: String(localized: "Database"),
+            symbol: "cylinder",
+            action: #selector(performOpenDatabaseSwitcher(_:)),
+            keyEquivalent: "k",
+            modifiers: .command,
+            content: DatabaseToolbarButton(coordinator: coordinator)
+        )
+    }
+
+    private func makeRefreshItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
+        hostingItem(
+            id: Self.refresh,
+            label: String(localized: "Refresh"),
+            symbol: "arrow.clockwise",
+            action: #selector(performRefresh(_:)),
+            keyEquivalent: "r",
+            modifiers: .command,
+            content: RefreshToolbarButton(coordinator: coordinator)
+        )
+    }
+
+    private func makeSaveChangesItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
+        hostingItem(
+            id: Self.saveChanges,
+            label: String(localized: "Save Changes"),
+            symbol: "checkmark.circle.fill",
+            action: #selector(performSaveChanges(_:)),
+            keyEquivalent: "s",
+            modifiers: .command,
+            content: SaveChangesToolbarButton(coordinator: coordinator)
+        )
+    }
+
+    private func makeExportItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
+        hostingItem(
+            id: Self.exportTables,
+            label: String(localized: "Export"),
+            symbol: "square.and.arrow.up",
+            action: #selector(performExport(_:)),
+            keyEquivalent: "e",
+            modifiers: [.command, .shift],
+            content: ExportToolbarButton(coordinator: coordinator)
+        )
+    }
+
+    private func makeImportItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
+        hostingItem(
+            id: Self.importTables,
+            label: String(localized: "Import"),
+            symbol: "square.and.arrow.down",
+            action: #selector(performImport(_:)),
+            keyEquivalent: "i",
+            modifiers: [.command, .shift],
+            content: ImportToolbarButton(coordinator: coordinator)
+        )
+    }
+
     // MARK: - Helpers
 
-    internal func hostingItem<Content: View>(
+    private func hostingItem<Content: View>(
         id: NSToolbarItem.Identifier,
         label: String,
+        symbol: String?,
+        action: Selector?,
+        keyEquivalent: String,
+        modifiers: NSEvent.ModifierFlags,
         content: Content
     ) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: id)
         item.label = label
         item.paletteLabel = label
-        // NSHostingController drives its view's `intrinsicContentSize` from the
-        // SwiftUI body (via `sizingOptions = .intrinsicContentSize`). A bare
-        // `NSHostingView` returns intrinsicContentSize = 0 for not-yet-rendered
-        // SwiftUI content, causing NSToolbar to collapse the item to width 0 —
-        // the symptom was "items all jammed to the right edge by flexibleSpace".
-        //
-        // The controller MUST be retained by us (kept in `hostingControllers`);
-        // otherwise it deallocs immediately and its hosted view becomes orphaned.
-        //
-        // `.focusable(false)` keeps SwiftUI from claiming "scene focus" inside
-        // this NSHostingController when its Button is clicked. Without it,
-        // each toolbar button click made @FocusedValue(\.commandActions)
-        // resolve from the toolbar's empty SwiftUI scene → menu shortcuts
-        // (Cmd+1...9, Cmd+R, etc.) became disabled until the user clicked
-        // back into the editor.
+
         let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
         controller.sizingOptions = .intrinsicContentSize
         hostingControllers[id] = controller
         item.view = controller.view
+
+        if let symbol {
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        }
+        if let action {
+            item.target = self
+            item.action = action
+            item.autovalidates = true
+            let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
+            menuItem.keyEquivalentModifierMask = modifiers
+            menuItem.target = self
+            menuItem.image = item.image
+            item.menuFormRepresentation = menuItem
+        }
+
         return item
+    }
+
+    private func makeGroup<Content: View>(
+        id: NSToolbarItem.Identifier,
+        label: String,
+        subitems: [NSToolbarItem],
+        content: Content
+    ) -> NSToolbarItemGroup {
+        let group = NSToolbarItemGroup(itemIdentifier: id)
+        group.label = label
+        group.paletteLabel = label
+
+        let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
+        controller.sizingOptions = .intrinsicContentSize
+        hostingControllers[id] = controller
+        group.view = controller.view
+
+        group.subitems = subitems
+        return group
+    }
+}
+
+// MARK: - Action Selectors
+
+fileprivate extension MainWindowToolbar {
+    @objc func performOpenConnectionSwitcher(_ sender: Any?) {
+        coordinator?.commandActions?.openConnectionSwitcher()
+    }
+
+    @objc func performOpenDatabaseSwitcher(_ sender: Any?) {
+        coordinator?.commandActions?.openDatabaseSwitcher()
+    }
+
+    @objc func performRefresh(_ sender: Any?) {
+        AppCommands.shared.refreshData.send(nil)
+    }
+
+    @objc func performSaveChanges(_ sender: Any?) {
+        coordinator?.commandActions?.saveChanges()
+    }
+
+    @objc func performOpenQuickSwitcher(_ sender: Any?) {
+        coordinator?.commandActions?.openQuickSwitcher()
+    }
+
+    @objc func performNewTab(_ sender: Any?) {
+        NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
+    }
+
+    @objc func performToggleFilters(_ sender: Any?) {
+        coordinator?.commandActions?.toggleFilterPanel()
+    }
+
+    @objc func performPreviewSQL(_ sender: Any?) {
+        coordinator?.commandActions?.previewSQL()
+    }
+
+    @objc func performToggleResults(_ sender: Any?) {
+        coordinator?.commandActions?.toggleResults()
+    }
+
+    @objc func performShowDashboard(_ sender: Any?) {
+        coordinator?.commandActions?.showServerDashboard()
+    }
+
+    @objc func performToggleHistory(_ sender: Any?) {
+        coordinator?.commandActions?.toggleHistoryPanel()
+    }
+
+    @objc func performExport(_ sender: Any?) {
+        coordinator?.commandActions?.exportTables()
+    }
+
+    @objc func performImport(_ sender: Any?) {
+        coordinator?.commandActions?.importTables()
+    }
+}
+
+// MARK: - Validation
+
+extension MainWindowToolbar: NSToolbarItemValidation {
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        guard let state = coordinator?.toolbarState else { return false }
+        let connected = state.connectionState == .connected
+        let fileBased = PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
+
+        switch item.itemIdentifier {
+        case Self.connection:
+            return true
+        case Self.database:
+            return connected
+                && !fileBased
+                && PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
+        case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables:
+            return connected
+        case Self.saveChanges:
+            return state.hasPendingChanges && connected && !state.safeModeLevel.blocksAllWrites
+        case Self.filters:
+            return connected && state.isTableTab
+        case Self.previewSQL:
+            return state.hasDataPendingChanges && connected
+        case Self.results:
+            return connected && !state.isTableTab
+        case Self.dashboard:
+            return connected && (coordinator?.commandActions?.supportsServerDashboard ?? false)
+        case Self.history:
+            return true
+        case Self.importTables:
+            return connected
+                && !state.safeModeLevel.blocksAllWrites
+                && PluginManager.shared.supportsImport(for: state.databaseType)
+        default:
+            return true
+        }
     }
 }
 
@@ -261,18 +531,12 @@ private struct ConnectionToolbarButton: View {
     let coordinator: MainContentCoordinator
 
     var body: some View {
-        @Bindable var state = coordinator.toolbarState
         Button {
-            state.showConnectionSwitcher.toggle()
+            coordinator.commandActions?.openConnectionSwitcher()
         } label: {
             Label("Connection", systemImage: "network")
         }
         .help(String(localized: "Switch Connection (⌘⌥C)"))
-        .popover(isPresented: $state.showConnectionSwitcher) {
-            ConnectionSwitcherPopover {
-                state.showConnectionSwitcher = false
-            }
-        }
     }
 }
 
@@ -382,7 +646,7 @@ private struct PreviewSQLToolbarButton: View {
     let coordinator: MainContentCoordinator
 
     var body: some View {
-        @Bindable var state = coordinator.toolbarState
+        let state = coordinator.toolbarState
         Button {
             coordinator.commandActions?.previewSQL()
         } label: {
@@ -391,9 +655,6 @@ private struct PreviewSQLToolbarButton: View {
         }
         .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
         .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
-        .popover(isPresented: $state.showSQLReviewPopover) {
-            SQLReviewPopover(statements: state.previewStatements, databaseType: state.databaseType)
-        }
     }
 }
 
@@ -402,20 +663,18 @@ private struct ResultsToolbarButton: View {
 
     var body: some View {
         let state = coordinator.toolbarState
-        if !state.isTableTab {
-            Button {
-                coordinator.commandActions?.toggleResults()
-            } label: {
-                Label(
-                    "Results",
-                    systemImage: state.isResultsCollapsed
-                        ? "rectangle.bottomhalf.inset.filled"
-                        : "rectangle.inset.filled"
-                )
-            }
-            .help(String(localized: "Toggle Results (⌘⌥R)"))
-            .disabled(state.connectionState != .connected)
+        Button {
+            coordinator.commandActions?.toggleResults()
+        } label: {
+            Label(
+                "Results",
+                systemImage: state.isResultsCollapsed
+                    ? "rectangle.bottomhalf.inset.filled"
+                    : "rectangle.inset.filled"
+            )
         }
+        .help(String(localized: "Toggle Results (⌘⌥R)"))
+        .disabled(state.connectionState != .connected || state.isTableTab)
     }
 }
 

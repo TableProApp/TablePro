@@ -792,7 +792,7 @@ final class MainContentCommandActions {
     }
 
     func openConnectionSwitcher() {
-        coordinator?.toolbarState.showConnectionSwitcher = true
+        coordinator?.activeSheet = .connectionSwitcher
     }
 
     // MARK: - Undo/Redo (Group A — Called Directly)

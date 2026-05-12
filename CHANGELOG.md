@@ -12,9 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quick Switcher rewritten as a native SwiftUI sheet matching the Database Switcher style. Adds a Recent section per connection.
 - Double-click handling in sidebar, database switcher, and connection type chooser now uses `contextMenu(forSelectionType:primaryAction:)` instead of a custom NSEvent monitor.
 - Welcome screen drops the "Import Connections..." button; both import flows remain in the `+` menu.
+- Connection Switcher and SQL Preview present as sheets instead of toolbar-anchored popovers, so they work from the toolbar, the overflow menu, and keyboard shortcuts identically.
+- Toolbar composites (Connection/Database, Refresh/Save, Export/Import) are now `NSToolbarItemGroup`s, so each button appears as its own entry in the overflow menu.
 
 ### Fixed
 
+- Toolbar overflow menu entries fired no action when the window was narrowed. Each `NSToolbarItem` now sets `target`/`action`/`menuFormRepresentation` per Apple's AppKit contract for view-based items, with `validateToolbarItem` driving enabled state.
 - Quick Switcher crash on macOS 26 caused by an NSPanel + NSHostingController constraint loop.
 - Registry updates for built-in drivers (ClickHouse, Redis) now stick after restart. Plugin builds previously kept the default `1.0` version, tying with the bundled copy so the user-installed update was pruned on load.
 
