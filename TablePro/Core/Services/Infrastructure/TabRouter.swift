@@ -85,6 +85,12 @@ internal final class TabRouter {
         WindowManager.shared.openTab(payload: payload)
         NSApp.activate(ignoringOtherApps: true)
         try await DatabaseManager.shared.ensureConnected(connection)
+        guard WindowManager.shared.hasOpenWindow(for: connection.id) else {
+            Self.logger.info(
+                "[open] connection succeeded after window was closed; tearing down session connId=\(connection.id, privacy: .public)")
+            await DatabaseManager.shared.disconnectSession(connection.id)
+            return
+        }
         closeWelcomeWindows()
     }
 

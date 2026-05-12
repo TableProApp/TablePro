@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The connection window shows the connecting state inline with a Cancel button instead of an empty sidebar.
+
+### Fixed
+
+- Closing the connection window during a slow connect no longer leaves a stuck "Connecting…" window or a stray failure alert (#1185).
+
 ## [0.40.1] - 2026-05-12
 
 ### Changed

@@ -11105,6 +11105,9 @@
         }
       }
     },
+    "Connecting to %@" : {
+
+    },
     "Connecting..." : {
       "localizations" : {
         "tr" : {

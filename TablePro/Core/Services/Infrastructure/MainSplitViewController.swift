@@ -20,6 +20,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Payload & Session
 
     let payload: EditorTabPayload?
+    private let payloadConnection: DatabaseConnection?
     private var currentSession: ConnectionSession?
     private var sessionState: SessionStateFactory.SessionState?
     private var rightPanelState: RightPanelState?
@@ -52,6 +53,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?) {
         self.payload = payload
+        if let connectionId = payload?.connectionId {
+            self.payloadConnection = DatabaseManager.shared.activeSessions[connectionId]?.connection
+                ?? ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
+        } else {
+            self.payloadConnection = nil
+        }
 
         let defaultTitle: String
         if payload?.tabType == .serverDashboard {
@@ -147,7 +154,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorSplitItem.maximumThickness = 400
         addSplitViewItem(inspectorSplitItem)
 
-        if currentSession == nil {
+        if currentSession?.driver == nil {
             sidebarSplitItem.isCollapsed = true
         } else if let session = currentSession, let coordinator = sessionState?.coordinator {
             sidebarContainer.updateSidebarState(
@@ -283,10 +290,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             installToolbar(coordinator: state.coordinator)
         }
 
+        let collapseSidebar = newSession.driver == nil
         if view.window?.isVisible == true {
-            sidebarSplitItem.animator().isCollapsed = false
+            sidebarSplitItem.animator().isCollapsed = collapseSidebar
         } else {
-            sidebarSplitItem.isCollapsed = false
+            sidebarSplitItem.isCollapsed = collapseSidebar
         }
         rebuildPanes()
     }
@@ -350,7 +358,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     @ViewBuilder
     private func buildDetailView() -> some View {
-        if let currentSession, let rightPanelState, let sessionState {
+        if let pendingConnection = connectingConnection {
+            ConnectingStateView(connection: pendingConnection) { [weak self] in
+                self?.cancelConnectionAttempt()
+            }
+        } else if let currentSession, let rightPanelState, let sessionState {
             MainContentView(
                 connection: currentSession.connection,
                 payload: payload,
@@ -367,15 +379,21 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             )
             .transaction { $0.animation = nil }
         } else {
-            VStack(spacing: 16) {
-                ProgressView()
-                    .scaleEffect(1.5)
-                Text("Connecting...")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Color.clear
         }
+    }
+
+    private var connectingConnection: DatabaseConnection? {
+        guard closingSessionId == nil else { return nil }
+        guard let connectionId = payload?.connectionId else { return nil }
+        if let session = DatabaseManager.shared.activeSessions[connectionId] {
+            return session.driver == nil ? session.connection : nil
+        }
+        return payloadConnection
+    }
+
+    private func cancelConnectionAttempt() {
+        view.window?.performClose(nil)
     }
 
     @ViewBuilder

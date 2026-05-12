@@ -155,6 +155,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow else { return }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
 
+        cancelPendingConnectionIfNeeded()
+
         window.saveFrame(usingName: Self.frameAutosaveName)
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
@@ -171,6 +173,15 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         activity?.invalidate()
         activity = nil
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+    }
+
+    private func cancelPendingConnectionIfNeeded() {
+        let connectionId = payload.connectionId
+        let session = DatabaseManager.shared.activeSessions[connectionId]
+        guard session?.driver == nil else { return }
+        Task {
+            await DatabaseManager.shared.cancelEnsureConnected(connectionId)
+        }
     }
 
     // MARK: - NSUserActivity

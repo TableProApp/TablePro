@@ -351,25 +351,27 @@ final class ConnectionFormCoordinator {
     }
 
     func handleConnectError(_ error: Error, connection: DatabaseConnection) {
-        if case PluginError.pluginNotInstalled = error {
-            handleMissingPlugin(connection: connection)
+        if error is CancellationError {
+            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .public)")
             return
         }
-        closeConnectionWindows(for: connection.id)
-        WindowOpener.shared.openWelcome()
-        guard !(error is CancellationError) else { return }
-        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
-        AlertHelper.showErrorSheet(
-            title: String(localized: "Connection Failed"),
-            message: error.localizedDescription,
-            window: nil
-        )
-    }
 
-    func handleMissingPlugin(connection: DatabaseConnection) {
-        closeConnectionWindows(for: connection.id)
-        WindowOpener.shared.openWelcome()
-        pluginInstallConnection = connection
+        if !WindowManager.shared.hasOpenWindow(for: connection.id) {
+            Self.logger.info(
+                "Connection failed after window was closed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        WindowManager.shared.closeWindow(for: connection.id)
+
+        if case PluginError.pluginNotInstalled = error {
+            Self.logger.info("Plugin not installed for \(connection.type.rawValue, privacy: .public)")
+            WelcomeRouter.shared.routePluginInstall(connection)
+            return
+        }
+
+        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        WelcomeRouter.shared.routeError(error, for: connection)
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
@@ -380,12 +382,6 @@ final class ConnectionFormCoordinator {
             } catch {
                 handleConnectError(error, connection: connection)
             }
-        }
-    }
-
-    private func closeConnectionWindows(for connectionId: UUID) {
-        for window in WindowLifecycleMonitor.shared.windows(for: connectionId) {
-            window.close()
         }
     }
 

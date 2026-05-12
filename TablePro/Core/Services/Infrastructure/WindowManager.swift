@@ -108,6 +108,18 @@ internal final class WindowManager {
 
     // MARK: - Helpers
 
+    internal func hasOpenWindow(for connectionId: UUID) -> Bool {
+        controllers.values.contains { $0.payload.connectionId == connectionId }
+    }
+
+    internal func closeWindow(for connectionId: UUID) {
+        let matching = controllers.values.filter { $0.payload.connectionId == connectionId }
+        for controller in matching {
+            guard let window = controller.window, window.isVisible else { continue }
+            window.close()
+        }
+    }
+
     private static func isMainWindow(_ window: NSWindow) -> Bool {
         guard let raw = window.identifier?.rawValue else { return false }
         return raw == "main" || raw.hasPrefix("main-")
