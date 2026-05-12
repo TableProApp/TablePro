@@ -213,38 +213,8 @@ class DataGridRowView: NSTableRowView {
         }
 
         if coordinator.isEditable && dataColumnIndex >= 0 {
-            let setValueMenu = NSMenu()
-
-            let emptyItem = NSMenuItem(
-                title: String(localized: "Empty"), action: #selector(setEmptyValue(_:)), keyEquivalent: "")
-            emptyItem.representedObject = dataColumnIndex
-            emptyItem.target = self
-            setValueMenu.addItem(emptyItem)
-
-            let columnName = dataColumnIndex < tableRows.columns.count
-                ? tableRows.columns[dataColumnIndex]
-                : nil
-
-            let isNullable = columnName.flatMap { tableRows.columnNullable[$0] } ?? true
-            if isNullable {
-                let nullItem = NSMenuItem(
-                    title: String(localized: "NULL"), action: #selector(setNullValue(_:)), keyEquivalent: "")
-                nullItem.representedObject = dataColumnIndex
-                nullItem.target = self
-                setValueMenu.addItem(nullItem)
-            }
-
-            let hasDefault = columnName.flatMap({ tableRows.columnDefaults[$0] ?? nil }) != nil
-            if hasDefault {
-                let defaultItem = NSMenuItem(
-                    title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
-                defaultItem.representedObject = dataColumnIndex
-                defaultItem.target = self
-                setValueMenu.addItem(defaultItem)
-            }
-
             let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
-            setValueItem.submenu = setValueMenu
+            setValueItem.submenu = buildSetValueMenu(dataColumnIndex: dataColumnIndex, tableRows: tableRows)
             menu.addItem(setValueItem)
         }
 
@@ -274,6 +244,54 @@ class DataGridRowView: NSTableRowView {
         }
 
         return menu
+    }
+
+    private func buildSetValueMenu(dataColumnIndex: Int, tableRows: TableRows) -> NSMenu {
+        let setValueMenu = NSMenu()
+
+        let emptyItem = NSMenuItem(
+            title: String(localized: "Empty"), action: #selector(setEmptyValue(_:)), keyEquivalent: "")
+        emptyItem.representedObject = dataColumnIndex
+        emptyItem.target = self
+        setValueMenu.addItem(emptyItem)
+
+        let columnName = dataColumnIndex < tableRows.columns.count
+            ? tableRows.columns[dataColumnIndex]
+            : nil
+
+        let isNullable = columnName.flatMap { tableRows.columnNullable[$0] } ?? true
+        if isNullable {
+            let nullItem = NSMenuItem(
+                title: String(localized: "NULL"), action: #selector(setNullValue(_:)), keyEquivalent: "")
+            nullItem.representedObject = dataColumnIndex
+            nullItem.target = self
+            setValueMenu.addItem(nullItem)
+        }
+
+        let hasDefault = columnName.flatMap({ tableRows.columnDefaults[$0] ?? nil }) != nil
+        if hasDefault {
+            let defaultItem = NSMenuItem(
+                title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
+            defaultItem.representedObject = dataColumnIndex
+            defaultItem.target = self
+            setValueMenu.addItem(defaultItem)
+        }
+
+        let columnType: ColumnType? = dataColumnIndex < tableRows.columnTypes.count
+            ? tableRows.columnTypes[dataColumnIndex]
+            : nil
+        if let columnType, columnType.isDateType {
+            setValueMenu.addItem(.separator())
+            for function in Self.dateValueFunctions(for: columnType) {
+                let item = NSMenuItem(
+                    title: function, action: #selector(setSqlFunctionValue(_:)), keyEquivalent: "")
+                item.representedObject = DateSetterContext(columnIndex: dataColumnIndex, value: function)
+                item.target = self
+                setValueMenu.addItem(item)
+            }
+        }
+
+        return setValueMenu
     }
 
     @objc private func deleteRow() {
@@ -333,6 +351,33 @@ class DataGridRowView: NSTableRowView {
         coordinator?.setCellValueAtColumn("__DEFAULT__", at: rowIndex, columnIndex: columnIndex)
     }
 
+    @objc private func setSqlFunctionValue(_ sender: NSMenuItem) {
+        guard let context = sender.representedObject as? DateSetterContext else { return }
+        coordinator?.setCellValueAtColumn(context.value, at: rowIndex, columnIndex: context.columnIndex)
+    }
+
+    private static func dateValueFunctions(for columnType: ColumnType) -> [String] {
+        switch columnType {
+        case .date:
+            return ["NOW()", "CURRENT_DATE", "CURRENT_TIMESTAMP"]
+        case .timestamp, .datetime:
+            if isTimeOnly(columnType) {
+                return ["NOW()", "CURRENT_TIME", "CURRENT_TIMESTAMP"]
+            }
+            return ["NOW()", "CURRENT_TIMESTAMP", "CURRENT_DATE"]
+        default:
+            return ["NOW()", "CURRENT_TIMESTAMP"]
+        }
+    }
+
+    private static func isTimeOnly(_ columnType: ColumnType) -> Bool {
+        let raw = columnType.rawType?.uppercased() ?? ""
+        return raw == "TIME"
+            || raw == "TIMETZ"
+            || raw == "TIME WITHOUT TIME ZONE"
+            || raw == "TIME WITH TIME ZONE"
+    }
+
     @objc private func copyAsInsert() {
         guard let coordinator else { return }
         let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
@@ -383,5 +428,15 @@ class DataGridRowView: NSTableRowView {
         guard let fkInfo = tableRows.columnForeignKeys[columnName],
               let value = coordinator.cellValue(at: rowIndex, column: columnIndex) else { return }
         coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
+    }
+}
+
+private final class DateSetterContext {
+    let columnIndex: Int
+    let value: String
+
+    init(columnIndex: Int, value: String) {
+        self.columnIndex = columnIndex
+        self.value = value
     }
 }

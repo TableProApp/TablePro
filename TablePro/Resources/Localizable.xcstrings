@@ -18145,6 +18145,9 @@
         }
       }
     },
+    "Epoch" : {
+
+    },
     "equals" : {
       "localizations" : {
         "tr" : {
@@ -31894,6 +31897,9 @@
           }
         }
       }
+    },
+    "Now" : {
+
     },
     "NOW()" : {
       "extractionState" : "stale",

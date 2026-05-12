@@ -7,13 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Right-click Set Value submenu on date, datetime, and timestamp cells now lists the SQL function presets `NOW()`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, and `CURRENT_TIME`, filtered by column type.
+
 ### Changed
 
 - The connection window shows the connecting state inline with a Cancel button instead of an empty sidebar.
+- Date, datetime, and timestamp cells use the same inline text editor as other columns; the popover date picker is removed.
 
 ### Fixed
 
 - Closing the connection window during a slow connect no longer leaves a stuck "Connecting…" window or a stray failure alert (#1185).
+- Editing a NULL cell and dismissing without typing no longer flips the value to an empty string or marks the row as modified.
+- Data grid cells with a chevron accessory (enum, boolean, JSON, blob) no longer truncate short values that fit the full cell width.
+- Double-clicking an enum, set, or boolean cell now opens the inline text editor; the chevron still opens the picker popover.
+- Double-clicking another cell while editing no longer delays the new editor or silently drops pending changes on the previous cell.
+- DATE columns no longer render a phantom `00:00:00` time suffix; the display now matches the stored value and the editor.
 
 ## [0.40.1] - 2026-05-12
 

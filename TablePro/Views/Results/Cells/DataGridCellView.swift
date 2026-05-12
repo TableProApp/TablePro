@@ -215,13 +215,18 @@ final class DataGridCellView: NSView {
 
     private func drawText(reservingTrailingWidth trailing: CGFloat) {
         guard !displayText.isEmpty else { return }
-        let availableWidth = bounds.width - 2 * DataGridMetrics.cellHorizontalInset - trailing
-        guard availableWidth > 0 else { return }
+        let totalAvailable = bounds.width - 2 * DataGridMetrics.cellHorizontalInset
+        guard totalAvailable > 0 else { return }
         guard let context = NSGraphicsContext.current?.cgContext else { return }
 
         let fullLine = cachedCTLine()
-        let lineToDraw: CTLine
         let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
+
+        let availableWidth: CGFloat = typographicWidth > Double(totalAvailable)
+            ? totalAvailable - trailing
+            : totalAvailable
+
+        let lineToDraw: CTLine
         if typographicWidth > Double(availableWidth) {
             let ellipsis = makeEllipsisLine()
             lineToDraw = CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis) ?? fullLine
@@ -284,7 +289,7 @@ final class DataGridCellView: NSView {
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
             let y = (bounds.height - size.height) / 2
             return NSRect(x: x, y: y, width: size.width, height: size.height)
-        case .dropdown, .boolean, .date, .json, .blob:
+        case .dropdown, .boolean, .json, .blob:
             guard isEditableCell else { return .zero }
             let size = NSSize(width: 12, height: 14)
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
@@ -301,7 +306,7 @@ final class DataGridCellView: NSView {
             return
         case .foreignKey:
             image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
-        case .dropdown, .boolean, .date, .json, .blob:
+        case .dropdown, .boolean, .json, .blob:
             if visualState.isDeleted {
                 image = Self.chevronDisabled
             } else if onEmphasizedSelection {
@@ -332,7 +337,7 @@ final class DataGridCellView: NSView {
             case .foreignKey:
                 accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
                 return
-            case .dropdown, .boolean, .date, .json, .blob:
+            case .dropdown, .boolean, .json, .blob:
                 guard !visualState.isDeleted else {
                     super.mouseDown(with: event)
                     return

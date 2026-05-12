@@ -24,26 +24,6 @@ extension TableViewCoordinator {
         return displayRow.values[columnIndex]
     }
 
-    func showDatePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let currentValue = cellValue(at: row, column: columnIndex)
-        let tableRows = tableRowsProvider()
-        guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
-        let columnType = tableRows.columnTypes[columnIndex]
-
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
-
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        DatePickerPopoverController.shared.show(
-            relativeTo: cellRect,
-            of: tableView,
-            value: currentValue,
-            columnType: columnType
-        ) { [weak self] newValue in
-            guard let self else { return }
-            self.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-        }
-    }
-
     func showForeignKeyPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, fkInfo: ForeignKeyInfo) {
         let currentValue = cellValue(at: row, column: columnIndex)
 

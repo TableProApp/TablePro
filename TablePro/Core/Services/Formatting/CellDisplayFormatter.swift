@@ -26,7 +26,10 @@ enum CellDisplayFormatter {
                 displayValue = ValueDisplayFormatService.applyFormat(value, format: displayFormat)
             } else if let columnType {
                 if columnType.isDateType {
-                    if let formatted = DateFormattingService.shared.format(dateString: displayValue) {
+                    if let formatted = DateFormattingService.shared.format(
+                        dateString: displayValue,
+                        columnType: columnType
+                    ) {
                         displayValue = formatted
                     }
                 } else if BlobFormattingService.shared.requiresFormatting(columnType: columnType) {

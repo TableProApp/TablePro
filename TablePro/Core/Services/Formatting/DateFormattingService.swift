@@ -17,6 +17,8 @@ final class DateFormattingService {
 
     /// Cached formatter for current user-selected format
     private var formatter: DateFormatter
+    private var dateOnlyFormatter: DateFormatter
+    private var timeOnlyFormatter: DateFormatter
 
     /// Current date format option
     private(set) var currentFormat: DateFormatOption
@@ -37,7 +39,9 @@ final class DateFormattingService {
         // Initialize with default format (ISO 8601)
         // Will be updated by AppSettingsManager after it completes initialization
         self.currentFormat = .iso8601
-        self.formatter = Self.createFormatter(for: .iso8601)
+        self.formatter = Self.createFormatter(format: DateFormatOption.iso8601.formatString)
+        self.dateOnlyFormatter = Self.createFormatter(format: DateFormatOption.iso8601.dateOnlyFormatString)
+        self.timeOnlyFormatter = Self.createFormatter(format: DateFormatOption.iso8601.timeOnlyFormatString)
         self.parsers = Self.createParsers()
         formatCache.countLimit = 100_000
     }
@@ -48,7 +52,9 @@ final class DateFormattingService {
     func updateFormat(_ format: DateFormatOption) {
         guard format != currentFormat else { return }
         currentFormat = format
-        formatter = Self.createFormatter(for: format)
+        formatter = Self.createFormatter(format: format.formatString)
+        dateOnlyFormatter = Self.createFormatter(format: format.dateOnlyFormatString)
+        timeOnlyFormatter = Self.createFormatter(format: format.timeOnlyFormatString)
         // Clear cache when format changes since all cached values are now stale
         formatCache.removeAllObjects()
     }
@@ -62,44 +68,67 @@ final class DateFormattingService {
 
     /// Format a string date value (parse then format)
     /// - Parameter dateString: Date string from database (ISO 8601, MySQL timestamp, etc.)
+    /// - Parameter columnType: Column type, used to pick date-only / time-only / datetime variant
     /// - Returns: Formatted date string, or nil if unparseable
-    func format(dateString: String) -> String? {
-        // Check cache first
-        let cacheKey = dateString as NSString
+    func format(dateString: String, columnType: ColumnType? = nil) -> String? {
+        let targetFormatter = formatter(for: columnType)
+        let cacheKey = "\(formatBucket(for: columnType))|\(dateString)" as NSString
         if let cached = formatCache.object(forKey: cacheKey) {
-            // Empty string in cache means unparseable
             return cached.length == 0 ? nil : cached as String
         }
 
         if let date = parsers[lastSuccessfulParserIndex].date(from: dateString) {
-            let result = format(date)
+            let result = targetFormatter.string(from: date)
             formatCache.setObject(result as NSString, forKey: cacheKey)
             return result
         }
         for index in parsers.indices where index != lastSuccessfulParserIndex {
             if let date = parsers[index].date(from: dateString) {
                 lastSuccessfulParserIndex = index
-                let result = format(date)
+                let result = targetFormatter.string(from: date)
                 formatCache.setObject(result as NSString, forKey: cacheKey)
                 return result
             }
         }
 
-        // Could not parse - cache empty string to avoid re-parsing
         formatCache.setObject("" as NSString, forKey: cacheKey)
         return nil
     }
 
+    private func formatter(for columnType: ColumnType?) -> DateFormatter {
+        switch columnType {
+        case .date:
+            return dateOnlyFormatter
+        case .timestamp, .datetime:
+            return isTimeOnly(columnType) ? timeOnlyFormatter : formatter
+        default:
+            return formatter
+        }
+    }
+
+    private func formatBucket(for columnType: ColumnType?) -> String {
+        switch columnType {
+        case .date: return "d"
+        case .timestamp, .datetime: return isTimeOnly(columnType) ? "t" : "dt"
+        default: return "dt"
+        }
+    }
+
+    private func isTimeOnly(_ columnType: ColumnType?) -> Bool {
+        let raw = columnType?.rawType?.uppercased() ?? ""
+        return raw == "TIME"
+            || raw == "TIMETZ"
+            || raw == "TIME WITHOUT TIME ZONE"
+            || raw == "TIME WITH TIME ZONE"
+    }
+
     // MARK: - Private Helper Methods
 
-    /// Create formatter for a specific format option
-    /// - Parameter option: The date format option
-    /// - Returns: Configured DateFormatter
-    private static func createFormatter(for option: DateFormatOption) -> DateFormatter {
+    private static func createFormatter(format: String) -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.dateFormat = option.formatString
-        formatter.locale = Locale.current  // Use user's locale for localized formatting
-        formatter.timeZone = TimeZone.current  // Use user's timezone
+        formatter.dateFormat = format
+        formatter.locale = Locale.current
+        formatter.timeZone = TimeZone.current
         return formatter
     }
 

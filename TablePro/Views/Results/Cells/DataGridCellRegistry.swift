@@ -43,7 +43,6 @@ final class DataGridCellRegistry {
         if isDropdownColumn { return .dropdown }
         if let type = columnType {
             if type.isBooleanType { return .boolean }
-            if type.isDateType { return .date }
             if type.isJsonType { return .json }
             if type.isBlobType { return .blob }
         }
