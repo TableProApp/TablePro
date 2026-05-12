@@ -63,14 +63,6 @@ struct MainWindowToolbarValidationTests {
         #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.saveChanges, context: context) == false)
     }
 
-    @Test("Filters enabled only on table tabs")
-    func filtersRequiresTableTab() {
-        let onTable = makeContext(connected: true, isTableTab: true)
-        let onQuery = makeContext(connected: true, isTableTab: false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.filters, context: onTable) == true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.filters, context: onQuery) == false)
-    }
-
     @Test("Results enabled only off table tabs")
     func resultsDisabledOnTableTab() {
         let onTable = makeContext(connected: true, isTableTab: true)

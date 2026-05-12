@@ -29,8 +29,6 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             return context.connected
         case Self.saveChanges:
             return context.hasPendingChanges && context.connected && !context.blocksAllWrites
-        case Self.filters:
-            return context.connected && context.isTableTab
         case Self.previewSQL:
             return context.hasDataPendingChanges && context.connected
         case Self.results:

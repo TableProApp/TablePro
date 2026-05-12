@@ -107,21 +107,6 @@ struct NewTabToolbarButton: View {
     }
 }
 
-struct FiltersToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.toggleFilterPanel()
-        } label: {
-            Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
-        }
-        .help(String(localized: "Toggle Filters (⇧⌘F)"))
-        .disabled(state.connectionState != .connected || !state.isTableTab)
-    }
-}
-
 struct PreviewSQLToolbarButton: View {
     let coordinator: MainContentCoordinator
 

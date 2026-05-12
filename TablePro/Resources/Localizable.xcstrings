@@ -89,6 +89,9 @@
         }
       }
     },
+    "-- … %d more characters not shown; use Copy All for the full output." : {
+
+    },
     "—" : {
       "localizations" : {
         "tr" : {
@@ -33266,6 +33269,9 @@
 
     },
     "Outcome: %@" : {
+
+    },
+    "Output truncated for display" : {
 
     },
     "Override auto-detected CLI paths per database type." : {

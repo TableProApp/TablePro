@@ -58,7 +58,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let principal = NSToolbarItem.Identifier("com.TablePro.toolbar.principal")
     static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
     static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
-    static let filters = NSToolbarItem.Identifier("com.TablePro.toolbar.filters")
     static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
     static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
     static let inspector = NSToolbarItem.Identifier.toggleInspector
@@ -83,7 +82,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             .flexibleSpace,
             Self.quickSwitcher,
             Self.newTab,
-            Self.filters,
             Self.previewSQL,
             Self.inspector,
         ]
@@ -156,16 +154,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                 keyEquivalent: "t",
                 modifiers: .command,
                 content: NewTabToolbarButton(coordinator: coordinator)
-            )
-        case Self.filters:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Filters"),
-                symbol: "line.3.horizontal.decrease.circle",
-                action: #selector(performToggleFilters(_:)),
-                keyEquivalent: "f",
-                modifiers: [.command, .shift],
-                content: FiltersToolbarButton(coordinator: coordinator)
             )
         case Self.previewSQL:
             return hostingItem(

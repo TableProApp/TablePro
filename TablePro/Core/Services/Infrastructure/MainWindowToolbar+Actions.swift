@@ -31,10 +31,6 @@ extension MainWindowToolbar {
         NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
     }
 
-    @objc func performToggleFilters(_ sender: Any?) {
-        coordinator?.commandActions?.toggleFilterPanel()
-    }
-
     @objc func performPreviewSQL(_ sender: Any?) {
         coordinator?.commandActions?.previewSQL()
     }

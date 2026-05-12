@@ -18,19 +18,24 @@ struct SQLReviewSheet: View {
 
     @State private var prepared: Prepared?
     @State private var copied = false
-    @State private var editorState = SourceEditorState()
+    @State private var editorState: SourceEditorState?
 
-    /// Past this many characters the display is truncated; the full text stays available via Copy All.
-    private static let maxDisplayChars = 20_000
-    /// Past this many characters tree-sitter is skipped in favour of a plain monospaced view.
-    private static let treeSitterCutoff = 8_000
+    enum DisplayMode {
+        case rich
+        case plain
+        case truncated
+    }
 
-    private struct Prepared {
+    struct Prepared: Equatable {
         let display: String
         let full: String
-        let truncated: Bool
-        let useTreeSitter: Bool
+        let mode: DisplayMode
     }
+
+    /// Past this many characters the display is truncated; the full text stays available via Copy All.
+    static let maxDisplayChars = 20_000
+    /// Past this many characters tree-sitter is skipped in favour of a plain monospaced view.
+    static let treeSitterCutoff = 8_000
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,7 +80,7 @@ struct SQLReviewSheet: View {
         prepared = result
     }
 
-    private static func build(statements: [String], databaseType: DatabaseType) -> Prepared {
+    static func build(statements: [String], databaseType: DatabaseType) -> Prepared {
         let isJS = PluginManager.shared.editorLanguage(for: databaseType) == .javascript
         var full = statements
             .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
@@ -95,20 +100,18 @@ struct SQLReviewSheet: View {
             return Prepared(
                 display: String(head) + "\n\n" + note,
                 full: full,
-                truncated: true,
-                useTreeSitter: false
+                mode: .truncated
             )
         }
 
         return Prepared(
             display: full,
             full: full,
-            truncated: false,
-            useTreeSitter: fullCount <= treeSitterCutoff
+            mode: fullCount <= treeSitterCutoff ? .rich : .plain
         )
     }
 
-    private static func convertExtendedJsonToShellSyntax(_ mql: String) -> String {
+    static func convertExtendedJsonToShellSyntax(_ mql: String) -> String {
         let pattern = #"\{"\$oid":\s*"([0-9a-fA-F]{24})"\}"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return mql }
         let nsString = mql as NSString
@@ -140,6 +143,7 @@ struct SQLReviewSheet: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .disabled(prepared == nil)
             }
         }
     }
@@ -158,21 +162,30 @@ struct SQLReviewSheet: View {
 
     @ViewBuilder
     private func editor(for prepared: Prepared) -> some View {
-        if prepared.useTreeSitter {
-            SourceEditor(
-                .constant(prepared.display),
-                language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
-                configuration: Self.makeConfiguration(),
-                state: $editorState
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
-        } else {
+        switch prepared.mode {
+        case .rich:
+            richEditor(prepared.display)
+        case .plain, .truncated:
             plainTextEditor(prepared.display)
         }
+    }
+
+    private func richEditor(_ text: String) -> some View {
+        let stateBinding = Binding<SourceEditorState>(
+            get: { editorState ?? SourceEditorState() },
+            set: { editorState = $0 }
+        )
+        return SourceEditor(
+            .constant(text),
+            language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
+            configuration: Self.makeConfiguration(),
+            state: stateBinding
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
     }
 
     private func plainTextEditor(_ text: String) -> some View {
@@ -182,10 +195,9 @@ struct SQLReviewSheet: View {
                 .textSelection(.enabled)
                 .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
@@ -196,7 +208,7 @@ struct SQLReviewSheet: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            if prepared?.truncated == true {
+            if prepared?.mode == .truncated {
                 Label(
                     String(localized: "Output truncated for display"),
                     systemImage: "info.circle"
@@ -230,26 +242,12 @@ struct SQLReviewSheet: View {
     }
 
     private func copyAll() {
-        if let prepared {
-            ClipboardService.shared.writeText(prepared.full)
-            copied = true
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(1.5))
-                copied = false
-            }
-            return
-        }
-
-        let snapshot = statements
-        let type = databaseType
-        Task.detached(priority: .userInitiated) {
-            let built = Self.build(statements: snapshot, databaseType: type)
-            await MainActor.run {
-                ClipboardService.shared.writeText(built.full)
-                copied = true
-            }
+        guard let prepared else { return }
+        ClipboardService.shared.writeText(prepared.full)
+        copied = true
+        Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
-            await MainActor.run { copied = false }
+            copied = false
         }
     }
 }
