@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- PostgreSQL: connecting to servers older than 9.3 no longer fails with "relation pg_matviews does not exist"; the driver feature-gates `pg_matviews`, `pg_foreign_table`, `pg_sequences`, `array_position`, `attidentity`, `attgenerated`, and ICU locale columns behind the detected server version (#1240).
+
 ## [0.40.2] - 2026-05-12
 
 ### Added

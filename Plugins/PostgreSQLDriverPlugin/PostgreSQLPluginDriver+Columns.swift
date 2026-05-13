@@ -10,6 +10,15 @@ extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
         let safeTable = escapeLiteralForColumns(table)
+        let caps = capabilities
+        let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
+        let generatedProjection = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
+        let attributeJoin = (caps.hasIdentityColumns || caps.hasGeneratedColumns) ? """
+            LEFT JOIN pg_catalog.pg_attribute a
+                ON a.attrelid = st.relid
+                AND a.attname = c.column_name
+                AND NOT a.attisdropped
+            """ : ""
         let query = """
             SELECT
                 c.column_name,
@@ -20,8 +29,8 @@ extension PostgreSQLPluginDriver {
                 pgd.description,
                 c.udt_name,
                 CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
-                a.attidentity,
-                a.attgenerated
+                \(identityProjection),
+                \(generatedProjection)
             FROM information_schema.columns c
             LEFT JOIN pg_catalog.pg_statio_all_tables st
                 ON st.schemaname = c.table_schema
@@ -29,10 +38,7 @@ extension PostgreSQLPluginDriver {
             LEFT JOIN pg_catalog.pg_description pgd
                 ON pgd.objoid = st.relid
                 AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN pg_catalog.pg_attribute a
-                ON a.attrelid = st.relid
-                AND a.attname = c.column_name
-                AND NOT a.attisdropped
+            \(attributeJoin)
             LEFT JOIN (
                 SELECT DISTINCT kcu.column_name
                 FROM information_schema.table_constraints tc
@@ -54,6 +60,15 @@ extension PostgreSQLPluginDriver {
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
+        let caps = capabilities
+        let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
+        let generatedProjection = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
+        let attributeJoin = (caps.hasIdentityColumns || caps.hasGeneratedColumns) ? """
+            LEFT JOIN pg_catalog.pg_attribute a
+                ON a.attrelid = st.relid
+                AND a.attname = c.column_name
+                AND NOT a.attisdropped
+            """ : ""
         let query = """
             SELECT
                 c.table_name,
@@ -65,8 +80,8 @@ extension PostgreSQLPluginDriver {
                 pgd.description,
                 c.udt_name,
                 CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
-                a.attidentity,
-                a.attgenerated
+                \(identityProjection),
+                \(generatedProjection)
             FROM information_schema.columns c
             LEFT JOIN pg_catalog.pg_statio_all_tables st
                 ON st.schemaname = c.table_schema
@@ -74,10 +89,7 @@ extension PostgreSQLPluginDriver {
             LEFT JOIN pg_catalog.pg_description pgd
                 ON pgd.objoid = st.relid
                 AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN pg_catalog.pg_attribute a
-                ON a.attrelid = st.relid
-                AND a.attname = c.column_name
-                AND NOT a.attisdropped
+            \(attributeJoin)
             LEFT JOIN (
                 SELECT DISTINCT kcu.table_name, kcu.column_name
                 FROM information_schema.table_constraints tc
