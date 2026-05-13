@@ -238,12 +238,12 @@ final class PostgresDumpService {
             args.append(fileURL.path)
         }
 
-        var env = ProcessInfo.processInfo.environment
+        var env = minimalEnvironment()
         if let password, !password.isEmpty {
             env["PGPASSWORD"] = password
         }
-        if effective.sslConfig.isEnabled {
-            env["PGSSLMODE"] = pgSSLMode(effective.sslConfig.mode)
+        if effective.sslConfig.isEnabled, let sslMode = pgSSLMode(effective.sslConfig.mode) {
+            env["PGSSLMODE"] = sslMode
         }
         return PostgresDumpCommand(
             executable: executable,
@@ -253,9 +253,22 @@ final class PostgresDumpService {
         )
     }
 
-    static func pgSSLMode(_ mode: SSLMode) -> String {
+    private static let inheritedEnvironmentKeys: [String] = [
+        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL"
+    ]
+
+    static func minimalEnvironment() -> [String: String] {
+        let parent = ProcessInfo.processInfo.environment
+        var env: [String: String] = [:]
+        for key in inheritedEnvironmentKeys where parent[key] != nil {
+            env[key] = parent[key]
+        }
+        return env
+    }
+
+    static func pgSSLMode(_ mode: SSLMode) -> String? {
         switch mode {
-        case .disabled: return "disable"
+        case .disabled: return nil
         case .preferred: return "prefer"
         case .required: return "require"
         case .verifyCa: return "verify-ca"

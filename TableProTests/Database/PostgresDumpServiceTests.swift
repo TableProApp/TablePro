@@ -138,6 +138,24 @@ struct PostgresDumpServiceCommandTests {
         #expect(command.environment["PGSSLMODE"] == expected)
     }
 
+    @Test("environment is restricted to a known allowlist plus libpq vars")
+    func environmentIsMinimal() {
+        let command = PostgresDumpService.buildCommand(
+            kind: .backup,
+            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            effective: connection(sslMode: .required),
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
+            password: "s3cret"
+        )
+        let allowed: Set<String> = [
+            "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL",
+            "PGPASSWORD", "PGSSLMODE"
+        ]
+        let unexpected = Set(command.environment.keys).subtracting(allowed)
+        #expect(unexpected.isEmpty, "unexpected env keys leaked through: \(unexpected)")
+    }
+
     /// Returns the argument immediately following `flag` in the arg list.
     private func slice(after flag: String, in args: [String]) -> String? {
         guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
