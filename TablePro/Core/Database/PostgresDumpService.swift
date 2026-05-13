@@ -352,13 +352,12 @@ final class ProcessPostgresDumpRunner: PostgresDumpRunner {
     private let stderrPipe = Pipe()
     private let stateLock = NSLock()
     private var stderrBuffer = Data()
-    private var stderrCap = 64_000
     private var wasCancelled = false
     private var terminationResult: PostgresDumpRunResult?
     private var continuation: CheckedContinuation<PostgresDumpRunResult, Never>?
 
     func start(_ command: PostgresDumpCommand) throws {
-        stderrCap = command.stderrByteCap
+        let stderrCap = command.stderrByteCap
 
         process.executableURL = command.executable
         process.arguments = command.arguments
@@ -371,8 +370,8 @@ final class ProcessPostgresDumpRunner: PostgresDumpRunner {
             guard !chunk.isEmpty, let self else { return }
             self.stateLock.lock()
             self.stderrBuffer.append(chunk)
-            if self.stderrBuffer.count > self.stderrCap {
-                self.stderrBuffer = Data(self.stderrBuffer.suffix(self.stderrCap))
+            if self.stderrBuffer.count > stderrCap {
+                self.stderrBuffer = Data(self.stderrBuffer.suffix(stderrCap))
             }
             self.stateLock.unlock()
         }
