@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - File > Backup Dump… and Restore Dump… for PostgreSQL and Redshift connections, running `pg_dump -Fc` and `pg_restore --no-owner --no-acl` with live progress, cancel, SSH tunnel reuse, and custom binary paths under Settings > Terminal > CLI Paths (#1211).
 
+### Changed
+
+- PluginKit ABI bumped to v12: `DriverConnectionConfig` now carries a typed `SSLConfiguration` instead of stringified `sslMode` / `sslCaCertPath` keys in `additionalFields`. Every bundled plugin migrated; registry-only plugins (MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL) must be re-tagged and republished before the next app release.
+
+### Fixed
+
+- Redis: "Required (skip verify)" SSL mode now actually skips certificate verification, matching `redis-cli --tls --insecure`. Previously every mode performed verification because of a phantom dictionary key the app never wrote. Connections to Upstash Redis and similar endpoints with untrusted CAs work (#1247).
+- MSSQL: SSL mode finally affects the connection. `Disabled` / `Preferred` / `Required` / `Verify CA` / `Verify Identity` map to FreeTDS `off` / `request` / `require` / `require` / `require` via `DBSETENCRYPT`. Previously the setting was read and silently ignored.
+- MongoDB: "Required" and "Verify CA" pass the right libmongoc flags (`tlsAllowInvalidCertificates`, `tlsAllowInvalidHostnames`) so connections to self-signed or untrusted-CA servers stop failing on those paths.
+- MySQL: CA certificate is no longer loaded when the user picked a mode that skips verification, matching PostgreSQL.
+
 ## [0.40.3] - 2026-05-13
 
 ### Fixed

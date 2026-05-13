@@ -78,6 +78,20 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;
 
 **Authentication**: SQL Server Authentication only (username/password). No Windows Auth. Create login: `CREATE LOGIN user WITH PASSWORD = 'StrongPassword1!'; CREATE USER user FOR LOGIN user; ALTER ROLE db_datareader ADD MEMBER user;`
 
+## SSL/TLS
+
+TablePro maps the SSL/TLS pane to FreeTDS `DBSETENCRYPT`. FreeTDS dblib accepts four encryption strings; verification beyond the system trust store is configured in `freetds.conf`, not per connection.
+
+| Mode | FreeTDS value | Behavior |
+|---|---|---|
+| **Disabled** | `off` | Plain TCP |
+| **Preferred** | `request` | Try TLS, fall back to plain if the server cannot |
+| **Required (skip verify)** | `require` | TLS required; cert validated against system trust store |
+| **Verify CA** | `require` | Same as Required; CA path is not passed through dblib |
+| **Verify Identity** | `require` | Same as Required |
+
+For Azure SQL Database, pick **Required** or stricter. For SQL Server 2017+ on a self-signed cert, the system trust store will reject the handshake. To skip verification per connection, override via `freetds.conf` (`tds_check_certificate = no` under the relevant section) or import the server certificate into the macOS keychain.
+
 ## Troubleshooting
 
 **Connection refused**: Enable TCP/IP in SQL Server Configuration Manager, verify SQL Server service running, check firewall port 1433, ensure Docker started.

@@ -41,7 +41,17 @@ Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your br
 
 ## SSL/TLS
 
-Configure in **SSL/TLS** section. Managed services require SSL/TLS. Use `rediss://` URL scheme for TLS connections. For alternatives, use [SSH tunneling](/databases/ssh-tunneling).
+Configure in the **SSL/TLS** pane of the connection form. Managed services like Upstash and Redis Cloud require TLS. Use `rediss://` for URL imports.
+
+| Mode | hiredis behavior | Use for |
+|---|---|---|
+| **Disabled** | Plain TCP | Local dev |
+| **Preferred** | TLS, do not verify peer | Same as Required on Redis (there is no fallback) |
+| **Required (skip verify)** | TLS, do not verify peer | Self-signed certs, Upstash, untrusted CAs |
+| **Verify CA** | TLS, verify peer with your CA cert | Private PKI; supply CA path |
+| **Verify Identity** | TLS, verify peer and hostname (SNI) | Strict prod |
+
+For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (skip verify)**. For private CA setups, pick **Verify CA** or **Verify Identity** and provide the CA certificate path.
 
 ## Features
 
