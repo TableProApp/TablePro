@@ -17,6 +17,8 @@ enum ChatContentBlockKind: Sendable, Equatable {
     case toolUse(ToolUseBlock)
     case toolResult(ToolResultBlock)
     case attachment(ContextItem)
+    case reasoning(ReasoningBlock)
+    case image(ChatImageInput)
 }
 
 @MainActor @Observable
@@ -34,6 +36,18 @@ final class ChatContentBlock: Identifiable {
     func appendText(_ chunk: String) {
         guard !chunk.isEmpty, case .text(let existing) = kind else { return }
         kind = .text(existing + chunk)
+    }
+
+    func appendReasoningText(_ chunk: String) {
+        guard !chunk.isEmpty, case .reasoning(var block) = kind else { return }
+        block.text = (block.text ?? "") + chunk
+        kind = .reasoning(block)
+    }
+
+    func setReasoningOpaque(_ opaque: ReasoningOpaque?) {
+        guard case .reasoning(var block) = kind else { return }
+        block.opaque = opaque
+        kind = .reasoning(block)
     }
 
     func setKind(_ newKind: ChatContentBlockKind) {
@@ -64,6 +78,14 @@ extension ChatContentBlock {
 
     static func attachment(_ item: ContextItem) -> ChatContentBlock {
         ChatContentBlock(kind: .attachment(item))
+    }
+
+    static func reasoning(_ block: ReasoningBlock = ReasoningBlock(), isStreaming: Bool = false) -> ChatContentBlock {
+        ChatContentBlock(kind: .reasoning(block), isStreaming: isStreaming)
+    }
+
+    static func image(_ input: ChatImageInput) -> ChatContentBlock {
+        ChatContentBlock(kind: .image(input))
     }
 }
 
@@ -147,6 +169,36 @@ struct ChatTurn: Identifiable {
         blocks.append(block)
     }
 
+    @discardableResult
+    mutating func appendReasoningDelta(providerBlockID: String, text: String, idMap: inout [String: UUID]) -> UUID {
+        if let existingUUID = idMap[providerBlockID],
+           let existingBlock = blocks.first(where: { $0.id == existingUUID }) {
+            existingBlock.appendReasoningText(text)
+            return existingUUID
+        }
+        finishStreamingTextBlock()
+        let newUUID = UUID()
+        idMap[providerBlockID] = newUUID
+        let initial = ReasoningBlock(text: text.isEmpty ? nil : text)
+        blocks.append(ChatContentBlock(id: newUUID, kind: .reasoning(initial), isStreaming: true))
+        return newUUID
+    }
+
+    mutating func startReasoningBlock(providerBlockID: String, idMap: inout [String: UUID]) {
+        if idMap[providerBlockID] != nil { return }
+        finishStreamingTextBlock()
+        let newUUID = UUID()
+        idMap[providerBlockID] = newUUID
+        blocks.append(ChatContentBlock(id: newUUID, kind: .reasoning(ReasoningBlock()), isStreaming: true))
+    }
+
+    mutating func finalizeReasoningBlock(providerBlockID: String, opaque: ReasoningOpaque?, idMap: inout [String: UUID]) {
+        guard let blockUUID = idMap.removeValue(forKey: providerBlockID),
+              let block = blocks.first(where: { $0.id == blockUUID }) else { return }
+        block.setReasoningOpaque(opaque)
+        block.finishStreaming()
+    }
+
     private static func coalesceAdjacentText(_ blocks: [ChatContentBlock]) -> [ChatContentBlock] {
         var result: [ChatContentBlock] = []
         result.reserveCapacity(blocks.count)
@@ -197,12 +249,20 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
         ChatContentBlockWire(kind: .attachment(item))
     }
 
+    static func reasoning(_ block: ReasoningBlock) -> ChatContentBlockWire {
+        ChatContentBlockWire(kind: .reasoning(block))
+    }
+
+    static func image(_ input: ChatImageInput) -> ChatContentBlockWire {
+        ChatContentBlockWire(kind: .image(input))
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case blockId, kind, text, toolUse, toolResult, attachment
+        case blockId, kind, text, toolUse, toolResult, attachment, reasoning, image
     }
 
     private enum KindMarker: String, Codable {
-        case text, toolUse, toolResult, attachment
+        case text, toolUse, toolResult, attachment, reasoning, image
     }
 
     init(from decoder: Decoder) throws {
@@ -219,6 +279,10 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
             resolvedKind = .toolResult(try container.decode(ToolResultBlock.self, forKey: .toolResult))
         case .attachment:
             resolvedKind = .attachment(try container.decode(ContextItem.self, forKey: .attachment))
+        case .reasoning:
+            resolvedKind = .reasoning(try container.decode(ReasoningBlock.self, forKey: .reasoning))
+        case .image:
+            resolvedKind = .image(try container.decode(ChatImageInput.self, forKey: .image))
         }
         self.init(id: resolvedID, kind: resolvedKind)
     }
@@ -239,6 +303,12 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
         case .attachment(let item):
             try container.encode(KindMarker.attachment, forKey: .kind)
             try container.encode(item, forKey: .attachment)
+        case .reasoning(let block):
+            try container.encode(KindMarker.reasoning, forKey: .kind)
+            try container.encode(block, forKey: .reasoning)
+        case .image(let input):
+            try container.encode(KindMarker.image, forKey: .kind)
+            try container.encode(input, forKey: .image)
         }
     }
 }

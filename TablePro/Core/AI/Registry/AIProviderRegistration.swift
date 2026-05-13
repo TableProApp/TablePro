@@ -2,8 +2,6 @@
 //  AIProviderRegistration.swift
 //  TablePro
 //
-//  Registers all built-in AI provider descriptors at app launch.
-//
 
 import Foundation
 
@@ -16,14 +14,18 @@ enum AIProviderRegistration {
             displayName: "Claude",
             defaultEndpoint: "https://api.anthropic.com",
             requiresAPIKey: true,
-            capabilities: [.chat, .models],
+            capabilities: [.chat, .models, .reasoning, .images],
             symbolName: "brain",
+            curatedModels: claudeCuratedModels,
             makeProvider: { config, apiKey in
                 AnthropicProvider(
                     endpoint: config.endpoint,
                     apiKey: apiKey ?? "",
                     model: config.model,
-                    maxOutputTokens: config.maxOutputTokens ?? 4_096
+                    maxOutputTokens: config.maxOutputTokens
+                        ?? config.reasoningEffort?.autoScaledMaxOutputTokens
+                        ?? 4_096,
+                    reasoningEffort: config.reasoningEffort
                 )
             }
         ))
@@ -44,8 +46,25 @@ enum AIProviderRegistration {
             }
         ))
 
-        // OpenAI, OpenRouter, Ollama, Custom all use OpenAICompatibleProvider
-        for type in [AIProviderType.openAI, .openRouter, .ollama, .custom] {
+        registry.register(AIProviderDescriptor(
+            typeID: AIProviderType.openAI.rawValue,
+            displayName: AIProviderType.openAI.displayName,
+            defaultEndpoint: AIProviderType.openAI.defaultEndpoint,
+            requiresAPIKey: true,
+            capabilities: [.chat, .models, .reasoning, .images],
+            symbolName: iconForType(.openAI),
+            curatedModels: openAICuratedModels,
+            makeProvider: { config, apiKey in
+                OpenAIResponsesProvider(
+                    endpoint: config.endpoint,
+                    apiKey: apiKey,
+                    model: config.model,
+                    maxOutputTokens: config.maxOutputTokens
+                )
+            }
+        ))
+
+        for type in [AIProviderType.openRouter, .ollama, .custom] {
             registry.register(AIProviderDescriptor(
                 typeID: type.rawValue,
                 displayName: type.displayName,
@@ -76,13 +95,55 @@ enum AIProviderRegistration {
         ))
     }
 
+    private static let openAICuratedModels: [CuratedModel] = [
+        CuratedModel(
+            id: "gpt-5.5",
+            displayName: "GPT-5.5",
+            supportedEffortLevels: ReasoningEffort.allCases,
+            defaultEffort: .medium
+        ),
+        CuratedModel(
+            id: "gpt-5-codex",
+            displayName: "GPT-5 Codex",
+            supportedEffortLevels: [.low, .medium, .high],
+            defaultEffort: .medium
+        ),
+        CuratedModel(
+            id: "gpt-5.3-codex",
+            displayName: "GPT-5.3 Codex",
+            supportedEffortLevels: [.low, .medium, .high, .xhigh],
+            defaultEffort: .medium
+        ),
+        CuratedModel(
+            id: "gpt-5.4-mini",
+            displayName: "GPT-5.4 Mini",
+            supportedEffortLevels: ReasoningEffort.allCases,
+            defaultEffort: .medium
+        )
+    ]
+
+    private static let claudeCuratedModels: [CuratedModel] = [
+        CuratedModel(
+            id: "claude-opus-4-7-20260101",
+            displayName: "Claude Opus 4.7",
+            supportedEffortLevels: [.low, .medium, .high, .xhigh],
+            defaultEffort: .medium
+        ),
+        CuratedModel(
+            id: "claude-sonnet-4-6-20251101",
+            displayName: "Claude Sonnet 4.6",
+            supportedEffortLevels: [.low, .medium, .high, .xhigh],
+            defaultEffort: .medium
+        ),
+        CuratedModel(
+            id: "claude-haiku-4-5-20251001",
+            displayName: "Claude Haiku 4.5",
+            supportedEffortLevels: [.low, .medium, .high],
+            defaultEffort: .low
+        )
+    ]
+
     private static func iconForType(_ type: AIProviderType) -> String {
-        switch type {
-        case .openAI: return "cpu"
-        case .openRouter: return "globe"
-        case .ollama: return "desktopcomputer"
-        case .custom: return "server.rack"
-        default: return "questionmark.circle"
-        }
+        type.symbolName
     }
 }

@@ -2,8 +2,6 @@
 //  AIModels.swift
 //  TablePro
 //
-//  AI feature data models — provider configuration, chat messages, and settings.
-//
 
 import Foundation
 
@@ -77,6 +75,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
     var endpoint: String
     var maxOutputTokens: Int?
     var telemetryEnabled: Bool
+    var reasoningEffort: ReasoningEffort?
 
     init(
         id: UUID = UUID(),
@@ -85,7 +84,8 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         model: String = "",
         endpoint: String = "",
         maxOutputTokens: Int? = nil,
-        telemetryEnabled: Bool = false
+        telemetryEnabled: Bool = false,
+        reasoningEffort: ReasoningEffort? = nil
     ) {
         self.id = id
         self.name = name
@@ -94,6 +94,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
         self.maxOutputTokens = maxOutputTokens
         self.telemetryEnabled = telemetryEnabled
+        self.reasoningEffort = reasoningEffort
     }
 
     init(from decoder: Decoder) throws {
@@ -106,6 +107,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         endpoint = rawEndpoint.isEmpty ? type.defaultEndpoint : rawEndpoint
         maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
         telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
+        reasoningEffort = try container.decodeIfPresent(ReasoningEffort.self, forKey: .reasoningEffort)
     }
 
     var displayName: String {

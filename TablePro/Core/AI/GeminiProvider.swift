@@ -215,7 +215,7 @@ final class GeminiProvider: ChatTransport {
             case .text(let text):
                 guard !text.isEmpty else { continue }
                 parts.append(["text": text])
-            case .attachment:
+            case .attachment, .reasoning, .image:
                 continue
             case .toolUse(let useBlock):
                 let argsObject = (try? useBlock.input.jsonObject()) ?? [String: Any]()

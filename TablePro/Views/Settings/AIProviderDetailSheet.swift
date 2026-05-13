@@ -282,61 +282,142 @@ struct AIProviderDetailSheet: View {
 
     // MARK: - Model
 
+    private var descriptor: AIProviderDescriptor? {
+        AIProviderRegistry.shared.descriptor(for: draft.type.rawValue)
+    }
+
+    private var curatedModels: [CuratedModel] {
+        descriptor?.curatedModels ?? []
+    }
+
+    private var effortLevelsForCurrentModel: [ReasoningEffort] {
+        descriptor?.supportedEffortLevels(forModelID: draft.model) ?? []
+    }
+
+    private var showsReasoningPicker: Bool {
+        guard descriptor?.supportsReasoning == true else { return false }
+        return !effortLevelsForCurrentModel.isEmpty
+    }
+
+    private var isCustomModel: Bool {
+        !curatedModels.contains(where: { $0.id == draft.model })
+    }
+
     private var modelSection: some View {
         Section {
-            HStack {
-                Text("Model")
-                Spacer()
-                modelControl
+            modelPicker
+            if isCustomModel {
+                TextField(String(localized: "Model ID"), text: $draft.model)
+                    .textFieldStyle(.roundedBorder)
             }
-            if let modelFetchError {
-                HStack {
-                    Text(modelFetchError)
-                        .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemRed))
-                        .lineLimit(2)
-                    Spacer()
-                    Button(String(localized: "Reload")) {
-                        fetchModels()
-                    }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-                }
+            if showsReasoningPicker {
+                reasoningPicker
             }
+            modelFetchStatus
         } header: {
             Text("Model")
         }
     }
 
-    @ViewBuilder
-    private var modelControl: some View {
-        HStack(spacing: 8) {
-            TextField(String(localized: "Model name"), text: $draft.model)
-                .frame(width: 260)
+    private var modelPicker: some View {
+        Picker(String(localized: "Model"), selection: modelSelectionBinding) {
+            if !curatedModels.isEmpty {
+                Section {
+                    ForEach(curatedModels) { model in
+                        Text(model.displayName).tag(ModelSelection.curated(model.id))
+                    }
+                }
+            }
+            let fetchedFiltered = fetchedModels.filter { id in
+                !curatedModels.contains(where: { $0.id == id })
+            }
+            if !fetchedFiltered.isEmpty {
+                Section {
+                    ForEach(fetchedFiltered, id: \.self) { id in
+                        Text(id).tag(ModelSelection.fetched(id))
+                    }
+                }
+            }
+            Text(String(localized: "Other…")).tag(ModelSelection.custom)
+        }
+        .pickerStyle(.menu)
+    }
 
-            if isFetchingModels {
+    private enum ModelSelection: Hashable {
+        case curated(String)
+        case fetched(String)
+        case custom
+    }
+
+    private var modelSelectionBinding: Binding<ModelSelection> {
+        Binding<ModelSelection>(
+            get: {
+                if curatedModels.contains(where: { $0.id == draft.model }) {
+                    return .curated(draft.model)
+                }
+                if fetchedModels.contains(draft.model) {
+                    return .fetched(draft.model)
+                }
+                return .custom
+            },
+            set: { newValue in
+                switch newValue {
+                case .curated(let id):
+                    draft.model = id
+                    if let curated = curatedModels.first(where: { $0.id == id }) {
+                        if let defaultEffort = curated.defaultEffort, draft.reasoningEffort == nil {
+                            draft.reasoningEffort = defaultEffort
+                        }
+                        let supported = Set(curated.supportedEffortLevels)
+                        if let currentEffort = draft.reasoningEffort, !supported.contains(currentEffort) {
+                            draft.reasoningEffort = curated.defaultEffort
+                        }
+                    }
+                case .fetched(let id):
+                    draft.model = id
+                case .custom:
+                    if curatedModels.contains(where: { $0.id == draft.model }) || fetchedModels.contains(draft.model) {
+                        draft.model = ""
+                    }
+                }
+            }
+        )
+    }
+
+    private var reasoningPicker: some View {
+        Picker(String(localized: "Reasoning"), selection: $draft.reasoningEffort) {
+            Text(String(localized: "Off")).tag(ReasoningEffort?.none)
+            ForEach(effortLevelsForCurrentModel) { effort in
+                Text(effort.displayName).tag(Optional(effort))
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    @ViewBuilder
+    private var modelFetchStatus: some View {
+        if isFetchingModels {
+            HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-            } else if fetchedModels.isEmpty {
+                Text(String(localized: "Fetching models…"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        if let modelFetchError {
+            HStack {
+                Text(modelFetchError)
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .lineLimit(2)
+                Spacer()
                 Button(String(localized: "Reload")) {
                     fetchModels()
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-            } else {
-                Menu {
-                    ForEach(fetchedModels, id: \.self) { model in
-                        Button(model) {
-                            draft.model = model
-                        }
-                    }
-                } label: {
-                    Image(systemName: "chevron.down.circle")
-                }
-                .menuStyle(.borderlessButton)
-                .help(String(localized: "Choose a fetched model"))
             }
         }
-        .fixedSize()
     }
 
     // MARK: - Advanced

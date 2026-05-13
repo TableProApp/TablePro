@@ -360,6 +360,10 @@ final class OpenAICompatibleProvider: ChatTransport {
             if case .toolResult(let resultBlock) = block.kind { return resultBlock }
             return nil
         }
+        let imageBlocks = turn.blocks.compactMap { block -> ChatImageInput? in
+            if case .image(let input) = block.kind { return input }
+            return nil
+        }
         let textContent = turn.plainText
 
         if turn.role == .assistant, !toolUseBlocks.isEmpty {
@@ -399,11 +403,39 @@ final class OpenAICompatibleProvider: ChatTransport {
             return messages
         }
 
+        if turn.role == .user, !imageBlocks.isEmpty {
+            var parts: [[String: Any]] = []
+            if !textContent.isEmpty {
+                parts.append(["type": "text", "text": textContent])
+            }
+            for image in imageBlocks {
+                if let part = chatCompletionsImagePart(image) {
+                    parts.append(part)
+                }
+            }
+            guard !parts.isEmpty else { return [] }
+            return [[
+                "role": "user",
+                "content": parts
+            ]]
+        }
+
         guard !textContent.isEmpty else { return [] }
         return [[
             "role": turn.role.rawValue,
             "content": textContent
         ]]
+    }
+
+    private func chatCompletionsImagePart(_ input: ChatImageInput) -> [String: Any]? {
+        guard let url = input.imageURLString() else { return nil }
+        return [
+            "type": "image_url",
+            "image_url": [
+                "url": url,
+                "detail": input.detailHint.rawValue
+            ] as [String: Any]
+        ]
     }
 
     func encodeTool(_ tool: ChatToolSpec) throws -> [String: Any] {

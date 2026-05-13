@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- AI Chat: OpenAI provider now uses the Responses API for GPT-5 and Codex models, with reasoning shown in a collapsible Thinking panel above each reply. (#1112)
+- AI Chat: image input via drag-and-drop or paste into the composer. HEIC, TIFF, and BMP convert to PNG or JPEG. EXIF and GPS metadata are stripped before sending. (#1112)
+- AI Chat: reasoning effort picker for OpenAI (Minimal to Extra High) and Claude (Low to Extra High), shown only for models that support it. (#1112)
+- AI Chat: curated model picker for the OpenAI provider with GPT-5.5, GPT-5-Codex, GPT-5.3-Codex, and GPT-5.4-Mini at the top; free-text entry still works for unlisted models. (#1112)
+- AI Chat: Claude provider now supports extended thinking on Opus 4.7, Sonnet 4.6, and Haiku 4.5 using the same Thinking panel. (#1112)
+- AI Chat: tool schemas are strict by default, matching the Responses API and Claude strict tool use. (#1112)
 - File > Backup Dump… and Restore Dump… for PostgreSQL and Redshift connections, running `pg_dump -Fc` and `pg_restore --no-owner --no-acl` with live progress, cancel, SSH tunnel reuse, and custom binary paths under Settings > Terminal > CLI Paths (#1211).
 
 ### Changed

@@ -22,19 +22,22 @@ struct ChatTransportOptions: Sendable {
     var maxOutputTokens: Int?
     var temperature: Double?
     var tools: [ChatToolSpec]
+    var reasoningEffort: ReasoningEffort?
 
     init(
         model: String,
         systemPrompt: String? = nil,
         maxOutputTokens: Int? = nil,
         temperature: Double? = nil,
-        tools: [ChatToolSpec] = []
+        tools: [ChatToolSpec] = [],
+        reasoningEffort: ReasoningEffort? = nil
     ) {
         self.model = model
         self.systemPrompt = systemPrompt
         self.maxOutputTokens = maxOutputTokens
         self.temperature = temperature
         self.tools = tools
+        self.reasoningEffort = reasoningEffort
     }
 }
 
@@ -42,6 +45,26 @@ struct ChatToolSpec: Codable, Equatable, Sendable {
     let name: String
     let description: String
     let inputSchema: JsonValue
+    let strict: Bool
+
+    init(name: String, description: String, inputSchema: JsonValue, strict: Bool = true) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+        self.strict = strict
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decode(String.self, forKey: .description)
+        inputSchema = try container.decode(JsonValue.self, forKey: .inputSchema)
+        strict = try container.decodeIfPresent(Bool.self, forKey: .strict) ?? true
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, description, inputSchema, strict
+    }
 }
 
 enum ChatStreamEvent: Sendable {
@@ -51,6 +74,9 @@ enum ChatStreamEvent: Sendable {
     case toolUseEnd(id: String)
     case usage(AITokenUsage)
     case toolInvocationRequest(block: ToolUseBlock, replyToken: ToolReplyToken)
+    case reasoningStart(id: String)
+    case reasoningDelta(id: String, text: String)
+    case reasoningEnd(id: String, opaque: ReasoningOpaque?)
 }
 
 final class ToolReplyToken: Sendable {

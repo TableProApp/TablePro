@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatComposerTextView: NSViewRepresentable {
     @Binding var text: String
@@ -13,12 +14,14 @@ struct ChatComposerTextView: NSViewRepresentable {
     let minLines: Int
     let maxLines: Int
     let isCommittingMention: Bool
+    let acceptsImages: Bool
     let onTextChange: (String, Int) -> Void
     let onSubmit: () -> Void
     let onCommitMention: () -> Bool
     let onArrow: (Int) -> Bool
     let onTab: () -> Bool
     let onEscape: () -> Bool
+    let onPasteImageData: (Data, String) -> Void
 
     func makeNSView(context: Context) -> ChatComposerScrollView {
         let textView = ChatComposerNSTextView()
@@ -39,6 +42,8 @@ struct ChatComposerTextView: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
         textView.placeholder = placeholder
+        textView.acceptsImagePaste = acceptsImages
+        textView.onPasteImageData = onPasteImageData
 
         let scrollView = ChatComposerScrollView()
         scrollView.documentView = textView
@@ -200,6 +205,8 @@ final class ChatComposerNSTextView: NSTextView {
     var placeholderColor: NSColor = .placeholderTextColor
     var onFocusChange: ((Bool) -> Void)?
     var onSizeChange: (() -> Void)?
+    var acceptsImagePaste: Bool = false
+    var onPasteImageData: ((Data, String) -> Void)?
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
@@ -228,6 +235,30 @@ final class ChatComposerNSTextView: NSTextView {
         ]
         let origin = NSPoint(x: textContainerInset.width, y: textContainerInset.height)
         (placeholder as NSString).draw(at: origin, withAttributes: attributes)
+    }
+
+    override func paste(_ sender: Any?) {
+        guard acceptsImagePaste, let onPasteImageData else {
+            super.paste(sender)
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        if let data = pasteboard.data(forType: .png) {
+            onPasteImageData(data, UTType.png.identifier)
+            return
+        }
+        if let data = pasteboard.data(forType: .tiff) {
+            onPasteImageData(data, UTType.tiff.identifier)
+            return
+        }
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
+           let fileURL = urls.first(where: { (try? $0.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.conforms(to: .image) ?? false }),
+           let data = try? Data(contentsOf: fileURL) {
+            let uti = (try? fileURL.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.identifier ?? UTType.image.identifier
+            onPasteImageData(data, uti)
+            return
+        }
+        super.paste(sender)
     }
 }
 

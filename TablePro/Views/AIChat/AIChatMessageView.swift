@@ -138,6 +138,10 @@ struct AIChatMessageView: View {
                 return true
             case .attachment:
                 return false
+            case .reasoning(let reasoning):
+                return block.isStreaming || (reasoning.text?.isEmpty == false)
+            case .image:
+                return true
             }
         }
         if visibleBlocks.isEmpty {
@@ -177,6 +181,12 @@ private struct AIChatBlockView: View {
             AIChatToolResultBlockView(block: resultBlock)
         case .attachment:
             EmptyView()
+        case .reasoning(let reasoning):
+            AIChatReasoningBlockView(block: reasoning, isStreaming: block.isStreaming)
+                .padding(.horizontal, 8)
+        case .image(let input):
+            AIChatImageBlockView(input: input)
+                .padding(.horizontal, 8)
         }
     }
 }

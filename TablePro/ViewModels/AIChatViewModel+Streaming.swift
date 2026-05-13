@@ -234,7 +234,8 @@ extension AIChatViewModel {
             options: ChatTransportOptions(
                 model: resolved.model,
                 systemPrompt: systemPrompt,
-                tools: toolSpecs
+                tools: toolSpecs,
+                reasoningEffort: resolved.config.reasoningEffort
             )
         )
 
@@ -243,6 +244,7 @@ extension AIChatViewModel {
         var toolUseOrder: [String] = []
         var toolUseNames: [String: String] = [:]
         var toolUseInputs: [String: String] = [:]
+        var reasoningIDMap: [String: UUID] = [:]
         let flushInterval: ContinuousClock.Duration = .milliseconds(150)
         var lastFlushTime: ContinuousClock.Instant = .now
 
@@ -277,6 +279,18 @@ extension AIChatViewModel {
                     block: block, replyToken: replyToken,
                     assistantID: assistantID, mode: chatMode
                 )
+            case .reasoningStart(let providerID):
+                if !pendingContent.isEmpty {
+                    await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
+                    pendingContent = ""
+                    pendingUsage = nil
+                    lastFlushTime = .now
+                }
+                await self.startReasoning(providerID: providerID, assistantID: assistantID, idMap: &reasoningIDMap)
+            case .reasoningDelta(let providerID, let text):
+                await self.appendReasoning(providerID: providerID, text: text, assistantID: assistantID, idMap: &reasoningIDMap)
+            case .reasoningEnd(let providerID, let opaque):
+                await self.finalizeReasoning(providerID: providerID, opaque: opaque, assistantID: assistantID, idMap: &reasoningIDMap)
             }
 
             if ContinuousClock.now - lastFlushTime >= flushInterval {
@@ -297,6 +311,42 @@ extension AIChatViewModel {
             toolUseInputs: toolUseInputs,
             cancelled: Task.isCancelled
         )
+    }
+
+    private func startReasoning(providerID: String, assistantID: UUID, idMap: inout [String: UUID]) async {
+        let captured = idMap
+        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
+            guard let self,
+                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
+            var localMap = captured
+            self.messages[idx].startReasoningBlock(providerBlockID: providerID, idMap: &localMap)
+            return localMap
+        }
+        idMap = updated
+    }
+
+    private func appendReasoning(providerID: String, text: String, assistantID: UUID, idMap: inout [String: UUID]) async {
+        let captured = idMap
+        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
+            guard let self,
+                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
+            var localMap = captured
+            _ = self.messages[idx].appendReasoningDelta(providerBlockID: providerID, text: text, idMap: &localMap)
+            return localMap
+        }
+        idMap = updated
+    }
+
+    private func finalizeReasoning(providerID: String, opaque: ReasoningOpaque?, assistantID: UUID, idMap: inout [String: UUID]) async {
+        let captured = idMap
+        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
+            guard let self,
+                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
+            var localMap = captured
+            self.messages[idx].finalizeReasoningBlock(providerBlockID: providerID, opaque: opaque, idMap: &localMap)
+            return localMap
+        }
+        idMap = updated
     }
 
     nonisolated static func buildSystemPrompt(_ promptContext: PromptContext?, mode: AIChatMode) -> String? {

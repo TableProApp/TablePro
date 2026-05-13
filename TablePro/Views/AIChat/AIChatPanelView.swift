@@ -213,6 +213,10 @@ struct AIChatPanelView: View {
                     onRemove: { viewModel.detach($0) }
                 )
 
+                if !viewModel.attachedImages.isEmpty {
+                    composerImageChipStrip
+                }
+
                 ChatComposerView(
                     text: $viewModel.inputText,
                     placeholder: String(localized: "Ask about your database..."),
@@ -228,6 +232,15 @@ struct AIChatPanelView: View {
                     },
                     onAttach: { item in
                         viewModel.attach(item)
+                    },
+                    acceptsImages: viewModel.activeProviderSupportsImages,
+                    onAttachImages: { images in
+                        for image in images {
+                            viewModel.attachImage(image)
+                        }
+                    },
+                    onImageAttachmentFailed: { message in
+                        viewModel.reportImageAttachmentFailure(message)
                     }
                 )
 
@@ -241,6 +254,19 @@ struct AIChatPanelView: View {
                 }
             }
             .padding(8)
+        }
+    }
+
+    private var composerImageChipStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(viewModel.attachedImages.enumerated()), id: \.offset) { index, image in
+                    AIChatComposerImageChip(input: image) {
+                        viewModel.detachImage(at: index)
+                    }
+                }
+            }
+            .padding(.horizontal, 2)
         }
     }
 
@@ -503,8 +529,8 @@ struct AIChatPanelView: View {
             let hasUserContent = message.blocks.contains { block in
                 switch block.kind {
                 case .text(let value): return !value.isEmpty
-                case .attachment: return true
-                case .toolUse, .toolResult: return false
+                case .attachment, .image: return true
+                case .toolUse, .toolResult, .reasoning: return false
                 }
             }
             if !hasUserContent { return false }

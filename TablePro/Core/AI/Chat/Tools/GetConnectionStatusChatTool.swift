@@ -11,8 +11,7 @@ struct GetConnectionStatusChatTool: ChatTool {
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
             "connection_id": ChatToolSchemaBuilder.connectionId
-        ],
-        required: ["connection_id"]
+        ]
     )
     let mode: ChatToolMode = .readOnly
 
