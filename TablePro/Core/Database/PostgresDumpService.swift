@@ -233,7 +233,7 @@ final class PostgresDumpService {
 
     // MARK: - Command Construction
 
-    static func buildCommand(
+    nonisolated static func buildCommand(
         kind: PostgresDumpKind,
         executable: URL,
         effective: DatabaseConnection,
@@ -274,11 +274,11 @@ final class PostgresDumpService {
         )
     }
 
-    private static let inheritedEnvironmentKeys: [String] = [
+    nonisolated private static let inheritedEnvironmentKeys: [String] = [
         "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL"
     ]
 
-    static func minimalEnvironment() -> [String: String] {
+    nonisolated static func minimalEnvironment() -> [String: String] {
         let parent = ProcessInfo.processInfo.environment
         var env: [String: String] = [:]
         for key in inheritedEnvironmentKeys where parent[key] != nil {
@@ -287,7 +287,7 @@ final class PostgresDumpService {
         return env
     }
 
-    static func pgSSLMode(_ mode: SSLMode) -> String? {
+    nonisolated static func pgSSLMode(_ mode: SSLMode) -> String? {
         switch mode {
         case .disabled: return nil
         case .preferred: return "prefer"
