@@ -6,8 +6,8 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 import TableProPluginKit
+import UniformTypeIdentifiers
 
 struct ConnectionSSLView: View {
     @Binding var sslMode: SSLMode

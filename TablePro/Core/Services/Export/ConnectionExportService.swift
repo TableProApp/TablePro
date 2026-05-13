@@ -6,8 +6,8 @@
 import Combine
 import Foundation
 import os
-import UniformTypeIdentifiers
 import TableProPluginKit
+import UniformTypeIdentifiers
 
 // MARK: - Export Error
 
