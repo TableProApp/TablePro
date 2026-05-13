@@ -1044,7 +1044,11 @@ private extension MongoDBConnection {
     func listDatabasesSync(client: OpaquePointer) throws -> [String] {
         try checkCancelled()
 
-        guard let command = jsonToBson("{\"listDatabases\": 1, \"nameOnly\": true}") else {
+        let caps = MongoDBCapabilities.parse(serverVersion())
+        let commandJSON = caps.supportsListDatabasesNameOnly
+            ? "{\"listDatabases\": 1, \"nameOnly\": true}"
+            : "{\"listDatabases\": 1}"
+        guard let command = jsonToBson(commandJSON) else {
             throw MongoDBError(code: 0, message: "Failed to create listDatabases command")
         }
         defer { bson_destroy(command) }

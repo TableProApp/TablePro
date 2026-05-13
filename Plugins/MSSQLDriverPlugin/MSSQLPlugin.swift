@@ -752,12 +752,18 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - View Templates
 
     func createViewTemplate() -> String? {
-        "CREATE OR ALTER VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
+        if MSSQLCapabilities.parse(serverVersion).hasCreateOrAlterView {
+            return "CREATE OR ALTER VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
+        }
+        return "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
     }
 
     func editViewFallbackTemplate(viewName: String) -> String? {
         let quoted = quoteIdentifier(viewName)
-        return "CREATE OR ALTER VIEW \(quoted) AS\nSELECT * FROM table_name;"
+        if MSSQLCapabilities.parse(serverVersion).hasCreateOrAlterView {
+            return "CREATE OR ALTER VIEW \(quoted) AS\nSELECT * FROM table_name;"
+        }
+        return "IF OBJECT_ID('\(viewName)', 'V') IS NOT NULL DROP VIEW \(quoted);\nCREATE VIEW \(quoted) AS\nSELECT * FROM table_name;"
     }
 
     func castColumnToText(_ column: String) -> String {

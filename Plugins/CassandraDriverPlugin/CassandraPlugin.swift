@@ -921,11 +921,20 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             stateLock.unlock()
         }
 
-        // Cache server version
         if let version = try? await connectionActor.serverVersion() {
             stateLock.lock()
             _cachedVersion = version
             stateLock.unlock()
+        }
+
+        let caps = CassandraCapabilities(
+            releaseVersionMajor: CassandraCapabilities.parseMajorVersion(serverVersion)
+        )
+        guard caps.hasSystemSchemaKeyspace else {
+            throw CassandraPluginError.connectionFailed(String(
+                format: String(localized: "Cassandra %@ is not supported. TablePro requires Cassandra 3.0 or later (the system_schema keyspace was introduced in 3.0)."),
+                serverVersion ?? "<unknown>"
+            ))
         }
     }
 

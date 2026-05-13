@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Cassandra: connection now fails fast with a clear "Cassandra 2.x is not supported" message instead of cryptic "table not found" errors during sidebar load.
+- MongoDB: dropped the `nameOnly: true` flag on `listDatabases` for servers older than 3.4, which previously rejected the flag.
+- ClickHouse: index sidebar no longer fails on ClickHouse older than 19.17 by skipping the `system.data_skipping_indices` lookup when the table doesn't exist.
+- MSSQL: view templates fall back to `IF EXISTS DROP / CREATE VIEW` on SQL Server 2014 and earlier, which lack `CREATE OR ALTER VIEW`.
+- MySQL: added a plain `EXPLAIN` variant alongside `EXPLAIN FORMAT=JSON` so MySQL 5.5 users can run query plans.
+
 ## [0.40.2] - 2026-05-12
 
 ### Added

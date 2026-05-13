@@ -435,6 +435,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ))
         }
 
+        let caps = ClickHouseCapabilities.parse(serverVersion)
+        guard caps.hasDataSkippingIndicesTable else { return indexes }
         let skippingSql = """
             SELECT name, expr FROM system.data_skipping_indices
             WHERE database = currentDatabase() AND table = '\(escapedTable)'
