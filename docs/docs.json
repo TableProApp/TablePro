@@ -111,6 +111,7 @@
                 "group": "Data Management",
                 "pages": [
                   "features/import-export",
+                  "features/backup-restore",
                   "features/change-tracking",
                   "features/filtering"
                 ]
