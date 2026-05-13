@@ -1313,6 +1313,16 @@
         }
       }
     },
+    "%@ was not found on this system. Install it with `brew install libpq` and link it, or set a custom path under Settings > Terminal > CLI Paths > %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ was not found on this system. Install it with `brew install libpq` and link it, or set a custom path under Settings > Terminal > CLI Paths > %2$@."
+          }
+        }
+      }
+    },
     "%@, %@" : {
       "localizations" : {
         "en" : {
@@ -5912,6 +5922,9 @@
         }
       }
     },
+    "An operation is already running." : {
+
+    },
     "An unknown sync error occurred: %@" : {
       "localizations" : {
         "tr" : {
@@ -9090,6 +9103,12 @@
     "Choose AI provider and model" : {
 
     },
+    "Choose Dump File" : {
+
+    },
+    "Choose where to save the dump of “%@”." : {
+
+    },
     "Choose your client and follow the steps to connect it to TablePro." : {
 
     },
@@ -11031,6 +11050,9 @@
           }
         }
       }
+    },
+    "Connect to the database before starting this operation." : {
+
     },
     "Connect to the internet to verify your license." : {
       "localizations" : {
@@ -16771,6 +16793,9 @@
           }
         }
       }
+    },
+    "Dump operations are only supported for PostgreSQL and Redshift connections." : {
+
     },
     "duplicate" : {
       "localizations" : {
@@ -25945,6 +25970,9 @@
         }
       }
     },
+    "Keep Backing Up" : {
+
+    },
     "Keep entries for:" : {
       "localizations" : {
         "tr" : {
@@ -26014,6 +26042,9 @@
           }
         }
       }
+    },
+    "Keep Restoring" : {
+
     },
     "Keep Running" : {
       "localizations" : {
@@ -40022,6 +40053,9 @@
         }
       }
     },
+    "Save Dump" : {
+
+    },
     "Save Failed" : {
       "localizations" : {
         "tr" : {
@@ -41009,6 +41043,9 @@
           }
         }
       }
+    },
+    "Select a dump file produced by pg_dump in custom archive format." : {
+
     },
     "Select a Plugin" : {
       "localizations" : {
