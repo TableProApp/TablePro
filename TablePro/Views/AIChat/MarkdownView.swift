@@ -11,28 +11,47 @@ import SwiftUI
 
 struct MarkdownView: View {
     let source: String
+    @State private var cache = MarkdownDocumentCache()
 
     var body: some View {
-        let blocks = MarkdownBlockParser.parse(source)
+        let blocks = cache.blocks(for: source)
         VStack(alignment: .leading, spacing: 6) {
             ForEach(blocks) { block in
                 MarkdownBlockView(block: block)
+                    .equatable()
             }
         }
     }
 }
 
-private struct MarkdownBlockView: View {
+@MainActor
+final class MarkdownDocumentCache {
+    private var lastSource: String = "\u{FFFF}"
+    private var lastBlocks: [MarkdownBlock] = []
+
+    func blocks(for source: String) -> [MarkdownBlock] {
+        if source == lastSource { return lastBlocks }
+        lastSource = source
+        lastBlocks = MarkdownBlockParser.parse(source)
+        return lastBlocks
+    }
+}
+
+private struct MarkdownBlockView: View, Equatable {
     let block: MarkdownBlock
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.block == rhs.block
+    }
 
     var body: some View {
         switch block.kind {
         case .paragraph(let text):
-            Text(attributed(text))
+            Text(MarkdownInline.parse(text))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .header(let level, let text):
-            Text(attributed(text))
+            Text(MarkdownInline.parse(text))
                 .font(headerFont(for: level))
                 .fontWeight(headerWeight(for: level))
                 .padding(.top, level == 1 ? 6 : 4)
@@ -41,6 +60,7 @@ private struct MarkdownBlockView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .codeBlock(let code, let language):
             AIChatCodeBlockView(code: code, language: language)
+                .equatable()
         case .unorderedList(let items):
             MarkdownListView(items: items, style: .unordered)
         case .orderedList(let start, let items):
@@ -67,10 +87,6 @@ private struct MarkdownBlockView: View {
     private func headerWeight(for level: Int) -> Font.Weight {
         level <= 2 ? .bold : .semibold
     }
-
-    private func attributed(_ markdown: String) -> AttributedString {
-        MarkdownInline.parse(markdown)
-    }
 }
 
 // MARK: - List
@@ -79,7 +95,7 @@ private struct MarkdownListView: View {
     let items: [MarkdownListItem]
     let style: ListStyle
 
-    enum ListStyle {
+    enum ListStyle: Equatable {
         case unordered
         case ordered(start: Int)
     }
@@ -98,6 +114,7 @@ private struct MarkdownListView: View {
                         if !item.children.isEmpty {
                             ForEach(item.children) { child in
                                 MarkdownBlockView(block: child)
+                                    .equatable()
                             }
                             .padding(.leading, 4)
                         }
@@ -187,24 +204,38 @@ private struct MarkdownTableView: View {
 // MARK: - Inline parsing
 
 enum MarkdownInline {
+    private static let cache: NSCache<NSString, NSAttributedString> = {
+        let c = NSCache<NSString, NSAttributedString>()
+        c.countLimit = 4_000
+        return c
+    }()
+
     static func parse(_ source: String) -> AttributedString {
+        let key = source as NSString
+        if let cached = cache.object(forKey: key) {
+            return AttributedString(cached)
+        }
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace
         )
-        if let attributed = try? AttributedString(markdown: source, options: options) {
-            return attributed
+        let attributed: AttributedString
+        if let parsed = try? AttributedString(markdown: source, options: options) {
+            attributed = parsed
+        } else {
+            attributed = AttributedString(source)
         }
-        return AttributedString(source)
+        cache.setObject(NSAttributedString(attributed), forKey: key)
+        return attributed
     }
 }
 
 // MARK: - Block model
 
-struct MarkdownBlock: Identifiable {
-    let id = UUID()
+struct MarkdownBlock: Identifiable, Equatable {
+    let id: Int
     let kind: Kind
 
-    enum Kind {
+    enum Kind: Equatable {
         case paragraph(String)
         case header(level: Int, text: String)
         case codeBlock(code: String, language: String?)
@@ -216,13 +247,13 @@ struct MarkdownBlock: Identifiable {
     }
 }
 
-struct MarkdownListItem: Identifiable {
-    let id = UUID()
+struct MarkdownListItem: Identifiable, Equatable {
+    let id: Int
     let text: String
     let children: [MarkdownBlock]
 }
 
-enum MarkdownTableAlignment {
+enum MarkdownTableAlignment: Equatable {
     case left
     case center
     case right
@@ -235,14 +266,14 @@ enum MarkdownBlockParser {
         var lines = source.components(separatedBy: "\n")
         var blocks: [MarkdownBlock] = []
         while !lines.isEmpty {
-            if let parsed = parseNextBlock(&lines) {
+            if let parsed = parseNextBlock(&lines, index: blocks.count) {
                 blocks.append(parsed)
             }
         }
         return blocks
     }
 
-    private static func parseNextBlock(_ lines: inout [String]) -> MarkdownBlock? {
+    private static func parseNextBlock(_ lines: inout [String], index: Int) -> MarkdownBlock? {
         guard let first = lines.first else { return nil }
         let trimmed = first.trimmingCharacters(in: .whitespaces)
 
@@ -252,38 +283,38 @@ enum MarkdownBlockParser {
         }
 
         if isFencedCodeStart(trimmed) {
-            return parseFencedCodeBlock(&lines)
+            return parseFencedCodeBlock(&lines, index: index)
         }
 
         if let level = headerLevel(trimmed) {
             lines.removeFirst()
             let stripped = String(trimmed.dropFirst(level + 1))
                 .trimmingCharacters(in: .whitespaces)
-            return MarkdownBlock(kind: .header(level: level, text: stripped))
+            return MarkdownBlock(id: index, kind: .header(level: level, text: stripped))
         }
 
         if isThematicBreak(trimmed) {
             lines.removeFirst()
-            return MarkdownBlock(kind: .thematicBreak)
+            return MarkdownBlock(id: index, kind: .thematicBreak)
         }
 
         if trimmed.hasPrefix(">") {
-            return parseBlockquote(&lines)
+            return parseBlockquote(&lines, index: index)
         }
 
         if isUnorderedListMarker(trimmed) {
-            return parseUnorderedList(&lines)
+            return parseUnorderedList(&lines, index: index)
         }
 
         if let start = orderedListStart(trimmed) {
-            return parseOrderedList(&lines, startingAt: start)
+            return parseOrderedList(&lines, startingAt: start, index: index)
         }
 
-        if let table = parseTable(&lines) {
+        if let table = parseTable(&lines, index: index) {
             return table
         }
 
-        return parseParagraph(&lines)
+        return parseParagraph(&lines, index: index)
     }
 
     private static func headerLevel(_ trimmed: String) -> Int? {
@@ -325,7 +356,7 @@ enum MarkdownBlockParser {
         return value
     }
 
-    private static func parseFencedCodeBlock(_ lines: inout [String]) -> MarkdownBlock {
+    private static func parseFencedCodeBlock(_ lines: inout [String], index: Int) -> MarkdownBlock {
         let opener = lines.removeFirst()
         let trimmedOpener = opener.trimmingCharacters(in: .whitespaces)
         let fence = trimmedOpener.hasPrefix("```") ? "```" : "~~~"
@@ -342,10 +373,10 @@ enum MarkdownBlockParser {
             bodyLines.append(line)
             lines.removeFirst()
         }
-        return MarkdownBlock(kind: .codeBlock(code: bodyLines.joined(separator: "\n"), language: language))
+        return MarkdownBlock(id: index, kind: .codeBlock(code: bodyLines.joined(separator: "\n"), language: language))
     }
 
-    private static func parseBlockquote(_ lines: inout [String]) -> MarkdownBlock {
+    private static func parseBlockquote(_ lines: inout [String], index: Int) -> MarkdownBlock {
         var collected: [String] = []
         while let line = lines.first {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -355,26 +386,26 @@ enum MarkdownBlockParser {
             collected.append(String(content))
             lines.removeFirst()
         }
-        return MarkdownBlock(kind: .blockquote(collected.joined(separator: "\n")))
+        return MarkdownBlock(id: index, kind: .blockquote(collected.joined(separator: "\n")))
     }
 
-    private static func parseUnorderedList(_ lines: inout [String]) -> MarkdownBlock {
+    private static func parseUnorderedList(_ lines: inout [String], index: Int) -> MarkdownBlock {
         var items: [MarkdownListItem] = []
-        while let item = parseListItem(&lines, ordered: false) {
+        while let item = parseListItem(&lines, ordered: false, itemIndex: items.count) {
             items.append(item)
         }
-        return MarkdownBlock(kind: .unorderedList(items))
+        return MarkdownBlock(id: index, kind: .unorderedList(items))
     }
 
-    private static func parseOrderedList(_ lines: inout [String], startingAt start: Int) -> MarkdownBlock {
+    private static func parseOrderedList(_ lines: inout [String], startingAt start: Int, index: Int) -> MarkdownBlock {
         var items: [MarkdownListItem] = []
-        while let item = parseListItem(&lines, ordered: true) {
+        while let item = parseListItem(&lines, ordered: true, itemIndex: items.count) {
             items.append(item)
         }
-        return MarkdownBlock(kind: .orderedList(start: start, items: items))
+        return MarkdownBlock(id: index, kind: .orderedList(start: start, items: items))
     }
 
-    private static func parseListItem(_ lines: inout [String], ordered: Bool) -> MarkdownListItem? {
+    private static func parseListItem(_ lines: inout [String], ordered: Bool, itemIndex: Int) -> MarkdownListItem? {
         guard let first = lines.first else { return nil }
         let trimmed = first.trimmingCharacters(in: .whitespaces)
         let markerLength: Int
@@ -401,10 +432,10 @@ enum MarkdownBlockParser {
             }
             break
         }
-        return MarkdownListItem(text: textLines.joined(separator: " "), children: [])
+        return MarkdownListItem(id: itemIndex, text: textLines.joined(separator: " "), children: [])
     }
 
-    private static func parseTable(_ lines: inout [String]) -> MarkdownBlock? {
+    private static func parseTable(_ lines: inout [String], index: Int) -> MarkdownBlock? {
         guard lines.count >= 2 else { return nil }
         let headerLine = lines[0]
         let separatorLine = lines[1]
@@ -423,7 +454,7 @@ enum MarkdownBlockParser {
             rows.append(Array(padded.prefix(headers.count)))
             lines.removeFirst()
         }
-        return MarkdownBlock(kind: .table(headers: headers, alignments: alignments, rows: rows))
+        return MarkdownBlock(id: index, kind: .table(headers: headers, alignments: alignments, rows: rows))
     }
 
     private static func looksLikeTableRow(_ line: String, columnCount: Int) -> Bool {
@@ -468,7 +499,7 @@ enum MarkdownBlockParser {
             .map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
-    private static func parseParagraph(_ lines: inout [String]) -> MarkdownBlock {
+    private static func parseParagraph(_ lines: inout [String], index: Int) -> MarkdownBlock {
         var collected: [String] = []
         while let line = lines.first {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -482,7 +513,7 @@ enum MarkdownBlockParser {
             collected.append(line)
             lines.removeFirst()
         }
-        return MarkdownBlock(kind: .paragraph(collected.joined(separator: "\n")))
+        return MarkdownBlock(id: index, kind: .paragraph(collected.joined(separator: "\n")))
     }
 }
 

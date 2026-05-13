@@ -8,9 +8,13 @@ import CodeEditLanguages
 import CodeEditSourceEditor
 import SwiftUI
 
-struct AIChatCodeBlockView: View {
+struct AIChatCodeBlockView: View, Equatable {
     let code: String
     let language: String?
+
+    static func == (lhs: AIChatCodeBlockView, rhs: AIChatCodeBlockView) -> Bool {
+        lhs.code == rhs.code && lhs.language == rhs.language
+    }
 
     @State private var isCopied: Bool = false
     @State private var isEditorReady = false

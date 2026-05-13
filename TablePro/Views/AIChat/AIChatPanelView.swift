@@ -17,7 +17,8 @@ struct AIChatPanelView: View {
 
     @Bindable var viewModel: AIChatViewModel
     private let settingsManager = AppSettingsManager.shared
-    @State private var isUserScrolledUp = false
+    @State private var bottomVisibleMessageID: UUID?
+    @State private var pinnedToBottom: Bool = true
     @State private var mentionState = MentionPopoverState()
 
     private var hasConfiguredProvider: Bool {
@@ -106,70 +107,71 @@ struct AIChatPanelView: View {
             return ids
         }()
 
-        return ScrollViewReader { proxy in
-            ZStack(alignment: .bottom) {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(visibleMessages) { message in
-                            if spacedMessageIDs.contains(message.id) {
-                                Spacer()
-                                    .frame(height: 16)
-                            }
-                            AIChatMessageView(
-                                message: message,
-                                onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
-                                onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
-                                onEdit: message.role == .user && !viewModel.isStreaming
-                                    ? { viewModel.editMessage(message) } : nil
-                            )
-                            .padding(.vertical, 4)
-                            .id(message.id)
+        let lastMessageID = visibleMessages.last?.id
+        let isUserScrolledUp = !pinnedToBottom && bottomVisibleMessageID != nil
+            && bottomVisibleMessageID != lastMessageID
+
+        return ZStack(alignment: .bottom) {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(visibleMessages) { message in
+                        if spacedMessageIDs.contains(message.id) {
+                            Spacer()
+                                .frame(height: 16)
                         }
+                        AIChatMessageView(
+                            message: message,
+                            onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
+                            onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
+                            onEdit: message.role == .user && !viewModel.isStreaming
+                                ? { viewModel.editMessage(message) } : nil
+                        )
+                        .padding(.vertical, 4)
+                        .id(message.id)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .scrollTargetLayout()
+            }
+            .defaultScrollAnchor(.bottom)
+            .scrollIndicators(.hidden)
+            .scrollPosition(id: $bottomVisibleMessageID, anchor: .bottom)
+            .onChange(of: bottomVisibleMessageID) { _, newValue in
+                pinnedToBottom = newValue == nil || newValue == lastMessageID
+            }
+            .onChange(of: visibleMessages.count) {
+                if pinnedToBottom {
+                    bottomVisibleMessageID = lastMessageID
+                }
+            }
+            .onChange(of: viewModel.activeConversationID) {
+                pinnedToBottom = true
+                bottomVisibleMessageID = lastMessageID
+            }
+            .onChange(of: viewModel.isStreaming) { _, newValue in
+                if !newValue, pinnedToBottom {
+                    bottomVisibleMessageID = lastMessageID
+                }
+            }
 
-                        Color.clear
-                            .frame(height: 1)
-                            .id("bottomAnchor")
-                            .onAppear { isUserScrolledUp = false }
-                            .onDisappear { isUserScrolledUp = true }
+            if isUserScrolledUp {
+                Button {
+                    pinnedToBottom = true
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        bottomVisibleMessageID = lastMessageID
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 8)
+                } label: {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
                 }
-                .defaultScrollAnchor(.bottom)
-                .scrollIndicators(.hidden)
-                .onAppear {
-                    scrollToBottom(proxy: proxy)
-                }
-                .onChange(of: viewModel.messages.count) {
-                    isUserScrolledUp = false
-                    scrollToBottom(proxy: proxy, animated: true)
-                }
-                .onChange(of: viewModel.activeConversationID) {
-                    isUserScrolledUp = false
-                    scrollToBottom(proxy: proxy, animated: true)
-                }
-                .onChange(of: viewModel.isStreaming) { _, newValue in
-                    if !newValue, !isUserScrolledUp {
-                        scrollToBottom(proxy: proxy, animated: true)
-                    }
-                }
-
-                if isUserScrolledUp {
-                    Button {
-                        isUserScrolledUp = false
-                        scrollToBottom(proxy: proxy, animated: true)
-                    } label: {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.title2)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.bottom, 8)
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
-                    .accessibilityLabel(String(localized: "Scroll to latest message"))
-                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 8)
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
+                .accessibilityLabel(String(localized: "Scroll to latest message"))
             }
         }
     }
@@ -487,16 +489,6 @@ struct AIChatPanelView: View {
     }
 
     // MARK: - Helpers
-
-    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = false) {
-        if animated {
-            withAnimation(.easeOut(duration: 0.2)) {
-                proxy.scrollTo("bottomAnchor", anchor: .bottom)
-            }
-        } else {
-            proxy.scrollTo("bottomAnchor", anchor: .bottom)
-        }
-    }
 
     private func updateContext() {
         viewModel.currentQuery = currentQuery
