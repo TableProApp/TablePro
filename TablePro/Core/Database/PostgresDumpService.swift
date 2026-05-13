@@ -334,17 +334,14 @@ private extension String {
 
 // MARK: - Real Process Runner
 
-/// Concrete `PostgresDumpRunner` that spawns a real subprocess.
-/// stderr is accumulated entirely off the main actor inside the
-/// `readabilityHandler` closure and the termination handler;
-/// only the final string crosses back to MainActor through `result`.
 final class ProcessPostgresDumpRunner: PostgresDumpRunner {
     private let process = Process()
     private let stderrPipe = Pipe()
-    private let bufferLock = NSLock()
+    private let stateLock = NSLock()
     private var stderrBuffer = Data()
     private var stderrCap = 64_000
     private var wasCancelled = false
+    private var terminationResult: PostgresDumpRunResult?
     private var continuation: CheckedContinuation<PostgresDumpRunResult, Never>?
 
     func start(_ command: PostgresDumpCommand) throws {
@@ -359,37 +356,41 @@ final class ProcessPostgresDumpRunner: PostgresDumpRunner {
         stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let chunk = handle.availableData
             guard !chunk.isEmpty, let self else { return }
-            self.bufferLock.lock()
+            self.stateLock.lock()
             self.stderrBuffer.append(chunk)
             if self.stderrBuffer.count > self.stderrCap {
                 self.stderrBuffer = Data(self.stderrBuffer.suffix(self.stderrCap))
             }
-            self.bufferLock.unlock()
+            self.stateLock.unlock()
         }
 
         process.terminationHandler = { [weak self] proc in
             guard let self else { return }
             self.stderrPipe.fileHandleForReading.readabilityHandler = nil
 
-            self.bufferLock.lock()
+            self.stateLock.lock()
             let stderrText = String(data: self.stderrBuffer, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            self.bufferLock.unlock()
-
             let result = PostgresDumpRunResult(
                 exitCode: proc.terminationStatus,
                 stderr: stderrText,
                 wasCancelled: self.wasCancelled
             )
-            self.continuation?.resume(returning: result)
+            self.terminationResult = result
+            let pending = self.continuation
             self.continuation = nil
+            self.stateLock.unlock()
+
+            pending?.resume(returning: result)
         }
 
         try process.run()
     }
 
     func cancel() {
+        stateLock.lock()
         wasCancelled = true
+        stateLock.unlock()
         if process.isRunning {
             process.terminate()
         }
@@ -398,19 +399,14 @@ final class ProcessPostgresDumpRunner: PostgresDumpRunner {
     var result: PostgresDumpRunResult {
         get async {
             await withCheckedContinuation { continuation in
-                if !process.isRunning {
-                    self.bufferLock.lock()
-                    let stderrText = String(data: self.stderrBuffer, encoding: .utf8)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    self.bufferLock.unlock()
-                    continuation.resume(returning: PostgresDumpRunResult(
-                        exitCode: process.terminationStatus,
-                        stderr: stderrText,
-                        wasCancelled: wasCancelled
-                    ))
-                } else {
-                    self.continuation = continuation
+                stateLock.lock()
+                if let cached = terminationResult {
+                    stateLock.unlock()
+                    continuation.resume(returning: cached)
+                    return
                 }
+                self.continuation = continuation
+                stateLock.unlock()
             }
         }
     }
