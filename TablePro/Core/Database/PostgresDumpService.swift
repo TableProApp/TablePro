@@ -99,6 +99,27 @@ final class PostgresDumpService {
     @ObservationIgnored private let runnerFactory: () -> any PostgresDumpRunner
     @ObservationIgnored private var runner: (any PostgresDumpRunner)?
     @ObservationIgnored private var byteSizeTask: Task<Void, Never>?
+    @ObservationIgnored private var stateObservers: [UUID: AsyncStream<PostgresDumpState>.Continuation] = [:]
+
+    func stateUpdates() -> AsyncStream<PostgresDumpState> {
+        AsyncStream { continuation in
+            let id = UUID()
+            stateObservers[id] = continuation
+            continuation.yield(state)
+            continuation.onTermination = { @Sendable [weak self] _ in
+                Task { @MainActor in
+                    self?.stateObservers.removeValue(forKey: id)
+                }
+            }
+        }
+    }
+
+    private func setState(_ newState: PostgresDumpState) {
+        state = newState
+        for continuation in stateObservers.values {
+            continuation.yield(newState)
+        }
+    }
 
     /// Default initializer uses the real `Process`-backed runner.
     init(kind: PostgresDumpKind) {
@@ -193,7 +214,7 @@ final class PostgresDumpService {
         try runner.start(command)
         self.runner = runner
 
-        state = .running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: totalBytesEstimate)
+        setState(.running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: totalBytesEstimate))
         if kind == .backup {
             startByteSizePolling(url: fileURL, database: database, totalBytes: totalBytesEstimate)
         }
@@ -206,7 +227,7 @@ final class PostgresDumpService {
 
     func cancel() {
         guard case .running = state else { return }
-        state = .cancelling
+        setState(.cancelling)
         runner?.cancel()
     }
 
@@ -298,13 +319,13 @@ final class PostgresDumpService {
             if kind == .backup {
                 try? FileManager.default.removeItem(at: fileURL)
             }
-            state = .cancelled
+            setState(.cancelled)
             Self.logger.notice("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) cancelled db=\(database, privacy: .public)")
             return
         }
 
         if result.exitCode == 0 {
-            state = .finished(database: database, fileURL: fileURL, bytesProcessed: writtenBytes)
+            setState(.finished(database: database, fileURL: fileURL, bytesProcessed: writtenBytes))
             Self.logger.info("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) finished bytes=\(writtenBytes) db=\(database, privacy: .public)")
             return
         }
@@ -315,7 +336,7 @@ final class PostgresDumpService {
         let summary = result.stderr.isEmpty
             ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
             : result.stderr
-        state = .failed(message: summary)
+        setState(.failed(message: summary))
         Self.logger.error("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .public) stderr=\(result.stderr, privacy: .public)")
     }
 
@@ -328,12 +349,12 @@ final class PostgresDumpService {
                 guard case .running = self.state else { return }
                 let size = (try? FileManager.default
                     .attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
-                self.state = .running(
+                self.setState(.running(
                     database: database,
                     fileURL: url,
                     bytesProcessed: size,
                     totalBytes: totalBytes
-                )
+                ))
             }
         }
     }
