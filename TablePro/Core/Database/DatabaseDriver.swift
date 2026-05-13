@@ -417,6 +417,7 @@ enum DatabaseDriverFactory {
             username: connection.username,
             password: resolvePassword(for: connection, override: passwordOverride),
             database: connection.database,
+            ssl: pluginSSLConfiguration(from: connection.sslConfig),
             additionalFields: buildAdditionalFields(for: connection, plugin: plugin)
         )
         let pluginDriver = plugin.createDriver(config: config)
@@ -442,17 +443,32 @@ enum DatabaseDriverFactory {
         return ConnectionStorage.shared.loadPassword(for: connection.id) ?? ""
     }
 
+    private static func pluginSSLConfiguration(
+        from appSSL: SSLConfiguration
+    ) -> TableProPluginKit.SSLConfiguration {
+        TableProPluginKit.SSLConfiguration(
+            mode: pluginSSLMode(from: appSSL.mode),
+            caCertificatePath: appSSL.caCertificatePath,
+            clientCertificatePath: appSSL.clientCertificatePath,
+            clientKeyPath: appSSL.clientKeyPath
+        )
+    }
+
+    private static func pluginSSLMode(from mode: SSLMode) -> TableProPluginKit.SSLMode {
+        switch mode {
+        case .disabled: return .disabled
+        case .preferred: return .preferred
+        case .required: return .required
+        case .verifyCa: return .verifyCa
+        case .verifyIdentity: return .verifyIdentity
+        }
+    }
+
     private static func buildAdditionalFields(
         for connection: DatabaseConnection,
         plugin: any DriverPlugin
     ) -> [String: String] {
         var fields: [String: String] = [:]
-
-        let ssl = connection.sslConfig
-        fields["sslMode"] = ssl.mode.rawValue
-        fields["sslCaCertPath"] = ssl.caCertificatePath
-        fields["sslClientCertPath"] = ssl.clientCertificatePath
-        fields["sslClientKeyPath"] = ssl.clientKeyPath
 
         if let variant = type(of: plugin).driverVariant(for: connection.type.rawValue) {
             fields["driverVariant"] = variant
@@ -476,7 +492,6 @@ enum DatabaseDriverFactory {
 
         switch connection.type {
         case .mongodb:
-            fields["sslCACertPath"] = ssl.caCertificatePath
             fields["mongoReadPreference"] = connection.mongoReadPreference ?? ""
             fields["mongoWriteConcern"] = connection.mongoWriteConcern ?? ""
         case .redis:
