@@ -131,6 +131,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
+    private var _cachedServerVersionNumber: Int32 = 0
     private var _isCancelled: Bool = false
 
     var isConnected: Bool {
@@ -231,6 +232,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
             let version = PQserverVersion(connection)
             if version > 0 {
+                self._cachedServerVersionNumber = version
                 let major = version / 10_000
                 if major >= 10 {
                     let minor = version % 10_000
@@ -259,6 +261,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         stateLock.unlock()
 
         _cachedServerVersion = nil
+        _cachedServerVersionNumber = 0
 
         if let handle {
             queue.async {
@@ -309,6 +312,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     func serverVersion() -> String? {
         _cachedServerVersion
+    }
+
+    func serverVersionNumber() -> Int32 {
+        _cachedServerVersionNumber
     }
 
     func currentDatabase() -> String {

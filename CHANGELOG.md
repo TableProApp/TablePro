@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse: index sidebar no longer fails on ClickHouse older than 19.17 by skipping the `system.data_skipping_indices` lookup when the table doesn't exist.
 - MSSQL: view templates fall back to `IF EXISTS DROP / CREATE VIEW` on SQL Server 2014 and earlier, which lack `CREATE OR ALTER VIEW`.
 - MySQL: added a plain `EXPLAIN` variant alongside `EXPLAIN FORMAT=JSON` so MySQL 5.5 users can run query plans.
+- PostgreSQL: connecting to servers older than 9.3 no longer fails with "relation pg_matviews does not exist"; the driver feature-gates `pg_matviews`, `pg_foreign_table`, `pg_sequences`, `array_position`, `attidentity`, `attgenerated`, and ICU locale columns behind the detected server version (#1240).
 
 ## [0.40.2] - 2026-05-12
 
