@@ -113,7 +113,10 @@ private func freetdsDispatchAsync(
     }
 }
 
-final class FreeTDSConnection: @unchecked Sendable {
+// nonisolated so this file compiles cleanly under TableProMobile's
+// SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor build setting. The class manages its own
+// thread safety via a private serial DispatchQueue and NSLock; no main-actor hop needed.
+nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private var dbproc: UnsafeMutablePointer<DBPROCESS>?
     private let queue: DispatchQueue
     private let options: MSSQLConnectionOptions

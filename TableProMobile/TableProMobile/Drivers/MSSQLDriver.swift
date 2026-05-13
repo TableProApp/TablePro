@@ -4,7 +4,7 @@ import TableProModels
 import TableProMSSQLCore
 
 private extension MSSQLRawResult {
-    func toQueryResult(executionTime: TimeInterval) -> QueryResult {
+    nonisolated func toQueryResult(executionTime: TimeInterval) -> QueryResult {
         let columnInfos = columns.enumerated().map { idx, col in
             ColumnInfo(name: col.name, typeName: col.type.canonicalName, ordinalPosition: idx)
         }
