@@ -10,8 +10,21 @@ enum SQLBuilder {
             return "`\(name.replacingOccurrences(of: "`", with: "``"))`"
         case .postgresql, .redshift:
             return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        case .mssql:
+            return "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
         default:
             return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        }
+    }
+
+    static func paginationClause(orderBy: String, limit: Int, offset: Int, for type: DatabaseType) -> String {
+        switch type {
+        case .mssql:
+            let order = orderBy.isEmpty ? "ORDER BY (SELECT NULL)" : orderBy
+            return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        default:
+            let trailing = "LIMIT \(limit) OFFSET \(offset)"
+            return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
         }
     }
 
@@ -32,7 +45,8 @@ enum SQLBuilder {
 
     static func buildSelect(table: String, type: DatabaseType, limit: Int, offset: Int) -> String {
         let quoted = quoteIdentifier(table, for: type)
-        return "SELECT * FROM \(quoted) LIMIT \(limit) OFFSET \(offset)"
+        let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
+        return "SELECT * FROM \(quoted) \(pagination)"
     }
 
     static func buildDelete(
@@ -87,8 +101,8 @@ enum SQLBuilder {
     ) -> String {
         let quoted = quoteIdentifier(table, for: type)
         let orderBy = buildOrderByClause(sortState, for: type)
-        return "SELECT * FROM \(quoted) \(orderBy) LIMIT \(limit) OFFSET \(offset)"
-            .replacingOccurrences(of: "  ", with: " ")
+        let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
+        return "SELECT * FROM \(quoted) \(pagination)"
     }
 
     static func buildFilteredSelect(
@@ -100,10 +114,11 @@ enum SQLBuilder {
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
         let quoted = quoteIdentifier(table, for: type)
-        if whereClause.isEmpty {
-            return "SELECT * FROM \(quoted) LIMIT \(limit) OFFSET \(offset)"
-        }
-        return "SELECT * FROM \(quoted) \(whereClause) LIMIT \(limit) OFFSET \(offset)"
+        let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
+        var sql = "SELECT * FROM \(quoted)"
+        if !whereClause.isEmpty { sql += " \(whereClause)" }
+        sql += " \(pagination)"
+        return sql
     }
 
     static func buildFilteredSelect(
@@ -117,10 +132,10 @@ enum SQLBuilder {
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
         let orderBy = buildOrderByClause(sortState, for: type)
         let quoted = quoteIdentifier(table, for: type)
+        let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
-        if !orderBy.isEmpty { sql += " \(orderBy)" }
-        sql += " LIMIT \(limit) OFFSET \(offset)"
+        sql += " \(pagination)"
         return sql
     }
 
@@ -152,11 +167,11 @@ enum SQLBuilder {
             searchText: searchText, searchColumns: searchColumns,
             filters: filters, logicMode: logicMode, type: type
         )
+        let orderBy = buildOrderByClause(sortState, for: type)
+        let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
-        let orderBy = buildOrderByClause(sortState, for: type)
-        if !orderBy.isEmpty { sql += " \(orderBy)" }
-        sql += " LIMIT \(limit) OFFSET \(offset)"
+        sql += " \(pagination)"
         return sql
     }
 
@@ -274,6 +289,14 @@ enum SQLBuilder {
         case .postgresql, .redshift:
             return SQLDialectDescriptor(
                 identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit
+            )
+        case .mssql:
+            return SQLDialectDescriptor(
+                identifierQuote: "[",
                 keywords: [],
                 functions: [],
                 dataTypes: [],

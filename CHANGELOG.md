@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- iOS: SQL Server (MSSQL) connections via FreeTDS over TDS 7.4. Uses the shared `SSLConfiguration` model from connection settings. Supports connect, query, streaming results, schema browsing (tables, columns, indexes, foreign keys), database and schema switching, and explicit transactions.
+- iOS: data browser, search, filter, and pagination now render correct SQL Server syntax (bracket-quoted identifiers, `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` pagination, `SELECT TOP 1` for cell value fetch).
+
 ## [0.41.0] - 2026-05-13
 
 ### Added

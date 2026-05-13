@@ -337,14 +337,20 @@ final class DataBrowserViewModel {
 
     // MARK: - Lazy Cell Loading
 
-    func loadFullValue(driver: DatabaseDriver, ref: CellRef) async throws -> String? {
+    func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType) async throws -> String? {
         let predicates = ref.primaryKey.map { component in
-            "\"\(component.column.replacingOccurrences(of: "\"", with: "\"\""))\" = '\(component.value.replacingOccurrences(of: "'", with: "''"))'"
+            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(component.value.replacingOccurrences(of: "'", with: "''"))'"
         }
         let predicate = predicates.joined(separator: " AND ")
-        let column = "\"\(ref.column.replacingOccurrences(of: "\"", with: "\"\""))\""
-        let table = "\"\(ref.table.replacingOccurrences(of: "\"", with: "\"\""))\""
-        let query = "SELECT \(column) FROM \(table) WHERE \(predicate) LIMIT 1"
+        let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
+        let table = SQLBuilder.quoteIdentifier(ref.table, for: databaseType)
+        let query: String
+        switch databaseType {
+        case .mssql:
+            query = "SELECT TOP 1 \(column) FROM \(table) WHERE \(predicate)"
+        default:
+            query = "SELECT \(column) FROM \(table) WHERE \(predicate) LIMIT 1"
+        }
 
         let result = try await driver.execute(query: query)
         return result.rows.first?.first ?? nil

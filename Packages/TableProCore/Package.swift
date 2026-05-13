@@ -14,7 +14,8 @@ let package = Package(
         .library(name: "TableProDatabase", targets: ["TableProDatabase"]),
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
         .library(name: "TableProSync", targets: ["TableProSync"]),
-        .library(name: "TableProAnalytics", targets: ["TableProAnalytics"])
+        .library(name: "TableProAnalytics", targets: ["TableProAnalytics"]),
+        .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"])
     ],
     targets: [
         .target(
@@ -47,6 +48,11 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProAnalytics"
         ),
+        .target(
+            name: "TableProMSSQLCore",
+            dependencies: [],
+            path: "Sources/TableProMSSQLCore"
+        ),
         .testTarget(
             name: "TableProModelsTests",
             dependencies: ["TableProModels", "TableProPluginKit"],
@@ -66,6 +72,11 @@ let package = Package(
             name: "TableProAnalyticsTests",
             dependencies: ["TableProAnalytics"],
             path: "Tests/TableProAnalyticsTests"
+        ),
+        .testTarget(
+            name: "TableProMSSQLCoreTests",
+            dependencies: ["TableProMSSQLCore"],
+            path: "Tests/TableProMSSQLCoreTests"
         )
     ]
 )

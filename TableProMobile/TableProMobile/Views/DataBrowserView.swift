@@ -251,7 +251,7 @@ struct DataBrowserView: View {
                 onSaved: { Task { await viewModel.load() } },
                 loadFullValue: { ref in
                     guard let session else { return nil }
-                    return try await viewModel.loadFullValue(driver: session.driver, ref: ref)
+                    return try await viewModel.loadFullValue(driver: session.driver, ref: ref, databaseType: connection.type)
                 }
             )
         } label: {
