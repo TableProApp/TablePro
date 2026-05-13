@@ -254,7 +254,8 @@ final class MongoDBConnection: @unchecked Sendable {
         var explicitKeys: Set<String> = [
             "connectTimeoutMS", "serverSelectionTimeoutMS",
             "authSource", "authMechanism", "replicaSet",
-            "tls", "tlsAllowInvalidCertificates", "tlsCAFile", "tlsCertificateKeyFile"
+            "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames",
+            "tlsCAFile", "tlsCertificateKeyFile"
         ]
         if readPreference != nil, !readPreference!.isEmpty { explicitKeys.insert("readPreference") }
         if writeConcern != nil, !writeConcern!.isEmpty { explicitKeys.insert("w") }
