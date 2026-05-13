@@ -3,23 +3,29 @@
 //  TablePro
 //
 
+import Combine
 import SwiftUI
 
 extension WelcomeWindowView {
     @ViewBuilder
-    func contextMenuContent(for connection: DatabaseConnection) -> some View {
-        if vm.isMultipleSelection, vm.selectedConnectionIds.contains(connection.id) {
-            multiSelectionContextMenu(for: connection)
+    func contextMenuContent(for ids: Set<UUID>) -> some View {
+        if ids.isEmpty {
+            newConnectionContextMenu
         } else {
-            singleConnectionContextMenu(for: connection)
+            let connections = vm.connections.filter { ids.contains($0.id) }
+            if connections.count > 1 {
+                multiSelectionContextMenu(for: connections)
+            } else if let single = connections.first {
+                singleConnectionContextMenu(for: single)
+            }
         }
     }
 
     @ViewBuilder
-    private func multiSelectionContextMenu(for connection: DatabaseConnection) -> some View {
-        Button { vm.connectSelectedConnections() } label: {
+    private func multiSelectionContextMenu(for connections: [DatabaseConnection]) -> some View {
+        Button { primaryAction(for: Set(connections.map(\.id))) } label: {
             Label(
-                String(format: String(localized: "Connect %d Connections"), vm.selectedConnectionIds.count),
+                String(format: String(localized: "Connect %d Connections"), connections.count),
                 systemImage: "play.fill"
             )
         }
@@ -28,10 +34,10 @@ extension WelcomeWindowView {
 
         Menu(String(localized: "Share")) {
             Button {
-                vm.exportConnections(Array(vm.selectedConnections))
+                vm.exportConnections(connections)
             } label: {
                 Label(
-                    String(format: String(localized: "Export %d Connections to File..."), vm.selectedConnectionIds.count),
+                    String(format: String(localized: "Export %d Connections to File..."), connections.count),
                     systemImage: "square.and.arrow.up"
                 )
             }
@@ -39,11 +45,11 @@ extension WelcomeWindowView {
 
         Divider()
 
-        moveToGroupMenu(for: vm.selectedConnections)
+        moveToGroupMenu(for: connections)
 
         let validGroupIds = Set(vm.groups.map(\.id))
-        if vm.selectedConnections.contains(where: { $0.groupId.map { validGroupIds.contains($0) } ?? false }) {
-            Button { vm.removeFromGroup(vm.selectedConnections) } label: {
+        if connections.contains(where: { $0.groupId.map { validGroupIds.contains($0) } ?? false }) {
+            Button { vm.removeFromGroup(connections) } label: {
                 Label(String(localized: "Remove from Group"), systemImage: "folder.badge.minus")
             }
         }
@@ -51,14 +57,14 @@ extension WelcomeWindowView {
         if AppSettingsManager.shared.sync.enabled {
             Divider()
 
-            let allLocalOnly = vm.selectedConnections.allSatisfy(\.localOnly)
+            let allLocalOnly = connections.allSatisfy(\.localOnly)
             Button {
-                for conn in vm.selectedConnections {
+                for conn in connections {
                     var updated = conn
                     updated.localOnly = !allLocalOnly
                     ConnectionStorage.shared.updateConnection(updated)
                 }
-                NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+                AppEvents.shared.connectionUpdated.send(nil)
             } label: {
                 Label(
                     allLocalOnly
@@ -72,11 +78,11 @@ extension WelcomeWindowView {
         Divider()
 
         Button(role: .destructive) {
-            vm.connectionsToDelete = vm.selectedConnections
+            vm.connectionsToDelete = connections
             vm.showDeleteConfirmation = true
         } label: {
             Label(
-                String(format: String(localized: "Delete %d Connections"), vm.selectedConnectionIds.count),
+                String(format: String(localized: "Delete %d Connections"), connections.count),
                 systemImage: "trash"
             )
         }
@@ -91,7 +97,7 @@ extension WelcomeWindowView {
         Divider()
 
         Button {
-            openWindow(id: "connection-form", value: connection.id as UUID?)
+            WindowOpener.shared.openConnectionForm(editing: connection.id)
             vm.focusConnectionFormWindow()
         } label: {
             Label(String(localized: "Edit"), systemImage: "pencil")
@@ -167,7 +173,7 @@ extension WelcomeWindowView {
                 var updated = connection
                 updated.localOnly.toggle()
                 ConnectionStorage.shared.updateConnection(updated)
-                NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+                AppEvents.shared.connectionUpdated.send(connection.id)
             } label: {
                 Label(
                     connection.localOnly
@@ -228,7 +234,7 @@ extension WelcomeWindowView {
 
     @ViewBuilder
     var newConnectionContextMenu: some View {
-        Button(action: { openWindow(id: "connection-form") }) {
+        Button(action: { WindowOpener.shared.openConnectionForm() }) {
             Label("New Connection...", systemImage: "plus")
         }
 

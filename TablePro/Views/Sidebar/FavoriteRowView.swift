@@ -10,9 +10,14 @@ internal struct FavoriteRowView: View {
     let favorite: SQLFavorite
 
     var body: some View {
+        rowContent
+            .draggable(favorite.query)
+    }
+
+    private var rowContent: some View {
         HStack(spacing: 6) {
             Image(systemName: "star.fill")
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(Color(nsColor: .systemYellow))
                 .accessibilityHidden(true)
 
@@ -24,7 +29,7 @@ internal struct FavoriteRowView: View {
 
             if favorite.connectionId == nil {
                 Image(systemName: "globe")
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
@@ -33,7 +38,7 @@ internal struct FavoriteRowView: View {
                 Text(keyword)
                     .font(.system(.caption, design: .monospaced).weight(.medium))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(
                         Capsule()

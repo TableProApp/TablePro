@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @Suite("EtcdQueryBuilder - Browse Query")

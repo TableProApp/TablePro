@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @Suite("BSON Document Flattener")

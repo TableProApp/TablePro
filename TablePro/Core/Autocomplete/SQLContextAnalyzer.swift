@@ -6,6 +6,17 @@
 //
 
 import Foundation
+import os
+
+private let regexLogger = Logger(subsystem: "com.TablePro", category: "SQLContextAnalyzer.Regex")
+
+private func compileRegex(_ pattern: String, options: NSRegularExpression.Options = []) -> NSRegularExpression {
+    if let regex = try? NSRegularExpression(pattern: pattern, options: options) {
+        return regex
+    }
+    regexLogger.fault("Failed to compile static regex pattern: \(pattern, privacy: .public)")
+    return NSRegularExpression()
+}
 
 /// Type of SQL clause the cursor is in
 enum SQLClauseType {
@@ -188,80 +199,28 @@ final class SQLContextAnalyzer {
             // SELECT is most general
             ("\\bSELECT\\s+[^;]*$", .select),
         ]
-        return patterns.compactMap { pattern, clause in
-            guard let regex = try? NSRegularExpression(
-                pattern: pattern, options: .caseInsensitive
-            ) else {
-                assertionFailure("Invalid SQL clause regex pattern: \(pattern)")
-                return nil
-            }
-            return (regex, clause)
+        return patterns.map { pattern, clause in
+            (compileRegex(pattern, options: .caseInsensitive), clause)
         }
     }()
 
-    /// Pre-compiled regex for removing strings and comments
-    private static let singleQuoteStringRegex: NSRegularExpression = {
-        if let regex = try? NSRegularExpression(pattern: "'[^']*'") {
-            return regex
-        }
-        assertionFailure("Failed to compile singleQuoteStringRegex - invalid pattern")
-        return try! NSRegularExpression(pattern: "(?!)")
-    }()
+    private static let singleQuoteStringRegex = compileRegex("'[^']*'")
 
-    private static let doubleQuoteStringRegex: NSRegularExpression = {
-        if let regex = try? NSRegularExpression(pattern: "\"[^\"]*\"") {
-            return regex
-        }
-        assertionFailure("Failed to compile doubleQuoteStringRegex - invalid pattern")
-        return try! NSRegularExpression(pattern: "(?!)")
-    }()
+    private static let doubleQuoteStringRegex = compileRegex("\"[^\"]*\"")
 
-    private static let blockCommentRegex: NSRegularExpression = {
-        if let regex = try? NSRegularExpression(pattern: "/\\*[\\s\\S]*?\\*/") {
-            return regex
-        }
-        assertionFailure("Failed to compile blockCommentRegex - invalid pattern")
-        return try! NSRegularExpression(pattern: "(?!)")
-    }()
+    private static let blockCommentRegex = compileRegex("/\\*[\\s\\S]*?\\*/")
 
-    private static let lineCommentRegex: NSRegularExpression = {
-        if let regex = try? NSRegularExpression(pattern: "--[^\n]*") {
-            return regex
-        }
-        assertionFailure("Failed to compile lineCommentRegex - invalid pattern")
-        return try! NSRegularExpression(pattern: "(?!)")
-    }()
+    private static let lineCommentRegex = compileRegex("--[^\n]*")
 
-    /// Combined regex for removing strings and comments in a single pass (SVC-13)
-    private static let stringsAndCommentsRegex: NSRegularExpression = {
-        // Alternation: single-quoted strings | double-quoted strings | block comments | line comments
-        let pattern = #"'[^']*'|"[^"]*"|/\*[\s\S]*?\*/|--[^\n]*"#
-        if let regex = try? NSRegularExpression(pattern: pattern) {
-            return regex
-        }
-        assertionFailure("Failed to compile stringsAndCommentsRegex - invalid pattern")
-        return try! NSRegularExpression(pattern: "(?!)")
-    }()
+    private static let stringsAndCommentsRegex = compileRegex(
+        #"'[^']*'|"[^"]*"|/\*[\s\S]*?\*/|--[^\n]*"#
+    )
 
-    private static let cteFirstRegex: NSRegularExpression = {
-        if let regex = try? NSRegularExpression(
-            pattern: "(?i)\\bWITH\\s+(?:RECURSIVE\\s+)?([\\w]+)\\s+AS\\s*\\("
-        ) {
-            return regex
-        }
-        assertionFailure("Failed to compile cteFirstRegex")
-        return try! NSRegularExpression(pattern: "(?!)")
-    }()
+    private static let cteFirstRegex = compileRegex(
+        "(?i)\\bWITH\\s+(?:RECURSIVE\\s+)?([\\w]+)\\s+AS\\s*\\("
+    )
 
-    private static let cteCommaRegex: NSRegularExpression = {
-        if let regex = try? NSRegularExpression(
-            pattern: "(?i),\\s*([\\w]+)\\s+AS\\s*\\("
-        ) {
-            return regex
-        }
-        assertionFailure("Failed to compile cteCommaRegex")
-        return try! NSRegularExpression(pattern: "(?!)")
-    }()
+    private static let cteCommaRegex = compileRegex("(?i),\\s*([\\w]+)\\s+AS\\s*\\(")
 
     private static let tableRefRegexes: [NSRegularExpression] = {
         let patterns = [
@@ -274,7 +233,7 @@ final class SQLContextAnalyzer {
             "(?i)\\bINSERT\\s+INTO\\s+[`\"']?([\\w.]+)[`\"']?",
             "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+[`\"']?([\\w.]+)[`\"']?"
         ]
-        return patterns.compactMap { try? NSRegularExpression(pattern: $0) }
+        return patterns.map { compileRegex($0) }
     }()
 
     // MARK: - UTF-16 Helpers

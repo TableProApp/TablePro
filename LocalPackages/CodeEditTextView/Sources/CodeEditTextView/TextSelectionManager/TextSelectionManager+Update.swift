@@ -9,7 +9,11 @@ import Foundation
 
 extension TextSelectionManager {
     public func didReplaceCharacters(in range: NSRange, replacementLength: Int) {
-        let delta = replacementLength == 0 ? -range.length : replacementLength
+        // Net shift = chars added - chars removed. Selections past `range.max` move by this delta.
+        // The previous formula short-circuited to `replacementLength` when non-zero, which dropped
+        // the chars-removed term and over-shifted selections after a same-length replace (e.g. the
+        // multi-cursor IME path replaces each marked range char-for-char).
+        let delta = replacementLength - range.length
         for textSelection in self.textSelections {
             if textSelection.range.location > range.max {
                 textSelection.range.location = max(0, textSelection.range.location + delta)

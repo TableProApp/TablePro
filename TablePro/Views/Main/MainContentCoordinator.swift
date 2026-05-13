@@ -7,6 +7,7 @@
 //
 
 import CodeEditSourceEditor
+import Combine
 import Foundation
 import Observation
 import os
@@ -38,31 +39,31 @@ struct DisplayFormatsCacheEntry {
     let formats: [ValueDisplayFormat?]
 }
 
-/// Sidebar table loading state — single source of truth for sidebar UI
-enum SidebarLoadingState: Equatable {
-    case idle
-    case loading
-    case loaded
-    case error(String)
-}
-
 /// Represents which sheet is currently active in MainContentView.
 /// Uses a single `.sheet(item:)` modifier instead of multiple `.sheet(isPresented:)`.
 enum ActiveSheet: Identifiable {
     case databaseSwitcher
+    case quickSwitcher
+    case connectionSwitcher
+    case sqlPreview
     case exportDialog
     case importDialog
-    case quickSwitcher
     case exportQueryResults
+    case backupDatabase
+    case restoreDatabase(fileURL: URL)
     case maintenance(operation: String, tableName: String)
 
     var id: String {
         switch self {
         case .databaseSwitcher: "databaseSwitcher"
+        case .quickSwitcher: "quickSwitcher"
+        case .connectionSwitcher: "connectionSwitcher"
+        case .sqlPreview: "sqlPreview"
         case .exportDialog: "exportDialog"
         case .importDialog: "importDialog"
-        case .quickSwitcher: "quickSwitcher"
         case .exportQueryResults: "exportQueryResults"
+        case .backupDatabase: "backupDatabase"
+        case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"
         case .maintenance(let operation, let tableName): "maintenance-\(operation)-\(tableName)"
         }
     }
@@ -81,22 +82,22 @@ final class MainContentCoordinator {
         return switchSeq
     }
 
-    /// Posted during teardown so DataGridView coordinators can release cell views.
-    /// Object is the connection UUID.
-    static let teardownNotification = Notification.Name("MainContentCoordinator.teardown")
-
     // MARK: - Dependencies
 
+    @ObservationIgnored let services: AppServices
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
+    var activeDatabaseName: String {
+        services.databaseManager.activeDatabaseName(for: connection)
+    }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
-    let filterStateManager: FilterStateManager
-    let columnVisibilityManager: ColumnVisibilityManager
     let toolbarState: ConnectionToolbarState
-    let tableRowsStore = TableRowsStore()
+    let tabSessionRegistry: TabSessionRegistry
+    let queryExecutor: QueryExecutor
+    let windowSidebarState = WindowSidebarState()
 
     // MARK: - Services
 
@@ -106,10 +107,18 @@ final class MainContentCoordinator {
         RowOperationsManager(changeManager: changeManager)
     }()
 
+    @ObservationIgnored private(set) var filterCoordinator: FilterCoordinator!
+    @ObservationIgnored private(set) var queryExecutionCoordinator: QueryExecutionCoordinator!
+    @ObservationIgnored private(set) var paginationCoordinator: PaginationCoordinator!
+    @ObservationIgnored private(set) var rowEditingCoordinator: RowEditingCoordinator!
+
     /// Stable identifier for this coordinator's window (set by MainContentView on appear)
     var windowId: UUID?
 
-    /// Direct reference to sidebar viewmodel — eliminates global notification broadcasts
+    /// Setting this presents the favorite-edit dialog sheet from `MainEditorContentView`.
+    var favoriteDialogQuery: FavoriteDialogQuery?
+
+    /// Direct reference to sidebar viewmodel, eliminates global notification broadcasts
     weak var sidebarViewModel: SidebarViewModel?
 
     /// Direct reference to structure view actions — eliminates notification broadcasts
@@ -118,8 +127,7 @@ final class MainContentCoordinator {
     /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
     weak var aiViewModel: AIChatViewModel?
 
-    /// Direct reference to right panel state — enables showing AI panel programmatically
-    @ObservationIgnored weak var rightPanelState: RightPanelState?
+    weak var rightPanelState: RightPanelState?
 
     /// Direct reference to the data tab grid delegate — enables row mutation operations to
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
@@ -141,15 +149,12 @@ final class MainContentCoordinator {
 
     // MARK: - Published State
 
-    var schemaProvider: SQLSchemaProvider
     var cursorPositions: [CursorPosition] = []
     var tableMetadata: TableMetadata?
-    // Removed: showErrorAlert and errorAlertMessage - errors now display inline
     var activeSheet: ActiveSheet?
     var importFileURL: URL?
     var exportPreselectedTableNames: Set<String>?
     var needsLazyLoad = false
-    var sidebarLoadingState: SidebarLoadingState = .idle
 
     /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
     @ObservationIgnored var querySortCache: [UUID: QuerySortCacheEntry] = [:]
@@ -171,10 +176,19 @@ final class MainContentCoordinator {
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
-    @ObservationIgnored private var urlFilterObservers: [NSObjectProtocol] = []
-    @ObservationIgnored private var pluginDriverObserver: NSObjectProtocol?
+    @ObservationIgnored private var postConnectCancellable: AnyCancellable?
+    @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
+
+    var fileConflictRequest: FileConflictRequest?
+
+    struct FileConflictRequest: Identifiable {
+        let id = UUID()
+        let tabId: UUID
+        let url: URL
+        let mineContent: String
+        let diskContent: String
+    }
     @ObservationIgnored private var fileWatcher: DatabaseFileWatcher?
-    @ObservationIgnored private var lastSchemaRefreshDate = Date.distantPast
 
     /// Set during handleTabChange to suppress redundant column-change reconfiguration
     @ObservationIgnored internal var isHandlingTabSwitch = false
@@ -190,32 +204,15 @@ final class MainContentCoordinator {
     /// (e.g. save-then-close). Set before calling `saveChanges`, resumed by `executeCommitStatements`.
     @ObservationIgnored internal var saveCompletionContinuation: CheckedContinuation<Bool, Never>?
 
-    /// Called during teardown to let the view layer release cached row providers and sort data.
-    @ObservationIgnored var onTeardown: (() -> Void)?
-
-    // MARK: - Window Lifecycle (Phase 2: driven by TabWindowController NSWindowDelegate)
+    // MARK: - Window Lifecycle (driven by TabWindowController NSWindowDelegate)
 
     /// Whether this coordinator's window is the key (focused) window.
     /// Updated by TabWindowController delegate methods; consumed by
     /// event handlers (e.g. sidebar table-selection navigation filter).
     @ObservationIgnored var isKeyWindow = false
 
-    /// Timestamp of the most recent resignKey. Used by `handleWindowDidBecomeKey`
-    /// to detect menu-interaction bounces (resign + become within 200ms).
-    @ObservationIgnored var lastResignKeyDate = Date.distantPast
-
     /// Eviction task scheduled in `handleWindowDidResignKey` (fires 5s later).
     @ObservationIgnored var evictionTask: Task<Void, Never>?
-
-    /// View-layer callback invoked from `handleWindowDidBecomeKey` (e.g. sync
-    /// SwiftUI-scoped sidebar selection to the current tab). Set by MainContentView
-    /// in `.onAppear`. The callback closes over view state (@Binding tables,
-    /// SharedSidebarState) that isn't available to the coordinator.
-    @ObservationIgnored var onWindowBecameKey: (() -> Void)?
-
-    /// View-layer callback invoked from `handleWindowWillClose` before teardown
-    /// (e.g. `rightPanelState.teardown()` releases SwiftUI-scoped subviewmodels).
-    @ObservationIgnored var onWindowWillClose: (() -> Void)?
 
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
@@ -241,61 +238,32 @@ final class MainContentCoordinator {
         set { _isAppTerminating.withLock { $0 = newValue } }
     }
 
+    /// Stable instance identity. Used to key the registry so a recycled
+    /// `ObjectIdentifier` from a freshly-allocated coordinator can never
+    /// remove a different instance's entry from a delayed cleanup Task.
+    let instanceId = UUID()
+
     /// Registry of active coordinators for aggregated quit-time persistence.
-    /// Keyed by ObjectIdentifier of each coordinator instance.
-    private static var activeCoordinators: [ObjectIdentifier: MainContentCoordinator] = [:]
+    /// Keyed by `instanceId` (UUID) — never by `ObjectIdentifier`, which can
+    /// be recycled across allocations.
+    static var activeCoordinators: [UUID: MainContentCoordinator] = [:]
 
     /// Register this coordinator so quit-time persistence can aggregate tabs.
+    /// Idempotent — repeated registration is a no-op.
+    func registerEagerly() {
+        Self.activeCoordinators[instanceId] = self
+    }
+
     private func registerForPersistence() {
-        Self.activeCoordinators[ObjectIdentifier(self)] = self
+        Self.activeCoordinators[instanceId] = self
     }
 
-    /// Unregister this coordinator from quit-time aggregation.
     private func unregisterFromPersistence() {
-        Self.activeCoordinators.removeValue(forKey: ObjectIdentifier(self))
-    }
-
-    /// Find a coordinator by its window identifier.
-    static func coordinator(for windowId: UUID) -> MainContentCoordinator? {
-        activeCoordinators.values.first { $0.windowId == windowId }
-    }
-
-    /// Find the coordinator whose `contentWindow` matches the given NSWindow.
-    /// Used by `TabWindowController` to dispatch NSWindowDelegate callbacks
-    /// to the correct coordinator without needing a shared registry key.
-    static func coordinator(forWindow window: NSWindow) -> MainContentCoordinator? {
-        activeCoordinators.values.first { $0.contentWindow === window }
-    }
-
-    /// Check whether any active coordinator has unsaved edits.
-    static func hasAnyUnsavedChanges() -> Bool {
-        activeCoordinators.values.contains { coordinator in
-            coordinator.changeManager.hasChanges
-                || coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges }
-        }
-    }
-
-    /// Collect all tabs from all active coordinators for a given connectionId.
-    static func allTabs(for connectionId: UUID) -> [QueryTab] {
-        activeCoordinators.values
-            .filter { $0.connectionId == connectionId }
-            .flatMap { $0.tabManager.tabs }
-    }
-
-    /// Find the first coordinator for `connectionId` that owns a tab matching `predicate`.
-    /// Used to dedup cross-window tabs (Server Dashboard singleton, ER Diagram reuse).
-    static func coordinator(
-        forConnection connectionId: UUID,
-        tabMatching predicate: (QueryTab) -> Bool
-    ) -> MainContentCoordinator? {
-        activeCoordinators.values.first { coordinator in
-            coordinator.connectionId == connectionId
-                && coordinator.tabManager.tabs.contains(where: predicate)
-        }
+        Self.activeCoordinators.removeValue(forKey: instanceId)
     }
 
     /// Collect non-preview tabs for persistence.
-    private static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
+    static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
         let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
 
@@ -321,7 +289,7 @@ final class MainContentCoordinator {
     }
 
     /// Get selected tab ID from any coordinator for a given connectionId.
-    private static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
+    static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
         activeCoordinators.values
             .first { $0.connectionId == connectionId && $0.tabManager.selectedTabId != nil }?
             .tabManager.selectedTabId
@@ -350,8 +318,10 @@ final class MainContentCoordinator {
     /// Background tabs are re-fetched automatically when selected.
     func evictInactiveRowData() {
         let selectedId = tabManager.selectedTabId
-        for tab in tabManager.tabs where tab.id != selectedId && !tab.pendingChanges.hasChanges {
-            tableRowsStore.evict(for: tab.id)
+        for (index, tab) in tabManager.tabs.enumerated()
+        where tab.id != selectedId && !tab.pendingChanges.hasChanges {
+            tabSessionRegistry.evict(for: tab.id)
+            tabManager.mutate(at: index) { $0.loadEpoch &+= 1 }
         }
     }
 
@@ -375,18 +345,22 @@ final class MainContentCoordinator {
         connection: DatabaseConnection,
         tabManager: QueryTabManager,
         changeManager: DataChangeManager,
-        filterStateManager: FilterStateManager,
-        columnVisibilityManager: ColumnVisibilityManager,
-        toolbarState: ConnectionToolbarState
+        toolbarState: ConnectionToolbarState,
+        tabSessionRegistry: TabSessionRegistry? = nil,
+        queryExecutor: QueryExecutor? = nil,
+        services: AppServices = .live
     ) {
         let initStart = Date()
+        self.services = services
         self.connection = connection
         self.tabManager = tabManager
         self.changeManager = changeManager
-        self.filterStateManager = filterStateManager
-        self.columnVisibilityManager = columnVisibilityManager
         self.toolbarState = toolbarState
-        let dialect = PluginManager.shared.sqlDialect(for: connection.type)
+        let resolvedRegistry = tabSessionRegistry ?? TabSessionRegistry()
+        self.tabSessionRegistry = resolvedRegistry
+        tabManager.bindTabSessionRegistry(resolvedRegistry)
+        self.queryExecutor = queryExecutor ?? QueryExecutor(connection: connection)
+        let dialect = services.pluginManager.sqlDialect(for: connection.type)
         self.queryBuilder = TableQueryBuilder(
             databaseType: connection.type,
             dialect: dialect,
@@ -394,9 +368,8 @@ final class MainContentCoordinator {
         )
         self.persistence = TabPersistenceCoordinator(connectionId: connection.id)
 
-        self.schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
-        SchemaProviderRegistry.shared.retain(for: connection.id)
-        urlFilterObservers = setupURLNotificationObservers()
+        _ = services.schemaProviderRegistry.getOrCreate(for: connection.id)
+        ConnectionDataCache.shared(for: connection.id).ensureLoaded()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
 
@@ -427,52 +400,80 @@ final class MainContentCoordinator {
         }
 
         _ = Self.registerTerminationObserver
+
+        externalFileModCancellable = services.appEvents.linkedSQLFoldersDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] payload in
+                guard let self else { return }
+                guard payload == nil || payload == self.connectionId else { return }
+                self.checkOpenTabsForExternalModification()
+            }
+
+        self.filterCoordinator = FilterCoordinator(parent: self)
+        self.queryExecutionCoordinator = QueryExecutionCoordinator(parent: self)
+        self.paginationCoordinator = PaginationCoordinator(parent: self)
+        self.rowEditingCoordinator = RowEditingCoordinator(parent: self)
+
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
         )
     }
 
+    private func checkOpenTabsForExternalModification() {
+        for index in tabManager.tabs.indices {
+            guard let url = tabManager.tabs[index].content.sourceFileURL,
+                  let loadMtime = tabManager.tabs[index].content.loadMtime,
+                  let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+            else { continue }
+
+            let modified = currentMtime > loadMtime.addingTimeInterval(0.5)
+            if modified != tabManager.tabs[index].content.externalModificationDetected {
+                tabManager.mutate(at: index) { $0.content.externalModificationDetected = modified }
+            }
+        }
+    }
+
     func markActivated() {
         let start = Date()
-        _didActivate.withLock { $0 = true }
+        let wasAlreadyActive = _didActivate.withLock { current -> Bool in
+            let prior = current
+            current = true
+            return prior
+        }
+        if !wasAlreadyActive {
+            services.schemaProviderRegistry.retain(for: connection.id)
+        }
         registerForPersistence()
         setupPluginDriver()
         startFileWatcherIfNeeded()
-        // Retry when driver becomes available (connection may still be in progress)
         if changeManager.pluginDriver == nil {
-            pluginDriverObserver = NotificationCenter.default.addObserver(
-                forName: .databaseDidConnect, object: nil, queue: .main
-            ) { [weak self] _ in
-                Task {
-                    self?.setupPluginDriver()
+            postConnectCancellable = services.appEvents.databaseDidConnect
+                .receive(on: RunLoop.main)
+                .sink { [weak self] payload in
+                    guard let self, payload.connectionId == self.connection.id else { return }
+                    Task { @MainActor in
+                        self.setupPluginDriver()
+                        await self.loadSchemaIfNeeded()
+                        self.postConnectCancellable = nil
+                    }
                 }
-            }
         }
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 
-    /// Transition sidebar from `.idle` to `.loaded` when tables already exist
-    /// (e.g. populated by another window's `refreshTables()`).
-    func healSidebarLoadingStateIfNeeded() {
-        guard sidebarLoadingState == .idle else { return }
-        let tables = DatabaseManager.shared.session(for: connectionId)?.tables ?? []
-        if !tables.isEmpty {
-            sidebarLoadingState = .loaded
-        }
-    }
-
     /// Start watching the database file for external changes (SQLite, DuckDB).
     private func startFileWatcherIfNeeded() {
-        guard PluginManager.shared.connectionMode(for: connection.type) == .fileBased else { return }
+        guard services.pluginManager.connectionMode(for: connection.type) == .fileBased else { return }
         let filePath = connection.database
         guard !filePath.isEmpty else { return }
 
         let watcher = DatabaseFileWatcher()
         watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
-            guard let self, self.sidebarLoadingState != .loading else { return }
-            Task { await self.refreshTablesIfStale() }
+            guard let self else { return }
+            if case .loading = services.schemaService.state(for: self.connectionId) { return }
+            Task { await self.refreshTables() }
         }
         fileWatcher = watcher
     }
@@ -480,9 +481,14 @@ final class MainContentCoordinator {
     /// Refresh schema only if not recently refreshed (avoids redundant work
     /// when both the file watcher and window focus trigger close together).
     func refreshTablesIfStale() async {
-        guard Date().timeIntervalSince(lastSchemaRefreshDate) > 2 else { return }
-        lastSchemaRefreshDate = Date()
-        await refreshTables()
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.reloadIfStale(
+            connectionId: connectionId,
+            driver: driver,
+            connection: connection,
+            staleness: 2
+        )
+        await reconcilePostSchemaLoad()
     }
 
     func showAIChatPanel() {
@@ -492,15 +498,10 @@ final class MainContentCoordinator {
 
     /// Set up the plugin driver for query building dispatch on the query builder and change manager.
     private func setupPluginDriver() {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
         let pluginDriver = driver.queryBuildingPluginDriver
         queryBuilder.setPluginDriver(pluginDriver)
         changeManager.pluginDriver = pluginDriver
-        // Remove observer once successfully set up
-        if pluginDriver != nil, let observer = pluginDriverObserver {
-            NotificationCenter.default.removeObserver(observer)
-            pluginDriverObserver = nil
-        }
     }
 
     func markTeardownScheduled() {
@@ -512,45 +513,91 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
-        lastSchemaRefreshDate = Date()
-        sidebarLoadingState = .loading
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            sidebarLoadingState = .error(String(localized: "Not connected"))
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.reload(
+            connectionId: connectionId,
+            driver: driver,
+            connection: connection
+        )
+        await reconcilePostSchemaLoad()
+    }
+
+    func refreshProcedures() async {
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
+    }
+
+    func refreshFunctions() async {
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+    }
+
+    func showRoutineDDL(_ routine: RoutineInfo) {
+        guard let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter else {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Cannot Show DDL"),
+                message: String(localized: "This driver does not expose routine DDL."),
+                window: nil
+            )
             return
         }
-        do {
-            let tables = try await driver.fetchTables()
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            DatabaseManager.shared.updateSession(connectionId) { $0.tables = tables }
-            let currentDb = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
-            await schemaProvider.resetForDatabase(currentDb, tables: tables, driver: driver)
-
-            // Clean up stale selections and pending operations for tables that no longer exist
-            if let vm = sidebarViewModel {
-                let validNames = Set(tables.map(\.name))
-                let staleSelections = vm.selectedTables.filter { !validNames.contains($0.name) }
-                if !staleSelections.isEmpty {
-                    vm.selectedTables.subtract(staleSelections)
+        Task { [connectionId = connection.id, routine] in
+            do {
+                let ddl = try await adapter.fetchRoutineDDL(routine: routine)
+                let titleFormat: String = routine.kind == .procedure
+                    ? String(localized: "Procedure: %@")
+                    : String(localized: "Function: %@")
+                let payload = EditorTabPayload(
+                    connectionId: connectionId,
+                    tabType: .query,
+                    initialQuery: ddl,
+                    skipAutoExecute: true,
+                    tabTitle: String(format: titleFormat, routine.name)
+                )
+                await MainActor.run {
+                    WindowManager.shared.openTab(payload: payload)
                 }
-                let stalePendingDeletes = vm.pendingDeletes.subtracting(validNames)
-                if !stalePendingDeletes.isEmpty {
-                    vm.pendingDeletes.subtract(stalePendingDeletes)
-                    for name in stalePendingDeletes {
-                        vm.tableOperationOptions.removeValue(forKey: name)
-                    }
-                }
-                let stalePendingTruncates = vm.pendingTruncates.subtracting(validNames)
-                if !stalePendingTruncates.isEmpty {
-                    vm.pendingTruncates.subtract(stalePendingTruncates)
-                    for name in stalePendingTruncates {
-                        vm.tableOperationOptions.removeValue(forKey: name)
-                    }
+            } catch {
+                await MainActor.run {
+                    AlertHelper.showErrorSheet(
+                        title: String(localized: "Failed to Fetch DDL"),
+                        message: error.localizedDescription,
+                        window: nil
+                    )
                 }
             }
+        }
+    }
 
-            sidebarLoadingState = .loaded
-        } catch {
-            sidebarLoadingState = .error(error.localizedDescription)
+    /// Push the SchemaService table list into the autocomplete provider and prune sidebar
+    /// state for tables that no longer exist.
+    private func reconcilePostSchemaLoad() async {
+        guard case .loaded(let tables) = services.schemaService.state(for: connectionId) else { return }
+        if let driver = services.databaseManager.driver(for: connectionId),
+           let provider = services.schemaProviderRegistry.provider(for: connectionId) {
+            let currentDb = services.databaseManager.session(for: connectionId)?.activeDatabase
+            await provider.resetForDatabase(currentDb, tables: tables, driver: driver)
+        }
+
+        guard let vm = sidebarViewModel else { return }
+        let validNames = Set(tables.map(\.name))
+        let staleSelections = vm.selectedTables.filter { !validNames.contains($0.name) }
+        if !staleSelections.isEmpty {
+            vm.selectedTables.subtract(staleSelections)
+        }
+        let stalePendingDeletes = vm.pendingDeletes.subtracting(validNames)
+        if !stalePendingDeletes.isEmpty {
+            vm.pendingDeletes.subtract(stalePendingDeletes)
+            for name in stalePendingDeletes {
+                vm.tableOperationOptions.removeValue(forKey: name)
+            }
+        }
+        let stalePendingTruncates = vm.pendingTruncates.subtracting(validNames)
+        if !stalePendingTruncates.isEmpty {
+            vm.pendingTruncates.subtract(stalePendingTruncates)
+            for name in stalePendingTruncates {
+                vm.tableOperationOptions.removeValue(forKey: name)
+            }
         }
     }
 
@@ -564,18 +611,12 @@ final class MainContentCoordinator {
         _didTeardown.withLock { $0 = true }
 
         unregisterFromPersistence()
-        for observer in urlFilterObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        urlFilterObservers.removeAll()
         if let observer = terminationObserver {
             NotificationCenter.default.removeObserver(observer)
             terminationObserver = nil
         }
-        if let observer = pluginDriverObserver {
-            NotificationCenter.default.removeObserver(observer)
-            pluginDriverObserver = nil
-        }
+        postConnectCancellable = nil
+        externalFileModCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
         currentQueryTask?.cancel()
@@ -587,15 +628,9 @@ final class MainContentCoordinator {
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
 
-        onTeardown?()
-        onTeardown = nil
+        dataTabDelegate?.tableViewCoordinator?.releaseData()
 
-        NotificationCenter.default.post(
-            name: Self.teardownNotification,
-            object: connection.id
-        )
-
-        tableRowsStore.tearDown()
+        tabSessionRegistry.removeAll()
         querySortCache.removeAll()
         displayFormatsCache.removeAll()
         cachedTableColumnTypes.removeAll()
@@ -609,13 +644,11 @@ final class MainContentCoordinator {
         changeManager.clearChanges()
         changeManager.pluginDriver = nil
 
-        // Release metadata and filter state
+        // Release metadata
         tableMetadata = nil
-        filterStateManager.filters.removeAll()
-        filterStateManager.appliedFilters.removeAll()
 
-        SchemaProviderRegistry.shared.release(for: connection.id)
-        SchemaProviderRegistry.shared.purgeUnused()
+        services.schemaProviderRegistry.release(for: connection.id)
+        services.schemaProviderRegistry.purgeUnused()
         Self.lifecycleLogger.info(
             "[close] MainContentCoordinator.teardown done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
@@ -629,17 +662,13 @@ final class MainContentCoordinator {
         let alreadyHandled = _didTeardown.withLock { $0 } || _teardownScheduled.withLock { $0 }
 
         // Never-activated coordinators are throwaway instances created by SwiftUI
-        // during body re-evaluation — @State only keeps the first, rest are discarded
+        // during body re-evaluation — @State only keeps the first, rest are discarded.
+        // Retain is paired with `markActivated`, so a never-activated coordinator
+        // never retained the schema provider and must not release it here.
         guard _didActivate.withLock({ $0 }) else {
-            let id = ObjectIdentifier(self)
+            let id = instanceId
             Task { @MainActor in
                 Self.activeCoordinators.removeValue(forKey: id)
-            }
-            if !alreadyHandled {
-                Task { @MainActor in
-                    SchemaProviderRegistry.shared.release(for: connectionId)
-                    SchemaProviderRegistry.shared.purgeUnused()
-                }
             }
             return
         }
@@ -651,8 +680,8 @@ final class MainContentCoordinator {
 
         if !alreadyHandled {
             Task { @MainActor in
-                SchemaProviderRegistry.shared.release(for: connectionId)
-                SchemaProviderRegistry.shared.purgeUnused()
+                services.schemaProviderRegistry.release(for: connectionId)
+                services.schemaProviderRegistry.purgeUnused()
             }
         }
     }
@@ -663,23 +692,20 @@ final class MainContentCoordinator {
     func initializeToolbar() {
         toolbarState.update(from: connection)
 
-        if let session = DatabaseManager.shared.session(for: connectionId) {
+        if let session = services.databaseManager.session(for: connectionId) {
             toolbarState.connectionState = mapSessionStatus(session.status)
             if let driver = session.driver {
                 toolbarState.databaseVersion = driver.serverVersion
             }
-        } else if let driver = DatabaseManager.shared.driver(for: connectionId) {
+        } else if let driver = services.databaseManager.driver(for: connectionId) {
             toolbarState.connectionState = .connected
             toolbarState.databaseVersion = driver.serverVersion
         }
     }
 
-    /// Load schema only if the shared provider hasn't loaded yet
+    /// Load schema if not already loaded by another window for this connection.
     func loadSchemaIfNeeded() async {
-        let alreadyLoaded = await schemaProvider.isSchemaLoaded()
-        if !alreadyLoaded {
-            await loadSchema()
-        }
+        await loadSchema()
     }
 
     /// Initialize view with connection info and load schema (legacy — used by first window)
@@ -701,12 +727,17 @@ final class MainContentCoordinator {
     // MARK: - Schema Loading
 
     func loadSchema() async {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        await schemaProvider.loadSchema(using: driver, connection: connection)
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        await services.schemaService.load(
+            connectionId: connectionId,
+            driver: driver,
+            connection: connection
+        )
+        await reconcilePostSchemaLoad()
     }
 
     func loadTableMetadata(tableName: String) async {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
 
         do {
             let metadata = try await driver.fetchTableMetadata(tableName: tableName)
@@ -715,22 +746,6 @@ final class MainContentCoordinator {
             Self.logger.error("Failed to load table metadata: \(error.localizedDescription, privacy: .public)")
         }
     }
-
-    /// Pre-compiled regex for extracting table name from SELECT queries
-    private static let tableNameRegex = try? NSRegularExpression(
-        pattern: #"(?i)^\s*SELECT\s+.+?\s+FROM\s+(?:\[([^\]]+)\]|[`"]([^`"]+)[`"]|([\w$]+))\s*(?:WHERE|ORDER|LIMIT|GROUP|HAVING|OFFSET|FETCH|$|;)"#,
-        options: []
-    )
-
-    private static let mongoCollectionRegex = try? NSRegularExpression(
-        pattern: #"^\s*db\.(\w+)\."#,
-        options: []
-    )
-
-    private static let mongoBracketCollectionRegex = try? NSRegularExpression(
-        pattern: #"^\s*db\["([^"]+)"\]"#,
-        options: []
-    )
 
     // MARK: - Query Execution
 
@@ -764,7 +779,7 @@ final class MainContentCoordinator {
             return
         }
 
-        if AppSettingsManager.shared.editor.queryParametersEnabled {
+        if services.appSettings.editor.queryParametersEnabled {
             let paramStatements = SQLStatementScanner.allStatements(in: sql)
             guard !paramStatements.isEmpty else { return }
             let combinedSQL = paramStatements.joined(separator: "; ")
@@ -775,10 +790,10 @@ final class MainContentCoordinator {
                     sql: combinedSQL,
                     existing: tabManager.tabs[index].content.queryParameters
                 )
-                tabManager.tabs[index].content.queryParameters = reconciled
+                tabManager.mutate(at: index) { $0.content.queryParameters = reconciled }
 
                 if !tabManager.tabs[index].content.isParameterPanelVisible {
-                    tabManager.tabs[index].content.isParameterPanelVisible = true
+                    tabManager.mutate(at: index) { $0.content.isParameterPanelVisible = true }
                     return
                 }
 
@@ -830,9 +845,7 @@ final class MainContentCoordinator {
                 case .allowed:
                     executeQueryInternal(sql)
                 case .blocked(let reason):
-                    if index < tabManager.tabs.count {
-                        tabManager.tabs[index].execution.errorMessage = reason
-                    }
+                    tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
         } else {
@@ -845,8 +858,10 @@ final class MainContentCoordinator {
     func loadQueryIntoEditor(_ query: String) {
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query {
-            tabManager.tabs[tabIndex].content.query = query
-            tabManager.tabs[tabIndex].hasUserInteraction = true
+            tabManager.mutate(at: tabIndex) {
+                $0.content.query = query
+                $0.hasUserInteraction = true
+            }
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
@@ -861,14 +876,16 @@ final class MainContentCoordinator {
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query {
             let existingQuery = tab.content.query
-            if existingQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                tabManager.tabs[tabIndex].content.query = query
-            } else {
-                tabManager.tabs[tabIndex].content.query = existingQuery + "\n\n" + query
+            tabManager.mutate(at: tabIndex) { mutTab in
+                if existingQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    mutTab.content.query = query
+                } else {
+                    mutTab.content.query = existingQuery + "\n\n" + query
+                }
+                mutTab.hasUserInteraction = true
             }
-            tabManager.tabs[tabIndex].hasUserInteraction = true
         } else if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: connection.database)
+            tabManager.addTab(initialQuery: query, databaseName: activeDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
@@ -942,10 +959,12 @@ final class MainContentCoordinator {
             return
         }
 
-        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter,
+        guard let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter,
               let explainSQL = adapter.buildExplainQuery(stmt) else {
             if let (_, index) = tabManager.selectedTabAndIndex {
-                tabManager.tabs[index].execution.errorMessage = String(localized: "EXPLAIN is not supported for this database type.")
+                tabManager.mutate(at: index) {
+                    $0.execution.errorMessage = String(localized: "EXPLAIN is not supported for this database type.")
+                }
             }
             return
         }
@@ -972,7 +991,6 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Internal query execution (called after any confirmations)
     internal func executeQueryInternal(
         _ sql: String
     ) {
@@ -982,7 +1000,7 @@ final class MainContentCoordinator {
         if currentQueryTask != nil {
             currentQueryTask?.cancel()
             do {
-                try DatabaseManager.shared.driver(for: connectionId)?.cancelQuery()
+                try services.databaseManager.driver(for: connectionId)?.cancelQuery()
             } catch {
                 Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
             }
@@ -991,148 +1009,95 @@ final class MainContentCoordinator {
         queryGeneration += 1
         let capturedGeneration = queryGeneration
 
-        // Batch mutations into a single array write to avoid multiple @Published
-        // notifications — each notification triggers a full SwiftUI update cycle.
-        var tab = tabManager.tabs[index]
-        tab.execution.isExecuting = true
-        tab.execution.executionTime = nil
-        tab.execution.errorMessage = nil
-        tab.display.explainText = nil
-        tab.display.explainPlan = nil
-        tabManager.tabs[index] = tab
+        tabManager.mutate(at: index) { tab in
+            tab.execution.isExecuting = true
+            tab.execution.executionTime = nil
+            tab.execution.errorMessage = nil
+            tab.display.explainText = nil
+            tab.display.explainPlan = nil
+        }
+        let tab = tabManager.tabs[index]
         toolbarState.setExecuting(true)
 
-        if PluginManager.shared.supportsQueryProgress(for: connection.type) {
+        if services.pluginManager.supportsQueryProgress(for: connection.type) {
             installClickHouseProgressHandler()
         }
 
         let conn = connection
         let tabId = tabManager.tabs[index].id
 
-        let (useProgressiveLoading, progressiveLimit) = resolveProgressiveLoading(sql: sql, tabType: tab.tabType)
-        let effectiveSQL = sql
+        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType)
+        let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
-        let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: effectiveSQL)
+        let needsMetadataFetch: Bool
+        if isEditable, let tableName {
+            needsMetadataFetch = !isMetadataCached(tabId: tabId, tableName: tableName)
+        } else {
+            needsMetadataFetch = false
+        }
 
         currentQueryTask = Task { [weak self] in
             guard let self else { return }
 
             do {
-                // Pre-check metadata cache before starting any queries.
-                var parallelSchemaTask: Task<SchemaResult, Error>?
-                var needsMetadataFetch = false
-
-                if isEditable, let tableName = tableName {
-                    let cached = isMetadataCached(tabId: tabId, tableName: tableName)
-                    needsMetadataFetch = !cached
-
-                    // Metadata queries run on the main driver. They serialize behind any
-                    // in-flight query at the C-level DispatchQueue and execute immediately after.
-                    if needsMetadataFetch {
-                        let connId = connectionId
-                        // Note: Schema fetch operations are not tracked by ConnectionHealthMonitor.queriesInFlight.
-                        // This is acceptable because the health monitor checks session.isConnected before pinging,
-                        // and schema fetches are short-lived.
-                        parallelSchemaTask = Task {
-                            guard let driver = DatabaseManager.shared.driver(for: connId) else {
-                                throw DatabaseError.notConnected
-                            }
-                            async let cols = driver.fetchColumns(table: tableName)
-                            async let fks = driver.fetchForeignKeys(table: tableName)
-                            let result = try await (columnInfo: cols, fkInfo: fks)
-                            let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
-                            return (columnInfo: result.columnInfo, fkInfo: result.fkInfo, approximateRowCount: approxCount)
-                        }
-                    }
-                }
-
-                // Main data query (on primary driver — runs concurrently with metadata)
-                guard let queryDriver = DatabaseManager.shared.driver(for: connectionId) else {
-                    throw DatabaseError.notConnected
-                }
-                let fetchResult: QueryFetchResult
-                do {
-                    fetchResult = try await Self.fetchQueryData(
-                        driver: queryDriver,
-                        sql: effectiveSQL,
-                        useProgressiveLoading: useProgressiveLoading,
-                        progressiveLimit: progressiveLimit
-                    )
-                }
-                let safeColumns = fetchResult.columns
-                let safeColumnTypes = fetchResult.columnTypes
-                let safeRows = fetchResult.rows
-                let safeExecutionTime = fetchResult.executionTime
-                let safeRowsAffected = fetchResult.rowsAffected
-                let safeStatusMessage = fetchResult.statusMessage
-                let pageContext = fetchResult.pageContext
+                let executionResult = try await queryExecutor.executeQuery(
+                    sql: sql,
+                    parameters: nil,
+                    rowCap: rowCap,
+                    tableName: tableName,
+                    fetchSchemaForTable: needsMetadataFetch
+                )
 
                 guard !Task.isCancelled else {
-                    parallelSchemaTask?.cancel()
-                    await resetExecutionState(tabId: tabId, executionTime: safeExecutionTime)
+                    await resetExecutionState(
+                        tabId: tabId,
+                        executionTime: executionResult.fetchResult.executionTime
+                    )
                     return
                 }
 
-                // Await schema result before Phase 1 so data + FK arrows appear together
-                var schemaResult: SchemaResult?
-                if needsMetadataFetch {
-                    schemaResult = await awaitSchemaResult(
-                        parallelTask: parallelSchemaTask,
-                        tableName: tableName ?? ""
-                    )
-                }
-
-                // Parse schema metadata if available
-                let metadata = schemaResult.map { self.parseSchemaMetadata($0) }
-
-                // Phase 1: Display data rows + FK arrows in a single MainActor update.
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     currentQueryTask = nil
-                    if PluginManager.shared.supportsQueryProgress(for: self.connection.type) {
+                    if services.pluginManager.supportsQueryProgress(for: self.connection.type) {
                         self.clearClickHouseProgress()
                     }
                     toolbarState.setExecuting(false)
-                    toolbarState.lastQueryDuration = safeExecutionTime
+                    toolbarState.lastQueryDuration = executionResult.fetchResult.executionTime
 
-                    // Always reset isExecuting even if generation is stale
                     if capturedGeneration != queryGeneration || Task.isCancelled {
-                        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                            tabManager.tabs[idx].execution.isExecuting = false
-                        }
+                        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                         return
                     }
 
                     applyPhase1Result(
                         tabId: tabId,
-                        columns: safeColumns,
-                        columnTypes: safeColumnTypes,
-                        rows: safeRows,
-                        executionTime: safeExecutionTime,
-                        rowsAffected: safeRowsAffected,
-                        statusMessage: safeStatusMessage,
+                        columns: executionResult.fetchResult.columns,
+                        columnTypes: executionResult.fetchResult.columnTypes,
+                        rows: executionResult.fetchResult.rows,
+                        executionTime: executionResult.fetchResult.executionTime,
+                        rowsAffected: executionResult.fetchResult.rowsAffected,
+                        statusMessage: executionResult.fetchResult.statusMessage,
                         tableName: tableName,
                         isEditable: isEditable,
-                        metadata: metadata,
-                        hasSchema: schemaResult != nil,
+                        metadata: executionResult.parsedMetadata,
+                        hasSchema: executionResult.schemaResult != nil,
                         sql: sql,
                         connection: conn,
-                        queryPageContext: pageContext
+                        isTruncated: executionResult.fetchResult.isTruncated
                     )
                 }
 
-                // Phase 2: Background exact COUNT + enum values.
-                if isEditable, let tableName = tableName {
+                if isEditable, let tableName {
                     if needsMetadataFetch {
                         launchPhase2Work(
                             tableName: tableName,
                             tabId: tabId,
                             capturedGeneration: capturedGeneration,
                             connectionType: conn.type,
-                            schemaResult: schemaResult
+                            schemaResult: executionResult.schemaResult
                         )
                     } else {
-                        // Metadata cached but still need exact COUNT for pagination
                         launchPhase2Count(
                             tableName: tableName,
                             tabId: tabId,
@@ -1149,19 +1114,15 @@ final class MainContentCoordinator {
                     }
                 }
             } catch {
-                // Always reset isExecuting even if generation is stale —
-                // skipping this leaves the tab permanently stuck in "executing"
-                // state, requiring a reconnect to recover.
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        var tab = tabManager.tabs[idx]
+                    tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.isExecuting = false
                         tab.pagination.isLoadingMore = false
-                        tabManager.tabs[idx] = tab
                     }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
+                    if error is CancellationError || Task.isCancelled { return }
                     guard capturedGeneration == queryGeneration else { return }
                     handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }
@@ -1172,17 +1133,15 @@ final class MainContentCoordinator {
     /// Reset execution state when a query is cancelled
     @MainActor
     internal func resetExecutionState(tabId: UUID, executionTime: TimeInterval) {
-        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-            tabManager.tabs[idx].execution.isExecuting = false
-        }
+        tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
         currentQueryTask = nil
         toolbarState.setExecuting(false)
         toolbarState.lastQueryDuration = executionTime
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
-        let usesNoSQLBrowsing = PluginManager.shared.editorLanguage(for: connection.type) != .sql
-            || (DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter)?
+        let usesNoSQLBrowsing = services.pluginManager.editorLanguage(for: connection.type) != .sql
+            || (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
                 .queryBuildingPluginDriver != nil
         if usesNoSQLBrowsing {
             let name = tabManager.selectedTab?.tableContext.tableName
@@ -1235,7 +1194,7 @@ final class MainContentCoordinator {
         if result.isEmpty, let createSQL = try? await driver.fetchTableDDL(table: tableName) {
             let columns = try? await driver.fetchColumns(table: tableName)
             for col in columns ?? [] {
-                if let values = Self.parseSQLiteCheckConstraintValues(
+                if let values = QuerySqlParser.parseSQLiteCheckConstraintValues(
                     createSQL: createSQL, columnName: col.name
                 ) {
                     result[col.name] = values
@@ -1246,133 +1205,73 @@ final class MainContentCoordinator {
         return result
     }
 
-    private static func parseSQLiteCheckConstraintValues(createSQL: String, columnName: String) -> [String]? {
-        let escapedName = NSRegularExpression.escapedPattern(for: columnName)
-        let pattern = "CHECK\\s*\\(\\s*\"?\(escapedName)\"?\\s+IN\\s*\\(([^)]+)\\)\\s*\\)"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return nil
-        }
-        let nsString = createSQL as NSString
-        guard let match = regex.firstMatch(
-            in: createSQL,
-            range: NSRange(location: 0, length: nsString.length)
-        ), match.numberOfRanges > 1 else {
-            return nil
-        }
-        let valuesString = nsString.substring(with: match.range(at: 1))
-        return ColumnType.parseEnumValues(from: "ENUM(\(valuesString))")
-    }
-
     // MARK: - SQL Helpers
 
     static func stripTrailingOrderBy(from sql: String) -> String {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        let nsString = trimmed as NSString
-        let pattern = "\\s+ORDER\\s+BY\\s+(?![^(]*\\))[^)]*$"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return trimmed
-        }
-        let range = NSRange(location: 0, length: nsString.length)
-        return regex.stringByReplacingMatches(in: trimmed, range: range, withTemplate: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        QuerySqlParser.stripTrailingOrderBy(from: sql)
     }
 
     // MARK: - SQL Parsing
 
     func extractTableName(from sql: String) -> String? {
-        let nsRange = NSRange(sql.startIndex..., in: sql)
-
-        // SQL: SELECT ... FROM tableName  (group 1 = bracket-quoted, group 2 = plain/backtick/double-quote)
-        if let regex = Self.tableNameRegex,
-           let match = regex.firstMatch(in: sql, options: [], range: nsRange) {
-            for group in 1...3 {
-                let r = match.range(at: group)
-                if r.location != NSNotFound, let range = Range(r, in: sql) {
-                    return String(sql[range])
-                }
-            }
-        }
-
-        // MQL bracket notation: db["collectionName"].find(...)
-        if let regex = Self.mongoBracketCollectionRegex,
-           let match = regex.firstMatch(in: sql, options: [], range: nsRange),
-           let range = Range(match.range(at: 1), in: sql) {
-            return String(sql[range])
-        }
-
-        // MQL dot notation: db.collectionName.find(...)
-        if let regex = Self.mongoCollectionRegex,
-           let match = regex.firstMatch(in: sql, options: [], range: nsRange),
-           let range = Range(match.range(at: 1), in: sql) {
-            return String(sql[range])
-        }
-
-        return nil
+        QuerySqlParser.extractTableName(from: sql)
     }
 
     // MARK: - Sorting
 
-    func handleSort(columnIndex: Int, ascending: Bool, isMultiSort: Bool = false) {
+    func handleSortStateChanged(_ newState: SortState) {
         guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        guard newState != tab.sortState else { return }
 
-        let tableRows = tableRowsStore.tableRows(for: tab.id)
-        guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
+        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
 
-        var currentSort = tab.sortState
-        let newDirection: SortDirection = ascending ? .ascending : .descending
-
-        if isMultiSort {
-            // Multi-sort: toggle existing or append new column
-            if let existingIndex = currentSort.columns.firstIndex(where: { $0.columnIndex == columnIndex }) {
-                if currentSort.columns[existingIndex].direction == newDirection {
-                    // Same direction clicked again — remove from sort
-                    currentSort.columns.remove(at: existingIndex)
-                } else {
-                    // Toggle direction
-                    currentSort.columns[existingIndex].direction = newDirection
-                }
-            } else {
-                // Add new column to sort list
-                currentSort.columns.append(SortColumn(columnIndex: columnIndex, direction: newDirection))
-            }
-        } else {
-            // Single sort: replace all with single column
-            currentSort = SortState()
-            currentSort.columns = [SortColumn(columnIndex: columnIndex, direction: newDirection)]
-        }
         if tab.tabType == .query {
-            // When more rows are available server-side, re-execute with ORDER BY
-            // instead of sorting locally (we only have a partial result set)
-            if tab.pagination.hasMoreRows {
-                let columnName = tableRows.columns[columnIndex]
-                let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
+            if !newState.columns.isEmpty && tab.pagination.hasMoreRows {
                 let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
                 let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
-                let quotedColumn = queryBuilder.quoteIdentifier(columnName)
-                let orderQuery = "\(strippedQuery) ORDER BY \(quotedColumn) \(direction)"
-                tabManager.tabs[tabIndex].sortState = currentSort
-                tabManager.tabs[tabIndex].hasUserInteraction = true
-                tabManager.tabs[tabIndex].pagination.resetLoadMore()
-                tabManager.tabs[tabIndex].content.query = orderQuery
+                let orderClause = newState.columns.compactMap { sortCol -> String? in
+                    guard sortCol.columnIndex >= 0, sortCol.columnIndex < tableRows.columns.count else { return nil }
+                    let columnName = tableRows.columns[sortCol.columnIndex]
+                    let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
+                    return "\(queryBuilder.quoteIdentifier(columnName)) \(direction)"
+                }.joined(separator: ", ")
+                let orderQuery = orderClause.isEmpty ? strippedQuery : "\(strippedQuery) ORDER BY \(orderClause)"
+                tabManager.mutate(at: tabIndex) { tab in
+                    tab.sortState = newState
+                    tab.hasUserInteraction = true
+                    tab.pagination.resetLoadMore()
+                    tab.content.query = orderQuery
+                }
                 runQuery()
                 return
             }
 
-            tabManager.tabs[tabIndex].sortState = currentSort
-            tabManager.tabs[tabIndex].hasUserInteraction = true
-            tabManager.tabs[tabIndex].pagination.reset()
+            if newState.columns.isEmpty {
+                tabManager.mutate(at: tabIndex) { tab in
+                    tab.sortState = newState
+                    tab.hasUserInteraction = true
+                }
+                querySortCache.removeValue(forKey: tab.id)
+                dataTabDelegate?.dataGridDidReplaceAllRows()
+                return
+            }
+
+            tabManager.mutate(at: tabIndex) { tab in
+                tab.sortState = newState
+                tab.hasUserInteraction = true
+                tab.pagination.reset()
+            }
             let tabId = tab.id
             let schemaVersion = tab.schemaVersion
-            let sortColumns = currentSort.columns
+            let sortColumns = newState.columns
             let colTypes = tableRows.columnTypes
             let storageRows = tableRows.rows
-            let snapshotRows: [(id: RowID, values: [String?])] = storageRows.map { ($0.id, $0.values) }
+            let snapshotRows: [(id: RowID, values: [PluginCellValue])] = storageRows.map { ($0.id, Array($0.values)) }
 
             if storageRows.count > 1_000 {
-                // Sort on background thread to avoid UI freeze
                 activeSortTasks[tabId]?.cancel()
                 activeSortTasks.removeValue(forKey: tabId)
-                tabManager.tabs[tabIndex].execution.isExecuting = true
+                tabManager.mutate(at: tabIndex) { $0.execution.isExecuting = true }
                 toolbarState.setExecuting(true)
                 querySortCache.removeValue(forKey: tabId)
 
@@ -1387,9 +1286,8 @@ final class MainContentCoordinator {
 
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        // Guard against stale completion: verify tab still expects this sort
                         guard let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                              self.tabManager.tabs[idx].sortState == currentSort else {
+                              self.tabManager.tabs[idx].sortState == newState else {
                             return
                         }
                         self.querySortCache[tabId] = QuerySortCacheEntry(
@@ -1398,10 +1296,10 @@ final class MainContentCoordinator {
                             direction: sortColumns.first?.direction ?? .ascending,
                             schemaVersion: schemaVersion
                         )
-                        var sortedTab = self.tabManager.tabs[idx]
-                        sortedTab.execution.isExecuting = false
-                        sortedTab.execution.executionTime = sortDuration
-                        self.tabManager.tabs[idx] = sortedTab
+                        self.tabManager.mutate(at: idx) { tab in
+                            tab.execution.isExecuting = false
+                            tab.execution.executionTime = sortDuration
+                        }
                         self.toolbarState.setExecuting(false)
                         self.toolbarState.lastQueryDuration = sortDuration
                         self.activeSortTasks.removeValue(forKey: tabId)
@@ -1416,66 +1314,37 @@ final class MainContentCoordinator {
         }
 
         let tabId = tab.id
-        let capturedSort = currentSort
+        let capturedSort = newState
         let capturedQuery = tab.content.query
         let capturedColumns = tableRows.columns
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
-            guard let self, confirmed,
-                  let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-            self.tabManager.tabs[idx].sortState = capturedSort
-            self.tabManager.tabs[idx].hasUserInteraction = true
-            self.tabManager.tabs[idx].pagination.reset()
-            let newQuery = self.queryBuilder.buildMultiSortQuery(
-                baseQuery: capturedQuery,
-                sortState: capturedSort,
-                columns: capturedColumns
-            )
-            self.tabManager.tabs[idx].content.query = newQuery
-            self.runQuery()
-        }
-    }
-
-    func removeMultiSortColumn(columnIndex: Int) {
-        guard let tab = tabManager.selectedTab else { return }
-        guard let existing = tab.sortState.columns.first(where: { $0.columnIndex == columnIndex }) else { return }
-        let ascending = existing.direction == .ascending
-        handleSort(columnIndex: columnIndex, ascending: ascending, isMultiSort: true)
-    }
-
-    func clearSort() {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
-        guard tab.sortState.isSorting else { return }
-
-        let emptySort = SortState()
-
-        if tab.tabType == .query {
-            tabManager.tabs[tabIndex].sortState = emptySort
-            tabManager.tabs[tabIndex].hasUserInteraction = true
-            querySortCache.removeValue(forKey: tab.id)
-            dataTabDelegate?.dataGridDidReplaceAllRows()
-            return
-        }
-
-        let tabId = tab.id
-        let capturedQuery = tab.content.query
-        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
-            guard let self, confirmed,
-                  let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-            self.tabManager.tabs[idx].sortState = emptySort
-            self.tabManager.tabs[idx].hasUserInteraction = true
-            self.tabManager.tabs[idx].pagination.reset()
-            self.tabManager.tabs[idx].content.query = Self.stripTrailingOrderBy(from: capturedQuery)
+            guard let self, confirmed else { return }
+            let newQuery: String
+            if capturedSort.columns.isEmpty {
+                newQuery = Self.stripTrailingOrderBy(from: capturedQuery)
+            } else {
+                newQuery = self.queryBuilder.buildMultiSortQuery(
+                    baseQuery: capturedQuery,
+                    sortState: capturedSort,
+                    columns: capturedColumns
+                )
+            }
+            guard self.tabManager.mutate(tabId: tabId, { tab in
+                tab.sortState = capturedSort
+                tab.hasUserInteraction = true
+                tab.pagination.reset()
+                tab.content.query = newQuery
+            }) else { return }
             self.runQuery()
         }
     }
 
     /// Multi-column sort returning a permutation of `RowID` (nonisolated for background thread).
     nonisolated private static func multiColumnSortedIDs(
-        rows: [(id: RowID, values: [String?])],
+        rows: [(id: RowID, values: [PluginCellValue])],
         sortColumns: [SortColumn],
         columnTypes: [ColumnType] = []
     ) -> [RowID] {
-        // Fast path: single-column sort avoids intermediate key array allocation
         if sortColumns.count == 1 {
             let col = sortColumns[0]
             let colIndex = col.columnIndex
@@ -1485,8 +1354,8 @@ final class MainContentCoordinator {
             indices.sort { i1, i2 in
                 let row1 = rows[i1].values
                 let row2 = rows[i2].values
-                let v1 = colIndex < row1.count ? (row1[colIndex] ?? "") : ""
-                let v2 = colIndex < row2.count ? (row2[colIndex] ?? "") : ""
+                let v1 = colIndex < row1.count ? row1[colIndex].sortKey : ""
+                let v2 = colIndex < row2.count ? row2[colIndex].sortKey : ""
                 let cmp = RowSortComparator.compare(v1, v2, columnType: colType)
                 return ascending ? cmp == .orderedAscending : cmp == .orderedDescending
             }
@@ -1498,8 +1367,8 @@ final class MainContentCoordinator {
             let row1 = rows[i1].values
             let row2 = rows[i2].values
             for sortCol in sortColumns {
-                let v1 = sortCol.columnIndex < row1.count ? (row1[sortCol.columnIndex] ?? "") : ""
-                let v2 = sortCol.columnIndex < row2.count ? (row2[sortCol.columnIndex] ?? "") : ""
+                let v1 = sortCol.columnIndex < row1.count ? row1[sortCol.columnIndex].sortKey : ""
+                let v2 = sortCol.columnIndex < row2.count ? row2[sortCol.columnIndex].sortKey : ""
                 let colType = sortCol.columnIndex < columnTypes.count
                     ? columnTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(v1, v2, columnType: colType)

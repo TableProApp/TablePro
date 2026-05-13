@@ -79,7 +79,7 @@ struct RegistryPluginDetailView: View {
                             Text("Status")
                                 .foregroundStyle(.secondary)
                             Label("Verified", systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(Color(nsColor: .systemBlue))
                         }
                     }
                 }

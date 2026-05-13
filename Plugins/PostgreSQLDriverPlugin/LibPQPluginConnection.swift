@@ -14,39 +14,6 @@ import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "LibPQPluginConnection")
 
-// MARK: - SSL Configuration
-
-struct PQSSLConfig {
-    var mode: String = "Disabled"
-    var caCertificatePath: String = ""
-    var clientCertificatePath: String = ""
-    var clientKeyPath: String = ""
-
-    init() {}
-
-    init(additionalFields: [String: String]) {
-        self.mode = additionalFields["sslMode"] ?? "Disabled"
-        self.caCertificatePath = additionalFields["sslCaCertPath"] ?? ""
-        self.clientCertificatePath = additionalFields["sslClientCertPath"] ?? ""
-        self.clientKeyPath = additionalFields["sslClientKeyPath"] ?? ""
-    }
-
-    var libpqSslMode: String {
-        switch mode {
-        case "Disabled": return "disable"
-        case "Preferred": return "prefer"
-        case "Required": return "require"
-        case "Verify CA": return "verify-ca"
-        case "Verify Identity": return "verify-full"
-        default: return "disable"
-        }
-    }
-
-    var verifiesCertificate: Bool {
-        mode == "Verify CA" || mode == "Verify Identity"
-    }
-}
-
 // MARK: - Error Types
 
 struct LibPQPluginError: Error {
@@ -66,7 +33,7 @@ struct LibPQPluginQueryResult {
     let columns: [String]
     let columnOids: [UInt32]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let affectedRows: Int
     let commandTag: String?
     let isTruncated: Bool
@@ -125,12 +92,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let user: String
     private let password: String?
     private let database: String
-    private let sslConfig: PQSSLConfig
+    private let sslConfig: SSLConfiguration
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
+    private var _cachedServerVersionNumber: Int32 = 0
     private var _isCancelled: Bool = false
 
     var isConnected: Bool {
@@ -158,7 +126,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
-        sslConfig: PQSSLConfig = PQSSLConfig()
+        sslConfig: SSLConfiguration = SSLConfiguration()
     ) {
         self.host = host
         self.port = port
@@ -198,7 +166,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 connStr += " password='\(escapeConnParam(password))'"
             }
 
-            connStr += " sslmode='\(sslConfig.libpqSslMode)'"
+            connStr += " sslmode='\(LibPQSSLMapping.sslmode(for: sslConfig.mode))'"
 
             if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
                 connStr += " sslrootcert='\(escapeConnParam(sslConfig.caCertificatePath))'"
@@ -231,6 +199,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
             let version = PQserverVersion(connection)
             if version > 0 {
+                self._cachedServerVersionNumber = version
                 let major = version / 10_000
                 if major >= 10 {
                     let minor = version % 10_000
@@ -259,6 +228,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         stateLock.unlock()
 
         _cachedServerVersion = nil
+        _cachedServerVersionNumber = 0
 
         if let handle {
             queue.async {
@@ -295,7 +265,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    func executeParameterizedQuery(_ query: String, parameters: [String?]) async throws -> LibPQPluginQueryResult {
+    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
 
@@ -309,6 +279,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     func serverVersion() -> String? {
         _cachedServerVersion
+    }
+
+    func serverVersionNumber() -> Int32 {
+        _cachedServerVersionNumber
     }
 
     func currentDatabase() -> String {
@@ -364,7 +338,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    private func executeParameterizedQuerySync(_ query: String, parameters: [String?]) throws -> LibPQPluginQueryResult {
+    private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> LibPQPluginQueryResult {
         stateLock.lock()
         let conn = self.conn
         stateLock.unlock()
@@ -374,36 +348,65 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
 
         var paramValues: [UnsafePointer<CChar>?] = []
+        var paramLengths: [Int32] = []
+        var paramFormats: [Int32] = []
+        var allocations: [UnsafeMutableRawPointer] = []
 
         defer {
-            for ptr in paramValues {
-                if let ptr = ptr {
-                    free(UnsafeMutablePointer(mutating: ptr))
-                }
+            for ptr in allocations {
+                free(ptr)
             }
         }
 
+        paramValues.reserveCapacity(parameters.count)
+        paramLengths.reserveCapacity(parameters.count)
+        paramFormats.reserveCapacity(parameters.count)
+
         for param in parameters {
-            if let param = param {
-                let cStr = strdup(param)
-                paramValues.append(UnsafePointer(cStr))
-            } else {
+            switch param {
+            case .null:
                 paramValues.append(nil)
+                paramLengths.append(0)
+                paramFormats.append(0)
+            case .text(let str):
+                guard let cStr = strdup(str) else {
+                    throw LibPQPluginError(message: "Failed to allocate parameter buffer", sqlState: nil, detail: nil)
+                }
+                allocations.append(UnsafeMutableRawPointer(cStr))
+                paramValues.append(UnsafePointer(cStr))
+                paramLengths.append(0)
+                paramFormats.append(0)
+            case .bytes(let data):
+                let byteCount = data.count
+                guard let raw = malloc(max(byteCount, 1)) else {
+                    throw LibPQPluginError(message: "Failed to allocate parameter buffer", sqlState: nil, detail: nil)
+                }
+                allocations.append(raw)
+                if byteCount > 0 {
+                    data.copyBytes(to: raw.assumingMemoryBound(to: UInt8.self), count: byteCount)
+                }
+                paramValues.append(UnsafePointer(raw.assumingMemoryBound(to: CChar.self)))
+                paramLengths.append(Int32(byteCount))
+                paramFormats.append(1)
             }
         }
 
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
-            PQexecParams(
-                conn,
-                queryPtr,
-                Int32(parameters.count),
-                nil,
-                paramValues,
-                nil,
-                nil,
-                0
-            )
+            paramLengths.withUnsafeBufferPointer { lengthsBuf in
+                paramFormats.withUnsafeBufferPointer { formatsBuf in
+                    PQexecParams(
+                        conn,
+                        queryPtr,
+                        Int32(parameters.count),
+                        nil,
+                        paramValues,
+                        lengthsBuf.baseAddress,
+                        formatsBuf.baseAddress,
+                        0
+                    )
+                }
+            }
         }
 
         guard let result = result else {
@@ -547,27 +550,34 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         }
 
                         let numFields = Int(PQnfields(result))
-                        var row: [String?] = []
+                        var row: [PluginCellValue] = []
                         row.reserveCapacity(numFields)
 
                         for colIndex in 0..<numFields {
                             if PQgetisnull(result, 0, Int32(colIndex)) == 1 {
-                                row.append(nil)
+                                row.append(.null)
                             } else if let valuePtr = PQgetvalue(result, 0, Int32(colIndex)) {
                                 let length = Int(PQgetlength(result, 0, Int32(colIndex)))
                                 let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
+                                let oid = columnOids[colIndex]
 
-                                if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                                    if columnOids[colIndex] == 16 {
-                                        row.append(str == "t" ? "true" : "false")
+                                if oid == 17 {
+                                    let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
+                                    if let data = LibPQByteaDecoder.decode(text) {
+                                        row.append(.bytes(data))
                                     } else {
-                                        row.append(str)
+                                        row.append(.text(text))
                                     }
+                                } else if oid == 16 {
+                                    let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
+                                    row.append(.text(str == "t" ? "true" : "false"))
+                                } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
+                                    row.append(.text(str))
                                 } else {
-                                    row.append(String(bytes: bufferPtr, encoding: .isoLatin1) ?? "")
+                                    row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
                                 }
                             } else {
-                                row.append(nil)
+                                row.append(.null)
                             }
                         }
 
@@ -595,15 +605,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
                             continuation.finish(throwing: CancellationError())
                             return
                         }
-
                     } else if status == PGRES_TUPLES_OK {
                         PQclear(result)
                         break
-
                     } else if status == PGRES_COMMAND_OK {
                         PQclear(result)
                         break
-
                     } else {
                         let error = getResultError(from: result)
                         PQclear(result)
@@ -657,7 +664,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let effectiveRowCount = min(numRows, maxRows)
         let truncated = numRows > maxRows
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(effectiveRowCount)
 
         for rowIndex in 0..<effectiveRowCount {
@@ -670,27 +677,34 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 throw LibPQPluginError(message: "Query cancelled", sqlState: nil, detail: nil)
             }
 
-            var row: [String?] = []
+            var row: [PluginCellValue] = []
             row.reserveCapacity(numFields)
 
             for colIndex in 0..<numFields {
                 if PQgetisnull(result, Int32(rowIndex), Int32(colIndex)) == 1 {
-                    row.append(nil)
+                    row.append(.null)
                 } else if let valuePtr = PQgetvalue(result, Int32(rowIndex), Int32(colIndex)) {
                     let length = Int(PQgetlength(result, Int32(rowIndex), Int32(colIndex)))
                     let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
+                    let oid = columnOids[colIndex]
 
-                    if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                        if columnOids[colIndex] == 16 {
-                            row.append(str == "t" ? "true" : "false")
+                    if oid == 17 {
+                        let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
+                        if let data = LibPQByteaDecoder.decode(text) {
+                            row.append(.bytes(data))
                         } else {
-                            row.append(str)
+                            row.append(.text(text))
                         }
+                    } else if oid == 16 {
+                        let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
+                        row.append(.text(str == "t" ? "true" : "false"))
+                    } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
+                        row.append(.text(str))
                     } else {
-                        row.append(String(bytes: bufferPtr, encoding: .isoLatin1) ?? "")
+                        row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
                     }
                 } else {
-                    row.append(nil)
+                    row.append(.null)
                 }
             }
             rows.append(row)

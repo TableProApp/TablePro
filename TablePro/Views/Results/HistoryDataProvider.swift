@@ -108,7 +108,7 @@ final class HistoryDataProvider {
     }
 
     func deleteEntry(id: UUID) async -> Bool {
-        let success = await QueryHistoryStorage.shared.deleteHistory(id: id)
+        let success = await QueryHistoryManager.shared.deleteHistory(id: id)
         if success {
             await loadData()
         }
@@ -116,7 +116,7 @@ final class HistoryDataProvider {
     }
 
     func clearAll() async -> Bool {
-        let success = await QueryHistoryStorage.shared.clearAllHistory()
+        let success = await QueryHistoryManager.shared.clearAllHistory()
         if success {
             await loadData()
         }

@@ -18,11 +18,36 @@ private let osLogger = Logger(subsystem: "com.TablePro", category: "OracleConnec
 // MARK: - Error Types
 
 struct OracleError: Error {
-    let message: String
+    enum Category: Sendable, Equatable {
+        case generic
+        case notConnected
+        case connectionFailed
+        case queryFailed
+        case authVerifierUnsupported(flag: String)
+        case authVersionNotSupported
+        case authConnectionDropped
+    }
 
-    static let notConnected = OracleError(message: String(localized: "Not connected to database"))
-    static let connectionFailed = OracleError(message: String(localized: "Failed to establish connection"))
-    static let queryFailed = OracleError(message: String(localized: "Query execution failed"))
+    let message: String
+    let category: Category
+
+    init(message: String, category: Category = .generic) {
+        self.message = message
+        self.category = category
+    }
+
+    static let notConnected = OracleError(
+        message: String(localized: "Not connected to database"),
+        category: .notConnected
+    )
+    static let connectionFailed = OracleError(
+        message: String(localized: "Failed to establish connection"),
+        category: .connectionFailed
+    )
+    static let queryFailed = OracleError(
+        message: String(localized: "Query execution failed"),
+        category: .queryFailed
+    )
 }
 
 extension OracleError: PluginDriverError {
@@ -34,7 +59,7 @@ extension OracleError: PluginDriverError {
 struct OracleQueryResult {
     let columns: [String]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let affectedRows: Int
     let isTruncated: Bool
 }
@@ -65,6 +90,18 @@ private actor QueryGate {
     }
 }
 
+// MARK: - Unsupported Type Warner
+
+private actor UnsupportedTypeWarner {
+    private var seen: Set<String> = []
+
+    func warnIfNew(_ typeName: String) -> Bool {
+        guard !seen.contains(typeName) else { return false }
+        seen.insert(typeName)
+        return true
+    }
+}
+
 // MARK: - Connection Class
 
 final class OracleConnectionWrapper: @unchecked Sendable {
@@ -80,15 +117,16 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     private let database: String
     private let serviceName: String
 
-    private let lock = NSLock()
-    private var _isConnected = false
-    private var nioConnection: OracleNIO.OracleConnection?
+    private struct LockedState: Sendable {
+        var isConnected = false
+        var nioConnection: OracleNIO.OracleConnection?
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: LockedState())
     private let nioLogger = Logging.Logger(label: "com.TablePro.oracle-nio")
 
     var isConnected: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return _isConnected
+        state.withLock { $0.isConnected }
     }
 
     // MARK: - Initialization
@@ -126,36 +164,51 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                 logger: nioLogger
             )
 
-            lock.lock()
-            nioConnection = connection
-            _isConnected = true
-            lock.unlock()
+            state.withLock { current in
+                current.nioConnection = connection
+                current.isConnected = true
+            }
 
             osLogger.debug("Connected to Oracle \(self.host):\(self.port)/\(service)")
         } catch let sqlError as OracleSQLError {
             let detail = sqlError.serverInfo?.message ?? sqlError.description
             osLogger.error("Oracle connection failed: \(detail)")
-            throw OracleError(message: "Failed to connect to \(host):\(port)/\(service): \(detail)")
+            throw OracleError(message: detail, category: classifyConnectError(sqlError))
         } catch {
             let detail = String(describing: error)
             osLogger.error("Oracle connection failed: \(detail)")
-            throw OracleError(message: "Failed to connect to \(host):\(port)/\(service): \(detail)")
+            throw OracleError(message: detail, category: .connectionFailed)
+        }
+    }
+
+    private func classifyConnectError(_ error: OracleSQLError) -> OracleError.Category {
+        let codeDescription = error.code.description
+        if codeDescription.hasPrefix("unsupportedVerifierType") {
+            return .authVerifierUnsupported(flag: codeDescription)
+        }
+        switch codeDescription {
+        case "uncleanShutdown":
+            return .authConnectionDropped
+        case "serverVersionNotSupported":
+            return .authVersionNotSupported
+        default:
+            return .connectionFailed
         }
     }
 
     func disconnect() {
-        lock.lock()
-        guard _isConnected else {
-            lock.unlock()
-            return
+        let connection = state.withLock { current -> OracleNIO.OracleConnection? in
+            guard current.isConnected else { return nil }
+            current.isConnected = false
+            let conn = current.nioConnection
+            current.nioConnection = nil
+            return conn
         }
-        _isConnected = false
-        let connection = nioConnection
-        nioConnection = nil
-        lock.unlock()
+
+        guard let connection else { return }
 
         Task {
-            try? await connection?.close()
+            try? await connection.close()
             osLogger.debug("Disconnected from Oracle \(self.host):\(self.port)")
         }
     }
@@ -163,12 +216,12 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     // MARK: - Query Execution
 
     func executeQuery(_ query: String) async throws -> OracleQueryResult {
-        lock.lock()
-        guard let connection = nioConnection, _isConnected else {
-            lock.unlock()
-            throw OracleError.notConnected
+        let connection = try state.withLock { current -> OracleNIO.OracleConnection in
+            guard let conn = current.nioConnection, current.isConnected else {
+                throw OracleError.notConnected
+            }
+            return conn
         }
-        lock.unlock()
 
         // OracleNIO does not support concurrent queries on a single connection.
         // Serialize all queries to prevent state-machine corruption.
@@ -186,20 +239,23 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             osLogger.debug("Oracle columns: \(columns.count) — \(columns.joined(separator: ", "))")
 
             var columnTypeNames: [String] = []
-            var allRows: [[String?]] = []
+            var allRows: [[PluginCellValue]] = []
             var didReadTypes = false
             var truncated = false
 
             for try await row in stream {
-                var rowValues: [String?] = []
+                var rowValues: [PluginCellValue] = []
                 for cell in row {
                     if !didReadTypes {
                         columnTypeNames.append(oracleTypeName(cell.dataType))
                     }
                     if cell.bytes == nil {
-                        rowValues.append(nil)
+                        rowValues.append(.null)
+                    } else if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
+                              let bytes = cell.bytes {
+                        rowValues.append(.bytes(Data(bytes.readableBytesView)))
                     } else {
-                        rowValues.append(decodeCell(cell))
+                        rowValues.append(PluginCellValue.fromOptional(decodeCell(cell)))
                     }
                 }
                 didReadTypes = true
@@ -244,12 +300,12 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         _ query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        lock.lock()
-        guard let connection = nioConnection, _isConnected else {
-            lock.unlock()
-            throw OracleError.notConnected
+        let connection = try state.withLock { current -> OracleNIO.OracleConnection in
+            guard let conn = current.nioConnection, current.isConnected else {
+                throw OracleError.notConnected
+            }
+            return conn
         }
-        lock.unlock()
 
         await queryGate.acquire()
 
@@ -272,15 +328,18 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                     return
                 }
 
-                var rowValues: [String?] = []
+                var rowValues: [PluginCellValue] = []
                 for cell in row {
                     if !headerSent {
                         columnTypeNames.append(oracleTypeName(cell.dataType))
                     }
                     if cell.bytes == nil {
-                        rowValues.append(nil)
+                        rowValues.append(.null)
+                    } else if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
+                              let bytes = cell.bytes {
+                        rowValues.append(.bytes(Data(bytes.readableBytesView)))
                     } else {
-                        rowValues.append(decodeCell(cell))
+                        rowValues.append(PluginCellValue.fromOptional(decodeCell(cell)))
                     }
                 }
 
@@ -318,18 +377,105 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Cell Decoding
 
-    /// Decode an OracleCell to String, trying multiple type strategies.
-    /// OracleNIO may fail to decode NUMBER as String directly.
+    private let unsupportedWarner = UnsupportedTypeWarner()
+
     private func decodeCell(_ cell: OracleCell) -> String? {
-        if let value = try? cell.decode(String.self) { return value }
-        if let value = try? cell.decode(Int.self) { return String(value) }
-        if let value = try? cell.decode(Double.self) { return String(value) }
-        if let value = try? cell.decode(Bool.self) { return String(value) }
-        // Last resort: read raw bytes as UTF-8
-        if var buf = cell.bytes {
-            return buf.readString(length: buf.readableBytes)
+        guard cell.bytes != nil else { return nil }
+
+        do {
+            switch cell.dataType {
+            case .varchar, .nVarchar, .char, .nChar, .long, .longNVarchar,
+                 .clob, .nCLOB, .json, .rowID:
+                return try cell.decode(String.self)
+
+            case .number, .binaryInteger:
+                return Self.decodeNumber(cell)
+
+            case .binaryFloat:
+                return String(try cell.decode(Float.self))
+
+            case .binaryDouble:
+                return String(try cell.decode(Double.self))
+
+            case .boolean:
+                return try cell.decode(Bool.self) ? "true" : "false"
+
+            case .date:
+                return OracleCellFormatting.formatDate(try cell.decode(Date.self))
+
+            case .timestamp:
+                return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .utc)
+
+            case .timestampLTZ, .timestampTZ:
+                return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .local)
+
+            case .intervalDS:
+                let interval = try cell.decode(IntervalDS.self)
+                return OracleCellFormatting.formatIntervalDS(
+                    days: interval.days,
+                    hours: interval.hours,
+                    minutes: interval.minutes,
+                    seconds: interval.seconds,
+                    nanoseconds: interval.fractionalSeconds
+                )
+
+            case .intervalYM:
+                let interval = try cell.decode(IntervalYM.self)
+                return OracleCellFormatting.formatIntervalYM(
+                    years: interval.years,
+                    months: interval.months
+                )
+
+            case .raw, .longRAW, .blob:
+                return Self.hexEncode(cell.bytes)
+
+            case .bFile:
+                return "<bfile>"
+
+            case .cursor:
+                return "<cursor>"
+
+            case .vector:
+                return "<vector>"
+
+            default:
+                return unsupportedPlaceholder(for: cell.dataType)
+            }
+        } catch {
+            osLogger.error("Oracle decode failed for column '\(cell.columnName)' type \(self.oracleTypeName(cell.dataType)): \(String(describing: error))")
+            return "<decode error>"
+        }
+    }
+
+    private func unsupportedPlaceholder(for type: OracleDataType) -> String {
+        let name = oracleTypeName(type)
+        let warner = unsupportedWarner
+        Task.detached {
+            if await warner.warnIfNew(name) {
+                osLogger.warning("Oracle column type '\(name)' is not supported; rendering as placeholder")
+            }
+        }
+        return OracleCellFormatting.unsupportedPlaceholder(typeName: name)
+    }
+
+    private static func hexEncode(_ buffer: ByteBuffer?) -> String? {
+        guard var copy = buffer else { return nil }
+        let total = copy.readableBytes
+        guard let bytes = copy.readBytes(length: total) else { return nil }
+        return OracleCellFormatting.hexEncode(bytes)
+    }
+
+    private static func decodeNumber(_ cell: OracleCell) -> String? {
+        if let value = try? cell.decode(Int.self) {
+            return String(value)
+        }
+        if let value = try? cell.decode(OracleNumber.self) {
+            return value.description
+        }
+        if let value = try? cell.decode(Double.self) {
+            return String(value)
         }
         return nil
     }

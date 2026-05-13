@@ -1,42 +1,19 @@
-//
-//  RowDetailView.swift
-//  TableProMobile
-//
-
-import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
 
 struct RowDetailView: View {
-    let columns: [ColumnInfo]
-    @State private var rows: [[String?]]
-    let table: TableInfo?
-    let session: ConnectionSession?
-    let columnDetails: [ColumnInfo]
-    let databaseType: DatabaseType
-    let safeModeLevel: SafeModeLevel
-    let foreignKeys: [ForeignKeyInfo]
-    var onSaved: (() -> Void)?
-
-    @State private var currentIndex: Int
-    @State private var isEditing = false
-    @State private var editedValues: [String?] = []
-    @State private var isSaving = false
-    @State private var operationError: AppError?
-    @State private var showOperationError = false
-    @State private var showSaveSuccess = false
+    @State private var viewModel: RowDetailViewModel
     @State private var fkPreviewItem: FKPreviewItem?
+    @State private var showShareSheet = false
+    @State private var shareText = ""
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var hapticSelection = 0
-    @State private var dismissSuccessTask: Task<Void, Never>?
-    @State private var showShareSheet = false
-    @State private var shareText = ""
 
     init(
         columns: [ColumnInfo],
-        rows: [[String?]],
+        rows: [Row],
         initialIndex: Int,
         table: TableInfo? = nil,
         session: ConnectionSession? = nil,
@@ -44,59 +21,45 @@ struct RowDetailView: View {
         databaseType: DatabaseType = .sqlite,
         safeModeLevel: SafeModeLevel = .off,
         foreignKeys: [ForeignKeyInfo] = [],
-        onSaved: (() -> Void)? = nil
+        onSaved: (() -> Void)? = nil,
+        loadFullValue: ((CellRef) async throws -> String?)? = nil
     ) {
-        self.columns = columns
-        _rows = State(initialValue: rows)
-        self.table = table
-        self.session = session
-        self.columnDetails = columnDetails
-        self.databaseType = databaseType
-        self.safeModeLevel = safeModeLevel
-        self.foreignKeys = foreignKeys
-        self.onSaved = onSaved
-        _currentIndex = State(initialValue: initialIndex)
-    }
-
-    private var currentRow: [String?] {
-        guard currentIndex >= 0, currentIndex < rows.count else { return [] }
-        return rows[currentIndex]
-    }
-
-    private var isView: Bool {
-        guard let table else { return false }
-        return table.type == .view || table.type == .materializedView
-    }
-
-    private var canEdit: Bool {
-        table != nil && session != nil && !columnDetails.isEmpty && !isView
-            && !safeModeLevel.blocksWrites
-            && columnDetails.contains(where: { $0.isPrimaryKey })
+        _viewModel = State(wrappedValue: RowDetailViewModel(
+            columns: columns,
+            rows: rows,
+            initialIndex: initialIndex,
+            table: table,
+            session: session,
+            columnDetails: columnDetails,
+            databaseType: databaseType,
+            safeModeLevel: safeModeLevel,
+            foreignKeys: foreignKeys,
+            onSaved: onSaved,
+            loadFullValue: loadFullValue
+        ))
     }
 
     var body: some View {
-        Group {
-            if isEditing {
-                rowContent(at: currentIndex)
+        @Bindable var viewModel = viewModel
+        return Group {
+            if viewModel.isEditing {
+                rowContent(at: viewModel.currentIndex)
             } else {
-                TabView(selection: $currentIndex) {
-                    ForEach(Array(rows.indices), id: \.self) { index in
-                        rowContent(at: index)
-                            .tag(index)
+                TabView(selection: $viewModel.currentIndex) {
+                    ForEach(IndexedRow.wrap(viewModel.rows)) { item in
+                        rowContent(at: item.id)
+                            .tag(item.id)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .background(Color(.systemGroupedBackground))
-        .onDisappear {
-            dismissSuccessTask?.cancel()
-        }
-        .onChange(of: currentIndex) {
+        .onChange(of: viewModel.currentIndex) {
             hapticSelection += 1
         }
         .overlay(alignment: .bottom) {
-            if showSaveSuccess {
+            if viewModel.showSaveSuccess {
                 Label("Row updated", systemImage: "checkmark.circle.fill")
                     .font(.subheadline)
                     .padding()
@@ -105,113 +68,33 @@ struct RowDetailView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .navigationTitle(table?.name ?? String(format: String(localized: "Row %d of %d"), currentIndex + 1, rows.count))
+        .navigationTitle(viewModel.table?.name ?? String(format: String(localized: "Row %d of %d"), viewModel.currentIndex + 1, viewModel.rows.count))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Section("Share") {
-                        ForEach(ExportFormat.allCases) { format in
-                            Button {
-                                shareText = ClipboardExporter.exportRow(
-                                    columns: columns, row: currentRow,
-                                    format: format, tableName: table?.name
-                                )
-                                showShareSheet = true
-                            } label: {
-                                Label(format.rawValue, systemImage: "square.and.arrow.up")
-                            }
-                        }
-                    }
-                    Section("Copy to Clipboard") {
-                        ForEach(ExportFormat.allCases) { format in
-                            Button {
-                                let text = ClipboardExporter.exportRow(
-                                    columns: columns, row: currentRow,
-                                    format: format, tableName: table?.name
-                                )
-                                ClipboardExporter.copyToClipboard(text)
-                            } label: {
-                                Label(format.rawValue, systemImage: "doc.on.clipboard")
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                if canEdit {
-                    if isEditing {
-                        Button {
-                            Task { await saveChanges() }
-                        } label: {
-                            if isSaving {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Text("Save")
-                            }
-                        }
-                        .disabled(isSaving)
-                    } else {
-                        Button("Edit") { startEditing() }
-                    }
-                }
-            }
-
-            if isEditing {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { cancelEditing() }
-                        .disabled(isSaving)
-                }
-            }
-
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button {
-                    currentIndex -= 1
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .disabled(currentIndex <= 0 || isEditing)
-
-                Spacer()
-
-                Text("\(currentIndex + 1) of \(rows.count)")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .fixedSize()
-
-                Spacer()
-
-                Button {
-                    currentIndex += 1
-                } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .disabled(currentIndex >= rows.count - 1 || isEditing)
-            }
-        }
+        .toolbar { rowDetailToolbar }
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
         .sensoryFeedback(.selection, trigger: hapticSelection)
-        .alert(operationError?.title ?? "Error", isPresented: $showOperationError) {
+        .alert(
+            viewModel.operationError?.title ?? "Error",
+            isPresented: Binding(
+                get: { viewModel.operationError != nil },
+                set: { if !$0 { viewModel.operationError = nil } }
+            )
+        ) {
             Button("OK", role: .cancel) {}
         } message: {
-            if let recovery = operationError?.recovery {
-                Text(verbatim: "\(operationError?.message ?? "") \(recovery)")
+            if let recovery = viewModel.operationError?.recovery {
+                Text(verbatim: "\(viewModel.operationError?.message ?? "") \(recovery)")
             } else {
-                Text(operationError?.message ?? "")
+                Text(viewModel.operationError?.message ?? "")
             }
         }
         .sheet(item: $fkPreviewItem) { item in
             FKPreviewView(
                 fk: item.fk,
                 value: item.value,
-                session: session,
-                databaseType: databaseType
+                session: viewModel.session,
+                databaseType: viewModel.databaseType
             )
         }
         .sheet(isPresented: $showShareSheet) {
@@ -219,16 +102,112 @@ struct RowDetailView: View {
         }
     }
 
+    @ToolbarContentBuilder
+    private var rowDetailToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                shareMenuContent
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            if viewModel.canEdit {
+                if viewModel.isEditing {
+                    Button {
+                        Task { await handleSave() }
+                    } label: {
+                        if viewModel.isSaving {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text("Save")
+                        }
+                    }
+                    .disabled(viewModel.isSaving)
+                } else {
+                    Button("Edit") { viewModel.startEditing() }
+                }
+            }
+        }
+
+        if viewModel.isEditing {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { viewModel.cancelEditing() }
+                    .disabled(viewModel.isSaving)
+            }
+        }
+
+        ToolbarItemGroup(placement: .bottomBar) {
+            Button {
+                viewModel.currentIndex -= 1
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(viewModel.currentIndex <= 0 || viewModel.isEditing)
+
+            Spacer()
+
+            Text("\(viewModel.currentIndex + 1) of \(viewModel.rows.count)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .fixedSize()
+
+            Spacer()
+
+            Button {
+                viewModel.currentIndex += 1
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(viewModel.currentIndex >= viewModel.rows.count - 1 || viewModel.isEditing)
+        }
+    }
+
+    @ViewBuilder
+    private var shareMenuContent: some View {
+        Section("Share") {
+            ForEach(ExportFormat.allCases) { format in
+                Button {
+                    shareText = ClipboardExporter.exportRow(
+                        columns: viewModel.columns, row: viewModel.currentRow,
+                        format: format, tableName: viewModel.table?.name
+                    )
+                    showShareSheet = true
+                } label: {
+                    Label(format.rawValue, systemImage: "square.and.arrow.up")
+                }
+            }
+        }
+        Section("Copy to Clipboard") {
+            ForEach(ExportFormat.allCases) { format in
+                Button {
+                    let text = ClipboardExporter.exportRow(
+                        columns: viewModel.columns, row: viewModel.currentRow,
+                        format: format, tableName: viewModel.table?.name
+                    )
+                    ClipboardExporter.copyToClipboard(text)
+                } label: {
+                    Label(format.rawValue, systemImage: "doc.on.clipboard")
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func rowContent(at rowIndex: Int) -> some View {
-        let row = rowIndex >= 0 && rowIndex < rows.count ? rows[rowIndex] : []
-        let values = isEditing ? editedValues : row
+        let row = viewModel.row(at: rowIndex)
+        let cells = viewModel.cells(at: rowIndex)
+        let values = viewModel.isEditing ? viewModel.editedValues : row
         List {
-            ForEach(Array(zip(columns, values).enumerated()), id: \.offset) { index, pair in
-                let (column, value) = pair
-                let isPK = columnDetail(for: column.name)?.isPrimaryKey ?? column.isPrimaryKey
+            ForEach(0..<min(viewModel.columns.count, values.count), id: \.self) { index in
+                let column = viewModel.columns[index]
+                let value = values[index]
+                let isPK = viewModel.isPrimaryKey(at: index)
                 Section {
-                    if isEditing && !isPK {
+                    if viewModel.isEditing && !isPK {
                         editableField(index: index, value: value)
                     } else {
                         fieldContent(value: value)
@@ -246,7 +225,11 @@ struct RowDetailView: View {
                                     Label("Copy Column Name", systemImage: "textformat")
                                 }
                             }
-                        if let fk = foreignKeys.first(where: { $0.column == column.name }), let value {
+                        if index < cells.count, cells[index].isLoadable,
+                           !viewModel.hasOverride(forRow: viewModel.currentIndex, cellIndex: index) {
+                            lazyLoadButton(cell: cells[index], cellIndex: index)
+                        }
+                        if let fk = viewModel.foreignKeys.first(where: { $0.column == column.name }), let value {
                             Button {
                                 fkPreviewItem = FKPreviewItem(fk: fk, value: value)
                             } label: {
@@ -270,7 +253,7 @@ struct RowDetailView: View {
                         }
                         Text(column.name)
 
-                        if isEditing && isPK {
+                        if viewModel.isEditing && isPK {
                             Text("read-only")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -278,13 +261,7 @@ struct RowDetailView: View {
 
                         Spacer()
 
-                        Text(column.typeName)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.fill.tertiary)
-                            .clipShape(Capsule())
+                        MetadataBadge(column.typeName)
                     }
                 }
             }
@@ -293,19 +270,39 @@ struct RowDetailView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    private func editableField(index: Int, value: String?) -> some View {
-        let binding = Binding<String>(
-            get: {
-                guard index < editedValues.count else { return "" }
-                return editedValues[index] ?? ""
-            },
-            set: { newValue in
-                guard index < editedValues.count else { return }
-                editedValues[index] = newValue
+    @ViewBuilder
+    private func lazyLoadButton(cell: Cell, cellIndex: Int) -> some View {
+        if let ref = cell.fullValueRef, viewModel.supportsLazyLoading {
+            Button {
+                Task { await viewModel.loadFullValue(ref: ref, cellIndex: cellIndex) }
+            } label: {
+                HStack(spacing: 4) {
+                    if viewModel.loadingCell == cellIndex {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.footnote)
+                    }
+                    Text("Load full value")
+                        .font(.footnote)
+                }
+                .foregroundStyle(.blue)
             }
+            .buttonStyle(.plain)
+            .disabled(viewModel.loadingCell != nil)
+        }
+    }
+
+    private func editableField(index: Int, value: String?) -> some View {
+        let textBinding = Binding<String>(
+            get: {
+                guard index < viewModel.editedValues.count else { return "" }
+                return viewModel.editedValues[index] ?? ""
+            },
+            set: { newValue in viewModel.setEditedValue(newValue, at: index) }
         )
 
-        let isNull = index < editedValues.count ? editedValues[index] == nil : true
+        let isNull = index < viewModel.editedValues.count ? viewModel.editedValues[index] == nil : true
 
         return HStack {
             if isNull {
@@ -314,17 +311,12 @@ struct RowDetailView: View {
                     .foregroundStyle(.secondary)
                     .italic()
             } else {
-                TextField("Value", text: binding)
+                TextField("Value", text: textBinding)
                     .font(.body)
             }
 
             Button {
-                guard index < editedValues.count else { return }
-                if editedValues[index] == nil {
-                    editedValues[index] = ""
-                } else {
-                    editedValues[index] = nil
-                }
+                viewModel.toggleNull(at: index)
             } label: {
                 Text("NULL")
                     .font(.caption2)
@@ -352,84 +344,11 @@ struct RowDetailView: View {
         }
     }
 
-    private func columnDetail(for name: String) -> ColumnInfo? {
-        columnDetails.first { $0.name == name }
-    }
-
-    private func startEditing() {
-        editedValues = currentRow
-        isEditing = true
-        showSaveSuccess = false
-    }
-
-    private func cancelEditing() {
-        isEditing = false
-        editedValues = []
-        showSaveSuccess = false
-    }
-
-    private func saveChanges() async {
-        guard let session, let table else { return }
-
-        isSaving = true
-        defer { isSaving = false }
-
-        let pkValues: [(column: String, value: String)] = columnDetails.compactMap { col in
-            guard col.isPrimaryKey else { return nil }
-            let colIndex = columns.firstIndex(where: { $0.name == col.name })
-            guard let colIndex, colIndex < currentRow.count, let value = currentRow[colIndex] else { return nil }
-            return (column: col.name, value: value)
-        }
-
-        guard !pkValues.isEmpty else {
-            operationError = AppError(category: .config, title: "Cannot Save", message: "No primary key values found.", recovery: "This table needs a primary key to identify the row.", underlying: nil)
-            showOperationError = true
-            return
-        }
-
-        var changes: [(column: String, value: String?)] = []
-        for (index, column) in columns.enumerated() {
-            let isPK = columnDetail(for: column.name)?.isPrimaryKey ?? column.isPrimaryKey
-            if isPK { continue }
-            guard index < editedValues.count else { continue }
-            let oldValue = index < currentRow.count ? currentRow[index] : nil
-            let newValue = editedValues[index]
-            if oldValue != newValue {
-                changes.append((column: column.name, value: newValue))
-            }
-        }
-
-        guard !changes.isEmpty else {
-            isEditing = false
-            editedValues = []
-            return
-        }
-
-        let sql = SQLBuilder.buildUpdate(
-            table: table.name,
-            type: databaseType,
-            changes: changes,
-            primaryKeys: pkValues
-        )
-
-        do {
-            _ = try await session.driver.execute(query: sql)
-            guard currentIndex >= 0, currentIndex < rows.count else { return }
-            rows[currentIndex] = editedValues
-            isEditing = false
-            showSaveSuccess = true
+    private func handleSave() async {
+        let success = await viewModel.saveChanges()
+        if success {
             hapticSuccess.toggle()
-            onSaved?()
-            dismissSuccessTask?.cancel()
-            dismissSuccessTask = Task {
-                try? await Task.sleep(for: .seconds(2))
-                guard !Task.isCancelled else { return }
-                withAnimation { showSaveSuccess = false }
-            }
-        } catch {
-            let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
-            operationError = ErrorClassifier.classify(error, context: context)
-            showOperationError = true
+        } else {
             hapticError.toggle()
         }
     }

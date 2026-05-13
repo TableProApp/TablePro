@@ -2,28 +2,15 @@
 //  AIProvider.swift
 //  TablePro
 //
-//  Protocol defining AI provider interface for streaming chat and model discovery.
-//
 
 import Foundation
+import os
 
-/// Protocol for AI provider implementations
-protocol AIProvider: AnyObject {
-    /// Stream chat completions as an async sequence of events (text tokens and usage)
-    func streamChat(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
-    ) -> AsyncThrowingStream<AIStreamEvent, Error>
-
-    /// Fetch available models from the provider
-    func fetchAvailableModels() async throws -> [String]
-
-    /// Test connection to verify API key and endpoint
-    func testConnection() async throws -> Bool
+enum AIProvider {
+    static let modelListTimeout: TimeInterval = 5.0
+    static let logger = Logger(subsystem: "com.TablePro", category: "AIProvider")
 }
 
-/// Errors that can occur during AI provider operations
 enum AIProviderError: Error, LocalizedError {
     case invalidEndpoint(String)
     case authenticationFailed(String)
@@ -55,11 +42,16 @@ enum AIProviderError: Error, LocalizedError {
         }
     }
 
-    /// Base HTTP error mapping — providers can override for custom status codes
-    static func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
+    static func mapHTTPError(
+        statusCode: Int,
+        body: String,
+        treatForbiddenAsAuthFailure: Bool = false
+    ) -> AIProviderError {
         let message = parseErrorMessage(from: body) ?? body
         switch statusCode {
         case 401:
+            return .authenticationFailed(message)
+        case 403 where treatForbiddenAsAuthFailure:
             return .authenticationFailed(message)
         case 429:
             return .rateLimited
@@ -70,8 +62,6 @@ enum AIProviderError: Error, LocalizedError {
         }
     }
 
-    /// Extract human-readable message from provider JSON error responses.
-    /// Supports Anthropic (`{"error":{"message":"..."}}`), OpenAI, and Gemini formats.
     static func parseErrorMessage(from body: String) -> String? {
         guard let data = body.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -82,16 +72,30 @@ enum AIProviderError: Error, LocalizedError {
         }
         return message
     }
+
+    var isRetryable: Bool {
+        switch self {
+        case .invalidEndpoint, .authenticationFailed, .modelNotFound:
+            return false
+        case .rateLimited, .serverError, .networkError, .streamingFailed:
+            return true
+        }
+    }
 }
 
-// MARK: - Shared Helpers
-
-extension AIProvider {
+extension ChatTransport {
     func collectErrorBody(from bytes: URLSession.AsyncBytes) async throws -> String {
         var body = ""
+        var truncated = false
         for try await line in bytes.lines {
             body += line
-            if (body as NSString).length > 2_000 { break }
+            if (body as NSString).length > 2_000 {
+                truncated = true
+                break
+            }
+        }
+        if truncated {
+            AIProvider.logger.warning("Error response body truncated at 2000 bytes; full body suppressed")
         }
         return body
     }

@@ -44,6 +44,8 @@ Open **Settings** > **Plugins** > **Browse** to see available plugins. Click **I
 
 If you select a database type that requires an uninstalled plugin, TablePro shows an install prompt automatically. The plugin downloads, installs, and is ready to use without restarting the app.
 
+The install prompt only fires for separately-distributed plugins (MongoDB, Oracle, DuckDB, and the rest of the registry list above). Built-in drivers like MySQL, PostgreSQL, and SQLite ship inside the app bundle and load on demand, so picking them never asks you to install anything.
+
 ## Managing Plugins
 
 In **Settings** > **Plugins** > **Installed**, you can:

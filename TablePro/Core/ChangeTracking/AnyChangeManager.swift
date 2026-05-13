@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TableProPluginKit
 
 @MainActor
 protocol ChangeManaging: AnyObject {
@@ -13,9 +14,9 @@ protocol ChangeManaging: AnyObject {
         rowIndex: Int,
         columnIndex: Int,
         columnName: String,
-        oldValue: String?,
-        newValue: String?,
-        originalRow: [String?]?
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?
     )
     func undoRowDeletion(rowIndex: Int)
     func undoRowInsertion(rowIndex: Int)
@@ -40,9 +41,9 @@ final class AnyChangeManager {
         rowIndex: Int,
         columnIndex: Int,
         columnName: String,
-        oldValue: String?,
-        newValue: String?,
-        originalRow: [String?]
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]
     ) {
         wrapped.recordCellChange(
             rowIndex: rowIndex,

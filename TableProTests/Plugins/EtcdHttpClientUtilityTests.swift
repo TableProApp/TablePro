@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 // MARK: - Base64 Helpers

@@ -15,6 +15,7 @@ extension PluginManager {
     func validateDependencies() {
         let loadedIds = Set(plugins.map(\.id))
         for plugin in plugins where plugin.isEnabled {
+            guard plugin.bundle.isLoaded else { continue }
             guard let principalClass = plugin.bundle.principalClass as? any TableProPlugin.Type else { continue }
             let deps = principalClass.dependencies
             for dep in deps {
@@ -29,11 +30,43 @@ extension PluginManager {
 
     // MARK: - Code Signature Verification
 
-    private static var signingTeamId: String { "D7HJ5TFYCU" }
+    private static let fallbackSigningTeamId = "D7HJ5TFYCU"
+
+    private static let resolvedSigningTeamId: String = {
+        guard let teamId = teamIdFromBundleSignature() else {
+            logger.warning("Could not derive team ID from app signature; using fallback '\(fallbackSigningTeamId)'")
+            return fallbackSigningTeamId
+        }
+        return teamId
+    }()
+
+    private static func teamIdFromBundleSignature() -> String? {
+        var staticCode: SecStaticCode?
+        let createStatus = SecStaticCodeCreateWithPath(
+            Bundle.main.bundleURL as CFURL,
+            SecCSFlags(),
+            &staticCode
+        )
+        guard createStatus == errSecSuccess, let code = staticCode else { return nil }
+
+        var info: CFDictionary?
+        let infoStatus = SecCodeCopySigningInformation(
+            code,
+            SecCSFlags(rawValue: kSecCSSigningInformation),
+            &info
+        )
+        guard infoStatus == errSecSuccess,
+              let infoDict = info as? [String: Any],
+              let teamId = infoDict[kSecCodeInfoTeamIdentifier as String] as? String,
+              !teamId.isEmpty
+        else { return nil }
+        return teamId
+    }
 
     private func createSigningRequirement() -> SecRequirement? {
         var requirement: SecRequirement?
-        let requirementString = "anchor apple generic and certificate leaf[subject.OU] = \"\(Self.signingTeamId)\"" as CFString
+        let teamId = Self.resolvedSigningTeamId
+        let requirementString = "anchor apple generic and certificate leaf[subject.OU] = \"\(teamId)\"" as CFString
         SecRequirementCreateWithString(requirementString, SecCSFlags(), &requirement)
         return requirement
     }

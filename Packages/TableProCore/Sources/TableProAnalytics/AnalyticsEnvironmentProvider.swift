@@ -44,4 +44,22 @@ public protocol AnalyticsEnvironmentProvider: AnyObject {
 
     /// HMAC-SHA256 shared secret for request signing (from Info.plist build setting)
     var hmacSecret: String? { get }
+
+    /// Timestamp of the first connection attempt the user made on this device, or nil if never attempted.
+    /// Set once and never overwritten, the heartbeat sends the original value forever.
+    var connectionAttemptedAt: Date? { get }
+
+    /// Timestamp of the first successful connection on this device, or nil if no connection ever succeeded.
+    /// Set once and never overwritten.
+    var connectionSucceededAt: Date? { get }
+
+    /// Timestamp of the first query the user successfully executed on this device, or nil if no query has run.
+    /// Set once and never overwritten.
+    var firstQueryExecutedAt: Date? { get }
+}
+
+public extension AnalyticsEnvironmentProvider {
+    var connectionAttemptedAt: Date? { nil }
+    var connectionSucceededAt: Date? { nil }
+    var firstQueryExecutedAt: Date? { nil }
 }

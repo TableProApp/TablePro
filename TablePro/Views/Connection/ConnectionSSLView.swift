@@ -6,13 +6,17 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct ConnectionSSLView: View {
+    let databaseType: DatabaseType
     @Binding var sslMode: SSLMode
     @Binding var sslCaCertPath: String
     @Binding var sslClientCertPath: String
     @Binding var sslClientKeyPath: String
+
+    private var supportsPerConnectionCertPaths: Bool { databaseType != .mssql }
 
     var body: some View {
         Form {
@@ -22,17 +26,30 @@ struct ConnectionSSLView: View {
                         Text(mode.displayLabel).tag(mode)
                     }
                 }
+            } footer: {
+                if sslMode != .disabled {
+                    Text(sslMode.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if sslMode != .disabled {
-                Section {
-                    Text(sslMode.description)
-                        .foregroundStyle(.secondary)
-                }
-
-                if sslMode == .verifyCa || sslMode == .verifyIdentity {
+                if !supportsPerConnectionCertPaths {
+                    Section {
+                        Text(String(localized: """
+                            SQL Server connections use the system trust store. Per-connection CA and client certificate \
+                            paths are not supported by FreeTDS dblib; configure them in `freetds.conf` if you need a \
+                            custom trust anchor.
+                            """))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } header: {
+                        Text(String(localized: "Certificate Trust"))
+                    }
+                } else if sslMode == .verifyCa || sslMode == .verifyIdentity {
                     Section(String(localized: "CA Certificate")) {
-                        LabeledContent(String(localized: "CA Cert")) {
+                        LabeledContent(String(localized: "Certificate")) {
                             HStack {
                                 TextField(
                                     "", text: $sslCaCertPath, prompt: Text("/path/to/ca-cert.pem"))
@@ -45,28 +62,36 @@ struct ConnectionSSLView: View {
                     }
                 }
 
-                Section(String(localized: "Client Certificates (Optional)")) {
-                    LabeledContent(String(localized: "Client Cert")) {
-                        HStack {
-                            TextField(
-                                "", text: $sslClientCertPath,
-                                prompt: Text(String(localized: "(optional)")))
-                            Button(String(localized: "Browse")) {
-                                browseForCertificate(binding: $sslClientCertPath)
+                if supportsPerConnectionCertPaths {
+                    Section {
+                        LabeledContent(String(localized: "Client Certificate")) {
+                            HStack {
+                                TextField(
+                                    "", text: $sslClientCertPath,
+                                    prompt: Text(String(localized: "Optional")))
+                                Button(String(localized: "Browse")) {
+                                    browseForCertificate(binding: $sslClientCertPath)
+                                }
+                                .controlSize(.small)
                             }
-                            .controlSize(.small)
                         }
-                    }
-                    LabeledContent(String(localized: "Client Key")) {
-                        HStack {
-                            TextField(
-                                "", text: $sslClientKeyPath,
-                                prompt: Text(String(localized: "(optional)")))
-                            Button(String(localized: "Browse")) {
-                                browseForCertificate(binding: $sslClientKeyPath)
+                        LabeledContent(String(localized: "Client Key")) {
+                            HStack {
+                                TextField(
+                                    "", text: $sslClientKeyPath,
+                                    prompt: Text(String(localized: "Optional")))
+                                Button(String(localized: "Browse")) {
+                                    browseForCertificate(binding: $sslClientKeyPath)
+                                }
+                                .controlSize(.small)
                             }
-                            .controlSize(.small)
                         }
+                    } header: {
+                        Text(String(localized: "Client Certificates"))
+                    } footer: {
+                        Text(String(localized: "Required only when the server enforces mutual TLS authentication."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

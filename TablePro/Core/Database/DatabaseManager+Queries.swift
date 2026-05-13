@@ -39,9 +39,11 @@ extension DatabaseManager {
             throw DatabaseError.notConnected
         }
 
-        return try await trackOperation(sessionId: sessionId) {
+        let result = try await trackOperation(sessionId: sessionId) {
             try await driver.execute(query: query)
         }
+        MacAnalyticsProvider.shared.markFirstQueryExecuted()
+        return result
     }
 
     /// Fetch tables from the current session

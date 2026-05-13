@@ -9,6 +9,7 @@ import AppKit
 import CodeEditLanguages
 import CodeEditSourceEditor
 import CodeEditTextView
+import Combine
 import SwiftUI
 
 // MARK: - SQLEditorView
@@ -35,7 +36,7 @@ struct SQLEditorView: View {
     @State private var coordinator = SQLEditorCoordinator()
     @State private var editorReady = false
     @State private var editorConfiguration = makeConfiguration()
-    @State private var favoritesObserver: NSObjectProtocol?
+    @State private var favoritesCancellables: Set<AnyCancellable> = []
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -107,7 +108,10 @@ struct SQLEditorView: View {
             .onChange(of: AppSettingsManager.shared.editor) {
                 editorConfiguration = Self.makeConfiguration()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .accessibilityTextSizeDidChange)) { _ in
+            .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in
+                editorConfiguration = Self.makeConfiguration()
+            }
+            .onReceive(AppEvents.shared.themeChanged) { _ in
                 editorConfiguration = Self.makeConfiguration()
             }
             .onAppear {
@@ -150,16 +154,26 @@ struct SQLEditorView: View {
         refreshFavoriteKeywords()
         let adapter = completionAdapter
         let connId = connectionId
-        favoritesObserver = NotificationCenter.default.addObserver(
-            forName: .sqlFavoritesDidUpdate,
-            object: nil,
-            queue: .main
-        ) { _ in
+        let refresh: () -> Void = {
             Task { @MainActor in
                 let keywords = await SQLFavoriteManager.shared.fetchKeywordMap(connectionId: connId)
                 adapter?.updateFavoriteKeywords(keywords)
             }
         }
+        AppEvents.shared.sqlFavoritesDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { payload in
+                guard payload == nil || payload == connectionId else { return }
+                refresh()
+            }
+            .store(in: &favoritesCancellables)
+        AppEvents.shared.linkedSQLFoldersDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { payload in
+                guard payload == nil || payload == connectionId else { return }
+                refresh()
+            }
+            .store(in: &favoritesCancellables)
     }
 
     private func refreshFavoriteKeywords() {
@@ -171,10 +185,7 @@ struct SQLEditorView: View {
     }
 
     private func teardownFavoritesObserver() {
-        if let observer = favoritesObserver {
-            NotificationCenter.default.removeObserver(observer)
-            favoritesObserver = nil
-        }
+        favoritesCancellables.removeAll()
     }
 
     // MARK: - Configuration

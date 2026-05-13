@@ -149,8 +149,8 @@ private extension MySQLPluginDriver {
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
-            guard let charset = row[safe: 0] ?? nil,
-                  let collation = row[safe: 1] ?? nil else {
+            guard let charset = row[safe: 0]?.asText,
+                  let collation = row[safe: 1]?.asText else {
                 return nil
             }
             return CharsetDefault(charset: charset, defaultCollation: collation)
@@ -165,8 +165,8 @@ private extension MySQLPluginDriver {
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
-            guard let collation = row[safe: 0] ?? nil,
-                  let charset = row[safe: 1] ?? nil else {
+            guard let collation = row[safe: 0]?.asText,
+                  let charset = row[safe: 1]?.asText else {
                 return nil
             }
             return CollationEntry(collation: collation, charset: charset)
@@ -187,7 +187,7 @@ private extension MySQLPluginDriver {
     func fetchSessionVariable(_ variable: SessionVariable) async -> String? {
         do {
             let result = try await execute(query: "SHOW VARIABLES LIKE '\(variable.rawValue)'")
-            guard let row = result.rows.first, let value = row[safe: 1] ?? nil else {
+            guard let row = result.rows.first, let value = row[safe: 1]?.asText else {
                 return nil
             }
             return value

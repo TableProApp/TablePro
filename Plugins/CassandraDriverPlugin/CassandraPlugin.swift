@@ -303,7 +303,7 @@ private actor CassandraConnectionActor {
         return extractResult(from: result, startTime: startTime)
     }
 
-    func executePrepared(_ cql: String, parameters: [String?]) throws -> CassandraRawResult {
+    func executePrepared(_ cql: String, parameters: [PluginCellValue]) throws -> CassandraRawResult {
         guard let session else {
             throw CassandraPluginError.notConnected
         }
@@ -337,9 +337,18 @@ private actor CassandraConnectionActor {
         defer { cass_statement_free(statement) }
 
         for (index, param) in parameters.enumerated() {
-            if let value = param {
+            switch param {
+            case .text(let value):
                 cass_statement_bind_string(statement, index, value)
-            } else {
+            case .bytes(let data):
+                data.withUnsafeBytes { rawBuffer in
+                    if let base = rawBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) {
+                        cass_statement_bind_bytes(statement, index, base, data.count)
+                    } else {
+                        cass_statement_bind_null(statement, index)
+                    }
+                }
+            case .null:
                 cass_statement_bind_null(statement, index)
             }
         }
@@ -384,7 +393,7 @@ private actor CassandraConnectionActor {
 
     func serverVersion() throws -> String? {
         let result = try executeQuery("SELECT release_version FROM system.local WHERE key = 'local'")
-        return result.rows.first?.first ?? nil
+        return result.rows.first?.first?.asText
     }
 
     // MARK: - Private Helpers
@@ -413,7 +422,7 @@ private actor CassandraConnectionActor {
             columnTypeNames.append(Self.cassTypeName(colType))
         }
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         let iterator = cass_iterator_from_result(result)
         defer {
             if let iterator { cass_iterator_free(iterator) }
@@ -437,13 +446,18 @@ private actor CassandraConnectionActor {
             let row = cass_iterator_get_row(iterator)
             guard let row else { continue }
 
-            var rowData: [String?] = []
+            var rowData: [PluginCellValue] = []
             for col in 0..<colCount {
                 let value = cass_row_get_column(row, col)
                 if let value, cass_value_is_null(value) == cass_false {
-                    rowData.append(Self.extractStringValue(value))
+                    if cass_value_type(value) == CASS_VALUE_TYPE_BLOB,
+                       let data = Self.extractBlobValue(value) {
+                        rowData.append(.bytes(data))
+                    } else {
+                        rowData.append(PluginCellValue.fromOptional(Self.extractStringValue(value)))
+                    }
                 } else {
-                    rowData.append(nil)
+                    rowData.append(.null)
                 }
             }
             rows.append(rowData)
@@ -459,6 +473,15 @@ private actor CassandraConnectionActor {
             rowsAffected: Int(rowCount),
             executionTime: executionTime
         )
+    }
+
+    private static func extractBlobValue(_ value: OpaquePointer) -> Data? {
+        var bytes: UnsafePointer<UInt8>?
+        var length: Int = 0
+        guard cass_value_get_bytes(value, &bytes, &length) == CASS_OK, let bytes else {
+            return nil
+        }
+        return Data(bytes: bytes, count: length)
     }
 
     private static func extractStringValue(_ value: OpaquePointer) -> String? {
@@ -546,10 +569,7 @@ private actor CassandraConnectionActor {
             return nil
 
         case CASS_VALUE_TYPE_BLOB:
-            var bytes: UnsafePointer<UInt8>?
-            var length: Int = 0
-            if cass_value_get_bytes(value, &bytes, &length) == CASS_OK, let bytes {
-                let data = Data(bytes: bytes, count: length)
+            if let data = extractBlobValue(value) {
                 return "0x" + data.map { String(format: "%02x", $0) }.joined()
             }
             return nil
@@ -782,13 +802,18 @@ private actor CassandraConnectionActor {
                     let row = cass_iterator_get_row(iterator)
                     guard let row else { continue }
 
-                    var rowData: [String?] = []
+                    var rowData: [PluginCellValue] = []
                     for col in 0..<colCount {
                         let value = cass_row_get_column(row, col)
                         if let value, cass_value_is_null(value) == cass_false {
-                            rowData.append(Self.extractStringValue(value))
+                            if cass_value_type(value) == CASS_VALUE_TYPE_BLOB,
+                               let data = Self.extractBlobValue(value) {
+                                rowData.append(.bytes(data))
+                            } else {
+                                rowData.append(PluginCellValue.fromOptional(Self.extractStringValue(value)))
+                            }
                         } else {
-                            rowData.append(nil)
+                            rowData.append(.null)
                         }
                     }
                     continuation.yield(.rows([rowData]))
@@ -826,7 +851,7 @@ private actor CassandraConnectionActor {
 private struct CassandraRawResult: Sendable {
     let columns: [String]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    let rows: [[PluginCellValue]]
     let rowsAffected: Int
     let executionTime: TimeInterval
 }
@@ -860,6 +885,14 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .materializedViews,
+            .alterTableDDL,
+        ]
+    }
+
     init(config: DriverConnectionConfig) {
         self.config = config
     }
@@ -888,11 +921,20 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             stateLock.unlock()
         }
 
-        // Cache server version
         if let version = try? await connectionActor.serverVersion() {
             stateLock.lock()
             _cachedVersion = version
             stateLock.unlock()
+        }
+
+        let caps = CassandraCapabilities(
+            releaseVersionMajor: CassandraCapabilities.parseMajorVersion(serverVersion)
+        )
+        guard caps.hasSystemSchemaKeyspace else {
+            throw CassandraPluginError.connectionFailed(String(
+                format: String(localized: "Cassandra %@ is not supported. TablePro requires Cassandra 3.0 or later (the system_schema keyspace was introduced in 3.0)."),
+                serverVersion ?? "<unknown>"
+            ))
         }
     }
 
@@ -930,7 +972,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func executeParameterized(
         query: String,
-        parameters: [String?]
+        parameters: [PluginCellValue]
     ) async throws -> PluginQueryResult {
         let rawResult = try await connectionActor.executePrepared(query, parameters: parameters)
         return PluginQueryResult(
@@ -962,51 +1004,19 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 
-    // MARK: - Pagination
-
-    func fetchRowCount(query: String) async throws -> Int {
-        // CQL does not support subqueries, so we can't wrap an arbitrary query in SELECT COUNT(*) FROM (...).
-        // Return -1 to signal unknown count; the UI will hide the total page count.
-        -1
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        // CQL does not support OFFSET. Only the first page (offset=0) can be fetched via simple LIMIT.
-        // For offset>0, throw so the caller knows pagination is unsupported for arbitrary queries.
-        if offset > 0 {
-            throw CassandraPluginError.unsupportedOperation
-        }
-        let baseQuery = stripTrailingSemicolon(query)
-        let paginatedQuery = "\(baseQuery) LIMIT \(limit)"
-        return try await execute(query: paginatedQuery)
-    }
-
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let ks = resolveKeyspace(schema)
 
-        // Fetch tables
         let tablesQuery = """
             SELECT table_name FROM system_schema.tables WHERE keyspace_name = '\(escapeSingleQuote(ks))'
         """
         let tablesResult = try await execute(query: tablesQuery)
 
-        var tables = tablesResult.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[safe: 0] ?? nil else { return nil }
+        let tables = tablesResult.rows.compactMap { row -> PluginTableInfo? in
+            guard let name = row[safe: 0]?.asText else { return nil }
             return PluginTableInfo(name: name, type: "TABLE")
-        }
-
-        // Fetch materialized views
-        let viewsQuery = """
-            SELECT view_name FROM system_schema.views WHERE keyspace_name = '\(escapeSingleQuote(ks))'
-        """
-        if let viewsResult = try? await execute(query: viewsQuery) {
-            let views = viewsResult.rows.compactMap { row -> PluginTableInfo? in
-                guard let name = row[safe: 0] ?? nil else { return nil }
-                return PluginTableInfo(name: name, type: "VIEW")
-            }
-            tables.append(contentsOf: views)
         }
 
         return tables.sorted { $0.name < $1.name }
@@ -1032,12 +1042,12 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
 
         let rawColumns = result.rows.compactMap { row -> RawColumn? in
-            guard let name = row[safe: 0] ?? nil,
-                  let dataType = row[safe: 1] ?? nil else {
+            guard let name = row[safe: 0]?.asText,
+                  let dataType = row[safe: 1]?.asText else {
                 return nil
             }
-            let kind = (row[safe: 2] ?? nil) ?? "regular"
-            let position = Int((row[safe: 4] ?? nil) ?? "0") ?? 0
+            let kind = row[safe: 2]?.asText ?? "regular"
+            let position = Int(row[safe: 4]?.asText ?? "0") ?? 0
             let isPrimaryKey = kind == "partition_key" || kind == "clustering"
             return RawColumn(name: name, dataType: dataType, kind: kind, position: position, isPrimaryKey: isPrimaryKey)
         }.sorted { lhs, rhs in
@@ -1070,12 +1080,12 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         var allColumns: [String: [PluginColumnInfo]] = [:]
 
         for row in result.rows {
-            guard let tableName = row[safe: 0] ?? nil,
-                  let columnName = row[safe: 1] ?? nil,
-                  let dataType = row[safe: 2] ?? nil else {
+            guard let tableName = row[safe: 0]?.asText,
+                  let columnName = row[safe: 1]?.asText,
+                  let dataType = row[safe: 2]?.asText else {
                 continue
             }
-            let kind = row[safe: 3] ?? nil
+            let kind = row[safe: 3]?.asText
             let isPrimaryKey = kind == "partition_key" || kind == "clustering"
 
             let column = PluginColumnInfo(
@@ -1104,9 +1114,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         do {
             let result = try await execute(query: query)
             return result.rows.compactMap { row in
-                guard let name = row[safe: 0] ?? nil else { return nil }
-                let kind = (row[safe: 1] ?? nil) ?? "COMPOSITES"
-                let options = (row[safe: 2] ?? nil) ?? ""
+                guard let name = row[safe: 0]?.asText else { return nil }
+                let kind = row[safe: 1]?.asText ?? "COMPOSITES"
+                let options = row[safe: 2]?.asText ?? ""
 
                 // Extract target column from options map
                 var targetColumns: [String] = []
@@ -1178,8 +1188,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             throw CassandraPluginError.queryFailed("View '\(view)' not found")
         }
 
-        let baseTable = (row[safe: 0] ?? nil) ?? "unknown"
-        let whereClause = (row[safe: 1] ?? nil) ?? ""
+        let baseTable = row[safe: 0]?.asText ?? "unknown"
+        let whereClause = row[safe: 1]?.asText ?? ""
 
         let columns = try await fetchColumns(table: view, schema: ks)
         let colNames = columns.map { "\"\(escapeIdentifier($0.name))\"" }.joined(separator: ", ")
@@ -1203,8 +1213,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let countQuery = "SELECT COUNT(*) FROM \"\(escapeIdentifier(ks))\".\"\(escapeIdentifier(table))\" LIMIT 100001"
         let countResult = try? await execute(query: countQuery)
         let rowCount: Int64? = {
-            guard let row = countResult?.rows.first, let countStr = row.first else { return nil }
-            return Int64(countStr ?? "0")
+            guard let row = countResult?.rows.first, let countStr = row.first?.asText else { return nil }
+            return Int64(countStr)
         }()
 
         return PluginTableMetadata(
@@ -1223,7 +1233,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             "system", "system_schema", "system_auth",
             "system_distributed", "system_traces", "system_virtual_schema",
         ]
-        return result.rows.compactMap { $0[safe: 0] ?? nil }
+        return result.rows.compactMap { $0[safe: 0]?.asText }
             .filter { !systemKeyspaces.contains($0) }
             .sorted()
     }

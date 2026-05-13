@@ -26,7 +26,6 @@ final class DatabaseManager {
         didSet {
             if Set(oldValue.keys) != Set(activeSessions.keys) {
                 connectionListVersion &+= 1
-                persistOpenConnectionIds()
             }
             connectionStatusVersion &+= 1
         }
@@ -60,6 +59,8 @@ final class DatabaseManager {
     /// and the wake-from-sleep handler fire for the same connection.
     @ObservationIgnored internal var recoveringConnectionIds = Set<UUID>()
 
+    @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()
+
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
         guard let sessionId = currentSessionId else { return nil }
@@ -81,6 +82,13 @@ final class DatabaseManager {
         activeSessions[connectionId]
     }
 
+    /// Authoritative active database for this connection. Use for tab payloads,
+    /// query history, schema cache keys, and AI prompt context. Reading
+    /// `connection.database` (the saved default) is wrong after Cmd+K.
+    func activeDatabaseName(for connection: DatabaseConnection) -> String {
+        activeSessions[connection.id]?.activeDatabase ?? connection.database
+    }
+
     /// Current connection status
     var status: ConnectionStatus {
         currentSession?.status ?? .disconnected
@@ -94,12 +102,5 @@ final class DatabaseManager {
         self.connectionStorage = connectionStorage
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
-    }
-
-    private func persistOpenConnectionIds() {
-        let connections = connectionStorage.loadConnections()
-        let activeKeys = Set(activeSessions.keys)
-        let ids = connections.filter { activeKeys.contains($0.id) }.map(\.id)
-        appSettingsStorage.saveLastOpenConnectionIds(ids)
     }
 }

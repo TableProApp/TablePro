@@ -14,6 +14,7 @@ internal struct SingleLineEditorView: View {
         TextField(context.placeholderText, text: context.value)
             .textFieldStyle(.roundedBorder)
             .font(.subheadline)
+            .autocorrectionDisabled(true)
             .focused($isFocused)
             .disabled(context.isReadOnly)
     }

@@ -1,8 +1,3 @@
-//
-//  ConnectionListView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProModels
 import TableProSync
@@ -12,12 +7,13 @@ struct ConnectionListView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showingAddConnection = false
     @State private var editingConnection: DatabaseConnection?
-    @AppStorage("lastConnectionId") private var selectedConnectionIdString: String?
+    @SceneStorage("lastConnectionId") private var selectedConnectionIdString: String?
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var showingGroupManagement = false
     @State private var showingTagManagement = false
     @AppStorage("lastFilterTagId") private var filterTagIdString: String?
     @AppStorage("groupByGroup") private var groupByGroup = false
+    @AppStorage(AppPreferences.cloudSyncEnabledKey) private var cloudSyncEnabled = true
     @State private var editMode: EditMode = .inactive
     @State private var connectionToDelete: DatabaseConnection?
     @State private var showingSettings = false
@@ -83,6 +79,7 @@ struct ConnectionListView: View {
                             Image(systemName: "plus")
                         }
                         .keyboardShortcut("n", modifiers: .command)
+                        .accessibilityLabel(Text("Add Connection"))
                     }
                     ToolbarItemGroup(placement: .topBarLeading) {
                         Button {
@@ -98,16 +95,20 @@ struct ConnectionListView: View {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
-                                Image(systemName: "arrow.triangle.2.circlepath.icloud")
+                                Image(systemName: cloudSyncEnabled
+                                    ? "arrow.triangle.2.circlepath.icloud"
+                                    : "icloud.slash")
                             }
                         }
-                        .disabled(isSyncing)
+                        .disabled(isSyncing || !cloudSyncEnabled)
+                        .accessibilityLabel(Text("Sync with iCloud"))
 
                         Button {
                             showingSettings = true
                         } label: {
                             Image(systemName: "gear")
                         }
+                        .accessibilityLabel(Text("Settings"))
                     }
                 }
             .onChange(of: appState.pendingConnectionId) { _, newId in
@@ -223,6 +224,7 @@ struct ConnectionListView: View {
             }
             .environment(\.editMode, $editMode)
             .refreshable {
+                guard cloudSyncEnabled else { return }
                 await appState.syncCoordinator.sync(
                     localConnections: appState.connections,
                     localGroups: appState.groups,
@@ -421,30 +423,24 @@ private struct ConnectionRow: View {
     let connection: DatabaseConnection
     let tag: ConnectionTag?
 
+    private var title: String {
+        connection.name.isEmpty ? connection.host : connection.name
+    }
+
+    private var subtitle: String {
+        if connection.type == .sqlite {
+            return connection.database.components(separatedBy: "/").last ?? "database"
+        }
+        return "\(connection.host):\(connection.port)"
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
+        RowItemLabel(title: title, subtitle: subtitle) {
             DatabaseIconView(type: connection.type, size: 18)
                 .frame(width: 32, height: 32)
                 .background(DatabaseIconView.color(for: connection.type).opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 7))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(connection.name.isEmpty ? connection.host : connection.name)
-                    .font(.body)
-
-                if connection.type != .sqlite {
-                    Text(verbatim: "\(connection.host):\(connection.port)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(connection.database.components(separatedBy: "/").last ?? "database")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
+        } trailing: {
             if let tag {
                 let tagColor = ConnectionColorPicker.swiftUIColor(for: tag.color)
                 Text(tag.name)
@@ -458,6 +454,20 @@ private struct ConnectionRow: View {
                     )
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Text("Opens this connection"))
     }
 
+    private var accessibilityLabel: Text {
+        let displayName = connection.name.isEmpty ? connection.host : connection.name
+        let typeName = connection.type.rawValue.uppercased()
+        let location: String = connection.type == .sqlite
+            ? (connection.database.components(separatedBy: "/").last ?? "database")
+            : "\(connection.host) port \(connection.port)"
+        if let tag {
+            return Text("\(typeName), \(displayName), \(location), tag \(tag.name)")
+        }
+        return Text("\(typeName), \(displayName), \(location)")
+    }
 }

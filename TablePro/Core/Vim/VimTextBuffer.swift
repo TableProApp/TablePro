@@ -38,6 +38,32 @@ protocol VimTextBuffer: AnyObject {
     /// Returns the offset of the end of the current word from the given offset
     func wordEnd(from offset: Int) -> Int
 
+    /// Returns the offset of the previous word-end (backward analog of wordEnd) — for ge
+    func wordEndBackward(from offset: Int) -> Int
+
+    /// Returns the next/previous WORD boundary (whitespace-delimited, punctuation included)
+    func bigWordBoundary(forward: Bool, from offset: Int) -> Int
+
+    /// Returns the end of the current WORD (whitespace-delimited)
+    func bigWordEnd(from offset: Int) -> Int
+
+    /// Returns the previous WORD-end (whitespace-delimited)
+    func bigWordEndBackward(from offset: Int) -> Int
+
+    /// Returns the offset of the matching bracket pair at the given offset, or nil if none.
+    /// Supported pairs: () [] {}. Handles nested pairs correctly.
+    func matchingBracket(at offset: Int) -> Int?
+
+    /// Returns the inclusive 0-based line range currently visible in the editor.
+    /// Test mocks return the whole buffer range.
+    func visibleLineRange() -> (firstLine: Int, lastLine: Int)
+
+    /// Returns the indent string ("    " for 4-space, "\t" for tab) used by >> and <<.
+    func indentString() -> String
+
+    /// Returns the indent width in columns.
+    func indentWidth() -> Int
+
     /// Returns the currently selected range
     func selectedRange() -> NSRange
 

@@ -5,6 +5,7 @@
 //  Verifies the deferred-stop state machine extracted from CopilotService.
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

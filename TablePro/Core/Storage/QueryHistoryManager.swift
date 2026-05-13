@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 final class QueryHistoryManager {
@@ -5,8 +6,23 @@ final class QueryHistoryManager {
 
     private let storage: QueryHistoryStorage
 
-    init(storage: QueryHistoryStorage = .shared) {
+    init(storage: QueryHistoryStorage = QueryHistoryStorage()) {
         self.storage = storage
+    }
+
+    /// Append a pre-built `QueryHistoryEntry` and post the change notification.
+    /// Use `recordQuery(...)` for the typical SQL-execution path that builds
+    /// the entry from raw arguments. `addHistory` is exposed for callers that
+    /// already have an entry value (e.g. MCP audit logging).
+    @discardableResult
+    func addHistory(_ entry: QueryHistoryEntry) async -> Bool {
+        let success = await storage.addHistory(entry)
+        if success {
+            await MainActor.run {
+                AppEvents.shared.queryHistoryDidUpdate.send(entry.connectionId)
+            }
+        }
+        return success
     }
 
     @MainActor
@@ -55,16 +71,8 @@ final class QueryHistoryManager {
             parameterValues: encodedParams
         )
 
-        Task {
-            let success = await storage.addHistory(entry)
-            if success {
-                await MainActor.run {
-                    NotificationCenter.default.post(
-                        name: .queryHistoryDidUpdate,
-                        object: nil
-                    )
-                }
-            }
+        Task { [self] in
+            _ = await self.addHistory(entry)
         }
     }
 
@@ -75,14 +83,20 @@ final class QueryHistoryManager {
         offset: Int = 0,
         connectionId: UUID? = nil,
         searchText: String? = nil,
-        dateFilter: DateFilter = .all
+        dateFilter: DateFilter = .all,
+        since: Date? = nil,
+        until: Date? = nil,
+        allowedConnectionIds: Set<UUID>? = nil
     ) async -> [QueryHistoryEntry] {
         await storage.fetchHistory(
             limit: limit,
             offset: offset,
             connectionId: connectionId,
             searchText: searchText,
-            dateFilter: dateFilter
+            dateFilter: dateFilter,
+            since: since,
+            until: until,
+            allowedConnectionIds: allowedConnectionIds
         )
     }
 
@@ -97,7 +111,7 @@ final class QueryHistoryManager {
         let success = await storage.deleteHistory(id: id)
         if success {
             await MainActor.run {
-                NotificationCenter.default.post(name: .queryHistoryDidUpdate, object: nil)
+                AppEvents.shared.queryHistoryDidUpdate.send(nil)
             }
         }
         return success
@@ -111,7 +125,7 @@ final class QueryHistoryManager {
         let success = await storage.clearAllHistory()
         if success {
             await MainActor.run {
-                NotificationCenter.default.post(name: .queryHistoryDidUpdate, object: nil)
+                AppEvents.shared.queryHistoryDidUpdate.send(nil)
             }
         }
         return success

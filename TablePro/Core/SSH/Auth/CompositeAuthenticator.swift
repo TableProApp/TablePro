@@ -33,7 +33,7 @@ internal struct CompositeAuthenticator: SSHAuthenticator {
         }
 
         if libssh2_userauth_authenticated(session) == 0 {
-            throw lastError ?? SSHTunnelError.authenticationFailed
+            throw lastError ?? SSHTunnelError.authenticationFailed(reason: .generic)
         }
     }
 }

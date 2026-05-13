@@ -7,30 +7,49 @@
 //
 
 import Foundation
+import os
 
-/// Singleton Keychain storage for AI provider API keys
 final class AIKeyStorage {
     static let shared = AIKeyStorage()
 
-    private init() {}
+    private static let logger = Logger(subsystem: "com.TablePro", category: "AIKeyStorage")
 
-    // MARK: - API Key Operations
+    private let keychain: KeychainHelper
 
-    /// Save an API key to Keychain for the given provider
+    init(keychain: KeychainHelper = .shared) {
+        self.keychain = keychain
+    }
+
     func saveAPIKey(_ apiKey: String, for providerID: UUID) {
         let key = "com.TablePro.aikey.\(providerID.uuidString)"
-        KeychainHelper.shared.saveString(apiKey, forKey: key)
+        keychain.writeString(apiKey, forKey: key)
     }
 
-    /// Load an API key from Keychain for the given provider
     func loadAPIKey(for providerID: UUID) -> String? {
         let key = "com.TablePro.aikey.\(providerID.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        let pid = providerID.uuidString
+        switch keychain.readStringResult(forKey: key) {
+        case .found(let value):
+            return value
+        case .notFound:
+            return nil
+        case .locked:
+            Self.logger.warning("AI API key unavailable: Keychain locked (providerID=\(pid, privacy: .public))")
+            return nil
+        case .userCancelled:
+            Self.logger.notice("AI API key prompt cancelled (providerID=\(pid, privacy: .public))")
+            return nil
+        case .authFailed:
+            Self.logger.warning("AI API key auth failed (providerID=\(pid, privacy: .public))")
+            return nil
+        case .error(let status):
+            Self.logger.error("AI API key read error \(status) (providerID=\(pid, privacy: .public))")
+            return nil
+        }
     }
 
-    /// Delete an API key from Keychain for the given provider
     func deleteAPIKey(for providerID: UUID) {
         let key = "com.TablePro.aikey.\(providerID.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        keychain.delete(forKey: key)
     }
 }

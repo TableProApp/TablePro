@@ -1,8 +1,3 @@
-//
-//  ConnectedView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -18,6 +13,7 @@ struct ConnectedView: View {
     @State private var coordinator: ConnectionCoordinator?
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @State private var showDeletedAlert = false
 
     var body: some View {
         Group {
@@ -38,6 +34,16 @@ struct ConnectedView: View {
         }
         .navigationTitle(connection.name.isEmpty ? connection.host : connection.name)
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: appState.connections) { _, newConnections in
+            if !newConnections.contains(where: { $0.id == connection.id }) {
+                showDeletedAlert = true
+            }
+        }
+        .alert(String(localized: "Connection Deleted"), isPresented: $showDeletedAlert) {
+            Button("OK", role: .cancel) { dismiss() }
+        } message: {
+            Text("This connection no longer exists. It may have been removed from another device.")
+        }
         .task {
             if let cached = cachedCoordinator {
                 coordinator = cached
@@ -88,7 +94,7 @@ struct ConnectedView: View {
 
     private func connectedContent(_ coordinator: ConnectionCoordinator) -> some View {
         @Bindable var coordinator = coordinator
-        return NavigationStack(path: $coordinator.navigationPath) {
+        return NavigationStack(path: $coordinator.tablesPath) {
             TabView(selection: $coordinator.selectedTab) {
                 Tab("Tables", systemImage: "tablecells", value: .tables) {
                     TableListView()
@@ -102,12 +108,11 @@ struct ConnectedView: View {
                     QueryHistoryView()
                         .environment(coordinator)
                 }
-                Tab("Settings", systemImage: "gear", value: .settings) {
-                    SettingsView()
+                Tab("Info", systemImage: "info.circle", value: .info) {
+                    ConnectionInfoView()
                         .environment(coordinator)
                 }
             }
-            .navigationTitle(tabTitle(coordinator))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { connectionToolbar(coordinator) }
             .navigationDestination(for: TableInfo.self) { table in
@@ -128,9 +133,9 @@ struct ConnectedView: View {
                 .keyboardShortcut("3", modifiers: .command)
                 .accessibilityLabel(Text("History"))
                 .hidden()
-            Button("") { coordinator.selectedTab = .settings }
+            Button("") { coordinator.selectedTab = .info }
                 .keyboardShortcut("4", modifiers: .command)
-                .accessibilityLabel(Text("Settings"))
+                .accessibilityLabel(Text("Info"))
                 .hidden()
         }
         .overlay(alignment: .top) {
@@ -175,18 +180,20 @@ struct ConnectedView: View {
         }
     }
 
-    private func tabTitle(_ coordinator: ConnectionCoordinator) -> String {
-        switch coordinator.selectedTab {
-        case .tables, .query: coordinator.displayName
-        case .history: String(localized: "History")
-        case .settings: String(localized: "Settings")
-        }
-    }
-
     // MARK: - Connection Toolbar
 
     @ToolbarContentBuilder
     private func connectionToolbar(_ coordinator: ConnectionCoordinator) -> some ToolbarContent {
+        if coordinator.selectedTab == .info {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    coordinator.showingEditSheet = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .accessibilityLabel(Text("Edit Connection"))
+                }
+            }
+        }
         if connection.safeModeLevel != .off {
             ToolbarItem(placement: .topBarTrailing) {
                 Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")

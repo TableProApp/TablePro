@@ -24,6 +24,19 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
+    var requiresBackslashEscapingInLiterals: Bool { true }
+
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .transactions,
+            .alterTableDDL,
+            .foreignKeyToggle,
+            .cancelQuery,
+            .storedProcedures,
+            .userFunctions,
+        ]
+    }
 
     func quoteIdentifier(_ name: String) -> String {
         let escaped = name.replacingOccurrences(of: "`", with: "``")
@@ -45,8 +58,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static let tableNameRegex = try? NSRegularExpression(pattern: "(?i)\\bFROM\\s+[`\"']?([\\w]+)[`\"']?")
-    private static let limitRegex = try? NSRegularExpression(pattern: "(?i)\\s+LIMIT\\s+\\d+(\\s*,\\s*\\d+)?")
-    private static let offsetRegex = try? NSRegularExpression(pattern: "(?i)\\s+OFFSET\\s+\\d+")
 
     init(config: DriverConnectionConfig) {
         self.config = config
@@ -56,7 +67,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let sslConfig = MySQLSSLConfig(from: config.additionalFields)
+        let sslConfig = config.ssl
 
         let conn = MariaDBPluginConnection(
             host: config.host,
@@ -99,14 +110,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await executeWithReconnect(query: query, isRetry: false)
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard let conn = mariadbConnection else {
             throw MariaDBPluginError.notConnected
         }
 
         let startTime = Date()
-        let anyParams: [Any?] = parameters.map { $0 as Any? }
-        let result = try await conn.executeParameterizedQuery(query, parameters: anyParams)
+        let result = try await conn.executeParameterizedQuery(query, parameters: parameters)
 
         return PluginQueryResult(
             columns: result.columns,
@@ -178,8 +188,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: "SHOW FULL TABLES")
 
         return result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[safe: 0] ?? nil else { return nil }
-            let typeStr = (row[safe: 1] ?? nil) ?? "BASE TABLE"
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let typeStr = (row[safe: 1]?.asText) ?? "BASE TABLE"
             let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
             return PluginTableInfo(name: name, type: type)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -190,16 +200,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: "SHOW FULL COLUMNS FROM `\(safeTable)`")
 
         return result.rows.compactMap { row in
-            guard let name = row[safe: 0] ?? nil,
-                  let dataType = row[safe: 1] ?? nil
+            guard let name = row[safe: 0]?.asText,
+                  let dataType = row[safe: 1]?.asText
             else { return nil }
 
-            let collation = row[safe: 2] ?? nil
-            let isNullable = (row[safe: 3] ?? nil) == "YES"
-            let isPrimaryKey = (row[safe: 4] ?? nil) == "PRI"
-            let defaultValue = row[safe: 5] ?? nil
-            let extra = row[safe: 6] ?? nil
-            let comment = row[safe: 8] ?? nil
+            let collation = row[safe: 2]?.asText
+            let isNullable = (row[safe: 3]?.asText) == "YES"
+            let isPrimaryKey = (row[safe: 4]?.asText) == "PRI"
+            let defaultValue = row[safe: 5]?.asText
+            let extra = row[safe: 6]?.asText
+            let comment = row[safe: 8]?.asText
 
             let charset: String? = {
                 guard let coll = collation, coll != "NULL" else { return nil }
@@ -240,17 +250,17 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
-            guard let tableName = row[safe: 0] ?? nil,
-                  let name = row[safe: 1] ?? nil,
-                  let dataType = row[safe: 2] ?? nil
+            guard let tableName = row[safe: 0]?.asText,
+                  let name = row[safe: 1]?.asText,
+                  let dataType = row[safe: 2]?.asText
             else { continue }
 
-            let collation = row[safe: 3] ?? nil
-            let isNullable = (row[safe: 4] ?? nil) == "YES"
-            let isPrimaryKey = (row[safe: 5] ?? nil) == "PRI"
-            let defaultValue = row[safe: 6] ?? nil
-            let extra = row[safe: 7] ?? nil
-            let comment = row[safe: 8] ?? nil
+            let collation = row[safe: 3]?.asText
+            let isNullable = (row[safe: 4]?.asText) == "YES"
+            let isPrimaryKey = (row[safe: 5]?.asText) == "PRI"
+            let defaultValue = row[safe: 6]?.asText
+            let extra = row[safe: 7]?.asText
+            let comment = row[safe: 8]?.asText
 
             let charset: String? = {
                 guard let coll = collation, coll != "NULL" else { return nil }
@@ -286,13 +296,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var indexMap: [String: (columns: [String], isUnique: Bool, type: String, prefixes: [String: Int])] = [:]
 
         for row in result.rows {
-            guard let indexName = row[safe: 2] ?? nil,
-                  let columnName = row[safe: 4] ?? nil
+            guard let indexName = row[safe: 2]?.asText,
+                  let columnName = row[safe: 4]?.asText
             else { continue }
 
-            let nonUnique = (row[safe: 1] ?? nil) == "1"
-            let indexType = (row[safe: 10] ?? nil) ?? "BTREE"
-            let subPart = (row[safe: 7] ?? nil).flatMap { Int($0) }
+            let nonUnique = (row[safe: 1]?.asText) == "1"
+            let indexType = (row[safe: 10]?.asText) ?? "BTREE"
+            let subPart = (row[safe: 7]?.asText).flatMap { Int($0) }
 
             if var existing = indexMap[indexName] {
                 existing.columns.append(columnName)
@@ -347,18 +357,18 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: query)
 
         return result.rows.compactMap { row in
-            guard let name = row[safe: 0] ?? nil,
-                  let column = row[safe: 1] ?? nil,
-                  let refTable = row[safe: 2] ?? nil,
-                  let refColumn = row[safe: 3] ?? nil
+            guard let name = row[safe: 0]?.asText,
+                  let column = row[safe: 1]?.asText,
+                  let refTable = row[safe: 2]?.asText,
+                  let refColumn = row[safe: 3]?.asText
             else { return nil }
 
             return PluginForeignKeyInfo(
                 name: name, column: column,
                 referencedTable: refTable, referencedColumn: refColumn,
-                referencedSchema: row[safe: 4] ?? nil,
-                onDelete: (row[safe: 5] ?? nil) ?? "NO ACTION",
-                onUpdate: (row[safe: 6] ?? nil) ?? "NO ACTION"
+                referencedSchema: row[safe: 4]?.asText,
+                onDelete: (row[safe: 5]?.asText) ?? "NO ACTION",
+                onUpdate: (row[safe: 6]?.asText) ?? "NO ACTION"
             )
         }
     }
@@ -389,19 +399,19 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var grouped: [String: [PluginForeignKeyInfo]] = [:]
         for row in result.rows {
-            guard let tableName = row[safe: 0] ?? nil,
-                  let name = row[safe: 1] ?? nil,
-                  let column = row[safe: 2] ?? nil,
-                  let refTable = row[safe: 3] ?? nil,
-                  let refColumn = row[safe: 4] ?? nil
+            guard let tableName = row[safe: 0]?.asText,
+                  let name = row[safe: 1]?.asText,
+                  let column = row[safe: 2]?.asText,
+                  let refTable = row[safe: 3]?.asText,
+                  let refColumn = row[safe: 4]?.asText
             else { continue }
 
             let fk = PluginForeignKeyInfo(
                 name: name, column: column,
                 referencedTable: refTable, referencedColumn: refColumn,
-                referencedSchema: row[safe: 5] ?? nil,
-                onDelete: (row[safe: 6] ?? nil) ?? "NO ACTION",
-                onUpdate: (row[safe: 7] ?? nil) ?? "NO ACTION"
+                referencedSchema: row[safe: 5]?.asText,
+                onDelete: (row[safe: 6]?.asText) ?? "NO ACTION",
+                onUpdate: (row[safe: 7]?.asText) ?? "NO ACTION"
             )
             grouped[tableName, default: []].append(fk)
         }
@@ -422,7 +432,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first,
-              let value = firstRow[safe: 0] ?? nil,
+              let value = firstRow[safe: 0]?.asText,
               let count = Int(value)
         else { return nil }
 
@@ -434,7 +444,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: "SHOW CREATE TABLE `\(safeTable)`")
 
         guard let firstRow = result.rows.first,
-              let ddl = firstRow[safe: 1] ?? nil
+              let ddl = firstRow[safe: 1]?.asText
         else {
             throw MariaDBPluginError(code: 0, message: "Failed to fetch DDL for table '\(table)'", sqlState: nil)
         }
@@ -447,7 +457,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: "SHOW CREATE VIEW `\(safeView)`")
 
         guard let firstRow = result.rows.first,
-              let ddl = firstRow[safe: 1] ?? nil
+              let ddl = firstRow[safe: 1]?.asText
         else {
             throw MariaDBPluginError(code: 0, message: "Failed to fetch definition for view '\(view)'", sqlState: nil)
         }
@@ -463,11 +473,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return PluginTableMetadata(tableName: table)
         }
 
-        let engine = row[safe: 1] ?? nil
-        let rowCount = (row[safe: 4] ?? nil).flatMap { Int64($0) }
-        let dataSize = (row[safe: 6] ?? nil).flatMap { Int64($0) }
-        let indexSize = (row[safe: 8] ?? nil).flatMap { Int64($0) }
-        let comment = row[safe: 17] ?? nil
+        let engine = row[safe: 1]?.asText
+        let rowCount = (row[safe: 4]?.asText).flatMap { Int64($0) }
+        let dataSize = (row[safe: 6]?.asText).flatMap { Int64($0) }
+        let indexSize = (row[safe: 8]?.asText).flatMap { Int64($0) }
+        let comment = row[safe: 17]?.asText
 
         let totalSize: Int64? = {
             guard let data = dataSize, let index = indexSize else { return nil }
@@ -485,90 +495,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    // MARK: - Progressive Loading
-
-    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
-        guard limit > 0 else {
-            let result = try await execute(query: query)
-            return PluginPagedResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                hasMore: false,
-                nextOffset: result.rows.count
-            )
-        }
-
-        // If query already has a LIMIT clause, run as-is
-        if let regex = Self.limitRegex,
-           regex.firstMatch(in: query, range: NSRange(query.startIndex..., in: query)) != nil
-        {
-            let result = try await execute(query: query)
-            return PluginPagedResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                hasMore: false,
-                nextOffset: result.rows.count
-            )
-        }
-
-        // Inject LIMIT (limit+1) to detect if more rows exist
-        let baseQuery = stripLimitOffset(from: query)
-        let probeQuery = "\(baseQuery) LIMIT \(limit + 1)"
-        let result = try await execute(query: probeQuery)
-
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-
-        return PluginPagedResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: rows.count
-        )
-    }
-
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let conn = mariadbConnection else {
             return AsyncThrowingStream { $0.finish(throwing: MariaDBPluginError.notConnected) }
         }
-        let baseQuery = stripLimitOffset(from: query)
-        return conn.streamQuery(baseQuery)
-    }
-
-    // MARK: - Paginated Query Support
-
-    func fetchRowCount(query: String) async throws -> Int {
-        let baseQuery = stripLimitOffset(from: query)
-        let countQuery = "SELECT COUNT(*) AS cnt FROM (\(baseQuery)) AS __count_subquery__"
-        let result = try await execute(query: countQuery)
-
-        guard let firstRow = result.rows.first,
-              let countStr = firstRow[safe: 0] ?? nil,
-              let count = Int(countStr)
-        else { return 0 }
-
-        return count
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let baseQuery = stripLimitOffset(from: query)
-        let paginatedQuery = "\(baseQuery) LIMIT \(limit) OFFSET \(offset)"
-        return try await execute(query: paginatedQuery)
+        return conn.streamQuery(query)
     }
 
     // MARK: - Database Operations
 
     func fetchDatabases() async throws -> [String] {
         let result = try await execute(query: "SHOW DATABASES")
-        return result.rows.compactMap { row in row[safe: 0] ?? nil }
+        return result.rows.compactMap { row in row[safe: 0]?.asText }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
@@ -581,8 +521,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         """
         let result = try await execute(query: query)
         let row = result.rows.first
-        let tableCount = Int((row?[safe: 0] ?? nil) ?? "0") ?? 0
-        let sizeBytes = Int64((row?[safe: 1] ?? nil) ?? "0") ?? 0
+        let tableCount = Int(row?[safe: 0]?.asText ?? "0") ?? 0
+        let sizeBytes = Int64(row?[safe: 1]?.asText ?? "0") ?? 0
 
         let systemDatabases = ["information_schema", "mysql", "performance_schema", "sys"]
         let isSystem = systemDatabases.contains(database)
@@ -607,9 +547,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var metadataByName: [String: PluginDatabaseMetadata] = [:]
         for row in result.rows {
-            guard let dbName = row[safe: 0] ?? nil else { continue }
-            let tableCount = Int((row[safe: 1] ?? nil) ?? "0") ?? 0
-            let sizeBytes = Int64((row[safe: 2] ?? nil) ?? "0") ?? 0
+            guard let dbName = row[safe: 0]?.asText else { continue }
+            let tableCount = Int((row[safe: 1]?.asText) ?? "0") ?? 0
+            let sizeBytes = Int64((row[safe: 2]?.asText) ?? "0") ?? 0
             let isSystem = systemDatabases.contains(dbName)
 
             metadataByName[dbName] = PluginDatabaseMetadata(
@@ -1011,26 +951,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var columns: [String] = []
         for row in result.rows {
-            if let columnName = row[safe: 0] ?? nil {
+            if let columnName = row[safe: 0]?.asText {
                 columns.append(columnName)
             }
         }
         return columns
     }
 
-    private func stripLimitOffset(from query: String) -> String {
-        var result = query
-
-        if let regex = Self.limitRegex {
-            result = regex.stringByReplacingMatches(
-                in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
-        }
-
-        if let regex = Self.offsetRegex {
-            result = regex.stringByReplacingMatches(
-                in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
-        }
-
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }

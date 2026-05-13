@@ -1,8 +1,3 @@
-//
-//  WidgetConnectionItem.swift
-//  TableProWidget
-//
-
 import Foundation
 
 struct WidgetConnectionItem: Codable, Identifiable, Hashable {

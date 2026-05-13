@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @Suite("ClickHouse Connection")

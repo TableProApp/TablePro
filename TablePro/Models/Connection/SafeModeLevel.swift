@@ -24,14 +24,7 @@ internal extension SafeModeLevel {
         case .alertFull: return String(localized: "Alert (Full)")
         case .safeMode: return String(localized: "Safe Mode")
         case .safeModeFull: return String(localized: "Safe Mode (Full)")
-        case .readOnly: return String(localized: "Read-Only")
-        }
-    }
-
-    var requiresPro: Bool {
-        switch self {
-        case .safeMode, .safeModeFull, .readOnly: return true
-        case .silent, .alert, .alertFull: return false
+        case .readOnly: return String(localized: "Read Only")
         }
     }
 

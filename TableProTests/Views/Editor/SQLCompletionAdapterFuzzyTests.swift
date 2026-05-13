@@ -5,6 +5,7 @@
 //  Regression tests for fuzzy matching used by autocomplete.
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

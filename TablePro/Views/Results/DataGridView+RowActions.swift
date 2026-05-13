@@ -7,6 +7,7 @@
 
 import AppKit
 import os
+import TableProPluginKit
 
 private let rowActionsLogger = Logger(subsystem: "com.TablePro", category: "DataGridView+RowActions")
 
@@ -16,9 +17,11 @@ extension TableViewCoordinator {
     @MainActor
     func undoDeleteRow(at index: Int) {
         changeManager.undoRowDeletion(rowIndex: index)
+        visualIndex.updateRow(index, from: changeManager, sortedIDs: sortedIDs)
         tableView?.reloadData(
             forRowIndexes: IndexSet(integer: index),
             columnIndexes: IndexSet(integersIn: 0..<(tableView?.numberOfColumns ?? 0)))
+        refreshRowVisualState(at: index)
     }
 
     func addNewRow() {
@@ -29,11 +32,11 @@ extension TableViewCoordinator {
     func undoInsertRow(at index: Int) {
         delegate?.dataGridUndoInsert(at: index)
         changeManager.undoRowInsertion(rowIndex: index)
+        var capturedDelta: Delta = .none
         tableRowsMutator { rows in
-            _ = rows.remove(at: IndexSet(integer: index))
+            capturedDelta = rows.remove(at: IndexSet(integer: index))
         }
-        updateCache()
-        tableView?.reloadData()
+        applyDelta(capturedDelta)
     }
 
     func copyRows(at indices: Set<Int>) {
@@ -45,7 +48,7 @@ extension TableViewCoordinator {
 
         for index in sortedIndices {
             guard let values = displayRow(at: index)?.values else { continue }
-            let formatted = formatRowValues(values: values, columnTypes: columnTypes)
+            let formatted = formatRowValues(values: Array(values), columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
         }
@@ -65,7 +68,7 @@ extension TableViewCoordinator {
 
         for index in sortedIndices {
             guard let values = displayRow(at: index)?.values else { continue }
-            let formatted = formatRowValues(values: values, columnTypes: columnTypes)
+            let formatted = formatRowValues(values: Array(values), columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
         }
@@ -73,14 +76,6 @@ extension TableViewCoordinator {
         let tsv = tsvRows.joined(separator: "\n")
         let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
         ClipboardService.shared.writeRows(tsv: tsv, html: html)
-    }
-
-    @MainActor
-    func setCellValue(_ value: String?, at rowIndex: Int) {
-        guard let tableView = tableView else { return }
-        var columnIndex = max(0, tableView.selectedColumn - 1)
-        if columnIndex < 0 { columnIndex = 0 }
-        setCellValueAtColumn(value, at: rowIndex, columnIndex: columnIndex)
     }
 
     @MainActor
@@ -93,9 +88,16 @@ extension TableViewCoordinator {
         guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
         guard let row = displayRow(at: rowIndex), columnIndex < row.values.count else { return }
 
-        let value = row.values[columnIndex] ?? "NULL"
+        let cell = row.values[columnIndex]
         let columnTypes = tableRows.columnTypes
         let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
+
+        if case .bytes(let data) = cell {
+            ClipboardService.shared.writeText(BlobFormattingService.shared.format(data, for: .copy) ?? "")
+            return
+        }
+
+        let value = cell.asText ?? "NULL"
 
         if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw {
             let formatted = ValueDisplayFormatService.applyFormat(value, format: format)
@@ -120,9 +122,9 @@ extension TableViewCoordinator {
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
-            guard !rows.isEmpty else { return }
-            ClipboardService.shared.writeText(converter.generateInserts(rows: rows))
+            let typedRows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+            guard !typedRows.isEmpty else { return }
+            ClipboardService.shared.writeText(converter.generateInserts(rows: typedRows))
         } catch {
             rowActionsLogger.error("copyRowsAsInsert failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -141,16 +143,16 @@ extension TableViewCoordinator {
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
-            guard !rows.isEmpty else { return }
-            ClipboardService.shared.writeText(converter.generateUpdates(rows: rows))
+            let typedRows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+            guard !typedRows.isEmpty else { return }
+            ClipboardService.shared.writeText(converter.generateUpdates(rows: typedRows))
         } catch {
             rowActionsLogger.error("copyRowsAsUpdate failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let rows = indices.sorted().compactMap { displayRow(at: $0)?.values }
+        let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
         let columnTypes = tableRows.columnTypes
@@ -158,11 +160,17 @@ extension TableViewCoordinator {
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
 
-    private func formatRowValues(values: [String?], columnTypes: [ColumnType]?) -> [String] {
-        values.enumerated().map { index, value in
-            guard let value else { return "NULL" }
-            let columnType = columnTypes.flatMap { $0.indices.contains(index) ? $0[index] : nil }
-            return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
+    private func formatRowValues(values: [PluginCellValue], columnTypes: [ColumnType]?) -> [String] {
+        values.enumerated().map { index, cell in
+            switch cell {
+            case .null:
+                return "NULL"
+            case .text(let value):
+                let columnType = columnTypes.flatMap { $0.indices.contains(index) ? $0[index] : nil }
+                return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
+            case .bytes(let data):
+                return BlobFormattingService.shared.format(data, for: .copy) ?? ""
+            }
         }
     }
 
@@ -182,7 +190,7 @@ extension TableViewCoordinator {
 
         if let values = displayRow(at: row)?.values {
             let tableRows = tableRowsProvider()
-            let formatted = formatRowValues(values: values, columnTypes: tableRows.columnTypes)
+            let formatted = formatRowValues(values: Array(values), columnTypes: tableRows.columnTypes)
             item.setString(formatted.joined(separator: "\t"), forType: .string)
             item.setString(
                 HtmlTableEncoder.encode(rows: [formatted], headers: tableRows.columns),

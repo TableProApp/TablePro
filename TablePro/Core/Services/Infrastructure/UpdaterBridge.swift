@@ -11,6 +11,8 @@ import Sparkle
 @Observable
 @MainActor
 final class UpdaterBridge {
+    static let shared = UpdaterBridge()
+
     @ObservationIgnored private let controller: SPUStandardUpdaterController
     var canCheckForUpdates = false
 
@@ -21,7 +23,7 @@ final class UpdaterBridge {
         observation = nil
     }
 
-    init() {
+    private init() {
         controller = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,

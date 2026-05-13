@@ -41,7 +41,7 @@ struct SetPopoverContentView: View {
                             )
                         )
                         .toggleStyle(.checkbox)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.system(.callout, design: .monospaced))
                     }
                 }
                 .padding(12)

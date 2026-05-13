@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 
@@ -31,18 +32,18 @@ enum WelcomeActiveSheet: Identifiable {
 final class WelcomeViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
 
-    private let storage = ConnectionStorage.shared
-    private let groupStorage = GroupStorage.shared
-    private let dbManager = DatabaseManager.shared
+    @ObservationIgnored let services: AppServices
+    private var storage: ConnectionStorage { services.connectionStorage }
+    private var groupStorage: GroupStorage { services.groupStorage }
 
     // MARK: - State
 
     var connections: [DatabaseConnection] = []
-    var searchText = "" { didSet { rebuildTree() } }
+    var searchText = "" { didSet { scheduleRebuildTree(oldValue: oldValue) } }
     var selectedConnectionIds: Set<UUID> = []
     var groups: [ConnectionGroup] = []
     var linkedConnections: [LinkedConnection] = []
-    var showOnboarding = !AppSettingsStorage.shared.hasCompletedOnboarding()
+    var showOnboarding: Bool
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
     var showDeleteGroupConfirmation = false
@@ -78,14 +79,14 @@ final class WelcomeViewModel {
 
     // MARK: - Notification Observers
 
-    @ObservationIgnored private var openWindow: OpenWindowAction?
-    @ObservationIgnored private var connectionUpdatedObserver: NSObjectProtocol?
-    @ObservationIgnored private var shareFileObserver: NSObjectProtocol?
-    @ObservationIgnored private var exportObserver: NSObjectProtocol?
-    @ObservationIgnored private var importObserver: NSObjectProtocol?
-    @ObservationIgnored private var linkedFoldersObserver: NSObjectProtocol?
-    @ObservationIgnored private var importFromAppObserver: NSObjectProtocol?
-    @ObservationIgnored private var deeplinkImportObserver: NSObjectProtocol?
+    @ObservationIgnored private var connectionUpdatedCancellable: AnyCancellable?
+    @ObservationIgnored private var linkedFoldersCancellable: AnyCancellable?
+    @ObservationIgnored private var exportConnectionsCancellable: AnyCancellable?
+    @ObservationIgnored private var importConnectionsCancellable: AnyCancellable?
+    @ObservationIgnored private var importFromAppCancellable: AnyCancellable?
+    @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
+    @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
+    private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
     // MARK: - Computed Properties
 
@@ -115,15 +116,16 @@ final class WelcomeViewModel {
         maxDescendantDepthByGroup = descendantDepths
     }
 
-    var filteredConnections: [DatabaseConnection] {
-        if searchText.isEmpty {
-            return connections
+    private func scheduleRebuildTree(oldValue: String) {
+        searchDebounceTask?.cancel()
+        if searchText.isEmpty || oldValue.isEmpty {
+            rebuildTree()
+            return
         }
-        return connections.filter { connection in
-            connection.name.localizedCaseInsensitiveContains(searchText)
-                || connection.host.localizedCaseInsensitiveContains(searchText)
-                || connection.database.localizedCaseInsensitiveContains(searchText)
-                || groupName(for: connection.groupId)?.localizedCaseInsensitiveContains(searchText) == true
+        searchDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            self?.rebuildTree()
         }
     }
 
@@ -135,20 +137,22 @@ final class WelcomeViewModel {
         connections.filter { selectedConnectionIds.contains($0.id) }
     }
 
-    var isMultipleSelection: Bool {
-        selectedConnectionIds.count > 1
-    }
-
     func groupName(for groupId: UUID?) -> String? {
         guard let groupId else { return nil }
         return groups.first { $0.id == groupId }?.name
     }
 
+    // MARK: - Initialization
+
+    init(services: AppServices = .live) {
+        self.services = services
+        self.showOnboarding = !services.appSettingsStorage.hasCompletedOnboarding()
+    }
+
     // MARK: - Setup & Teardown
 
-    func setUp(openWindow: OpenWindowAction) {
-        self.openWindow = openWindow
-        guard connectionUpdatedObserver == nil else { return }
+    func setUp() {
+        guard connectionUpdatedCancellable == nil else { return }
 
         if expandedGroupIds.isEmpty {
             let allGroupIds = Set(groupStorage.loadGroups().map(\.id))
@@ -157,93 +161,116 @@ final class WelcomeViewModel {
             }
         }
 
-        // ⌘N now shows the Welcome window (handled by ContentView and AppDelegate).
-        // The Welcome window is already open in this context, so no action needed here.
-
-        connectionUpdatedObserver = NotificationCenter.default.addObserver(
-            forName: .connectionUpdated, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        connectionUpdatedCancellable = services.appEvents.connectionUpdated
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.loadConnections()
             }
-        }
 
-        shareFileObserver = NotificationCenter.default.addObserver(
-            forName: .connectionShareFileOpened, object: nil, queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor [weak self] in
-                guard let url = notification.object as? URL else { return }
-                _ = PendingActionStore.shared.consumeConnectionShareURL()
-                self?.activeSheet = .importFile(url)
-            }
-        }
-
-        exportObserver = NotificationCenter.default.addObserver(
-            forName: .exportConnections, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        exportConnectionsCancellable = AppCommands.shared.exportConnections
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 guard let self, !self.connections.isEmpty else { return }
                 self.activeSheet = .exportConnections(self.connections)
             }
-        }
 
-        importObserver = NotificationCenter.default.addObserver(
-            forName: .importConnections, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        importConnectionsCancellable = AppCommands.shared.importConnections
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.importConnectionsFromFile()
             }
-        }
 
-        importFromAppObserver = NotificationCenter.default.addObserver(
-            forName: .importConnectionsFromApp, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        importFromAppCancellable = AppCommands.shared.importConnectionsFromApp
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.activeSheet = .importFromApp
             }
-        }
 
-        linkedFoldersObserver = NotificationCenter.default.addObserver(
-            forName: .linkedFoldersDidUpdate, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.linkedConnections = LinkedFolderWatcher.shared.linkedConnections
-            }
-        }
-
-        deeplinkImportObserver = NotificationCenter.default.addObserver(
-            forName: .deeplinkImportRequested, object: nil, queue: .main
-        ) { [weak self] notification in
-            Task { @MainActor [weak self] in
+        linkedFoldersCancellable = services.appEvents.linkedFoldersDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 guard let self else { return }
-                let exportable = (notification.object as? ExportableConnection)
-                    ?? PendingActionStore.shared.consumeDeeplinkImport()
-                guard let exportable else { return }
-                PendingActionStore.shared.deeplinkImport = nil
-                self.activeSheet = .deeplinkImport(exportable)
+                self.linkedConnections = self.services.linkedFolderWatcher.linkedConnections
             }
-        }
 
         loadConnections()
-        linkedConnections = LinkedFolderWatcher.shared.linkedConnections
+        linkedConnections = services.linkedFolderWatcher.linkedConnections
 
-        if let pendingURL = PendingActionStore.shared.consumeConnectionShareURL() {
+        consumePendingRouterActions()
+        startWelcomeRouterObservation()
+    }
+
+    private func consumePendingRouterActions() {
+        if let pendingURL = WelcomeRouter.shared.consumePendingShare() {
             activeSheet = .importFile(pendingURL)
+            return
+        }
+        if let pendingImport = WelcomeRouter.shared.consumePendingImport() {
+            activeSheet = .deeplinkImport(pendingImport)
+            return
+        }
+        if let pendingInstall = WelcomeRouter.shared.consumePendingPluginInstall() {
+            pluginInstallConnection = pendingInstall
+            return
+        }
+        if let pendingError = WelcomeRouter.shared.consumePendingError() {
+            connectionError = pendingError.message
+            showConnectionError = true
+        }
+    }
+
+    private func startWelcomeRouterObservation() {
+        welcomeRouterTask?.cancel()
+        welcomeRouterTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                let didChange = await Self.awaitWelcomeRouterChange()
+                guard didChange else { return }
+                self?.consumePendingRouterActions()
+            }
+        }
+    }
+
+    private static func awaitWelcomeRouterChange() async -> Bool {
+        let box = ContinuationBox()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                box.set(continuation)
+                withObservationTracking({
+                    _ = WelcomeRouter.shared.pendingImport
+                    _ = WelcomeRouter.shared.pendingConnectionShare
+                    _ = WelcomeRouter.shared.pendingError
+                    _ = WelcomeRouter.shared.pendingPluginInstall
+                }, onChange: {
+                    box.resume(with: true)
+                })
+            }
+        } onCancel: {
+            box.resume(with: false)
+        }
+    }
+
+    private final class ContinuationBox: @unchecked Sendable {
+        private var continuation: CheckedContinuation<Bool, Never>?
+        private let lock = NSLock()
+
+        func set(_ continuation: CheckedContinuation<Bool, Never>) {
+            lock.lock()
+            defer { lock.unlock() }
+            self.continuation = continuation
         }
 
-        if let pendingImport = PendingActionStore.shared.consumeDeeplinkImport() {
-            activeSheet = .deeplinkImport(pendingImport)
+        func resume(with value: Bool) {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(returning: value)
         }
     }
 
     deinit {
-        [connectionUpdatedObserver, shareFileObserver, exportObserver,
-         importObserver, importFromAppObserver, linkedFoldersObserver,
-         deeplinkImportObserver].forEach {
-            if let observer = $0 {
-                NotificationCenter.default.removeObserver(observer)
-            }
-        }
+        welcomeRouterTask?.cancel()
+        searchDebounceTask?.cancel()
     }
 
     // MARK: - Data Loading
@@ -261,67 +288,18 @@ final class WelcomeViewModel {
     // MARK: - Connection Actions
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        guard let openWindow else { return }
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
-        // Close welcome BEFORE opening the new editor window. Otherwise the
-        // welcome window (still key + visible) reasserts itself during the
-        // new window's `makeKeyAndOrderFront` — the new window briefly
-        // becomes key, immediately resigns, welcome retakes key, and the
-        // app is left with no key window after welcome closes → menu
-        // @FocusedValue nil → Cmd+T/1...9 disabled.
-        NSApplication.shared.closeWindows(withId: "welcome")
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
+        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
-                try await dbManager.connectToSession(connection)
-            } catch is CancellationError {
-                // User cancelled password prompt — return to welcome
-                closeConnectionWindows(for: connection.id)
-                self.openWindow?(id: "welcome")
+                try await TabRouter.shared.route(.openConnection(connection.id))
             } catch {
-                if case PluginError.pluginNotInstalled = error {
-                    Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
-                    handleMissingPlugin(connection: connection)
-                } else {
-                    Self.logger.error(
-                        "Failed to connect: \(error.localizedDescription, privacy: .public)")
-                    handleConnectionFailure(error: error, connectionId: connection.id)
-                }
+                handleConnectError(error, connection: connection)
             }
         }
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        guard let openWindow else { return }
-        if WindowOpener.shared.openWindow == nil {
-            WindowOpener.shared.openWindow = openWindow
-        }
-        // Close welcome before opening editor — see connectToDatabase above
-        // for the welcome-reasserts-key race that disabled menu shortcuts.
-        NSApplication.shared.closeWindows(withId: "welcome")
-        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
-
-        Task {
-            do {
-                try await dbManager.connectToSession(connection)
-            } catch is CancellationError {
-                closeConnectionWindows(for: connection.id)
-                self.openWindow?(id: "welcome")
-            } catch {
-                Self.logger.error(
-                    "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")
-                handleConnectionFailure(error: error, connectionId: connection.id)
-            }
-        }
-    }
-
-    func connectSelectedConnections() {
-        for connection in selectedConnections {
-            connectToDatabase(connection)
-        }
+        connectToDatabase(connection)
     }
 
     func connectToLinkedConnection(_ linked: LinkedConnection) {
@@ -340,8 +318,7 @@ final class WelcomeViewModel {
     func duplicateConnection(_ connection: DatabaseConnection) {
         let duplicate = storage.duplicateConnection(connection)
         loadConnections()
-        openWindow?(id: "connection-form", value: duplicate.id as UUID?)
-        focusConnectionFormWindow()
+        WindowOpener.shared.openConnectionForm(editing: duplicate.id)
     }
 
     // MARK: - Delete
@@ -405,7 +382,11 @@ final class WelcomeViewModel {
         for i in connections.indices where ids.contains(connections[i].id) {
             connections[i].groupId = groupId
         }
-        storage.saveConnections(connections)
+        guard storage.saveConnections(connections) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         rebuildTree()
     }
 
@@ -414,7 +395,11 @@ final class WelcomeViewModel {
         for i in connections.indices where ids.contains(connections[i].id) {
             connections[i].groupId = nil
         }
-        storage.saveConnections(connections)
+        guard storage.saveConnections(connections) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         rebuildTree()
     }
 
@@ -540,9 +525,13 @@ final class WelcomeViewModel {
             }
         }
 
-        storage.saveConnections(connections)
+        guard storage.saveConnections(connections) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         if !dirtyIds.isEmpty {
-            SyncChangeTracker.shared.markDirty(.connection, ids: dirtyIds)
+            services.syncTracker.markDirty(.connection, ids: dirtyIds)
         }
         rebuildTree()
     }
@@ -575,38 +564,47 @@ final class WelcomeViewModel {
             order += 1
         }
 
-        storage.saveConnections(connections)
+        guard storage.saveConnections(connections) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         if !dirtyIds.isEmpty {
-            SyncChangeTracker.shared.markDirty(.connection, ids: dirtyIds)
+            services.syncTracker.markDirty(.connection, ids: dirtyIds)
         }
         rebuildTree()
     }
 
     func focusConnectionFormWindow() {
-        NotificationCenter.default.post(name: .focusConnectionFormWindowRequested, object: nil)
+        if let window = NSApp.windows.first(where: { AppLaunchCoordinator.isConnectionFormWindow($0) }) {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     // MARK: - Private Helpers
 
-    private func handleConnectionFailure(error: Error, connectionId: UUID) {
-        guard let openWindow else { return }
-        closeConnectionWindows(for: connectionId)
+    private func handleConnectError(_ error: Error, connection: DatabaseConnection) {
+        if error is CancellationError {
+            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .public)")
+            return
+        }
+
+        if !WindowManager.shared.hasOpenWindow(for: connection.id) {
+            Self.logger.info(
+                "Connection failed after window was closed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        if case PluginError.pluginNotInstalled = error {
+            Self.logger.info("Plugin not installed for \(connection.type.rawValue, privacy: .public)")
+            WindowManager.shared.closeWindow(for: connection.id)
+            pluginInstallConnection = connection
+            return
+        }
+
+        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        WindowManager.shared.closeWindow(for: connection.id)
         connectionError = error.localizedDescription
         showConnectionError = true
-        openWindow(id: "welcome")
-    }
-
-    private func handleMissingPlugin(connection: DatabaseConnection) {
-        guard let openWindow else { return }
-        closeConnectionWindows(for: connection.id)
-        openWindow(id: "welcome")
-        pluginInstallConnection = connection
-    }
-
-    /// Close windows for a specific connection only, preserving other connections' windows.
-    private func closeConnectionWindows(for connectionId: UUID) {
-        for window in WindowLifecycleMonitor.shared.windows(for: connectionId) {
-            window.close()
-        }
     }
 }

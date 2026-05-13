@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import os
 import SwiftUI
 import UniformTypeIdentifiers
@@ -15,8 +14,12 @@ struct WelcomeWindowView: View {
     }
 
     @State var vm = WelcomeViewModel()
+    @State private var welcomeChooserState: WelcomeChooserState?
+    @State private var pendingInstallType: DatabaseType?
+    @State private var pendingInstallPayload: DatabaseTypeChooserPayload?
+    @State private var urlImportPresented: Bool = false
+    @State private var searchFocusTrigger: Int = 0
     @FocusState private var focus: FocusField?
-    @Environment(\.openWindow) var openWindow
 
     var body: some View {
         ZStack {
@@ -32,12 +35,10 @@ struct WelcomeWindowView: View {
                     .transition(.move(edge: .trailing))
             }
         }
-        .background(.background)
         .ignoresSafeArea()
-        .frame(minWidth: 600, idealWidth: 700, minHeight: 400, idealHeight: 450)
         .onAppear {
-            vm.setUp(openWindow: openWindow)
-            focus = .search
+            vm.setUp()
+            focus = .connectionList
         }
         .alert(
             vm.connectionsToDelete.count == 1
@@ -113,6 +114,31 @@ struct WelcomeWindowView: View {
                 }
             }
         }
+        .modifier(ConnectionCreationOverlays(
+            chooserState: $welcomeChooserState,
+            urlImportPresented: $urlImportPresented
+        ))
+        .onReceive(AppCommands.shared.presentDatabaseTypeChooser) { payload in
+            welcomeChooserState = WelcomeChooserState(
+                initialType: payload.initialType,
+                onSelected: { type in
+                    if PluginManager.shared.isDriverInstalled(for: type) {
+                        PendingNewConnectionType.shared.set(type)
+                        payload.onSelected(type)
+                    } else {
+                        pendingInstallPayload = payload
+                        pendingInstallType = type
+                    }
+                }
+            )
+        }
+        .pluginInstallPromptForType(type: $pendingInstallType) { type in
+            if let payload = pendingInstallPayload {
+                PendingNewConnectionType.shared.set(type)
+                payload.onSelected(type)
+                pendingInstallPayload = nil
+            }
+        }
         .pluginInstallPrompt(connection: $vm.pluginInstallConnection) { connection in
             vm.connectAfterInstall(connection)
         }
@@ -169,109 +195,92 @@ struct WelcomeWindowView: View {
 
     private var welcomeContent: some View {
         HStack(spacing: 0) {
-            WelcomeLeftPanel(
+            WelcomeActionsPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
-                onCreateConnection: { openWindow(id: "connection-form") }
+                onCreateConnection: { WindowOpener.shared.openConnectionForm() },
+                onImportFromApp: { vm.importConnectionsFromApp() },
+                onTrySample: { vm.openSampleDatabase() }
             )
+            .frame(width: 240)
+            .themeMaterial(.sidebar, .regularMaterial)
+
             Divider()
-            rightPanel
+
+            connectionsPanel
         }
         .transition(.opacity)
     }
 
-    // MARK: - Right Panel
+    // MARK: - Connections panel
 
-    private var rightPanel: some View {
+    private var connectionsPanel: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button(action: { openWindow(id: "connection-form") }) {
-                    Image(systemName: "plus")
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(
-                            width: 24,
-                            height: 24
-                        )
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "New Connection (⌘N)"))
-                .accessibilityLabel(String(localized: "New Connection"))
-
-                Button(action: { vm.pendingMoveToNewGroup = []; vm.activeSheet = .newGroup(parentId: nil) }) {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(
-                            width: 24,
-                            height: 24
-                        )
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "New Group"))
-                .accessibilityLabel(String(localized: "New Group"))
-
-                NativeSearchField(
-                    text: $vm.searchText,
-                    placeholder: String(localized: "Search for connection..."),
-                    controlSize: .regular
-                )
-                .focused($focus, equals: .search)
-                .onKeyPress(.return) {
-                    vm.connectSelectedConnections()
-                    return .handled
-                }
-                .onKeyPress(.escape) {
-                    if !vm.searchText.isEmpty {
-                        vm.searchText = ""
-                    }
-                    focus = .connectionList
-                    return .handled
-                }
-                .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
-                    guard keyPress.modifiers.contains(.command) else { return .ignored }
-                    let toDelete = vm.selectedConnections
-                    guard !toDelete.isEmpty else { return .ignored }
-                    vm.connectionsToDelete = toDelete
-                    vm.showDeleteConfirmation = true
-                    return .handled
-                }
-                .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
-                    guard keyPress.modifiers.contains(.control) else { return .ignored }
-                    vm.moveToNextConnection()
-                    focus = .connectionList
-                    return .handled
-                }
-                .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
-                    guard keyPress.modifiers.contains(.control) else { return .ignored }
-                    vm.moveToPreviousConnection()
-                    focus = .connectionList
-                    return .handled
-                }
-                .onKeyPress(.downArrow) {
-                    vm.moveToNextConnection()
-                    focus = .connectionList
-                    return .handled
-                }
-                .onKeyPress(.upArrow) {
-                    vm.moveToPreviousConnection()
-                    focus = .connectionList
-                    return .handled
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
+            connectionsHeader
             Divider()
-
-            if vm.treeItems.isEmpty && vm.filteredConnections.isEmpty {
-                emptyState
-            } else {
-                connectionList
+            ZStack {
+                if vm.treeItems.isEmpty && vm.linkedConnections.isEmpty {
+                    emptyState
+                } else {
+                    connectionList
+                }
             }
         }
-        .frame(minWidth: 350)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .contextMenu { newConnectionContextMenu }
+        .background(findShortcut)
+    }
+
+    private var findShortcut: some View {
+        Button {
+            searchFocusTrigger += 1
+        } label: {
+            EmptyView()
+        }
+        .keyboardShortcut("f", modifiers: .command)
+        .accessibilityHidden(true)
+    }
+
+    private var connectionsHeader: some View {
+        HStack(spacing: 8) {
+            Button {
+                WindowOpener.shared.openConnectionForm()
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 14, height: 14)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .help(String(localized: "New Connection (⌘N)"))
+            .accessibilityLabel(String(localized: "New Connection"))
+
+            Button {
+                vm.pendingMoveToNewGroup = []
+                vm.activeSheet = .newGroup(parentId: nil)
+            } label: {
+                Image(systemName: "folder.badge.plus")
+                    .frame(width: 14, height: 14)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .help(String(localized: "New Group"))
+            .accessibilityLabel(String(localized: "New Group"))
+
+            Spacer()
+
+            NativeSearchField(
+                text: $vm.searchText,
+                placeholder: String(localized: "Search for connection..."),
+                controlSize: .regular,
+                focusTrigger: searchFocusTrigger,
+                maxWidth: 240
+            )
+            .focused($focus, equals: .search)
+            .layoutPriority(0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Connection List
@@ -302,9 +311,10 @@ struct WelcomeWindowView: View {
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .focused($focus, equals: .connectionList)
-            .onKeyPress(.return) {
-                vm.connectSelectedConnections()
-                return .handled
+            .contextMenu(forSelectionType: UUID.self) { ids in
+                contextMenuContent(for: ids)
+            } primaryAction: { ids in
+                primaryAction(for: ids)
             }
             .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
                 guard keyPress.modifiers.contains(.command) else { return .ignored }
@@ -356,13 +366,11 @@ struct WelcomeWindowView: View {
         let sshProfile = connection.sshProfileId.flatMap { SSHProfileStorage.shared.profile(for: $0) }
         return WelcomeConnectionRow(
             connection: connection,
-            sshProfile: sshProfile,
-            onConnect: { vm.connectToDatabase(connection) }
+            sshProfile: sshProfile
         )
         .tag(connection.id)
         .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .listRowSeparator(.hidden)
-        .contextMenu { contextMenuContent(for: connection) }
     }
 
     private func linkedConnectionRow(for linked: LinkedConnection) -> some View {
@@ -371,7 +379,7 @@ struct WelcomeWindowView: View {
                 DatabaseType(rawValue: linked.connection.type).iconImage
                     .frame(width: 28, height: 28)
                 Image(systemName: "folder.fill")
-                    .font(.system(size: 8))
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .offset(x: 2, y: 2)
             }
@@ -388,59 +396,40 @@ struct WelcomeWindowView: View {
         .padding(.vertical, 4)
         .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .contentShape(Rectangle())
-        .background { DoubleClickDetector { vm.connectToLinkedConnection(linked) } }
         .listRowSeparator(.hidden)
-        .contextMenu {
-            Button {
-                vm.connectToLinkedConnection(linked)
-            } label: {
-                Label(String(localized: "Connect"), systemImage: "play.fill")
-            }
+    }
+
+    func primaryAction(for ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        for connection in vm.connections where ids.contains(connection.id) {
+            vm.connectToDatabase(connection)
+        }
+        for linked in vm.linkedConnections where ids.contains(linked.id) {
+            vm.connectToLinkedConnection(linked)
         }
     }
 
     // MARK: - Empty State
 
+    @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-
-            Image(systemName: "cylinder.split.1x2")
-                .font(.system(size: 32))
-                .foregroundStyle(.tertiary)
-
-            if vm.searchText.isEmpty {
-                Text("No Connections")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Text("Create a connection to get started")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-
-                Button(action: { openWindow(id: "connection-form") }) {
-                    Label("New Connection", systemImage: "plus")
-                }
-                .controlSize(.large)
-                .padding(.top, 4)
-
-                Button(action: { vm.importConnectionsFromApp() }) {
-                    Label("Import from Other App...", systemImage: "square.and.arrow.down.on.square")
-                }
-                .controlSize(.large)
-            } else {
-                Text("No Matching Connections")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Text("Try a different search term")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
+        if vm.searchText.isEmpty {
+            EmptyStateView(
+                icon: "cylinder.split.1x2",
+                title: String(localized: "No Connections"),
+                description: String(localized: "Try the sample database, or click + above to add your own."),
+                actionTitle: String(localized: "Try Sample Database"),
+                action: { vm.openSampleDatabase() }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            EmptyStateView(
+                icon: "magnifyingglass",
+                title: String(localized: "No Matching Connections"),
+                description: String(localized: "Try a different search term.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Helpers
@@ -460,8 +449,15 @@ private struct TreeRowsView<ConnectionContent: View>: View {
     var vm: WelcomeViewModel
     let connectionRowBuilder: (DatabaseConnection) -> ConnectionContent
 
+    private var hasGroups: Bool {
+        items.contains { node in
+            if case .group = node { return true }
+            return false
+        }
+    }
+
     var body: some View {
-        let allConnections = !items.contains { if case .group = $0 { return true } else { return false } }
+        let allConnections = !hasGroups
         ForEach(items) { item in
             switch item {
             case .connection(let conn):
@@ -515,7 +511,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
                 .foregroundStyle(.secondary)
 
             Text("\(vm.connectionCountByGroup[group.id] ?? 0)")
-                .font(.system(size: 9))
+                .font(.caption2)
                 .foregroundStyle(.tertiary)
 
             Spacer()
@@ -616,6 +612,50 @@ private struct TreeRowsView<ConnectionContent: View>: View {
         } label: {
             Label(String(localized: "Delete Group"), systemImage: "trash")
         }
+    }
+}
+
+// MARK: - Welcome Chooser State
+
+private struct WelcomeChooserState: Identifiable {
+    let id = UUID()
+    let initialType: DatabaseType?
+    let onSelected: (DatabaseType) -> Void
+}
+
+// MARK: - Connection Creation Overlays
+
+private struct ConnectionCreationOverlays: ViewModifier {
+    @Binding var chooserState: WelcomeChooserState?
+    @Binding var urlImportPresented: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $chooserState) { state in
+                DatabaseTypeChooserSheet(
+                    initialType: state.initialType,
+                    onSelected: { type in
+                        state.onSelected(type)
+                        chooserState = nil
+                    },
+                    onImportFromURL: {
+                        chooserState = nil
+                        urlImportPresented = true
+                    },
+                    onCancel: { chooserState = nil }
+                )
+            }
+            .sheet(isPresented: $urlImportPresented) {
+                ImportFromURLSheet(
+                    onImported: { parsed in
+                        urlImportPresented = false
+                        WindowOpener.shared.openConnectionFormFromURL(parsed)
+                    },
+                    onCancel: {
+                        urlImportPresented = false
+                    }
+                )
+            }
     }
 }
 

@@ -5,6 +5,7 @@
 //  Regression tests for InlineSuggestionManager focus lifecycle
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

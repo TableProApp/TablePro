@@ -27,7 +27,7 @@ struct FilterValueTextField: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSTextField {
-        let textField = NSTextField()
+        let textField = SubstitutionDisabledTextField()
         textField.bezelStyle = .roundedBezel
         textField.controlSize = .small
         textField.font = .systemFont(ofSize: 12)
@@ -291,6 +291,19 @@ struct FilterValueTextField: NSViewRepresentable {
         }
     }
 
+    private final class SubstitutionDisabledTextField: NSTextField {
+        override func becomeFirstResponder() -> Bool {
+            let result = super.becomeFirstResponder()
+            if result, let editor = currentEditor() as? NSTextView {
+                editor.isAutomaticQuoteSubstitutionEnabled = false
+                editor.isAutomaticDashSubstitutionEnabled = false
+                editor.isAutomaticTextReplacementEnabled = false
+                editor.isAutomaticSpellingCorrectionEnabled = false
+            }
+            return result
+        }
+    }
+
     @MainActor
     private final class SuggestionState: ObservableObject {
         @Published var items: [String] = []
@@ -306,28 +319,26 @@ struct FilterValueTextField: NSViewRepresentable {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(state.items.enumerated()), id: \.offset) { index, item in
-                            Button {
-                                onSelect(item)
-                            } label: {
-                                Text(item)
-                                    .font(.callout)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(
-                                        state.selectedIndex == index
-                                            ? Color.accentColor.opacity(0.18)
-                                            : Color.clear
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                            }
-                            .buttonStyle(.plain)
-                            .id(index)
+                            Text(item)
+                                .font(.callout)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    state.selectedIndex == index
+                                        ? Color.accentColor.opacity(0.18)
+                                        : Color.clear
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .contentShape(Rectangle())
+                                .onTapGesture { onSelect(item) }
+                                .id(index)
                         }
                     }
                     .padding(4)
                 }
+                .focusable(false)
                 .onChange(of: state.selectedIndex) { _, newIndex in
                     withAnimation(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(newIndex, anchor: .center)

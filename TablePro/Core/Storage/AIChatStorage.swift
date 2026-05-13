@@ -73,9 +73,19 @@ actor AIChatStorage {
             var data = try Self.encoder.encode(conversation)
 
             if data.count > Self.maxFileSize {
+                let originalSize = data.count
+                let originalCount = conversation.messages.count
                 var trimmed = conversation
                 trimmed.messages = Array(trimmed.messages.suffix(Self.trimmedMessageCount))
+                let dropped = originalCount - trimmed.messages.count
                 data = try Self.encoder.encode(trimmed)
+                Self.logger.warning(
+                    """
+                    Trimmed conversation \(conversation.id, privacy: .public): \
+                    \(originalSize) bytes exceeded \(Self.maxFileSize), \
+                    dropped \(dropped) of \(originalCount) messages, kept \(trimmed.messages.count)
+                    """
+                )
             }
 
             try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])

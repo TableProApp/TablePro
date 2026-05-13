@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import os
 import SwiftUI
@@ -69,11 +70,14 @@ final class ERDiagramViewModel {
     @ObservationIgnored private var columnCountByNodeId: [UUID: Int] = [:]
     @ObservationIgnored private var nodeIdToName: [UUID: String] = [:]
 
+    @ObservationIgnored private let services: AppServices
+
     // MARK: - Initialization
 
-    init(connectionId: UUID, schemaKey: String) {
+    init(connectionId: UUID, schemaKey: String, services: AppServices = .live) {
         self.connectionId = connectionId
         self.schemaKey = schemaKey
+        self.services = services
     }
 
     deinit {
@@ -87,11 +91,11 @@ final class ERDiagramViewModel {
         guard loadState != .loaded else { return }
         loadState = .loading
 
-        if DatabaseManager.shared.driver(for: connectionId) == nil {
+        if services.databaseManager.driver(for: connectionId) == nil {
             await waitForConnection()
         }
 
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        guard let driver = services.databaseManager.driver(for: connectionId) else {
             loadState = .failed(String(localized: "No database connection"))
             return
         }
@@ -127,7 +131,7 @@ final class ERDiagramViewModel {
     private func waitForConnection() async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let resumed = OSAllocatedUnfairLock(initialState: false)
-            let observerBox = OSAllocatedUnfairLock<NSObjectProtocol?>(initialState: nil)
+            let cancellableBox = OSAllocatedUnfairLock<AnyCancellable?>(initialState: nil)
             let timeoutTaskBox = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
             @Sendable func resumeOnce() {
@@ -138,23 +142,18 @@ final class ERDiagramViewModel {
                 }
                 guard !alreadyResumed else { return }
                 timeoutTaskBox.withLock { $0?.cancel(); $0 = nil }
-                let observer = observerBox.withLock { current -> NSObjectProtocol? in
-                    let value = current
-                    current = nil
-                    return value
-                }
-                if let observer {
-                    NotificationCenter.default.removeObserver(observer)
-                }
+                cancellableBox.withLock { $0 = nil }
                 continuation.resume()
             }
 
-            let observer = NotificationCenter.default.addObserver(
-                forName: .databaseDidConnect, object: nil, queue: .main
-            ) { _ in
-                resumeOnce()
-            }
-            observerBox.withLock { $0 = observer }
+            let targetId = self.connectionId
+            let cancellable = services.appEvents.databaseDidConnect
+                .receive(on: RunLoop.main)
+                .sink { payload in
+                    guard payload.connectionId == targetId else { return }
+                    resumeOnce()
+                }
+            cancellableBox.withLock { $0 = cancellable }
 
             let timeoutTask = Task {
                 try? await Task.sleep(for: .seconds(10))

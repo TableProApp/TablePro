@@ -6,6 +6,7 @@ public struct DriverConnectionConfig: Sendable {
     public let username: String
     public let password: String
     public let database: String
+    public let ssl: SSLConfiguration
     public let additionalFields: [String: String]
 
     public init(
@@ -14,6 +15,7 @@ public struct DriverConnectionConfig: Sendable {
         username: String,
         password: String,
         database: String,
+        ssl: SSLConfiguration = SSLConfiguration(),
         additionalFields: [String: String] = [:]
     ) {
         self.host = host
@@ -21,6 +23,7 @@ public struct DriverConnectionConfig: Sendable {
         self.username = username
         self.password = password
         self.database = database
+        self.ssl = ssl
         self.additionalFields = additionalFields
     }
 }

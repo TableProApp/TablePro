@@ -13,20 +13,35 @@ struct EmptyStateView: View {
     let title: String
     let description: String?
     let actionTitle: String?
+    let actionSystemImage: String?
     let action: (() -> Void)?
+    let secondaryActionTitle: String?
+    let secondaryActionSystemImage: String?
+    let secondaryAction: (() -> Void)?
+    let footerText: String?
 
     init(
         icon: String,
         title: String,
         description: String? = nil,
         actionTitle: String? = nil,
-        action: (() -> Void)? = nil
+        actionSystemImage: String? = nil,
+        action: (() -> Void)? = nil,
+        secondaryActionTitle: String? = nil,
+        secondaryActionSystemImage: String? = nil,
+        secondaryAction: (() -> Void)? = nil,
+        footerText: String? = nil
     ) {
         self.icon = icon
         self.title = title
         self.description = description
         self.actionTitle = actionTitle
+        self.actionSystemImage = actionSystemImage
         self.action = action
+        self.secondaryActionTitle = secondaryActionTitle
+        self.secondaryActionSystemImage = secondaryActionSystemImage
+        self.secondaryAction = secondaryAction
+        self.footerText = footerText
     }
 
     var body: some View {
@@ -37,9 +52,45 @@ struct EmptyStateView: View {
                 Text(description)
             }
         } actions: {
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
+            VStack(spacing: 6) {
+                if let actionTitle, let action {
+                    Button(action: action) {
+                        primaryButtonLabel(title: actionTitle)
+                    }
+                }
+                if let secondaryActionTitle, let secondaryAction {
+                    Button(action: secondaryAction) {
+                        secondaryButtonLabel(title: secondaryActionTitle)
+                    }
+                    .buttonStyle(.borderless)
+                }
+                if let footerText {
+                    Text(footerText)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 6)
+                        .frame(maxWidth: 320)
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func primaryButtonLabel(title: String) -> some View {
+        if let actionSystemImage {
+            Label(title, systemImage: actionSystemImage)
+        } else {
+            Text(title)
+        }
+    }
+
+    @ViewBuilder
+    private func secondaryButtonLabel(title: String) -> some View {
+        if let secondaryActionSystemImage {
+            Label(title, systemImage: secondaryActionSystemImage)
+        } else {
+            Text(title)
         }
     }
 }

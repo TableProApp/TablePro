@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 import Testing
 @testable import TablePro
 

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -68,13 +69,13 @@ struct SSHConfigurationTests {
         #expect(config.isValid == false)
     }
 
-    @Test("Missing username makes config invalid")
-    func testMissingUsernameInvalid() {
+    @Test("Empty username is allowed (runtime resolver fills it from ssh config)")
+    func testEmptyUsernameAllowed() {
         let config = SSHConfiguration(
             enabled: true, host: "example.com", username: "",
             authMethod: .sshAgent
         )
-        #expect(config.isValid == false)
+        #expect(config.isValid == true)
     }
 
     @Test("Agent socket path defaults to empty string")
@@ -154,14 +155,14 @@ struct SSHConfigurationTests {
 
     @Test("Tilde expansion resolves ~/path to home directory")
     func testTildeExpansionWithSubpath() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
+        let home = NSHomeDirectory()
         let result = SSHPathUtilities.expandTilde("~/Library/agent.sock")
         #expect(result == "\(home)/Library/agent.sock")
     }
 
     @Test("Tilde expansion resolves bare ~ to home directory")
     func testTildeExpansionBare() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
+        let home = NSHomeDirectory()
         let result = SSHPathUtilities.expandTilde("~")
         #expect(result == home)
     }
@@ -188,7 +189,6 @@ struct SSHConfigurationTests {
             "username": "admin",
             "authMethod": "Password",
             "privateKeyPath": "",
-            "useSSHConfig": true,
             "agentSocketPath": ""
         }
         """
@@ -197,6 +197,27 @@ struct SSHConfigurationTests {
         let config = try JSONDecoder().decode(SSHConfiguration.self, from: json)
         #expect(config.jumpHosts.isEmpty)
         #expect(config.host == "example.com")
+        #expect(config.enabled == true)
+    }
+
+    @Test("Decoding ignores legacy useSSHConfig field")
+    func testLegacyUseSSHConfigIgnored() throws {
+        let jsonString = """
+        {
+            "enabled": true,
+            "host": "legacy.example.com",
+            "port": 22,
+            "username": "admin",
+            "authMethod": "Password",
+            "privateKeyPath": "",
+            "useSSHConfig": false,
+            "agentSocketPath": ""
+        }
+        """
+        let json = Data(jsonString.utf8)
+
+        let config = try JSONDecoder().decode(SSHConfiguration.self, from: json)
+        #expect(config.host == "legacy.example.com")
         #expect(config.enabled == true)
     }
 }

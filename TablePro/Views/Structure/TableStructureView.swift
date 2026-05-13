@@ -48,7 +48,7 @@ struct TableStructureView: View {
     @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
-    @State var structureColumnLayout = ColumnLayoutState()
+    @State var structureColumnLayouts: [StructureTab: ColumnLayoutState] = [:]
     @State var columnLayoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister()
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
@@ -108,6 +108,7 @@ struct TableStructureView: View {
             actionHandler.pasteRows = { self.gridDelegate.dataGridPasteRows() }
             actionHandler.undo = { self.gridDelegate.dataGridUndo() }
             actionHandler.redo = { self.gridDelegate.dataGridRedo() }
+            actionHandler.addRow = { self.gridDelegate.dataGridAddRow() }
             coordinator?.structureActions = actionHandler
         }
         .onDisappear {
@@ -118,7 +119,16 @@ struct TableStructureView: View {
             coordinator?.toolbarState.hasStructureChanges = newValue
             updateGridDelegate()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshData), perform: onRefreshData)
+        .onChange(of: structureChangeManager.reloadVersion) { _, _ in
+            // Any mutation that does not toggle hasChanges (add row when changes
+            // already exist, undo to a still-dirty state) only bumps reloadVersion.
+            // Bump displayVersion so SwiftUI re-evaluates structureGrid with a fresh
+            // tableRows snapshot, which lets DataGridView see the new row count and
+            // call reloadData(). Without this, Cmd+Shift+N adds the row to the change
+            // manager but the grid never displays it.
+            displayVersion += 1
+        }
+        .onReceive(AppCommands.shared.refreshData) { _ in onRefreshData() }
     }
 
     // MARK: - Toolbar
@@ -208,6 +218,13 @@ struct TableStructureView: View {
         )
     }
 
+    private func columnLayoutBinding(for tab: StructureTab) -> Binding<ColumnLayoutState> {
+        Binding(
+            get: { structureColumnLayouts[tab] ?? ColumnLayoutState() },
+            set: { structureColumnLayouts[tab] = $0 }
+        )
+    }
+
     func updateGridDelegate() {
         let provider = makeCurrentProvider()
         let canEdit = connection.type.supportsSchemaEditing
@@ -237,7 +254,7 @@ struct TableStructureView: View {
                         QueryHistoryManager.shared.recordQuery(
                             query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
                             connectionId: connection.id,
-                            databaseName: connection.database,
+                            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
                             executionTime: 0,
                             rowCount: 0,
                             wasSuccessful: true
@@ -247,7 +264,7 @@ struct TableStructureView: View {
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
                         columnLayoutPersister.clear(for: tableName, connectionId: connection.id)
-                        NotificationCenter.default.post(name: .refreshData, object: nil)
+                        AppCommands.shared.refreshData.send(nil)
                     } catch {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Column Reorder Failed"),
@@ -268,9 +285,17 @@ struct TableStructureView: View {
         let customOptions = provider.customDropdownOptions
         let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
 
-        let tableRows = provider.asTableRows()
+        // Build the row snapshot fresh on every call rather than capturing it
+        // once at body-evaluation time. After a cell edit / undo / redo the
+        // change manager's working state is updated synchronously, but a
+        // captured snapshot would still hold the pre-edit value, so the
+        // `tableView.reloadData(forRowIndexes:)` issued by the delegate would
+        // re-render the cell from a stale source. Mirror the data tab's pattern
+        // (`MainEditorContentView` rebuilds via `coordinator.tabSessionRegistry`
+        // on every call). `makeCurrentProvider` is cheap because the working
+        // arrays are small (typically <100 entries).
         return DataGridView(
-            tableRowsProvider: { tableRows },
+            tableRowsProvider: { makeCurrentProvider().asTableRows() },
             changeManager: wrappedChangeManager,
             isEditable: canEdit,
             configuration: DataGridConfiguration(
@@ -284,7 +309,7 @@ struct TableStructureView: View {
             layoutPersister: columnLayoutPersister,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
-            columnLayout: $structureColumnLayout
+            columnLayout: columnLayoutBinding(for: selectedTab)
         )
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {

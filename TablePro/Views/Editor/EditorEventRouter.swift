@@ -95,6 +95,16 @@ internal final class EditorEventRouter {
         coordinator.showFindPanel()
     }
 
+    /// Called by the SwiftUI "Clear Selection" menu when its Esc key equivalent fires.
+    /// Routes the keystroke to the active editor's Vim engine if it is in a non-normal
+    /// mode. Returns true when Vim consumed the escape — caller should suppress its
+    /// normal cancelOperation fallback in that case.
+    @discardableResult
+    internal func handleVimEscapeFromMenu() -> Bool {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return false }
+        return coordinator.handleVimEscapeFromMenu()
+    }
+
     // MARK: - Lookup
 
     private func editor(for window: NSWindow?) -> (SQLEditorCoordinator, TextView)? {
@@ -166,19 +176,24 @@ internal final class EditorEventRouter {
             return event
         }
 
-        let range = textView.selectedRange()
-        guard range.length > 0 else { return event }
-        let text = (textView.string as NSString).substring(with: range)
+        let selection = textView.selectedRange()
 
         switch event.keyCode {
         case 8: // Cmd+C
+            guard selection.length > 0 else { return event }
+            let text = (textView.string as NSString).substring(with: selection)
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
             return nil
         case 7: // Cmd+X
+            guard let result = LineCutCalculator.calculate(
+                text: textView.string, selection: selection
+            ) else {
+                return event
+            }
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            textView.replaceCharacters(in: range, with: "")
+            NSPasteboard.general.setString(result.clipboardText, forType: .string)
+            textView.replaceCharacters(in: result.rangeToDelete, with: "")
             return nil
         default:
             break

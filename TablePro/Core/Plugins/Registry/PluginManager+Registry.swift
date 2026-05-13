@@ -11,6 +11,46 @@ extension PluginManager {
         _ registryPlugin: RegistryPlugin,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginEntry {
+        guard !isInstalling else {
+            throw PluginError.installFailed("Another plugin installation is already in progress")
+        }
+        isInstalling = true
+        defer { isInstalling = false }
+
+        try validateRegistryCompatibility(registryPlugin)
+
+        if plugins.contains(where: { $0.id == registryPlugin.id }) {
+            throw PluginError.pluginConflict(existingName: registryPlugin.name)
+        }
+
+        return try await downloadAndInstall(registryPlugin, progress: progress)
+    }
+
+    func updateFromRegistry(
+        _ registryPlugin: RegistryPlugin,
+        existingPluginLoaded: Bool = true,
+        progress: @escaping @MainActor @Sendable (Double) -> Void
+    ) async throws -> PluginEntry {
+        guard !isInstalling else {
+            throw PluginError.installFailed("Another plugin installation is already in progress")
+        }
+        isInstalling = true
+        defer { isInstalling = false }
+
+        try validateRegistryCompatibility(registryPlugin)
+
+        replaceExistingPlugin(bundleId: registryPlugin.id)
+
+        let entry = try await downloadAndInstall(registryPlugin, progress: progress)
+
+        if existingPluginLoaded {
+            needsRestart = true
+        }
+
+        return entry
+    }
+
+    private func validateRegistryCompatibility(_ registryPlugin: RegistryPlugin) throws {
         if let minAppVersion = registryPlugin.minAppVersion {
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
             if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
@@ -21,11 +61,12 @@ extension PluginManager {
         if let minKit = registryPlugin.minPluginKitVersion, minKit > Self.currentPluginKitVersion {
             throw PluginError.incompatibleVersion(required: minKit, current: Self.currentPluginKitVersion)
         }
+    }
 
-        if plugins.contains(where: { $0.id == registryPlugin.id }) {
-            throw PluginError.pluginConflict(existingName: registryPlugin.name)
-        }
-
+    private func downloadAndInstall(
+        _ registryPlugin: RegistryPlugin,
+        progress: @escaping @MainActor @Sendable (Double) -> Void
+    ) async throws -> PluginEntry {
         let resolved = try registryPlugin.resolvedBinary()
 
         guard let downloadURL = URL(string: resolved.url) else {
@@ -41,9 +82,7 @@ extension PluginManager {
             try? FileManager.default.removeItem(at: tempDir)
         }
 
-        // Use the registry client's configured session for consistent timeouts
         let session = RegistryClient.shared.session
-
         let (tempDownloadURL, response) = try await session.download(from: downloadURL)
 
         guard let httpResponse = response as? HTTPURLResponse,
@@ -54,7 +93,6 @@ extension PluginManager {
 
         progress(0.5)
 
-        // Verify SHA-256 checksum
         let downloadedData = try Data(contentsOf: tempDownloadURL)
         let digest = SHA256.hash(data: downloadedData)
         let hexChecksum = digest.map { String(format: "%02x", $0) }.joined()
@@ -65,45 +103,14 @@ extension PluginManager {
 
         progress(1.0)
 
-        // Move to our temp directory for installPlugin
         try FileManager.default.moveItem(at: tempDownloadURL, to: tempZipURL)
 
-        var entry = try await installPlugin(from: tempZipURL)
+        let entry = try await performInstallAssumingLock(from: tempZipURL)
 
         saveRegistryMetadata(
-            version: registryPlugin.version,
             pluginId: registryPlugin.id,
             pluginURL: entry.url
         )
-        entry.version = registryPlugin.version
-        updatePluginVersion(id: entry.id, version: registryPlugin.version)
-
-        return entry
-    }
-
-    func updateFromRegistry(
-        _ registryPlugin: RegistryPlugin,
-        existingPluginLoaded: Bool = true,
-        progress: @escaping @MainActor @Sendable (Double) -> Void
-    ) async throws -> PluginEntry {
-        if let minAppVersion = registryPlugin.minAppVersion {
-            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-            if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
-                throw PluginError.incompatibleWithCurrentApp(minimumRequired: minAppVersion)
-            }
-        }
-
-        if let minKit = registryPlugin.minPluginKitVersion, minKit > Self.currentPluginKitVersion {
-            throw PluginError.incompatibleVersion(required: minKit, current: Self.currentPluginKitVersion)
-        }
-
-        replaceExistingPlugin(bundleId: registryPlugin.id)
-
-        let entry = try await installFromRegistry(registryPlugin, progress: progress)
-
-        if existingPluginLoaded {
-            needsRestartStorage = true
-        }
 
         return entry
     }

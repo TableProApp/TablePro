@@ -7,6 +7,8 @@ description: Index of TablePro features grouped by editor, AI, views, data manag
 
 Every feature in TablePro, grouped so you can jump straight to what you need.
 
+TablePro opens with a sidebar-style welcome window, in the style of the Xcode launcher. Saved connections and groups sit in the sidebar. Search is in the window toolbar (`Cmd+F` to focus). A bundled Chinook sample database opens with one click on first launch. Reset it any time from **File > Reset Sample Database**.
+
 ## Editor & Data
 
 <CardGroup cols={2}>
@@ -36,6 +38,12 @@ Every feature in TablePro, grouped so you can jump straight to what you need.
   <Card title="MCP Server" icon="plug" href="/features/mcp">
     Expose TablePro to Claude and other MCP clients.
   </Card>
+  <Card title="External API" icon="bolt" href="/external-api">
+    URL scheme, MCP, and pairing for Raycast, Cursor, Claude Desktop.
+  </Card>
+  <Card title="Raycast Extension" icon="magnifying-glass" href="/external-api/raycast">
+    Search connections, run queries, focus tabs from Raycast.
+  </Card>
 </CardGroup>
 
 ## Views
@@ -64,6 +72,9 @@ Every feature in TablePro, grouped so you can jump straight to what you need.
   <Card title="Import & Export" icon="file-export" href="/features/import-export">
     CSV, JSON, SQL dumps in and out.
   </Card>
+  <Card title="Backup & Restore" icon="floppy-disk" href="/features/backup-restore">
+    pg_dump and pg_restore for PostgreSQL and Redshift.
+  </Card>
   <Card title="Change Tracking" icon="pen-to-square" href="/features/change-tracking">
     Stage edits, preview SQL, save or discard.
   </Card>
@@ -90,8 +101,8 @@ Every feature in TablePro, grouped so you can jump straight to what you need.
   <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
     Full shortcut reference.
   </Card>
-  <Card title="Deep Links" icon="link" href="/features/deep-links">
-    `tablepro://` URLs to open connections and tables.
+  <Card title="URL Scheme" icon="link" href="/external-api/url-scheme">
+    `tablepro://` URLs to open connections, tables, and queries.
   </Card>
 </CardGroup>
 

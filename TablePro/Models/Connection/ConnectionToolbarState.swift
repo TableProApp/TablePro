@@ -124,8 +124,18 @@ final class ConnectionToolbarState {
     /// Connection name for display
     var connectionName: String = ""
 
-    /// Current database name
-    var databaseName: String = ""
+    /// Active database (always meaningful). For schema-grouped engines like SQL Server,
+    /// this is the SQL Server database (e.g. "Sales"); the active schema lives in
+    /// `currentSchema` and is what the toolbar chip shows.
+    var currentDatabase: String = ""
+
+    /// Active schema for engines whose grouping strategy is `.bySchema`. Nil for
+    /// `.byDatabase` and `.flat` engines, where the database is the primary unit.
+    var currentSchema: String?
+
+    /// How the engine groups data. Drives whether `chipText` returns `currentSchema`
+    /// (for schema-grouped engines) or `currentDatabase`.
+    var databaseGroupingStrategy: GroupingStrategy = .byDatabase
 
     /// Custom display color for the connection (uses database type color if not set)
     var displayColor: Color = .init(nsColor: .systemOrange)
@@ -192,10 +202,7 @@ final class ConnectionToolbarState {
     /// Whether the history panel is visible
     var isHistoryPanelVisible: Bool = false
 
-    /// Whether the SQL review popover is showing
-    var showSQLReviewPopover: Bool = false
-
-    /// SQL statements to display in the review popover
+    /// SQL statements rendered in the SQL preview sheet
     var previewStatements: [String] = []
 
     /// Network latency in milliseconds (for SSH connections)
@@ -214,6 +221,22 @@ final class ConnectionToolbarState {
             return "\(databaseType.rawValue) \(version)"
         }
         return databaseType.rawValue
+    }
+
+    /// Text shown in the toolbar's database/schema chip. For `.bySchema` engines
+    /// (SQL Server, PostgreSQL, Oracle, BigQuery), this is the active schema; for
+    /// `.byDatabase` and `.flat` engines, it is the active database. Falls back to
+    /// `currentDatabase` when a schema-grouped engine has not yet resolved its schema.
+    var chipText: String {
+        switch databaseGroupingStrategy {
+        case .bySchema:
+            if let schema = currentSchema, !schema.isEmpty {
+                return schema
+            }
+            return currentDatabase
+        case .byDatabase, .flat:
+            return currentDatabase
+        }
     }
 
     /// Tooltip text for the status indicator
@@ -247,18 +270,35 @@ final class ConnectionToolbarState {
     /// Update state from a DatabaseConnection model
     func update(from connection: DatabaseConnection) {
         connectionName = connection.name
-        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
-            databaseName = (connection.database as NSString).lastPathComponent
-        } else if let session = DatabaseManager.shared.session(for: connection.id),
-                  let database = session.currentDatabase {
-            databaseName = database
-        } else {
-            databaseName = connection.database
-        }
         databaseType = connection.type
         displayColor = connection.displayColor
         tagId = connection.tagId
         safeModeLevel = connection.safeModeLevel
+        databaseGroupingStrategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        syncFromSession(for: connection)
+    }
+
+    /// Resolve `currentDatabase` and `currentSchema` from the active session, falling
+    /// back to the connection's configured database for `currentDatabase`. The chip
+    /// updates automatically via the `chipText` computed property.
+    func syncFromSession(for connection: DatabaseConnection) {
+        let resolvedDatabase: String
+        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
+            resolvedDatabase = (connection.database as NSString).lastPathComponent
+        } else if let session = DatabaseManager.shared.session(for: connection.id),
+                  let database = session.currentDatabase {
+            resolvedDatabase = database
+        } else {
+            resolvedDatabase = connection.database
+        }
+        if currentDatabase != resolvedDatabase {
+            currentDatabase = resolvedDatabase
+        }
+
+        let resolvedSchema = DatabaseManager.shared.session(for: connection.id)?.currentSchema
+        if currentSchema != resolvedSchema {
+            currentSchema = resolvedSchema
+        }
     }
 
     /// Update connection state from ConnectionStatus
@@ -281,7 +321,9 @@ final class ConnectionToolbarState {
         databaseType = .mysql
         databaseVersion = nil
         connectionName = ""
-        databaseName = ""
+        currentDatabase = ""
+        currentSchema = nil
+        databaseGroupingStrategy = .byDatabase
         displayColor = databaseType.themeColor
         connectionState = .disconnected
         isExecuting = false

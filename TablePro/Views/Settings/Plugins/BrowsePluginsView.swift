@@ -57,8 +57,7 @@ struct BrowsePluginsView: View {
             HSplitView {
                 VStack(spacing: 0) {
                     HStack(spacing: 6) {
-                        TextField("Search...", text: $searchText)
-                            .textFieldStyle(.roundedBorder)
+                        NativeSearchField(text: $searchText, placeholder: String(localized: "Search..."))
                         Picker("", selection: $selectedCategory) {
                             Text("All").tag(RegistryCategory?.none)
                             ForEach(RegistryCategory.allCases) { category in
@@ -122,7 +121,7 @@ struct BrowsePluginsView: View {
                         .lineLimit(1)
                     if plugin.isVerified {
                         Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(Color(nsColor: .systemBlue))
                             .font(.caption2)
                     }
                 }
@@ -229,7 +228,7 @@ struct BrowsePluginsView: View {
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "puzzlepiece.extension")
-                    .font(.system(size: 32))
+                    .font(.title)
                     .foregroundStyle(.tertiary)
                 Text("Select a plugin to view details")
                     .font(.headline)

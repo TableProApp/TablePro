@@ -8,7 +8,10 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// Handle selection from the quick switcher palette
+    func showQuickSwitcher() {
+        activeSheet = .quickSwitcher
+    }
+
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem) {
         switch item.kind {
         case .table, .systemTable:

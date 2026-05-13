@@ -4,22 +4,20 @@
 //
 
 import Foundation
+import TableProPluginKit
 import SwiftUI
-import Testing
-
 @testable import TablePro
+import Testing
 
 @Suite("MainStatusBarView Layout")
 @MainActor
 struct MainStatusBarLayoutTests {
     @Test("Status bar can be instantiated with empty snapshot")
     func instantiateWithEmptySnapshot() {
-        let filterManager = FilterStateManager()
-        let colVisManager = ColumnVisibilityManager()
         let view = MainStatusBarView(
             snapshot: StatusBarSnapshot(tab: nil, tableRows: nil),
-            filterStateManager: filterManager,
-            columnVisibilityManager: colVisManager,
+            filterState: TabFilterState(),
+            hiddenColumns: [],
             allColumns: [],
             selectedRowIndices: [],
             viewMode: .constant(.data),
@@ -29,7 +27,11 @@ struct MainStatusBarLayoutTests {
             onLastPage: {},
             onLimitChange: { _ in },
             onOffsetChange: { _ in },
-            onPaginationGo: {}
+            onPaginationGo: {},
+            onToggleColumn: { _ in },
+            onShowAllColumns: {},
+            onHideAllColumns: { _ in },
+            onToggleFilters: {}
         )
         #expect(type(of: view.body) != Never.self)
     }

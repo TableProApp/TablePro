@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import GhosttyTerminal
 import GhosttyTheme
@@ -24,7 +25,7 @@ final class TerminalSessionState: Identifiable {
     var exitCode: Int32 = 0
     var error: String?
 
-    @ObservationIgnored private var settingsObserver: NSObjectProtocol?
+    @ObservationIgnored private var settingsCancellable: AnyCancellable?
 
     init(connectionId: UUID, databaseType: DatabaseType) {
         self.id = UUID()
@@ -36,9 +37,6 @@ final class TerminalSessionState: Identifiable {
     }
 
     deinit {
-        if let settingsObserver {
-            NotificationCenter.default.removeObserver(settingsObserver)
-        }
         // TerminalProcessManager.deinit handles source cancellation, fd close, and child kill
         // via nonisolated(unsafe) fields (see Issue 5 fix). Releasing our strong reference
         // here triggers that cleanup if no other references remain.
@@ -151,13 +149,11 @@ final class TerminalSessionState: Identifiable {
     }
 
     private func observeSettingsChanges() {
-        settingsObserver = NotificationCenter.default.addObserver(
-            forName: .terminalSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.applySettingsToTerminal()
-        }
+        settingsCancellable = AppEvents.shared.terminalSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.applySettingsToTerminal()
+            }
     }
 
     // MARK: - Private

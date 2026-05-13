@@ -28,7 +28,7 @@ struct CreateDatabaseSheet: View {
             Divider()
             footer
         }
-        .frame(width: 380)
+        .frame(width: 420)
         .onExitCommand {
             if !isCreating {
                 dismiss()
@@ -44,46 +44,42 @@ struct CreateDatabaseSheet: View {
     }
 
     private var formBody: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            nameField
+        Form {
+            Section {
+                LabeledContent(String(localized: "Name")) {
+                    TextField(String(localized: "Enter database name"), text: $databaseName)
+                }
+            }
 
             switch loadState {
             case .loading:
-                loadingView
+                Section { loadingView }
             case .ready(let spec):
-                fieldsList(spec: spec)
-                if let footnote = spec.footnote {
-                    Text(footnote)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                Section {
+                    fieldsList(spec: spec)
+                } footer: {
+                    if let footnote = spec.footnote {
+                        Text(footnote)
+                    }
                 }
             case .unsupported:
-                Text(String(localized: "This engine does not support creating databases."))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Section {
+                    Text(String(localized: "This engine does not support creating databases."))
+                        .foregroundStyle(.secondary)
+                }
             case .failed(let message):
-                failureView(message: message)
+                Section { failureView(message: message) }
             }
 
             if let error = errorMessage {
-                Text(error)
-                    .font(.subheadline)
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Color(nsColor: .systemOrange))
+                }
             }
         }
-        .padding(20)
-    }
-
-    private var nameField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(String(localized: "Database Name"))
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-
-            TextField(String(localized: "Enter database name"), text: $databaseName)
-                .textFieldStyle(.roundedBorder)
-                .font(.body)
-        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var loadingView: some View {
@@ -117,15 +113,10 @@ struct CreateDatabaseSheet: View {
     }
 
     private func fieldView(field: CreateDatabaseFormSpec.Field, spec: CreateDatabaseFormSpec) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(field.label)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-
+        LabeledContent(field.label) {
             picker(for: field, spec: spec)
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .font(.body)
         }
     }
 

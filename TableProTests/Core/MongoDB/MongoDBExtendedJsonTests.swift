@@ -8,6 +8,7 @@
 #if canImport(CLibMongoc)
 
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 

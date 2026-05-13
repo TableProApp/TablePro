@@ -1,8 +1,3 @@
-//
-//  MCPSettingsView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct MCPSettingsView: View {
@@ -19,5 +14,5 @@ struct MCPSettingsView: View {
 
 #Preview {
     MCPSettingsView(settings: .constant(.default))
-        .frame(width: 450, height: 500)
+        .frame(width: 520, height: 540)
 }

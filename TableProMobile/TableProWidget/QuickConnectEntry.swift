@@ -1,8 +1,3 @@
-//
-//  QuickConnectEntry.swift
-//  TableProWidget
-//
-
 import WidgetKit
 
 struct QuickConnectEntry: TimelineEntry {

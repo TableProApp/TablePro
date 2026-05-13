@@ -1,8 +1,3 @@
-//
-//  MCPTLSManager.swift
-//  TablePro
-//
-
 import CryptoKit
 import Foundation
 import os
@@ -19,8 +14,6 @@ actor MCPTLSManager {
 
     private(set) var fingerprint: String?
     private(set) var pemCertificate: String?
-
-    // MARK: - Public API
 
     func loadOrGenerate() throws -> SecIdentity {
         if let existing = try? loadExistingIdentity() {
@@ -42,8 +35,6 @@ actor MCPTLSManager {
         pemCertificate = nil
         Self.logger.info("Deleted MCP TLS identity from Keychain")
     }
-
-    // MARK: - Identity Loading
 
     private func loadExistingIdentity() throws -> SecIdentity {
         let identityQuery: [String: Any] = [
@@ -79,8 +70,6 @@ actor MCPTLSManager {
         Self.logger.info("Loaded existing MCP TLS identity from Keychain")
         return identity
     }
-
-    // MARK: - Certificate Generation
 
     private func generateAndStore() throws -> SecIdentity {
         let privateKey = P256.Signing.PrivateKey()
@@ -132,8 +121,6 @@ actor MCPTLSManager {
         return Data(serializer.serializedBytes)
     }
 
-    // MARK: - Keychain Import
-
     private func importPrivateKey(_ privateKey: P256.Signing.PrivateKey) throws {
         deleteKeychainKey()
 
@@ -177,8 +164,6 @@ actor MCPTLSManager {
         }
     }
 
-    // MARK: - Keychain Retrieval
-
     private func retrieveIdentity() throws -> SecIdentity {
         let identityQuery: [String: Any] = [
             kSecClass as String: kSecClassIdentity,
@@ -196,8 +181,6 @@ actor MCPTLSManager {
 
         return (ref as! SecIdentity) // swiftlint:disable:this force_cast
     }
-
-    // MARK: - Keychain Cleanup
 
     private func deleteKeychainKey() {
         let query: [String: Any] = [
@@ -224,8 +207,6 @@ actor MCPTLSManager {
         }
     }
 
-    // MARK: - Certificate Validation
-
     private func isCertificateValid(derData: Data) -> Bool {
         do {
             let certificate = try Certificate(derEncoded: Array(derData))
@@ -236,8 +217,6 @@ actor MCPTLSManager {
             return false
         }
     }
-
-    // MARK: - Metadata
 
     private func cacheMetadata(derData: Data) {
         fingerprint = computeFingerprint(derData: derData)
@@ -255,8 +234,6 @@ actor MCPTLSManager {
         return "-----BEGIN CERTIFICATE-----\n\(base64)\n-----END CERTIFICATE-----"
     }
 }
-
-// MARK: - Errors
 
 private enum MCPTLSError: LocalizedError {
     case keyGenerationFailed

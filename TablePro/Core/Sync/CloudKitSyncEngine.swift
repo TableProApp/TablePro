@@ -8,6 +8,7 @@
 import CloudKit
 import Foundation
 import os
+import Security
 
 /// Result of a pull operation
 struct PullResult: Sendable {
@@ -20,29 +21,48 @@ struct PullResult: Sendable {
 actor CloudKitSyncEngine {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudKitSyncEngine")
 
-    private let container: CKContainer
-    private let database: CKDatabase
+    private let container: CKContainer?
+    private let database: CKDatabase?
     let zoneID: CKRecordZone.ID
 
     private static let containerIdentifier = "iCloud.com.TablePro"
     private static let zoneName = "TableProSync"
     private static let maxRetries = 3
 
+    static func hasICloudEntitlement() -> Bool {
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        return SecTaskCopyValueForEntitlement(task, "com.apple.developer.icloud-services" as CFString, nil) != nil
+    }
+
     init() {
-        container = CKContainer(identifier: Self.containerIdentifier)
-        database = container.privateCloudDatabase
+        if Self.hasICloudEntitlement() {
+            let container = CKContainer(identifier: Self.containerIdentifier)
+            self.container = container
+            database = container.privateCloudDatabase
+        } else {
+            container = nil
+            database = nil
+            Self.logger.warning("iCloud entitlement missing: CloudKit sync disabled")
+        }
         zoneID = CKRecordZone.ID(zoneName: Self.zoneName, ownerName: CKCurrentUserDefaultName)
     }
 
     // MARK: - Account Status
 
     func checkAccountStatus() async throws -> CKAccountStatus {
-        try await container.accountStatus()
+        guard let container else { throw SyncError.accountUnavailable }
+        return try await container.accountStatus()
+    }
+
+    func currentAccountId() async throws -> String? {
+        guard let container else { throw SyncError.accountUnavailable }
+        return try await container.userRecordID().recordName
     }
 
     // MARK: - Zone Management
 
     func ensureZoneExists() async throws {
+        guard let database else { throw SyncError.accountUnavailable }
         let zone = CKRecordZone(zoneID: zoneID)
         _ = try await database.save(zone)
         Self.logger.trace("Created or confirmed sync zone: \(Self.zoneName)")
@@ -79,6 +99,7 @@ actor CloudKitSyncEngine {
     }
 
     private func pushBatch(records: [CKRecord], deletions: [CKRecord.ID]) async throws {
+        guard let database else { throw SyncError.accountUnavailable }
         try await withRetry {
             let operation = CKModifyRecordsOperation(
                 recordsToSave: records,
@@ -106,7 +127,7 @@ actor CloudKitSyncEngine {
                         continuation.resume(throwing: error)
                     }
                 }
-                self.database.add(operation)
+                database.add(operation)
             }
         }
     }
@@ -120,6 +141,7 @@ actor CloudKitSyncEngine {
     }
 
     private func performPull(since token: CKServerChangeToken?) async throws -> PullResult {
+        guard let database else { throw SyncError.accountUnavailable }
         let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
         configuration.previousServerChangeToken = token
 

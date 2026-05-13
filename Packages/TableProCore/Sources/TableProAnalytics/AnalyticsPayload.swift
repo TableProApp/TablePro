@@ -17,6 +17,9 @@ public struct AnalyticsPayload: Encodable, Sendable {
     public let databaseTypes: [String]?
     public let connectionCount: Int
     public let hasLicense: Bool
+    public let connectionAttemptedAt: Date?
+    public let connectionSucceededAt: Date?
+    public let firstQueryExecutedAt: Date?
 
     public init(
         machineId: String,
@@ -27,7 +30,10 @@ public struct AnalyticsPayload: Encodable, Sendable {
         locale: String,
         databaseTypes: [String]?,
         connectionCount: Int,
-        hasLicense: Bool
+        hasLicense: Bool,
+        connectionAttemptedAt: Date? = nil,
+        connectionSucceededAt: Date? = nil,
+        firstQueryExecutedAt: Date? = nil
     ) {
         self.machineId = machineId
         self.platform = platform
@@ -38,5 +44,8 @@ public struct AnalyticsPayload: Encodable, Sendable {
         self.databaseTypes = databaseTypes
         self.connectionCount = connectionCount
         self.hasLicense = hasLicense
+        self.connectionAttemptedAt = connectionAttemptedAt
+        self.connectionSucceededAt = connectionSucceededAt
+        self.firstQueryExecutedAt = firstQueryExecutedAt
     }
 }

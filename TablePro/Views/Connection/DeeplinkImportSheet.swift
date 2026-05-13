@@ -72,7 +72,7 @@ struct DeeplinkImportSheet: View {
                             String(localized: "A connection with this name, host, and type already exists."),
                             systemImage: "exclamationmark.triangle.fill"
                         )
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color(nsColor: .systemOrange))
                         .font(.callout)
                     }
                 }
@@ -103,13 +103,19 @@ struct DeeplinkImportSheet: View {
             : connection.host
     }
 
+    private func formatSSHHost(_ ssh: ExportableSSHConfig) -> String {
+        if let port = ssh.port, port != 22 {
+            return "\(ssh.host):\(port)"
+        }
+        return ssh.host
+    }
+
     @ViewBuilder
     private var sshSection: some View {
         if let ssh = connection.sshConfig {
             Section("SSH") {
                 LabeledContent(String(localized: "Host")) {
-                    let port = ssh.port != 22 ? ":\(ssh.port)" : ""
-                    Text("\(ssh.host)\(port)")
+                    Text(formatSSHHost(ssh))
                         .foregroundStyle(.secondary)
                 }
                 LabeledContent(String(localized: "Auth")) {

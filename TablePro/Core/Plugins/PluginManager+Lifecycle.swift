@@ -46,15 +46,18 @@ extension PluginManager {
         }
         isInstalling = true
         defer { isInstalling = false }
+        return try await performInstallAssumingLock(from: url)
+    }
 
+    func performInstallAssumingLock(from url: URL) async throws -> PluginEntry {
         if url.pathExtension == "tableplugin" {
-            return try installBundle(from: url)
+            return try await installBundle(from: url)
         } else {
             return try await installFromZip(from: url)
         }
     }
 
-    private func installBundle(from url: URL) throws -> PluginEntry {
+    private func installBundle(from url: URL) async throws -> PluginEntry {
         guard let sourceBundle = Bundle(url: url) else {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
@@ -62,10 +65,6 @@ extension PluginManager {
         try verifyCodeSignature(bundle: sourceBundle)
 
         let newBundleId = sourceBundle.bundleIdentifier ?? url.lastPathComponent
-        if let existing = plugins.first(where: { $0.id == newBundleId }), existing.source == .builtIn {
-            throw PluginError.pluginConflict(existingName: existing.name)
-        }
-
         replaceExistingPlugin(bundleId: newBundleId)
 
         let fm = FileManager.default
@@ -79,7 +78,7 @@ extension PluginManager {
             try fm.copyItem(at: url, to: destURL)
         }
 
-        let entry = try loadPlugin(at: destURL, source: .userInstalled)
+        let entry = try await loadPluginAsync(at: destURL, source: .userInstalled)
 
         Self.logger.info("Installed plugin '\(entry.name)' v\(entry.version)")
         return entry
@@ -126,37 +125,32 @@ extension PluginManager {
             throw PluginError.installFailed("No .tableplugin bundle found in archive")
         }
 
-        var lastEntry: PluginEntry?
-        for extracted in extractedBundles {
-            guard let extractedBundle = Bundle(url: extracted) else {
-                throw PluginError.invalidBundle("Cannot create bundle from extracted plugin '\(extracted.lastPathComponent)'")
-            }
-
-            try verifyCodeSignature(bundle: extractedBundle)
-
-            let newBundleId = extractedBundle.bundleIdentifier ?? extracted.lastPathComponent
-            if let existing = plugins.first(where: { $0.id == newBundleId }), existing.source == .builtIn {
-                throw PluginError.pluginConflict(existingName: existing.name)
-            }
-
-            replaceExistingPlugin(bundleId: newBundleId)
-
-            try fm.createDirectory(at: userPluginsDir, withIntermediateDirectories: true)
-            let destURL = userPluginsDir.appendingPathComponent(extracted.lastPathComponent)
-
-            if fm.fileExists(atPath: destURL.path) {
-                try fm.removeItem(at: destURL)
-            }
-            try fm.copyItem(at: extracted, to: destURL)
-
-            let entry = try loadPlugin(at: destURL, source: .userInstalled)
-            Self.logger.info("Installed plugin '\(entry.name)' v\(entry.version)")
-            lastEntry = entry
+        guard extractedBundles.count == 1 else {
+            throw PluginError.installFailed(
+                "Archive contains \(extractedBundles.count) plugins; only single-plugin archives are supported"
+            )
         }
 
-        guard let entry = lastEntry else {
-            throw PluginError.installFailed("No .tableplugin bundle found in archive")
+        let extracted = extractedBundles[0]
+        guard let extractedBundle = Bundle(url: extracted) else {
+            throw PluginError.invalidBundle("Cannot create bundle from extracted plugin '\(extracted.lastPathComponent)'")
         }
+
+        try verifyCodeSignature(bundle: extractedBundle)
+
+        let newBundleId = extractedBundle.bundleIdentifier ?? extracted.lastPathComponent
+        replaceExistingPlugin(bundleId: newBundleId)
+
+        try fm.createDirectory(at: userPluginsDir, withIntermediateDirectories: true)
+        let destURL = userPluginsDir.appendingPathComponent(extracted.lastPathComponent)
+
+        if fm.fileExists(atPath: destURL.path) {
+            try fm.removeItem(at: destURL)
+        }
+        try fm.copyItem(at: extracted, to: destURL)
+
+        let entry = try await loadPluginAsync(at: destURL, source: .userInstalled)
+        Self.logger.info("Installed plugin '\(entry.name)' v\(entry.version)")
         return entry
     }
 
@@ -191,6 +185,6 @@ extension PluginManager {
         queryBuildingDriverCache.removeAll()
 
         Self.logger.info("Uninstalled plugin '\(id)'")
-        needsRestartStorage = true
+        needsRestart = true
     }
 }

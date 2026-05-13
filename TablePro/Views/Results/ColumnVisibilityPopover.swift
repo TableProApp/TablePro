@@ -7,9 +7,15 @@ import SwiftUI
 
 struct ColumnVisibilityPopover: View {
     let columns: [String]
-    let columnVisibilityManager: ColumnVisibilityManager
+    let hiddenColumns: Set<String>
+    let onToggleColumn: (String) -> Void
+    let onShowAll: () -> Void
+    let onHideAll: ([String]) -> Void
 
     @State private var searchText = ""
+
+    private var hasHiddenColumns: Bool { !hiddenColumns.isEmpty }
+    private var hiddenCount: Int { hiddenColumns.count }
 
     private var filteredColumns: [String] {
         if searchText.isEmpty {
@@ -32,12 +38,11 @@ struct ColumnVisibilityPopover: View {
             columnList
         }
         .frame(width: 260)
-        .frame(maxHeight: 420)
     }
 
     private var headerTitle: String {
-        let visible = columns.count - columnVisibilityManager.hiddenCount
-        if columnVisibilityManager.hasHiddenColumns {
+        let visible = columns.count - hiddenCount
+        if hasHiddenColumns {
             return "\(visible) of \(columns.count)"
         }
         return String(localized: "Columns")
@@ -51,55 +56,48 @@ struct ColumnVisibilityPopover: View {
 
             Spacer()
 
-            Button("Show All") {
-                columnVisibilityManager.showAll()
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.accentColor)
-            .controlSize(.small)
-            .disabled(!columnVisibilityManager.hasHiddenColumns)
+            Button("Show All") { onShowAll() }
+                .buttonStyle(.link)
+                .controlSize(.small)
+                .disabled(!hasHiddenColumns)
 
-            Button("Hide All") {
-                columnVisibilityManager.hideAll(columns)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.accentColor)
-            .controlSize(.small)
-            .disabled(columnVisibilityManager.hiddenCount == columns.count)
+            Button("Hide All") { onHideAll(columns) }
+                .buttonStyle(.link)
+                .controlSize(.small)
+                .disabled(hiddenCount == columns.count)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
     private var searchField: some View {
-        TextField(String(localized: "Search columns..."), text: $searchText)
-            .textFieldStyle(.roundedBorder)
-            .controlSize(.small)
+        NativeSearchField(text: $searchText, placeholder: String(localized: "Search columns..."), controlSize: .small)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
     }
 
     private var columnList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(filteredColumns, id: \.self) { column in
-                    columnRow(column)
-                }
+        List {
+            ForEach(filteredColumns, id: \.self) { column in
+                columnRow(column)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 1, leading: 12, bottom: 1, trailing: 12))
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .frame(minHeight: 120, maxHeight: 320)
     }
 
     private func columnRow(_ column: String) -> some View {
         Toggle(isOn: Binding(
-            get: { !columnVisibilityManager.hiddenColumns.contains(column) },
-            set: { _ in columnVisibilityManager.toggleColumn(column) }
+            get: { !hiddenColumns.contains(column) },
+            set: { _ in onToggleColumn(column) }
         )) {
             Text(column)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
         .toggleStyle(.checkbox)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 3)
     }
 }

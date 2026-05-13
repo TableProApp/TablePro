@@ -64,7 +64,7 @@ struct SQLStatementGenerator {
     /// - Returns: Array of parameterized SQL statements
     func generateStatements(
         from changes: [RowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [ParameterizedStatement] {
@@ -134,20 +134,16 @@ struct SQLStatementGenerator {
 
     // MARK: - INSERT Generation
 
-    private func generateInsertSQL(for change: RowChange, insertedRowData: [Int: [String?]])
+    private func generateInsertSQL(for change: RowChange, insertedRowData: [Int: [PluginCellValue]])
         -> ParameterizedStatement?
     {
-        // OPTIMIZATION: Get values from lazy storage instead of cellChanges
         if let values = insertedRowData[change.rowIndex] {
             return generateInsertSQLFromStoredData(rowIndex: change.rowIndex, values: values)
         }
-
-        // Fallback: use cellChanges if stored data not available (backward compatibility)
         return generateInsertSQLFromCellChanges(for: change)
     }
 
-    /// Generate INSERT SQL from lazy-stored row data (optimized path)
-    private func generateInsertSQLFromStoredData(rowIndex: Int, values: [String?])
+    private func generateInsertSQLFromStoredData(rowIndex: Int, values: [PluginCellValue])
         -> ParameterizedStatement?
     {
         var nonDefaultColumns: [String] = []
@@ -155,22 +151,18 @@ struct SQLStatementGenerator {
         var bindParameters: [Any?] = []
 
         for (index, value) in values.enumerated() {
-            if value == "__DEFAULT__" { continue }
+            if case .text(let s) = value, s == "__DEFAULT__" { continue }
 
             guard index < columns.count else { continue }
             let columnName = columns[index]
 
             nonDefaultColumns.append(quoteIdentifierFn(columnName))
 
-            if let val = value {
-                if isSQLFunctionExpression(val) {
-                    placeholderParts.append(val.trimmingCharacters(in: .whitespaces).uppercased())
-                } else {
-                    bindParameters.append(val)
-                    placeholderParts.append(placeholder(at: bindParameters.count - 1))
-                }
-            } else {
-                bindParameters.append(nil)
+            switch value {
+            case .text(let s) where isSQLFunctionExpression(s):
+                placeholderParts.append(s.trimmingCharacters(in: .whitespaces).uppercased())
+            default:
+                bindParameters.append(value.asAny)
                 placeholderParts.append(placeholder(at: bindParameters.count - 1))
             }
         }
@@ -186,17 +178,12 @@ struct SQLStatementGenerator {
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
 
-    /// Generate INSERT SQL from cellChanges (fallback for backward compatibility)
     private func generateInsertSQLFromCellChanges(for change: RowChange) -> ParameterizedStatement?
     {
         guard !change.cellChanges.isEmpty else { return nil }
 
-        // Filter out DEFAULT columns - let DB handle them
-        let nonDefaultChanges = change.cellChanges.filter {
-            $0.newValue != "__DEFAULT__"
-        }
+        let nonDefaultChanges = change.cellChanges.filter { $0.newValue != .text("__DEFAULT__") }
 
-        // If all columns are DEFAULT, don't generate INSERT
         guard !nonDefaultChanges.isEmpty else { return nil }
 
         let columnNames = nonDefaultChanges.map {
@@ -205,16 +192,13 @@ struct SQLStatementGenerator {
 
         var parameters: [Any?] = []
         let placeholders = nonDefaultChanges.map { cellChange -> String in
-            if let newValue = cellChange.newValue {
-                if isSQLFunctionExpression(newValue) {
-                    // SQL function - cannot parameterize, use literal
-                    return newValue.trimmingCharacters(in: .whitespaces).uppercased()
-                }
-                parameters.append(newValue)
+            switch cellChange.newValue {
+            case .text(let s) where isSQLFunctionExpression(s):
+                return s.trimmingCharacters(in: .whitespaces).uppercased()
+            default:
+                parameters.append(cellChange.newValue.asAny)
                 return placeholder(at: parameters.count - 1)
             }
-            parameters.append(nil)
-            return placeholder(at: parameters.count - 1)
         }.joined(separator: ", ")
 
         let sql =
@@ -231,27 +215,19 @@ struct SQLStatementGenerator {
 
     // MARK: - UPDATE Generation
 
-    /// Generate individual UPDATE statement for a single row using parameterized query
     func generateUpdateSQL(for change: RowChange) -> ParameterizedStatement? {
         guard !change.cellChanges.isEmpty else { return nil }
 
         var parameters: [Any?] = []
         let setClauses = change.cellChanges.map { cellChange -> String in
-            if cellChange.newValue == "__DEFAULT__" {
+            switch cellChange.newValue {
+            case .text(let s) where s == "__DEFAULT__":
                 return "\(quoteIdentifierFn(cellChange.columnName)) = DEFAULT"
-            } else if let newValue = cellChange.newValue {
-                if isSQLFunctionExpression(newValue) {
-                    return
-                        "\(quoteIdentifierFn(cellChange.columnName)) = \(newValue.trimmingCharacters(in: .whitespaces).uppercased())"
-                } else {
-                    parameters.append(newValue)
-                    return
-                        "\(quoteIdentifierFn(cellChange.columnName)) = \(placeholder(at: parameters.count - 1))"
-                }
-            } else {
-                parameters.append(nil)
-                return
-                    "\(quoteIdentifierFn(cellChange.columnName)) = \(placeholder(at: parameters.count - 1))"
+            case .text(let s) where isSQLFunctionExpression(s):
+                return "\(quoteIdentifierFn(cellChange.columnName)) = \(s.trimmingCharacters(in: .whitespaces).uppercased())"
+            default:
+                parameters.append(cellChange.newValue.asAny)
+                return "\(quoteIdentifierFn(cellChange.columnName)) = \(placeholder(at: parameters.count - 1))"
             }
         }.joined(separator: ", ")
 
@@ -261,21 +237,21 @@ struct SQLStatementGenerator {
             for pkColumn in primaryKeyColumns {
                 guard let pkColumnIndex = columns.firstIndex(of: pkColumn) else { return nil }
 
-                var pkValue: Any?
+                var pkValue: PluginCellValue?
                 if let originalRow = change.originalRow, pkColumnIndex < originalRow.count {
                     pkValue = originalRow[pkColumnIndex]
                 } else if let pkChange = change.cellChanges.first(where: { $0.columnName == pkColumn }) {
                     pkValue = pkChange.oldValue
                 }
 
-                guard pkValue != nil else {
+                guard let pkValue, !pkValue.isNull else {
                     Self.logger.warning(
                         "Skipping UPDATE for table '\(self.tableName)' - cannot determine value for PK column '\(pkColumn)'"
                     )
                     return nil
                 }
 
-                parameters.append(pkValue)
+                parameters.append(pkValue.asAny)
                 conditions.append(
                     "\(quoteIdentifierFn(pkColumn)) = \(placeholder(at: parameters.count - 1))"
                 )
@@ -300,11 +276,11 @@ struct SQLStatementGenerator {
                 guard index < originalRow.count else { continue }
                 let value = originalRow[index]
                 let quotedColumn = quoteIdentifierFn(columnName)
-                if let value = value {
-                    parameters.append(value)
-                    conditions.append("\(quotedColumn) = \(placeholder(at: parameters.count - 1))")
-                } else {
+                if value.isNull {
                     conditions.append("\(quotedColumn) IS NULL")
+                } else {
+                    parameters.append(value.asAny)
+                    conditions.append("\(quotedColumn) = \(placeholder(at: parameters.count - 1))")
                 }
             }
 
@@ -339,12 +315,11 @@ struct SQLStatementGenerator {
                 var pkConditions: [String] = []
                 for pk in pkIndices {
                     guard pk.index < originalRow.count else { return nil }
-                    parameters.append(originalRow[pk.index])
+                    parameters.append(originalRow[pk.index].asAny)
                     pkConditions.append(
                         "\(quoteIdentifierFn(pk.column)) = \(placeholder(at: parameters.count - 1))"
                     )
                 }
-                // Single PK: "id = $1", composite: "(order_id = $1 AND product_id = $2)"
                 return pkIndices.count > 1
                     ? "(\(pkConditions.joined(separator: " AND ")))"
                     : pkConditions.joined()
@@ -362,11 +337,9 @@ struct SQLStatementGenerator {
         return nil
     }
 
-    /// Generate individual DELETE statement for a single row (used when no PK or as fallback)
     private func generateDeleteSQL(for change: RowChange) -> ParameterizedStatement? {
         guard let originalRow = change.originalRow else { return nil }
 
-        // Build WHERE clause matching ALL columns to uniquely identify the row
         var parameters: [Any?] = []
         var conditions: [String] = []
 
@@ -376,11 +349,11 @@ struct SQLStatementGenerator {
             let value = originalRow[index]
             let quotedColumn = quoteIdentifierFn(columnName)
 
-            if let value = value {
-                parameters.append(value)
-                conditions.append("\(quotedColumn) = \(placeholder(at: parameters.count - 1))")
-            } else {
+            if value.isNull {
                 conditions.append("\(quotedColumn) IS NULL")
+            } else {
+                parameters.append(value.asAny)
+                conditions.append("\(quotedColumn) = \(placeholder(at: parameters.count - 1))")
             }
         }
 

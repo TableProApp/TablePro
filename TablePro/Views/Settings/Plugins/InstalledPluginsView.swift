@@ -75,6 +75,9 @@ struct InstalledPluginsView: View {
             Text("Restart TablePro to fully unload removed plugins.")
                 .font(.callout)
             Spacer()
+            Button("Quit & Reopen") { relaunchApp() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             Button("Dismiss") { dismissedRestartBanner = true }
                 .buttonStyle(.borderless)
                 .font(.callout)
@@ -83,12 +86,29 @@ struct InstalledPluginsView: View {
         .padding(.vertical, 6)
     }
 
+    private func relaunchApp() {
+        let bundleURL = Bundle.main.bundleURL
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { newApp, error in
+            DispatchQueue.main.async {
+                guard newApp != nil else {
+                    errorAlertTitle = String(localized: "Relaunch Failed")
+                    errorAlertMessage = error?.localizedDescription
+                        ?? String(localized: "Could not start a new TablePro instance. Quit and reopen manually.")
+                    showErrorAlert = true
+                    return
+                }
+                NSApp.terminate(nil)
+            }
+        }
+    }
+
     // MARK: - Plugin List
 
     private var pluginList: some View {
         VStack(spacing: 0) {
-            TextField("Filter...", text: $searchText)
-                .textFieldStyle(.roundedBorder)
+            NativeSearchField(text: $searchText, placeholder: String(localized: "Filter..."))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
@@ -178,7 +198,7 @@ struct InstalledPluginsView: View {
 
             if pluginManager.registryUpdate(for: plugin.id) != nil {
                 Image(systemName: "arrow.up.circle.fill")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color(nsColor: .systemBlue))
                     .font(.caption)
             }
 
@@ -294,7 +314,7 @@ struct InstalledPluginsView: View {
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "puzzlepiece.extension")
-                    .font(.system(size: 32))
+                    .font(.title)
                     .foregroundStyle(.tertiary)
                 Text("Select a Plugin")
                     .font(.headline)
@@ -342,7 +362,7 @@ struct InstalledPluginsView: View {
             HStack(spacing: 8) {
                 Text(String(format: String(localized: "v%@ available"), registryPlugin.version))
                     .font(.callout)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color(nsColor: .systemBlue))
                 Button(String(localized: "Update")) { updatePlugin(registryPlugin) }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)

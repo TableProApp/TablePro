@@ -355,11 +355,11 @@ jobs:
             exit 0
           fi
 
-          cp appcast/appcast.xml appcast.xml
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git checkout main
+          cp appcast/appcast.xml appcast.xml
           git add appcast.xml
           git diff --cached --quiet && echo "No changes to appcast.xml" && exit 0
           git commit -m "Update appcast.xml for v${GITHUB_REF#refs/tags/v}"

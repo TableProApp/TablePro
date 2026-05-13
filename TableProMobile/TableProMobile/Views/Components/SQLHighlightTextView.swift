@@ -1,15 +1,16 @@
-//
-//  SQLHighlightTextView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import UIKit
 
 struct SQLHighlightTextView: UIViewRepresentable {
     @Binding var text: String
+    @Binding var isFocused: Bool
 
     private static let font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+
+    init(text: Binding<String>, isFocused: Binding<Bool> = .constant(false)) {
+        self._text = text
+        self._isFocused = isFocused
+    }
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
@@ -40,6 +41,11 @@ struct SQLHighlightTextView: UIViewRepresentable {
             }
             context.coordinator.isUpdating = false
         }
+        if isFocused, !textView.isFirstResponder {
+            textView.becomeFirstResponder()
+        } else if !isFocused, textView.isFirstResponder {
+            textView.resignFirstResponder()
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -58,6 +64,14 @@ struct SQLHighlightTextView: UIViewRepresentable {
             parent.text = textView.text
         }
 
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            if !parent.isFocused { parent.isFocused = true }
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            if parent.isFocused { parent.isFocused = false }
+        }
+
         func textStorage(
             _ textStorage: NSTextStorage,
             didProcessEditing editedMask: NSTextStorage.EditActions,
@@ -73,7 +87,8 @@ struct SQLHighlightTextView: UIViewRepresentable {
         // MARK: - Keyboard Accessory Toolbar
 
         func makeAccessoryToolbar() -> UIView {
-            let toolbar = UIView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 44))
+            let toolbar = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: 44))
+            toolbar.autoresizingMask = .flexibleWidth
             toolbar.backgroundColor = .secondarySystemBackground
 
             let separator = UIView()

@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -43,7 +44,7 @@ struct RowOperationsManagerCopyTests {
     private func makeTableRows(rows: [[String?]], columns: [String]? = nil) -> TableRows {
         let cols = columns ?? Self.defaultColumns
         let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: cols.count)
-        return TableRows.from(queryRows: rows, columns: cols, columnTypes: columnTypes)
+        return TableRows.from(queryRows: rows.map { row in row.map(PluginCellValue.fromOptional) }, columns: cols, columnTypes: columnTypes)
     }
 
     private func copyAndCapture(

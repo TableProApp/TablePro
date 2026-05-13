@@ -22,10 +22,11 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Default</string>
+			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.tablepro.sql</string>
+				<string>public.sql</string>
 			</array>
 		</dict>
 		<dict>
@@ -61,7 +62,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Alternate</string>
+			<string>Default</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.apple.sqlite3</string>
@@ -88,9 +89,9 @@
 			<key>CFBundleTypeName</key>
 			<string>DuckDB Database</string>
 			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
+			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Alternate</string>
+			<string>Owner</string>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>duckdb</string>
@@ -102,7 +103,7 @@
 			</array>
 		</dict>
 	</array>
-	<key>UTImportedTypeDeclarations</key>
+	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
@@ -113,6 +114,7 @@
 			<string>SQLDocument</string>
 			<key>UTTypeConformsTo</key>
 			<array>
+				<string>public.sql</string>
 				<string>public.plain-text</string>
 			</array>
 			<key>UTTypeTagSpecification</key>
@@ -130,6 +132,7 @@
 			<string>SQLite Database</string>
 			<key>UTTypeConformsTo</key>
 			<array>
+				<string>com.apple.sqlite3</string>
 				<string>public.database</string>
 				<string>public.data</string>
 			</array>
@@ -147,14 +150,15 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>DuckDB Database</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.tablepro.duckdb</string>
+			<key>UTTypeDescription</key>
+			<string>DuckDB Database</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.database</string>
+				<string>public.data</string>
+			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -164,9 +168,6 @@
 				</array>
 			</dict>
 		</dict>
-	</array>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.tablepro.connection-share</string>

@@ -51,20 +51,13 @@ protocol DatabaseDriver: AnyObject {
     /// - Returns: Query result
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult
 
-    /// Fetch total row count for a query (wraps with COUNT(*))
-    func fetchRowCount(query: String) async throws -> Int
-
-    /// Fetch rows with LIMIT/OFFSET pagination
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> QueryResult
-
-    /// Fetch first page of results with progressive loading support
-    func fetchFirstPage(query: String, limit: Int) async throws -> PagedQueryResult
-
-    /// Fetch subsequent pages of results
-    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult
-
-    func fetchFirstPageParameterized(query: String, parameters: [Any?], limit: Int) async throws -> PagedQueryResult
-    func fetchNextPageParameterized(query: String, parameters: [Any?], offset: Int, limit: Int) async throws -> PagedQueryResult
+    /// Execute user-supplied SQL with optional row cap and parameters.
+    /// - Parameters:
+    ///   - query: SQL passed through unchanged
+    ///   - rowCap: Maximum rows to return; nil means no cap
+    ///   - parameters: Optional parameter list; nil means no parameter binding
+    /// - Returns: Query result with `isTruncated` set when the cap clipped rows
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult
 
     // MARK: - Schema Operations
 
@@ -122,6 +115,14 @@ protocol DatabaseDriver: AnyObject {
 
     /// Fetch list of schemas in the current database (PostgreSQL only)
     func fetchSchemas() async throws -> [String]
+
+    /// Fetch stored procedures for the given schema (or current schema if nil).
+    /// Default implementation returns an empty list; drivers that support routines override.
+    func fetchProcedures(schema: String?) async throws -> [RoutineInfo]
+
+    /// Fetch user-defined functions for the given schema (or current schema if nil).
+    /// Default implementation returns an empty list; drivers that support routines override.
+    func fetchFunctions(schema: String?) async throws -> [RoutineInfo]
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -244,6 +245,16 @@ extension DatabaseDriver {
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
     }
 
+    func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
+
+    func createDatabase(_ request: CreateDatabaseRequest) async throws {
+        throw NSError(
+            domain: "DatabaseDriver",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Create database is not supported by this driver"]
+        )
+    }
+
     /// Default fetchAllDatabaseMetadata: falls back to per-database calls (N+1).
     /// Drivers should override with a single bulk query where possible.
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {
@@ -348,87 +359,11 @@ extension DatabaseDriver {
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
 
+    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] { [] }
+
+    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
+
     var supportsTransactions: Bool { true }
-
-    func fetchFirstPage(query: String, limit: Int) async throws -> PagedQueryResult {
-        guard limit > 0 else {
-            let result = try await execute(query: query)
-            return PagedQueryResult(
-                columns: result.columns,
-                columnTypes: result.columnTypes,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                hasMore: false,
-                nextOffset: result.rows.count
-            )
-        }
-        let result = try await fetchRows(query: query, offset: 0, limit: limit + 1)
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-        return PagedQueryResult(
-            columns: result.columns,
-            columnTypes: result.columnTypes,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: rows.count
-        )
-    }
-
-    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult {
-        let result = try await fetchRows(query: query, offset: offset, limit: limit + 1)
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-        return PagedQueryResult(
-            columns: result.columns,
-            columnTypes: result.columnTypes,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: offset + rows.count
-        )
-    }
-
-    func fetchFirstPageParameterized(query: String, parameters: [Any?], limit: Int) async throws -> PagedQueryResult {
-        guard limit > 0 else {
-            let result = try await executeParameterized(query: query, parameters: parameters)
-            return PagedQueryResult(
-                columns: result.columns,
-                columnTypes: result.columnTypes,
-                rows: result.rows,
-                executionTime: result.executionTime,
-                hasMore: false,
-                nextOffset: result.rows.count
-            )
-        }
-        let wrappedQuery = "SELECT * FROM (\(query)) _t LIMIT \(limit + 1) OFFSET 0"
-        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-        return PagedQueryResult(
-            columns: result.columns,
-            columnTypes: result.columnTypes,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: rows.count
-        )
-    }
-
-    func fetchNextPageParameterized(query: String, parameters: [Any?], offset: Int, limit: Int) async throws -> PagedQueryResult {
-        let wrappedQuery = "SELECT * FROM (\(query)) _t LIMIT \(limit + 1) OFFSET \(offset)"
-        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
-        let hasMore = result.rows.count > limit
-        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
-        return PagedQueryResult(
-            columns: result.columns,
-            columnTypes: result.columnTypes,
-            rows: rows,
-            executionTime: result.executionTime,
-            hasMore: hasMore,
-            nextOffset: offset + rows.count
-        )
-    }
 
     func cancelQuery() throws {
         // No-op by default
@@ -455,7 +390,7 @@ enum DatabaseDriverFactory {
         awaitPlugins: Bool
     ) async throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
-        if PluginManager.shared.driverPlugins[pluginId] == nil,
+        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
            !PluginManager.shared.hasFinishedInitialLoad {
             logger.info("Plugin '\(pluginId)' not loaded yet — waiting for background load")
             await PluginManager.shared.waitForInitialLoad()
@@ -468,7 +403,7 @@ enum DatabaseDriverFactory {
         passwordOverride: String? = nil
     ) throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
-        guard let plugin = PluginManager.shared.driverPlugins[pluginId] else {
+        guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             if connection.type.isDownloadablePlugin {
                 throw PluginError.pluginNotInstalled(connection.type.rawValue)
             }
@@ -482,6 +417,7 @@ enum DatabaseDriverFactory {
             username: connection.username,
             password: resolvePassword(for: connection, override: passwordOverride),
             database: connection.database,
+            ssl: connection.sslConfig,
             additionalFields: buildAdditionalFields(for: connection, plugin: plugin)
         )
         let pluginDriver = plugin.createDriver(config: config)
@@ -513,12 +449,6 @@ enum DatabaseDriverFactory {
     ) -> [String: String] {
         var fields: [String: String] = [:]
 
-        let ssl = connection.sslConfig
-        fields["sslMode"] = ssl.mode.rawValue
-        fields["sslCaCertPath"] = ssl.caCertificatePath
-        fields["sslClientCertPath"] = ssl.clientCertificatePath
-        fields["sslClientKeyPath"] = ssl.clientKeyPath
-
         if let variant = type(of: plugin).driverVariant(for: connection.type.rawValue) {
             fields["driverVariant"] = variant
         }
@@ -541,7 +471,6 @@ enum DatabaseDriverFactory {
 
         switch connection.type {
         case .mongodb:
-            fields["sslCACertPath"] = ssl.caCertificatePath
             fields["mongoReadPreference"] = connection.mongoReadPreference ?? ""
             fields["mongoWriteConcern"] = connection.mongoWriteConcern ?? ""
         case .redis:

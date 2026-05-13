@@ -1,8 +1,3 @@
-//
-//  TableListView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -14,7 +9,8 @@ struct TableListView: View {
     private var tables: [TableInfo] { coordinator.tables }
     private var session: ConnectionSession? { coordinator.session }
 
-    @State private var searchText = ""
+    @SceneStorage("tableList.searchText") private var searchText = ""
+    @FocusState private var searchFocused: Bool
     @State private var tableToTruncate: TableInfo?
     @State private var tableToDrop: TableInfo?
     @State private var errorMessage = ""
@@ -102,12 +98,19 @@ struct TableListView: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $searchText, prompt: "Search tables")
+        .searchFocused($searchFocused)
         .textInputAutocapitalization(.never)
         .refreshable {
             await coordinator.refreshTables()
         }
         .onAppear {
             coordinator.navigateToPendingTable()
+        }
+        .background {
+            Button("") { searchFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .accessibilityLabel(Text("Focus search"))
+                .hidden()
         }
         .overlay {
             if tables.isEmpty {
@@ -180,27 +183,29 @@ struct TableListView: View {
 private struct TableRow: View {
     let table: TableInfo
 
+    private var isView: Bool { table.type == .view || table.type == .materializedView }
+
     var body: some View {
-        HStack {
-            Image(systemName: table.type == .view || table.type == .materializedView ? "eye" : "tablecells")
+        RowItemLabel(title: table.name) {
+            Image(systemName: isView ? "eye" : "tablecells")
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
-
-            Text(table.name)
-                .font(.body)
-
-            Spacer()
-
+        } trailing: {
             if let rowCount = table.rowCount {
-                Text(formatRowCount(rowCount))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(.fill.tertiary)
-                    .clipShape(Capsule())
+                MetadataBadge(formatRowCount(rowCount))
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Text("Opens table data"))
+    }
+
+    private var accessibilityLabel: Text {
+        let kind = isView ? String(localized: "View") : String(localized: "Table")
+        if let rowCount = table.rowCount {
+            return Text("\(kind), \(table.name), \(rowCount) rows")
+        }
+        return Text("\(kind), \(table.name)")
     }
 
     private func formatRowCount(_ count: Int) -> String {

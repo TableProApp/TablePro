@@ -1,11 +1,6 @@
-//
-//  ConnectionCoordinator.swift
-//  TableProMobile
-//
-
-import os
 import Foundation
 import Observation
+import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -33,7 +28,8 @@ final class ConnectionCoordinator {
         }
     }
     var pendingQuery: String?
-    var navigationPath = NavigationPath()
+    var tablesPath = NavigationPath()
+    var showingEditSheet = false
 
     private(set) var queryHistory: [QueryHistoryItem] = []
     private let historyStorage = QueryHistoryStorage()
@@ -53,11 +49,13 @@ final class ConnectionCoordinator {
 
     var supportsDatabaseSwitching: Bool {
         connection.type == .mysql || connection.type == .mariadb ||
-        connection.type == .postgresql || connection.type == .redshift
+        connection.type == .postgresql || connection.type == .redshift ||
+        connection.type == .mssql
     }
 
     var supportsSchemas: Bool {
-        connection.type == .postgresql || connection.type == .redshift
+        connection.type == .postgresql || connection.type == .redshift ||
+        connection.type == .mssql
     }
 
     init(connection: DatabaseConnection, appState: AppState) {
@@ -112,6 +110,8 @@ final class ConnectionCoordinator {
     private func connectFresh() async {
         await appState.sshProvider.setPendingConnectionId(connection.id)
 
+        IOSAnalyticsProvider.shared.markConnectionAttempted()
+
         do {
             let newSession = try await appState.connectionManager.connect(connection)
             self.session = newSession
@@ -119,6 +119,7 @@ final class ConnectionCoordinator {
             await loadDatabases()
             await loadSchemas()
             phase = .connected
+            IOSAnalyticsProvider.shared.markConnectionSucceeded()
             navigateToPendingTable()
         } catch {
             let context = ErrorContext(
@@ -133,32 +134,35 @@ final class ConnectionCoordinator {
 
     func reconnectIfNeeded() async {
         guard let session, !isSwitching, !isReconnecting else { return }
+        do {
+            _ = try await session.driver.ping()
+            return
+        } catch {
+            // Ping failed; fall through to actual reconnect path below.
+        }
+
         isReconnecting = true
         defer { isReconnecting = false }
         do {
-            _ = try await session.driver.ping()
+            await appState.sshProvider.setPendingConnectionId(connection.id)
+            let newSession = try await appState.connectionManager.connect(connection)
+            self.session = newSession
         } catch {
-            do {
-                await appState.sshProvider.setPendingConnectionId(connection.id)
-                let newSession = try await appState.connectionManager.connect(connection)
-                self.session = newSession
-            } catch {
-                let context = ErrorContext(
-                    operation: "reconnect",
-                    databaseType: connection.type,
-                    host: connection.host,
-                    sshEnabled: connection.sshEnabled
-                )
-                phase = .error(ErrorClassifier.classify(error, context: context))
-                self.session = nil
-            }
+            let context = ErrorContext(
+                operation: "reconnect",
+                databaseType: connection.type,
+                host: connection.host,
+                sshEnabled: connection.sshEnabled
+            )
+            phase = .error(ErrorClassifier.classify(error, context: context))
+            self.session = nil
         }
     }
 
     // MARK: - Database / Schema Switching
 
     func switchDatabase(to name: String) async {
-        guard let session, name != activeDatabase, !isSwitching else { return }
+        guard session != nil, name != activeDatabase, !isSwitching else { return }
         isSwitching = true
         defer { isSwitching = false }
 
@@ -277,7 +281,7 @@ final class ConnectionCoordinator {
         appState.pendingTableName = nil
         selectedTab = .tables
         Task { @MainActor in
-            navigationPath.append(table)
+            tablesPath.append(table)
         }
     }
 

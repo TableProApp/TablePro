@@ -8,12 +8,23 @@
 import Foundation
 import os
 
+/// Why an SSH authentication attempt failed. Drives the user-facing error string so the
+/// alert points at the actual cause (wrong OTP, missing key, agent rejection) instead of
+/// the catch-all "credentials or private key" message.
+enum AuthFailureReason: Sendable, Equatable {
+    case password
+    case verificationCode
+    case privateKey
+    case agentRejected
+    case generic
+}
+
 /// Error types for SSH tunnel operations
-enum SSHTunnelError: Error, LocalizedError {
+enum SSHTunnelError: Error, LocalizedError, Equatable {
     case tunnelCreationFailed(String)
     case tunnelAlreadyExists(UUID)
     case noAvailablePort
-    case authenticationFailed
+    case authenticationFailed(reason: AuthFailureReason)
     case connectionTimeout
     case hostKeyVerificationFailed
     case channelOpenFailed
@@ -26,8 +37,19 @@ enum SSHTunnelError: Error, LocalizedError {
             return String(format: String(localized: "SSH tunnel already exists for connection: %@"), id.uuidString)
         case .noAvailablePort:
             return String(localized: "No available local port for SSH tunnel")
-        case .authenticationFailed:
-            return String(localized: "SSH authentication failed. Check your credentials or private key.")
+        case .authenticationFailed(let reason):
+            switch reason {
+            case .password:
+                return String(localized: "SSH password rejected. Check the password and try again.")
+            case .verificationCode:
+                return String(localized: "Verification code rejected. Get a new code from your authenticator app and try again.")
+            case .privateKey:
+                return String(localized: "SSH private key rejected. Check the key file or passphrase.")
+            case .agentRejected:
+                return String(localized: "SSH agent did not authenticate. Run ssh-add -l to check loaded keys.")
+            case .generic:
+                return String(localized: "SSH authentication failed. Check your credentials or private key.")
+            }
         case .connectionTimeout:
             return String(localized: "SSH connection timed out")
         case .hostKeyVerificationFailed:
@@ -60,7 +82,7 @@ actor SSHTunnelManager {
     func createTunnel(
         connectionId: UUID,
         sshHost: String,
-        sshPort: Int = 22,
+        sshPort: Int? = nil,
         sshUsername: String,
         authMethod: SSHAuthMethod,
         privateKeyPath: String? = nil,

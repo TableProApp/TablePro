@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
@@ -311,7 +312,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -333,7 +334,6 @@ struct ConnectionSharingTests {
             ssh.username = "deploy"
             ssh.authMethod = .privateKey
             ssh.privateKeyPath = "~/.ssh/prod_key"
-            ssh.useSSHConfig = true
             ssh.agentSocketPath = "/tmp/agent.sock"
             let original = DatabaseConnection(
                 name: "SSH Prod", host: "db.internal", port: 5432,
@@ -342,7 +342,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -353,7 +353,6 @@ struct ConnectionSharingTests {
             #expect(parsed.sshConfig?.username == "deploy")
             #expect(parsed.sshConfig?.authMethod == "privateKey")
             #expect(parsed.sshConfig?.privateKeyPath == "~/.ssh/prod_key")
-            #expect(parsed.sshConfig?.useSSHConfig == true)
             #expect(parsed.sshConfig?.agentSocketPath == "/tmp/agent.sock")
         }
 
@@ -373,7 +372,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -398,7 +397,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -419,7 +418,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -435,7 +434,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -453,7 +452,7 @@ struct ConnectionSharingTests {
             )
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }
@@ -510,7 +509,7 @@ struct ConnectionSharingTests {
 
             let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
-            guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
+            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
                 return
             }

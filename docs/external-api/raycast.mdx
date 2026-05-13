@@ -1,0 +1,97 @@
+---
+title: Raycast Extension
+description: Install the TablePro Raycast extension, pair it, and use the command and AI tool catalog
+---
+
+# Raycast Extension
+
+The TablePro Raycast extension is the reference consumer of the External API. It uses the URL scheme to open the GUI and the MCP server to read schema, run queries, and search history. AI tools let Raycast Pro and Quick AI call TablePro tools directly with `@tablepro` mentions.
+
+## Install
+
+1. Open Raycast.
+2. Search for **Store**, then search **TablePro**.
+3. Click **Install**.
+
+The extension is open-source under MIT, hosted at [github.com/raycast/extensions/extensions/tablepro](https://github.com/raycast/extensions). Source contributions are welcome via the Raycast extensions monorepo.
+
+## Pair
+
+After install, run **Pair with TablePro**. A form appears:
+
+- **Client name** defaults to `Raycast on <hostname>`.
+- **Scope**: `readOnly`, `readWrite`, or `fullAccess`. Default `readOnly`.
+- **Allowed connections**: defaults to all. Pick a subset to restrict.
+- **Expiry**: defaults to never. Pick a date for rotating tokens.
+
+On submit, TablePro opens with an approval sheet. Adjust and approve. The extension stores the returned token in the macOS Keychain via Raycast's password preference.
+
+The flow is detailed in [Pairing](/external-api/pairing).
+
+## Commands
+
+| Command | Mode | Description |
+|---------|------|-------------|
+| Search Connections | view | Fuzzy search over saved connections, open the selected one. |
+| Open Connection | no-view | Argument-driven open, e.g. `Open Connection prod`. |
+| TablePro Menu Bar | menu-bar | Menu-bar item showing connection status, refresh interval 10 minutes. |
+| Search Schema | view | Browse databases, schemas, and tables for a connection. |
+| Search Tables | view | Quick table picker, opens the table in TablePro. |
+| Recent Tabs | view | Cross-window tab list, focus or open. |
+| Run Query | view | Type SQL, run via MCP, see row count and first rows in a Detail view. |
+| Search Query History | view | Full-text search over query history. |
+| Pair with TablePro | view | Pairing form. Re-run any time to issue a new token. |
+
+Every command falls back to a clear empty state when TablePro is not running or paired. See [Troubleshooting](#troubleshooting).
+
+## AI tools
+
+If you have Raycast Pro, the extension exposes its tools to Quick AI and Raycast Chat. Mention `@tablepro` in a chat:
+
+> @tablepro show me users that signed up this week from production
+
+Raycast picks the right tools, calls the MCP server, and returns the result. The catalog:
+
+| Tool | Description |
+|------|-------------|
+| List Connections | Calls `list_connections`. |
+| List Databases | Calls `list_databases`. |
+| List Schemas | Calls `list_schemas`. |
+| List Tables | Calls `list_tables`. |
+| Describe Table | Calls `describe_table`. |
+| Get Table DDL | Calls `get_table_ddl`. |
+| Run Query | Calls `execute_query`. Mutating SQL prompts a `Tool.Confirmation`. |
+| Explain Query | Runs `EXPLAIN` (or the dialect equivalent). |
+| Open Connection in TablePro | Calls `open_connection_window`. |
+| Search Query History | Calls `search_query_history`. |
+
+The extension's AI instructions tell the model to always `describe-table` before generating queries against an unknown schema, and to use `Tool.Confirmation` for any INSERT, UPDATE, DELETE, DROP, ALTER, or TRUNCATE.
+
+## Preferences
+
+| Preference | Type | Description |
+|------------|------|-------------|
+| TablePro App | App picker | Path to TablePro. Default `/Applications/TablePro.app`. |
+| API Token | Password | Bearer token. Filled by the pairing command, editable manually. |
+
+The token is stored in the Keychain via Raycast's password preference type.
+
+## Troubleshooting
+
+**TablePro not installed.** The extension shows an "Install TablePro" link to [tablepro.app](https://tablepro.app).
+
+**TablePro running but MCP not started.** The extension fires `tablepro://integrations/start-mcp` and retries. If it still fails, the message asks you to update TablePro to the latest version.
+
+**No token paired.** A "Pair with TablePro" call-to-action runs the `pair` command.
+
+**Token revoked (`401`).** The extension clears the stored token and shows the pair CTA.
+
+**Connection rejected (`403`).** The connection's `externalAccess` is `blocked` or the token's allowlist excludes it. Open **Settings > Integrations** in TablePro to inspect.
+
+**Read-only error (`403 Connection is read-only for external clients`).** The connection's `externalAccess` is `readOnly` and the SQL is a write. Either change the connection's external access in TablePro, or run the query in TablePro's editor.
+
+## Privacy
+
+The extension reads connection metadata from `~/Library/Application Support/TablePro/connections.json` to build the connection picker without an MCP roundtrip. Passwords are not in that file (they live in the Keychain). The extension never reads or transmits passwords.
+
+Query results returned by `Run Query` stay in Raycast's process. Raycast does not send them to a server. AI tool calls go through Raycast's AI provider per Raycast's [privacy policy](https://www.raycast.com/privacy).

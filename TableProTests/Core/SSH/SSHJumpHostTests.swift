@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -53,10 +54,10 @@ struct SSHJumpHostTests {
         #expect(jumpHost.isValid == false)
     }
 
-    @Test("isValid fails with empty username")
-    func testIsInvalidWithEmptyUsername() {
+    @Test("isValid allows empty username (filled by runtime resolver)")
+    func testValidWithEmptyUsername() {
         let jumpHost = SSHJumpHost(host: "bastion.example.com", username: "")
-        #expect(jumpHost.isValid == false)
+        #expect(jumpHost.isValid == true)
     }
 
     @Test("Codable round-trip preserves all fields")
@@ -80,7 +81,7 @@ struct SSHJumpHostTests {
     func testDefaultValues() {
         let jumpHost = SSHJumpHost()
         #expect(jumpHost.host == "")
-        #expect(jumpHost.port == 22)
+        #expect(jumpHost.port == nil)
         #expect(jumpHost.username == "")
         #expect(jumpHost.authMethod == .sshAgent)
         #expect(jumpHost.privateKeyPath == "")

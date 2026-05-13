@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct BsonDocumentFlattener {
     // MARK: - Public API
@@ -41,11 +42,14 @@ struct BsonDocumentFlattener {
 
     /// Flatten documents into a grid. Missing fields become nil cells.
     /// Nested objects/arrays are serialized as compact JSON strings.
-    static func flatten(documents: [[String: Any]], columns: [String]) -> [[String?]] {
+    static func flatten(documents: [[String: Any]], columns: [String]) -> [[PluginCellValue]] {
         documents.map { doc in
             columns.map { column in
-                guard let value = doc[column] else { return nil }
-                return stringValue(for: value)
+                guard let value = doc[column] else { return PluginCellValue.null }
+                if let data = value as? Data {
+                    return .bytes(data)
+                }
+                return PluginCellValue.fromOptional(stringValue(for: value))
             }
         }
     }

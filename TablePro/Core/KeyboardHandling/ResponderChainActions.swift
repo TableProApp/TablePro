@@ -20,10 +20,10 @@
 //     - Clean method calls, no global event bus
 //     - Commands are automatically nil (disabled) when no connection is active
 //
-//  3. **NotificationCenter** (Multi-listener broadcasts only):
-//     - `.refreshData` (Sidebar + Coordinator + StructureView)
-//     - Non-menu notifications from AppKit views (DataGrid, SidebarView context menus)
-//     - Legitimate broadcasts where multiple views respond
+//  3. **AppCommands** (Multi-listener broadcasts only):
+//     - `refreshData` (Sidebar + Coordinator + StructureView)
+//     - Non-menu commands from AppKit views (DataGrid, SidebarView context menus)
+//     - Typed Combine publishers for broadcasts where multiple views respond
 //
 //  ## Example Flow
 //

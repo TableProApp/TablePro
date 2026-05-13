@@ -16,29 +16,46 @@ final class LicenseStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseStorage")
 
     private let defaults = UserDefaults.standard
+    private let keychain: KeychainHelper
 
     private enum Keys {
         static let keychainLicenseKey = "com.TablePro.license.key"
         static let licensePayload = "com.TablePro.license.payload"
     }
 
-    private init() {}
+    init(keychain: KeychainHelper = .shared) {
+        self.keychain = keychain
+    }
 
     // MARK: - License Key (Keychain)
 
-    /// Save license key to Keychain
     func saveLicenseKey(_ key: String) {
-        KeychainHelper.shared.saveString(key, forKey: Keys.keychainLicenseKey)
+        keychain.writeString(key, forKey: Keys.keychainLicenseKey)
     }
 
-    /// Load license key from Keychain
     func loadLicenseKey() -> String? {
-        KeychainHelper.shared.loadString(forKey: Keys.keychainLicenseKey)
+        switch keychain.readStringResult(forKey: Keys.keychainLicenseKey) {
+        case .found(let value):
+            return value
+        case .notFound:
+            return nil
+        case .locked:
+            Self.logger.warning("License key unavailable: Keychain locked")
+            return nil
+        case .userCancelled:
+            Self.logger.notice("License key prompt cancelled")
+            return nil
+        case .authFailed:
+            Self.logger.warning("License key auth failed")
+            return nil
+        case .error(let status):
+            Self.logger.error("License key read error \(status)")
+            return nil
+        }
     }
 
-    /// Delete license key from Keychain
     func deleteLicenseKey() {
-        KeychainHelper.shared.delete(key: Keys.keychainLicenseKey)
+        keychain.delete(forKey: Keys.keychainLicenseKey)
     }
 
     // MARK: - Signed Payload (UserDefaults)

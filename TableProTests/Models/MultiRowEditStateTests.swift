@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
@@ -672,7 +673,7 @@ struct MultiRowEditStateTests {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             sut.updateField(at: 1, value: "Bob")
@@ -688,7 +689,7 @@ struct MultiRowEditStateTests {
 
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             // Revert back to original "Alice" -- should fire because hadPendingEdit was true
@@ -703,7 +704,7 @@ struct MultiRowEditStateTests {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             // Setting to same original value with no prior edit -- should NOT fire
@@ -718,7 +719,7 @@ struct MultiRowEditStateTests {
 
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             // Revert to original "1" -- hadPendingEdit was true (isPendingNull)
@@ -735,7 +736,7 @@ struct MultiRowEditStateTests {
 
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             // Revert to original "1" -- hadPendingEdit was true (isPendingDefault)
@@ -750,7 +751,7 @@ struct MultiRowEditStateTests {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             sut.setFieldToNull(at: 0)
@@ -764,7 +765,7 @@ struct MultiRowEditStateTests {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             sut.setFieldToDefault(at: 0)
@@ -778,7 +779,7 @@ struct MultiRowEditStateTests {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             sut.setFieldToFunction(at: 0, function: "NOW()")
@@ -792,7 +793,7 @@ struct MultiRowEditStateTests {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             sut.setFieldToEmpty(at: 0)
@@ -809,7 +810,7 @@ struct MultiRowEditStateTests {
 
             var callbackCalls: [(index: Int, value: String?)] = []
             sut.onFieldChanged = { index, value in
-                callbackCalls.append((index, value))
+                callbackCalls.append((index, value.asText))
             }
 
             sut.clearEdits()

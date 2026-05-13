@@ -10,6 +10,7 @@
 
 import AppKit
 import Foundation
+import TableProPluginKit
 import SwiftUI
 import Testing
 @testable import TablePro
@@ -46,7 +47,7 @@ struct CellPasteRoutingTests {
         )
         let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
         let rows = (0..<rowCount).map { i in (0..<columns.count).map { c in "r\(i)c\(c)" } }
-        let tableRows = TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
+        let tableRows = TableRows.from(queryRows: rows.map { row in row.map { PluginCellValue.text($0) } }, columns: columns, columnTypes: columnTypes)
         coordinator.tableRowsProvider = { tableRows }
         coordinator.updateCache()
         return coordinator

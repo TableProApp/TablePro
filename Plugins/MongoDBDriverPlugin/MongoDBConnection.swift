@@ -38,7 +38,9 @@ extension MongoDBError: PluginDriverError {
 
 /// Thread-safe MongoDB connection using libmongoc.
 /// All blocking C calls are dispatched to a dedicated serial queue.
-/// Uses `queue.async` + continuations (never `queue.sync`) to prevent deadlocks.
+/// Async entry points use `queue.async` + continuations. Synchronous entry points
+/// detect on-queue re-entry via `queueKey` and call sync helpers directly to
+/// avoid `dispatch_sync` deadlocks when an on-queue block re-enters a public API.
 final class MongoDBConnection: @unchecked Sendable {
     // MARK: - Properties
 
@@ -50,15 +52,14 @@ final class MongoDBConnection: @unchecked Sendable {
     private var client: OpaquePointer?
     #endif
 
+    private static let queueKey = DispatchSpecificKey<ObjectIdentifier>()
     private let queue = DispatchQueue(label: "com.TablePro.mongodb", qos: .userInitiated)
     private let host: String
     private let port: Int
     private let user: String
     private let password: String?
     private let database: String
-    private let sslMode: String
-    private let sslCACertPath: String
-    private let sslClientCertPath: String
+    private let ssl: SSLConfiguration
     private let authSource: String?
     private let readPreference: String?
     private let writeConcern: String?
@@ -113,9 +114,7 @@ final class MongoDBConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
-        sslMode: String = "Disabled",
-        sslCACertPath: String = "",
-        sslClientCertPath: String = "",
+        ssl: SSLConfiguration = SSLConfiguration(),
         authSource: String? = nil,
         readPreference: String? = nil,
         writeConcern: String? = nil,
@@ -129,9 +128,7 @@ final class MongoDBConnection: @unchecked Sendable {
         self.user = user
         self.password = password
         self.database = database
-        self.sslMode = sslMode
-        self.sslCACertPath = sslCACertPath
-        self.sslClientCertPath = sslClientCertPath
+        self.ssl = ssl
         self.authSource = authSource
         self.readPreference = readPreference
         self.writeConcern = writeConcern
@@ -139,6 +136,11 @@ final class MongoDBConnection: @unchecked Sendable {
         self.authMechanism = authMechanism
         self.replicaSet = replicaSet
         self.extraUriParams = extraUriParams
+        queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
+    }
+
+    private var isOnQueue: Bool {
+        DispatchQueue.getSpecific(key: Self.queueKey) == ObjectIdentifier(self)
     }
 
     deinit {
@@ -178,7 +180,8 @@ final class MongoDBConnection: @unchecked Sendable {
         }
 
         if useSrv {
-            let encodedHost = host.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? host
+            let srvHost = Self.stripPort(fromSrvHost: host)
+            let encodedHost = srvHost.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? srvHost
             uri += encodedHost
         } else if host.contains(",") {
             let segments = host.split(separator: ",").compactMap { segment -> String? in
@@ -219,22 +222,26 @@ final class MongoDBConnection: @unchecked Sendable {
             "authSource=\(encodedAuthSource)"
         ]
 
-        let sslEnabled = ["Preferred", "Required", "Verify CA", "Verify Identity"].contains(sslMode)
-        if sslEnabled {
+        if ssl.isEnabled {
             params.append("tls=true")
-            if sslMode == "Preferred" {
+            switch ssl.mode {
+            case .preferred, .required:
                 params.append("tlsAllowInvalidCertificates=true")
+            case .verifyCa:
+                params.append("tlsAllowInvalidHostnames=true")
+            case .disabled, .verifyIdentity:
+                break
             }
-            if !sslCACertPath.isEmpty {
-                let encodedCaPath = sslCACertPath
+            if ssl.verifiesCertificate, !ssl.caCertificatePath.isEmpty {
+                let encodedCaPath = ssl.caCertificatePath
                     .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-                    ?? sslCACertPath
+                    ?? ssl.caCertificatePath
                 params.append("tlsCAFile=\(encodedCaPath)")
             }
-            if !sslClientCertPath.isEmpty {
-                let encodedCertPath = sslClientCertPath
+            if !ssl.clientCertificatePath.isEmpty {
+                let encodedCertPath = ssl.clientCertificatePath
                     .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-                    ?? sslClientCertPath
+                    ?? ssl.clientCertificatePath
                 params.append("tlsCertificateKeyFile=\(encodedCertPath)")
             }
         }
@@ -255,7 +262,8 @@ final class MongoDBConnection: @unchecked Sendable {
         var explicitKeys: Set<String> = [
             "connectTimeoutMS", "serverSelectionTimeoutMS",
             "authSource", "authMechanism", "replicaSet",
-            "tls", "tlsAllowInvalidCertificates", "tlsCAFile", "tlsCertificateKeyFile"
+            "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames",
+            "tlsCAFile", "tlsCertificateKeyFile"
         ]
         if readPreference != nil, !readPreference!.isEmpty { explicitKeys.insert("readPreference") }
         if writeConcern != nil, !writeConcern!.isEmpty { explicitKeys.insert("w") }
@@ -266,6 +274,19 @@ final class MongoDBConnection: @unchecked Sendable {
 
         uri += "?" + params.joined(separator: "&")
         return uri
+    }
+
+    /// Strips a trailing `:port` from a hostname intended for an SRV URI.
+    ///
+    /// MongoDB's SRV scheme prohibits ports — the port is resolved from the DNS
+    /// SRV record. IPv6 literals are also invalid in SRV (FQDN only), so a
+    /// single trailing `:digits` segment is unambiguously a port.
+    static func stripPort(fromSrvHost host: String) -> String {
+        let trimmed = host.trimmingCharacters(in: .whitespaces)
+        guard let colonIndex = trimmed.lastIndex(of: ":") else { return trimmed }
+        let portPart = trimmed[trimmed.index(after: colonIndex)...]
+        guard !portPart.isEmpty, portPart.allSatisfy(\.isNumber) else { return trimmed }
+        return String(trimmed[..<colonIndex])
     }
 
     // MARK: - Connection Management
@@ -354,7 +375,7 @@ final class MongoDBConnection: @unchecked Sendable {
         if cancelled { _isCancelled = false }
         stateLock.unlock()
         if cancelled {
-            throw MongoDBError(code: 0, message: String(localized: "Query cancelled"))
+            throw CancellationError()
         }
     }
 
@@ -403,7 +424,7 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.unlock()
 
         #if canImport(CLibMongoc)
-        let version = queue.sync { fetchServerVersionSync() }
+        let version = isOnQueue ? fetchServerVersionSync() : queue.sync { fetchServerVersionSync() }
         stateLock.lock()
         _cachedServerVersion = version
         stateLock.unlock()
@@ -1030,7 +1051,16 @@ private extension MongoDBConnection {
     func listDatabasesSync(client: OpaquePointer) throws -> [String] {
         try checkCancelled()
 
-        guard let command = jsonToBson("{\"listDatabases\": 1, \"nameOnly\": true}") else {
+        let caps = MongoDBCapabilities.parse(serverVersion())
+        var fields = ["\"listDatabases\": 1"]
+        if caps.supportsListDatabasesNameOnly {
+            fields.append("\"nameOnly\": true")
+        }
+        if caps.supportsAuthorizedDatabases {
+            fields.append("\"authorizedDatabases\": true")
+        }
+        let commandJSON = "{\(fields.joined(separator: ", "))}"
+        guard let command = jsonToBson(commandJSON) else {
             throw MongoDBError(code: 0, message: "Failed to create listDatabases command")
         }
         defer { bson_destroy(command) }
@@ -1154,9 +1184,12 @@ private extension MongoDBConnection {
                 }
             }
 
-            let row: [String?] = columns.map { column in
-                guard let value = dict[column] else { return nil }
-                return BsonDocumentFlattener.stringValue(for: value)
+            let row: [PluginCellValue] = columns.map { column in
+                guard let value = dict[column] else { return .null }
+                if let data = value as? Data {
+                    return .bytes(data)
+                }
+                return PluginCellValue.fromOptional(BsonDocumentFlattener.stringValue(for: value))
             }
             continuation.yield(.rows([row]))
         }

@@ -15,14 +15,38 @@ internal enum KBDINTPromptType {
     case unknown
 }
 
-/// Context passed through the libssh2 session abstract pointer to the C callback
+/// Context passed through the libssh2 session abstract pointer to the C callback.
+///
+/// TOTP codes are fetched lazily inside the callback (not upfront) so that:
+///  - `AutoTOTPProvider` generates a code that's still valid when PAM validates it. The
+///    upfront approach raced the 30-second window during the SSH handshake.
+///  - When the server retries the kbd-int session after a wrong code (PAM defaults to
+///    3 prompts), each retry calls `provideCode(attempt:)` again, matching how OpenSSH
+///    re-prompts the user.
 internal final class KeyboardInteractiveContext {
-    var password: String?
-    var totpCode: String?
+    let password: String?
+    let totpProvider: (any TOTPProvider)?
+    var totpAttemptCount: Int = 0
+    var lastTotpError: Error?
 
-    init(password: String?, totpCode: String?) {
+    init(password: String?, totpProvider: (any TOTPProvider)?) {
         self.password = password
-        self.totpCode = totpCode
+        self.totpProvider = totpProvider
+    }
+
+    /// Fetches the next TOTP code. Errors from the provider (user cancelled, missing
+    /// secret) are stored in `lastTotpError` and surface at the end of the kbd-int session.
+    /// The C callback can't throw across the libssh2 boundary, so we record the failure
+    /// and report it after `libssh2_userauth_keyboard_interactive_ex` returns.
+    func nextTotpCode() -> String {
+        guard let totpProvider else { return "" }
+        defer { totpAttemptCount += 1 }
+        do {
+            return try totpProvider.provideCode(attempt: totpAttemptCount)
+        } catch {
+            lastTotpError = error
+            return ""
+        }
     }
 }
 
@@ -67,7 +91,7 @@ private let kbdintCallback: @convention(c) (
         case .password:
             responseText = context.password ?? ""
         case .totp:
-            responseText = context.totpCode ?? ""
+            responseText = context.nextTotpCode()
         case .unknown:
             // Fall back to password for unrecognized prompts
             responseText = context.password ?? ""
@@ -89,16 +113,9 @@ internal struct KeyboardInteractiveAuthenticator: SSHAuthenticator {
     let totpProvider: (any TOTPProvider)?
 
     func authenticate(session: OpaquePointer, username: String) throws {
-        // Generate TOTP code if a provider is available
-        let totpCode: String?
-        if let totpProvider {
-            totpCode = try totpProvider.provideCode()
-        } else {
-            totpCode = nil
-        }
-
-        // Create context and store in session abstract pointer
-        let context = KeyboardInteractiveContext(password: password, totpCode: totpCode)
+        // Hand the provider to the callback so it can fetch a fresh code on every challenge
+        // (see KeyboardInteractiveContext doc comment for why this isn't done upfront).
+        let context = KeyboardInteractiveContext(password: password, totpProvider: totpProvider)
         let contextPtr = Unmanaged.passRetained(context).toOpaque()
 
         defer {
@@ -124,13 +141,22 @@ internal struct KeyboardInteractiveAuthenticator: SSHAuthenticator {
             kbdintCallback
         )
 
+        // Surface a totpProvider error (e.g. user cancelled the NSAlert) verbatim. It's
+        // already an SSHTunnelError with the right reason.
+        if let providerError = context.lastTotpError {
+            throw providerError
+        }
+
         guard rc == 0 else {
             var msgPtr: UnsafeMutablePointer<CChar>?
             var msgLen: Int32 = 0
             libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
             let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
             Self.logger.error("Keyboard-interactive authentication failed: \(detail)")
-            throw SSHTunnelError.authenticationFailed
+            // If a TOTP code was actually delivered to the server, the rejection is most
+            // likely about that code. Point the user at the authenticator, not the password.
+            let reason: AuthFailureReason = context.totpAttemptCount > 0 ? .verificationCode : .password
+            throw SSHTunnelError.authenticationFailed(reason: reason)
         }
 
         Self.logger.info("Keyboard-interactive authentication succeeded")

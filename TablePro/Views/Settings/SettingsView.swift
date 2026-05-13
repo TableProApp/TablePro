@@ -50,7 +50,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.terminal.rawValue)
 
             MCPSettingsView(settings: $settingsManager.mcp)
-                .tabItem { Label("MCP", systemImage: "network") }
+                .tabItem { Label("Integrations", systemImage: "network") }
                 .tag(SettingsTab.mcp.rawValue)
 
             PluginsSettingsView()
@@ -67,5 +67,5 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
-        .environment(UpdaterBridge())
+        .environment(UpdaterBridge.shared)
 }

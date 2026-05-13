@@ -265,6 +265,27 @@ public class GutterView: NSView {
         context.restoreGState()
     }
 
+    /// IDs of lines that should render with the selected line number color.
+    /// Empty (caret) selections route through `textLineForOffset` so the caret at the very end of
+    /// the document still highlights the last line — the IndexSet path used for ranged selections
+    /// is half-open and would otherwise drop that case.
+    internal func highlightedLineIDs() -> Set<UUID> {
+        guard let textView = textView, let selectionManager = textView.selectionManager else { return [] }
+        var ids: Set<UUID> = []
+        for selection in selectionManager.textSelections {
+            if selection.range.isEmpty {
+                if let line = textView.layoutManager.textLineForOffset(selection.range.location) {
+                    ids.insert(line.data.id)
+                }
+            } else {
+                for linePosition in textView.layoutManager.lineStorage.linesInRange(selection.range) {
+                    ids.insert(linePosition.data.id)
+                }
+            }
+        }
+        return ids
+    }
+
     /// Draw line numbers in the gutter, limited to a drawing rect.
     /// - Parameters:
     ///   - context: The drawing context to draw in.
@@ -273,21 +294,14 @@ public class GutterView: NSView {
         guard let textView = textView else { return }
         var attributes: [NSAttributedString.Key: Any] = [.font: font]
 
-        var selectionRangeMap = IndexSet()
-        textView.selectionManager?.textSelections.forEach {
-            if $0.range.isEmpty {
-                selectionRangeMap.insert($0.range.location)
-            } else {
-                selectionRangeMap.insert(range: $0.range)
-            }
-        }
+        let highlightedIDs = highlightedLineIDs()
 
         context.saveGState()
         context.clip(to: dirtyRect)
 
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         for linePosition in textView.layoutManager.linesStartingAt(dirtyRect.minY, until: dirtyRect.maxY) {
-            if selectionRangeMap.intersects(integersIn: linePosition.range) {
+            if highlightedIDs.contains(linePosition.data.id) {
                 attributes[.foregroundColor] = selectedLineTextColor ?? textColor
             } else {
                 attributes[.foregroundColor] = textColor

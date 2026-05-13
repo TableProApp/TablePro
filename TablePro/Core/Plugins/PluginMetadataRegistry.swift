@@ -130,10 +130,20 @@ struct PluginMetadataSnapshot: Sendable {
 
     struct ConnectionConfig: Sendable {
         let additionalConnectionFields: [ConnectionField]
+        let category: DatabaseCategory
+        let tagline: String
 
-        static let defaults = ConnectionConfig(
-            additionalConnectionFields: []
-        )
+        init(
+            additionalConnectionFields: [ConnectionField] = [],
+            category: DatabaseCategory = .other,
+            tagline: String = ""
+        ) {
+            self.additionalConnectionFields = additionalConnectionFields
+            self.category = category
+            self.tagline = tagline
+        }
+
+        static let defaults = ConnectionConfig()
     }
 
     func withIconName(_ newIconName: String) -> PluginMetadataSnapshot {
@@ -152,6 +162,40 @@ struct PluginMetadataSnapshot: Sendable {
             capabilities: capabilities, schema: schema, editor: editor, connection: connection
         )
     }
+
+    func withBranding(from source: PluginMetadataSnapshot) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: source.displayName, iconName: source.iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: source.brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
+            capabilities: capabilities, schema: schema, editor: editor, connection: source.connection
+        )
+    }
+
+    func withIsDownloadable(_ newIsDownloadable: Bool) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: newIsDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
+            capabilities: capabilities, schema: schema, editor: editor, connection: connection
+        )
+    }
 }
 
 final class PluginMetadataRegistry: @unchecked Sendable {
@@ -159,6 +203,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
 
     private let lock = NSLock()
     private var snapshots: [String: PluginMetadataSnapshot] = [:]
+    private var defaultSnapshots: [String: PluginMetadataSnapshot] = [:]
     private var schemeIndex: [String: String] = [:]
     private var reverseTypeIndex: [String: String] = [:]
 
@@ -342,7 +387,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
 
         let pgpassField = ConnectionField(
             id: "usePgpass",
-            label: String(localized: "Use ~/.pgpass"),
+            label: String(localized: "Use Password File"),
             defaultValue: "false",
             fieldType: .toggle,
             section: .authentication,
@@ -391,7 +436,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     statementCompletions: [],
                     columnTypesByCategory: mysqlColumnTypes
                 ),
-                connection: .defaults
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    category: .relational,
+                    tagline: String(localized: "Most popular open-source SQL database")
+                )
             )),
             ("MariaDB", PluginMetadataSnapshot(
                 displayName: "MariaDB", iconName: "mariadb-icon", defaultPort: 3_306,
@@ -434,7 +482,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     statementCompletions: [],
                     columnTypesByCategory: mysqlColumnTypes
                 ),
-                connection: .defaults
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    category: .relational,
+                    tagline: String(localized: "Open-source fork of MySQL")
+                )
             )),
             ("PostgreSQL", PluginMetadataSnapshot(
                 displayName: "PostgreSQL", iconName: "postgresql-icon", defaultPort: 5_432,
@@ -479,7 +530,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField]
+                    additionalConnectionFields: [pgpassField],
+                    category: .relational,
+                    tagline: String(localized: "Advanced object-relational SQL")
                 )
             )),
             ("Redshift", PluginMetadataSnapshot(
@@ -524,7 +577,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField]
+                    additionalConnectionFields: [pgpassField],
+                    category: .analytical,
+                    tagline: String(localized: "Amazon's columnar warehouse on Postgres")
                 )
             )),
             ("SQLite", PluginMetadataSnapshot(
@@ -570,13 +625,17 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     statementCompletions: [],
                     columnTypesByCategory: sqliteColumnTypes
                 ),
-                connection: .defaults
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    category: .relational,
+                    tagline: String(localized: "Embedded zero-config SQL database")
+                )
             ))
         ]
         // swiftlint:enable function_body_length
         let allDefaults = defaults + registryPluginDefaults()
         for entry in allDefaults {
             snapshots[entry.typeId] = entry.snapshot
+            defaultSnapshots[entry.typeId] = entry.snapshot
             for scheme in entry.snapshot.urlSchemes {
                 schemeIndex[scheme.lowercased()] = entry.typeId
             }
@@ -593,8 +652,11 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         var resolved = snapshot
-        if preserveIcon, let existingIcon = snapshots[typeId]?.iconName {
-            resolved = snapshot.withIconName(existingIcon)
+        if preserveIcon, let existing = snapshots[typeId] {
+            resolved = resolved.withBranding(from: existing)
+        }
+        if let registryDefault = defaultSnapshots[typeId] {
+            resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
         }
         snapshots[typeId] = resolved
         for scheme in resolved.urlSchemes {
@@ -605,8 +667,16 @@ final class PluginMetadataRegistry: @unchecked Sendable {
     func unregister(typeId: String) {
         lock.lock()
         defer { lock.unlock() }
-        if let snapshot = snapshots.removeValue(forKey: typeId) {
-            for scheme in snapshot.urlSchemes {
+        let previous = snapshots.removeValue(forKey: typeId)
+        if let registryDefault = defaultSnapshots[typeId] {
+            snapshots[typeId] = registryDefault
+            for scheme in registryDefault.urlSchemes {
+                schemeIndex[scheme.lowercased()] = typeId
+            }
+            return
+        }
+        if let previous {
+            for scheme in previous.urlSchemes {
                 schemeIndex.removeValue(forKey: scheme.lowercased())
             }
         }
@@ -739,9 +809,62 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 columnTypesByCategory: driverType.columnTypesByCategory
             ),
             connection: PluginMetadataSnapshot.ConnectionConfig(
-                additionalConnectionFields: driverType.additionalConnectionFields
+                additionalConnectionFields: driverType.additionalConnectionFields,
+                category: existingSnapshot?.connection.category
+                    ?? Self.fallbackCategory(forTypeId: driverType.databaseTypeId),
+                tagline: existingSnapshot?.connection.tagline
+                    ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId)
             )
         )
+    }
+
+    // MARK: - Category / Tagline Fallback Table
+
+    /// Seed table for plugin types that don't have a built-in snapshot yet (separately distributed plugins).
+    /// Keyed by `databaseTypeId`. Stale plugins from the registry inherit these on registration.
+    static func fallbackCategory(forTypeId typeId: String) -> DatabaseCategory {
+        switch typeId {
+        case "MySQL", "MariaDB", "PostgreSQL", "SQLite", "Oracle", "MSSQL":
+            return .relational
+        case "Redshift", "ClickHouse", "DuckDB", "BigQuery":
+            return .analytical
+        case "MongoDB":
+            return .document
+        case "Redis":
+            return .keyValue
+        case "Cassandra", "ScyllaDB":
+            return .wideColumn
+        case "etcd", "Etcd":
+            return .coordination
+        case "Cloudflare D1", "libSQL", "DynamoDB":
+            return .cloud
+        default:
+            return .other
+        }
+    }
+
+    static func fallbackTagline(forTypeId typeId: String) -> String {
+        switch typeId {
+        case "MySQL":          return String(localized: "Most popular open-source SQL database")
+        case "MariaDB":        return String(localized: "Open-source fork of MySQL")
+        case "PostgreSQL":     return String(localized: "Advanced object-relational SQL")
+        case "Redshift":       return String(localized: "Amazon's columnar warehouse on Postgres")
+        case "SQLite":         return String(localized: "Embedded zero-config SQL database")
+        case "MSSQL":          return String(localized: "Microsoft's enterprise SQL database")
+        case "Oracle":         return String(localized: "Enterprise SQL with PL/SQL")
+        case "MongoDB":        return String(localized: "JSON-style document database")
+        case "Redis":          return String(localized: "In-memory data store and cache")
+        case "ClickHouse":     return String(localized: "Column-oriented OLAP for big data")
+        case "DuckDB":         return String(localized: "Embedded analytical SQL")
+        case "Cassandra":      return String(localized: "Distributed wide-column store")
+        case "ScyllaDB":       return String(localized: "C++ rewrite of Cassandra, faster")
+        case "etcd", "Etcd":   return String(localized: "Distributed key-value store for service discovery")
+        case "Cloudflare D1":  return String(localized: "Serverless SQLite at the edge")
+        case "libSQL":         return String(localized: "Distributed SQLite by Turso")
+        case "DynamoDB":       return String(localized: "AWS managed key-value/document store")
+        case "BigQuery":       return String(localized: "Google Cloud serverless data warehouse")
+        default:               return ""
+        }
     }
 
     func allFileExtensions() -> [String: String] {

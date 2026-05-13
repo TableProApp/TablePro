@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import os
 
@@ -5,11 +6,18 @@ import os
 /// Produces node center positions from a graph of tables and FK edges.
 enum ERDiagramLayout {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ERDiagramLayout")
-    static let nodeWidth: CGFloat = 220
+
+    /// Multiplier derived from the user's system text-size preference.
+    /// 1.0 at the default (~13pt body), grows with Larger Accessibility Sizes.
+    static var typeScale: CGFloat {
+        max(1.0, NSFont.preferredFont(forTextStyle: .body).pointSize / 13.0)
+    }
+
+    static var nodeWidth: CGFloat { 220 * typeScale }
     static let horizontalGap: CGFloat = 60
     static let verticalGap: CGFloat = 40
-    static let headerHeight: CGFloat = 36
-    static let columnRowHeight: CGFloat = 22
+    static var headerHeight: CGFloat { 36 * typeScale }
+    static var columnRowHeight: CGFloat { 22 * typeScale }
 
     static func compute(
         graph: ERDiagramGraph

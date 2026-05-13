@@ -112,7 +112,9 @@ final class GroupStorage {
             }
         }
         if changed {
-            storage.saveConnections(connections)
+            if !storage.saveConnections(connections) {
+                Self.logger.error("Failed to clear groupId references after group deletion")
+            }
         }
     }
 

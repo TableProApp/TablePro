@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import TableProPluginKit
 @testable import TablePro
 import XCTest
 

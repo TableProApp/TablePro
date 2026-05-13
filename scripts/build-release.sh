@@ -467,7 +467,7 @@ build_for_arch() {
         [ -f "$binary" ] || continue
         otool -l "$binary" 2>/dev/null | grep "Libs/dylibs" | awk '{print $2}' | while read -r rpath; do
             install_name_tool -delete_rpath "$rpath" "$binary" 2>/dev/null || true
-        done
+        done || true
     done
 
     # Strip Sparkle helper binaries
@@ -595,6 +595,14 @@ build_for_arch() {
     # Verify binary is executable
     if [ ! -x "$BINARY_PATH" ]; then
         echo "❌ FATAL: Binary is not executable"
+        exit 1
+    fi
+
+    # Verify embedded MCP stdio bridge made it into the bundle
+    MCP_CLI_PATH="$BUILD_DIR/$OUTPUT_NAME/Contents/MacOS/tablepro-mcp"
+    if [ ! -x "$MCP_CLI_PATH" ]; then
+        echo "❌ FATAL: tablepro-mcp helper missing from $MCP_CLI_PATH"
+        echo "Check the mcp-server target's Copy Files build phase on the TablePro target."
         exit 1
     fi
 

@@ -8,15 +8,14 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 @MainActor
 enum ValueDisplayDetector {
-    /// Detect display formats for each column based on type, name, and sample values.
-    /// Returns an array parallel to `columns` where nil means no format detected (.raw).
     static func detect(
         columns: [String],
         columnTypes: [ColumnType],
-        sampleValues: [[String?]]?
+        sampleValues: [[PluginCellValue]]?
     ) -> [ValueDisplayFormat?] {
         var results = [ValueDisplayFormat?](repeating: nil, count: columns.count)
 
@@ -109,10 +108,10 @@ enum ValueDisplayDetector {
 
     // MARK: - Helpers
 
-    private static func firstNonNilSample(at columnIndex: Int, from sampleValues: [[String?]]?) -> String? {
+    private static func firstNonNilSample(at columnIndex: Int, from sampleValues: [[PluginCellValue]]?) -> String? {
         guard let samples = sampleValues else { return nil }
         for row in samples {
-            if columnIndex < row.count, let value = row[columnIndex], !value.isEmpty {
+            if columnIndex < row.count, let value = row[columnIndex].asText, !value.isEmpty {
                 return value
             }
         }

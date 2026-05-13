@@ -6,7 +6,6 @@
 import Foundation
 import Observation
 
-/// Identity wrapper for presenting the favorite edit dialog via `.sheet(item:)`
 internal struct FavoriteEditItem: Identifiable {
     let id = UUID()
     let favorite: SQLFavorite?
@@ -14,12 +13,13 @@ internal struct FavoriteEditItem: Identifiable {
     let folderId: UUID?
 }
 
-/// Tree node for displaying favorites and folders in a hierarchy.
-/// Works with `List(children:)` for native macOS outline rendering.
 internal struct FavoriteNode: Identifiable, Hashable {
     enum Content: Hashable {
         case folder(SQLFavoriteFolder)
         case favorite(SQLFavorite)
+        case linkedFolder(LinkedSQLFolder)
+        case linkedSubfolder(folderId: UUID, displayName: String, pathPrefix: String)
+        case linkedFavorite(LinkedSQLFavorite)
     }
 
     let id: String
@@ -38,12 +38,50 @@ internal struct FavoriteNode: Identifiable, Hashable {
         return nil
     }
 
+    var asLinkedFavorite: LinkedSQLFavorite? {
+        if case .linkedFavorite(let fav) = content { return fav }
+        return nil
+    }
+
+    var asLinkedFolder: LinkedSQLFolder? {
+        if case .linkedFolder(let folder) = content { return folder }
+        return nil
+    }
+
+    var isLinked: Bool {
+        switch content {
+        case .linkedFolder, .linkedSubfolder, .linkedFavorite: return true
+        case .folder, .favorite: return false
+        }
+    }
+
     static func folder(_ folder: SQLFavoriteFolder, children: [FavoriteNode]) -> FavoriteNode {
         FavoriteNode(id: "folder-\(folder.id)", content: .folder(folder), children: children)
     }
 
     static func favorite(_ fav: SQLFavorite) -> FavoriteNode {
         FavoriteNode(id: "fav-\(fav.id)", content: .favorite(fav), children: nil)
+    }
+
+    static func linkedFolder(_ folder: LinkedSQLFolder, children: [FavoriteNode]) -> FavoriteNode {
+        FavoriteNode(id: "linked-folder-\(folder.id)", content: .linkedFolder(folder), children: children)
+    }
+
+    static func linkedSubfolder(
+        folderId: UUID,
+        displayName: String,
+        pathPrefix: String,
+        children: [FavoriteNode]
+    ) -> FavoriteNode {
+        FavoriteNode(
+            id: "linked-subfolder-\(folderId)-\(pathPrefix)",
+            content: .linkedSubfolder(folderId: folderId, displayName: displayName, pathPrefix: pathPrefix),
+            children: children
+        )
+    }
+
+    static func linkedFavorite(_ fav: LinkedSQLFavorite) -> FavoriteNode {
+        FavoriteNode(id: "linked-fav-\(fav.id)", content: .linkedFavorite(fav), children: nil)
     }
 }
 
@@ -75,62 +113,86 @@ internal extension [FavoriteNode] {
     }
 }
 
-/// ViewModel for the favorites sidebar section
 @MainActor @Observable
 internal final class FavoritesSidebarViewModel {
-    // MARK: - State
-
-    var nodes: [FavoriteNode] = []
-    var isLoading = false
     var editDialogItem: FavoriteEditItem?
     var renamingFolderId: UUID?
     var renamingFolderName: String = ""
-    var expandedFolderIds: Set<UUID> = []
     var showDeleteConfirmation = false
     var favoritesToDelete: [SQLFavorite] = []
 
-    // MARK: - Dependencies
+    @ObservationIgnored private let connectionId: UUID
+    @ObservationIgnored private let cache: ConnectionDataCache
+    @ObservationIgnored private let services: AppServices
+    @ObservationIgnored private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
 
-    private let connectionId: UUID
-    private let manager = SQLFavoriteManager.shared
-    @ObservationIgnored private var notificationObserver: NSObjectProtocol?
+    var isInitialLoadComplete: Bool { cache.isInitialLoadComplete }
 
-    init(connectionId: UUID) {
+    var nodes: [FavoriteNode] {
+        var roots = buildNodes(folders: cache.folders, favorites: cache.favorites, parentId: nil)
+        for folder in cache.linkedFolders {
+            let files = cache.linkedFilesByFolderId[folder.id] ?? []
+            let children = buildLinkedTree(files: files, folderId: folder.id)
+            roots.append(.linkedFolder(folder, children: children))
+        }
+        return roots
+    }
+
+    init(connectionId: UUID, services: AppServices = .live) {
         self.connectionId = connectionId
+        self.services = services
+        self.cache = ConnectionDataCache.shared(for: connectionId)
+        cache.ensureLoaded()
+    }
 
-        notificationObserver = NotificationCenter.default.addObserver(
-            forName: .sqlFavoritesDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.loadFavorites()
+    private func buildLinkedTree(files: [LinkedSQLFavorite], folderId: UUID) -> [FavoriteNode] {
+        let entries = files.map { (file: $0, components: $0.relativePath.split(separator: "/").map(String.init)) }
+        return groupLinkedFiles(entries: entries, folderId: folderId, prefix: "", depth: 0)
+    }
+
+    private func groupLinkedFiles(
+        entries: [(file: LinkedSQLFavorite, components: [String])],
+        folderId: UUID,
+        prefix: String,
+        depth: Int
+    ) -> [FavoriteNode] {
+        var subfolderBuckets: [String: [(file: LinkedSQLFavorite, components: [String])]] = [:]
+        var leaves: [LinkedSQLFavorite] = []
+
+        for entry in entries {
+            guard entry.components.count > depth else { continue }
+            if entry.components.count == depth + 1 {
+                leaves.append(entry.file)
+            } else {
+                let bucket = entry.components[depth]
+                subfolderBuckets[bucket, default: []].append(entry)
             }
         }
-    }
 
-    deinit {
-        if let observer = notificationObserver {
-            NotificationCenter.default.removeObserver(observer)
+        let sortedFolderNames = subfolderBuckets.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        var subfolderNodes: [FavoriteNode] = []
+        for name in sortedFolderNames {
+            let nestedPrefix = prefix.isEmpty ? name : "\(prefix)/\(name)"
+            let children = groupLinkedFiles(
+                entries: subfolderBuckets[name] ?? [],
+                folderId: folderId,
+                prefix: nestedPrefix,
+                depth: depth + 1
+            )
+            subfolderNodes.append(.linkedSubfolder(
+                folderId: folderId,
+                displayName: name,
+                pathPrefix: nestedPrefix,
+                children: children
+            ))
         }
+
+        let sortedLeaves = leaves
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .map { FavoriteNode.linkedFavorite($0) }
+
+        return subfolderNodes + sortedLeaves
     }
-
-    // MARK: - Loading
-
-    func loadFavorites() async {
-        isLoading = true
-        defer { isLoading = false }
-
-        async let favoritesResult = manager.fetchFavorites(connectionId: connectionId)
-        async let foldersResult = manager.fetchFolders(connectionId: connectionId)
-
-        let favorites = await favoritesResult
-        let folders = await foldersResult
-
-        nodes = buildNodes(folders: folders, favorites: favorites, parentId: nil)
-    }
-
-    // MARK: - Tree Building
 
     private func buildNodes(
         folders: [SQLFavoriteFolder],
@@ -159,11 +221,9 @@ internal final class FavoritesSidebarViewModel {
         return items
     }
 
-    // MARK: - Actions
-
     func createFavorite(query: String? = nil, folderId: UUID? = nil) {
         if let folderId {
-            expandedFolderIds.insert(folderId)
+            services.favoritesExpansionState.setFolderExpanded(folderId, expanded: true, for: connectionId)
         }
         editDialogItem = FavoriteEditItem(favorite: nil, query: query, folderId: folderId)
     }
@@ -202,7 +262,7 @@ internal final class FavoritesSidebarViewModel {
 
     func createFolder(parentId: UUID? = nil) {
         if let parentId {
-            expandedFolderIds.insert(parentId)
+            services.favoritesExpansionState.setFolderExpanded(parentId, expanded: true, for: connectionId)
         }
         Task {
             let folder = SQLFavoriteFolder(
@@ -212,7 +272,7 @@ internal final class FavoritesSidebarViewModel {
             )
             let success = await manager.addFolder(folder)
             if success {
-                expandedFolderIds.insert(folder.id)
+                services.favoritesExpansionState.setFolderExpanded(folder.id, expanded: true, for: connectionId)
                 try? await Task.sleep(for: .milliseconds(100))
                 startRenameFolder(folder)
             }
@@ -242,11 +302,10 @@ internal final class FavoritesSidebarViewModel {
         }
     }
 
-    // MARK: - Filtering
-
     func filteredNodes(searchText: String) -> [FavoriteNode] {
-        guard !searchText.isEmpty else { return nodes }
-        return filterTree(nodes, searchText: searchText)
+        let allNodes = nodes
+        guard !searchText.isEmpty else { return allNodes }
+        return filterTree(allNodes, searchText: searchText)
     }
 
     private func filterTree(_ items: [FavoriteNode], searchText: String) -> [FavoriteNode] {
@@ -266,22 +325,60 @@ internal final class FavoritesSidebarViewModel {
                     return .folder(folder, children: filteredChildren)
                 }
                 return nil
+            case .linkedFavorite(let linked):
+                if linked.name.localizedCaseInsensitiveContains(searchText) ||
+                    (linked.keyword?.localizedCaseInsensitiveContains(searchText) == true) ||
+                    linked.relativePath.localizedCaseInsensitiveContains(searchText) {
+                    return node
+                }
+                return nil
+            case .linkedFolder(let folder):
+                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
+                if !filteredChildren.isEmpty || folder.name.localizedCaseInsensitiveContains(searchText) {
+                    return .linkedFolder(folder, children: filteredChildren)
+                }
+                return nil
+            case .linkedSubfolder(let folderId, let displayName, let pathPrefix):
+                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
+                if !filteredChildren.isEmpty || displayName.localizedCaseInsensitiveContains(searchText) {
+                    return .linkedSubfolder(
+                        folderId: folderId,
+                        displayName: displayName,
+                        pathPrefix: pathPrefix,
+                        children: filteredChildren
+                    )
+                }
+                return nil
             }
         }
     }
 
-    // MARK: - Helpers
-
     func favoriteForNodeId(_ id: String) -> SQLFavorite? {
-        searchNodes(nodes, forId: id)
+        findNode(nodes, id: id, extract: \.asFavorite)
     }
 
-    private func searchNodes(_ items: [FavoriteNode], forId id: String) -> SQLFavorite? {
+    func linkedFavoriteForNodeId(_ id: String) -> LinkedSQLFavorite? {
+        findNode(nodes, id: id, extract: \.asLinkedFavorite)
+    }
+
+    func folderForNodeId(_ id: String) -> SQLFavoriteFolder? {
+        findNode(nodes, id: id, extract: \.asFolder)
+    }
+
+    func linkedFolderForNodeId(_ id: String) -> LinkedSQLFolder? {
+        findNode(nodes, id: id, extract: \.asLinkedFolder)
+    }
+
+    private func findNode<T>(
+        _ items: [FavoriteNode],
+        id: String,
+        extract: (FavoriteNode) -> T?
+    ) -> T? {
         for node in items {
-            if node.id == id, let fav = node.asFavorite {
-                return fav
+            if node.id == id, let value = extract(node) {
+                return value
             }
-            if let children = node.children, let found = searchNodes(children, forId: id) {
+            if let children = node.children, let found = findNode(children, id: id, extract: extract) {
                 return found
             }
         }

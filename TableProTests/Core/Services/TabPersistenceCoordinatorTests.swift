@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -97,30 +98,6 @@ struct TabPersistenceCoordinatorTests {
 
         #expect(result.tabs.count == 2)
         #expect(result.selectedTabId == selectedId)
-        #expect(result.source == .disk)
-
-        coordinator.clearSavedState()
-        await sleep()
-    }
-
-    @Test("saveNow with pre-converted PersistedTab array round-trips")
-    func saveNowWithPersistedTabsRoundTrips() async {
-        let coordinator = makeCoordinator()
-        let persistedTabs = [
-            PersistedTab(id: UUID(), title: "P1", query: "SELECT 1", tabType: .query, tableName: nil),
-            PersistedTab(id: UUID(), title: "P2", query: "SELECT 2", tabType: .table, tableName: "users")
-        ]
-        let selectedId = persistedTabs[0].id
-
-        coordinator.saveNow(persistedTabs: persistedTabs, selectedTabId: selectedId)
-        await sleep()
-
-        let result = await coordinator.restoreFromDisk()
-
-        #expect(result.tabs.count == 2)
-        #expect(result.selectedTabId == selectedId)
-        #expect(result.tabs[0].title == "P1")
-        #expect(result.tabs[1].tableContext.tableName == "users")
         #expect(result.source == .disk)
 
         coordinator.clearSavedState()
@@ -262,6 +239,52 @@ struct TabPersistenceCoordinatorTests {
 
         let result = await coordinator.restoreFromDisk()
         #expect(result.selectedTabId == normalTab.id)
+
+        coordinator.clearSavedState()
+        await sleep()
+    }
+
+    @Test("Linked-favorite tab with sourceFileURL round-trips through persistence")
+    func sourceFileURLRoundTrip() async {
+        let coordinator = makeCoordinator()
+        let url = URL(fileURLWithPath: "/Users/test/Documents/sample.sql")
+        var tab = QueryTab(id: UUID(), title: "sample", query: "SELECT 1", tabType: .query)
+        tab.content.sourceFileURL = url
+
+        coordinator.saveNow(tabs: [tab], selectedTabId: tab.id)
+        await sleep()
+
+        let result = await coordinator.restoreFromDisk()
+
+        #expect(result.tabs.count == 1)
+        #expect(result.tabs[0].content.sourceFileURL == url)
+        #expect(result.tabs[0].id == tab.id)
+
+        coordinator.clearSavedState()
+        await sleep()
+    }
+
+    @Test("Three linked-favorite tabs all round-trip with distinct sourceFileURLs")
+    func multipleLinkedFavoriteTabsRoundTrip() async {
+        let coordinator = makeCoordinator()
+        let urls = (0..<3).map { URL(fileURLWithPath: "/tmp/file-\($0).sql") }
+        let tabs: [QueryTab] = urls.enumerated().map { index, url in
+            var tab = QueryTab(id: UUID(), title: "file-\(index)", query: "SELECT \(index)", tabType: .query)
+            tab.content.sourceFileURL = url
+            return tab
+        }
+
+        coordinator.saveNow(tabs: tabs, selectedTabId: tabs[1].id)
+        await sleep()
+
+        let result = await coordinator.restoreFromDisk()
+
+        #expect(result.tabs.count == 3)
+        #expect(result.selectedTabId == tabs[1].id)
+        for (original, restored) in zip(tabs, result.tabs) {
+            #expect(restored.id == original.id)
+            #expect(restored.content.sourceFileURL == original.content.sourceFileURL)
+        }
 
         coordinator.clearSavedState()
         await sleep()

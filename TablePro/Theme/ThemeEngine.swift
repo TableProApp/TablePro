@@ -8,6 +8,7 @@
 
 import AppKit
 import CodeEditSourceEditor
+import Combine
 import Foundation
 import Observation
 import os
@@ -371,7 +372,7 @@ internal final class ThemeEngine {
     // MARK: - Notifications
 
     private func notifyThemeDidChange() {
-        NotificationCenter.default.post(name: .themeDidChange, object: self)
+        AppEvents.shared.themeChanged.send(())
     }
 
     // MARK: - Accessibility
@@ -390,7 +391,7 @@ internal final class ThemeEngine {
                 lastAccessibilityScale = newScale
                 Self.logger.debug("Accessibility text size changed, scale: \(newScale, format: .fixed(precision: 2))")
                 reloadFontCaches()
-                NotificationCenter.default.post(name: .accessibilityTextSizeDidChange, object: self)
+                AppEvents.shared.accessibilityTextSizeChanged.send(())
             }
         }
     }

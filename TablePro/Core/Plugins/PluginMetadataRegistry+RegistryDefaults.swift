@@ -582,7 +582,9 @@ extension PluginMetadataRegistry {
                                 .init(value: "3", label: "3")
                             ])
                         )
-                    ]
+                    ],
+                    category: .document,
+                    tagline: String(localized: "JSON-style document database")
                 )
             )),
             ("Redis", PluginMetadataSnapshot(
@@ -634,7 +636,9 @@ extension PluginMetadataRegistry {
                             defaultValue: "0",
                             fieldType: .stepper(range: ConnectionField.IntRange(0...15))
                         )
-                    ]
+                    ],
+                    category: .keyValue,
+                    tagline: String(localized: "In-memory data store and cache")
                 )
             )),
             ("SQL Server", PluginMetadataSnapshot(
@@ -643,13 +647,13 @@ extension PluginMetadataRegistry {
                 isDownloadable: true, primaryUrlScheme: "sqlserver", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["sqlserver", "mssql"],
-                postConnectActions: [.selectDatabaseFromLastSession],
+                postConnectActions: [.selectDatabaseFromLastSession, .selectSchemaFromLastSession],
                 brandColorHex: "#E34517",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
+                    supportsSchemaSwitching: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -684,7 +688,9 @@ extension PluginMetadataRegistry {
                         ConnectionField(
                             id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo"
                         )
-                    ]
+                    ],
+                    category: .relational,
+                    tagline: String(localized: "Microsoft's enterprise SQL database")
                 )
             )),
             ("Oracle", PluginMetadataSnapshot(
@@ -692,13 +698,14 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "oracle", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .serviceName,
-                supportsHealthMonitor: true, urlSchemes: ["oracle"], postConnectActions: [],
+                supportsHealthMonitor: true, urlSchemes: ["oracle"],
+                postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#C3160B",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
+                    supportsSchemaSwitching: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -735,7 +742,9 @@ extension PluginMetadataRegistry {
                         ConnectionField(
                             id: "oracleServiceName", label: "Service Name", placeholder: "ORCL"
                         )
-                    ]
+                    ],
+                    category: .relational,
+                    tagline: String(localized: "Enterprise SQL with PL/SQL")
                 )
             )),
             ("ClickHouse", PluginMetadataSnapshot(
@@ -786,7 +795,10 @@ extension PluginMetadataRegistry {
                     statementCompletions: [],
                     columnTypesByCategory: clickhouseColumnTypes
                 ),
-                connection: .defaults
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    category: .analytical,
+                    tagline: String(localized: "Column-oriented OLAP for big data")
+                )
             )),
             ("DuckDB", PluginMetadataSnapshot(
                 displayName: "DuckDB", iconName: "duckdb-icon", defaultPort: 0,
@@ -833,7 +845,10 @@ extension PluginMetadataRegistry {
                     statementCompletions: [],
                     columnTypesByCategory: duckdbColumnTypes
                 ),
-                connection: .defaults
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    category: .analytical,
+                    tagline: String(localized: "Embedded analytical SQL")
+                )
             )),
             ("Cassandra", PluginMetadataSnapshot(
                 displayName: "Cassandra / ScyllaDB", iconName: "cassandra-icon", defaultPort: 9_042,
@@ -891,7 +906,9 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/ca-cert.pem",
                             section: .advanced
                         )
-                    ]
+                    ],
+                    category: .wideColumn,
+                    tagline: String(localized: "Distributed wide-column store")
                 )
             )),
             ("ScyllaDB", PluginMetadataSnapshot(
@@ -950,7 +967,9 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/ca-cert.pem",
                             section: .advanced
                         )
-                    ]
+                    ],
+                    category: .wideColumn,
+                    tagline: String(localized: "C++ rewrite of Cassandra, faster")
                 )
             )),
             ("etcd", PluginMetadataSnapshot(
@@ -1030,7 +1049,9 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/client-key.pem",
                             section: .advanced
                         ),
-                    ]
+                    ],
+                    category: .coordination,
+                    tagline: String(localized: "Distributed key-value store for service discovery")
                 )
             )),
             ("Cloudflare D1", PluginMetadataSnapshot(
@@ -1085,7 +1106,9 @@ extension PluginMetadataRegistry {
                             required: true,
                             section: .authentication
                         )
-                    ]
+                    ],
+                    category: .cloud,
+                    tagline: String(localized: "Serverless SQLite at the edge")
                 )
             )),
             ("libSQL", PluginMetadataSnapshot(
@@ -1142,7 +1165,9 @@ extension PluginMetadataRegistry {
                             required: true,
                             section: .authentication
                         )
-                    ]
+                    ],
+                    category: .cloud,
+                    tagline: String(localized: "Distributed SQLite by Turso")
                 )
             )),
         ] + cloudPluginDefaults()

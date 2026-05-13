@@ -32,8 +32,6 @@ final class AppSettingsStorage {
         static let sync = "com.TablePro.settings.sync"
         static let terminal = "com.TablePro.settings.terminal"
         static let mcp = "com.TablePro.settings.mcp"
-        static let lastConnectionId = "com.TablePro.settings.lastConnectionId"
-        static let lastOpenConnectionIds = "com.TablePro.settings.lastOpenConnectionIds"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
     }
 
@@ -150,44 +148,6 @@ final class AppSettingsStorage {
 
     func saveMCP(_ settings: MCPSettings) {
         save(settings, key: Keys.mcp)
-    }
-
-    // MARK: - Last Connection (for Reopen Last Session)
-
-    /// Load the last used connection ID
-    func loadLastConnectionId() -> UUID? {
-        guard let uuidString = defaults.string(forKey: Keys.lastConnectionId) else {
-            return nil
-        }
-        return UUID(uuidString: uuidString)
-    }
-
-    /// Save the last used connection ID
-    func saveLastConnectionId(_ connectionId: UUID?) {
-        if let connectionId = connectionId {
-            defaults.set(connectionId.uuidString, forKey: Keys.lastConnectionId)
-        } else {
-            defaults.removeObject(forKey: Keys.lastConnectionId)
-        }
-    }
-
-    // MARK: - Last Open Connections (for multi-session restore)
-
-    /// Load all connection IDs that were open when the app last quit
-    func loadLastOpenConnectionIds() -> [UUID] {
-        guard let strings = defaults.stringArray(forKey: Keys.lastOpenConnectionIds) else {
-            return []
-        }
-        return strings.compactMap { UUID(uuidString: $0) }
-    }
-
-    /// Save all currently open connection IDs for restoration on next launch
-    func saveLastOpenConnectionIds(_ connectionIds: [UUID]) {
-        if connectionIds.isEmpty {
-            defaults.removeObject(forKey: Keys.lastOpenConnectionIds)
-        } else {
-            defaults.set(connectionIds.map(\.uuidString), forKey: Keys.lastOpenConnectionIds)
-        }
     }
 
     // MARK: - Last Selected Database (per connection)

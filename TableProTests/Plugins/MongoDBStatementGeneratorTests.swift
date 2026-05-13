@@ -28,7 +28,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, "Alice", "alice@example.com"]
         ]
 
@@ -61,7 +61,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, "Bob", "__DEFAULT__"]
         ]
 
@@ -93,7 +93,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, "Carol", nil]
         ]
 
@@ -124,7 +124,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, nil]
         ]
 
@@ -179,7 +179,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, "42"]
         ]
 
@@ -208,7 +208,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             5: [nil, "Eve"]
         ]
 
@@ -238,7 +238,7 @@ struct MongoDBStatementGeneratorTests {
             cellChanges: [
                 (columnIndex: 1, columnName: "name", oldValue: "Alice", newValue: "Alicia")
             ],
-            originalRow: [objectId, "Alice", "alice@example.com"]
+            originalRow: [.text(objectId), "Alice", "alice@example.com"]
         )
 
         let results = gen.generateStatements(
@@ -434,7 +434,7 @@ struct MongoDBStatementGeneratorTests {
             rowIndex: 0,
             type: .delete,
             cellChanges: [],
-            originalRow: [objectId, "Alice"]
+            originalRow: [.text(objectId), "Alice"]
         )
 
         let results = gen.generateStatements(
@@ -461,8 +461,8 @@ struct MongoDBStatementGeneratorTests {
         let id2 = "507f1f77bcf86cd799439022"
 
         let changes = [
-            PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: [id1, "Alice"]),
-            PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: [id2, "Bob"])
+            PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.text(id1), "Alice"]),
+            PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: [.text(id2), "Bob"])
         ]
 
         let results = gen.generateStatements(
@@ -604,7 +604,7 @@ struct MongoDBStatementGeneratorTests {
                 cellChanges: [
                     (columnIndex: 1, columnName: "name", oldValue: "Bob", newValue: "Robert")
                 ],
-                originalRow: [objectId, "Bob", "bob@test.com"]
+                originalRow: [.text(objectId), "Bob", "bob@test.com"]
             ),
             PluginRowChange(
                 rowIndex: 2,
@@ -614,7 +614,7 @@ struct MongoDBStatementGeneratorTests {
             )
         ]
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, "Alice", "alice@test.com"]
         ]
 

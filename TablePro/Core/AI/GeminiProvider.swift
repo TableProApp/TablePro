@@ -2,14 +2,11 @@
 //  GeminiProvider.swift
 //  TablePro
 //
-//  Google Gemini API provider using the Generative Language API with SSE streaming.
-//
 
 import Foundation
 import os
 
-/// AI provider for Google's Gemini models
-final class GeminiProvider: AIProvider {
+final class GeminiProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "GeminiProvider")
 
     private let endpoint: String
@@ -18,28 +15,20 @@ final class GeminiProvider: AIProvider {
     private let session: URLSession
 
     init(endpoint: String, apiKey: String, maxOutputTokens: Int = 8_192) {
-        self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
+        self.endpoint = endpoint.normalizedEndpoint()
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.session = URLSession(configuration: .ephemeral)
     }
 
-    // MARK: - AIProvider
-
     func streamChat(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
-    ) -> AsyncThrowingStream<AIStreamEvent, Error> {
+        turns: [ChatTurnWire],
+        options: ChatTransportOptions
+    ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let request = try buildStreamRequest(
-                        messages: messages,
-                        model: model,
-                        systemPrompt: systemPrompt
-                    )
-
+                    let request = try buildStreamRequest(turns: turns, options: options)
                     let (bytes, response) = try await session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
@@ -48,52 +37,26 @@ final class GeminiProvider: AIProvider {
 
                     guard httpResponse.statusCode == 200 else {
                         let errorBody = try await collectErrorBody(from: bytes)
-                        throw mapHTTPError(
+                        throw AIProviderError.mapHTTPError(
                             statusCode: httpResponse.statusCode,
-                            body: errorBody
+                            body: errorBody,
+                            treatForbiddenAsAuthFailure: true
                         )
                     }
 
-                    var inputTokens = 0
-                    var outputTokens = 0
-
+                    var state = GeminiStreamState()
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
-
-                        guard line.hasPrefix("data: ") else { continue }
-                        let jsonString = String(line.dropFirst(6))
-
-                        guard let data = jsonString.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                        else { continue }
-
-                        // Extract text from candidates[0].content.parts[0].text
-                        if let candidates = json["candidates"] as? [[String: Any]],
-                           let firstCandidate = candidates.first,
-                           let content = firstCandidate["content"] as? [String: Any],
-                           let parts = content["parts"] as? [[String: Any]],
-                           let firstPart = parts.first,
-                           let text = firstPart["text"] as? String {
-                            continuation.yield(.text(text))
-                        }
-
-                        // Extract usage from usageMetadata
-                        if let usageMetadata = json["usageMetadata"] as? [String: Any] {
-                            if let prompt = usageMetadata["promptTokenCount"] as? Int {
-                                inputTokens = prompt
-                            }
-                            if let candidates = usageMetadata["candidatesTokenCount"] as? Int {
-                                outputTokens = candidates
-                            }
-                        }
+                        guard let json = Self.decodeStreamLine(line) else { continue }
+                        let events = Self.parseChunk(
+                            json,
+                            state: &state,
+                            idGenerator: { UUID().uuidString }
+                        )
+                        for event in events { continuation.yield(event) }
                     }
-
-                    // Yield usage if we got any token data
-                    if inputTokens > 0 || outputTokens > 0 {
-                        continuation.yield(.usage(AITokenUsage(
-                            inputTokens: inputTokens,
-                            outputTokens: outputTokens
-                        )))
+                    if let usage = state.finalUsageEvent() {
+                        continuation.yield(usage)
                     }
 
                     continuation.finish()
@@ -123,6 +86,7 @@ final class GeminiProvider: AIProvider {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = AIProvider.modelListTimeout
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
         let data: Data
@@ -130,20 +94,16 @@ final class GeminiProvider: AIProvider {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
+            Self.logger.warning("Gemini model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
             return Self.knownModels
         }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            return Self.knownModels
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            return Self.knownModels
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = json["models"] as? [[String: Any]]
         else {
+            Self.logger.warning("Gemini model fetch returned unexpected response; using known models")
             return Self.knownModels
         }
 
@@ -152,7 +112,6 @@ final class GeminiProvider: AIProvider {
                   let methods = model["supportedGenerationMethods"] as? [String],
                   methods.contains("generateContent")
             else { return nil }
-            // Strip "models/" prefix: "models/gemini-2.0-flash" -> "gemini-2.0-flash"
             if name.hasPrefix("models/") {
                 return String(name.dropFirst(7))
             }
@@ -185,20 +144,21 @@ final class GeminiProvider: AIProvider {
 
         guard statusCode == 200 else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw mapHTTPError(statusCode: statusCode, body: body)
+            throw AIProviderError.mapHTTPError(
+                statusCode: statusCode,
+                body: body,
+                treatForbiddenAsAuthFailure: true
+            )
         }
 
         return true
     }
 
-    // MARK: - Private
-
     private func buildStreamRequest(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
+        turns: [ChatTurnWire],
+        options: ChatTransportOptions
     ) throws -> URLRequest {
-        guard let encodedModel = model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+        guard let encodedModel = options.model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(
             string: "\(endpoint)/v1beta/models/\(encodedModel):streamGenerateContent?alt=sse"
         ) else {
@@ -211,34 +171,169 @@ final class GeminiProvider: AIProvider {
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
         var body: [String: Any] = [
-            "generationConfig": ["maxOutputTokens": maxOutputTokens]
+            "generationConfig": ["maxOutputTokens": options.maxOutputTokens ?? maxOutputTokens]
         ]
 
-        if let systemPrompt, !systemPrompt.isEmpty {
+        if let systemPrompt = options.systemPrompt, !systemPrompt.isEmpty {
             body["systemInstruction"] = ["parts": [["text": systemPrompt]]]
         }
 
-        // Convert messages — Gemini uses "user" and "model" roles (not "assistant")
-        let contents = messages
-            .filter { $0.role != .system }
-            .map { message -> [String: Any] in
-                let role = message.role == .assistant ? "model" : "user"
-                return [
-                    "role": role,
-                    "parts": [["text": message.content]]
+        if !options.tools.isEmpty {
+            let declarations = try options.tools.map { tool -> [String: Any] in
+                var entry: [String: Any] = [
+                    "name": tool.name,
+                    "description": tool.description
                 ]
+                entry["parameters"] = try tool.inputSchema.jsonObject()
+                return entry
             }
-        body["contents"] = contents
+            body["tools"] = [["functionDeclarations": declarations]]
+        }
+
+        body["contents"] = encodeContents(turns: turns)
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
 
-    func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
-        if statusCode == 403 {
-            let message = AIProviderError.parseErrorMessage(from: body) ?? body
-            return .authenticationFailed(message)
+    func encodeContents(turns: [ChatTurnWire]) -> [[String: Any]] {
+        var encoded: [[String: Any]] = []
+        for (index, turn) in turns.enumerated() where turn.role != .system {
+            let priorTurns = Array(turns.prefix(index))
+            guard let entry = encodeTurn(turn, priorTurns: priorTurns) else { continue }
+            encoded.append(entry)
         }
-        return AIProviderError.mapHTTPError(statusCode: statusCode, body: body)
+        return encoded
+    }
+
+    func encodeTurn(_ turn: ChatTurnWire, priorTurns: [ChatTurnWire]) -> [String: Any]? {
+        let role = turn.role == .assistant ? "model" : "user"
+        var parts: [[String: Any]] = []
+
+        for block in turn.blocks {
+            switch block.kind {
+            case .text(let text):
+                guard !text.isEmpty else { continue }
+                parts.append(["text": text])
+            case .attachment:
+                continue
+            case .toolUse(let useBlock):
+                let argsObject = (try? useBlock.input.jsonObject()) ?? [String: Any]()
+                parts.append([
+                    "functionCall": [
+                        "name": useBlock.name,
+                        "args": argsObject
+                    ]
+                ])
+            case .toolResult(let resultBlock):
+                let toolName = resolveToolName(
+                    forToolUseId: resultBlock.toolUseId,
+                    in: priorTurns
+                ) ?? resultBlock.toolUseId
+                parts.append([
+                    "functionResponse": [
+                        "name": toolName,
+                        "response": ["content": resultBlock.content]
+                    ]
+                ])
+            }
+        }
+
+        if parts.isEmpty {
+            let fallback = turn.plainText
+            guard !fallback.isEmpty else { return nil }
+            parts.append(["text": fallback])
+        }
+
+        return ["role": role, "parts": parts]
+    }
+
+    func resolveToolName(forToolUseId id: String, in priorTurns: [ChatTurnWire]) -> String? {
+        for turn in priorTurns.reversed() {
+            for block in turn.blocks {
+                if case .toolUse(let useBlock) = block.kind, useBlock.id == id {
+                    return useBlock.name
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Decodes one Gemini SSE line. Returns nil for non-data lines.
+    static func decodeStreamLine(_ line: String) -> [String: Any]? {
+        guard line.hasPrefix("data: ") else { return nil }
+        let jsonString = String(line.dropFirst(6))
+        guard let data = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return json
+    }
+
+    /// Translate a single Gemini chunk to events.
+    ///
+    /// Gemini does not provide tool-call ids on `functionCall` parts, so we
+    /// synthesize one per call. `idGenerator` is injected so tests can pin the
+    /// synthetic id to a stable value; production passes `{ UUID().uuidString }`.
+    /// Each call to `idGenerator()` returns a fresh id, so multiple
+    /// `functionCall` parts in one chunk get distinct ids in production.
+    static func parseChunk(
+        _ json: [String: Any],
+        state: inout GeminiStreamState,
+        idGenerator: () -> String
+    ) -> [ChatStreamEvent] {
+        var events: [ChatStreamEvent] = []
+        if let candidates = json["candidates"] as? [[String: Any]],
+           let firstCandidate = candidates.first,
+           let content = firstCandidate["content"] as? [String: Any],
+           let parts = content["parts"] as? [[String: Any]] {
+            for part in parts {
+                if let text = part["text"] as? String, !text.isEmpty {
+                    events.append(.textDelta(text))
+                }
+                if let functionCall = part["functionCall"] as? [String: Any],
+                   let name = functionCall["name"] as? String {
+                    let id = idGenerator()
+                    let argsObject = functionCall["args"] ?? [String: Any]()
+                    let argsString = encodeArgsToJSONString(argsObject)
+                    events.append(.toolUseStart(id: id, name: name))
+                    events.append(.toolUseDelta(id: id, inputJSONDelta: argsString))
+                    events.append(.toolUseEnd(id: id))
+                }
+            }
+        }
+        if let usageMetadata = json["usageMetadata"] as? [String: Any] {
+            if let prompt = usageMetadata["promptTokenCount"] as? Int {
+                state.inputTokens = prompt
+            }
+            if let candidates = usageMetadata["candidatesTokenCount"] as? Int {
+                state.outputTokens = candidates
+            }
+        }
+        return events
+    }
+
+    static func encodeArgsToJSONString(_ args: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(args) else {
+            Self.logger.warning("Gemini functionCall args was not a valid JSON object; falling back to empty input")
+            return "{}"
+        }
+        do {
+            let data = try JSONSerialization.data(withJSONObject: args)
+            return String(data: data, encoding: .utf8) ?? "{}"
+        } catch {
+            Self.logger.warning("Gemini functionCall args serialization failed: \(error.localizedDescription, privacy: .public)")
+            return "{}"
+        }
+    }
+}
+
+/// Mutable state carried across `GeminiProvider.parseChunk` calls.
+struct GeminiStreamState {
+    var inputTokens: Int = 0
+    var outputTokens: Int = 0
+
+    func finalUsageEvent() -> ChatStreamEvent? {
+        guard inputTokens > 0 || outputTokens > 0 else { return nil }
+        return .usage(AITokenUsage(inputTokens: inputTokens, outputTokens: outputTokens))
     }
 }

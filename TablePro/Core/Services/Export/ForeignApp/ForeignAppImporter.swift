@@ -24,6 +24,13 @@ protocol ForeignAppImporter {
 struct ForeignAppImportResult {
     let envelope: ConnectionExportEnvelope
     let sourceName: String
+    let credentialsAborted: Bool
+
+    init(envelope: ConnectionExportEnvelope, sourceName: String, credentialsAborted: Bool = false) {
+        self.envelope = envelope
+        self.sourceName = sourceName
+        self.credentialsAborted = credentialsAborted
+    }
 }
 
 // MARK: - Error
@@ -70,10 +77,16 @@ enum ForeignAppPathHelper {
 
 // MARK: - Keychain Reader
 
+enum KeychainReadResult {
+    case found(String)
+    case notFound
+    case cancelled
+}
+
 enum ForeignKeychainReader {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ForeignKeychainReader")
 
-    static func readPassword(service: String, account: String) -> String? {
+    static func readPassword(service: String, account: String) -> KeychainReadResult {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -83,12 +96,19 @@ enum ForeignKeychainReader {
         ]
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else {
-            if status != errSecItemNotFound {
-                logger.debug("Keychain read failed for \(service): \(status)")
+
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data,
+                  let value = String(data: data, encoding: .utf8) else {
+                return .notFound
             }
-            return nil
+            return .found(value)
+        case errSecItemNotFound:
+            return .notFound
+        default:
+            logger.debug("Keychain read denied or cancelled for \(service): \(status)")
+            return .cancelled
         }
-        return String(data: data, encoding: .utf8)
     }
 }

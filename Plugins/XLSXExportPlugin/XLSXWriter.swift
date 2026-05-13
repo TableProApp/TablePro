@@ -12,6 +12,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 import zlib
 
 /// Writes data to XLSX format using raw ZIP file construction.
@@ -72,26 +73,32 @@ final class XLSXWriter {
     }
 
     /// Add a batch of raw rows to the current (last) sheet.
-    /// Converts `[String?]` to `CellValue` and writes XML immediately,
+    /// Converts `[PluginCellValue]` to `CellValue` and writes XML immediately,
     /// so the caller can release the raw row data after this call returns.
-    func addRows(_ rows: [[String?]], convertNullToEmpty: Bool) {
+    func addRows(_ rows: [[PluginCellValue]], convertNullToEmpty: Bool) {
         guard !sheets.isEmpty else { return }
 
         var sheetData = sheets[sheets.count - 1].data
 
         for row in rows {
             autoreleasepool {
-                let cellRow: [CellValue] = row.map { value in
-                    guard let val = value else {
+                let cellRow: [CellValue] = row.map { value -> CellValue in
+                    switch value {
+                    case .null:
                         return convertNullToEmpty ? .empty : .string("NULL")
+                    case .bytes(let data):
+                        if data.isEmpty { return .empty }
+                        let hex = data.map { String(format: "%02X", $0) }.joined()
+                        return .string("0x" + hex)
+                    case .text(let val):
+                        if val.isEmpty {
+                            return .empty
+                        }
+                        if Double(val) != nil, !val.hasPrefix("0") || val == "0" || val.contains(".") {
+                            return .number(val)
+                        }
+                        return .string(val)
                     }
-                    if val.isEmpty {
-                        return .empty
-                    }
-                    if Double(val) != nil, !val.hasPrefix("0") || val == "0" || val.contains(".") {
-                        return .number(val)
-                    }
-                    return .string(val)
                 }
                 appendRow(cellRow, isHeader: false, to: &sheetData)
             }
@@ -131,7 +138,7 @@ final class XLSXWriter {
 
     /// Add a complete worksheet with all rows at once (legacy compatibility).
     /// For better memory usage, prefer `beginSheet` / `addRows` / `finishSheet`.
-    func addSheet(name: String, columns: [String], rows: [[String?]], includeHeader: Bool, convertNullToEmpty: Bool) {
+    func addSheet(name: String, columns: [String], rows: [[PluginCellValue]], includeHeader: Bool, convertNullToEmpty: Bool) {
         beginSheet(name: name, columns: columns, includeHeader: includeHeader, convertNullToEmpty: convertNullToEmpty)
         addRows(rows, convertNullToEmpty: convertNullToEmpty)
         finishSheet()

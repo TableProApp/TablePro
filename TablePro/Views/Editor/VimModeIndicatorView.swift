@@ -14,7 +14,7 @@ struct VimModeIndicatorView: View {
     var body: some View {
         if case .commandLine = mode {
             Text(mode.displayLabel)
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(foregroundColor)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -22,7 +22,7 @@ struct VimModeIndicatorView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         } else {
             Text(mode.displayLabel)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(.caption2, design: .monospaced).weight(.semibold))
                 .foregroundStyle(foregroundColor)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -35,6 +35,7 @@ struct VimModeIndicatorView: View {
         switch mode {
         case .normal: return .secondary
         case .insert: return .white
+        case .replace: return .white
         case .visual: return .white
         case .commandLine: return .white
         }
@@ -44,6 +45,7 @@ struct VimModeIndicatorView: View {
         switch mode {
         case .normal: return Color(nsColor: .controlBackgroundColor)
         case .insert: return .accentColor
+        case .replace: return .red
         case .visual: return .orange
         case .commandLine: return .purple
         }

@@ -18,19 +18,21 @@ extension MainContentCoordinator {
         let rs = tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }
         guard rs?.isPinned != true else { return }
         let tabId = tabManager.tabs[tabIdx].id
-        tabManager.tabs[tabIdx].display.resultSets.removeAll { $0.id == id }
+        tabManager.mutate(at: tabIdx) { $0.display.resultSets.removeAll { $0.id == id } }
         if tabManager.tabs[tabIdx].display.activeResultSetId == id {
             let newActiveId = tabManager.tabs[tabIdx].display.resultSets.last?.id
             switchActiveResultSet(to: newActiveId, in: tabId)
         }
         if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
             setActiveTableRows(TableRows(), for: tabId)
-            tabManager.tabs[tabIdx].execution.errorMessage = nil
-            tabManager.tabs[tabIdx].execution.rowsAffected = 0
-            tabManager.tabs[tabIdx].execution.executionTime = nil
-            tabManager.tabs[tabIdx].execution.statusMessage = nil
-            tabManager.tabs[tabIdx].schemaVersion += 1
-            tabManager.tabs[tabIdx].display.isResultsCollapsed = true
+            tabManager.mutate(at: tabIdx) { tab in
+                tab.execution.errorMessage = nil
+                tab.execution.rowsAffected = 0
+                tab.execution.executionTime = nil
+                tab.execution.statusMessage = nil
+                tab.schemaVersion += 1
+                tab.display.isResultsCollapsed = true
+            }
             toolbarState.isResultsCollapsed = true
         }
     }
@@ -41,12 +43,12 @@ extension MainContentCoordinator {
         guard !safeModeLevel.blocksAllWrites else { return }
 
         if tabManager.tabs.isEmpty {
-            tabManager.addCreateTableTab(databaseName: connection.database)
+            tabManager.addCreateTableTab(databaseName: activeDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
                 tabType: .createTable,
-                databaseName: connection.database
+                databaseName: activeDatabaseName
             )
             WindowManager.shared.openTab(payload: payload)
         }
@@ -64,7 +66,7 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: connection.database,
+            databaseName: activeDatabaseName,
             initialQuery: template
         )
         WindowManager.shared.openTab(payload: payload)
@@ -107,7 +109,7 @@ extension MainContentCoordinator {
 
     func openExportQueryResultsDialog() {
         guard let tab = tabManager.selectedTab,
-              !tableRowsStore.tableRows(for: tab.id).rows.isEmpty else { return }
+              !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty else { return }
         activeSheet = .exportQueryResults
     }
 
@@ -123,7 +125,7 @@ extension MainContentCoordinator {
         }
         let panel = NSOpenPanel()
         var contentTypes: [UTType] = []
-        for (_, plugin) in PluginManager.shared.importPlugins {
+        for plugin in PluginManager.shared.allImportPlugins() {
             for ext in type(of: plugin).acceptedFileExtensions {
                 if let utType = UTType(filenameExtension: ext) {
                     contentTypes.append(utType)

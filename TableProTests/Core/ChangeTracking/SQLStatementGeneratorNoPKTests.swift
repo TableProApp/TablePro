@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
@@ -252,7 +253,7 @@ struct SQLStatementGeneratorNoPKTests {
     @Test("INSERT + DELETE without PK — INSERT unaffected")
     func testInsertDeleteNoPK() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [String?]] = [
+        let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["3", "Bob", "bob@example.com"]
         ]
         let changes: [RowChange] = [

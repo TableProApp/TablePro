@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
@@ -100,13 +101,14 @@ struct ImportDialog: View {
                 .interactiveDismissDisabled()
             }
         }
-        .sheet(isPresented: $showSuccessDialog) {
+        .sheet(isPresented: $showSuccessDialog, onDismiss: {
+            isPresented = false
+            AppCommands.shared.refreshData.send(connection.id)
+        }) {
             ImportSuccessView(
                 result: importResult
             ) {
                 showSuccessDialog = false
-                isPresented = false
-                NotificationCenter.default.post(name: .refreshData, object: nil)
             }
         }
         .sheet(isPresented: $showErrorDialog) {
@@ -122,7 +124,7 @@ struct ImportDialog: View {
 
     private var availableFormats: [any ImportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        return PluginManager.shared.importPlugins.values
+        return PluginManager.shared.allImportPlugins()
             .filter { plugin in
                 let supported = type(of: plugin).supportedDatabaseTypeIds
                 let excluded = type(of: plugin).excludedDatabaseTypeIds
@@ -138,7 +140,7 @@ struct ImportDialog: View {
     }
 
     private var currentPlugin: (any ImportFormatPlugin)? {
-        PluginManager.shared.importPlugins[selectedFormatId]
+        PluginManager.shared.importPlugin(forFormat: selectedFormatId)
     }
 
     // MARK: - View Components
@@ -146,13 +148,13 @@ struct ImportDialog: View {
     private var fileInfoView: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: currentPlugin.map { type(of: $0).iconName } ?? "doc.text.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(.blue)
+                .font(.title)
+                .foregroundStyle(Color(nsColor: .systemBlue))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(fileURL?.lastPathComponent ?? "")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.body.weight(.semibold))
 
                     Spacer()
 
@@ -227,7 +229,7 @@ struct ImportDialog: View {
     }
 
     private var optionsView: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Options")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.primary)
@@ -382,9 +384,10 @@ struct ImportDialog: View {
 
         do {
             let encoding = selectedEncoding.encoding
+            let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
             let parser = SQLFileParser()
             let count = try await Task.detached {
-                try await parser.countStatements(url: url, encoding: encoding)
+                try await parser.countStatements(url: url, encoding: encoding, dialect: dialect)
             }.value
             statementCount = count
         } catch {

@@ -44,7 +44,8 @@ actor LSPTransport {
     private var pendingRequests: [Int: CheckedContinuation<Data, Error>] = [:]
     private var notificationHandlers: [String: @Sendable (Data) -> Void] = [:]
     private var requestHandlers: [String: @Sendable (Data) -> Any?] = [:]
-    private var readerQueue: DispatchQueue?
+    private var deferredRequestHandlers: [String: @Sendable (Data, Int) -> Void] = [:]
+    private var readerTask: Task<Void, Never>?
 
     // MARK: - Lifecycle
 
@@ -90,21 +91,33 @@ actor LSPTransport {
 
         try proc.run()
 
-        let queue = DispatchQueue(label: "com.TablePro.LSPTransport.reader")
-        self.readerQueue = queue
         let handle = stdout.fileHandleForReading
-        queue.async { [weak self] in
-            self?.readLoopSync(handle: handle)
+        readerTask = Task { [weak self] in
+            await self?.runReadLoop(handle: handle)
         }
 
         Self.logger.info("LSP transport started: \(executablePath)")
     }
 
-    func stop() {
+    func stop() async {
         let pending = pendingRequests
         pendingRequests.removeAll()
         for (_, continuation) in pending {
             continuation.resume(throwing: LSPTransportError.requestCancelled)
+        }
+
+        readerTask?.cancel()
+        readerTask = nil
+
+        if let stdinHandle = stdinPipe?.fileHandleForWriting {
+            try? stdinHandle.close()
+        }
+        if let stdoutHandle = stdoutPipe?.fileHandleForReading {
+            try? stdoutHandle.close()
+        }
+        if let stderrHandle = stderrPipe?.fileHandleForReading {
+            stderrHandle.readabilityHandler = nil
+            try? stderrHandle.close()
         }
 
         if let process, process.isRunning {
@@ -113,9 +126,7 @@ actor LSPTransport {
         process = nil
         stdinPipe = nil
         stdoutPipe = nil
-        stderrPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe = nil
-        readerQueue = nil
 
         Self.logger.info("LSP transport stopped")
     }
@@ -160,8 +171,14 @@ actor LSPTransport {
 
     func cancelRequest(id: Int) {
         let params: [String: Int] = ["id": id]
-        if let data = try? JSONEncoder().encode(LSPJSONRPCNotification(method: "$/cancelRequest", params: params)) {
-            try? writeMessage(data)
+        do {
+            let data = try JSONEncoder().encode(LSPJSONRPCNotification(method: "$/cancelRequest", params: params))
+            try writeMessage(data)
+        } catch {
+            Self.logger.warning("LSP cancelRequest \(id) failed to send: \(error.localizedDescription); resolving local pending entry")
+            if let continuation = pendingRequests.removeValue(forKey: id) {
+                continuation.resume(throwing: CancellationError())
+            }
         }
     }
 
@@ -173,6 +190,27 @@ actor LSPTransport {
 
     func onRequest(method: String, handler: @escaping @Sendable (Data) -> Any?) {
         requestHandlers[method] = handler
+    }
+
+    func onDeferredRequest(method: String, handler: @escaping @Sendable (Data, Int) -> Void) {
+        deferredRequestHandlers[method] = handler
+    }
+
+    func sendDeferredResponse<R: Encodable>(id: Int, result: R) async throws {
+        let resultData = try JSONEncoder().encode(result)
+        let resultObj = try JSONSerialization.jsonObject(with: resultData)
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": resultObj]
+        let data = try JSONSerialization.data(withJSONObject: response)
+        try writeMessage(data)
+    }
+
+    func sendDeferredArrayResponse<R: Encodable>(id: Int, result: R) async throws {
+        let resultData = try JSONEncoder().encode(result)
+        let resultObj = try JSONSerialization.jsonObject(with: resultData)
+        let wrapped: [Any] = [resultObj, NSNull()]
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": wrapped]
+        let data = try JSONSerialization.data(withJSONObject: response)
+        try writeMessage(data)
     }
 
     // MARK: - Private
@@ -192,18 +230,19 @@ actor LSPTransport {
         handle.write(data)
     }
 
-    /// Blocking read loop that runs on a dedicated DispatchQueue to avoid blocking the actor executor.
-    nonisolated private func readLoopSync(handle: FileHandle) {
+    private func runReadLoop(handle: FileHandle) async {
         var buffer = Data()
-
-        while true {
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { break } // EOF
-            buffer.append(chunk)
-
-            while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
-                let data = messageData
-                Task { [weak self] in await self?.dispatchMessage(data) }
+        do {
+            for try await byte in handle.bytes {
+                if Task.isCancelled { return }
+                buffer.append(byte)
+                while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
+                    dispatchMessage(messageData)
+                }
+            }
+        } catch {
+            if !Task.isCancelled {
+                Self.logger.debug("LSP read loop ended: \(error.localizedDescription)")
             }
         }
     }
@@ -286,6 +325,10 @@ actor LSPTransport {
             }
             // Server-initiated request (has both id and method) — reply with handler result or null
             if let id {
+                if let deferred = deferredRequestHandlers[method] {
+                    deferred(data, id)
+                    return
+                }
                 var result: Any = NSNull()
                 if let requestHandler = requestHandlers[method] {
                     result = requestHandler(data) ?? NSNull()

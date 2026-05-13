@@ -5,6 +5,7 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
+import Combine
 import Foundation
 import os
 import TableProPluginKit
@@ -77,7 +78,7 @@ extension DatabaseManager {
 
                 // Record each statement in query history
                 let connId = connectionId
-                let dbName = self.activeSessions[connectionId]?.connection.database ?? ""
+                let dbName = self.activeSessions[connectionId]?.activeDatabase ?? ""
                 for stmt in statements {
                     QueryHistoryManager.shared.recordQuery(
                         query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",
@@ -89,8 +90,9 @@ extension DatabaseManager {
                     )
                 }
 
-                // Post notification to refresh UI
-                NotificationCenter.default.post(name: .refreshData, object: nil)
+                await MainActor.run {
+                    AppCommands.shared.refreshData.send(nil)
+                }
             } catch {
                 if useTransaction {
                     do {
@@ -146,7 +148,7 @@ extension DatabaseManager {
 
         do {
             let result = try await driver.execute(query: query)
-            if let row = result.rows.first, let name = row[0], !name.isEmpty {
+            if let row = result.rows.first, let name = row[0].asText, !name.isEmpty {
                 return name
             }
         } catch {

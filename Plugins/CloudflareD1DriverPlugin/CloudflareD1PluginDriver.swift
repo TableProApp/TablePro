@@ -38,6 +38,16 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     var currentSchema: String? { nil }
     var parameterStyle: ParameterStyle { .questionMark }
 
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .alterTableDDL,
+            .foreignKeyToggle,
+            .truncateTable,
+            .cancelQuery,
+        ]
+    }
+
     init(config: DriverConnectionConfig) {
         self.config = config
     }
@@ -128,7 +138,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         return mapRawResult(payload, executionTime: executionTime)
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else {
             return try await execute(query: query)
         }
@@ -139,7 +149,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let startTime = Date()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let anyParams: [Any?] = parameters.map { $0 as Any? }
+        let anyParams: [Any?] = parameters.map { param -> Any? in
+            switch param {
+            case .null: return nil
+            case .text(let s): return s
+            case .bytes(let d): return d.base64EncodedString()
+            }
+        }
         let payload = try await client.executeRaw(sql: trimmed, params: anyParams)
         let executionTime = Date().timeIntervalSince(startTime)
         return mapRawResult(payload, executionTime: executionTime)
@@ -192,9 +208,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             throw CloudflareD1Error.notConnected
         }
 
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseQuery = stripLimitOffset(from: trimmed)
-        let payload = try await client.executeRaw(sql: baseQuery)
+        let payload = try await client.executeRaw(sql: query)
 
         let columns = payload.results.columns ?? []
         continuation.yield(.header(PluginStreamHeader(
@@ -205,27 +219,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let rawRows = payload.results.rows ?? []
         if !rawRows.isEmpty {
-            let rows = rawRows.map { rawRow in rawRow.map(\.stringValue) }
+            let rows = rawRows.map { rawRow in
+                rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
+            }
             continuation.yield(.rows(rows))
         }
 
         continuation.finish()
-    }
-
-    // MARK: - Pagination
-
-    func fetchRowCount(query: String) async throws -> Int {
-        let baseQuery = stripLimitOffset(from: query)
-        let countQuery = "SELECT COUNT(*) FROM (\(baseQuery)) _t"
-        let result = try await execute(query: countQuery)
-        guard let firstRow = result.rows.first, let countStr = firstRow.first else { return 0 }
-        return Int(countStr ?? "0") ?? 0
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let baseQuery = stripLimitOffset(from: query)
-        let paginatedQuery = "\(baseQuery) LIMIT \(limit) OFFSET \(offset)"
-        return try await execute(query: paginatedQuery)
     }
 
     // MARK: - Schema Operations
@@ -240,8 +240,8 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
-            guard let name = row[safe: 0] ?? nil else { return nil }
-            let typeString = (row[safe: 1] ?? nil) ?? "table"
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let typeString = row[safe: 1]?.asText ?? "table"
             let tableType = typeString.lowercased() == "view" ? "VIEW" : "TABLE"
             return PluginTableInfo(name: name, type: tableType)
         }
@@ -254,15 +254,14 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         return result.rows.compactMap { row in
             guard row.count >= 6,
-                  let name = row[1],
-                  let dataType = row[2] else {
+                  let name = row[1].asText,
+                  let dataType = row[2].asText else {
                 return nil
             }
 
-            let isNullable = row[3] == "0"
-            // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
-            let isPrimaryKey = row[5] != nil && row[5] != "0"
-            let defaultValue = row[4]
+            let isNullable = row[3].asText == "0"
+            let isPrimaryKey = row[5].asText != nil && row[5].asText != "0"
+            let defaultValue = row[4].asText
 
             return PluginColumnInfo(
                 name: name,
@@ -287,16 +286,15 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         for row in result.rows {
             guard row.count >= 7,
-                  let tableName = row[0],
-                  let columnName = row[2],
-                  let dataType = row[3] else {
+                  let tableName = row[0].asText,
+                  let columnName = row[2].asText,
+                  let dataType = row[3].asText else {
                 continue
             }
 
-            let isNullable = row[4] == "0"
-            let defaultValue = row[5]
-            // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
-            let isPrimaryKey = row[6] != nil && row[6] != "0"
+            let isNullable = row[4].asText == "0"
+            let defaultValue = row[5].asText
+            let isPrimaryKey = row[6].asText != nil && row[6].asText != "0"
 
             let column = PluginColumnInfo(
                 name: columnName,
@@ -327,16 +325,16 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         for row in result.rows {
             guard row.count >= 7,
-                  let tableName = row[0],
-                  let id = row[1],
-                  let refTable = row[2],
-                  let fromCol = row[3],
-                  let toCol = row[4] else {
+                  let tableName = row[0].asText,
+                  let id = row[1].asText,
+                  let refTable = row[2].asText,
+                  let fromCol = row[3].asText,
+                  let toCol = row[4].asText else {
                 continue
             }
 
-            let onUpdate = row[5] ?? "NO ACTION"
-            let onDelete = row[6] ?? "NO ACTION"
+            let onUpdate = row[5].asText ?? "NO ACTION"
+            let onDelete = row[6].asText ?? "NO ACTION"
 
             let fk = PluginForeignKeyInfo(
                 name: "fk_\(tableName)_\(id)",
@@ -368,17 +366,17 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         for row in result.rows {
             guard row.count >= 4,
-                  let indexName = row[0] else { continue }
+                  let indexName = row[0].asText else { continue }
 
-            let isUnique = row[1] == "1"
-            let origin = row[2] ?? "c"
+            let isUnique = row[1].asText == "1"
+            let origin = row[2].asText ?? "c"
 
             if let idx = indexLookup[indexName] {
-                if let colName = row[3] {
+                if let colName = row[3].asText {
                     indexMap[idx].columns.append(colName)
                 }
             } else {
-                let columns: [String] = row[3].map { [$0] } ?? []
+                let columns: [String] = row[3].asText.map { [$0] } ?? []
                 indexLookup[indexName] = indexMap.count
                 indexMap.append((
                     name: indexName,
@@ -407,15 +405,15 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         return result.rows.compactMap { row in
             guard row.count >= 5,
-                  let refTable = row[2],
-                  let fromCol = row[3],
-                  let toCol = row[4] else {
+                  let refTable = row[2].asText,
+                  let fromCol = row[3].asText,
+                  let toCol = row[4].asText else {
                 return nil
             }
 
-            let id = row[0] ?? "0"
-            let onUpdate = row.count >= 6 ? (row[5] ?? "NO ACTION") : "NO ACTION"
-            let onDelete = row.count >= 7 ? (row[6] ?? "NO ACTION") : "NO ACTION"
+            let id = row[0].asText ?? "0"
+            let onUpdate = row.count >= 6 ? (row[5].asText ?? "NO ACTION") : "NO ACTION"
+            let onDelete = row.count >= 7 ? (row[6].asText ?? "NO ACTION") : "NO ACTION"
 
             return PluginForeignKeyInfo(
                 name: "fk_\(table)_\(id)",
@@ -437,7 +435,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         let result = try await execute(query: query)
 
         guard let firstRow = result.rows.first,
-              let ddl = firstRow[0] else {
+              let ddl = firstRow[0].asText else {
             throw CloudflareD1Error(message: "Failed to fetch DDL for table '\(table)'")
         }
 
@@ -454,7 +452,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         let result = try await execute(query: query)
 
         guard let firstRow = result.rows.first,
-              let ddl = firstRow[0] else {
+              let ddl = firstRow[0].asText else {
             throw CloudflareD1Error(message: "Failed to fetch definition for view '\(view)'")
         }
 
@@ -467,7 +465,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         let countResult = try await execute(query: countQuery)
         let rowCount: Int64? = {
             guard let row = countResult.rows.first, let countStr = row.first else { return nil }
-            return Int64(countStr ?? "0")
+            return Int64(countStr.asText ?? "0")
         }()
 
         return PluginTableMetadata(
@@ -784,7 +782,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         let columns = payload.results.columns ?? []
         let rawRows = payload.results.rows ?? []
 
-        var rows: [[String?]] = []
+        var rows: [[PluginCellValue]] = []
         var truncated = false
 
         for rawRow in rawRows {
@@ -792,7 +790,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
                 truncated = true
                 break
             }
-            let row = rawRow.map(\.stringValue)
+            let row = rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
             rows.append(row)
         }
 
@@ -804,37 +802,6 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             executionTime: executionTime,
             isTruncated: truncated
         )
-    }
-
-    private func stripLimitOffset(from query: String) -> String {
-        let ns = query as NSString
-        let len = ns.length
-        guard len > 0 else { return query }
-
-        let upper = query.uppercased() as NSString
-        var depth = 0
-        var i = len - 1
-
-        while i >= 4 {
-            let ch = upper.character(at: i)
-            if ch == 0x29 { depth += 1 }
-            else if ch == 0x28 { depth -= 1 }
-            else if depth == 0 && ch == 0x54 {
-                let start = i - 4
-                if start >= 0 {
-                    let candidate = upper.substring(with: NSRange(location: start, length: 5))
-                    if candidate == "LIMIT" {
-                        if start == 0 || CharacterSet.whitespacesAndNewlines
-                            .contains(UnicodeScalar(upper.character(at: start - 1)) ?? UnicodeScalar(0)) {
-                            return ns.substring(to: start)
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                        }
-                    }
-                }
-            }
-            i -= 1
-        }
-        return query
     }
 
     private func formatDDL(_ ddl: String) -> String {

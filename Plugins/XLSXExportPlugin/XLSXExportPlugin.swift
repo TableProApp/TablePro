@@ -47,7 +47,7 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
 
             var isFirstBatch = true
-            var rowBatch: [[String?]] = []
+            var rowBatch: [[PluginCellValue]] = []
             var currentSheetRowCount = 0
             var columns: [String] = []
             let headerRowCount = settings.includeHeaderRow ? 1 : 0

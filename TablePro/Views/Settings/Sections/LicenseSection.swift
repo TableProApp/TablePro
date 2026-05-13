@@ -36,7 +36,7 @@ struct LicenseSection: View {
             if licenseManager.isExpiringSoon, let days = licenseManager.daysUntilExpiry {
                 HStack {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color(nsColor: .systemOrange))
                     Text("License expires in \(days) day(s)")
                     Spacer()
                     Link(String(localized: "Renew"), destination: LicenseConstants.pricingURL)

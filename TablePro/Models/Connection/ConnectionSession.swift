@@ -18,13 +18,17 @@ struct ConnectionSession: Identifiable {
     var lastError: String?
 
     // Per-connection state
-    var tables: [TableInfo] = []
     var selectedTables: Set<TableInfo> = []
     var pendingTruncates: Set<String> = []
     var pendingDeletes: Set<String> = []
     var tableOperationOptions: [String: TableOperationOptions] = [:]
     var currentSchema: String?
     var currentDatabase: String?
+
+    @MainActor
+    var tables: [TableInfo] {
+        SchemaService.shared.tables(for: id)
+    }
 
     /// In-memory password for prompt-for-password connections. Never persisted to disk.
     var cachedPassword: String?
@@ -63,7 +67,6 @@ struct ConnectionSession: Identifiable {
     /// to release memory held by stale table metadata.
     /// Note: `cachedPassword` is intentionally NOT cleared — auto-reconnect needs it after disconnect.
     mutating func clearCachedData() {
-        tables = []
         selectedTables = []
         pendingTruncates = []
         pendingDeletes = []
@@ -80,12 +83,12 @@ struct ConnectionSession: Identifiable {
 
     /// Compares fields used by ContentView's body to avoid unnecessary SwiftUI re-renders.
     /// Excludes: driver (protocol, non-comparable),
-    /// lastActiveAt (volatile), lastError, effectiveConnection.
+    /// lastActiveAt (volatile), lastError, effectiveConnection,
+    /// tables (owned by SchemaService and observed independently).
     func isContentViewEquivalent(to other: ConnectionSession) -> Bool {
         id == other.id
             && status == other.status
             && connection == other.connection
-            && tables == other.tables
             && pendingTruncates == other.pendingTruncates
             && pendingDeletes == other.pendingDeletes
             && tableOperationOptions == other.tableOperationOptions

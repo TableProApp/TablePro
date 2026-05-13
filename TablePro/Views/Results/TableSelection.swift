@@ -4,20 +4,6 @@ struct TableSelection: Equatable {
     var focusedRow: Int = -1
     var focusedColumn: Int = -1
 
-    var hasFocus: Bool { focusedRow >= 0 && focusedColumn >= 0 }
-
-    static let empty = TableSelection()
-
-    mutating func clearFocus() {
-        focusedRow = -1
-        focusedColumn = -1
-    }
-
-    mutating func setFocus(row: Int, column: Int) {
-        focusedRow = row
-        focusedColumn = column
-    }
-
     func reloadIndexes(from previous: TableSelection) -> (rows: IndexSet, columns: IndexSet)? {
         guard previous.focusedRow != focusedRow || previous.focusedColumn != focusedColumn else {
             return nil

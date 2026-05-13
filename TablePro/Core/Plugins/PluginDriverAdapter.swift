@@ -20,17 +20,22 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     func pluginGenerateStatements(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [String?]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [String?])]? {
-        pluginDriver.generateStatements(
-            table: table, columns: columns, changes: changes,
-            insertedRowData: insertedRowData,
+        let pluginRowData = insertedRowData.mapValues { row in
+            row.map(PluginCellValue.fromOptional)
+        }
+        let result = pluginDriver.generateStatements(
+            table: table, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: pluginRowData,
             deletedRowIndices: deletedRowIndices,
             insertedRowIndices: insertedRowIndices
         )
+        return result?.map { (statement: $0.statement, parameters: $0.parameters.map { $0.asText }) }
     }
 
     /// The underlying plugin driver, exposed for DDL schema generation delegation.
@@ -123,51 +128,32 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
-        let stringParams = parameters.map { param -> String? in
-            guard let p = param else { return nil }
-            return Self.stringValue(for: p)
+        let cellParams: [PluginCellValue] = parameters.map { param in
+            guard let p = param else { return .null }
+            if let data = p as? Data { return .bytes(data) }
+            return .text(Self.stringValue(for: p))
         }
-        let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: stringParams)
+        let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: cellParams)
         return mapQueryResult(pluginResult)
     }
 
-    func fetchRowCount(query: String) async throws -> Int {
-        try await pluginDriver.fetchRowCount(query: query)
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> QueryResult {
-        let pluginResult = try await pluginDriver.fetchRows(query: query, offset: offset, limit: limit)
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        let cellParams: [PluginCellValue]?
+        if let parameters {
+            cellParams = parameters.map { param -> PluginCellValue in
+                guard let p = param else { return .null }
+                if let data = p as? Data { return .bytes(data) }
+                return .text(Self.stringValue(for: p))
+            }
+        } else {
+            cellParams = nil
+        }
+        let pluginResult = try await pluginDriver.executeUserQuery(
+            query: query,
+            rowCap: rowCap,
+            parameters: cellParams
+        )
         return mapQueryResult(pluginResult)
-    }
-
-    // MARK: - Progressive Loading
-
-    func fetchFirstPage(query: String, limit: Int) async throws -> PagedQueryResult {
-        let pluginResult = try await pluginDriver.fetchFirstPage(query: query, limit: limit)
-        return mapPagedResult(pluginResult)
-    }
-
-    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult {
-        let pluginResult = try await pluginDriver.fetchNextPage(query: query, offset: offset, limit: limit)
-        return mapPagedResult(pluginResult)
-    }
-
-    func fetchFirstPageParameterized(query: String, parameters: [Any?], limit: Int) async throws -> PagedQueryResult {
-        let stringParams = parameters.map { param -> String? in
-            guard let p = param else { return nil }
-            return Self.stringValue(for: p)
-        }
-        let pluginResult = try await pluginDriver.fetchFirstPageParameterized(query: query, parameters: stringParams, limit: limit)
-        return mapPagedResult(pluginResult)
-    }
-
-    func fetchNextPageParameterized(query: String, parameters: [Any?], offset: Int, limit: Int) async throws -> PagedQueryResult {
-        let stringParams = parameters.map { param -> String? in
-            guard let p = param else { return nil }
-            return Self.stringValue(for: p)
-        }
-        let pluginResult = try await pluginDriver.fetchNextPageParameterized(query: query, parameters: stringParams, offset: offset, limit: limit)
-        return mapPagedResult(pluginResult)
     }
 
     // MARK: - Schema Operations
@@ -175,10 +161,21 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     func fetchTables() async throws -> [TableInfo] {
         let pluginTables = try await pluginDriver.fetchTables(schema: pluginDriver.currentSchema)
         return pluginTables.map { table in
-            let tableType: TableInfo.TableType = switch table.type.lowercased() {
-            case "view": .view
-            case "system table": .systemTable
-            default: .table
+            let tableType: TableInfo.TableType
+            switch table.type.lowercased() {
+            case "table", "base table", "prefix":
+                tableType = .table
+            case "view":
+                tableType = .view
+            case "materialized view", "materialized_view":
+                tableType = .materializedView
+            case "foreign table", "foreign_table":
+                tableType = .foreignTable
+            case "system table", "system base table", "system view":
+                tableType = .systemTable
+            default:
+                Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
+                tableType = .table
             }
             return TableInfo(name: table.name, type: tableType, rowCount: table.rowCount)
         }
@@ -286,6 +283,61 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     func fetchSchemas() async throws -> [String] {
         try await pluginDriver.fetchSchemas()
+    }
+
+    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {
+        guard let support = pluginDriver as? PluginProcedureFunctionSupport else { return [] }
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        do {
+            let pluginRoutines = try await support.fetchProcedures(schema: resolvedSchema)
+            return pluginRoutines.map { routine in
+                RoutineInfo(
+                    name: routine.name,
+                    schema: resolvedSchema,
+                    kind: .procedure,
+                    signature: routine.returnType
+                )
+            }
+        } catch {
+            Self.logger.warning("fetchProcedures failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+
+    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] {
+        guard let support = pluginDriver as? PluginProcedureFunctionSupport else { return [] }
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        do {
+            let pluginRoutines = try await support.fetchFunctions(schema: resolvedSchema)
+            return pluginRoutines.map { routine in
+                RoutineInfo(
+                    name: routine.name,
+                    schema: resolvedSchema,
+                    kind: .function,
+                    signature: routine.returnType
+                )
+            }
+        } catch {
+            Self.logger.warning("fetchFunctions failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+
+    func fetchRoutineDDL(routine: RoutineInfo) async throws -> String {
+        guard let support = pluginDriver as? PluginProcedureFunctionSupport else {
+            throw NSError(
+                domain: "PluginDriverAdapter",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "This driver does not expose routine DDL.")]
+            )
+        }
+        let resolvedSchema = routine.schema ?? pluginDriver.currentSchema
+        switch routine.kind {
+        case .procedure:
+            return try await support.fetchProcedureDDL(name: routine.name, schema: resolvedSchema)
+        case .function:
+            return try await support.fetchFunctionDDL(name: routine.name, schema: resolvedSchema)
+        }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
@@ -532,17 +584,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     // MARK: - Result Mapping
-
-    private func mapPagedResult(_ pluginResult: PluginPagedResult) -> PagedQueryResult {
-        PagedQueryResult(
-            columns: pluginResult.columns,
-            columnTypes: pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) },
-            rows: pluginResult.rows,
-            executionTime: pluginResult.executionTime,
-            hasMore: pluginResult.hasMore,
-            nextOffset: pluginResult.nextOffset
-        )
-    }
 
     private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
         let columnTypes = pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) }

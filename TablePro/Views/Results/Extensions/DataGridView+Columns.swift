@@ -5,9 +5,14 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 extension TableViewCoordinator {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        autoreleasepool { viewForCell(in: tableView, column: tableColumn, row: row) }
+    }
+
+    private func viewForCell(in tableView: NSTableView, column tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let column = tableColumn else { return nil }
 
         let tableRows = tableRowsProvider()
@@ -17,6 +22,7 @@ extension TableViewCoordinator {
             return cellRegistry.makeRowNumberCell(
                 in: tableView,
                 row: row,
+                pageOffset: paginationOffsetProvider(),
                 cachedRowCount: displayCount,
                 visualState: visualState(for: row)
             )
@@ -31,7 +37,7 @@ extension TableViewCoordinator {
             return nil
         }
 
-        guard let displayRow = displayRow(at: row),
+        guard let displayRow = displayRow(at: row, in: tableRows),
               columnIndex < displayRow.values.count else {
             return nil
         }
@@ -73,48 +79,64 @@ extension TableViewCoordinator {
             isDropdownColumn: resolvedDropdown
         )
 
-        let accessibilityValue = rawValue ?? String(localized: "NULL")
         let content = DataGridCellContent(
             displayText: formattedValue ?? "",
-            rawValue: rawValue,
-            placeholder: placeholderKind(for: rawValue),
-            accessibilityLabel: String(
-                format: String(localized: "Row %d, column %d: %@"),
-                row + 1,
-                columnIndex + 1,
-                accessibilityValue
-            )
+            rawValue: rawValue.asText,
+            placeholder: placeholderKind(for: rawValue)
         )
         let cellState = DataGridCellState(
             visualState: state,
             isFocused: isFocused,
-            isEditable: isEditable && !state.isDeleted,
+            isEditable: isEditable,
             isLargeDataset: isLargeDataset,
             row: row,
             columnIndex: columnIndex
         )
 
-        let cell = cellRegistry.dequeueCell(of: kind, in: tableView)
-        cell.configure(content: content, state: cellState)
+        let cell = cellRegistry.dequeueCell(in: tableView)
+        cell.configure(kind: kind, content: content, state: cellState, palette: cellRegistry.palette)
         return cell
     }
 
-    private func placeholderKind(for rawValue: String?) -> DataGridCellPlaceholder? {
-        guard let rawValue else { return .null }
-        if rawValue == "__DEFAULT__" { return .defaultMarker }
-        if rawValue.isEmpty { return .empty }
-        return nil
+    private func placeholderKind(for rawValue: PluginCellValue) -> DataGridCellPlaceholder? {
+        switch rawValue {
+        case .null:
+            return .null
+        case .text(let s):
+            if s == "__DEFAULT__" { return .defaultMarker }
+            if s.isEmpty { return .empty }
+            return nil
+        case .bytes:
+            return nil
+        }
+    }
+
+    func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+        guard let tableColumn else { return nil }
+        guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return nil }
+        guard let columnIndex = dataColumnIndex(from: tableColumn.identifier) else { return nil }
+        guard let displayRow = displayRow(at: row) else { return nil }
+        guard columnIndex < displayRow.values.count else { return nil }
+        return displayRow.values[columnIndex].asText
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         if let delegateRowView = delegate?.dataGridRowView(for: tableView, row: row, coordinator: self) {
+            // Delegate-provided row views (e.g. StructureRowViewWithMenu) must still
+            // pick up the deleted/inserted/modified tint. Apply the visual state if
+            // the row view subclasses DataGridRowView; otherwise the delegate is
+            // responsible for its own visual state.
+            if let dataGridRow = delegateRowView as? DataGridRowView {
+                dataGridRow.applyVisualState(visualState(for: row))
+            }
             return delegateRowView
         }
-        let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? TableRowViewWithMenu)
-            ?? TableRowViewWithMenu()
+        let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? DataGridRowView)
+            ?? DataGridRowView()
         rowView.identifier = Self.rowViewIdentifier
         rowView.coordinator = self
         rowView.rowIndex = row
+        rowView.applyVisualState(visualState(for: row))
         return rowView
     }
 }

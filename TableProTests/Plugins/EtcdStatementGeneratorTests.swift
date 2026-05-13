@@ -27,7 +27,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["mykey", "myvalue", nil, nil, nil, nil]
         ]
 
@@ -56,7 +56,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["mykey", "myvalue", nil, nil, nil, "12345"]
         ]
 
@@ -85,7 +85,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["setting1", "value1", nil, nil, nil, nil]
         ]
 
@@ -115,7 +115,7 @@ struct EtcdStatementGeneratorInsertTests {
         )
 
         // Key starts with "/" so it's treated as absolute
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["/app/mykey", "value", nil, nil, nil, nil]
         ]
 
@@ -144,7 +144,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["/absolute/key", "value", nil, nil, nil, nil]
         ]
 
@@ -173,7 +173,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["", "value", nil, nil, nil, nil]
         ]
 
@@ -201,7 +201,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, "value", nil, nil, nil, nil]
         ]
 
@@ -229,7 +229,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["mykey", nil, nil, nil, nil, nil]
         ]
 
@@ -258,7 +258,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["mykey", "value", nil, nil, nil, "0"]
         ]
 
@@ -315,7 +315,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["mykey", "hello world", nil, nil, nil, nil]
         ]
 
@@ -665,7 +665,7 @@ struct EtcdStatementGeneratorBatchTests {
             originalRow: ["delkey", "val", "1", "1", "1", "0"]
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             0: ["newkey", "newval", nil, nil, nil, nil]
         ]
 
@@ -696,7 +696,7 @@ struct EtcdStatementGeneratorBatchTests {
             originalRow: nil
         )
 
-        let insertedData: [Int: [String?]] = [
+        let insertedData: [Int: [PluginCellValue]] = [
             5: ["key", "val", nil, nil, nil, nil]
         ]
 

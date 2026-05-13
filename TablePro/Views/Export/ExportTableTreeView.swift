@@ -15,12 +15,12 @@ struct ExportTableTreeView: View {
     let formatId: String
 
     private var optionColumns: [PluginExportOptionColumn] {
-        guard let plugin = PluginManager.shared.exportPlugins[formatId] else { return [] }
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) else { return [] }
         return type(of: plugin).perTableOptionColumns
     }
 
     private var currentPlugin: (any ExportFormatPlugin)? {
-        PluginManager.shared.exportPlugins[formatId]
+        PluginManager.shared.exportPlugin(forFormat: formatId)
     }
 
     var body: some View {
@@ -70,7 +70,7 @@ struct ExportTableTreeView: View {
             .frame(width: 18)
 
             Image(systemName: "cylinder")
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color(nsColor: .systemBlue))
                 .font(.body)
 
             Text(database.name)

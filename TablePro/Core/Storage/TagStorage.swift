@@ -77,10 +77,10 @@ final class TagStorage {
     /// Delete a custom tag (presets cannot be deleted)
     func deleteTag(_ tag: ConnectionTag) {
         guard !tag.isPreset else { return }
-        SyncChangeTracker.shared.markDeleted(.tag, id: tag.id.uuidString)
         var tags = loadTags()
         tags.removeAll { $0.id == tag.id }
         saveTags(tags)
+        SyncChangeTracker.shared.markDeleted(.tag, id: tag.id.uuidString)
     }
 
     /// Get tag by ID

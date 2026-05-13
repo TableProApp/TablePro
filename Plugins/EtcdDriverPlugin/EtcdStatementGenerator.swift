@@ -21,11 +21,11 @@ struct EtcdStatementGenerator {
 
     func generateStatements(
         from changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])] {
-        var statements: [(statement: String, parameters: [String?])] = []
+    ) -> [(statement: String, parameters: [PluginCellValue])] {
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         for change in changes {
             switch change.type {
@@ -47,22 +47,22 @@ struct EtcdStatementGenerator {
 
     private func generateInsert(
         for change: PluginRowChange,
-        insertedRowData: [Int: [String?]]
-    ) -> [(statement: String, parameters: [String?])] {
+        insertedRowData: [Int: [PluginCellValue]]
+    ) -> [(statement: String, parameters: [PluginCellValue])] {
         var key: String?
         var value: String?
         var leaseId: String?
 
         if let values = insertedRowData[change.rowIndex] {
-            if let ki = keyColumnIndex, ki < values.count { key = values[ki] }
-            if let vi = valueColumnIndex, vi < values.count { value = values[vi] }
-            if let li = leaseColumnIndex, li < values.count { leaseId = values[li] }
+            if let ki = keyColumnIndex, ki < values.count { key = values[ki].asText }
+            if let vi = valueColumnIndex, vi < values.count { value = values[vi].asText }
+            if let li = leaseColumnIndex, li < values.count { leaseId = values[li].asText }
         } else {
             for cellChange in change.cellChanges {
                 switch cellChange.columnName {
-                case "Key": key = cellChange.newValue
-                case "Value": value = cellChange.newValue
-                case "Lease": leaseId = cellChange.newValue
+                case "Key": key = cellChange.newValue.asText
+                case "Value": value = cellChange.newValue.asText
+                case "Lease": leaseId = cellChange.newValue.asText
                 default: break
                 }
             }
@@ -91,17 +91,17 @@ struct EtcdStatementGenerator {
 
     private func generateUpdate(
         for change: PluginRowChange
-    ) -> [(statement: String, parameters: [String?])] {
+    ) -> [(statement: String, parameters: [PluginCellValue])] {
         guard !change.cellChanges.isEmpty else { return [] }
         guard let originalKey = extractKey(from: change) else {
             Self.logger.warning("Skipping UPDATE - no original key")
             return []
         }
 
-        var statements: [(statement: String, parameters: [String?])] = []
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         let keyChange = change.cellChanges.first { $0.columnName == "Key" }
-        let newKey = keyChange?.newValue ?? originalKey
+        let newKey = keyChange?.newValue.asText ?? originalKey
 
         guard !newKey.isEmpty else {
             Self.logger.warning("Skipping UPDATE - empty key")
@@ -113,16 +113,16 @@ struct EtcdStatementGenerator {
         let leaseChange = change.cellChanges.first { $0.columnName == "Lease" }
 
         if valueChange != nil || newKey != originalKey {
-            let newValue = valueChange?.newValue ?? extractOriginalValue(from: change) ?? ""
+            let newValue = valueChange?.newValue.asText ?? extractOriginalValue(from: change) ?? ""
             var cmd = "put \(escapeArgument(newKey)) \(escapeArgument(newValue))"
-            if let lease = leaseChange?.newValue, !lease.isEmpty, lease != "0" {
+            if let lease = leaseChange?.newValue.asText, !lease.isEmpty, lease != "0" {
                 cmd += " --lease=\(lease)"
             }
             statements.append((statement: cmd, parameters: []))
             if shouldDeleteOriginalKey {
                 statements.append((statement: "del \(escapeArgument(originalKey))", parameters: []))
             }
-        } else if let lease = leaseChange?.newValue {
+        } else if let lease = leaseChange?.newValue.asText {
             let currentValue = extractOriginalValue(from: change) ?? ""
             var cmd = "put \(escapeArgument(newKey)) \(escapeArgument(currentValue))"
             if !lease.isEmpty && lease != "0" {
@@ -140,14 +140,14 @@ struct EtcdStatementGenerator {
         guard let keyIndex = keyColumnIndex,
               let originalRow = change.originalRow,
               keyIndex < originalRow.count else { return nil }
-        return originalRow[keyIndex]
+        return originalRow[keyIndex].asText
     }
 
     private func extractOriginalValue(from change: PluginRowChange) -> String? {
         guard let valueIndex = valueColumnIndex,
               let originalRow = change.originalRow,
               valueIndex < originalRow.count else { return nil }
-        return originalRow[valueIndex]
+        return originalRow[valueIndex].asText
     }
 
     private func escapeArgument(_ value: String) -> String {

@@ -1,0 +1,70 @@
+import AppKit
+import Foundation
+import os
+
+public struct OpenConnectionWindowTool: MCPToolImplementation {
+    public static let name = "open_connection_window"
+    public static let description = String(
+        localized: "Open a TablePro window for a saved connection (focuses if already open)."
+    )
+    public static let inputSchema: JsonValue = .object([
+        "type": .string("object"),
+        "properties": .object([
+            "connection_id": .object([
+                "type": .string("string"),
+                "description": .string(String(localized: "UUID of the saved connection"))
+            ])
+        ]),
+        "required": .array([.string("connection_id")])
+    ])
+    public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "Open Connection Window"),
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
+
+    public init() {}
+
+    public func call(
+        arguments: JsonValue,
+        context: MCPRequestContext,
+        services: MCPToolServices
+    ) async throws -> MCPToolCallResult {
+        let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
+        try await ensureConnectionExists(connectionId)
+
+        Self.logger.debug("open_connection_window invoked for connection \(connectionId.uuidString, privacy: .public)")
+
+        let windowId = await MainActor.run { () -> UUID in
+            let payload = EditorTabPayload(
+                connectionId: connectionId,
+                tabType: .query,
+                intent: .restoreOrDefault
+            )
+            WindowManager.shared.openTab(payload: payload)
+            NSApp.activate(ignoringOtherApps: true)
+            return payload.id
+        }
+
+        let result: JsonValue = .object([
+            "status": .string("opened"),
+            "connection_id": .string(connectionId.uuidString),
+            "window_id": .string(windowId.uuidString)
+        ])
+        return .structured(result)
+    }
+
+    private func ensureConnectionExists(_ connectionId: UUID) async throws {
+        let exists = await MainActor.run {
+            ConnectionStorage.shared.loadConnections().contains { $0.id == connectionId }
+        }
+        guard exists else {
+            throw MCPProtocolError.invalidParams(detail: "Connection not found: \(connectionId.uuidString)")
+        }
+    }
+}

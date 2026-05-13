@@ -31,8 +31,8 @@ struct StatusBarSnapshot: Equatable {
 
 struct MainStatusBarView: View {
     let snapshot: StatusBarSnapshot
-    let filterStateManager: FilterStateManager
-    let columnVisibilityManager: ColumnVisibilityManager
+    let filterState: TabFilterState
+    let hiddenColumns: Set<String>
     let allColumns: [String]
     let selectedRowIndices: Set<Int>
     @Binding var viewMode: ResultsViewMode
@@ -48,9 +48,19 @@ struct MainStatusBarView: View {
     let onOffsetChange: (Int) -> Void
     let onPaginationGo: () -> Void
 
-    // Progressive loading callbacks
-    var onLoadMore: (() -> Void)?
+    // Column visibility callbacks
+    let onToggleColumn: (String) -> Void
+    let onShowAllColumns: () -> Void
+    let onHideAllColumns: ([String]) -> Void
+
+    // Filter visibility callback
+    let onToggleFilters: () -> Void
+
+    // Truncated result callback
     var onFetchAll: (() -> Void)?
+
+    private var hasHiddenColumns: Bool { !hiddenColumns.isEmpty }
+    private var hiddenCount: Int { hiddenColumns.count }
 
     var body: some View {
         HStack {
@@ -95,29 +105,19 @@ struct MainStatusBarView: View {
                     }
 
                     if snapshot.tabType == .query && snapshot.pagination.hasMoreRows && !snapshot.pagination.isLoadingMore {
-                        Text("—")
-                            .font(.caption)
-                            .foregroundStyle(.quaternary)
-                        Button {
-                            onLoadMore?()
-                        } label: {
-                            Text("Load More")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.tint)
-
                         Text("·")
                             .font(.caption)
                             .foregroundStyle(.quaternary)
+                        Text("truncated")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         Button {
                             onFetchAll?()
                         } label: {
                             Text("Fetch All")
                                 .font(.caption)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                        .buttonStyle(.link)
                     }
 
                     if let statusMessage = snapshot.statusMessage {
@@ -140,12 +140,12 @@ struct MainStatusBarView: View {
                         showColumnPopover.toggle()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: columnVisibilityManager.hasHiddenColumns
+                            Image(systemName: hasHiddenColumns
                                     ? "eye.slash.circle.fill"
                                     : "eye.circle")
                             Text("Columns")
-                            if columnVisibilityManager.hasHiddenColumns {
-                                let visible = allColumns.count - columnVisibilityManager.hiddenCount
+                            if hasHiddenColumns {
+                                let visible = allColumns.count - hiddenCount
                                 Text("(\(visible)/\(allColumns.count))")
                                     .foregroundStyle(.secondary)
                             }
@@ -155,7 +155,10 @@ struct MainStatusBarView: View {
                     .popover(isPresented: $showColumnPopover) {
                         ColumnVisibilityPopover(
                             columns: allColumns,
-                            columnVisibilityManager: columnVisibilityManager
+                            hiddenColumns: hiddenColumns,
+                            onToggleColumn: onToggleColumn,
+                            onShowAll: onShowAllColumns,
+                            onHideAll: onHideAllColumns
                         )
                     }
                 }
@@ -163,16 +166,16 @@ struct MainStatusBarView: View {
                 // Filters toggle button
                 if snapshot.tabType == .table, snapshot.hasTableName {
                     Toggle(isOn: Binding(
-                        get: { filterStateManager.isVisible },
-                        set: { _ in filterStateManager.toggle() }
+                        get: { filterState.isVisible },
+                        set: { _ in onToggleFilters() }
                     )) {
                         HStack(spacing: 4) {
-                            Image(systemName: filterStateManager.hasAppliedFilters
+                            Image(systemName: filterState.hasAppliedFilters
                                     ? "line.3.horizontal.decrease.circle.fill"
                                     : "line.3.horizontal.decrease.circle")
                             Text("Filters")
-                            if filterStateManager.hasAppliedFilters {
-                                Text("(\(filterStateManager.appliedFilters.count))")
+                            if filterState.hasAppliedFilters {
+                                Text("(\(filterState.appliedFilters.count))")
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -221,12 +224,7 @@ struct MainStatusBarView: View {
             }
         } else if snapshot.tabType == .query && pagination.hasMoreRows {
             let formattedCount = loadedCount.formatted(.number.grouping(.automatic))
-            if let total = total, total > 0 {
-                let formattedTotal = total.formatted(.number.grouping(.automatic))
-                let prefix = pagination.isApproximateRowCount ? "~" : ""
-                return String(format: String(localized: "%@ of %@%@ rows"), formattedCount, prefix, formattedTotal)
-            }
-            return String(format: String(localized: "%@ rows (more available)"), formattedCount)
+            return String(format: String(localized: "Showing %@ rows"), formattedCount)
         } else if snapshot.tabType == .table, let total = total, total > 0 {
             let formattedTotal = total.formatted(.number.grouping(.automatic))
             let prefix = pagination.isApproximateRowCount ? "~" : ""

@@ -6,20 +6,26 @@
 //
 
 import AppKit
-import MarkdownUI
 import SwiftUI
 
-/// Displays a single AI chat message with appropriate styling
 struct AIChatMessageView: View {
-    let message: AIChatMessage
+    private static let userBubbleTintOpacity: Double = 0.08
+
+    let message: ChatTurn
     var onRetry: (() -> Void)?
     var onRegenerate: (() -> Void)?
     var onEdit: (() -> Void)?
 
+    private var attachedContextItems: [ContextItem] {
+        message.blocks.compactMap { block in
+            if case .attachment(let item) = block.kind { return item }
+            return nil
+        }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             if message.role == .user {
-                // User: timestamp header, then message text in tinted bubble
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
                         Spacer()
@@ -31,9 +37,12 @@ struct AIChatMessageView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                    Markdown(message.content)
-                        .markdownTheme(.tableProChat)
-                        .textSelection(.enabled)
+                    if !attachedContextItems.isEmpty {
+                        AIChatContextChipStrip(items: attachedContextItems)
+                            .padding(.bottom, 2)
+                    }
+
+                    MarkdownView(source: message.plainText)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     if let onEdit {
@@ -46,19 +55,18 @@ struct AIChatMessageView: View {
                             .buttonStyle(.plain)
                             .foregroundStyle(.tertiary)
                             .help(String(localized: "Edit message"))
+                            .accessibilityLabel(String(localized: "Edit message"))
                         }
                     }
                 }
                 .padding(8)
-                .background(Color.accentColor.opacity(0.06))
+                .background(Color.accentColor.opacity(Self.userBubbleTintOpacity))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
-                // Assistant: role header above content
                 roleHeader
                 messageContent
             }
 
-            // Footer (assistant only)
             if message.role == .assistant {
                 HStack(spacing: 8) {
                     if let onRegenerate {
@@ -68,6 +76,13 @@ struct AIChatMessageView: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
+                    }
+                    if let modelId = message.modelId, !modelId.isEmpty {
+                        Text(modelId)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                     Spacer()
                     if let usage = message.usage {
@@ -80,7 +95,6 @@ struct AIChatMessageView: View {
                 .padding(.horizontal, 8)
             }
 
-            // Retry button (error case)
             if let onRetry {
                 Button {
                     onRetry()
@@ -116,87 +130,62 @@ struct AIChatMessageView: View {
 
     @ViewBuilder
     private var messageContent: some View {
-        if message.content.isEmpty {
-            TypingIndicatorView()
+        let visibleBlocks = message.blocks.filter { block in
+            switch block.kind {
+            case .text(let text):
+                return !text.isEmpty || block.isStreaming
+            case .toolUse, .toolResult:
+                return true
+            case .attachment:
+                return false
+            }
+        }
+        if visibleBlocks.isEmpty {
+            ChatTypingIndicatorView()
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
         } else {
-            Markdown(message.content)
-                .markdownTheme(.tableProChat)
-                .textSelection(.enabled)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(visibleBlocks) { block in
+                    AIChatBlockView(block: block)
+                }
+            }
+            .padding(.vertical, 6)
         }
     }
 }
 
-// MARK: - TablePro Chat Theme
+private struct AIChatBlockView: View {
+    @Bindable var block: ChatContentBlock
 
-extension MarkdownUI.Theme {
-    static let tableProChat = MarkdownUI.Theme()
-        .text {
-            FontSize(13)
-        }
-        .code {
-            FontFamilyVariant(.monospaced)
-            FontSize(.em(0.85))
-            ForegroundColor(Color(nsColor: .controlTextColor))
-            BackgroundColor(Color(nsColor: .quaternarySystemFill))
-        }
-        .heading1 { configuration in
-            configuration.label
-                .markdownMargin(top: 12, bottom: 4)
-                .markdownTextStyle {
-                    FontWeight(.bold)
-                    FontSize(17)
-                }
-        }
-        .heading2 { configuration in
-            configuration.label
-                .markdownMargin(top: 10, bottom: 4)
-                .markdownTextStyle {
-                    FontWeight(.semibold)
-                    FontSize(15)
-                }
-        }
-        .heading3 { configuration in
-            configuration.label
-                .markdownMargin(top: 8, bottom: 4)
-                .markdownTextStyle {
-                    FontWeight(.bold)
-                    FontSize(13)
-                }
-        }
-        .blockquote { configuration in
-            HStack(spacing: 0) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(nsColor: .tertiaryLabelColor))
-                    .frame(width: 3)
-                configuration.label
-                    .markdownTextStyle {
-                        ForegroundColor(.secondary)
-                        FontSize(13)
-                    }
-                    .padding(Edge.Set.leading, 8)
+    var body: some View {
+        switch block.kind {
+        case .text(let text):
+            if block.isStreaming {
+                Text(text)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+            } else {
+                MarkdownView(source: text)
+                    .padding(.horizontal, 8)
             }
-            .markdownMargin(top: 4, bottom: 4)
+        case .toolUse(let useBlock):
+            AIChatToolUseBlockView(block: useBlock)
+        case .toolResult(let resultBlock):
+            AIChatToolResultBlockView(block: resultBlock)
+        case .attachment:
+            EmptyView()
         }
-        .codeBlock { configuration in
-            AIChatCodeBlockView(
-                code: configuration.content,
-                language: configuration.language
-            )
-        }
+    }
 }
 
-// MARK: - Typing Indicator
-
-/// Animated three-dot typing indicator
-private struct TypingIndicatorView: View {
+struct ChatTypingIndicatorView: View {
     @State private var animating = false
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             ForEach(0..<3, id: \.self) { index in
                 Circle()
                     .fill(Color(nsColor: .tertiaryLabelColor))
@@ -211,8 +200,6 @@ private struct TypingIndicatorView: View {
             }
         }
         .frame(height: 16)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
         .onAppear { animating = true }
     }
 }

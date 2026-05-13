@@ -16,12 +16,9 @@ fi
 RELEASE_URL="https://github.com/TableProApp/TablePro/releases/tag/v${VERSION}"
 NOTES=$(cat release_notes.md 2>/dev/null || echo "Bug fixes and improvements")
 
-# Convert CHANGELOG markdown to Telegram HTML:
-#   ### Header  → <b>Header</b>
-#   - item      → • item
-#   `code`      → <code>code</code>
-#   blank lines → removed
-FORMATTED=$(echo "$NOTES" | sed -E \
+ESCAPED=$(echo "$NOTES" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+
+FORMATTED=$(echo "$ESCAPED" | sed -E \
   -e 's/^### (.+)$/<b>\1<\/b>/' \
   -e 's/^- /• /' \
   -e 's/`([^`]+)`/<code>\1<\/code>/g' \
@@ -36,6 +33,14 @@ PAYLOAD=$(jq -n \
   '{chat_id: $chat_id, text: $text, parse_mode: "HTML", disable_web_page_preview: true}
   + (if $topic_id != "" then {message_thread_id: ($topic_id | tonumber)} else {} end)')
 
-curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d "$PAYLOAD"
+  -d "$PAYLOAD")
+
+if echo "$RESPONSE" | jq -e '.ok == true' > /dev/null; then
+  echo "Telegram notification sent for v${VERSION}"
+else
+  echo "Telegram API rejected the message:"
+  echo "$RESPONSE" | jq .
+  exit 1
+fi

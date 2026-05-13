@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 extension MainContentView {
     // MARK: - Selected Row Data for Sidebar
@@ -16,7 +17,7 @@ extension MainContentView {
         guard let tab = coordinator.tabManager.selectedTab,
               !coordinator.selectionState.indices.isEmpty,
               let firstIndex = coordinator.selectionState.indices.min() else { return nil }
-        let tableRows = coordinator.tableRowsStore.tableRows(for: tab.id)
+        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         guard firstIndex < tableRows.rows.count else { return nil }
 
         let row = tableRows.rows[firstIndex].values
@@ -27,10 +28,19 @@ extension MainContentView {
         let tblName = tab.tableContext.tableName
 
         for (i, col) in tableRows.columns.enumerated() {
-            var value = i < row.count ? row[i] : nil
+            var value: String?
+            if i < row.count {
+                switch row[i] {
+                case .null:
+                    value = nil
+                case .text(let s):
+                    value = s
+                case .bytes(let data):
+                    value = BlobFormattingService.shared.format(data, for: .copy)
+                }
+            }
             let type = i < tableRows.columnTypes.count ? tableRows.columnTypes[i].displayName : "string"
 
-            // Apply display format if active
             if let rawValue = value {
                 let format = service.effectiveFormat(columnName: col, connectionId: connId, tableName: tblName)
                 if format != .raw {
@@ -75,7 +85,7 @@ extension MainContentView {
             },
             set: { newValue in
                 if let index = coordinator.tabManager.selectedTabIndex {
-                    coordinator.tabManager.tabs[index].sortState = newValue
+                    coordinator.tabManager.mutate(at: index) { $0.sortState = newValue }
                 }
             }
         )
@@ -89,7 +99,7 @@ extension MainContentView {
             get: { coordinator.tabManager.selectedTab?.display.resultsViewMode ?? .data },
             set: { newValue in
                 if let index = coordinator.tabManager.selectedTabIndex {
-                    coordinator.tabManager.tabs[index].display.resultsViewMode = newValue
+                    coordinator.tabManager.mutate(at: index) { $0.display.resultsViewMode = newValue }
                 }
             }
         )

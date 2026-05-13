@@ -42,7 +42,7 @@ struct LinkedFoldersSection: View {
                 }
             }
         } footer: {
-            Text("Watched folders are scanned for .tablepro files. Connections appear read-only in the sidebar.")
+            Text("Watched folders are scanned for .tablepro files. Connections appear read only in the sidebar.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -121,18 +121,5 @@ struct LinkedFoldersSection: View {
         LinkedFolderStorage.shared.removeFolder(folder)
         folders = LinkedFolderStorage.shared.loadFolders()
         LinkedFolderWatcher.shared.reload()
-    }
-}
-
-// MARK: - Pro Badge
-
-struct ProBadge: View {
-    var body: some View {
-        Text("PRO")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(Color(nsColor: .systemOrange), in: RoundedRectangle(cornerRadius: 3))
     }
 }

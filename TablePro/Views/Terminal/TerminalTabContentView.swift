@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import GhosttyTerminal
 import SwiftUI
 
@@ -107,9 +108,9 @@ struct TerminalTabContentView: View {
 
     private func waitForSSHTunnel(timeout: Duration) async -> Bool {
         await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                for await _ in NotificationCenter.default.notifications(named: .databaseDidConnect) {
-                    if DatabaseManager.shared.session(for: self.connectionId)?.effectiveConnection != nil {
+            group.addTask { @MainActor [connectionId] in
+                for await _ in AppEvents.shared.databaseDidConnect.values {
+                    if DatabaseManager.shared.session(for: connectionId)?.effectiveConnection != nil {
                         return true
                     }
                 }
@@ -132,16 +133,14 @@ struct TerminalTabContentView: View {
         self.sessionState = state
 
         let password = ConnectionStorage.shared.loadPassword(for: connectionId)
-        let activeDatabase = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
-            ?? connection.database
+        let activeDatabase = DatabaseManager.shared.activeDatabaseName(for: connection)
 
         state.connect(connection: connection, password: password, activeDatabase: activeDatabase)
     }
 
     private func reconnect(state: TerminalSessionState) {
         let password = ConnectionStorage.shared.loadPassword(for: connectionId)
-        let activeDatabase = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
-            ?? connection.database
+        let activeDatabase = DatabaseManager.shared.activeDatabaseName(for: connection)
 
         state.reconnect(connection: connection, password: password, activeDatabase: activeDatabase)
     }

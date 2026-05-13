@@ -44,10 +44,16 @@ playground.xcworkspace
 #
 # Xcode automatically generates this directory with a hierarchical structure of links to
 # temporary directories for debugging Swift packages.
-.swiftpm/xcode
+.swiftpm/
 
 .build/
 LocalPackages/*/Package.resolved
+
+# Coverage profile output
+*.profraw
+
+# Claude Code worktrees and per-session state
+.claude/worktrees/
 
 # CocoaPods
 #

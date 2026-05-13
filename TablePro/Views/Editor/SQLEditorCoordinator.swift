@@ -9,6 +9,7 @@
 import AppKit
 import CodeEditSourceEditor
 import CodeEditTextView
+import Combine
 import Observation
 import os
 
@@ -30,8 +31,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var aiChatInlineSource: AIChatInlineSource?
     @ObservationIgnored private var copilotDocumentSync: CopilotDocumentSync?
     @ObservationIgnored private var copilotInlineSource: CopilotInlineSource?
-    @ObservationIgnored private var editorSettingsObserver: NSObjectProtocol?
-    @ObservationIgnored private var aiSettingsObserver: NSObjectProtocol?
+    @ObservationIgnored private var editorSettingsCancellable: AnyCancellable?
+    @ObservationIgnored private var aiSettingsCancellable: AnyCancellable?
     @ObservationIgnored private var windowKeyObserver: NSObjectProtocol?
     @ObservationIgnored private var lastInlineSourceKind: InlineSourceKind = .off
     /// Debounce work item for frame-change notification to avoid
@@ -71,12 +72,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     }
 
     deinit {
-        if let observer = editorSettingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = aiSettingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
         if let observer = windowKeyObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -84,14 +79,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     }
 
     private func cleanupMonitors() {
-        if let observer = editorSettingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-            editorSettingsObserver = nil
-        }
-        if let observer = aiSettingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-            aiSettingsObserver = nil
-        }
+        editorSettingsCancellable = nil
+        aiSettingsCancellable = nil
         if let observer = windowKeyObserver {
             NotificationCenter.default.removeObserver(observer)
             windowKeyObserver = nil
@@ -325,7 +314,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         Task {
             if let provider = capturedSchemaProvider, let dbType = capturedDBType {
-                await sync.schemaContext.buildPreamble(
+                await sync.preambleBuilder.buildPreamble(
                     schemaProvider: provider,
                     databaseName: dbName,
                     databaseType: dbType
@@ -411,6 +400,15 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
     }
 
+    // MARK: - Vim External Escape Routing
+
+    /// Called by the menu's "Clear Selection" (Esc) shortcut so a SwiftUI key
+    /// equivalent that preempts the local event monitor still flips Vim back to
+    /// normal mode instead of getting silently swallowed.
+    func handleVimEscapeFromMenu() -> Bool {
+        vimKeyInterceptor?.handleEscapeFromExternalSource() ?? false
+    }
+
     // MARK: - First Responder Tracking
 
     func checkFirstResponderChange() {
@@ -450,23 +448,19 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     // MARK: - Editor Settings Observer
 
     private func installEditorSettingsObserver(controller: TextViewController) {
-        editorSettingsObserver = NotificationCenter.default.addObserver(
-            forName: .editorSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self, weak controller] _ in
-            guard let self, let controller else { return }
-            self.handleVimSettingsChange(controller: controller)
-            self.handleInlineProviderChange()
-            self.vimCursorManager?.updatePosition()
-        }
-        aiSettingsObserver = NotificationCenter.default.addObserver(
-            forName: .aiSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleInlineProviderChange()
-        }
+        editorSettingsCancellable = AppEvents.shared.editorSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak controller] _ in
+                guard let self, let controller else { return }
+                self.handleVimSettingsChange(controller: controller)
+                self.handleInlineProviderChange()
+                self.vimCursorManager?.updatePosition()
+            }
+        aiSettingsCancellable = AppEvents.shared.aiSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.handleInlineProviderChange()
+            }
     }
 
     private func handleInlineProviderChange() {

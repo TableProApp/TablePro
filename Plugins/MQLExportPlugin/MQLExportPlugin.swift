@@ -104,8 +104,16 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                             var fields: [String] = []
                             for (colIndex, column) in columns.enumerated() {
                                 guard colIndex < row.count else { continue }
-                                guard let value = row[colIndex] else { continue }
-                                let jsonValue = MQLExportHelpers.mqlJsonValue(for: value)
+                                let cell = row[colIndex]
+                                let jsonValue: String
+                                switch cell {
+                                case .null:
+                                    continue
+                                case .bytes(let data):
+                                    jsonValue = "{\"$binary\": {\"base64\": \"\(data.base64EncodedString())\", \"subType\": \"00\"}}"
+                                case .text(let value):
+                                    jsonValue = MQLExportHelpers.mqlJsonValue(for: value)
+                                }
                                 fields.append("\"\(PluginExportUtilities.escapeJSONString(column))\": \(jsonValue)")
                             }
                             documentBatch.append("  {\(fields.joined(separator: ", "))}")

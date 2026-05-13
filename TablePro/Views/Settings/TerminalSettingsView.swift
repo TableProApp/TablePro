@@ -126,6 +126,8 @@ struct TerminalSettingsView: View {
                 ForEach(Self.terminalDatabaseTypes, id: \.rawValue) { dbType in
                     cliPathRow(for: dbType)
                 }
+                postgresToolRow(key: TerminalSettings.pgDumpCliPathKey, binaryName: "pg_dump")
+                postgresToolRow(key: TerminalSettings.pgRestoreCliPathKey, binaryName: "pg_restore")
             }
         } footer: {
             Text("Override auto-detected CLI paths per database type.")
@@ -147,8 +149,22 @@ struct TerminalSettingsView: View {
         TextField(dbType.displayName, text: binding, prompt: Text(resolved))
     }
 
+    @ViewBuilder
+    private func postgresToolRow(key: String, binaryName: String) -> some View {
+        let binding = Binding<String>(
+            get: { settings.cliPaths[key] ?? "" },
+            set: { settings.cliPaths[key] = $0.isEmpty ? nil : $0 }
+        )
+        let resolved = resolvedPaths[key] ?? binaryName
+        TextField(binaryName, text: binding, prompt: Text(resolved))
+    }
+
     private func resolveAllCliPaths() async {
         let dbTypes = Self.terminalDatabaseTypes
+        let postgresTools: [(key: String, binary: String)] = [
+            (TerminalSettings.pgDumpCliPathKey, "pg_dump"),
+            (TerminalSettings.pgRestoreCliPathKey, "pg_restore")
+        ]
         let results = await withTaskGroup(of: (String, String).self) { group in
             for dbType in dbTypes {
                 group.addTask {
@@ -157,6 +173,14 @@ struct TerminalSettingsView: View {
                         CLICommandResolver.findExecutable(name)
                     }.value
                     return (dbType.rawValue, resolved ?? name)
+                }
+            }
+            for tool in postgresTools {
+                group.addTask {
+                    let resolved = await Task.detached(priority: .utility) {
+                        CLICommandResolver.findExecutable(tool.binary)
+                    }.value
+                    return (tool.key, resolved ?? tool.binary)
                 }
             }
             var paths: [String: String] = [:]

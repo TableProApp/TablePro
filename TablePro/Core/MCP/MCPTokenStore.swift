@@ -3,6 +3,25 @@ import Foundation
 import os
 import Security
 
+enum ConnectionAccess: Sendable, Codable, Equatable {
+    case all
+    case limited(Set<UUID>)
+
+    var allowedIds: Set<UUID>? {
+        switch self {
+        case .all: return nil
+        case .limited(let ids): return ids
+        }
+    }
+
+    func allows(_ connectionId: UUID) -> Bool {
+        switch self {
+        case .all: return true
+        case .limited(let ids): return ids.contains(connectionId)
+        }
+    }
+}
+
 struct MCPAuthToken: Codable, Identifiable, Sendable {
     let id: UUID
     let name: String
@@ -10,7 +29,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     let tokenHash: String
     let salt: String
     let permissions: TokenPermissions
-    let allowedConnectionIds: Set<UUID>?
+    let connectionAccess: ConnectionAccess
     let createdAt: Date
     var lastUsedAt: Date?
     let expiresAt: Date?
@@ -22,6 +41,76 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     }
 
     var isEffectivelyActive: Bool { isActive && !isExpired }
+
+    init(
+        id: UUID,
+        name: String,
+        prefix: String,
+        tokenHash: String,
+        salt: String,
+        permissions: TokenPermissions,
+        connectionAccess: ConnectionAccess,
+        createdAt: Date,
+        lastUsedAt: Date?,
+        expiresAt: Date?,
+        isActive: Bool
+    ) {
+        self.id = id
+        self.name = name
+        self.prefix = prefix
+        self.tokenHash = tokenHash
+        self.salt = salt
+        self.permissions = permissions
+        self.connectionAccess = connectionAccess
+        self.createdAt = createdAt
+        self.lastUsedAt = lastUsedAt
+        self.expiresAt = expiresAt
+        self.isActive = isActive
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case prefix
+        case tokenHash
+        case salt
+        case permissions
+        case connectionAccess
+        case createdAt
+        case lastUsedAt
+        case expiresAt
+        case isActive
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.prefix = try container.decode(String.self, forKey: .prefix)
+        self.tokenHash = try container.decode(String.self, forKey: .tokenHash)
+        self.salt = try container.decode(String.self, forKey: .salt)
+        self.permissions = try container.decode(TokenPermissions.self, forKey: .permissions)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
+        self.expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
+        self.isActive = try container.decode(Bool.self, forKey: .isActive)
+        self.connectionAccess = try container.decodeIfPresent(ConnectionAccess.self, forKey: .connectionAccess) ?? .all
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(prefix, forKey: .prefix)
+        try container.encode(tokenHash, forKey: .tokenHash)
+        try container.encode(salt, forKey: .salt)
+        try container.encode(permissions, forKey: .permissions)
+        try container.encode(connectionAccess, forKey: .connectionAccess)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
+        try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
+        try container.encode(isActive, forKey: .isActive)
+    }
 }
 
 enum TokenPermissions: String, Codable, Sendable, CaseIterable, Identifiable {
@@ -55,6 +144,8 @@ enum TokenPermissions: String, Codable, Sendable, CaseIterable, Identifiable {
 }
 
 actor MCPTokenStore {
+    static let stdioBridgeTokenName = "__stdio_bridge__"
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPTokenStore")
 
     private var tokens: [MCPAuthToken] = []
@@ -62,17 +153,30 @@ actor MCPTokenStore {
     private var lastSavedAt: ContinuousClock.Instant = .now
     private static let saveCooldown: Duration = .seconds(60)
 
+    private var revocationObservers: [UUID: @Sendable (String) async -> Void] = [:]
+
     init() {
         let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let directory = appSupportUrl.appendingPathComponent("com.TablePro")
+        let directory = appSupportUrl.appendingPathComponent("TablePro")
         self.storageUrl = directory.appendingPathComponent("mcp-tokens.json")
+    }
+
+    @discardableResult
+    func addRevocationObserver(_ handler: @escaping @Sendable (String) async -> Void) -> UUID {
+        let id = UUID()
+        revocationObservers[id] = handler
+        return id
+    }
+
+    func removeRevocationObserver(_ id: UUID) {
+        revocationObservers.removeValue(forKey: id)
     }
 
     func generate(
         name: String,
         permissions: TokenPermissions,
-        allowedConnectionIds: Set<UUID>? = nil,
+        connectionAccess: ConnectionAccess = .all,
         expiresAt: Date? = nil
     ) -> (token: MCPAuthToken, plaintext: String) {
         let key = SymmetricKey(size: .bits256)
@@ -93,7 +197,7 @@ actor MCPTokenStore {
             tokenHash: hash,
             salt: saltBase64,
             permissions: permissions,
-            allowedConnectionIds: allowedConnectionIds,
+            connectionAccess: connectionAccess,
             createdAt: Date.now,
             lastUsedAt: nil,
             expiresAt: expiresAt,
@@ -135,6 +239,7 @@ actor MCPTokenStore {
 
         tokens[index].isActive = false
         save()
+        notifyRevocationObservers(tokenId: tokenId)
 
         let revokedName = tokens[index].name
         Self.logger.info("Revoked MCP token '\(revokedName, privacy: .public)'")
@@ -150,8 +255,17 @@ actor MCPTokenStore {
         let name = tokens[index].name
         tokens.remove(at: index)
         save()
+        notifyRevocationObservers(tokenId: tokenId)
 
         Self.logger.info("Deleted MCP token '\(name, privacy: .public)'")
+    }
+
+    private func notifyRevocationObservers(tokenId: UUID) {
+        let observers = Array(revocationObservers.values)
+        let key = tokenId.uuidString
+        for observer in observers {
+            Task { await observer(key) }
+        }
     }
 
     func list() -> [MCPAuthToken] {
@@ -180,9 +294,9 @@ actor MCPTokenStore {
             Self.logger.error("Failed to load MCP tokens: \(error.localizedDescription, privacy: .public)")
         }
 
-        let staleCount = tokens.filter({ $0.name == "__stdio_bridge__" }).count
+        let staleCount = tokens.filter({ $0.name == Self.stdioBridgeTokenName }).count
         if staleCount > 0 {
-            tokens.removeAll { $0.name == "__stdio_bridge__" }
+            tokens.removeAll { $0.name == Self.stdioBridgeTokenName }
             save()
             Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
         }

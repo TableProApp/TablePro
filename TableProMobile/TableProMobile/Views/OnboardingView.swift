@@ -1,8 +1,3 @@
-//
-//  OnboardingView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 
 struct OnboardingView: View {

@@ -4,10 +4,27 @@
 //
 
 import Foundation
+import os
 import TableProAnalytics
 
 @MainActor
 final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
+    static let shared = MacAnalyticsProvider()
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MacAnalyticsProvider")
+
+    private let defaults: UserDefaults
+
+    enum Keys {
+        static let connectionAttemptedAt = "com.TablePro.analytics.connectionAttemptedAt"
+        static let connectionSucceededAt = "com.TablePro.analytics.connectionSucceededAt"
+        static let firstQueryExecutedAt = "com.TablePro.analytics.firstQueryExecutedAt"
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
     var machineId: String {
         LicenseStorage.shared.machineId
     }
@@ -58,5 +75,35 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
             return nil
         }
         return value
+    }
+
+    var connectionAttemptedAt: Date? {
+        defaults.object(forKey: Keys.connectionAttemptedAt) as? Date
+    }
+
+    var connectionSucceededAt: Date? {
+        defaults.object(forKey: Keys.connectionSucceededAt) as? Date
+    }
+
+    var firstQueryExecutedAt: Date? {
+        defaults.object(forKey: Keys.firstQueryExecutedAt) as? Date
+    }
+
+    func markConnectionAttempted() {
+        writeOnceDate(Keys.connectionAttemptedAt, label: "connectionAttemptedAt")
+    }
+
+    func markConnectionSucceeded() {
+        writeOnceDate(Keys.connectionSucceededAt, label: "connectionSucceededAt")
+    }
+
+    func markFirstQueryExecuted() {
+        writeOnceDate(Keys.firstQueryExecutedAt, label: "firstQueryExecutedAt")
+    }
+
+    private func writeOnceDate(_ key: String, label: String) {
+        guard defaults.object(forKey: key) == nil else { return }
+        defaults.set(Date(), forKey: key)
+        Self.logger.info("Recorded \(label, privacy: .public) for first time")
     }
 }

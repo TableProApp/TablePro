@@ -8,7 +8,6 @@ import os
 import SQLite3
 
 internal actor SQLFavoriteStorage {
-    static let shared = SQLFavoriteStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFavoriteStorage")
 
     private var db: OpaquePointer?

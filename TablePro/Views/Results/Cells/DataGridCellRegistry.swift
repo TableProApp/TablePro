@@ -4,35 +4,33 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 
 @MainActor
 final class DataGridCellRegistry {
     weak var accessoryDelegate: DataGridCellAccessoryDelegate?
-    weak var textFieldDelegate: NSTextFieldDelegate?
 
     private(set) var nullDisplayString: String
-    private var settingsObserver: NSObjectProtocol?
+    private(set) var palette: DataGridCellPalette
+    private var settingsCancellable: AnyCancellable?
+    private var themeCancellable: AnyCancellable?
 
     private let rowNumberCellIdentifier = NSUserInterfaceItemIdentifier("RowNumberCellView")
 
     init() {
         nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
-        settingsObserver = NotificationCenter.default.addObserver(
-            forName: .dataGridSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        palette = ThemeEngine.shared.dataGridCellPalette
+        settingsCancellable = AppEvents.shared.dataGridSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
                 self?.nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
             }
-        }
-    }
-
-    deinit {
-        if let observer = settingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
+        themeCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.palette = ThemeEngine.shared.dataGridCellPalette
+            }
     }
 
     func resolveKind(
@@ -45,50 +43,24 @@ final class DataGridCellRegistry {
         if isDropdownColumn { return .dropdown }
         if let type = columnType {
             if type.isBooleanType { return .boolean }
-            if type.isDateType { return .date }
             if type.isJsonType { return .json }
             if type.isBlobType { return .blob }
         }
         return .text
     }
 
-    func dequeueCell(of kind: DataGridCellKind, in tableView: NSTableView) -> DataGridBaseCellView {
-        let identifier: NSUserInterfaceItemIdentifier
-        let cellType: DataGridBaseCellView.Type
-
-        switch kind {
-        case .text:
-            identifier = DataGridTextCellView.reuseIdentifier
-            cellType = DataGridTextCellView.self
-        case .foreignKey:
-            identifier = DataGridForeignKeyCellView.reuseIdentifier
-            cellType = DataGridForeignKeyCellView.self
-        case .dropdown:
-            identifier = DataGridDropdownCellView.reuseIdentifier
-            cellType = DataGridDropdownCellView.self
-        case .boolean:
-            identifier = DataGridBooleanCellView.reuseIdentifier
-            cellType = DataGridBooleanCellView.self
-        case .date:
-            identifier = DataGridDateCellView.reuseIdentifier
-            cellType = DataGridDateCellView.self
-        case .json:
-            identifier = DataGridJsonCellView.reuseIdentifier
-            cellType = DataGridJsonCellView.self
-        case .blob:
-            identifier = DataGridBlobCellView.reuseIdentifier
-            cellType = DataGridBlobCellView.self
-        }
-
-        if let reused = tableView.makeView(withIdentifier: identifier, owner: nil) as? DataGridBaseCellView {
+    func dequeueCell(in tableView: NSTableView) -> DataGridCellView {
+        if let reused = tableView.makeView(
+            withIdentifier: DataGridCellView.reuseIdentifier,
+            owner: nil
+        ) as? DataGridCellView {
             reused.nullDisplayString = nullDisplayString
             return reused
         }
 
-        let cell = cellType.init(frame: .zero)
-        cell.identifier = identifier
+        let cell = DataGridCellView(frame: .zero)
+        cell.identifier = DataGridCellView.reuseIdentifier
         cell.accessoryDelegate = accessoryDelegate
-        cell.cellTextField.delegate = textFieldDelegate
         cell.nullDisplayString = nullDisplayString
         return cell
     }
@@ -96,6 +68,7 @@ final class DataGridCellRegistry {
     func makeRowNumberCell(
         in tableView: NSTableView,
         row: Int,
+        pageOffset: Int,
         cachedRowCount: Int,
         visualState: RowVisualState
     ) -> NSView {
@@ -122,8 +95,14 @@ final class DataGridCellRegistry {
             cellView.addSubview(cell)
 
             NSLayoutConstraint.activate([
-                cell.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 4),
-                cell.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -4),
+                cell.leadingAnchor.constraint(
+                    equalTo: cellView.leadingAnchor,
+                    constant: DataGridMetrics.cellHorizontalInset
+                ),
+                cell.trailingAnchor.constraint(
+                    equalTo: cellView.trailingAnchor,
+                    constant: -DataGridMetrics.cellHorizontalInset
+                ),
                 cell.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
             ])
         }
@@ -133,9 +112,10 @@ final class DataGridCellRegistry {
             return cellView
         }
 
-        cell.stringValue = "\(row + 1)"
+        let displayNumber = row + pageOffset + 1
+        cell.stringValue = "\(displayNumber)"
         cell.textColor = visualState.isDeleted ? ThemeEngine.shared.colors.dataGrid.deletedText : .secondaryLabelColor
-        cellView.setAccessibilityLabel(String(format: String(localized: "Row %d"), row + 1))
+        cellView.setAccessibilityLabel(String(format: String(localized: "Row %d"), displayNumber))
         cellView.setAccessibilityRowIndexRange(NSRange(location: row, length: 1))
 
         return cellView

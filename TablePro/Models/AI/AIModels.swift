@@ -131,6 +131,54 @@ enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+// MARK: - AI Chat Mode
+
+enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case ask
+    case edit
+    case agent
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .ask:   return String(localized: "Ask")
+        case .edit:  return String(localized: "Edit")
+        case .agent: return String(localized: "Agent")
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .ask:   return "questionmark.bubble"
+        case .edit:  return "pencil.and.outline"
+        case .agent: return "infinity"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .ask:
+            return String(localized: "Ask: read-only schema lookups. AI can browse but not run queries.")
+        case .edit:
+            return String(localized: "Edit: read-only tools plus running queries. Destructive DDL stays blocked.")
+        case .agent:
+            return String(localized: "Agent: full tool access including destructive DDL. Safe mode still gates execution.")
+        }
+    }
+
+    var systemPromptNote: String {
+        switch self {
+        case .ask:
+            return "You are in Ask mode. Tools are read-only: schema lookups only. You cannot run queries or modify data."
+        case .edit:
+            return "You are in Edit mode. You can read schema and run SELECT/INSERT/UPDATE/DELETE via execute_query. Destructive DDL is blocked."
+        case .agent:
+            return "You are in Agent mode. All tools are available, including destructive DDL via confirm_destructive_operation. Safe mode policy still gates execution."
+        }
+    }
+}
+
 // MARK: - AI Settings
 
 struct AISettings: Codable, Equatable, Sendable {
@@ -138,22 +186,29 @@ struct AISettings: Codable, Equatable, Sendable {
     var providers: [AIProviderConfig]
     var activeProviderID: UUID?
     var inlineSuggestionsEnabled: Bool
+    var inlineSuggestionDebounceMs: Int
     var includeSchema: Bool
     var includeCurrentQuery: Bool
     var includeQueryResults: Bool
     var maxSchemaTables: Int
     var defaultConnectionPolicy: AIConnectionPolicy
+    var chatMode: AIChatMode
+
+    static let defaultInlineSuggestionDebounceMs: Int = 500
+    static let inlineSuggestionDebounceRange: ClosedRange<Int> = 100...3_000
 
     static let `default` = AISettings(
         enabled: true,
         providers: [],
         activeProviderID: nil,
         inlineSuggestionsEnabled: false,
+        inlineSuggestionDebounceMs: AISettings.defaultInlineSuggestionDebounceMs,
         includeSchema: true,
         includeCurrentQuery: true,
         includeQueryResults: false,
         maxSchemaTables: 20,
-        defaultConnectionPolicy: .askEachTime
+        defaultConnectionPolicy: .askEachTime,
+        chatMode: .ask
     )
 
     init(
@@ -161,21 +216,25 @@ struct AISettings: Codable, Equatable, Sendable {
         providers: [AIProviderConfig] = [],
         activeProviderID: UUID? = nil,
         inlineSuggestionsEnabled: Bool = false,
+        inlineSuggestionDebounceMs: Int = AISettings.defaultInlineSuggestionDebounceMs,
         includeSchema: Bool = true,
         includeCurrentQuery: Bool = true,
         includeQueryResults: Bool = false,
         maxSchemaTables: Int = 20,
-        defaultConnectionPolicy: AIConnectionPolicy = .askEachTime
+        defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
+        chatMode: AIChatMode = .ask
     ) {
         self.enabled = enabled
         self.providers = providers
         self.activeProviderID = activeProviderID
         self.inlineSuggestionsEnabled = inlineSuggestionsEnabled
+        self.inlineSuggestionDebounceMs = inlineSuggestionDebounceMs
         self.includeSchema = includeSchema
         self.includeCurrentQuery = includeCurrentQuery
         self.includeQueryResults = includeQueryResults
         self.maxSchemaTables = maxSchemaTables
         self.defaultConnectionPolicy = defaultConnectionPolicy
+        self.chatMode = chatMode
     }
 
     init(from decoder: Decoder) throws {
@@ -184,6 +243,9 @@ struct AISettings: Codable, Equatable, Sendable {
         providers = try container.decodeIfPresent([AIProviderConfig].self, forKey: .providers) ?? []
         activeProviderID = try container.decodeIfPresent(UUID.self, forKey: .activeProviderID)
         inlineSuggestionsEnabled = try container.decodeIfPresent(Bool.self, forKey: .inlineSuggestionsEnabled) ?? false
+        inlineSuggestionDebounceMs = try container.decodeIfPresent(
+            Int.self, forKey: .inlineSuggestionDebounceMs
+        ) ?? AISettings.defaultInlineSuggestionDebounceMs
         includeSchema = try container.decodeIfPresent(Bool.self, forKey: .includeSchema) ?? true
         includeCurrentQuery = try container.decodeIfPresent(Bool.self, forKey: .includeCurrentQuery) ?? true
         includeQueryResults = try container.decodeIfPresent(Bool.self, forKey: .includeQueryResults) ?? false
@@ -191,6 +253,7 @@ struct AISettings: Codable, Equatable, Sendable {
         defaultConnectionPolicy = try container.decodeIfPresent(
             AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
         ) ?? .askEachTime
+        chatMode = try container.decodeIfPresent(AIChatMode.self, forKey: .chatMode) ?? .ask
     }
 
     var activeProvider: AIProviderConfig? {
@@ -203,45 +266,17 @@ struct AISettings: Codable, Equatable, Sendable {
     var hasCopilotConfigured: Bool {
         providers.contains(where: { $0.type == .copilot })
     }
-}
 
-// MARK: - AI Chat Message
-
-struct AIChatMessage: Codable, Equatable, Identifiable, Sendable {
-    let id: UUID
-    var role: AIChatRole
-    var content: String
-    let timestamp: Date
-    var usage: AITokenUsage?
-
-    init(
-        id: UUID = UUID(),
-        role: AIChatRole,
-        content: String,
-        timestamp: Date = Date(),
-        usage: AITokenUsage? = nil
-    ) {
-        self.id = id
-        self.role = role
-        self.content = content
-        self.timestamp = timestamp
-        self.usage = usage
+    var clampedInlineSuggestionDebounceMs: Int {
+        min(
+            max(inlineSuggestionDebounceMs, AISettings.inlineSuggestionDebounceRange.lowerBound),
+            AISettings.inlineSuggestionDebounceRange.upperBound
+        )
     }
-}
-
-enum AIChatRole: String, Codable, Sendable {
-    case user
-    case assistant
-    case system
 }
 
 struct AITokenUsage: Codable, Equatable, Sendable {
     var inputTokens: Int
     var outputTokens: Int
     var totalTokens: Int { inputTokens + outputTokens }
-}
-
-enum AIStreamEvent: Sendable {
-    case text(String)
-    case usage(AITokenUsage)
 }

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Centralized prompt templates for AI-powered editor features
 enum AIPromptTemplates {
@@ -42,8 +43,20 @@ enum AIPromptTemplates {
     }
 
     @MainActor private static func queryInfo(for databaseType: DatabaseType) -> (typeName: String, language: String) {
-        let langName = PluginManager.shared.queryLanguageName(for: databaseType)
-        let lang = PluginManager.shared.editorLanguage(for: databaseType).codeBlockTag
-        return ("\(langName) query", lang)
+        let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)
+        let editorLanguage = snapshot?.editorLanguage ?? .sql
+        let lang = editorLanguage.codeBlockTag
+        let typeName: String
+        switch editorLanguage {
+        case .sql:
+            typeName = "\(snapshot?.queryLanguageName ?? "SQL") query"
+        case .bash:
+            typeName = "\(snapshot?.displayName ?? databaseType.rawValue) command"
+        case .javascript:
+            typeName = "\(snapshot?.displayName ?? databaseType.rawValue) query"
+        case .custom:
+            typeName = "\(snapshot?.displayName ?? databaseType.rawValue) query"
+        }
+        return (typeName, lang)
     }
 }

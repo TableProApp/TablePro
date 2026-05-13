@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -24,8 +25,10 @@ struct RowOperationsManagerTests {
     }
 
     private func makeTableRows(rowCount: Int) -> TableRows {
-        TableRows.from(
-            queryRows: TestFixtures.makeRows(count: rowCount, columns: Self.testColumns),
+        let raw = TestFixtures.makeRows(count: rowCount, columns: Self.testColumns)
+        let typed = raw.map { row in row.map(PluginCellValue.fromOptional) }
+        return TableRows.from(
+            queryRows: typed,
             columns: Self.testColumns,
             columnTypes: Self.testColumnTypes
         )

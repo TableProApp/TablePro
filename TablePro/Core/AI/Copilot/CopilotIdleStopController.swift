@@ -41,11 +41,19 @@ final class CopilotIdleStopController {
             task = nil
             return
         }
+        let timeout = self.timeout
+        let isAuthenticated = self.isAuthenticated
+        let isRunning = self.isRunning
+        let onStopRequest = self.onStopRequest
         task = Task {
-            try? await Task.sleep(for: self.timeout)
+            do {
+                try await Task.sleep(for: timeout)
+            } catch {
+                return
+            }
             guard !Task.isCancelled else { return }
-            guard !self.isAuthenticated(), self.isRunning() else { return }
-            await self.onStopRequest()
+            guard !isAuthenticated(), isRunning() else { return }
+            await onStopRequest()
         }
     }
 

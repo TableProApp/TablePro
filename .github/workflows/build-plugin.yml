@@ -206,9 +206,10 @@ jobs:
             ./scripts/build-cassandra.sh both
           fi
 
-          # Build both architectures
-          ./scripts/build-plugin.sh "$TARGET" arm64
-          ./scripts/build-plugin.sh "$TARGET" x86_64
+          # Build both architectures (pass VERSION so the built bundle's
+          # CFBundleShortVersionString matches the registry version)
+          ./scripts/build-plugin.sh "$TARGET" arm64 "$VERSION"
+          ./scripts/build-plugin.sh "$TARGET" x86_64 "$VERSION"
 
           # Capture SHA-256
           ARM64_SHA=$(cat "build/Plugins/${BUNDLE_NAME}-arm64.zip.sha256")

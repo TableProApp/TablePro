@@ -11,6 +11,7 @@ import SwiftUI
 struct HexEditorContentView: View {
     let initialValue: String?
     let onCommit: (String) -> Void
+    let onCommitBytes: ((Data) -> Void)?
     let onDismiss: () -> Void
 
     @State private var hexDumpText: String
@@ -18,15 +19,17 @@ struct HexEditorContentView: View {
     @State private var isValid: Bool = true
     @State private var isTruncated: Bool = false
     @State private var byteCount: Int = 0
-    @State private var validateWorkItem: DispatchWorkItem?
+    @State private var validateTask: Task<Void, Never>?
 
     init(
         initialValue: String?,
         onCommit: @escaping (String) -> Void,
+        onCommitBytes: ((Data) -> Void)? = nil,
         onDismiss: @escaping () -> Void
     ) {
         self.initialValue = initialValue
         self.onCommit = onCommit
+        self.onCommitBytes = onCommitBytes
         self.onDismiss = onDismiss
 
         let service = BlobFormattingService.shared
@@ -67,7 +70,7 @@ struct HexEditorContentView: View {
                     if isTruncated {
                         Text(String(localized: "Truncated — read only"))
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color(nsColor: .systemOrange))
                     } else if !isValid, !editableHex.isEmpty {
                         Text(String(localized: "Invalid hex"))
                             .font(.caption)
@@ -106,7 +109,11 @@ struct HexEditorContentView: View {
 
         if editableHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if initialValue != nil, initialValue != "" {
-                onCommit("")
+                if let onCommitBytes {
+                    onCommitBytes(Data())
+                } else {
+                    onCommit("")
+                }
             }
             onDismiss()
             return
@@ -114,18 +121,25 @@ struct HexEditorContentView: View {
 
         guard let rawValue = BlobFormattingService.shared.parseHex(editableHex) else { return }
         if rawValue != initialValue {
-            onCommit(rawValue)
+            if let onCommitBytes, let data = rawValue.data(using: .isoLatin1) {
+                onCommitBytes(data)
+            } else {
+                onCommit(rawValue)
+            }
         }
         onDismiss()
     }
 
     private func scheduleValidation(_ hex: String) {
-        validateWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [hex] in
+        validateTask?.cancel()
+        validateTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(100))
+            } catch {
+                return
+            }
             validateHex(hex)
         }
-        validateWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
     }
 
     private func validateHex(_ hex: String) {

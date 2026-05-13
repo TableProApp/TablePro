@@ -51,6 +51,7 @@ final class ServerDashboardViewModel {
     // MARK: - Private
 
     @ObservationIgnored nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private let services: AppServices
 
     // MARK: - Computed Properties
 
@@ -72,10 +73,11 @@ final class ServerDashboardViewModel {
 
     // MARK: - Initialization
 
-    init(connectionId: UUID, databaseType: DatabaseType) {
+    init(connectionId: UUID, databaseType: DatabaseType, services: AppServices = .live) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         self.provider = ServerDashboardQueryProviderFactory.provider(for: databaseType)
+        self.services = services
     }
 
     deinit {
@@ -120,14 +122,13 @@ final class ServerDashboardViewModel {
             return
         }
 
-        // Skip silently if connection is not ready yet — the refresh loop will retry
-        guard DatabaseManager.shared.driver(for: connectionId) != nil else { return }
+        guard services.databaseManager.driver(for: connectionId) != nil else { return }
 
         isRefreshing = true
         defer { isRefreshing = false }
 
-        let execute: (String) async throws -> QueryResult = { [connectionId] query in
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        let execute: (String) async throws -> QueryResult = { [connectionId, services] query in
+            guard let driver = services.databaseManager.driver(for: connectionId) else {
                 throw DatabaseError.connectionFailed(
                     String(localized: "No active connection")
                 )
@@ -184,7 +185,7 @@ final class ServerDashboardViewModel {
         guard let sql = provider?.killSessionSQL(processId: processId) else { return }
 
         do {
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            guard let driver = services.databaseManager.driver(for: connectionId) else {
                 throw DatabaseError.connectionFailed(
                     String(localized: "No active connection")
                 )
@@ -213,7 +214,7 @@ final class ServerDashboardViewModel {
         guard let sql = provider?.cancelQuerySQL(processId: processId) else { return }
 
         do {
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            guard let driver = services.databaseManager.driver(for: connectionId) else {
                 throw DatabaseError.connectionFailed(
                     String(localized: "No active connection")
                 )

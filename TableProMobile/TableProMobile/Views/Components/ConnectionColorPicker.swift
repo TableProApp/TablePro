@@ -1,8 +1,3 @@
-//
-//  ConnectionColorPicker.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProModels
 

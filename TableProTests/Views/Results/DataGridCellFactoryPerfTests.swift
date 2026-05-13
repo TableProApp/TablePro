@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -65,9 +66,9 @@ struct ColumnWidthOptimizationTests {
     func longContentCapsAtMax() {
         let factory = DataGridCellFactory()
         let longValue = String(repeating: "X", count: 5_000)
-        let rows: [[String?]] = [[longValue]]
+        let rawRows: [[String?]] = [[longValue]]
         let tableRows = TableRows.from(
-            queryRows: rows,
+            queryRows: rawRows.map { row in row.map(PluginCellValue.fromOptional) },
             columns: ["data"],
             columnTypes: [.text(rawType: nil)]
         )
@@ -86,10 +87,10 @@ struct ColumnWidthOptimizationTests {
         let columnCount = 60
         let columns = (0..<columnCount).map { "col_\($0)" }
         let columnTypes = Array(repeating: ColumnType.text(rawType: nil), count: columnCount)
-        let rows: [[String?]] = (0..<100).map { rowIdx in
+        let rawRows: [[String?]] = (0..<100).map { rowIdx in
             columns.map { "\($0)_val_\(rowIdx)" }
         }
-        let tableRows = TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
+        let tableRows = TableRows.from(queryRows: rawRows.map { row in row.map(PluginCellValue.fromOptional) }, columns: columns, columnTypes: columnTypes)
 
         for (index, column) in columns.enumerated() {
             let width = factory.calculateOptimalColumnWidth(
@@ -117,13 +118,13 @@ struct ColumnWidthOptimizationTests {
     @Test("Nil cell values do not crash width calculation")
     func nilCellValuesSafe() {
         let factory = DataGridCellFactory()
-        let rows: [[String?]] = [
+        let rawRows: [[String?]] = [
             [nil],
             ["hello"],
             [nil],
         ]
         let tableRows = TableRows.from(
-            queryRows: rows,
+            queryRows: rawRows.map { row in row.map(PluginCellValue.fromOptional) },
             columns: ["name"],
             columnTypes: [.text(rawType: nil)]
         )

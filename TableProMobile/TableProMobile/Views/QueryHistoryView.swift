@@ -1,8 +1,3 @@
-//
-//  QueryHistoryView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import UIKit
 

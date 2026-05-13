@@ -17,7 +17,6 @@ extension ConnectionHealthMonitor {
         case healthy
         case checking
         case reconnecting(attempt: Int) // 1-based attempt number
-        case failed
     }
 }
 
@@ -122,15 +121,6 @@ actor ConnectionHealthMonitor {
         await task?.value
     }
 
-    /// Resets the monitor to `.healthy` after the user manually reconnects.
-    ///
-    /// Call this when an external reconnection succeeds so the monitor resumes
-    /// normal periodic pings instead of staying in `.failed` state.
-    func resetAfterManualReconnect() async {
-        Self.logger.info("Manual reconnect succeeded, resetting to healthy for connection \(self.connectionId)")
-        await transitionTo(.healthy)
-    }
-
     // MARK: - Health Check
 
     /// Performs a single health check cycle.
@@ -176,9 +166,10 @@ actor ConnectionHealthMonitor {
     /// Attempts to reconnect with exponential backoff.
     ///
     /// Uses initial delays of 2s, 4s, 8s, then continues doubling up to a
-    /// 120-second cap. Transitions to `.failed` only when the task is cancelled
-    /// (i.e., the monitor is stopped). This ensures the monitor keeps trying
-    /// indefinitely rather than giving up after a fixed number of attempts.
+    /// 120-second cap. Loops indefinitely until either a reconnect succeeds
+    /// (transitions to `.healthy` and returns) or the monitoring task is
+    /// cancelled (returns without a state transition, since cancellation is
+    /// clean teardown initiated by `stopMonitoring`).
     private func attemptReconnect() async {
         var attempt = 0
 
@@ -187,7 +178,7 @@ actor ConnectionHealthMonitor {
 
             let delay = backoffDelay(for: attempt)
 
-            Self.logger.warning("Reconnect attempt \(attempt) for connection \(self.connectionId) — waiting \(delay)s")
+            Self.logger.warning("Reconnect attempt \(attempt) for connection \(self.connectionId), waiting \(delay)s")
             await transitionTo(.reconnecting(attempt: attempt))
 
             try? await Task.sleep(for: .seconds(delay))
@@ -208,8 +199,7 @@ actor ConnectionHealthMonitor {
             Self.logger.warning("Reconnect attempt \(attempt) failed for connection \(self.connectionId)")
         }
 
-        Self.logger.error("Reconnect cancelled after \(attempt) attempts for connection \(self.connectionId)")
-        await transitionTo(.failed)
+        Self.logger.debug("Reconnect loop cancelled after \(attempt) attempts for connection \(self.connectionId)")
     }
 
     /// Computes the backoff delay for a given attempt number (1-based).
@@ -249,8 +239,6 @@ actor ConnectionHealthMonitor {
             return .debug
         case .reconnecting:
             return .default
-        case .failed:
-            return .error
         }
     }
 }

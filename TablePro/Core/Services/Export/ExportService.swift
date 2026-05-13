@@ -97,7 +97,7 @@ final class ExportService {
             throw ExportError.noTablesSelected
         }
 
-        guard let plugin = PluginManager.shared.exportPlugins[config.formatId] else {
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
             throw ExportError.formatNotFound(config.formatId)
         }
 
@@ -185,7 +185,7 @@ final class ExportService {
         config: ExportConfiguration,
         to url: URL
     ) async throws {
-        guard let plugin = PluginManager.shared.exportPlugins[config.formatId] else {
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
             throw ExportError.formatNotFound(config.formatId)
         }
 
@@ -261,7 +261,7 @@ final class ExportService {
         config: ExportConfiguration,
         to url: URL
     ) async throws {
-        guard let plugin = PluginManager.shared.exportPlugins[config.formatId] else {
+        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
             throw ExportError.formatNotFound(config.formatId)
         }
         guard let driver else {
@@ -374,7 +374,7 @@ final class ExportService {
             do {
                 let result = try await driver.execute(query: batchQuery)
                 for row in result.rows {
-                    if let countStr = row.first, let count = Int(countStr ?? "0") {
+                    if let cell = row.first, let count = Int(cell.asText ?? "0") {
                         total += count
                     }
                 }
@@ -383,7 +383,7 @@ final class ExportService {
                     do {
                         let tableRef = qualifiedTableRef(for: table, driver: driver)
                         let result = try await driver.execute(query: "SELECT COUNT(*) FROM \(tableRef)")
-                        if let countStr = result.rows.first?.first, let count = Int(countStr ?? "0") {
+                        if let cell = result.rows.first?.first, let count = Int(cell.asText ?? "0") {
                             total += count
                         }
                     } catch {

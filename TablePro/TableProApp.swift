@@ -6,6 +6,7 @@
 //
 
 import CodeEditTextView
+import Combine
 import Observation
 import os
 import Sparkle
@@ -88,8 +89,12 @@ struct PasteboardCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .selectAll))
 
             Button("Clear Selection") {
-                // Use responder chain - cancelOperation is the standard ESC action
-                NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
+                // Route the Esc key equivalent to Vim first when the active editor is
+                // in a non-normal mode — the menu shortcut otherwise preempts the
+                // local event monitor and Vim never sees the keystroke.
+                if !EditorEventRouter.shared.handleVimEscapeFromMenu() {
+                    NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
+                }
             }
             .optionalKeyboardShortcut(shortcut(for: .clearSelection))
         }
@@ -196,14 +201,22 @@ struct AppMenuCommands: Commands {
         // File menu
         CommandGroup(replacing: .newItem) {
             Button("Manage Connections") {
-                NotificationCenter.default.post(name: .newConnection, object: nil)
+                WindowOpener.shared.openWelcome()
             }
             .optionalKeyboardShortcut(shortcut(for: .manageConnections))
+
+            Button(String(localized: "Open Sample Database")) {
+                SampleDatabaseLauncher.open()
+            }
+
+            Button(String(localized: "Reset Sample Database...")) {
+                SampleDatabaseLauncher.reset()
+            }
         }
 
         CommandGroup(after: .newItem) {
             Button("New Tab") {
-                actions?.newTab()
+                NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
             }
             .optionalKeyboardShortcut(shortcut(for: .newTab))
             .disabled(!(actions?.isConnected ?? false))
@@ -257,15 +270,15 @@ struct AppMenuCommands: Commands {
             Divider()
 
             Button(String(localized: "Export Connections...")) {
-                NotificationCenter.default.post(name: .exportConnections, object: nil)
+                AppCommands.shared.exportConnections.send(())
             }
 
             Button(String(localized: "Import Connections...")) {
-                NotificationCenter.default.post(name: .importConnections, object: nil)
+                AppCommands.shared.importConnections.send(())
             }
 
             Button(String(localized: "Import from Other App...")) {
-                NotificationCenter.default.post(name: .importConnectionsFromApp, object: nil)
+                AppCommands.shared.importConnectionsFromApp.send(())
             }
 
             Divider()
@@ -289,6 +302,20 @@ struct AppMenuCommands: Commands {
                 !(actions?.isConnected ?? false)
                     || actions?.isReadOnly ?? false
                     || !(actions.map { PluginManager.shared.supportsImport(for: $0.currentDatabaseType) } ?? true)
+            )
+
+            Button(String(localized: "Backup Dump\u{2026}")) {
+                actions?.backupDatabase()
+            }
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsBackup ?? false))
+
+            Button(String(localized: "Restore Dump\u{2026}")) {
+                actions?.restoreDatabase()
+            }
+            .disabled(
+                !(actions?.isConnected ?? false)
+                    || !(actions?.supportsRestore ?? false)
+                    || actions?.isReadOnly ?? false
             )
         }
 
@@ -342,7 +369,7 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isQueryExecuting ?? false))
 
             Button("Refresh") {
-                NotificationCenter.default.post(name: .refreshData, object: nil)
+                AppCommands.shared.refreshData.send(nil)
             }
             .optionalKeyboardShortcut(shortcut(for: .refresh))
             .disabled(!(actions?.isConnected ?? false))
@@ -384,7 +411,7 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isConnected ?? false))
 
             Button("Switch Connection...") {
-                NotificationCenter.default.post(name: .openConnectionSwitcher, object: nil)
+                actions?.openConnectionSwitcher()
             }
             .optionalKeyboardShortcut(shortcut(for: .switchConnection))
             .disabled(!(actions?.isConnected ?? false))
@@ -597,8 +624,10 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button(String(localized: "Report an Issue...")) {
-                FeedbackWindowController.shared.showFeedbackPanel()
+            Button(String(localized: "Report an Issue")) {
+                if let url = URL(string: "https://github.com/TableProApp/TablePro/issues") {
+                    NSWorkspace.shared.open(url)
+                }
             }
         }
     }
@@ -613,7 +642,7 @@ struct TableProApp: App {
     var appDelegate
 
     @State private var settingsManager = AppSettingsManager.shared
-    @State private var updaterBridge = UpdaterBridge()
+    @State private var updaterBridge = UpdaterBridge.shared
     @State private var commandRegistry = CommandActionsRegistry.shared
 
     init() {
@@ -626,35 +655,39 @@ struct TableProApp: App {
     }
 
     var body: some Scene {
-        // Welcome Window - opens on launch (must be first Window scene so SwiftUI
-        // restores it by default when clicking the dock icon)
-        Window("Welcome to TablePro", id: "welcome") {
+        Window("Welcome to TablePro", id: SceneId.welcome) {
             WelcomeWindowView()
-                .background(OpenWindowHandler())  // Handle window notifications from startup
+                .frame(width: 800, height: 480)
+                .background(WindowOpenerBridge())
+                .background(WindowChromeConfigurator(
+                    restorable: false,
+                    fullScreenable: false,
+                    hideMiniaturizeButton: true,
+                    hideZoomButton: true
+                ))
+                .environment(\.appServices, .live)
         }
+        .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 700, height: 450)
+        .commandsRemoved()
 
-        // Connection Form Window - opens when creating/editing a connection
-        WindowGroup(id: "connection-form", for: UUID?.self) { $connectionId in
-            ConnectionFormView(connectionId: connectionId ?? nil)
+        WindowGroup("New Connection", id: SceneId.connectionForm, for: UUID?.self) { $editingId in
+            ConnectionFormView(connectionId: editingId ?? nil)
+                .background(WindowOpenerBridge())
+                .background(WindowChromeConfigurator(restorable: false))
+                .environment(\.appServices, .live)
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 820, height: 600)
+        .commandsRemoved()
 
-        // NOTE (prototype): main windows are now created imperatively via
-        // MainWindowFactory → NSWindow + NSHostingController. The retired
-        // `WindowGroup(id:"main", for: EditorTabPayload.self)` caused SwiftUI to
-        // re-instantiate ContentView for every historical payload on every scene
-        // phase diff (5-7 phantom inits per open). AppKit-native windows avoid
-        // that and eliminate the 68-437ms openWindow() latency.
-
-        // Settings Window - opens with Cmd+,
-        Settings {
-            SettingsView()
-                .environment(updaterBridge)
+        Window("Integrations Activity", id: SceneId.integrationsActivity) {
+            IntegrationsActivityView()
+                .background(WindowOpenerBridge())
+                .environment(\.appServices, .live)
         }
-
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 960, height: 600)
         .commands {
             AppMenuCommands(
                 settingsManager: AppSettingsManager.shared,
@@ -662,37 +695,14 @@ struct TableProApp: App {
                 commandRegistry: commandRegistry
             )
         }
+
+        Settings {
+            SettingsView()
+                .background(WindowOpenerBridge())
+                .environment(updaterBridge)
+                .environment(\.appServices, .live)
+        }
     }
-}
-
-// MARK: - Notification Names
-
-extension Notification.Name {
-    // Connection lifecycle
-    static let newConnection = Notification.Name("newConnection")
-    static let openConnectionSwitcher = Notification.Name("openConnectionSwitcher")
-
-    // Multi-listener broadcasts (Sidebar + Coordinator + StructureView)
-    static let refreshData = Notification.Name("refreshData")
-
-    // Data operations (still posted by DataGrid / context menus)
-    static let deleteSelectedRows = Notification.Name("deleteSelectedRows")
-    static let addNewRow = Notification.Name("addNewRow")
-    static let duplicateRow = Notification.Name("duplicateRow")
-    static let copySelectedRows = Notification.Name("copySelectedRows")
-    static let pasteRows = Notification.Name("pasteRows")
-
-    // File opening notifications
-    static let openSQLFiles = Notification.Name("openSQLFiles")
-
-    // Window lifecycle notifications
-    static let mainWindowWillClose = Notification.Name("mainWindowWillClose")
-    static let openMainWindow = Notification.Name("openMainWindow")
-    static let openWelcomeWindow = Notification.Name("openWelcomeWindow")
-
-    // Database URL handling notifications
-    static let switchSchemaFromURL = Notification.Name("switchSchemaFromURL")
-    static let applyURLFilter = Notification.Name("applyURLFilter")
 }
 
 // MARK: - Check for Updates
@@ -716,7 +726,7 @@ private struct MCPServerMenuItem: View {
 
     var body: some View {
         Button(menuTitle) {
-            NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
+            WindowOpener.shared.openSettings()
         }
     }
 
@@ -725,47 +735,15 @@ private struct MCPServerMenuItem: View {
         case .running:
             let count = manager.connectedClients.count
             if count == 0 {
-                return String(localized: "MCP Server: Running")
+                return String(localized: "Integrations: Running")
             }
-            return String(format: String(localized: "MCP Server: Running (%d clients)"), count)
+            return String(format: String(localized: "Integrations: Running (%d clients)"), count)
         case .failed:
-            return String(localized: "MCP Server: Failed")
+            return String(localized: "Integrations: Failed")
         case .stopped:
-            return String(localized: "MCP Server: Stopped")
+            return String(localized: "Integrations: Stopped")
         case .starting:
-            return String(localized: "MCP Server: Starting...")
+            return String(localized: "Integrations: Starting...")
         }
-    }
-}
-
-// MARK: - Open Window Handler
-
-/// Helper view that listens for window open notifications
-private struct OpenWindowHandler: View {
-    @Environment(\.openWindow)
-    private var openWindow
-    @Environment(\.openSettings)
-    private var openSettings
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onAppear {
-                // Store openWindow action for imperative access (e.g., from MainContentCommandActions)
-                WindowOpener.shared.openWindow = openWindow
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openWelcomeWindow)) { _ in
-                openWindow(id: "welcome")
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openMainWindow)) { notification in
-                if let payload = notification.object as? EditorTabPayload {
-                    WindowManager.shared.openTab(payload: payload)
-                } else if let connectionId = notification.object as? UUID {
-                    WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connectionId))
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openSettingsWindow)) { _ in
-                openSettings()
-            }
     }
 }

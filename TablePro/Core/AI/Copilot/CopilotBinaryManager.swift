@@ -4,6 +4,7 @@
 //
 
 import CryptoKit
+import Darwin
 import Foundation
 import os
 
@@ -122,7 +123,8 @@ actor CopilotBinaryManager {
             ofItemAtPath: binaryExecutablePath
         )
 
-        // Store version for future reference
+        stripQuarantineAttribute(at: binaryExecutablePath)
+
         if let version = json["version"] as? String {
             let versionFile = baseDirectory.appendingPathComponent("version.txt")
             try? version.write(to: versionFile, atomically: true, encoding: .utf8)
@@ -139,6 +141,15 @@ actor CopilotBinaryManager {
 
     private var binaryExecutablePath: String {
         baseDirectory.appendingPathComponent("copilot-language-server").path
+    }
+
+    private func stripQuarantineAttribute(at path: String) {
+        let removed = path.withCString { removexattr($0, "com.apple.quarantine", 0) }
+        guard removed != 0 else { return }
+        let err = errno
+        if err != ENOATTR {
+            Self.logger.warning("Failed to remove quarantine xattr: errno=\(err)")
+        }
     }
 
     private var platform: String {

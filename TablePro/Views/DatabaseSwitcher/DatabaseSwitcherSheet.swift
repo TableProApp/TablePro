@@ -11,9 +11,23 @@ import SwiftUI
 import TableProPluginKit
 
 struct DatabaseSwitcherSheet: View {
+    enum Mode {
+        case switching
+        case backup
+        case restore
+    }
+
+    /// Modes that pick a database for an out-of-band flow (backup / restore).
+    /// These share UI affordances: schemas tab hidden, create/drop hidden,
+    /// the primary button doesn't auto-dismiss.
+    private var isHandoffMode: Bool {
+        mode == .backup || mode == .restore
+    }
+
     @Binding var isPresented: Bool
     @Environment(\.dismiss) private var dismiss
 
+    let mode: Mode
     let currentDatabase: String?
     let currentSchema: String?
     let databaseType: DatabaseType
@@ -41,31 +55,43 @@ struct DatabaseSwitcherSheet: View {
     }
 
     init(
-        isPresented: Binding<Bool>, currentDatabase: String?, currentSchema: String? = nil,
+        isPresented: Binding<Bool>,
+        mode: Mode = .switching,
+        currentDatabase: String?,
+        currentSchema: String? = nil,
         databaseType: DatabaseType,
-        connectionId: UUID, onSelect: @escaping (String) -> Void,
+        connectionId: UUID,
+        onSelect: @escaping (String) -> Void,
         onSelectSchema: ((String) -> Void)? = nil
     ) {
         self._isPresented = isPresented
+        self.mode = mode
         self.currentDatabase = currentDatabase
         self.currentSchema = currentSchema
         self.databaseType = databaseType
         self.connectionId = connectionId
         self.onSelect = onSelect
         self.onSelectSchema = onSelectSchema
+        // Backup and restore always operate at the database level (pg_dump
+        // dumps a whole database). Force .database so PostgreSQL doesn't
+        // open the picker in schema mode.
+        let initialMode: DatabaseSwitcherViewModel.Mode? = (mode == .backup || mode == .restore)
+            ? .database
+            : nil
         self._viewModel = State(
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,
                 currentSchema: currentSchema,
-                databaseType: databaseType
+                databaseType: databaseType,
+                initialMode: initialMode
             ))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Databases / Schemas toggle (PostgreSQL only)
-            if PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
+            // Databases / Schemas toggle (PostgreSQL only); hidden for handoff flows.
+            if !isHandoffMode, PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
                 Picker("", selection: $viewModel.mode) {
                     Text(String(localized: "Databases"))
                         .tag(DatabaseSwitcherViewModel.Mode.database)
@@ -108,9 +134,7 @@ struct DatabaseSwitcherSheet: View {
             footer
         }
         .frame(width: 420, height: 480)
-        .navigationTitle(isSchemaMode
-            ? String(localized: "Open Schema")
-            : String(localized: "Open Database"))
+        .navigationTitle(navigationTitleString)
         .background(Color(nsColor: .windowBackgroundColor))
         .task { await viewModel.fetchDatabases() }
         .task { await refreshCreateSupport() }
@@ -173,7 +197,7 @@ struct DatabaseSwitcherSheet: View {
             .buttonStyle(.borderless)
             .help(String(localized: "Refresh database list"))
 
-            if !isSchemaMode && supportsCreateDatabase {
+            if !isHandoffMode, !isSchemaMode, supportsCreateDatabase {
                 Button(action: { showCreateDialog = true }) {
                     Image(systemName: "plus")
                         .frame(width: 24, height: 24)
@@ -183,7 +207,7 @@ struct DatabaseSwitcherSheet: View {
             }
 
             // Drop
-            if !isSchemaMode && PluginManager.shared.supportsDropDatabase(for: databaseType) {
+            if !isHandoffMode, !isSchemaMode, PluginManager.shared.supportsDropDatabase(for: databaseType) {
                 Button(action: { initiateDropForSelected() }) {
                     Image(systemName: "trash")
                         .frame(width: 24, height: 24)
@@ -209,6 +233,13 @@ struct DatabaseSwitcherSheet: View {
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .focused($focus, equals: .databaseList)
+            .contextMenu(forSelectionType: String.self) { selection in
+                contextMenuItems(for: selection)
+            } primaryAction: { selection in
+                guard let name = selection.first else { return }
+                viewModel.selectedDatabase = name
+                openSelectedDatabase()
+            }
             .onChange(of: viewModel.selectedDatabase) { _, newValue in
                 if let item = newValue {
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -219,22 +250,39 @@ struct DatabaseSwitcherSheet: View {
         }
     }
 
+    @ViewBuilder
+    private func contextMenuItems(for selection: Set<String>) -> some View {
+        if !isSchemaMode,
+           PluginManager.shared.supportsDropDatabase(for: databaseType),
+           let name = selection.first,
+           let database = viewModel.filteredDatabases.first(where: { $0.name == name }),
+           !database.isSystemDatabase,
+           database.name != activeName {
+            Button(role: .destructive) {
+                databaseToDrop = database.name
+                showDropDialog = true
+            } label: {
+                Label(String(localized: "Drop Database..."), systemImage: "trash")
+            }
+        }
+    }
+
     private func databaseRow(_ database: DatabaseMetadata) -> some View {
         let isCurrent = database.name == activeName
 
         return HStack(spacing: 10) {
             Image(systemName: database.icon)
-                .font(.system(size: 14))
+                .font(.body)
                 .foregroundStyle(database.isSystemDatabase ? Color(nsColor: .systemOrange) : Color(nsColor: .systemBlue))
 
             Text(database.name)
-                .font(.system(size: 13))
+                .font(.body)
 
             Spacer()
 
             if isCurrent {
                 Text("current")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -250,24 +298,6 @@ struct DatabaseSwitcherSheet: View {
         .listRowSeparator(.hidden)
         .id(database.name)
         .tag(database.name)
-        .overlay(
-            DoubleClickDetector {
-                viewModel.selectedDatabase = database.name
-                openSelectedDatabase()
-            }
-        )
-        .contextMenu {
-            if !isSchemaMode && PluginManager.shared.supportsDropDatabase(for: databaseType)
-                && !database.isSystemDatabase && database.name != activeName
-            {
-                Button(role: .destructive) {
-                    databaseToDrop = database.name
-                    showDropDialog = true
-                } label: {
-                    Label(String(localized: "Drop Database..."), systemImage: "trash")
-                }
-            }
-        }
     }
 
     // MARK: - Empty States
@@ -288,8 +318,8 @@ struct DatabaseSwitcherSheet: View {
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 24))
-                .foregroundStyle(.orange)
+                .font(.title2)
+                .foregroundStyle(Color(nsColor: .systemOrange))
 
             Text(isSchemaMode
                 ? String(localized: "Failed to load schemas")
@@ -314,7 +344,7 @@ struct DatabaseSwitcherSheet: View {
     private var sqliteEmptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "doc.fill")
-                .font(.system(size: 24))
+                .font(.title2)
                 .foregroundStyle(.secondary)
 
             Text("SQLite is file-based")
@@ -334,7 +364,7 @@ struct DatabaseSwitcherSheet: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 24))
+                .font(.title2)
                 .foregroundStyle(.secondary)
 
             if viewModel.searchText.isEmpty {
@@ -360,6 +390,33 @@ struct DatabaseSwitcherSheet: View {
 
     // MARK: - Footer
 
+    private var navigationTitleString: String {
+        switch mode {
+        case .switching:
+            return isSchemaMode
+                ? String(localized: "Open Schema")
+                : String(localized: "Open Database")
+        case .backup:
+            return String(localized: "Backup Dump")
+        case .restore:
+            return String(localized: "Restore Dump")
+        }
+    }
+
+    private var primaryButtonLabel: String {
+        switch mode {
+        case .switching: return String(localized: "Open")
+        case .backup: return String(localized: "Backup Dump\u{2026}")
+        case .restore: return String(localized: "Restore Dump\u{2026}")
+        }
+    }
+
+    private var primaryButtonDisabled: Bool {
+        guard let selected = viewModel.selectedDatabase else { return true }
+        if mode == .switching, selected == activeName { return true }
+        return false
+    }
+
     private var footer: some View {
         HStack {
             Button("Cancel") {
@@ -368,13 +425,11 @@ struct DatabaseSwitcherSheet: View {
 
             Spacer()
 
-            Button("Open") {
+            Button(primaryButtonLabel) {
                 openSelectedDatabase()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(
-                viewModel.selectedDatabase == nil || viewModel.selectedDatabase == activeName
-            )
+            .disabled(primaryButtonDisabled)
             .keyboardShortcut(.return, modifiers: [])
         }
         .padding(12)
@@ -411,6 +466,14 @@ struct DatabaseSwitcherSheet: View {
 
     private func openSelectedDatabase() {
         guard let database = viewModel.selectedDatabase else { return }
+
+        // Backup/restore: hand the selection off to the parent flow without
+        // dismissing. The host sheet stays mounted and transitions to the
+        // next step (save/open panel, then progress).
+        if isHandoffMode {
+            onSelect(database)
+            return
+        }
 
         // Don't reopen current database/schema
         if database == activeName {

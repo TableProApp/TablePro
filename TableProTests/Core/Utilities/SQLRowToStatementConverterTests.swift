@@ -81,7 +81,7 @@ struct SQLRowToStatementConverterTests {
     @Test("Multiple rows are joined by newlines")
     func insertMultipleRows() throws {
         let converter = try makeConverter()
-        let rows: [[String?]] = [
+        let rows: [[PluginCellValue]] = [
             ["1", "Alice", "alice@example.com"],
             ["2", "Bob", "bob@example.com"]
         ]
@@ -222,9 +222,70 @@ struct SQLRowToStatementConverterTests {
             columns: ["id", "name"],
             primaryKeyColumn: "id"
         )
-        let rows: [[String?]] = (1...50_001).map { i in ["\(i)", "name\(i)"] }
+        let rows: [[PluginCellValue]] = (1...50_001).map { i in [.text("\(i)"), .text("name\(i)")] }
         let result = converter.generateInserts(rows: rows)
         let lines = result.components(separatedBy: "\n")
         #expect(lines.count == 50_000)
+    }
+
+    @Test("PostgreSQL: binary cell renders as bytea hex literal in INSERT")
+    func postgresBinaryInsertEmitsByteaLiteral() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "documents",
+            columns: ["id", "payload"],
+            primaryKeyColumn: "id",
+            databaseType: .postgresql,
+            quoteIdentifier: { "\"\($0)\"" },
+            escapeStringLiteral: { $0.replacingOccurrences(of: "'", with: "''") }
+        )
+        let bytes = Data([0xD3, 0x8C, 0xE5, 0x66])
+        let result = converter.generateInserts(rows: [[.text("1"), .bytes(bytes)]])
+        #expect(result.contains("'\\xD38CE566'::bytea"))
+        #expect(!result.contains("NULL"))
+    }
+
+    @Test("MySQL: binary cell renders as X'...' literal in INSERT")
+    func mysqlBinaryInsertEmitsXLiteral() throws {
+        let converter = try makeConverter(
+            tableName: "documents",
+            columns: ["id", "payload"],
+            primaryKeyColumn: "id"
+        )
+        let bytes = Data([0xDE, 0xAD, 0xBE, 0xEF])
+        let result = converter.generateInserts(rows: [[.text("1"), .bytes(bytes)]])
+        #expect(result.contains("X'DEADBEEF'"))
+        #expect(!result.contains("NULL"))
+    }
+
+    @Test("MSSQL: binary cell renders as 0x... literal in INSERT")
+    func mssqlBinaryInsertEmitsZeroXLiteral() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "documents",
+            columns: ["id", "payload"],
+            primaryKeyColumn: "id",
+            databaseType: .mssql,
+            quoteIdentifier: { "[\($0)]" },
+            escapeStringLiteral: { $0.replacingOccurrences(of: "'", with: "''") }
+        )
+        let bytes = Data([0xCA, 0xFE, 0xBA, 0xBE])
+        let result = converter.generateInserts(rows: [[.text("1"), .bytes(bytes)]])
+        #expect(result.contains("0xCAFEBABE"))
+        #expect(!result.contains("'CAFEBABE'"))
+    }
+
+    @Test("UPDATE with binary value emits hex literal in SET clause")
+    func updateBinaryValueEmitsHexLiteral() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "documents",
+            columns: ["id", "payload"],
+            primaryKeyColumn: "id",
+            databaseType: .postgresql,
+            quoteIdentifier: { "\"\($0)\"" },
+            escapeStringLiteral: { $0.replacingOccurrences(of: "'", with: "''") }
+        )
+        let bytes = Data([0xAB, 0xCD])
+        let result = converter.generateUpdates(rows: [[.text("42"), .bytes(bytes)]])
+        #expect(result.contains("\"payload\" = '\\xABCD'::bytea"))
+        #expect(result.contains("WHERE \"id\" = '42'"))
     }
 }

@@ -28,61 +28,64 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
             Text(String(localized: "Export Options"))
                 .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 12)
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 4) {
-                    Toggle("Include Credentials", isOn: $includeCredentials)
-                        .toggleStyle(.checkbox)
-                        .disabled(!isProAvailable)
+            Divider()
 
-                    if !isProAvailable {
-                        Text("Pro")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.accentColor)
-                            )
+            Form {
+                Section {
+                    HStack(spacing: 6) {
+                        Toggle("Include Credentials", isOn: $includeCredentials)
+                            .toggleStyle(.checkbox)
+                            .disabled(!isProAvailable)
+                        if !isProAvailable {
+                            ProBadge()
+                        }
+                    }
+                } footer: {
+                    if includeCredentials {
+                        Text("Passwords will be encrypted with the passphrase you provide.")
                     }
                 }
 
                 if includeCredentials {
-                    Text("Passwords will be encrypted with the passphrase you provide.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    SecureField("Passphrase (8+ characters)", text: $passphrase)
-                        .textFieldStyle(.roundedBorder)
-
-                    SecureField("Confirm passphrase", text: $confirmPassphrase)
-                        .textFieldStyle(.roundedBorder)
+                    Section {
+                        LabeledContent(String(localized: "Passphrase")) {
+                            SecureField(String(localized: "8+ characters"), text: $passphrase)
+                        }
+                        LabeledContent(String(localized: "Confirm")) {
+                            SecureField(String(localized: "Re-enter passphrase"), text: $confirmPassphrase)
+                        }
+                    }
 
                     if !passphrase.isEmpty && !confirmPassphrase.isEmpty && passphrase != confirmPassphrase {
-                        Text("Passphrases do not match")
-                            .font(.subheadline)
-                            .foregroundStyle(Color(nsColor: .systemRed))
+                        Section {
+                            Label(String(localized: "Passphrases do not match"), systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Color(nsColor: .systemOrange))
+                        }
                     }
                 }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+
+            Divider()
 
             HStack {
-                Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
+                Spacer()
                 Button("Export...") { performExport() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canExport)
             }
+            .padding(12)
         }
-        .padding(20)
-        .frame(width: 380)
+        .frame(width: 420)
     }
 
     private func performExport() {

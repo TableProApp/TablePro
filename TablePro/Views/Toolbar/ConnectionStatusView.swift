@@ -7,80 +7,111 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 /// Main connection status display for the toolbar center
 struct ConnectionStatusView: View {
     let databaseType: DatabaseType
     let databaseVersion: String?
-    let databaseName: String
+    let chipText: String
+    let databaseGroupingStrategy: GroupingStrategy
     let connectionName: String
-    let connectionState: ToolbarConnectionState
     let displayColor: Color
-    let tagName: String?
     var safeModeLevel: SafeModeLevel = .silent
     var onSwitchDatabase: (() -> Void)?
 
+    @ScaledMetric private var engineIconSize: CGFloat = 14
+
     var body: some View {
         HStack(spacing: 10) {
-            // Database type icon + version
-            databaseInfoSection
+            connectionIdentitySection
 
-            // Vertical separator
-            Divider()
-                .frame(height: 12)
+            if !chipText.isEmpty {
+                Divider()
+                    .frame(height: 12)
 
-            // Database name (clickable to switch databases)
-            if !databaseName.isEmpty {
-                databaseNameSection
+                chipSection
             }
         }
     }
 
     // MARK: - Subviews
 
-    /// Database type and version info
-    private var databaseInfoSection: some View {
-        Text(formattedDatabaseInfo)
-            .font(.system(.subheadline, design: .monospaced))
-            .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .frame(maxWidth: 280)
-            .accessibilityLabel(
-                String(format: String(localized: "Database type: %@"), formattedDatabaseInfo)
-            )
-            .help("Database: \(formattedDatabaseInfo)")
+    private var connectionIdentitySection: some View {
+        HStack(spacing: 6) {
+            databaseType.iconImage
+                .renderingMode(.template)
+                .foregroundStyle(displayColor)
+                .frame(width: engineIconSize, height: engineIconSize)
+
+            Text(connectionName)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .help(connectionTooltip)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(connectionAccessibilityLabel)
     }
 
-    /// Database name (clickable to open database switcher, plain label for SQLite)
     @ViewBuilder
-    private var databaseNameSection: some View {
+    private var chipSection: some View {
         if !PluginManager.shared.supportsDatabaseSwitching(for: databaseType) {
-            databaseNameLabel
-                .help("Database: \(databaseName)")
+            chipLabel
+                .help(staticChipTooltip)
         } else {
             Button {
                 onSwitchDatabase?()
             } label: {
-                databaseNameLabel
+                chipLabel
             }
             .buttonStyle(.plain)
-            .help(safeModeLevel == .readOnly
-                ? String(format: String(localized: "Current database: %@ (read-only, ⌘K to switch)"), databaseName)
-                : String(format: String(localized: "Current database: %@ (⌘K to switch)"), databaseName))
+            .help(switchableChipTooltip)
         }
     }
 
-    private var databaseNameLabel: some View {
+    private var chipLabel: some View {
         HStack(spacing: 4) {
             Image(systemName: "cylinder")
                 .imageScale(.small)
                 .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
 
-            Text(databaseName)
+            Text(chipText)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
+    }
+
+    private var chipKindLabel: String {
+        switch databaseGroupingStrategy {
+        case .bySchema: return String(localized: "Schema")
+        case .byDatabase, .flat: return String(localized: "Database")
+        }
+    }
+
+    private var staticChipTooltip: String {
+        String(format: String(localized: "%@: %@"), chipKindLabel, chipText)
+    }
+
+    private var switchableChipTooltip: String {
+        let switchVerb: String = switch databaseGroupingStrategy {
+        case .bySchema: String(localized: "switch schema")
+        case .byDatabase, .flat: String(localized: "switch database")
+        }
+        if safeModeLevel == .readOnly {
+            return String(
+                format: String(localized: "Current %@: %@ (read only, ⌘K to %@)"),
+                chipKindLabel.lowercased(), chipText, switchVerb
+            )
+        }
+        return String(
+            format: String(localized: "Current %@: %@ (⌘K to %@)"),
+            chipKindLabel.lowercased(), chipText, switchVerb
+        )
     }
 
     // MARK: - Computed Properties
@@ -91,62 +122,66 @@ struct ConnectionStatusView: View {
         }
         return databaseType.rawValue
     }
+
+    private var connectionTooltip: String {
+        String(format: String(localized: "%@ • %@"), connectionName, formattedDatabaseInfo)
+    }
+
+    private var connectionAccessibilityLabel: String {
+        String(format: String(localized: "Connection: %@, %@"), connectionName, formattedDatabaseInfo)
+    }
 }
 
 // MARK: - Preview
 
-#Preview("Connected") {
+#Preview("MariaDB") {
     ConnectionStatusView(
         databaseType: .mariadb,
         databaseVersion: "11.1.2",
-        databaseName: "production_db",
+        chipText: "production_db",
+        databaseGroupingStrategy: .byDatabase,
         connectionName: "Production Database",
-        connectionState: .connected,
-        displayColor: .cyan,
-        tagName: "production"
+        displayColor: .cyan
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
 }
 
-#Preview("Executing - No Duplicate") {
+#Preview("MySQL") {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "8.0.35",
-        databaseName: "dev_db",
+        chipText: "dev_db",
+        databaseGroupingStrategy: .byDatabase,
         connectionName: "Development",
-        connectionState: .executing,
-        displayColor: .orange,
-        tagName: "local"
+        displayColor: .orange
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
 }
 
-#Preview("No Tag") {
+#Preview("PostgreSQL Dark") {
     ConnectionStatusView(
         databaseType: .postgresql,
         databaseVersion: "16.1",
-        databaseName: "analytics",
+        chipText: "public",
+        databaseGroupingStrategy: .bySchema,
         connectionName: "Analytics DB",
-        connectionState: .connected,
-        displayColor: .blue,
-        tagName: nil
+        displayColor: .blue
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
     .preferredColorScheme(.dark)
 }
 
-#Preview("Duplicate Name") {
+#Preview("Empty Database") {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "9.5.0",
-        databaseName: "laravel",
+        chipText: "",
+        databaseGroupingStrategy: .byDatabase,
         connectionName: "Local",
-        connectionState: .connected,
-        displayColor: .green,
-        tagName: "local"
+        displayColor: .green
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))

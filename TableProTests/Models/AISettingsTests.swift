@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -17,7 +18,7 @@ struct AISettingsTests {
     @Test("decoding without enabled key defaults to true")
     func decodingWithoutEnabledDefaultsToTrue() throws {
         let json = "{}"
-        let data = json.data(using: .utf8)!
+        let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AISettings.self, from: data)
         #expect(settings.enabled == true)
     }
@@ -25,9 +26,44 @@ struct AISettingsTests {
     @Test("decoding with enabled false sets it correctly")
     func decodingWithEnabledFalse() throws {
         let json = "{\"enabled\": false}"
-        let data = json.data(using: .utf8)!
+        let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AISettings.self, from: data)
         #expect(settings.enabled == false)
+    }
+
+    @Test("Default settings include schema and current query, exclude query results")
+    func defaultsForContextFlags() {
+        let settings = AISettings.default
+        #expect(settings.includeSchema == true)
+        #expect(settings.includeCurrentQuery == true)
+        #expect(settings.includeQueryResults == false)
+    }
+
+    @Test("Memberwise init uses the same context defaults as AISettings.default")
+    func memberwiseInitMatchesDefault() {
+        let settings = AISettings()
+        #expect(settings.includeSchema == AISettings.default.includeSchema)
+        #expect(settings.includeCurrentQuery == AISettings.default.includeCurrentQuery)
+        #expect(settings.includeQueryResults == AISettings.default.includeQueryResults)
+    }
+
+    @Test("Decoding empty JSON yields the same context defaults as AISettings.default")
+    func decodingEmptyJSONMatchesDefault() throws {
+        let data = Data("{}".utf8)
+        let settings = try JSONDecoder().decode(AISettings.self, from: data)
+        #expect(settings.includeSchema == AISettings.default.includeSchema)
+        #expect(settings.includeCurrentQuery == AISettings.default.includeCurrentQuery)
+        #expect(settings.includeQueryResults == AISettings.default.includeQueryResults)
+    }
+
+    @Test("Stored false values for context flags are preserved on decode")
+    func storedFalseFlagsAreRespected() throws {
+        let json = #"{"includeSchema": false, "includeCurrentQuery": false, "includeQueryResults": false}"#
+        let data = Data(json.utf8)
+        let settings = try JSONDecoder().decode(AISettings.self, from: data)
+        #expect(settings.includeSchema == false)
+        #expect(settings.includeCurrentQuery == false)
+        #expect(settings.includeQueryResults == false)
     }
 }
 
@@ -88,7 +124,7 @@ struct AISettingsActiveProviderTests {
     @Test("Decoding without activeProviderID defaults to nil")
     func decodingWithoutActiveProviderDefaultsToNil() throws {
         let json = #"{"enabled": true, "providers": []}"#
-        let data = json.data(using: .utf8)!
+        let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AISettings.self, from: data)
         #expect(settings.activeProviderID == nil)
         #expect(settings.activeProvider == nil)

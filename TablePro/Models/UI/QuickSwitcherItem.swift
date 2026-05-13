@@ -8,7 +8,7 @@
 import Foundation
 
 /// The type of database object represented by a quick switcher item
-internal enum QuickSwitcherItemKind: Hashable, Sendable {
+internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
     case table
     case view
     case systemTable

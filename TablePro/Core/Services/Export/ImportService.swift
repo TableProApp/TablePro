@@ -54,7 +54,7 @@ final class ImportService {
         ownsDecompressedFile: Bool = false,
         knownStatementCount: Int? = nil
     ) async throws -> PluginImportResult {
-        guard let plugin = PluginManager.shared.importPlugins[formatId] else {
+        guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
         }
 
@@ -69,9 +69,15 @@ final class ImportService {
             currentProgress = nil
         }
 
-        // Create adapter and source
         let sink = ImportDataSinkAdapter(driver: driver, databaseType: connection.type)
-        let source = SqlFileImportSource(url: url, encoding: encoding, decompressedURL: decompressedURL, ownsDecompressedFile: ownsDecompressedFile)
+        let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
+        let source = SqlFileImportSource(
+            url: url,
+            encoding: encoding,
+            dialect: dialect,
+            decompressedURL: decompressedURL,
+            ownsDecompressedFile: ownsDecompressedFile
+        )
         defer { source.cleanup() }
 
         // Create progress tracker
@@ -120,7 +126,7 @@ final class ImportService {
             QueryHistoryManager.shared.recordQuery(
                 query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
                 connectionId: connection.id,
-                databaseName: connection.database,
+                databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
                 executionTime: 0,
                 rowCount: progress.processedStatements,
                 wasSuccessful: false,
@@ -140,7 +146,7 @@ final class ImportService {
         QueryHistoryManager.shared.recordQuery(
             query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
             connectionId: connection.id,
-            databaseName: connection.database,
+            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
             executionTime: result.executionTime,
             rowCount: result.executedStatements,
             wasSuccessful: true,

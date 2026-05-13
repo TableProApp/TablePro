@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
@@ -95,13 +96,12 @@ struct DatabaseManagerMultiSessionTests {
             DatabaseManager.shared.removeSession(for: id2)
         }
 
-        let table = TestFixtures.makeTableInfo(name: "users")
         DatabaseManager.shared.updateSession(id1) { session in
-            session.tables = [table]
+            session.pendingTruncates = ["users"]
         }
 
-        #expect(DatabaseManager.shared.session(for: id1)?.tables.count == 1)
-        #expect(DatabaseManager.shared.session(for: id2)?.tables.isEmpty == true)
+        #expect(DatabaseManager.shared.session(for: id1)?.pendingTruncates == ["users"])
+        #expect(DatabaseManager.shared.session(for: id2)?.pendingTruncates.isEmpty == true)
     }
 
     @Test("Removing one session does not affect the other")
@@ -133,7 +133,7 @@ struct DatabaseManagerMultiSessionTests {
         let countBefore = DatabaseManager.shared.activeSessions.count
 
         DatabaseManager.shared.updateSession(unknownId) { session in
-            session.tables = [TestFixtures.makeTableInfo(name: "ghost")]
+            session.pendingTruncates = ["ghost"]
         }
 
         #expect(DatabaseManager.shared.activeSessions.count == countBefore)
@@ -180,15 +180,12 @@ struct CoordinatorConnectionIsolationTests {
         let connection = TestFixtures.makeConnection(id: connId, name: "MySQL", database: "db_a", type: .mysql)
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
-        let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
             changeManager: changeManager,
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }
@@ -207,8 +204,6 @@ struct CoordinatorConnectionIsolationTests {
             connection: conn1,
             tabManager: QueryTabManager(),
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator1.teardown() }
@@ -217,8 +212,6 @@ struct CoordinatorConnectionIsolationTests {
             connection: conn2,
             tabManager: QueryTabManager(),
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator2.teardown() }
@@ -228,35 +221,22 @@ struct CoordinatorConnectionIsolationTests {
         #expect(coordinator2.connectionId == id2)
     }
 
-    @Test("sidebarLoadingState is per-coordinator and does not bleed across instances")
-    func sidebarLoadingStateIsPerCoordinator() {
-        let conn1 = TestFixtures.makeConnection(id: UUID(), name: "Conn1", database: "db_a", type: .mysql)
-        let conn2 = TestFixtures.makeConnection(id: UUID(), name: "Conn2", database: "db_b", type: .mysql)
+    @Test("Schema state is per-connection in SchemaService")
+    func schemaStateIsPerConnection() async {
+        let id1 = UUID()
+        let id2 = UUID()
 
-        let coordinator1 = MainContentCoordinator(
-            connection: conn1,
-            tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
-            toolbarState: ConnectionToolbarState()
-        )
-        defer { coordinator1.teardown() }
+        await SchemaService.shared.invalidate(connectionId: id1)
+        await SchemaService.shared.invalidate(connectionId: id2)
+        defer {
+            Task {
+                await SchemaService.shared.invalidate(connectionId: id1)
+                await SchemaService.shared.invalidate(connectionId: id2)
+            }
+        }
 
-        let coordinator2 = MainContentCoordinator(
-            connection: conn2,
-            tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
-            toolbarState: ConnectionToolbarState()
-        )
-        defer { coordinator2.teardown() }
-
-        coordinator1.sidebarLoadingState = .loading
-
-        #expect(coordinator1.sidebarLoadingState == .loading)
-        #expect(coordinator2.sidebarLoadingState == .idle)
+        #expect(SchemaService.shared.state(for: id1) == .idle)
+        #expect(SchemaService.shared.state(for: id2) == .idle)
     }
 
     @Test("openTableTab uses coordinator's connection database for the added tab")
@@ -265,15 +245,12 @@ struct CoordinatorConnectionIsolationTests {
         let connection = TestFixtures.makeConnection(id: connId, name: "MySQL", database: "db_a", type: .mysql)
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
-        let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
             changeManager: changeManager,
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }

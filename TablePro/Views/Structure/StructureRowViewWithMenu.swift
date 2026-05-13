@@ -8,13 +8,14 @@
 
 import AppKit
 
-/// Row view providing a context menu tailored to the Structure tab
-final class StructureRowViewWithMenu: NSTableRowView {
-    weak var coordinator: TableViewCoordinator?
-    var rowIndex: Int = 0
+/// Row view providing a context menu tailored to the Structure tab. Inherits
+/// selection/emphasis cell invalidation, deleted/inserted-row tint, and the
+/// `RowVisualState` source-of-truth from `DataGridRowView`. The context menu
+/// reads `visualState.isDeleted` directly, so a single `applyVisualState` call
+/// updates both the tint and the menu without a shadow flag to keep in sync.
+final class StructureRowViewWithMenu: DataGridRowView {
     var structureTab: StructureTab = .columns
     var isStructureEditable: Bool = true
-    var isRowDeleted: Bool = false
     var referencedTableName: String?
 
     var onCopyName: ((Set<Int>) -> Void)?
@@ -31,7 +32,7 @@ final class StructureRowViewWithMenu: NSTableRowView {
 
         let menu = NSMenu()
 
-        if isRowDeleted {
+        if visualState.isDeleted {
             let undoItem = NSMenuItem(
                 title: String(localized: "Undo Delete"),
                 action: #selector(handleUndoDelete),

@@ -6,11 +6,12 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Represents a single parsed row ready for insertion
 struct ParsedRow {
     /// Column values (nil represents NULL)
-    let values: [String?]
+    let values: [PluginCellValue]
 
     /// Original line number in clipboard (for error reporting)
     let sourceLineNumber: Int

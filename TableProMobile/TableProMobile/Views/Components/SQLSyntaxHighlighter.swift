@@ -1,8 +1,3 @@
-//
-//  SQLSyntaxHighlighter.swift
-//  TableProMobile
-//
-
 import UIKit
 
 enum SQLSyntaxHighlighter {
@@ -10,7 +5,7 @@ enum SQLSyntaxHighlighter {
 
     private static let defaultFont = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
 
-    private static let keywordPattern: NSRegularExpression = {
+    private static let keywordRegex: Regex<Substring> = {
         let keywords = [
             "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER",
             "TABLE", "INDEX", "VIEW", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "FULL",
@@ -22,12 +17,12 @@ enum SQLSyntaxHighlighter {
             "UNIQUE", "ADD", "COLUMN", "RENAME", "TO", "DATABASE", "SCHEMA", "USE",
             "GRANT", "REVOKE", "WITH", "RECURSIVE", "FETCH", "NEXT", "ROWS", "ONLY"
         ]
-        let pattern = "\\b(" + keywords.joined(separator: "|") + ")\\b"
+        let pattern = #"\b(?:"# + keywords.joined(separator: "|") + #")\b"#
         // swiftlint:disable:next force_try
-        return try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        return try! Regex(pattern, as: Substring.self).ignoresCase()
     }()
 
-    private static let functionPattern: NSRegularExpression = {
+    private static let functionRegex: Regex<Substring> = {
         let functions = [
             "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "IFNULL", "NULLIF",
             "UPPER", "LOWER", "TRIM", "LTRIM", "RTRIM", "LENGTH", "SUBSTRING", "SUBSTR",
@@ -36,35 +31,19 @@ enum SQLSyntaxHighlighter {
             "DATE", "TIME", "YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND",
             "GROUP_CONCAT", "STRING_AGG", "ARRAY_AGG", "JSON_EXTRACT", "JSON_VALUE"
         ]
-        let pattern = "\\b(" + functions.joined(separator: "|") + ")\\s*(?=\\()"
+        let pattern = #"\b(?:"# + functions.joined(separator: "|") + #")\s*(?=\()"#
         // swiftlint:disable:next force_try
-        return try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        return try! Regex(pattern, as: Substring.self).ignoresCase()
     }()
 
-    private static let numberPattern: NSRegularExpression = {
-        // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: "\\b\\d+\\.?\\d*\\b", options: [])
-    }()
-
-    private static let singleLineCommentPattern: NSRegularExpression = {
-        // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: "--[^\\n]*", options: [])
-    }()
-
-    private static let blockCommentPattern: NSRegularExpression = {
-        // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: "/\\*[\\s\\S]*?\\*/", options: [])
-    }()
-
-    private static let stringPattern: NSRegularExpression = {
-        // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: "'(?:[^']|'')*'", options: [])
-    }()
+    private static let numberRegex = #/\b\d+\.?\d*\b/#
+    private static let lineCommentRegex = #/--[^\n]*/#
+    private static let blockCommentRegex = #/\/\*[\s\S]*?\*\//#
+    private static let stringRegex = #/'(?:[^']|'')*'/#
 
     static func highlight(_ textStorage: NSTextStorage, in editedRange: NSRange) {
         let fullLength = textStorage.length
-        guard fullLength > 0 else { return }
-        guard editedRange.location < fullLength else { return }
+        guard fullLength > 0, editedRange.location < fullLength else { return }
 
         let cappedLength = min(fullLength, maxHighlightLength)
         let nsString = textStorage.string as NSString
@@ -84,65 +63,46 @@ enum SQLSyntaxHighlighter {
             highlightRange = NSRange(location: lineStart, length: min(lineEnd - lineStart, cappedLength - lineStart))
         }
 
-        guard highlightRange.length > 0 else { return }
-
-        let text = nsString.substring(with: highlightRange) as NSString
+        guard highlightRange.length > 0,
+              let scanRange = Range(highlightRange, in: textStorage.string) else { return }
 
         textStorage.beginEditing()
 
-        let defaultAttrs: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.label,
-            .font: defaultFont
-        ]
-        textStorage.setAttributes(defaultAttrs, range: highlightRange)
+        textStorage.setAttributes(
+            [.foregroundColor: UIColor.label, .font: defaultFont],
+            range: highlightRange
+        )
 
-        var protectedRanges: [NSRange] = []
+        let fullText = textStorage.string
+        let scanText = fullText[scanRange]
+        var protected: [Range<String.Index>] = []
 
-        blockCommentPattern.enumerateMatches(in: text as String, range: NSRange(location: 0, length: text.length)) { match, _, _ in
-            guard let matchRange = match?.range else { return }
-            let absolute = NSRange(location: highlightRange.location + matchRange.location, length: matchRange.length)
-            textStorage.addAttribute(.foregroundColor, value: UIColor.systemGray, range: absolute)
-            protectedRanges.append(matchRange)
-        }
-
-        singleLineCommentPattern.enumerateMatches(in: text as String, range: NSRange(location: 0, length: text.length)) { match, _, _ in
-            guard let matchRange = match?.range else { return }
-            if protectedRanges.contains(where: { NSIntersectionRange($0, matchRange).length > 0 }) { return }
-            let absolute = NSRange(location: highlightRange.location + matchRange.location, length: matchRange.length)
-            textStorage.addAttribute(.foregroundColor, value: UIColor.systemGray, range: absolute)
-            protectedRanges.append(matchRange)
-        }
-
-        stringPattern.enumerateMatches(in: text as String, range: NSRange(location: 0, length: text.length)) { match, _, _ in
-            guard let matchRange = match?.range else { return }
-            if protectedRanges.contains(where: { NSIntersectionRange($0, matchRange).length > 0 }) { return }
-            let absolute = NSRange(location: highlightRange.location + matchRange.location, length: matchRange.length)
-            textStorage.addAttribute(.foregroundColor, value: UIColor.systemRed, range: absolute)
-            protectedRanges.append(matchRange)
-        }
-
-        func isProtected(_ range: NSRange) -> Bool {
-            protectedRanges.contains { NSIntersectionRange($0, range).length > 0 }
-        }
-
-        keywordPattern.enumerateMatches(in: text as String, range: NSRange(location: 0, length: text.length)) { match, _, _ in
-            guard let matchRange = match?.range, !isProtected(matchRange) else { return }
-            let absolute = NSRange(location: highlightRange.location + matchRange.location, length: matchRange.length)
-            textStorage.addAttribute(.foregroundColor, value: UIColor.systemBlue, range: absolute)
-        }
-
-        functionPattern.enumerateMatches(in: text as String, range: NSRange(location: 0, length: text.length)) { match, _, _ in
-            guard let matchRange = match?.range, !isProtected(matchRange) else { return }
-            let absolute = NSRange(location: highlightRange.location + matchRange.location, length: matchRange.length)
-            textStorage.addAttribute(.foregroundColor, value: UIColor.systemPurple, range: absolute)
-        }
-
-        numberPattern.enumerateMatches(in: text as String, range: NSRange(location: 0, length: text.length)) { match, _, _ in
-            guard let matchRange = match?.range, !isProtected(matchRange) else { return }
-            let absolute = NSRange(location: highlightRange.location + matchRange.location, length: matchRange.length)
-            textStorage.addAttribute(.foregroundColor, value: UIColor.systemOrange, range: absolute)
-        }
+        apply(blockCommentRegex, color: .systemGray, scanText: scanText, in: fullText, on: textStorage, protected: &protected)
+        apply(lineCommentRegex, color: .systemGray, scanText: scanText, in: fullText, on: textStorage, protected: &protected)
+        apply(stringRegex, color: .systemRed, scanText: scanText, in: fullText, on: textStorage, protected: &protected)
+        apply(keywordRegex, color: .systemBlue, scanText: scanText, in: fullText, on: textStorage, protected: &protected, recordsProtection: false)
+        apply(functionRegex, color: .systemPurple, scanText: scanText, in: fullText, on: textStorage, protected: &protected, recordsProtection: false)
+        apply(numberRegex, color: .systemOrange, scanText: scanText, in: fullText, on: textStorage, protected: &protected, recordsProtection: false)
 
         textStorage.endEditing()
+    }
+
+    private static func apply<Output>(
+        _ regex: Regex<Output>,
+        color: UIColor,
+        scanText: Substring,
+        in fullText: String,
+        on storage: NSTextStorage,
+        protected: inout [Range<String.Index>],
+        recordsProtection: Bool = true
+    ) {
+        for match in scanText.matches(of: regex) {
+            if protected.contains(where: { $0.overlaps(match.range) }) { continue }
+            let nsRange = NSRange(match.range, in: fullText)
+            storage.addAttribute(.foregroundColor, value: color, range: nsRange)
+            if recordsProtection {
+                protected.append(match.range)
+            }
+        }
     }
 }

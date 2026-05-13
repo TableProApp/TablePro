@@ -8,11 +8,13 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import Observation
 import os
 import SwiftUI
 import TableProPluginKit
+import UniformTypeIdentifiers
 
 /// Provides command actions for MainContentView, accessible via @FocusedValue
 @MainActor
@@ -23,7 +25,6 @@ final class MainContentCommandActions {
     // MARK: - Dependencies
 
     @ObservationIgnored private weak var coordinator: MainContentCoordinator?
-    @ObservationIgnored private let filterStateManager: FilterStateManager
     @ObservationIgnored private let connection: DatabaseConnection
 
     // MARK: - Bindings
@@ -43,11 +44,13 @@ final class MainContentCommandActions {
     /// Task handles for async notification observers; cancelled on deinit.
     @ObservationIgnored private var notificationTasks: [Task<Void, Never>] = []
 
+    /// Combine subscriptions for typed AppEvents publishers.
+    @ObservationIgnored private var eventCancellables: Set<AnyCancellable> = []
+
     // MARK: - Initialization
 
     init(
         coordinator: MainContentCoordinator,
-        filterStateManager: FilterStateManager,
         connection: DatabaseConnection,
         selectionState: GridSelectionState,
         selectedTables: Binding<Set<TableInfo>>,
@@ -57,7 +60,6 @@ final class MainContentCommandActions {
         rightPanelState: RightPanelState
     ) {
         self.coordinator = coordinator
-        self.filterStateManager = filterStateManager
         self.connection = connection
         self.selectionState = selectionState
         self.selectedTables = selectedTables
@@ -110,6 +112,20 @@ final class MainContentCommandActions {
         }
     }
 
+    /// Subscribes to an `AppCommands` publisher and only runs the handler when this instance's window is key.
+    private func observeKeyWindowOnly<Payload>(
+        _ publisher: PassthroughSubject<Payload, Never>,
+        handler: @escaping @MainActor (Payload) -> Void
+    ) {
+        publisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] payload in
+                guard self?.isKeyWindow() == true else { return }
+                handler(payload)
+            }
+            .store(in: &eventCancellables)
+    }
+
     // MARK: - Save Action
 
     private func setupSaveAction() {
@@ -146,27 +162,23 @@ final class MainContentCommandActions {
     /// context menus, QueryEditorView, ConnectionStatusView). These bridge AppKit/non-menu
     /// notification posts to the same command action methods used by @FocusedValue callers.
     private func setupNonMenuNotificationObservers() {
-        observeKeyWindowOnly(.addNewRow) { [weak self] _ in self?.addNewRow() }
+        observeKeyWindowOnly(AppCommands.shared.addNewRow) { [weak self] _ in self?.addNewRow() }
 
-        observeKeyWindowOnly(.deleteSelectedRows) { [weak self] notification in
-            let directIndices = notification.userInfo?["rowIndices"] as? Set<Int>
-            self?.deleteSelectedRows(rowIndices: directIndices)
+        observeKeyWindowOnly(AppCommands.shared.deleteSelectedRows) { [weak self] _ in
+            self?.deleteSelectedRows()
         }
 
-        observeKeyWindowOnly(.duplicateRow) { [weak self] _ in self?.duplicateRow() }
+        observeKeyWindowOnly(AppCommands.shared.duplicateRow) { [weak self] _ in self?.duplicateRow() }
 
-        observeKeyWindowOnly(.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
+        observeKeyWindowOnly(AppCommands.shared.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
 
-        // Note: .copySelectedRows and .pasteRows observers call the data-grid
-        // path directly (not the public methods) to avoid an infinite loop —
-        // the public methods re-post these notifications for structure view.
-        observeKeyWindowOnly(.copySelectedRows) { [weak self] _ in
+        observeKeyWindowOnly(AppCommands.shared.copySelectedRows) { [weak self] _ in
             guard let self else { return }
             let indices = self.selectionState.indices
             self.coordinator?.copySelectedRowsToClipboard(indices: indices)
         }
 
-        observeKeyWindowOnly(.pasteRows) { [weak self] _ in
+        observeKeyWindowOnly(AppCommands.shared.pasteRows) { [weak self] _ in
             self?.coordinator?.pasteRows()
         }
     }
@@ -174,7 +186,15 @@ final class MainContentCommandActions {
     // MARK: - Row Operations (Group A — Called Directly)
 
     func addNewRow() {
-        coordinator?.addNewRow()
+        // The structure tab routes through StructureGridDelegate, which inserts
+        // a column / index / FK row depending on the active Structure sub-tab.
+        // The data tab routes through MainContentCoordinator.addNewRow which
+        // calls RowEditingCoordinator.addNewRow (data-only).
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
+            coordinator?.structureActions?.addRow?()
+        } else {
+            coordinator?.addNewRow()
+        }
     }
 
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
@@ -316,15 +336,15 @@ final class MainContentCommandActions {
     // MARK: - Tab Operations (Group A — Called Directly)
 
     func newTab(initialQuery: String? = nil) {
-        // If no tabs exist (empty state), add directly to this window
-        if coordinator?.tabManager.tabs.isEmpty == true {
-            coordinator?.tabManager.addTab(initialQuery: initialQuery, databaseName: connection.database)
+        if let coordinator, coordinator.tabManager.tabs.isEmpty {
+            coordinator.tabManager.addTab(
+                initialQuery: initialQuery,
+                databaseName: coordinator.activeDatabaseName
+            )
             return
         }
-        // Open a new native macOS window tab with a query editor
         let payload = EditorTabPayload(
             connectionId: connection.id,
-            tabType: .query,
             initialQuery: initialQuery,
             intent: .newEmptyTab
         )
@@ -369,7 +389,10 @@ final class MainContentCommandActions {
         } else {
             if let coordinator {
                 for tab in coordinator.tabManager.tabs {
-                    coordinator.tableRowsStore.removeTableRows(for: tab.id)
+                    coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
+                    if let url = tab.content.sourceFileURL {
+                        WindowLifecycleMonitor.shared.unregisterSourceFile(url)
+                    }
                 }
                 coordinator.tabManager.tabs.removeAll()
                 coordinator.tabManager.selectedTabId = nil
@@ -427,17 +450,68 @@ final class MainContentCommandActions {
     private func saveFileToSourceURL() {
         guard let tab = coordinator?.tabManager.selectedTab,
               let url = tab.content.sourceFileURL else { return }
-        let content = tab.content.query
+
+        if isExternallyModified(tab: tab, url: url) {
+            requestConflictResolution(tab: tab, url: url)
+            return
+        }
+
+        writeTabContent(tabId: tab.id, content: tab.content.query, to: url)
+    }
+
+    func writeTabContent(tabId: UUID, content: String, to url: URL) {
         Task {
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
-                if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
-                    coordinator?.tabManager.tabs[index].content.savedFileContent = content
+                let mtime = (try? FileManager.default
+                    .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+                coordinator?.tabManager.mutate(tabId: tabId) { tab in
+                    tab.content.savedFileContent = content
+                    tab.content.loadMtime = mtime
+                    tab.content.externalModificationDetected = false
                 }
             } catch {
-                // File may have been deleted or become inaccessible
                 Self.logger.error("Failed to save file: \(error.localizedDescription)")
                 saveFileAs()
+            }
+        }
+    }
+
+    private func isExternallyModified(tab: QueryTab, url: URL) -> Bool {
+        guard let loadMtime = tab.content.loadMtime,
+              let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date else {
+            return false
+        }
+        return currentMtime > loadMtime.addingTimeInterval(0.5)
+    }
+
+    private func requestConflictResolution(tab: QueryTab, url: URL) {
+        let mineContent = tab.content.query
+        let diskContent = FileTextLoader.load(url)?.content ?? ""
+        coordinator?.fileConflictRequest = MainContentCoordinator.FileConflictRequest(
+            tabId: tab.id,
+            url: url,
+            mineContent: mineContent,
+            diskContent: diskContent
+        )
+    }
+
+    func reloadFileFromDisk(tabId: UUID, url: URL) {
+        guard let beforeIndex = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        let queryAtRequestTime = coordinator?.tabManager.tabs[beforeIndex].content.query
+        Task {
+            guard let loaded = FileTextLoader.load(url) else { return }
+            let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+            await MainActor.run {
+                guard let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+                let liveQuery = coordinator?.tabManager.tabs[index].content.query
+                guard liveQuery == queryAtRequestTime else { return }
+                coordinator?.tabManager.mutate(at: index) { tab in
+                    tab.content.query = loaded.content
+                    tab.content.savedFileContent = loaded.content
+                    tab.content.loadMtime = mtime
+                    tab.content.externalModificationDetected = false
+                }
             }
         }
     }
@@ -486,12 +560,25 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Navigation (Group A — Called Directly)
 
+    /// Selects the Nth native window tab. Wrapping the `selectedWindow`
+    /// assignment in `NSAnimationContext.runAnimationGroup` with `duration = 0`
+    /// suppresses AppKit's tab-transition animation, so rapid Cmd+Number
+    /// presses don't queue up CAAnimations that drain visibly after the user
+    /// releases the keys.
+    ///
+    /// Per-switch AppKit overhead (window-focus change, NSHostingView layout,
+    /// Window Server roundtrip) is platform-inherent to one-NSWindow-per-tab
+    /// and is intentionally not coalesced. See `docs/architecture/tab-subsystem-rewrite.md` D2.
     func selectTab(number: Int) {
-        // Switch to the nth native window tab
         guard let keyWindow = NSApp.keyWindow,
-              let tabbedWindows = keyWindow.tabbedWindows,
-              number > 0, number <= tabbedWindows.count else { return }
-        tabbedWindows[number - 1].makeKeyAndOrderFront(nil)
+              let tabGroup = keyWindow.tabGroup else { return }
+        let windows = tabGroup.windows
+        guard windows.indices.contains(number - 1) else { return }
+        let target = windows[number - 1]
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            tabGroup.selectedWindow = target
+        }
     }
 
     // MARK: - Filter Operations (Group A — Called Directly)
@@ -499,7 +586,7 @@ final class MainContentCommandActions {
     func toggleFilterPanel() {
         guard let coordinator = coordinator,
               coordinator.tabManager.selectedTab?.tabType == .table else { return }
-        filterStateManager.toggle()
+        coordinator.toggleFilterPanel()
     }
 
     // MARK: - Data Operations (Group A — Called Directly)
@@ -547,14 +634,15 @@ final class MainContentCommandActions {
               tab.tabType == .query else { return }
         let content = tab.content.query
         let suggestedName = tab.content.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
+        let tabId = tab.id
         Task {
             guard let url = await SQLFileService.showSavePanel(suggestedName: suggestedName) else { return }
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
-                if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
-                    coordinator?.tabManager.tabs[index].content.sourceFileURL = url
-                    coordinator?.tabManager.tabs[index].content.savedFileContent = content
-                    coordinator?.tabManager.tabs[index].title = url.deletingPathExtension().lastPathComponent
+                coordinator?.tabManager.mutate(tabId: tabId) { mutTab in
+                    mutTab.content.sourceFileURL = url
+                    mutTab.content.savedFileContent = content
+                    mutTab.title = url.deletingPathExtension().lastPathComponent
                 }
             } catch {
                 Self.logger.error("Failed to save file: \(error.localizedDescription)")
@@ -565,7 +653,7 @@ final class MainContentCommandActions {
     func openSQLFile() {
         Task {
             guard let urls = await SQLFileService.showOpenPanel() else { return }
-            NotificationCenter.default.post(name: .openSQLFiles, object: urls)
+            AppCommands.shared.openSQLFiles.send(urls)
         }
     }
 
@@ -599,6 +687,49 @@ final class MainContentCommandActions {
 
     func importTables() {
         coordinator?.openImportDialog()
+    }
+
+    func backupDatabase() {
+        coordinator?.activeSheet = .backupDatabase
+    }
+
+    var supportsBackup: Bool {
+        connection.type == .postgresql || connection.type == .redshift
+    }
+
+    var supportsRestore: Bool { supportsBackup }
+
+    func restoreDatabase() {
+        Task { @MainActor [weak self] in
+            await self?.presentRestoreSourcePicker()
+        }
+    }
+
+    private func presentRestoreSourcePicker() async {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = Self.restoreSourceContentTypes
+        panel.title = String(localized: "Choose Dump File")
+        panel.prompt = String(localized: "Choose")
+        panel.message = String(localized: "Select a dump file produced by pg_dump in custom archive format.")
+
+        let response: NSApplication.ModalResponse
+        if let window = NSApp.keyWindow {
+            response = await panel.beginSheetModal(for: window)
+        } else {
+            response = panel.runModal()
+        }
+        guard response == .OK, let url = panel.url else { return }
+        coordinator?.activeSheet = .restoreDatabase(fileURL: url)
+    }
+
+    private static var restoreSourceContentTypes: [UTType] {
+        if let dumpType = UTType(filenameExtension: "dump") {
+            return [dumpType, .data]
+        }
+        return [.data]
     }
 
     func saveAsFavorite() {
@@ -644,7 +775,7 @@ final class MainContentCommandActions {
                 cursorOffset: 0,
                 options: options
             )
-            coordinator.tabManager.tabs[tabIndex].content.query = result.formattedSQL
+            coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = result.formattedSQL }
         } catch {
             Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
         }
@@ -663,7 +794,7 @@ final class MainContentCommandActions {
     func toggleResults() {
         guard let coordinator,
               let (_, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
-        coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed.toggle()
+        coordinator.tabManager.mutate(at: tabIndex) { $0.display.isResultsCollapsed.toggle() }
         coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed
     }
 
@@ -701,7 +832,11 @@ final class MainContentCommandActions {
     }
 
     func openQuickSwitcher() {
-        coordinator?.activeSheet = .quickSwitcher
+        coordinator?.showQuickSwitcher()
+    }
+
+    func openConnectionSwitcher() {
+        coordinator?.activeSheet = .connectionSwitcher
     }
 
     // MARK: - Undo/Redo (Group A — Called Directly)
@@ -709,17 +844,23 @@ final class MainContentCommandActions {
     func undoChange() {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
-        } else {
-            coordinator?.contentWindow?.undoManager?.undo()
+            return
         }
+        if NSApp.sendAction(NSSelectorFromString("undo:"), to: nil, from: nil) {
+            return
+        }
+        coordinator?.contentWindow?.undoManager?.undo()
     }
 
     func redoChange() {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
-        } else {
-            coordinator?.contentWindow?.undoManager?.redo()
+            return
         }
+        if NSApp.sendAction(NSSelectorFromString("redo:"), to: nil, from: nil) {
+            return
+        }
+        coordinator?.contentWindow?.undoManager?.redo()
     }
 
     // MARK: - Group B Broadcast Subscribers
@@ -727,7 +868,19 @@ final class MainContentCommandActions {
     // MARK: Data Broadcasts
 
     private func setupDataBroadcastObservers() {
-        observeKeyWindowOnly(.refreshData) { [weak self] _ in self?.handleRefreshData() }
+        AppCommands.shared.refreshData
+            .receive(on: RunLoop.main)
+            .sink { [weak self] target in
+                guard let self else { return }
+                if let target, target != self.connection.id {
+                    return
+                }
+                if target == nil && !self.isKeyWindow() {
+                    return
+                }
+                self.handleRefreshData()
+            }
+            .store(in: &eventCancellables)
     }
 
     private func handleRefreshData() {
@@ -754,69 +907,57 @@ final class MainContentCommandActions {
     // MARK: Database Broadcasts
 
     private func setupDatabaseBroadcastObservers() {
-        observe(.databaseDidConnect) { [weak self] _ in self?.handleDatabaseDidConnect() }
+        AppEvents.shared.databaseDidConnect
+            .receive(on: RunLoop.main)
+            .sink { [weak self] payload in
+                guard let self, payload.connectionId == self.connection.id else { return }
+                self.handleDatabaseDidConnect()
+            }
+            .store(in: &eventCancellables)
     }
 
     private func handleDatabaseDidConnect() {
-        Task {
-            if let driver = DatabaseManager.shared.driver(for: self.connection.id) {
-                coordinator?.toolbarState.databaseVersion = driver.serverVersion
+        Task { [weak coordinator] in
+            guard let coordinator, !coordinator.isTearingDown else { return }
+            if let driver = DatabaseManager.shared.driver(for: coordinator.connection.id) {
+                coordinator.toolbarState.databaseVersion = driver.serverVersion
             }
-            if coordinator?.sidebarLoadingState != .loading {
-                await coordinator?.refreshTables()
+            if case .loading = SchemaService.shared.state(for: coordinator.connection.id) {
+                coordinator.initRedisKeyTreeIfNeeded()
+                return
             }
-            coordinator?.initRedisKeyTreeIfNeeded()
+            await coordinator.refreshTables()
+            // Re-check after await: the user may have disconnected mid-fetch.
+            guard !coordinator.isTearingDown else { return }
+            coordinator.initRedisKeyTreeIfNeeded()
         }
     }
 
     // MARK: Window Broadcasts
 
     private func setupWindowObservers() {
-        observe(.mainWindowWillClose) { [weak self] _ in
-            guard let coordinator = self?.coordinator else { return }
-            coordinator.persistence.saveNow(
-                tabs: coordinator.tabManager.tabs,
-                selectedTabId: coordinator.tabManager.selectedTabId
-            )
-        }
+        AppEvents.shared.mainWindowWillClose
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let coordinator = self?.coordinator else { return }
+                guard !MainContentCoordinator.isAppTerminating else { return }
+                coordinator.persistence.saveOrClearAggregated()
+            }
+            .store(in: &eventCancellables)
     }
 
     // MARK: File Open Broadcasts
 
     private func setupFileOpenObservers() {
-        observeKeyWindowOnly(.openSQLFiles) { [weak self] notification in
-            self?.handleOpenSQLFiles(notification)
+        observeKeyWindowOnly(AppCommands.shared.openSQLFiles) { [weak self] urls in
+            self?.handleOpenSQLFiles(urls)
         }
     }
 
-    private func handleOpenSQLFiles(_ notification: Notification) {
-        guard let urls = notification.object as? [URL] else { return }
-
+    private func handleOpenSQLFiles(_ urls: [URL]) {
         Task {
             for url in urls {
-                if let existingWindow = WindowLifecycleMonitor.shared.window(forSourceFile: url) {
-                    existingWindow.makeKeyAndOrderFront(nil)
-                    continue
-                }
-
-                let content = await Task.detached(priority: .userInitiated) { () -> String? in
-                    do {
-                        return try String(contentsOf: url, encoding: .utf8)
-                    } catch {
-                        Self.logger.error("Failed to read \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                        return nil
-                    }
-                }.value
-
-                if let content {
-                    let payload = EditorTabPayload(
-                        connectionId: connection.id,
-                        tabType: .query,
-                        initialQuery: content,
-                        sourceFileURL: url
-                    )
-                    WindowManager.shared.openTab(payload: payload)
-                }
+                try? await TabRouter.shared.route(.openSQLFile(url))
             }
         }
     }

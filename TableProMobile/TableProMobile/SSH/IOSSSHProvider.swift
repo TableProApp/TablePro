@@ -1,8 +1,3 @@
-//
-//  IOSSSHProvider.swift
-//  TableProMobile
-//
-
 import Foundation
 import TableProDatabase
 import TableProModels

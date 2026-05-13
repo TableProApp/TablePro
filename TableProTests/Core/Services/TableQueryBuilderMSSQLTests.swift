@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -17,11 +18,12 @@ struct TableQueryBuilderMSSQLTests {
     init() {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         let dialect = PluginManager.shared.sqlDialect(for: .mssql)
+        let dialectQuote = dialect.map(quoteIdentifierFromDialect)
         self.builder = TableQueryBuilder(
             databaseType: .mssql,
             pluginDriver: PluginManager.shared.queryBuildingDriver(for: .mssql),
             dialect: dialect,
-            dialectQuote: quoteIdentifierFromDialect(dialect)
+            dialectQuote: dialectQuote
         )
     }
 

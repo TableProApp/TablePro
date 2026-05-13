@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
@@ -96,6 +97,7 @@ struct CreateTableView: View {
 
             TextField("Enter table name", text: $tableName)
                 .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled(true)
                 .frame(maxWidth: 300)
 
             if showMySQLOptions {
@@ -234,14 +236,28 @@ struct CreateTableView: View {
             additionalFields: [.primaryKey]
         )
 
-        let tableRows = provider.asTableRows()
+        // Rebuild the row snapshot fresh on every call so cell edits made
+        // through the delegate are visible to the next reloadData. Capturing
+        // a snapshot here would let the cell view re-render with the pre-edit
+        // value. Same rationale as `TableStructureView.structureGrid`.
+        let manager = structureChangeManager
+        let tab = structureTab
+        let dbType = connection.type
         return DataGridView(
-            tableRowsProvider: { tableRows },
+            tableRowsProvider: {
+                StructureRowProvider(
+                    changeManager: manager,
+                    tab: tab,
+                    databaseType: dbType,
+                    additionalFields: [.primaryKey]
+                ).asTableRows()
+            },
             changeManager: wrappedChangeManager,
             isEditable: true,
             configuration: DataGridConfiguration(
                 dropdownColumns: provider.dropdownColumns,
                 typePickerColumns: provider.typePickerColumns,
+                customDropdownOptions: provider.customDropdownOptions,
                 connectionId: connection.id,
                 databaseType: connection.type
             ),
@@ -342,13 +358,13 @@ struct CreateTableView: View {
                 QueryHistoryManager.shared.recordQuery(
                     query: sql,
                     connectionId: connection.id,
-                    databaseName: connection.database,
+                    databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
                     executionTime: 0,
                     rowCount: 0,
                     wasSuccessful: true
                 )
 
-                NotificationCenter.default.post(name: .refreshData, object: nil)
+                AppCommands.shared.refreshData.send(nil)
 
                 if let coordinator {
                     coordinator.openTableTab(tableName)

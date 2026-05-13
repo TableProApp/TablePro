@@ -1,9 +1,6 @@
-//
-//  TableProMobileApp.swift
-//  TableProMobile
-//
-
+import BackgroundTasks
 import CoreSpotlight
+import os
 import SwiftUI
 import TableProAnalytics
 import TableProDatabase
@@ -11,7 +8,11 @@ import TableProModels
 
 @main
 struct TableProMobileApp: App {
+    static let backgroundSyncIdentifier = "com.TablePro.sync"
+    private static let backgroundLogger = Logger(subsystem: "com.TablePro", category: "BackgroundSync")
+
     @State private var appState = AppState()
+    @State private var lockState = AppLockState()
     @State private var syncTask: Task<Void, Never>?
     @State private var heartbeatService: AnalyticsHeartbeatService?
     @State private var heartbeatTask: Task<Void, Never>?
@@ -19,15 +20,26 @@ struct TableProMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if appState.hasCompletedOnboarding {
-                    ConnectionListView()
-                        .environment(appState)
-                } else {
-                    OnboardingView()
-                        .environment(appState)
+            ZStack {
+                Group {
+                    if appState.hasCompletedOnboarding {
+                        ConnectionListView()
+                            .environment(appState)
+                    } else {
+                        OnboardingView()
+                            .environment(appState)
+                    }
+                }
+                .blur(radius: lockState.isLocked ? 20 : 0)
+                .allowsHitTesting(!lockState.isLocked)
+
+                if lockState.isLocked {
+                    LockScreenView()
+                        .environment(lockState)
+                        .transition(.opacity)
                 }
             }
+            .animation(.default, value: lockState.isLocked)
             .onOpenURL { url in
                 guard url.scheme == "tablepro",
                       url.host(percentEncoded: false) == "connect",
@@ -53,18 +65,26 @@ struct TableProMobileApp: App {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            // Skip lifecycle side-effects under XCTest so unit tests do not
+            // boot CloudKit sync, analytics, or biometric checks.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            lockState.handleScenePhase(phase)
             switch phase {
             case .active:
-                syncTask?.cancel()
-                syncTask = Task {
-                    await appState.syncCoordinator.sync(
-                        localConnections: appState.connections,
-                        localGroups: appState.groups,
-                        localTags: appState.tags
-                    )
+                MemoryPressureMonitor.shared.start()
+                if AppPreferences.isCloudSyncEnabled {
+                    syncTask?.cancel()
+                    syncTask = Task {
+                        await appState.syncCoordinator.sync(
+                            localConnections: appState.connections,
+                            localGroups: appState.groups,
+                            localTags: appState.tags
+                        )
+                    }
                 }
                 if heartbeatTask == nil {
-                    let provider = IOSAnalyticsProvider(appState: appState)
+                    let provider = IOSAnalyticsProvider.shared
+                    provider.attach(appState: appState)
                     let service = AnalyticsHeartbeatService(provider: provider)
                     heartbeatService = service
                     heartbeatTask = service.startPeriodicHeartbeat()
@@ -76,9 +96,37 @@ struct TableProMobileApp: App {
                 heartbeatTask = nil
                 heartbeatService = nil
                 Task { await appState.connectionManager.disconnectAll() }
+                scheduleBackgroundSync()
             default:
                 break
             }
         }
+        .backgroundTask(.appRefresh(Self.backgroundSyncIdentifier)) {
+            await runBackgroundSync()
+        }
+    }
+
+    private func scheduleBackgroundSync() {
+        guard AppPreferences.isCloudSyncEnabled else { return }
+        let request = BGAppRefreshTaskRequest(identifier: Self.backgroundSyncIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            Self.backgroundLogger.warning("Failed to schedule background sync: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    @Sendable
+    private func runBackgroundSync() async {
+        scheduleBackgroundSync()
+        guard AppPreferences.isCloudSyncEnabled else { return }
+        Self.backgroundLogger.info("Background sync starting")
+        await appState.syncCoordinator.sync(
+            localConnections: appState.connections,
+            localGroups: appState.groups,
+            localTags: appState.tags
+        )
+        Self.backgroundLogger.info("Background sync completed")
     }
 }

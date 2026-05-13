@@ -30,6 +30,7 @@ private final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func switchDatabase(to name: String) async throws {}
     var supportsSchemas: Bool { false }
     func switchSchema(to name: String) async throws {}
+    func fetchSchemas() async throws -> [String] { [] }
     var currentSchema: String? { nil }
     var supportsTransactions: Bool { false }
     func beginTransaction() async throws {}

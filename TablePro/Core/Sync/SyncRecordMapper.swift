@@ -8,6 +8,7 @@
 import CloudKit
 import Foundation
 import os
+import TableProPluginKit
 
 /// CloudKit record types for sync
 enum SyncRecordType: String, CaseIterable {
@@ -18,6 +19,20 @@ enum SyncRecordType: String, CaseIterable {
     case favorite = "SQLFavorite"
     case favoriteFolder = "SQLFavoriteFolder"
     case sshProfile = "SSHProfile"
+}
+
+enum SyncDecodeError: Error, LocalizedError {
+    case missingRequiredField(String)
+    case decodeFailure(field: String, underlying: Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingRequiredField(let field):
+            return "Sync record missing required field: \(field)"
+        case .decodeFailure(let field, let underlying):
+            return "Sync record decode failed for \(field): \(underlying.localizedDescription)"
+        }
+    }
 }
 
 /// Pure-function mapper between local models and CKRecord
@@ -73,6 +88,13 @@ struct SyncRecordMapper {
         if let aiPolicy = connection.aiPolicy {
             record["aiPolicy"] = aiPolicy.rawValue as CKRecordValue
         }
+        if let aiRules = connection.aiRules, !aiRules.isEmpty {
+            record["aiRules"] = aiRules as CKRecordValue
+        }
+        if !connection.aiAlwaysAllowedTools.isEmpty {
+            let sorted = Array(connection.aiAlwaysAllowedTools).sorted()
+            record["aiAlwaysAllowedTools"] = sorted as CKRecordValue
+        }
         if let redisDatabase = connection.redisDatabase {
             record["redisDatabase"] = Int64(redisDatabase) as CKRecordValue
         }
@@ -112,14 +134,17 @@ struct SyncRecordMapper {
         return record
     }
 
-    static func toConnection(_ record: CKRecord) -> DatabaseConnection? {
+    static func toConnection(_ record: CKRecord) throws -> DatabaseConnection {
         guard let connectionIdString = record["connectionId"] as? String,
-              let connectionId = UUID(uuidString: connectionIdString),
-              let name = record["name"] as? String,
-              let typeRawValue = record["type"] as? String
+              let connectionId = UUID(uuidString: connectionIdString)
         else {
-            logger.warning("Failed to decode connection from CKRecord: missing required fields")
-            return nil
+            throw SyncDecodeError.missingRequiredField("connectionId")
+        }
+        guard let name = record["name"] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        guard let typeRawValue = record["type"] as? String else {
+            throw SyncDecodeError.missingRequiredField("type")
         }
 
         let host = record["host"] as? String ?? "localhost"
@@ -131,27 +156,40 @@ struct SyncRecordMapper {
         let tagId = (record["tagId"] as? String).flatMap { UUID(uuidString: $0) }
         let groupId = (record["groupId"] as? String).flatMap { UUID(uuidString: $0) }
         let aiPolicyRaw = record["aiPolicy"] as? String
+        let aiRulesRaw = record["aiRules"] as? String
+        let aiAlwaysAllowedToolsArray = record["aiAlwaysAllowedTools"] as? [String] ?? []
         let redisDatabase = (record["redisDatabase"] as? Int64).map { Int($0) }
         let startupCommands = record["startupCommands"] as? String
         let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
         let sshProfileId = (record["sshProfileId"] as? String).flatMap { UUID(uuidString: $0) }
 
-        // Decode complex structs and expand portable ~/… paths to device-local form.
         var sshConfig = SSHConfiguration()
         if let sshData = record["sshConfigJson"] as? Data {
-            sshConfig = (try? decoder.decode(SSHConfiguration.self, from: sshData)) ?? SSHConfiguration()
+            do {
+                sshConfig = try decoder.decode(SSHConfiguration.self, from: sshData)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "sshConfigJson", underlying: error)
+            }
             Self.expandPaths(&sshConfig)
         }
 
         var sslConfig = SSLConfiguration()
         if let sslData = record["sslConfigJson"] as? Data {
-            sslConfig = (try? decoder.decode(SSLConfiguration.self, from: sslData)) ?? SSLConfiguration()
+            do {
+                sslConfig = try decoder.decode(SSLConfiguration.self, from: sslData)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "sslConfigJson", underlying: error)
+            }
             Self.expandPaths(&sslConfig)
         }
 
         var additionalFields: [String: String]?
         if let fieldsData = record["additionalFieldsJson"] as? Data {
-            additionalFields = try? decoder.decode([String: String].self, from: fieldsData)
+            do {
+                additionalFields = try decoder.decode([String: String].self, from: fieldsData)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "additionalFieldsJson", underlying: error)
+            }
         }
 
         return DatabaseConnection(
@@ -170,6 +208,8 @@ struct SyncRecordMapper {
             sshProfileId: sshProfileId,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevelRaw) ?? .silent,
             aiPolicy: aiPolicyRaw.flatMap { AIConnectionPolicy(rawValue: $0) },
+            aiRules: aiRulesRaw,
+            aiAlwaysAllowedTools: Set(aiAlwaysAllowedToolsArray),
             redisDatabase: redisDatabase,
             startupCommands: startupCommands,
             sortOrder: sortOrder,
@@ -289,11 +329,12 @@ struct SyncRecordMapper {
         record["profileId"] = profile.id.uuidString as CKRecordValue
         record["name"] = profile.name as CKRecordValue
         record["host"] = profile.host as CKRecordValue
-        record["port"] = Int64(profile.port) as CKRecordValue
+        if let port = profile.port {
+            record["port"] = Int64(port) as CKRecordValue
+        }
         record["username"] = profile.username as CKRecordValue
         record["authMethod"] = profile.authMethod.rawValue as CKRecordValue
         record["privateKeyPath"] = PathPortability.contractHome(profile.privateKeyPath) as CKRecordValue
-        record["useSSHConfig"] = Int64(profile.useSSHConfig ? 1 : 0) as CKRecordValue
         record["agentSocketPath"] = PathPortability.contractHome(profile.agentSocketPath) as CKRecordValue
         record["totpMode"] = profile.totpMode.rawValue as CKRecordValue
         record["totpAlgorithm"] = profile.totpAlgorithm.rawValue as CKRecordValue
@@ -315,21 +356,21 @@ struct SyncRecordMapper {
         return record
     }
 
-    static func toSSHProfile(_ record: CKRecord) -> SSHProfile? {
+    static func toSSHProfile(_ record: CKRecord) throws -> SSHProfile {
         guard let profileIdString = record["profileId"] as? String,
-              let profileId = UUID(uuidString: profileIdString),
-              let name = record["name"] as? String
+              let profileId = UUID(uuidString: profileIdString)
         else {
-            logger.warning("Failed to decode SSH profile from CKRecord: missing required fields")
-            return nil
+            throw SyncDecodeError.missingRequiredField("profileId")
+        }
+        guard let name = record["name"] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
         }
 
         let host = record["host"] as? String ?? ""
-        let port = (record["port"] as? Int64).map { Int($0) } ?? 22
+        let port = (record["port"] as? Int64).map { Int($0) }
         let username = record["username"] as? String ?? ""
         let authMethodRaw = record["authMethod"] as? String ?? SSHAuthMethod.password.rawValue
         let privateKeyPath = PathPortability.expandHome(record["privateKeyPath"] as? String ?? "")
-        let useSSHConfig = (record["useSSHConfig"] as? Int64 ?? 1) != 0
         let agentSocketPath = PathPortability.expandHome(record["agentSocketPath"] as? String ?? "")
         let totpModeRaw = record["totpMode"] as? String ?? TOTPMode.none.rawValue
         let totpAlgorithmRaw = record["totpAlgorithm"] as? String ?? TOTPAlgorithm.sha1.rawValue
@@ -338,7 +379,11 @@ struct SyncRecordMapper {
 
         var jumpHosts: [SSHJumpHost] = []
         if let jumpHostsData = record["jumpHostsJson"] as? Data {
-            jumpHosts = (try? decoder.decode([SSHJumpHost].self, from: jumpHostsData)) ?? []
+            do {
+                jumpHosts = try decoder.decode([SSHJumpHost].self, from: jumpHostsData)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "jumpHostsJson", underlying: error)
+            }
             Self.expandPaths(&jumpHosts)
         }
 
@@ -350,7 +395,6 @@ struct SyncRecordMapper {
             username: username,
             authMethod: SSHAuthMethod(rawValue: authMethodRaw) ?? .password,
             privateKeyPath: privateKeyPath,
-            useSSHConfig: useSSHConfig,
             agentSocketPath: agentSocketPath,
             jumpHosts: jumpHosts,
             totpMode: TOTPMode(rawValue: totpModeRaw) ?? .none,

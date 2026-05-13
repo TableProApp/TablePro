@@ -19,10 +19,16 @@ struct PasswordPromptToggle: View {
     }
 
     var body: some View {
+        if !promptForPassword {
+            SecureField(
+                isApiOnly ? String(localized: "API Token") : String(localized: "Password"),
+                text: $password
+            )
+        }
         Toggle(
             isApiOnly
-                ? String(localized: "Ask for API token on every connection")
-                : String(localized: "Ask for password on every connection"),
+                ? String(localized: "Prompt for API token")
+                : String(localized: "Prompt for password"),
             isOn: $promptForPassword
         )
         .onChange(of: promptForPassword) { _, newValue in
@@ -32,12 +38,6 @@ struct PasswordPromptToggle: View {
                     additionalFieldValues["usePgpass"] = ""
                 }
             }
-        }
-        if !promptForPassword {
-            SecureField(
-                isApiOnly ? String(localized: "API Token") : String(localized: "Password"),
-                text: $password
-            )
         }
     }
 }

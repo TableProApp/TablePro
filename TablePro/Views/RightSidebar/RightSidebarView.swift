@@ -166,13 +166,7 @@ struct RightSidebarView: View {
                 .buttonStyle(.borderless)
                 .help(String(localized: "Open in Window"))
 
-                Text(field.columnTypeEnum.badgeLabel)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(.quaternary)
-                    .clipShape(Capsule())
+                TypeBadge(field.columnTypeEnum.badgeLabel)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -270,7 +264,8 @@ struct RightSidebarView: View {
                 ) : .constant(field.originalValue ?? ""),
                 originalValue: field.originalValue,
                 hasMultipleValues: field.hasMultipleValues,
-                isReadOnly: !isEditable
+                isReadOnly: !isEditable,
+                commitBytes: isEditable ? { data in editState.setFieldToBytes(at: index, data: data) } : nil
             ),
             isPendingNull: field.isPendingNull,
             isPendingDefault: field.isPendingDefault,

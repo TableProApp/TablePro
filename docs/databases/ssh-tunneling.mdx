@@ -39,7 +39,7 @@ flowchart LR
 
 ## Setting Up
 
-Open connection form, toggle **SSH Tunnel** ON, enter SSH server details and auth, click **Test Connection**.
+Open the connection form, switch to the **SSH Tunnel** pane, toggle **Enable SSH Tunnel** on, fill in the SSH server details and auth, then go back to **General** and click **Test Connection**.
 
 {/* Screenshot: Connection form with SSH section expanded */}
 <Frame caption="SSH tunnel configuration">
@@ -281,7 +281,7 @@ flowchart LR
 
 ### Setting Up Multi-Jump
 
-1. Open the connection form and switch to the **SSH Tunnel** tab
+1. Open the connection form and switch to the **SSH Tunnel** pane
 2. Enable SSH and configure the **final SSH server** (the one that can reach the database)
 3. Expand the **Jump Hosts** section below the authentication settings
 4. Click **Add Jump Host** and fill in each intermediate bastion host in order
@@ -336,9 +336,9 @@ Generate keys: `ssh-keygen -t ed25519`. Copy to server: `ssh-copy-id user@server
 
 ## Import from URL
 
-Import SSH tunnel connections from a URL instead of filling in each field. TablePro supports `+ssh` URL schemes that encode both SSH and database credentials in a single string.
+Skip the manual setup and paste a URL that encodes both SSH and database credentials. TablePro supports `+ssh` schemes for one-shot import.
 
-For the full URL specification, see [Connection URL Reference](/databases/connection-urls#ssh-tunnel-format).
+For the full URL spec, see [Connection URL Reference](/databases/connection-urls#ssh-tunnel-format).
 
 **Format:**
 
@@ -364,14 +364,14 @@ This fills in:
 | Parameter | Description |
 |-----------|-------------|
 | `name` | Sets the connection name |
-| `usePrivateKey` | Set to `true` to select Private Key authentication |
-| `useSSHAgent` | Set to `true` to select SSH Agent authentication |
-| `agentSocket` | Optional SSH agent socket path override (for example, `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`) |
+| `usePrivateKey` | `true` to select Private Key authentication |
+| `useSSHAgent` | `true` to select SSH Agent authentication |
+| `agentSocket` | SSH agent socket path override, e.g. `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock` |
 
-To import, open **New Connection**, click **Import from URL**, and paste the URL.
+To import: click **New Connection** on the welcome screen, then **Import from URL...** in the chooser footer, and paste the URL. The form opens with everything pre-filled.
 
 <Tip>
-This format is compatible with TablePlus SSH connection URLs, so you can paste URLs directly when migrating.
+This format is compatible with TablePlus SSH connection URLs, so you can paste them directly when migrating.
 </Tip>
 
 ## Troubleshooting

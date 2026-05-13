@@ -91,11 +91,11 @@ internal struct FieldDetailView: View {
 
             if isPrimaryKey {
                 Image(systemName: "key.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.yellow)
+                    .font(.caption2)
+                    .foregroundStyle(Color(nsColor: .systemYellow))
             } else if isForeignKey {
                 Image(systemName: "arrow.right.arrow.left")
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
@@ -105,19 +105,13 @@ internal struct FieldDetailView: View {
 
             Spacer()
 
-            Text(context.columnType.badgeLabel)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(.quaternary)
-                .clipShape(Capsule())
+            TypeBadge(context.columnType.badgeLabel)
 
             if isTruncated && !isLoadingFullValue {
                 Text("truncated")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(Color(nsColor: .systemOrange))
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(Color(nsColor: .systemOrange).opacity(0.15))
                     .clipShape(Capsule())

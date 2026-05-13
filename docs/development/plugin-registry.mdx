@@ -34,7 +34,7 @@ The registry file (`plugins.json`):
 | `databaseTypeIds` | [string] | No | Maps to `DatabaseType.pluginTypeId`. Used for auto-install. |
 | `downloadURL` | string | No* | Direct URL to `.zip` |
 | `sha256` | string | No* | SHA-256 hex of ZIP |
-| `binaries` | [object] | No | Per-arch: `[{ "architecture": "arm64"|"x86_64", "downloadURL": "...", "sha256": "..." }]` |
+| `binaries` | [object] | No | Per-arch entries with `architecture` (`arm64` or `x86_64`), `downloadURL`, and `sha256`. See example below. |
 | `minAppVersion` | string | No | Minimum TablePro version |
 | `minPluginKitVersion` | int | No | Minimum PluginKit version (currently 2) |
 | `iconName` | string | No | SF Symbol name |

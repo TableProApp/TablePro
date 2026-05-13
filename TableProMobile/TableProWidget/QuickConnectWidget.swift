@@ -1,12 +1,6 @@
-//
-//  QuickConnectWidget.swift
-//  TableProWidget
-//
-
 import SwiftUI
 import WidgetKit
 
-@main
 struct QuickConnectWidget: Widget {
     let kind = "com.TablePro.QuickConnect"
 
@@ -18,5 +12,13 @@ struct QuickConnectWidget: Widget {
         .configurationDisplayName("Quick Connect")
         .description("Quickly connect to your databases.")
         .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+@main
+struct TableProWidgetBundle: WidgetBundle {
+    var body: some Widget {
+        QuickConnectWidget()
+        QueryLiveActivityWidget()
     }
 }

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -305,10 +306,10 @@ struct DataChangeManagerTests {
             primaryKeyColumns: ["id"]
         )
 
-        let rows = [
-            (rowIndex: 0, originalRow: ["1", "Alice"]),
-            (rowIndex: 1, originalRow: ["2", "Bob"]),
-            (rowIndex: 2, originalRow: ["3", "Charlie"])
+        let rows: [(rowIndex: Int, originalRow: [PluginCellValue])] = [
+            (rowIndex: 0, originalRow: [.text("1"), .text("Alice")]),
+            (rowIndex: 1, originalRow: [.text("2"), .text("Bob")]),
+            (rowIndex: 2, originalRow: [.text("3"), .text("Charlie")])
         ]
 
         manager.recordBatchRowDeletion(rows: rows)

@@ -1,12 +1,11 @@
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
 
 @Suite("MCP Token Store")
 struct MCPTokenStoreTests {
-    // MARK: - Helpers
-
     private func makeStore() -> MCPTokenStore {
         MCPTokenStore()
     }
@@ -22,15 +21,13 @@ struct MCPTokenStoreTests {
             tokenHash: "fakehash",
             salt: "fakesalt",
             permissions: .readOnly,
-            allowedConnectionIds: nil,
+            connectionAccess: .all,
             createdAt: Date.now,
             lastUsedAt: nil,
             expiresAt: expiresAt,
             isActive: isActive
         )
     }
-
-    // MARK: - TokenPermissions
 
     @Test("readOnly satisfies readOnly")
     func readOnlySatisfiesReadOnly() {
@@ -84,8 +81,6 @@ struct MCPTokenStoreTests {
         #expect(TokenPermissions.fullAccess.id == "fullAccess")
     }
 
-    // MARK: - MCPAuthToken
-
     @Test("isExpired returns false when expiresAt is nil")
     func isExpiredNilExpiresAt() {
         let token = makeToken(expiresAt: nil)
@@ -121,8 +116,6 @@ struct MCPTokenStoreTests {
         let token = makeToken(isActive: false, expiresAt: nil)
         #expect(token.isEffectivelyActive == false)
     }
-
-    // MARK: - MCPTokenStore
 
     @Test("generate creates token with tp_ prefix")
     func generateCreatesTokenWithPrefix() async {
@@ -191,23 +184,31 @@ struct MCPTokenStoreTests {
         #expect(result.token.expiresAt != nil)
     }
 
-    @Test("generate with nil connectionIds stores nil")
-    func generateWithNilConnectionIds() async {
+    @Test("generate with .all access stores .all")
+    func generateWithAllAccess() async {
         let store = makeStore()
-        let result = await store.generate(name: "test", permissions: .readOnly, allowedConnectionIds: nil)
+        let result = await store.generate(name: "test", permissions: .readOnly, connectionAccess: .all)
         await store.delete(tokenId: result.token.id)
 
-        #expect(result.token.allowedConnectionIds == nil)
+        #expect(result.token.connectionAccess == .all)
     }
 
-    @Test("generate with specific connectionIds stores them")
-    func generateWithSpecificConnectionIds() async {
+    @Test("generate with .limited stores the connection ids")
+    func generateWithLimitedAccess() async {
         let ids: Set<UUID> = [UUID(), UUID()]
         let store = makeStore()
-        let result = await store.generate(name: "test", permissions: .readOnly, allowedConnectionIds: ids)
+        let result = await store.generate(
+            name: "test",
+            permissions: .readOnly,
+            connectionAccess: .limited(ids)
+        )
         await store.delete(tokenId: result.token.id)
 
-        #expect(result.token.allowedConnectionIds == ids)
+        if case .limited(let stored) = result.token.connectionAccess {
+            #expect(stored == ids)
+        } else {
+            Issue.record("Expected .limited connection access")
+        }
     }
 
     @Test("validate returns token for valid bearer")
@@ -287,6 +288,26 @@ struct MCPTokenStoreTests {
             return
         }
         #expect(revokedToken.isActive == false)
+    }
+
+    @Test("revoke fires registered revocation observers with token id")
+    func revokeNotifiesObservers() async {
+        let store = makeStore()
+        let result = await store.generate(name: "observed", permissions: .readOnly)
+
+        let receivedBox = Lock(value: [String]())
+        let observed = receivedBox
+        await store.addRevocationObserver { tokenIdString in
+            await observed.append(tokenIdString)
+        }
+
+        await store.revoke(tokenId: result.token.id)
+        try? await Task.sleep(for: .milliseconds(50))
+        await store.delete(tokenId: result.token.id)
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let received = await receivedBox.snapshot()
+        #expect(received.contains(result.token.id.uuidString))
     }
 
     @Test("delete removes token from list")
@@ -369,5 +390,21 @@ struct MCPTokenStoreTests {
         await store.delete(tokenId: result2.token.id)
 
         #expect(result1.plaintext != result2.plaintext)
+    }
+}
+
+private actor Lock<Value: Sendable>: Sendable {
+    private var value: Value
+
+    init(value: Value) {
+        self.value = value
+    }
+
+    func append<T>(_ element: T) where Value == [T] {
+        value.append(element)
+    }
+
+    func snapshot() -> Value {
+        value
     }
 }

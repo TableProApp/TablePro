@@ -1,8 +1,4 @@
-//
-//  QueryEditorView.swift
-//  TableProMobile
-//
-
+import ActivityKit
 import os
 import SwiftUI
 import TableProDatabase
@@ -14,11 +10,20 @@ struct QueryEditorView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
     @State private var query = ""
-    @State private var result: QueryResult?
+    @State private var editorFocused = false
+    @State private var viewModel = QueryEditorViewModel()
     @State private var appError: AppError?
     @State private var isExecuting = false
     @State private var executionTime: TimeInterval?
     @State private var executeTask: Task<Void, Never>?
+
+    private var hasResult: Bool {
+        !viewModel.columns.isEmpty || viewModel.rowsAffected != nil
+    }
+
+    private var resultRowCount: Int {
+        viewModel.legacyRows.count
+    }
     @State private var saveQueryTask: Task<Void, Never>?
     @State private var executionStartTime: Date?
     @State private var showWriteConfirmation = false
@@ -91,7 +96,7 @@ struct QueryEditorView: View {
         ) {
             Button(String(localized: "Clear"), role: .destructive) {
                 query = ""
-                result = nil
+                viewModel.reset()
                 appError = nil
                 executionTime = nil
             }
@@ -104,8 +109,8 @@ struct QueryEditorView: View {
 
     private var editorSection: some View {
         VStack(spacing: 0) {
-            SQLHighlightTextView(text: $query)
-                .frame(minHeight: 80, maxHeight: result != nil || appError != nil ? 120 : 250)
+            SQLHighlightTextView(text: $query, isFocused: $editorFocused)
+                .frame(minHeight: 80, maxHeight: hasResult || appError != nil ? 120 : 250)
 
             actionBar
         }
@@ -143,13 +148,13 @@ struct QueryEditorView: View {
                         .foregroundStyle(.secondary)
                 }
             } else if let time = executionTime {
-                Text(String(format: "%.1fms", time * 1000))
+                Text(String(format: "%.1fms", time * 1_000))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
-            if let result, !result.rows.isEmpty {
-                Text(verbatim: "\(result.rows.count) rows")
+            if resultRowCount > 0 {
+                Text(verbatim: "\(resultRowCount) rows")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -192,21 +197,25 @@ struct QueryEditorView: View {
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            } else if let result {
-                if result.columns.isEmpty {
+            } else if hasResult {
+                if viewModel.columns.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.largeTitle)
                             .foregroundStyle(.green)
-                        Text(String(format: String(localized: "%d row(s) affected"), result.rowsAffected))
+                        Text(String(format: String(localized: "%d row(s) affected"), viewModel.rowsAffected ?? 0))
                             .font(.body)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if result.rows.isEmpty {
-                    ContentUnavailableView("No Results", systemImage: "tray")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if viewModel.legacyRows.isEmpty {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "tray",
+                        description: Text("The query returned no rows.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    resultList(result)
+                    resultList
                 }
             } else {
                 ContentUnavailableView {
@@ -219,20 +228,23 @@ struct QueryEditorView: View {
         }
     }
 
-    private func resultList(_ result: QueryResult) -> some View {
-        List {
-            ForEach(Array(result.rows.enumerated()), id: \.offset) { rowIndex, row in
+    private var resultList: some View {
+        let indexed = IndexedRow.wrap(viewModel.legacyRows)
+        return List {
+            ForEach(indexed) { item in
+                let rowIndex = item.id
+                let row = item.values
                 NavigationLink {
                     RowDetailView(
-                        columns: result.columns,
-                        rows: result.rows,
+                        columns: viewModel.columns,
+                        rows: viewModel.window.rows,
                         initialIndex: rowIndex
                     )
                 } label: {
-                    resultRowCard(columns: result.columns, row: row)
+                    resultRowCard(columns: viewModel.columns, row: row)
                 }
                 .contextMenu {
-                    resultRowContextMenu(columns: result.columns, row: row)
+                    resultRowContextMenu(columns: viewModel.columns, row: row)
                 }
             }
         }
@@ -308,12 +320,12 @@ struct QueryEditorView: View {
                 }
             }
 
-            if let result, !result.rows.isEmpty {
+            if !viewModel.legacyRows.isEmpty {
                 Section("Share Results") {
                     ForEach(ExportFormat.allCases) { format in
                         Button {
                             shareText = ClipboardExporter.exportRows(
-                                columns: result.columns, rows: result.rows,
+                                columns: viewModel.columns, rows: viewModel.legacyRows,
                                 format: format
                             )
                             showShareSheet = true
@@ -326,7 +338,7 @@ struct QueryEditorView: View {
                     ForEach(ExportFormat.allCases) { format in
                         Button {
                             let text = ClipboardExporter.exportRows(
-                                columns: result.columns, rows: result.rows,
+                                columns: viewModel.columns, rows: viewModel.legacyRows,
                                 format: format
                             )
                             ClipboardExporter.copyToClipboard(text)
@@ -381,28 +393,102 @@ struct QueryEditorView: View {
     private func executeQueryDirect(_ trimmed: String) async {
         guard let session else { return }
 
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        editorFocused = false
         isExecuting = true
-        executionStartTime = Date()
+        let startedAt = Date()
+        executionStartTime = startedAt
+        let activity = startQueryActivity(trimmed: trimmed, startedAt: startedAt)
+        let progressUpdater = startActivityProgressUpdater(activity: activity, startedAt: startedAt)
         defer {
+            progressUpdater.cancel()
             isExecuting = false
             executionStartTime = nil
+            endQueryActivity(activity, startedAt: startedAt)
         }
         appError = nil
-        result = nil
 
-        do {
-            let queryResult = try await session.driver.execute(query: trimmed)
-            self.result = queryResult
-            self.executionTime = queryResult.executionTime
-            hapticSuccess.toggle()
+        await viewModel.run(driver: session.driver, query: trimmed)
 
-            let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
-            coordinator.addHistoryItem(item)
-        } catch {
-            let context = ErrorContext(operation: "executeQuery")
-            self.appError = ErrorClassifier.classify(error, context: context)
+        if case .error(let err) = viewModel.phase {
+            appError = err
             hapticError.toggle()
+            return
+        }
+
+        executionTime = viewModel.executionTime
+        hapticSuccess.toggle()
+
+        IOSAnalyticsProvider.shared.markFirstQueryExecuted()
+
+        let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
+        coordinator.addHistoryItem(item)
+    }
+
+    // MARK: - Live Activity
+
+    private func startQueryActivity(trimmed: String, startedAt: Date) -> Activity<QueryActivityAttributes>? {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return nil }
+        let preview: String = AppPreferences.hidesQueryPreviewInActivity
+            ? String(localized: "Running query")
+            : String(trimmed.prefix(60))
+        let attributes = QueryActivityAttributes(
+            connectionId: coordinator.connection.id,
+            connectionName: coordinator.displayName,
+            queryPreview: preview
+        )
+        let initialState = QueryActivityAttributes.ContentState(
+            startedAt: startedAt,
+            endedAt: nil,
+            rowsStreamed: 0
+        )
+        // 5-minute stale window: if the app crashes mid-query, iOS marks the
+        // activity stale instead of showing a forever-ticking timer.
+        return try? Activity.request(
+            attributes: attributes,
+            content: .init(state: initialState, staleDate: startedAt.addingTimeInterval(5 * 60))
+        )
+    }
+
+    /// Polls the streaming row count once per second while the query runs and pushes
+    /// `activity.update(state:)` only when the count changes. The system rate-limits
+    /// activity updates anyway, and the lock screen card just needs a fresh number
+    /// when the user wakes the device mid-query - it does not need real-time ticks
+    /// for the count (the elapsed time ticks itself via `Text(timerInterval:)`).
+    private func startActivityProgressUpdater(
+        activity: Activity<QueryActivityAttributes>?,
+        startedAt: Date
+    ) -> Task<Void, Never> {
+        Task { [weak viewModel] in
+            guard let activity else { return }
+            var lastReportedCount = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                let count = viewModel?.legacyRows.count ?? 0
+                guard count != lastReportedCount else { continue }
+                lastReportedCount = count
+                let state = QueryActivityAttributes.ContentState(
+                    startedAt: startedAt,
+                    endedAt: nil,
+                    rowsStreamed: count
+                )
+                await activity.update(.init(
+                    state: state,
+                    staleDate: startedAt.addingTimeInterval(5 * 60)
+                ))
+            }
+        }
+    }
+
+    private func endQueryActivity(_ activity: Activity<QueryActivityAttributes>?, startedAt: Date) {
+        guard let activity else { return }
+        let final = QueryActivityAttributes.ContentState(
+            startedAt: startedAt,
+            endedAt: Date(),
+            rowsStreamed: viewModel.legacyRows.count
+        )
+        Task {
+            await activity.end(.init(state: final, staleDate: nil), dismissalPolicy: .immediate)
         }
     }
 }

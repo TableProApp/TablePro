@@ -21,7 +21,7 @@ extension PluginManager {
             return
         }
 
-        var stillRejected = rejectedPlugins.filter { !$0.isOutdated }
+        var stillFailed: [RejectedPlugin] = []
 
         for plugin in outdated {
             let lookupId = plugin.registryId ?? plugin.bundleId
@@ -29,7 +29,7 @@ extension PluginManager {
             guard let lookupId,
                   let registryPlugin = manifest.plugins.first(where: { $0.id == lookupId }) else {
                 Self.logger.warning("Auto-update skipped for '\(plugin.name)': no matching registry plugin")
-                stillRejected.append(plugin)
+                stillFailed.append(plugin)
                 continue
             }
 
@@ -38,7 +38,7 @@ extension PluginManager {
                 Self.logger.info("Auto-updated plugin '\(plugin.name)' to v\(registryPlugin.version)")
             } catch {
                 Self.logger.error("Auto-update failed for '\(plugin.name)': \(error.localizedDescription)")
-                stillRejected.append(RejectedPlugin(
+                stillFailed.append(RejectedPlugin(
                     url: plugin.url,
                     bundleId: plugin.bundleId,
                     registryId: plugin.registryId,
@@ -49,12 +49,13 @@ extension PluginManager {
             }
         }
 
-        let updatedCount = outdated.count - stillRejected.filter(\.isOutdated).count
+        let updatedCount = outdated.count - stillFailed.count
         if updatedCount > 0 {
             Self.logger.info("Auto-updated \(updatedCount) plugin(s) from registry")
         }
 
-        rejectedPlugins = stillRejected
+        let processedURLs = Set(outdated.map(\.url))
+        rejectedPlugins = rejectedPlugins.filter { !processedURLs.contains($0.url) } + stillFailed
     }
 
     func registryUpdate(for pluginId: String) -> RegistryPlugin? {

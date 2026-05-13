@@ -23,12 +23,17 @@ package extension TextSelectionManager {
         up: Bool,
         suggestedXPos: CGFloat?
     ) -> NSRange {
-        // If moving up and on first line, jump to beginning of the line
-        // If moving down and on last line, jump to end of document.
-        if up && layoutManager?.lineStorage.first?.range.contains(offset) ?? false {
-            return NSRange(location: 0, length: offset)
-        } else if !up && layoutManager?.lineStorage.last?.range.contains(offset) ?? false {
-            return NSRange(start: offset, end: (textStorage?.length ?? offset))
+        // If moving up and on the first line, jump to the start of the document.
+        // If moving down and on the last line, jump to the end of the document.
+        // `textLineForOffset` returns the last line for `offset == length`, which `NSRange.contains`
+        // (half-open) misses — that's the end-of-document caret case.
+        if let currentLine = layoutManager?.textLineForOffset(offset) {
+            if up && currentLine.data.id == layoutManager?.lineStorage.first?.data.id {
+                return NSRange(location: 0, length: offset)
+            }
+            if !up && currentLine.data.id == layoutManager?.lineStorage.last?.data.id {
+                return NSRange(start: offset, end: textStorage?.length ?? offset)
+            }
         }
 
         switch destination {

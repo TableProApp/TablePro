@@ -10,20 +10,19 @@
 //
 
 import Foundation
-import Testing
+import TableProPluginKit
 @testable import TablePro
+import Testing
 
 @Suite("querySortCache invalidation on row mutations")
 @MainActor
 struct SortCacheInvalidationTests {
-    private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager, UUID) {
+    private func makeCoordinator() throws -> (MainContentCoordinator, QueryTabManager, UUID) {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
-            filterStateManager: FilterStateManager(),
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         try tabManager.addTableTab(tableName: "users")
@@ -46,13 +45,13 @@ struct SortCacheInvalidationTests {
         let columns = ["id", "name"]
         let rows = (0..<count).map { i in ["\(i)", "name\(i)"] }
         let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
-        let tableRows = TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
+        let tableRows = TableRows.from(queryRows: rows.map { row in row.map { PluginCellValue.text($0) } }, columns: columns, columnTypes: columnTypes)
         coordinator.setActiveTableRows(tableRows, for: tabId)
     }
 
     @Test("addNewRow clears querySortCache for the tab")
-    func addNewRowInvalidatesCache() {
-        let (coordinator, _, tabId) = makeCoordinator()
+    func addNewRowInvalidatesCache() throws {
+        let (coordinator, _, tabId) = try makeCoordinator()
         seedRows(coordinator, for: tabId, count: 3)
         seedCache(coordinator, for: tabId)
 
@@ -62,11 +61,11 @@ struct SortCacheInvalidationTests {
     }
 
     @Test("deleteSelectedRows clears querySortCache when physically removing inserted rows")
-    func physicalDeleteInvalidatesCache() {
-        let (coordinator, _, tabId) = makeCoordinator()
+    func physicalDeleteInvalidatesCache() throws {
+        let (coordinator, _, tabId) = try makeCoordinator()
         seedRows(coordinator, for: tabId, count: 3)
         coordinator.addNewRow()
-        let insertedIndex = coordinator.tableRowsStore.tableRows(for: tabId).count - 1
+        let insertedIndex = coordinator.tabSessionRegistry.tableRows(for: tabId).count - 1
         seedCache(coordinator, for: tabId)
 
         coordinator.deleteSelectedRows(indices: [insertedIndex])
@@ -75,8 +74,8 @@ struct SortCacheInvalidationTests {
     }
 
     @Test("deleteSelectedRows preserves querySortCache on soft delete of existing rows")
-    func softDeletePreservesCache() {
-        let (coordinator, _, tabId) = makeCoordinator()
+    func softDeletePreservesCache() throws {
+        let (coordinator, _, tabId) = try makeCoordinator()
         seedRows(coordinator, for: tabId, count: 5)
         seedCache(coordinator, for: tabId)
 
@@ -86,8 +85,8 @@ struct SortCacheInvalidationTests {
     }
 
     @Test("duplicateSelectedRow clears querySortCache for the tab")
-    func duplicateRowInvalidatesCache() {
-        let (coordinator, _, tabId) = makeCoordinator()
+    func duplicateRowInvalidatesCache() throws {
+        let (coordinator, _, tabId) = try makeCoordinator()
         seedRows(coordinator, for: tabId, count: 3)
         seedCache(coordinator, for: tabId)
 

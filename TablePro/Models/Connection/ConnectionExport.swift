@@ -77,11 +77,10 @@ struct ExportableConnection: Codable {
 struct ExportableSSHConfig: Codable {
     let enabled: Bool
     let host: String
-    let port: Int
+    let port: Int?
     let username: String
     let authMethod: String
     let privateKeyPath: String
-    let useSSHConfig: Bool
     let agentSocketPath: String
     let jumpHosts: [ExportableJumpHost]?
     let totpMode: String?
@@ -92,7 +91,7 @@ struct ExportableSSHConfig: Codable {
 
 struct ExportableJumpHost: Codable {
     let host: String
-    let port: Int
+    let port: Int?
     let username: String
     let authMethod: String
     let privateKeyPath: String

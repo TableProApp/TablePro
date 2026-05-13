@@ -94,6 +94,48 @@ ORDER BY table_name;
 
 **Authentication**: Username/password only (no OS auth or wallet). Create user: `CREATE USER app_user IDENTIFIED BY "Password1!"; GRANT CREATE SESSION, SELECT ANY TABLE TO app_user;`
 
+## Auth Compatibility
+
+TablePro authenticates via `OracleNIO`, a pure-Swift implementation of the Oracle TNS wire protocol (no Oracle Instant Client needed).
+
+| `dba_users.password_versions` | Status |
+|---|---|
+| `12C` only (recommended) | ✓ Supported |
+| `11G 12C` | ✓ Supported |
+| `10G 11G 12C` | ✓ Supported |
+| `10G 11G` (legacy migration) | ✓ Supported |
+| `10G` only (deprecated) | ✓ Supported, but consider rotation |
+| External / Kerberos / LDAP-managed | ✗ Not supported. File an issue. |
+
+10G hash is supported for compatibility with legacy environments. It uses DES-based hashing without modern salting and is deprecated by Oracle. We recommend rotating affected accounts under modern auth so `password_versions` contains only `11G` or `12C`:
+
+```sql
+ALTER USER <USER> IDENTIFIED BY <new-secure-password>;
+SELECT username, password_versions FROM dba_users WHERE username = '<USER>';
+```
+
+If the connection fails with the dialog "Server Version Not Supported" or "Unsupported Password Verifier", check `password_versions` first.
+
+## Column Type Support
+
+| Oracle type | Display |
+|---|---|
+| VARCHAR2, NVARCHAR2, CHAR, NCHAR, LONG, CLOB, NCLOB, JSON | Text as stored |
+| NUMBER | Exact integer up to Int64 range; decimals up to 17 digits of precision |
+| BINARY_FLOAT, BINARY_DOUBLE | Native Swift Float/Double |
+| DATE | `yyyy-MM-dd` |
+| TIMESTAMP | ISO-8601 in UTC with fractional seconds |
+| TIMESTAMP WITH TIME ZONE | ISO-8601 in the host's local time zone with explicit offset |
+| TIMESTAMP WITH LOCAL TIME ZONE | ISO-8601 in the host's local time zone with explicit offset |
+| INTERVAL DAY TO SECOND | `D HH:MM:SS` plus fractional seconds when non-zero (up to 9 digits, trailing zeros trimmed) |
+| INTERVAL YEAR TO MONTH | `Y-MM` |
+| RAW, LONG RAW, BLOB | Lowercase hex, truncated to 4 KB |
+| ROWID | As stored |
+| BOOLEAN | `true` / `false` |
+| BFILE | `<bfile>` placeholder (locator only) |
+
+Columns with types not yet supported render as `<unsupported: type>` rather than crashing or corrupting data. Report unsupported types via [GitHub Issues](https://github.com/TableProApp/TablePro/issues).
+
 ## Troubleshooting
 
 **Connection refused**: Check listener running (`lsnrctl status`), verify port 1521 open, if Docker check `docker start oracle-xe`
@@ -102,4 +144,4 @@ ORDER BY table_name;
 
 **Instant Client not found**: Download Basic package, extract to `/usr/local/oracle/instantclient`, set `DYLD_LIBRARY_PATH`
 
-**Limitations**: Username/password only, LONG/LONG RAW limited (use CLOB/BLOB), PL/SQL limited to anonymous blocks.
+**Limitations**: Username/password only, BFILE shows locator metadata only (content fetch via DBMS_LOB not supported), PL/SQL limited to anonymous blocks.

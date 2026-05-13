@@ -53,7 +53,7 @@ internal struct SQLRowToStatementConverter {
         return SQLEscaping.escapeStringLiteral
     }
 
-    internal func generateInserts(rows: [[String?]]) -> String {
+    internal func generateInserts(rows: [[PluginCellValue]]) -> String {
         let capped = rows.prefix(Self.maxRows)
         let quotedTable = quoteColumn(tableName)
         let quotedColumns = columns.map { quoteColumn($0) }.joined(separator: ", ")
@@ -64,7 +64,7 @@ internal struct SQLRowToStatementConverter {
         }.joined(separator: "\n")
     }
 
-    internal func generateUpdates(rows: [[String?]]) -> String {
+    internal func generateUpdates(rows: [[PluginCellValue]]) -> String {
         let capped = rows.prefix(Self.maxRows)
 
         return capped.map { row in
@@ -72,9 +72,7 @@ internal struct SQLRowToStatementConverter {
         }.joined(separator: "\n")
     }
 
-    // MARK: - Private Helpers
-
-    private func buildUpdateStatement(row: [String?]) -> String {
+    private func buildUpdateStatement(row: [PluginCellValue]) -> String {
         let quotedTable = quoteColumn(tableName)
 
         let setClause: String
@@ -87,25 +85,25 @@ internal struct SQLRowToStatementConverter {
 
             let setClauses = columns.enumerated().compactMap { index, col -> String? in
                 guard col != pkColumn else { return nil }
-                let value = row.indices.contains(index) ? row[index] : nil
+                let value = row.indices.contains(index) ? row[index] : .null
                 return "\(quoteColumn(col)) = \(formatValue(value))"
             }
             setClause = setClauses.joined(separator: ", ")
-            if pkValue == nil {
+            if pkValue.isNull {
                 whereClause = "\(quoteColumn(pkColumn)) IS NULL"
             } else {
                 whereClause = "\(quoteColumn(pkColumn)) = \(formatValue(pkValue))"
             }
         } else {
             let allClauses = columns.enumerated().map { index, col -> String in
-                let value = row.indices.contains(index) ? row[index] : nil
+                let value = row.indices.contains(index) ? row[index] : .null
                 return "\(quoteColumn(col)) = \(formatValue(value))"
             }
             setClause = allClauses.joined(separator: ", ")
 
             let whereParts = columns.enumerated().map { index, col -> String in
-                let value = row.indices.contains(index) ? row[index] : nil
-                if value == nil {
+                let value = row.indices.contains(index) ? row[index] : .null
+                if value.isNull {
                     return "\(quoteColumn(col)) IS NULL"
                 }
                 return "\(quoteColumn(col)) = \(formatValue(value))"
@@ -116,12 +114,31 @@ internal struct SQLRowToStatementConverter {
         return "UPDATE \(quotedTable) SET \(setClause) WHERE \(whereClause);"
     }
 
-    private func formatValue(_ value: String?) -> String {
-        guard let value else {
+    private func formatValue(_ value: PluginCellValue) -> String {
+        switch value {
+        case .null:
             return "NULL"
+        case .text(let s):
+            return "'\(escapeStringFn(s))'"
+        case .bytes(let data):
+            return formatBinaryLiteral(data)
         }
-        let escaped = escapeStringFn(value)
-        return "'\(escaped)'"
+    }
+
+    private func formatBinaryLiteral(_ data: Data) -> String {
+        var hex = ""
+        hex.reserveCapacity(data.count * 2)
+        for byte in data {
+            hex += String(format: "%02X", byte)
+        }
+        switch databaseType {
+        case .postgresql, .redshift:
+            return "'\\x\(hex)'::bytea"
+        case .mssql:
+            return "0x\(hex)"
+        default:
+            return "X'\(hex)'"
+        }
     }
 
     private func quoteColumn(_ name: String) -> String {

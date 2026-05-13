@@ -4,15 +4,22 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Security
 import Testing
 @testable import TablePro
 
 @Suite("Keychain Access Control")
 struct KeychainAccessControlTests {
-    @Test("AfterFirstUnlock constant is available for background access")
+    @Test("AfterFirstUnlock constant is available for syncable items")
     func correctConstantAvailable() {
         let expected = kSecAttrAccessibleAfterFirstUnlock
+        #expect(expected != nil)
+    }
+
+    @Test("AfterFirstUnlockThisDeviceOnly constant is available for non-syncable items")
+    func deviceOnlyConstantAvailable() {
+        let expected = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         #expect(expected != nil)
     }
 

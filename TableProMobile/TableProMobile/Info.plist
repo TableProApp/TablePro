@@ -4,10 +4,37 @@
 <dict>
 	<key>AnalyticsHMACSecret</key>
 	<string>$(ANALYTICS_HMAC_SECRET)</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>TablePro uses Face ID to protect your saved database connections and credentials.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TablePro connects to database servers and SSH tunnels running on your local network, including Bonjour (.local) hostnames.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ssh._tcp</string>
+		<string>_mysql._tcp</string>
+		<string>_postgresql._tcp</string>
+		<string>_redis._tcp</string>
+	</array>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>com.TablePro.viewConnection</string>
 		<string>com.TablePro.viewTable</string>
+	</array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.TablePro.sync</string>
 	</array>
 </dict>
 </plist>

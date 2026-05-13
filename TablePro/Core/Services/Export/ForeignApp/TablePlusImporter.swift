@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 struct TablePlusImporter: ForeignAppImporter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TablePlusImporter")
@@ -52,8 +53,10 @@ struct TablePlusImporter: ForeignAppImporter {
         var exportableConnections: [ExportableConnection] = []
         var groupNames: Set<String> = []
         var credentials: [String: ExportableCredentials] = [:]
+        var credentialsAborted = false
 
         for entry in entries {
+            try Task.checkCancellation()
             do {
                 let conn = try parseConnection(entry, groupMap: groupMap)
                 let index = exportableConnections.count
@@ -63,8 +66,8 @@ struct TablePlusImporter: ForeignAppImporter {
                     groupNames.insert(groupName)
                 }
 
-                if includePasswords, let connId = entry["ID"] as? String {
-                    let creds = readCredentials(for: connId)
+                if includePasswords, !credentialsAborted, let connId = entry["ID"] as? String {
+                    let creds = readCredentials(for: connId, abortFlag: &credentialsAborted)
                     if creds.password != nil || creds.sshPassword != nil || creds.keyPassphrase != nil {
                         credentials[String(index)] = creds
                     }
@@ -92,7 +95,11 @@ struct TablePlusImporter: ForeignAppImporter {
             credentials: credentials.isEmpty ? nil : credentials
         )
 
-        return ForeignAppImportResult(envelope: envelope, sourceName: displayName)
+        return ForeignAppImportResult(
+            envelope: envelope,
+            sourceName: displayName,
+            credentialsAborted: credentialsAborted
+        )
     }
 
     // MARK: - Private
@@ -176,8 +183,7 @@ struct TablePlusImporter: ForeignAppImporter {
     private func parseSSHConfig(_ entry: [String: Any]) -> ExportableSSHConfig? {
         guard entry["isOverSSH"] as? Bool == true else { return nil }
         let host = entry["ServerAddress"] as? String ?? ""
-        let portString = entry["ServerPort"] as? String ?? "22"
-        let port = Int(portString) ?? 22
+        let port = (entry["ServerPort"] as? String).flatMap(Int.init)
         let username = entry["ServerUser"] as? String ?? ""
         let useKey = entry["isUsePrivateKey"] as? Bool ?? false
         let rawKeyPath = entry["ServerPrivateKeyName"] as? String ?? ""
@@ -190,7 +196,6 @@ struct TablePlusImporter: ForeignAppImporter {
             username: username,
             authMethod: useKey ? "Private Key" : "Password",
             privateKeyPath: useKey ? keyPath : "",
-            useSSHConfig: true,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,
@@ -222,19 +227,23 @@ struct TablePlusImporter: ForeignAppImporter {
         )
     }
 
-    private func readCredentials(for connectionId: String) -> ExportableCredentials {
-        let dbPassword = ForeignKeychainReader.readPassword(
-            service: "com.tableplus.TablePlus",
-            account: "\(connectionId)_database"
-        )
-        let sshPassword = ForeignKeychainReader.readPassword(
-            service: "com.tableplus.TablePlus",
-            account: "\(connectionId)_server"
-        )
-        let keyPassphrase = ForeignKeychainReader.readPassword(
-            service: "com.tableplus.TablePlus",
-            account: "\(connectionId)_server_key"
-        )
+    private func readCredentials(for connectionId: String, abortFlag: inout Bool) -> ExportableCredentials {
+        func read(_ account: String) -> String? {
+            guard !abortFlag else { return nil }
+            switch ForeignKeychainReader.readPassword(service: "com.tableplus.TablePlus", account: account) {
+            case .found(let value):
+                return value
+            case .notFound:
+                return nil
+            case .cancelled:
+                abortFlag = true
+                return nil
+            }
+        }
+
+        let dbPassword = read("\(connectionId)_database")
+        let sshPassword = read("\(connectionId)_server")
+        let keyPassphrase = read("\(connectionId)_server_key")
         return ExportableCredentials(
             password: dbPassword,
             sshPassword: sshPassword,

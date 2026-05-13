@@ -27,7 +27,7 @@ struct AccountSettingsView: View {
         VStack {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color(nsColor: .systemOrange))
                 Text(String(localized: "Sync paused — Pro license expired"))
                     .font(.callout)
                 Spacer()
@@ -36,7 +36,7 @@ struct AccountSettingsView: View {
                     .controlSize(.small)
             }
             .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .themeMaterial(.banner, .ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
             .padding()
 
             Spacer()

@@ -41,11 +41,11 @@ struct RedisStatementGenerator {
     /// Generate Redis commands from changes
     func generateStatements(
         from changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])] {
-        var statements: [(statement: String, parameters: [String?])] = []
+    ) -> [(statement: String, parameters: [PluginCellValue])] {
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
         var deleteKeys: [String] = []
 
         for change in changes {
@@ -79,9 +79,9 @@ struct RedisStatementGenerator {
 
     private func generateInsert(
         for change: PluginRowChange,
-        insertedRowData: [Int: [String?]]
-    ) -> [(statement: String, parameters: [String?])] {
-        var statements: [(statement: String, parameters: [String?])] = []
+        insertedRowData: [Int: [PluginCellValue]]
+    ) -> [(statement: String, parameters: [PluginCellValue])] {
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         var key: String?
         var value: String?
@@ -90,25 +90,25 @@ struct RedisStatementGenerator {
 
         if let values = insertedRowData[change.rowIndex] {
             if let ki = keyColumnIndex, ki < values.count {
-                key = values[ki]
+                key = values[ki].asText
             }
             if let ti = typeColumnIndex, ti < values.count {
-                type = values[ti]
+                type = values[ti].asText
             }
             if let vi = valueColumnIndex, vi < values.count {
-                value = values[vi]
+                value = values[vi].asText
             }
-            if let ttli = ttlColumnIndex, ttli < values.count, let ttlStr = values[ttli] {
+            if let ttli = ttlColumnIndex, ttli < values.count, let ttlStr = values[ttli].asText {
                 ttl = Int(ttlStr)
             }
         } else {
             for cellChange in change.cellChanges {
                 switch cellChange.columnName {
-                case "Key": key = cellChange.newValue
-                case "Type": type = cellChange.newValue
-                case "Value": value = cellChange.newValue
+                case "Key": key = cellChange.newValue.asText
+                case "Type": type = cellChange.newValue.asText
+                case "Value": value = cellChange.newValue.asText
                 case "TTL":
-                    if let ttlStr = cellChange.newValue { ttl = Int(ttlStr) }
+                    if let ttlStr = cellChange.newValue.asText { ttl = Int(ttlStr) }
                 default: break
                 }
             }
@@ -158,7 +158,7 @@ struct RedisStatementGenerator {
 
     // MARK: - UPDATE
 
-    private func generateUpdate(for change: PluginRowChange) -> [(statement: String, parameters: [String?])] {
+    private func generateUpdate(for change: PluginRowChange) -> [(statement: String, parameters: [PluginCellValue])] {
         guard !change.cellChanges.isEmpty else { return [] }
 
         guard let key = extractKey(from: change) else {
@@ -166,18 +166,18 @@ struct RedisStatementGenerator {
             return []
         }
 
-        var statements: [(statement: String, parameters: [String?])] = []
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
 
         // Check for key rename
         if let keyChange = change.cellChanges.first(where: { $0.columnName == "Key" }),
-           let newKey = keyChange.newValue, newKey != key {
+           let newKey = keyChange.newValue.asText, newKey != key {
             let renameCmd = "RENAME \(escapeArgument(key)) \(escapeArgument(newKey))"
             statements.append((statement: renameCmd, parameters: []))
         }
 
         let effectiveKey: String = {
             if let keyChange = change.cellChanges.first(where: { $0.columnName == "Key" }),
-               let newKey = keyChange.newValue {
+               let newKey = keyChange.newValue.asText {
                 return newKey
             }
             return key
@@ -190,7 +190,7 @@ struct RedisStatementGenerator {
                   ti < originalRow.count else {
                 return nil
             }
-            return originalRow[ti]
+            return originalRow[ti].asText
         }()
 
         for cellChange in change.cellChanges {
@@ -198,7 +198,7 @@ struct RedisStatementGenerator {
             case "Key":
                 continue // Already handled above
             case "Value":
-                if let newValue = cellChange.newValue {
+                if let newValue = cellChange.newValue.asText {
                     let typeLower = redisType?.lowercased() ?? "string"
                     if typeLower != "string" {
                         // Non-string types show a preview; blindly SET would destroy the data structure
@@ -211,10 +211,10 @@ struct RedisStatementGenerator {
                     statements.append((statement: cmd, parameters: []))
                 }
             case "TTL":
-                if let ttlStr = cellChange.newValue, let ttlSeconds = Int(ttlStr), ttlSeconds > 0 {
+                if let ttlStr = cellChange.newValue.asText, let ttlSeconds = Int(ttlStr), ttlSeconds > 0 {
                     let cmd = "EXPIRE \(escapeArgument(effectiveKey)) \(ttlSeconds)"
                     statements.append((statement: cmd, parameters: []))
-                } else if cellChange.newValue == nil || cellChange.newValue == "-1" {
+                } else if cellChange.newValue.isNull || cellChange.newValue.asText == "-1" {
                     let cmd = "PERSIST \(escapeArgument(effectiveKey))"
                     statements.append((statement: cmd, parameters: []))
                 }
@@ -235,7 +235,7 @@ struct RedisStatementGenerator {
               keyIndex < originalRow.count else {
             return nil
         }
-        return originalRow[keyIndex]
+        return originalRow[keyIndex].asText
     }
 
     /// Escape a Redis argument for safe embedding in a command string.

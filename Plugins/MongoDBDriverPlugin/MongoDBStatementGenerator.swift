@@ -31,11 +31,11 @@ struct MongoDBStatementGenerator {
     /// Generate MongoDB shell statements from changes
     func generateStatements(
         from changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])] {
-        var statements: [(statement: String, parameters: [String?])] = []
+    ) -> [(statement: String, parameters: [PluginCellValue])] {
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
         var deleteChanges: [PluginRowChange] = []
 
         for change in changes {
@@ -73,8 +73,8 @@ struct MongoDBStatementGenerator {
 
     private func generateInsert(
         for change: PluginRowChange,
-        insertedRowData: [Int: [String?]]
-    ) -> (statement: String, parameters: [String?])? {
+        insertedRowData: [Int: [PluginCellValue]]
+    ) -> (statement: String, parameters: [PluginCellValue])? {
         var doc: [String: String] = [:]
 
         if let values = insertedRowData[change.rowIndex] {
@@ -84,8 +84,9 @@ struct MongoDBStatementGenerator {
                 // Skip _id for inserts (let MongoDB auto-generate)
                 if column == "_id" { continue }
                 // Skip DEFAULT sentinel
-                if value == "__DEFAULT__" { continue }
-                if let val = value {
+                let textValue = value.asText
+                if textValue == "__DEFAULT__" { continue }
+                if let val = textValue {
                     doc[column] = val
                 }
             }
@@ -93,8 +94,9 @@ struct MongoDBStatementGenerator {
             // Fallback: use cellChanges
             for cellChange in change.cellChanges {
                 if cellChange.columnName == "_id" { continue }
-                if cellChange.newValue == "__DEFAULT__" { continue }
-                if let val = cellChange.newValue {
+                let newText = cellChange.newValue.asText
+                if newText == "__DEFAULT__" { continue }
+                if let val = newText {
                     doc[cellChange.columnName] = val
                 }
             }
@@ -109,13 +111,13 @@ struct MongoDBStatementGenerator {
 
     // MARK: - UPDATE (updateOne with $set/$unset)
 
-    private func generateUpdate(for change: PluginRowChange) -> (statement: String, parameters: [String?])? {
+    private func generateUpdate(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
         guard !change.cellChanges.isEmpty else { return nil }
 
         guard let idIndex = idColumnIndex,
               let originalRow = change.originalRow,
               idIndex < originalRow.count,
-              let idValue = originalRow[idIndex] else {
+              let idValue = originalRow[idIndex].asText else {
             Self.logger.warning("Skipping UPDATE for collection '\(self.collectionName)' - no _id value")
             return nil
         }
@@ -125,7 +127,7 @@ struct MongoDBStatementGenerator {
 
         for cellChange in change.cellChanges {
             if cellChange.columnName == "_id" { continue }
-            if let val = cellChange.newValue {
+            if let val = cellChange.newValue.asText {
                 setDoc[cellChange.columnName] = val
             } else {
                 unsetFields.append(cellChange.columnName)
@@ -155,14 +157,14 @@ struct MongoDBStatementGenerator {
     // MARK: - DELETE MANY
 
     /// Batch multiple deletes into a single deleteMany with $in when all rows have _id
-    private func generateBulkDelete(from changes: [PluginRowChange]) -> (statement: String, parameters: [String?])? {
+    private func generateBulkDelete(from changes: [PluginRowChange]) -> (statement: String, parameters: [PluginCellValue])? {
         guard changes.count > 1, let idIndex = idColumnIndex else { return nil }
 
         var idValues: [String] = []
         for change in changes {
             guard let originalRow = change.originalRow,
                   idIndex < originalRow.count,
-                  let idValue = originalRow[idIndex] else {
+                  let idValue = originalRow[idIndex].asText else {
                 return nil
             }
             if isObjectIdString(idValue) {
@@ -181,13 +183,13 @@ struct MongoDBStatementGenerator {
 
     // MARK: - DELETE
 
-    private func generateDelete(for change: PluginRowChange) -> (statement: String, parameters: [String?])? {
+    private func generateDelete(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
         guard let originalRow = change.originalRow else { return nil }
 
         // Try to use _id first
         if let idIndex = idColumnIndex,
            idIndex < originalRow.count,
-           let idValue = originalRow[idIndex] {
+           let idValue = originalRow[idIndex].asText {
             let filterJson = buildIdFilter(idValue)
             let shell = "\(collectionAccessor).deleteOne(\(filterJson))"
             return (statement: shell, parameters: [])
@@ -197,7 +199,7 @@ struct MongoDBStatementGenerator {
         var filter: [String: String] = [:]
         for (index, column) in columns.enumerated() {
             guard index < originalRow.count else { continue }
-            if let value = originalRow[index] {
+            if let value = originalRow[index].asText {
                 filter[column] = value
             }
         }

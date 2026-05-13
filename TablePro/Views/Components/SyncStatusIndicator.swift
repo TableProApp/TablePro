@@ -2,15 +2,13 @@
 //  SyncStatusIndicator.swift
 //  TablePro
 //
-//  Small cloud icon showing sync status in the welcome window footer
-//
 
 import SwiftUI
 
 struct SyncStatusIndicator: View {
-    @Environment(\.openSettings) private var openSettings
+    let onActivateLicense: () -> Void
+
     private let syncCoordinator = SyncCoordinator.shared
-    @State private var showActivationSheet = false
 
     var body: some View {
         if shouldShow {
@@ -30,13 +28,8 @@ struct SyncStatusIndicator: View {
             }
             .buttonStyle(.plain)
             .help(helpText)
-            .sheet(isPresented: $showActivationSheet) {
-                LicenseActivationSheet()
-            }
         }
     }
-
-    // MARK: - State Mapping
 
     private var shouldShow: Bool {
         if case .disabled(.userDisabled) = syncCoordinator.syncStatus {
@@ -111,28 +104,25 @@ struct SyncStatusIndicator: View {
         case .disabled(.licenseRequired):
             return String(localized: "Pro license required for iCloud Sync")
         case .disabled(.licenseExpired):
-            return String(localized: "License expired — sync paused")
+            return String(localized: "License expired, sync paused")
         case .disabled(.userDisabled):
             return ""
         }
     }
 
-    // MARK: - Actions
-
     private func handleTap() {
         switch syncCoordinator.syncStatus {
         case .disabled(.licenseRequired), .disabled(.licenseExpired):
-            showActivationSheet = true
+            onActivateLicense()
         default:
-            UserDefaults.standard.set(SettingsTab.account.rawValue, forKey: "selectedSettingsTab")
-            openSettings()
+            WindowOpener.shared.openSettings(tab: .account)
         }
     }
 }
 
 #Preview {
     HStack(spacing: 16) {
-        SyncStatusIndicator()
+        SyncStatusIndicator(onActivateLicense: {})
     }
     .padding()
 }

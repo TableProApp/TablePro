@@ -4,9 +4,11 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct TableRows: Sendable {
     var rows: ContiguousArray<Row>
+    private(set) var indexByID: [RowID: Int]
     var columns: [String]
     var columnTypes: [ColumnType]
     var columnDefaults: [String: String?]
@@ -24,6 +26,7 @@ struct TableRows: Sendable {
         columnNullable: [String: Bool] = [:]
     ) {
         self.rows = rows
+        self.indexByID = Self.buildIndex(for: rows)
         self.columns = columns
         self.columnTypes = columnTypes
         self.columnDefaults = columnDefaults
@@ -34,25 +37,22 @@ struct TableRows: Sendable {
 
     var count: Int { rows.count }
 
-    func value(at row: Int, column: Int) -> String? {
-        guard row >= 0, row < rows.count else { return nil }
+    func value(at row: Int, column: Int) -> PluginCellValue {
+        guard row >= 0, row < rows.count else { return .null }
         return rows[row][column]
     }
 
     func index(of id: RowID) -> Int? {
-        for (index, row) in rows.enumerated() where row.id == id {
-            return index
-        }
-        return nil
+        indexByID[id]
     }
 
     func row(withID id: RowID) -> Row? {
-        guard let index = index(of: id) else { return nil }
+        guard let index = indexByID[id] else { return nil }
         return rows[index]
     }
 
     @discardableResult
-    mutating func edit(row: Int, column: Int, value: String?) -> Delta {
+    mutating func edit(row: Int, column: Int, value: PluginCellValue) -> Delta {
         guard row >= 0, row < rows.count else { return .none }
         guard column >= 0, column < columns.count else { return .none }
         guard column < rows[row].values.count else { return .none }
@@ -62,7 +62,7 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func editMany(_ edits: [(row: Int, column: Int, value: String?)]) -> Delta {
+    mutating func editMany(_ edits: [(row: Int, column: Int, value: PluginCellValue)]) -> Delta {
         var changed: Set<CellPosition> = []
         for edit in edits {
             guard edit.row >= 0, edit.row < rows.count else { continue }
@@ -77,40 +77,51 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func appendInsertedRow(values: [String?]) -> Delta {
+    mutating func appendInsertedRow(values: [PluginCellValue]) -> Delta {
         let normalized = Self.normalize(values: values, toCount: columns.count)
         let row = Row(id: .inserted(UUID()), values: normalized)
+        let newIndex = rows.count
         rows.append(row)
-        return .rowsInserted(IndexSet(integer: rows.count - 1))
+        indexByID[row.id] = newIndex
+        return .rowsInserted(IndexSet(integer: newIndex))
     }
 
     @discardableResult
-    mutating func insertInsertedRow(at index: Int, values: [String?]) -> Delta {
+    mutating func insertInsertedRow(at index: Int, values: [PluginCellValue]) -> Delta {
         guard index >= 0, index <= rows.count else { return .none }
         let normalized = Self.normalize(values: values, toCount: columns.count)
         let row = Row(id: .inserted(UUID()), values: normalized)
         rows.insert(row, at: index)
+        for offset in index..<rows.count {
+            indexByID[rows[offset].id] = offset
+        }
         return .rowsInserted(IndexSet(integer: index))
     }
 
     @discardableResult
-    mutating func appendPage(_ pageRows: [[String?]], startingAt offset: Int) -> Delta {
+    mutating func appendPage(_ pageRows: [[PluginCellValue]], startingAt offset: Int) -> Delta {
         guard !pageRows.isEmpty else { return .none }
         let firstIndex = rows.count
+        rows.reserveCapacity(rows.count + pageRows.count)
+        indexByID.reserveCapacity(indexByID.count + pageRows.count)
         for (idx, values) in pageRows.enumerated() {
             let normalized = Self.normalize(values: values, toCount: columns.count)
-            rows.append(Row(id: .existing(offset + idx), values: normalized))
+            let row = Row(id: .existing(offset + idx), values: normalized)
+            let newIndex = firstIndex + idx
+            rows.append(row)
+            indexByID[row.id] = newIndex
         }
-        let lastIndex = rows.count - 1
-        return .rowsInserted(IndexSet(integersIn: firstIndex...lastIndex))
+        return .rowsInserted(IndexSet(integersIn: firstIndex...(rows.count - 1)))
     }
 
     @discardableResult
     mutating func remove(rowIDs: Set<RowID>) -> Delta {
         guard !rowIDs.isEmpty else { return .none }
         var indices = IndexSet()
-        for (index, row) in rows.enumerated() where rowIDs.contains(row.id) {
-            indices.insert(index)
+        for id in rowIDs {
+            if let i = indexByID[id] {
+                indices.insert(i)
+            }
         }
         return removeIndices(indices)
     }
@@ -122,14 +133,19 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func replace(rows replacementRows: [[String?]], offset: Int = 0) -> Delta {
+    mutating func replace(rows replacementRows: [[PluginCellValue]], offset: Int = 0) -> Delta {
         var rebuilt = ContiguousArray<Row>()
         rebuilt.reserveCapacity(replacementRows.count)
+        var rebuiltIndex = [RowID: Int]()
+        rebuiltIndex.reserveCapacity(replacementRows.count)
         for (idx, values) in replacementRows.enumerated() {
             let normalized = Self.normalize(values: values, toCount: columns.count)
-            rebuilt.append(Row(id: .existing(offset + idx), values: normalized))
+            let row = Row(id: .existing(offset + idx), values: normalized)
+            rebuilt.append(row)
+            rebuiltIndex[row.id] = idx
         }
         rows = rebuilt
+        indexByID = rebuiltIndex
         return .fullReplace
     }
 
@@ -166,7 +182,7 @@ struct TableRows: Sendable {
     }
 
     static func from(
-        queryRows: [[String?]],
+        queryRows: [[PluginCellValue]],
         columns: [String],
         columnTypes: [ColumnType],
         columnDefaults: [String: String?] = [:],
@@ -194,14 +210,39 @@ struct TableRows: Sendable {
     private mutating func removeIndices(_ indices: IndexSet) -> Delta {
         guard !indices.isEmpty else { return .none }
         for index in indices.reversed() {
+            let removedID = rows[index].id
             rows.remove(at: index)
+            indexByID.removeValue(forKey: removedID)
+        }
+        if let minRemoved = indices.min(), minRemoved < rows.count {
+            for offset in minRemoved..<rows.count {
+                indexByID[rows[offset].id] = offset
+            }
         }
         return .rowsRemoved(indices)
     }
 
-    private static func normalize(values: [String?], toCount targetCount: Int) -> [String?] {
-        if values.count == targetCount { return values }
-        if values.count > targetCount { return Array(values.prefix(targetCount)) }
-        return values + Array(repeating: nil, count: targetCount - values.count)
+    private static func normalize(values: [PluginCellValue], toCount targetCount: Int) -> ContiguousArray<PluginCellValue> {
+        if values.count == targetCount {
+            return ContiguousArray(values)
+        }
+        var result = ContiguousArray<PluginCellValue>()
+        result.reserveCapacity(targetCount)
+        if values.count > targetCount {
+            result.append(contentsOf: values.prefix(targetCount))
+        } else {
+            result.append(contentsOf: values)
+            result.append(contentsOf: ContiguousArray(repeating: .null, count: targetCount - values.count))
+        }
+        return result
+    }
+
+    private static func buildIndex(for rows: ContiguousArray<Row>) -> [RowID: Int] {
+        var index = [RowID: Int]()
+        index.reserveCapacity(rows.count)
+        for (i, row) in rows.enumerated() {
+            index[row.id] = i
+        }
+        return index
     }
 }

@@ -5,6 +5,7 @@
 
 import XCTest
 
+import TableProPluginKit
 @testable import TablePro
 
 final class TOTPGeneratorTests: XCTestCase {

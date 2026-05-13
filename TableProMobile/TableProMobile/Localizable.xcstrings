@@ -2,7 +2,14 @@
   "sourceLanguage" : "en",
   "strings" : {
     "" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ""
+          }
+        }
+      }
     },
     "%@" : {
       "localizations" : {
@@ -16,6 +23,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@"
+          }
+        }
+      }
+    },
+    "%@ -> %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ -> %2$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ -> %@"
           }
         }
       }
@@ -43,6 +66,7 @@
       }
     },
     "%@ → %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -60,6 +84,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ → %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@"
+          }
+        }
+      }
+    },
+    "%@, %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, %@"
+          }
+        }
+      }
+    },
+    "%@, %@, %@, tag %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@, tag %4$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, %@, thẻ %@"
+          }
+        }
+      }
+    },
+    "%@, %@, %lld rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$lld rows"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, %lld hàng"
           }
         }
       }
@@ -82,6 +170,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@.%2$@"
+          }
+        }
+      }
+    },
+    "%d row(s) affected" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d hàng bị ảnh hưởng"
           }
         }
       }
@@ -188,6 +286,16 @@
         }
       }
     },
+    "Active DB" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DB đang dùng"
+          }
+        }
+      }
+    },
     "Add a database connection to get started." : {
       "localizations" : {
         "vi" : {
@@ -232,6 +340,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "添加筛选"
+          }
+        }
+      }
+    },
+    "After 1 hour" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sau 1 giờ"
+          }
+        }
+      }
+    },
+    "After 1 minute" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sau 1 phút"
+          }
+        }
+      }
+    },
+    "After 5 minutes" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sau 5 phút"
+          }
+        }
+      }
+    },
+    "After 15 minutes" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sau 15 phút"
           }
         }
       }
@@ -381,6 +529,16 @@
         }
       }
     },
+    "Auth" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác thực"
+          }
+        }
+      }
+    },
     "Auth Method" : {
       "localizations" : {
         "vi" : {
@@ -393,6 +551,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "认证方式"
+          }
+        }
+      }
+    },
+    "Authenticate to access your database connections." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác thực để truy cập các kết nối cơ sở dữ liệu."
           }
         }
       }
@@ -425,6 +593,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自增"
+          }
+        }
+      }
+    },
+    "Auto-Lock" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tự khóa"
           }
         }
       }
@@ -462,7 +640,6 @@
       }
     },
     "Cannot Save" : {
-      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -767,6 +944,16 @@
         }
       }
     },
+    "Connected" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã kết nối"
+          }
+        }
+      }
+    },
     "Connecting to %@..." : {
       "localizations" : {
         "vi" : {
@@ -783,6 +970,16 @@
         }
       }
     },
+    "Connecting…" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang kết nối…"
+          }
+        }
+      }
+    },
     "Connection" : {
       "localizations" : {
         "vi" : {
@@ -795,6 +992,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "连接"
+          }
+        }
+      }
+    },
+    "Connection Deleted" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối đã bị xóa"
           }
         }
       }
@@ -1055,6 +1262,16 @@
         }
       }
     },
+    "Create Group" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tạo nhóm"
+          }
+        }
+      }
+    },
     "Create New Database" : {
       "localizations" : {
         "vi" : {
@@ -1067,6 +1284,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建新数据库"
+          }
+        }
+      }
+    },
+    "Create Tag" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tạo thẻ"
           }
         }
       }
@@ -1151,6 +1378,16 @@
         }
       }
     },
+    "Databases" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu"
+          }
+        }
+      }
+    },
     "Default" : {
       "localizations" : {
         "vi" : {
@@ -1167,6 +1404,26 @@
         }
       }
     },
+    "Default DB" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DB mặc định"
+          }
+        }
+      }
+    },
+    "Default Safe Mode" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chế độ an toàn mặc định"
+          }
+        }
+      }
+    },
     "Default: %@" : {
       "localizations" : {
         "vi" : {
@@ -1179,6 +1436,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "默认：%@"
+          }
+        }
+      }
+    },
+    "Defaults applied when adding a new connection and when opening a table for the first time." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mặc định áp dụng khi thêm kết nối mới và khi mở bảng lần đầu tiên."
           }
         }
       }
@@ -1215,6 +1482,16 @@
         }
       }
     },
+    "Delete group" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa nhóm"
+          }
+        }
+      }
+    },
     "Delete Group" : {
       "localizations" : {
         "vi" : {
@@ -1227,6 +1504,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除分组"
+          }
+        }
+      }
+    },
+    "Delete row" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa hàng"
           }
         }
       }
@@ -1247,6 +1534,16 @@
         }
       }
     },
+    "Delete tag" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa thẻ"
+          }
+        }
+      }
+    },
     "Descending" : {
       "localizations" : {
         "vi" : {
@@ -1259,6 +1556,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "降序"
+          }
+        }
+      }
+    },
+    "Disconnected" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mất kết nối"
           }
         }
       }
@@ -1391,6 +1698,16 @@
         }
       }
     },
+    "Enabled" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bật"
+          }
+        }
+      }
+    },
     "Enter a name for the new SQLite database." : {
       "localizations" : {
         "vi" : {
@@ -1423,7 +1740,18 @@
         }
       }
     },
+    "Enter a page number (1-%lld)" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập số trang (1-%lld)"
+          }
+        }
+      }
+    },
     "Enter a page number (1–%lld)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -1617,6 +1945,16 @@
         }
       }
     },
+    "File" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp"
+          }
+        }
+      }
+    },
     "Filter" : {
       "localizations" : {
         "vi" : {
@@ -1661,6 +1999,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "筛选"
+          }
+        }
+      }
+    },
+    "Focus search" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tập trung tìm kiếm"
           }
         }
       }
@@ -1858,6 +2206,26 @@
         }
       }
     },
+    "iCloud Sync" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đồng bộ iCloud"
+          }
+        }
+      }
+    },
+    "Immediately" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ngay lập tức"
+          }
+        }
+      }
+    },
     "Import connections from your Mac" : {
       "localizations" : {
         "vi" : {
@@ -1887,6 +2255,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "索引"
+          }
+        }
+      }
+    },
+    "Info" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thông tin"
           }
         }
       }
@@ -1935,6 +2313,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "钥匙串警告"
+          }
+        }
+      }
+    },
+    "Load Failed" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tải thất bại"
+          }
+        }
+      }
+    },
+    "Load full value" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tải đầy đủ"
           }
         }
       }
@@ -2002,6 +2400,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载..."
+          }
+        }
+      }
+    },
+    "Local Network access is required. Open Settings > Privacy & Security > Local Network and turn TablePro on." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cần truy cập Mạng nội bộ. Mở Cài đặt > Quyền riêng tư & Bảo mật > Mạng nội bộ và bật TablePro."
+          }
+        }
+      }
+    },
+    "Local Network access may be blocked. Open Settings > Privacy & Security > Local Network and turn TablePro on." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy cập Mạng nội bộ có thể bị chặn. Mở Cài đặt > Quyền riêng tư & Bảo mật > Mạng nội bộ và bật TablePro."
+          }
+        }
+      }
+    },
+    "Local Network Access Required" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yêu cầu truy cập mạng nội bộ"
+          }
+        }
+      }
+    },
+    "Locks TablePro when reopened after the selected idle time. Cold launches always require authentication." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa TablePro khi mở lại sau khoảng thời gian không hoạt động đã chọn. Khởi động lạnh luôn yêu cầu xác thực."
           }
         }
       }
@@ -2082,6 +2520,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新建连接"
+          }
+        }
+      }
+    },
+    "New Connections" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối mới"
           }
         }
       }
@@ -2279,7 +2727,6 @@
       }
     },
     "No primary key values found." : {
-      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -2439,6 +2886,16 @@
         }
       }
     },
+    "Off" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tắt"
+          }
+        }
+      }
+    },
     "OK" : {
       "localizations" : {
         "vi" : {
@@ -2519,6 +2976,16 @@
         }
       }
     },
+    "Open Settings > Privacy & Security > Local Network and turn TablePro on, then try again." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở Cài đặt > Quyền riêng tư & Bảo mật > Mạng nội bộ, bật TablePro, sau đó thử lại."
+          }
+        }
+      }
+    },
     "Opens a database connection in TablePro" : {
       "localizations" : {
         "vi" : {
@@ -2531,6 +2998,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在TablePro中打开数据库连接"
+          }
+        }
+      }
+    },
+    "Opens table data" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở dữ liệu bảng"
+          }
+        }
+      }
+    },
+    "Opens this connection" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở kết nối này"
           }
         }
       }
@@ -2663,6 +3150,16 @@
         }
       }
     },
+    "Path" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đường dẫn"
+          }
+        }
+      }
+    },
     "Port" : {
       "localizations" : {
         "vi" : {
@@ -2680,6 +3177,7 @@
       }
     },
     "Primary" : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -2872,6 +3370,36 @@
         }
       }
     },
+    "Require Face ID" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yêu cầu Face ID"
+          }
+        }
+      }
+    },
+    "Require Optic ID" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yêu cầu Optic ID"
+          }
+        }
+      }
+    },
+    "Require Touch ID" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yêu cầu Touch ID"
+          }
+        }
+      }
+    },
     "Results Cleared" : {
       "localizations" : {
         "vi" : {
@@ -2889,6 +3417,7 @@
       }
     },
     "Results cleared due to memory pressure." : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -2900,6 +3429,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "因内存不足，结果已清除。"
+          }
+        }
+      }
+    },
+    "Results trimmed due to memory pressure." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã cắt bớt kết quả do áp lực bộ nhớ."
           }
         }
       }
@@ -2968,6 +3507,16 @@
         }
       }
     },
+    "Run" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chạy"
+          }
+        }
+      }
+    },
     "Run a Query" : {
       "localizations" : {
         "vi" : {
@@ -3012,6 +3561,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存"
+          }
+        }
+      }
+    },
+    "Schema" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schema"
+          }
+        }
+      }
+    },
+    "Schemas" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schemas"
           }
         }
       }
@@ -3076,6 +3645,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分区"
+          }
+        }
+      }
+    },
+    "Security" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bảo mật"
           }
         }
       }
@@ -3433,6 +4012,36 @@
         }
       }
     },
+    "Stats" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thống kê"
+          }
+        }
+      }
+    },
+    "Status" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trạng thái"
+          }
+        }
+      }
+    },
+    "Stop" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dừng"
+          }
+        }
+      }
+    },
     "Switching..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3450,6 +4059,16 @@
         }
       }
     },
+    "Sync" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đồng bộ"
+          }
+        }
+      }
+    },
     "Sync from iCloud" : {
       "localizations" : {
         "vi" : {
@@ -3462,6 +4081,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从iCloud同步"
+          }
+        }
+      }
+    },
+    "Sync with iCloud" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đồng bộ với iCloud"
           }
         }
       }
@@ -3499,6 +4128,16 @@
         }
       }
     },
+    "Table" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bảng"
+          }
+        }
+      }
+    },
     "Table Structure" : {
       "localizations" : {
         "vi" : {
@@ -3511,6 +4150,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "表结构"
+          }
+        }
+      }
+    },
+    "TablePro is Locked" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro đã khóa"
           }
         }
       }
@@ -3611,6 +4260,16 @@
         }
       }
     },
+    "The query returned no rows." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn không trả về hàng nào."
+          }
+        }
+      }
+    },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
         "vi" : {
@@ -3707,6 +4366,16 @@
         }
       }
     },
+    "This connection no longer exists. It may have been removed from another device." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối này không còn tồn tại. Có thể đã bị xóa từ thiết bị khác."
+          }
+        }
+      }
+    },
     "This database has no tables." : {
       "localizations" : {
         "vi" : {
@@ -3788,7 +4457,6 @@
       }
     },
     "This table needs a primary key to identify the row." : {
-      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -3836,6 +4504,36 @@
         }
       }
     },
+    "Try Again" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thử lại"
+          }
+        }
+      }
+    },
+    "Try again or check your connection." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thử lại hoặc kiểm tra kết nối."
+          }
+        }
+      }
+    },
+    "Type" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loại"
+          }
+        }
+      }
+    },
     "Ungrouped" : {
       "localizations" : {
         "vi" : {
@@ -3853,6 +4551,7 @@
       }
     },
     "Unique" : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -3864,6 +4563,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "唯一"
+          }
+        }
+      }
+    },
+    "Unlock" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở khóa"
+          }
+        }
+      }
+    },
+    "Unlock TablePro to access your database connections." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở khóa TablePro để truy cập các kết nối cơ sở dữ liệu."
+          }
+        }
+      }
+    },
+    "Use Passcode" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dùng mật mã"
           }
         }
       }
@@ -3916,6 +4645,16 @@
         }
       }
     },
+    "View" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View"
+          }
+        }
+      }
+    },
     "Views" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3949,6 +4688,16 @@
         }
       }
     },
+    "When off, connections, groups, and tags stay on this device only. Existing iCloud data is not deleted." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khi tắt, các kết nối, nhóm và thẻ chỉ ở trên thiết bị này. Dữ liệu iCloud hiện có sẽ không bị xóa."
+          }
+        }
+      }
+    },
     "Write Query Blocked" : {
       "localizations" : {
         "vi" : {
@@ -3977,6 +4726,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编写SQL并点击运行按钮。"
+          }
+        }
+      }
+    },
+    "Hide query in Live Activities" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ẩn truy vấn trong Live Activity"
+          }
+        }
+      }
+    },
+    "When on, the lock screen and Dynamic Island show \"Running query\" instead of the SQL preview." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khi bật, màn hình khóa và Dynamic Island hiển thị \"Đang chạy truy vấn\" thay cho nội dung SQL."
+          }
+        }
+      }
+    },
+    "Running query" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang chạy truy vấn"
           }
         }
       }

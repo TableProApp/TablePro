@@ -1,11 +1,3 @@
-//
-//  RedisDriver.swift
-//  TableProMobile
-//
-//  Redis driver conforming to DatabaseDriver directly (no plugin layer).
-//  Maps Redis key-value concepts to the relational DatabaseDriver protocol.
-//
-
 import CRedis
 import Foundation
 import os
@@ -38,6 +30,7 @@ final class RedisDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, password: password, database: database, sslEnabled: sslEnabled)
         serverVersion = try? await actor.fetchServerVersion()
     }
@@ -362,8 +355,13 @@ private actor RedisActor {
         // Close existing connection if reconnecting
         close()
 
+        guard let portI32 = Int32(exactly: port), (1...65_535).contains(port) else {
+            throw RedisError.connectionFailed(
+                "Port \(port) is out of range. Use a value between 1 and 65535."
+            )
+        }
         var tv = timeval(tv_sec: 10, tv_usec: 0)
-        guard let context = redisConnectWithTimeout(host, Int32(port), tv) else {
+        guard let context = redisConnectWithTimeout(host, portI32, tv) else {
             throw RedisError.connectionFailed("Failed to create Redis context")
         }
 

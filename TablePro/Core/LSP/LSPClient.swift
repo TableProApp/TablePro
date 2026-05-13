@@ -188,4 +188,18 @@ actor LSPClient {
     func onRequest(method: String, handler: @escaping @Sendable (Data) -> Any?) async {
         await transport.onRequest(method: method, handler: handler)
     }
+
+    func onDeferredRequest(method: String, handler: @escaping @Sendable (Data, Int) -> Void) async {
+        await transport.onDeferredRequest(method: method, handler: handler)
+    }
+
+    // MARK: - Copilot tool calling
+
+    func registerTools(_ params: CopilotRegisterToolsParams) async throws {
+        _ = try await transport.sendRequest(method: "conversation/registerTools", params: params)
+    }
+
+    func sendInvokeClientToolResponse(id: Int, result: CopilotLanguageModelToolResult) async throws {
+        try await transport.sendDeferredArrayResponse(id: id, result: result)
+    }
 }

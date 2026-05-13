@@ -16,27 +16,6 @@ import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginConnection")
 
-// MARK: - SSL Configuration
-
-struct RedisSSLConfig {
-    var isEnabled: Bool = false
-    var caCertificatePath: String = ""
-    var clientCertificatePath: String = ""
-    var clientKeyPath: String = ""
-    var verifyPeer: Bool = true
-
-    init() {}
-
-    init(additionalFields: [String: String]) {
-        let sslMode = additionalFields["sslMode"] ?? "Disabled"
-        self.isEnabled = sslMode != "Disabled"
-        self.caCertificatePath = additionalFields["sslCaCertPath"] ?? ""
-        self.clientCertificatePath = additionalFields["sslClientCertPath"] ?? ""
-        self.clientKeyPath = additionalFields["sslClientKeyPath"] ?? ""
-        self.verifyPeer = (additionalFields["sslVerifyPeer"] ?? "true") == "true"
-    }
-}
-
 // MARK: - Reply Type
 
 enum RedisReply {
@@ -117,7 +96,7 @@ final class RedisPluginConnection: @unchecked Sendable {
     private let username: String?
     private let password: String?
     private let database: Int
-    private let sslConfig: RedisSSLConfig
+    private let sslConfig: SSLConfiguration
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -153,7 +132,7 @@ final class RedisPluginConnection: @unchecked Sendable {
         username: String? = nil,
         password: String?,
         database: Int = 0,
-        sslConfig: RedisSSLConfig = RedisSSLConfig()
+        sslConfig: SSLConfiguration = SSLConfiguration()
     ) {
         self.host = host
         self.port = port
@@ -423,16 +402,19 @@ private extension RedisPluginConnection {
     func connectSSL(_ ctx: UnsafeMutablePointer<redisContext>) throws {
         var sslError = redisSSLContextError(0)
 
-        let caCert: UnsafePointer<CChar>? = sslConfig.caCertificatePath.isEmpty
-            ? nil
-            : (sslConfig.caCertificatePath as NSString).utf8String
+        let useCaCert = sslConfig.verifiesCertificate && !sslConfig.caCertificatePath.isEmpty
+        let caCert: UnsafePointer<CChar>? = useCaCert
+            ? (sslConfig.caCertificatePath as NSString).utf8String
+            : nil
         let clientCert: UnsafePointer<CChar>? = sslConfig.clientCertificatePath.isEmpty
             ? nil
             : (sslConfig.clientCertificatePath as NSString).utf8String
         let clientKey: UnsafePointer<CChar>? = sslConfig.clientKeyPath.isEmpty
             ? nil
             : (sslConfig.clientKeyPath as NSString).utf8String
-        let sniHostname: UnsafePointer<CChar>? = (host as NSString).utf8String
+        let sniHostname: UnsafePointer<CChar>? = sslConfig.isEnabled
+            ? (host as NSString).utf8String
+            : nil
 
         var options = redisSSLOptions()
         options.cacert_filename = caCert
@@ -440,7 +422,9 @@ private extension RedisPluginConnection {
         options.cert_filename = clientCert
         options.private_key_filename = clientKey
         options.server_name = sniHostname
-        options.verify_mode = sslConfig.verifyPeer ? REDIS_SSL_VERIFY_PEER : REDIS_SSL_VERIFY_NONE
+        options.verify_mode = sslConfig.verifiesCertificate
+            ? REDIS_SSL_VERIFY_PEER
+            : REDIS_SSL_VERIFY_NONE
 
         guard let ssl = redisCreateSSLContextWithOptions(&options, &sslError) else {
             let errCode = Int(sslError.rawValue)

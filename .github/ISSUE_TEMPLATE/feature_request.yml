@@ -40,6 +40,13 @@ body:
         - Redis
         - ClickHouse
         - Oracle
+        - DuckDB
+        - BigQuery
+        - Cassandra
+        - Cloudflare D1
+        - DynamoDB
+        - etcd
+        - libSQL
         - N/A / General
     validations:
       required: false

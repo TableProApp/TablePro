@@ -42,21 +42,26 @@ extension TextView: NSTextInputClient {
         }
     }
 
-    /// Inserts the string at the replacement range. If replacement range is `NSNotFound`, uses the selection ranges.
-    private func _insertText(insertString: String, replacementRange: NSRange) {
+    /// Inserts the string at the replacement ranges. Handles CR → CRLF promotion based on the
+    /// document's detected line ending.
+    private func _insertText(insertString: String, replacementRanges: [NSRange]) {
         var insertString = insertString
         if LineEnding(rawValue: insertString) == .carriageReturn
             && layoutManager.detectedLineEnding == .carriageReturnLineFeed {
             insertString = LineEnding.carriageReturnLineFeed.rawValue
         }
 
-        if replacementRange.location == NSNotFound {
-            replaceCharacters(in: selectionManager.textSelections.map(\.range), with: insertString)
-        } else {
-            replaceCharacters(in: replacementRange, with: insertString)
-        }
+        replaceCharacters(in: replacementRanges, with: insertString)
 
         selectionManager.textSelections.forEach { $0.suggestedXPos = nil }
+    }
+
+    /// Inserts the string at the replacement range. If replacement range is `NSNotFound`, uses the selection ranges.
+    private func _insertText(insertString: String, replacementRange: NSRange) {
+        let ranges: [NSRange] = replacementRange.location == NSNotFound
+            ? selectionManager.textSelections.map(\.range)
+            : [replacementRange]
+        _insertText(insertString: insertString, replacementRanges: ranges)
     }
 
     /// Inserts the given string into the receiver, replacing the specified content.
@@ -68,10 +73,38 @@ extension TextView: NSTextInputClient {
     /// - Parameters:
     ///   - string: The text to insert, either an NSString or NSAttributedString instance.
     ///   - replacementRange: The range of content to replace in the receiver’s text storage.
+    ///
+    /// IME commits arrive here with `replacementRange` either set to `NSNotFound` (replace the
+    /// marked range(s)) or to the explicit range to replace. Calling `unmarkText()` first would
+    /// wipe the marked text via `replaceCharacters(_:with: "")` and then `_insertText` would
+    /// replace a now-stale range, either eating unrelated content or hitting an out-of-bounds
+    /// range that lands the caret at `documentLength`. Resolve the effective range(s) first,
+    /// then clear marked-text bookkeeping without touching the storage, so the actual replacement
+    /// is a single edit. Multi-cursor IME duplicates the marked range across every cursor; the
+    /// `NSNotFound` path replaces all of them in one pass.
     @objc public func insertText(_ string: Any, replacementRange: NSRange) {
         guard isEditable, let insertString = anyToString(string) else { return }
-        unmarkText()
-        _insertText(insertString: insertString, replacementRange: replacementRange)
+
+        let markedRanges = layoutManager.markedTextManager.markedRanges
+        let hadMarkedText = !markedRanges.isEmpty
+
+        if hadMarkedText {
+            layoutManager.markedTextManager.removeAll()
+            layoutManager.setNeedsLayout()
+            needsLayout = true
+            inputContext?.discardMarkedText()
+        }
+
+        if replacementRange.location != NSNotFound {
+            _insertText(insertString: insertString, replacementRange: replacementRange)
+        } else if hadMarkedText {
+            _insertText(insertString: insertString, replacementRanges: markedRanges)
+        } else {
+            _insertText(
+                insertString: insertString,
+                replacementRange: NSRange(location: NSNotFound, length: 0)
+            )
+        }
     }
 
     override public func insertText(_ insertString: Any) {

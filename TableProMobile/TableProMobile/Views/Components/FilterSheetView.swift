@@ -1,8 +1,3 @@
-//
-//  FilterSheetView.swift
-//  TableProMobile
-//
-
 import SwiftUI
 import TableProModels
 

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 @MainActor @Observable
 final class GridSelectionState {
@@ -40,7 +41,7 @@ struct TabChangeSnapshot: Equatable {
     var deletedRowIndices: Set<Int>
     var insertedRowIndices: Set<Int>
     var modifiedCells: [Int: Set<Int>]
-    var insertedRowData: [Int: [String?]]  // Lazy storage for inserted row values
+    var insertedRowData: [Int: [PluginCellValue]]
     var primaryKeyColumns: [String]
     var columns: [String]
 
@@ -96,9 +97,8 @@ struct PaginationState: Equatable {
     var isLoading: Bool = false      // Loading indicator
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
 
-    // Progressive loading state (query tabs)
+    // Result truncation state (query tabs)
     var hasMoreRows: Bool = false
-    var loadMoreOffset: Int = 0
     var isLoadingMore: Bool = false
     var baseQueryForMore: String?
     var baseQueryParameterValues: [String?]?
@@ -194,10 +194,9 @@ struct PaginationState: Equatable {
         isLoading = false
     }
 
-    /// Reset progressive loading state
+    /// Reset result truncation state
     mutating func resetLoadMore() {
         hasMoreRows = false
-        loadMoreOffset = 0
         isLoadingMore = false
         baseQueryForMore = nil
         baseQueryParameterValues = nil
@@ -260,6 +259,8 @@ struct TabQueryContent: Equatable {
     var isParameterPanelVisible: Bool = false
     var sourceFileURL: URL?
     var savedFileContent: String?
+    var loadMtime: Date?
+    var externalModificationDetected: Bool = false
 
     static let maxPersistableQuerySize = 500_000
 

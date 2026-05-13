@@ -1,8 +1,3 @@
-//
-//  SharedConnectionStore.swift
-//  TableProWidget
-//
-
 import Foundation
 
 enum SharedConnectionStore {

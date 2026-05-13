@@ -23,6 +23,13 @@ internal enum RedisKeyNode: Identifiable, Hashable {
         }
     }
 
+    var children: [RedisKeyNode]? {
+        switch self {
+        case .namespace(_, _, let children, _): return children
+        case .key: return nil
+        }
+    }
+
     // Hash on id only (children excluded for performance)
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)

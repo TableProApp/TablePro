@@ -1,8 +1,3 @@
-//
-//  AppState.swift
-//  TableProMobile
-//
-
 import CoreSpotlight
 import Foundation
 import Observation
@@ -40,6 +35,13 @@ final class AppState {
         connections = storage.load()
         groups = groupStorage.load()
         tags = tagStorage.load()
+
+        // Skip side-effecting callbacks (Spotlight, WidgetKit, sync wiring) when
+        // running unit tests inside the host app. These rely on entitlements
+        // that the CI simulator does not have and have caused the test runner
+        // to crash before it could connect to xctest.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+
         secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
         Task {
             updateWidgetData()
@@ -114,11 +116,20 @@ final class AppState {
         try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(connection.id.uuidString)")
+        clearPerConnectionPreferences(for: connection.id)
         storage.save(connections)
         updateWidgetData()
         updateSpotlightIndex()
         syncCoordinator.markDeleted(connection.id)
         syncCoordinator.scheduleSyncAfterChange()
+    }
+
+    private func clearPerConnectionPreferences(for id: UUID) {
+        let suffix = id.uuidString
+        let defaults = UserDefaults.standard
+        for prefix in ["lastTab.", "lastDB.", "lastSchema.", "lastQuery."] {
+            defaults.removeObject(forKey: prefix + suffix)
+        }
     }
 
     // MARK: - Groups

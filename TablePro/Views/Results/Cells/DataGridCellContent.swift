@@ -15,7 +15,6 @@ struct DataGridCellContent {
     let displayText: String
     let rawValue: String?
     let placeholder: DataGridCellPlaceholder?
-    let accessibilityLabel: String
 }
 
 struct DataGridCellState {

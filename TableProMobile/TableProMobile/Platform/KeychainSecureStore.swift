@@ -1,8 +1,3 @@
-//
-//  KeychainSecureStore.swift
-//  TableProMobile
-//
-
 import Foundation
 import Security
 import TableProDatabase

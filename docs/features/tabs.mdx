@@ -161,6 +161,14 @@ Each tab maintains its own pending changes. Switching tabs saves and restores ea
 
 Tab state auto-saves 500ms after any change. On reconnect, TablePro restores your tabs and re-executes table queries.
 
+### Multi-Window Restoration
+
+If you had several editor windows open with their own tab groups, TablePro restores every window on next launch. Earlier versions kept tabs from one window and dropped the rest.
+
+### Window Size, Position, and Zoom
+
+Each editor window remembers its frame and zoom across launches. Reopen a connection and the window comes back at the same size, position, and zoom state. The first window opens at 1200x800 centered on the active screen.
+
 ## Pagination
 
 ### Table Tabs (Server-Side)
@@ -211,3 +219,14 @@ Right-click any tab:
     alt="Tab context menu"
   />
 </Frame>
+
+## From External Clients
+
+Raycast, Cursor, Claude Desktop, and other MCP clients can list and focus tabs across windows. Four MCP tools cover the surface:
+
+- `list_recent_tabs` enumerates open tabs across every window.
+- `focus_query_tab` brings an existing tab to the front by id.
+- `open_connection_window` opens a saved connection.
+- `open_table_tab` opens a specific table.
+
+The Raycast extension's [Recent Tabs command](/external-api/raycast#commands) wraps these tools. See [MCP Tools](/external-api/mcp-tools) for input and output schemas.

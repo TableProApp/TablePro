@@ -137,7 +137,7 @@ struct CreateGroupSheet: View {
                 Text("Color")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                GroupColorPicker(selectedColor: $groupColor)
+                ColorPaletteView(selectedColor: $groupColor, includesNone: true, size: .compact)
             }
 
             if !allGroups.isEmpty {
@@ -226,34 +226,6 @@ private struct ParentGroupPicker: View {
             return String(localized: "None (Top Level)")
         }
         return group.name
-    }
-}
-
-// MARK: - Group Color Picker
-
-private struct GroupColorPicker: View {
-    @Binding var selectedColor: ConnectionColor
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(ConnectionColor.allCases) { color in
-                Button(action: { selectedColor = color }) {
-                    Circle()
-                        .fill(color == .none ? Color(nsColor: .quaternaryLabelColor) : color.color)
-                        .frame(width: 16, height: 16)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.primary, lineWidth: selectedColor == color ? 2 : 0)
-                                .frame(
-                                    width: 20,
-                                    height: 20
-                                )
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(format: String(localized: "Color %@"), color.rawValue))
-            }
-        }
     }
 }
 

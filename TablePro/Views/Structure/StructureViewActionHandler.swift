@@ -18,4 +18,5 @@ final class StructureViewActionHandler {
     var pasteRows: (() -> Void)?
     var undo: (() -> Void)?
     var redo: (() -> Void)?
+    var addRow: (() -> Void)?
 }

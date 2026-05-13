@@ -46,14 +46,16 @@ extension TableStructureView {
 
     func loadTabDataIfNeeded(_ tab: StructureTab) async {
         guard !loadedTabs.contains(tab) else { return }
+        await fetchTabData(tab)
+    }
+
+    func fetchTabData(_ tab: StructureTab) async {
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
 
         do {
             switch tab {
             case .columns:
-                if columns.isEmpty {
-                    columns = try await driver.fetchColumns(table: tableName)
-                }
+                columns = try await driver.fetchColumns(table: tableName)
             case .indexes:
                 indexes = try await driver.fetchIndexes(table: tableName)
             case .foreignKeys:
@@ -77,7 +79,7 @@ extension TableStructureView {
                     ddlStatement = preamble + "\n" + baseDDL
                 }
             case .parts:
-                break
+                return
             }
             loadedTabs.insert(tab)
         } catch {
@@ -106,6 +108,7 @@ extension TableStructureView {
         searchText = ""
         structureSortDescriptor = nil
         sortState = SortState()
+        selectedRows = []
         displayVersion += 1
         Task {
             await loadTabDataIfNeeded(new)
@@ -127,7 +130,7 @@ extension TableStructureView {
         loadSchemaForEditing()
     }
 
-    func onRefreshData(_ notification: Notification) {
+    func onRefreshData() {
         // Ignore refresh notifications while we're in the middle of our own save/reload
         guard !isReloadingAfterSave else {
             Self.logger.debug("Ignoring refresh notification - currently reloading after save")
@@ -152,18 +155,25 @@ extension TableStructureView {
 
                 if confirmed {
                     discardChanges()
-                    loadedTabs.removeAll()
-                    await loadColumns()
-                    await loadTabDataIfNeeded(selectedTab)
+                    await reloadAllTabs()
                 }
             }
             // If cancelled, do nothing
         } else {
             Task { @MainActor in
-                loadedTabs.removeAll()
-                await loadColumns()
-                await loadTabDataIfNeeded(selectedTab)
+                await reloadAllTabs()
             }
+        }
+    }
+
+    private func reloadAllTabs() async {
+        await loadColumns()
+        await fetchTabData(.indexes)
+        if connection.type.supportsForeignKeys {
+            await fetchTabData(.foreignKeys)
+        }
+        if selectedTab == .ddl {
+            await fetchTabData(.ddl)
         }
     }
 }

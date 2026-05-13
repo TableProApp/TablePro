@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -71,6 +72,53 @@ struct ColumnTypeTests {
     func blobIsNotSetType() {
         let type = ColumnType.blob(rawType: "BLOB")
         #expect(!type.isSetType)
+    }
+
+    // MARK: - isTimeOnly Property
+
+    @Test("timestamp with raw TIME reports isTimeOnly true")
+    func timestampTimeRawIsTimeOnly() {
+        #expect(ColumnType.timestamp(rawType: "TIME").isTimeOnly)
+    }
+
+    @Test("timestamp with raw TIMETZ reports isTimeOnly true")
+    func timestampTimetzIsTimeOnly() {
+        #expect(ColumnType.timestamp(rawType: "TIMETZ").isTimeOnly)
+    }
+
+    @Test("timestamp with TIME WITH TIME ZONE reports isTimeOnly true")
+    func timestampTimeWithZoneIsTimeOnly() {
+        #expect(ColumnType.timestamp(rawType: "TIME WITH TIME ZONE").isTimeOnly)
+    }
+
+    @Test("timestamp with TIME WITHOUT TIME ZONE reports isTimeOnly true")
+    func timestampTimeWithoutZoneIsTimeOnly() {
+        #expect(ColumnType.timestamp(rawType: "TIME WITHOUT TIME ZONE").isTimeOnly)
+    }
+
+    @Test("timestamp raw TIME match is case-insensitive")
+    func timestampLowercaseTimeIsTimeOnly() {
+        #expect(ColumnType.timestamp(rawType: "time").isTimeOnly)
+    }
+
+    @Test("datetime with raw DATETIME reports isTimeOnly false")
+    func datetimeIsNotTimeOnly() {
+        #expect(!ColumnType.datetime(rawType: "DATETIME").isTimeOnly)
+    }
+
+    @Test("date column reports isTimeOnly false")
+    func dateIsNotTimeOnly() {
+        #expect(!ColumnType.date(rawType: "DATE").isTimeOnly)
+    }
+
+    @Test("timestamp without raw type reports isTimeOnly false")
+    func timestampNilRawIsNotTimeOnly() {
+        #expect(!ColumnType.timestamp(rawType: nil).isTimeOnly)
+    }
+
+    @Test("text column with raw TIME still reports isTimeOnly false")
+    func textWithTimeRawIsNotTimeOnly() {
+        #expect(!ColumnType.text(rawType: "TIME").isTimeOnly)
     }
 
     // MARK: - enumValues Property

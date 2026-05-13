@@ -10,13 +10,14 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct PendingChanges: Equatable {
     private(set) var changes: [RowChange] = []
     private(set) var deletedRowIndices: Set<Int> = []
     private(set) var insertedRowIndices: Set<Int> = []
     private(set) var modifiedCells: [Int: Set<Int>] = [:]
-    private(set) var insertedRowData: [Int: [String?]] = [:]
+    private(set) var insertedRowData: [Int: [PluginCellValue]] = [:]
 
     private var changeIndex: [RowChangeKey: Int] = [:]
 
@@ -55,9 +56,9 @@ struct PendingChanges: Equatable {
         rowIndex: Int,
         columnIndex: Int,
         columnName: String,
-        oldValue: String?,
-        newValue: String?,
-        originalRow: [String?]? = nil
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]? = nil
     ) -> Bool {
         if oldValue == newValue {
             return rollbackCellIfMatchesOriginal(
@@ -94,7 +95,7 @@ struct PendingChanges: Equatable {
         return true
     }
 
-    mutating func recordRowDeletion(rowIndex: Int, originalRow: [String?]) {
+    mutating func recordRowDeletion(rowIndex: Int, originalRow: [PluginCellValue]) {
         guard !deletedRowIndices.contains(rowIndex) else { return }
         removeChange(rowIndex: rowIndex, type: .update)
         modifiedCells.removeValue(forKey: rowIndex)
@@ -102,7 +103,7 @@ struct PendingChanges: Equatable {
         deletedRowIndices.insert(rowIndex)
     }
 
-    mutating func recordRowInsertion(rowIndex: Int, values: [String?]) {
+    mutating func recordRowInsertion(rowIndex: Int, values: [PluginCellValue]) {
         guard !insertedRowIndices.contains(rowIndex) else {
             insertedRowData[rowIndex] = values
             return
@@ -133,10 +134,10 @@ struct PendingChanges: Equatable {
     }
 
     /// Undo a batch of inserted rows. Returns the saved values for each row in the same order.
-    mutating func undoBatchRowInsertion(rowIndices: [Int], columnCount: Int) -> [[String?]] {
+    mutating func undoBatchRowInsertion(rowIndices: [Int], columnCount: Int) -> [[PluginCellValue]] {
         let validRows = rowIndices.filter { insertedRowIndices.contains($0) }
 
-        var rowValues: [[String?]] = []
+        var rowValues: [[PluginCellValue]] = []
         for rowIndex in validRows {
             if let idx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] {
                 let values = changes[idx].cellChanges
@@ -144,7 +145,7 @@ struct PendingChanges: Equatable {
                     .map { $0.newValue }
                 rowValues.append(values)
             } else {
-                rowValues.append(Array(repeating: nil, count: columnCount))
+                rowValues.append(Array(repeating: .null, count: columnCount))
             }
         }
 
@@ -174,7 +175,7 @@ struct PendingChanges: Equatable {
     // MARK: - Replay (driven by NSUndoManager invocation)
 
     /// Re-apply a deletion during undo replay (skips undo registration).
-    mutating func reapplyRowDeletion(rowIndex: Int, originalRow: [String?]) {
+    mutating func reapplyRowDeletion(rowIndex: Int, originalRow: [PluginCellValue]) {
         guard !deletedRowIndices.contains(rowIndex) else { return }
         removeChange(rowIndex: rowIndex, type: .update)
         modifiedCells.removeValue(forKey: rowIndex)
@@ -189,9 +190,9 @@ struct PendingChanges: Equatable {
         rowIndex: Int,
         columnIndex: Int,
         columnName: String,
-        originalDBValue: String?,
-        newValue: String?,
-        originalRow: [String?]?
+        originalDBValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?
     ) {
         let cellChange = CellChange(
             rowIndex: rowIndex,
@@ -226,7 +227,7 @@ struct PendingChanges: Equatable {
         rowIndex: Int,
         columnIndex: Int,
         columnName: String,
-        newValue: String?
+        newValue: PluginCellValue
     ) {
         guard let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] else { return }
         updateInsertedCell(at: insertIdx, columnIndex: columnIndex, columnName: columnName, newValue: newValue)
@@ -237,7 +238,7 @@ struct PendingChanges: Equatable {
         rowIndex: Int,
         columnIndex: Int,
         columnName: String,
-        previousValue: String?
+        previousValue: PluginCellValue
     ) {
         guard let updateIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .update)],
               let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: { $0.columnIndex == columnIndex })
@@ -265,7 +266,7 @@ struct PendingChanges: Equatable {
     }
 
     /// Insert a synthetic .insert RowChange for undo replay (e.g., after redoing a deletion's undo).
-    mutating func reinsertRow(rowIndex: Int, columns: [String], savedValues: [String?]?) {
+    mutating func reinsertRow(rowIndex: Int, columns: [String], savedValues: [PluginCellValue]?) {
         shiftRowIndicesUp(from: rowIndex)
         insertedRowIndices.insert(rowIndex)
         let cellChanges = columns.enumerated().map { index, columnName in
@@ -282,7 +283,7 @@ struct PendingChanges: Equatable {
 
     /// Insert a batch of rows (for undo replay of a batch deletion's undo).
     mutating func reinsertBatch(
-        rowIndices: [Int], rowValues: [[String?]], columns: [String]
+        rowIndices: [Int], rowValues: [[PluginCellValue]], columns: [String]
     ) {
         for rowIndex in rowIndices.sorted() {
             shiftRowIndicesUp(from: rowIndex)
@@ -305,12 +306,12 @@ struct PendingChanges: Equatable {
     }
 
     /// Save inserted-row values for a redo replay closure that may need them.
-    func savedInsertedValues(forRow rowIndex: Int) -> [String?]? {
+    func savedInsertedValues(forRow rowIndex: Int) -> [PluginCellValue]? {
         insertedRowData[rowIndex]
     }
 
     /// Restore inserted-row values when undo restores a row.
-    mutating func restoreInsertedValues(forRow rowIndex: Int, values: [String?]) {
+    mutating func restoreInsertedValues(forRow rowIndex: Int, values: [PluginCellValue]) {
         insertedRowData[rowIndex] = values
     }
 
@@ -382,7 +383,7 @@ struct PendingChanges: Equatable {
     }
 
     private mutating func updateInsertedCell(
-        at insertIdx: Int, columnIndex: Int, columnName: String, newValue: String?
+        at insertIdx: Int, columnIndex: Int, columnName: String, newValue: PluginCellValue
     ) {
         let rowIndex = changes[insertIdx].rowIndex
         if var stored = insertedRowData[rowIndex], columnIndex < stored.count {
@@ -434,7 +435,7 @@ struct PendingChanges: Equatable {
 
     @discardableResult
     private mutating func rollbackCellIfMatchesOriginal(
-        rowIndex: Int, columnIndex: Int, restoredValue: String?
+        rowIndex: Int, columnIndex: Int, restoredValue: PluginCellValue
     ) -> Bool {
         let updateKey = RowChangeKey(rowIndex: rowIndex, type: .update)
         guard let updateIdx = changeIndex[updateKey],
@@ -460,7 +461,7 @@ struct PendingChanges: Equatable {
         insertedRowIndices = Set(insertedRowIndices.map { $0 >= insertionPoint ? $0 + 1 : $0 })
         deletedRowIndices = Set(deletedRowIndices.map { $0 >= insertionPoint ? $0 + 1 : $0 })
 
-        var newInsertedRowData: [Int: [String?]] = [:]
+        var newInsertedRowData: [Int: [PluginCellValue]] = [:]
         for (key, value) in insertedRowData {
             newInsertedRowData[key >= insertionPoint ? key + 1 : key] = value
         }
@@ -481,7 +482,7 @@ struct PendingChanges: Equatable {
         }
         insertedRowIndices = Set(insertedRowIndices.map { $0 > removedRow ? $0 - 1 : $0 })
 
-        var newInsertedRowData: [Int: [String?]] = [:]
+        var newInsertedRowData: [Int: [PluginCellValue]] = [:]
         for (key, value) in insertedRowData {
             newInsertedRowData[key > removedRow ? key - 1 : key] = value
         }

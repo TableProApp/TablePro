@@ -46,7 +46,7 @@ extension MainContentCoordinator {
         } catch {
             toolbarState.previewStatements = ["-- Error generating SQL: \(error.localizedDescription)"]
         }
-        toolbarState.showSQLReviewPopover = true
+        activeSheet = .sqlPreview
     }
 
     /// Assembles all pending SQL statements (cell edits + table operations) in execution order.

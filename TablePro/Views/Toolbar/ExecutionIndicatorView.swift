@@ -17,7 +17,7 @@ struct ExecutionIndicatorView: View {
     var onCancel: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             if isExecuting {
                 ProgressView()
                     .controlSize(.small)
@@ -62,7 +62,6 @@ struct ExecutionIndicatorView: View {
                     .help(String(localized: "Run a query to see execution time"))
             }
         }
-        .padding(.trailing, 8)
     }
 
     // MARK: - Helpers

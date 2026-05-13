@@ -1,8 +1,3 @@
-//
-//  MCPTokenCreateSheet.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct MCPTokenCreateSheet: View {
@@ -33,23 +28,21 @@ struct MCPTokenCreateSheet: View {
             actionBar
                 .padding()
         }
-        .frame(width: 480, height: 520)
+        .frame(minWidth: 480, minHeight: 520)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
         }
     }
 
-    // MARK: - Sections
-
     private var nameSection: some View {
-        Section("Token Name") {
-            TextField("e.g., Claude Code on VPS", text: $tokenName)
+        Section(String(localized: "Token Name")) {
+            TextField(String(localized: "e.g., Claude Code on VPS"), text: $tokenName)
         }
     }
 
     private var permissionsSection: some View {
-        Section("Permission Level") {
-            Picker("Permission", selection: $permissions) {
+        Section(String(localized: "Permission Level")) {
+            Picker(String(localized: "Permission"), selection: $permissions) {
                 ForEach(TokenPermissions.allCases) { permission in
                     Text(permission.displayName).tag(permission)
                 }
@@ -60,10 +53,10 @@ struct MCPTokenCreateSheet: View {
     }
 
     private var connectionAccessSection: some View {
-        Section("Connection Access") {
-            Picker("Access", selection: $connectionAccess) {
-                Text("All Connections").tag(ConnectionAccessMode.all)
-                Text("Select Connections").tag(ConnectionAccessMode.selected)
+        Section(String(localized: "Connection Access")) {
+            Picker(String(localized: "Access"), selection: $connectionAccess) {
+                Text(String(localized: "All Connections")).tag(ConnectionAccessMode.all)
+                Text(String(localized: "Select Connections")).tag(ConnectionAccessMode.selected)
             }
             .labelsHidden()
 
@@ -76,7 +69,7 @@ struct MCPTokenCreateSheet: View {
     @ViewBuilder
     private var connectionList: some View {
         if connections.isEmpty {
-            Text("No saved connections")
+            Text(String(localized: "No saved connections"))
                 .foregroundStyle(.secondary)
         } else {
             ForEach(connections) { connection in
@@ -94,8 +87,8 @@ struct MCPTokenCreateSheet: View {
     }
 
     private var expirationSection: some View {
-        Section("Expiration") {
-            Picker("Expires", selection: $expirationOption) {
+        Section(String(localized: "Expiration")) {
+            Picker(String(localized: "Expires"), selection: $expirationOption) {
                 ForEach(ExpirationOption.allCases) { option in
                     Text(option.displayName).tag(option)
                 }
@@ -104,7 +97,7 @@ struct MCPTokenCreateSheet: View {
 
             if expirationOption == .custom {
                 DatePicker(
-                    "Expiration date",
+                    String(localized: "Expiration date"),
                     selection: $customExpirationDate,
                     in: Date.now...,
                     displayedComponents: .date
@@ -115,23 +108,22 @@ struct MCPTokenCreateSheet: View {
 
     private var actionBar: some View {
         HStack {
-            Button("Cancel", role: .cancel) {
+            Button(String(localized: "Cancel"), role: .cancel) {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
 
             Spacer()
 
-            Button("Generate") {
+            Button(String(localized: "Generate")) {
                 let connectionIds: Set<UUID>? = connectionAccess == .selected ? selectedConnectionIds : nil
                 onGenerate(tokenName, permissions, connectionIds, resolvedExpirationDate)
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(tokenName.trimmingCharacters(in: .whitespaces).isEmpty || (connectionAccess == .selected && selectedConnectionIds.isEmpty))
+            .disabled(tokenName.trimmingCharacters(in: .whitespaces).isEmpty
+                || (connectionAccess == .selected && selectedConnectionIds.isEmpty))
         }
     }
-
-    // MARK: - Helpers
 
     private func connectionBinding(for id: UUID) -> Binding<Bool> {
         Binding(
@@ -156,8 +148,6 @@ struct MCPTokenCreateSheet: View {
         }
     }
 }
-
-// MARK: - Supporting Types
 
 private enum ConnectionAccessMode: String, Identifiable {
     case all

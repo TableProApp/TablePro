@@ -18,6 +18,7 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 | Open history | `Cmd+Y` |
 | Settings | `Cmd+,` |
 | Quick Switcher | `Cmd+Shift+O` |
+| Switch database | `Cmd+K` |
 | Close window | `Cmd+W` |
 | Quit | `Cmd+Q` |
 
@@ -43,16 +44,16 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 
 ### Text Editing
 
-| Action | Shortcut |
-|--------|----------|
-| Select all | `Cmd+A` |
-| Cut | `Cmd+X` |
-| Copy | `Cmd+C` |
-| Paste | `Cmd+V` |
-| Undo | `Cmd+Z` |
-| Redo | `Cmd+Shift+Z` |
-| Delete line | `Cmd+Shift+K` |
-| Duplicate line | `Cmd+Shift+D` |
+| Action | Shortcut | Description |
+|--------|----------|-------------|
+| Select all | `Cmd+A` | Selects every line, including the final line when the document ends with a trailing newline |
+| Cut | `Cmd+X` | Cuts the selection. With no selection, cuts the current line including its line break |
+| Copy | `Cmd+C` | |
+| Paste | `Cmd+V` | |
+| Undo | `Cmd+Z` | |
+| Redo | `Cmd+Shift+Z` | |
+| Delete line | `Cmd+Shift+K` | |
+| Duplicate line | `Cmd+Shift+D` | |
 
 ### Navigation
 
@@ -224,64 +225,12 @@ For keyboards without dedicated arrow keys (e.g., HHKB), Ctrl+HJKL works as arro
 
 ## Vim Mode Keybindings
 
-When Vim mode is enabled (**Settings** > **Editor** > **Editing** > **Vim mode**), the SQL editor uses modal keybindings. A mode indicator badge appears in the toolbar.
+Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor shows the current mode.
 
-### Modes
-
-| Key | Action |
-|-----|--------|
-| `Escape` | Return to Normal mode |
-| `i` / `I` | Insert before cursor / at line start |
-| `a` / `A` | Append after cursor / at line end |
-| `o` / `O` | Open line below / above |
-| `v` | Visual mode (character-wise) |
-| `V` | Visual Line mode (line-wise) |
-| `:` | Command-line mode |
-
-### Navigation (Normal Mode)
-
-| Key | Action |
-|-----|--------|
-| `h` / `j` / `k` / `l` | Left / Down / Up / Right |
-| `w` / `b` / `e` | Next word / Previous word / End of word |
-| `0` / `$` | Beginning / End of line |
-| `^` / `_` | First non-blank character of line |
-| `gg` / `G` | First line / Last line |
-
-### Operators (Normal Mode)
-
-| Key | Action |
-|-----|--------|
-| `dd` | Delete line |
-| `yy` | Yank (copy) line |
-| `cc` | Change line |
-| `x` | Delete character |
-| `p` / `P` | Paste after / before cursor |
-| `d` + motion | Delete with motion |
-| `y` + motion | Yank with motion |
-| `c` + motion | Change with motion |
-
-### Visual Mode
-
-| Key | Action |
-|-----|--------|
-| `d` | Delete selection |
-| `y` | Yank selection |
-| `c` | Change selection |
-
-### Command-Line Mode
-
-| Command | Action |
-|---------|--------|
-| `:w` | Execute query (`Cmd+Enter`) |
-| `:q` | Close tab |
-
-### Count Prefixes
-
-Prefix motions and operators with a number: `3j` (down 3 lines), `2dd` (delete 2 lines), `5x` (delete 5 characters).
+See the [Vim Mode](/features/vim-mode) page for the full key reference.
 
 <Note>
-Vim mode keybindings only apply in the SQL editor. They don't affect the data grid or other panels. Standard shortcuts like `Cmd+Enter` work in all modes.
+Vim keys only apply in the SQL editor. The data grid and other panels keep their standard shortcuts. `Cmd+Enter` runs the query in any mode.
 </Note>
 
 ## Filtering
@@ -381,4 +330,14 @@ Click **Reset to Defaults** to restore all shortcuts to their original values.
 <Note>
 Tab switching shortcuts (`Cmd+1` through `Cmd+9`) follow standard macOS convention and cannot be customized.
 </Note>
+
+## Outside The App
+
+TablePro can also be driven from outside the running app. None of these are macOS keyboard shortcuts in the strict sense, but they cover the same fast-navigation use cases.
+
+| Entry point | Use |
+|-------------|-----|
+| [Raycast extension](/external-api/raycast) | Trigger commands from Raycast's own hotkey: search connections, open tables, run queries, search query history, focus tabs. |
+| [`tablepro://` URL scheme](/external-api/url-scheme) | `open tablepro://...` from the terminal, browser, or another app to open a connection, table, or query tab. Bind in Raycast Quicklinks, Alfred, or Shortcuts.app. |
+| [MCP clients](/external-api/mcp-clients) | Claude Desktop, Cursor, Claude Code, Cline, Continue, Zed, Windsurf, Goose. Each client decides its own hotkey for invoking AI; tools call back into TablePro. |
 

@@ -26,7 +26,6 @@ struct ExportDialog: View {
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
-    @State private var showActivationSheet = false
 
     // MARK: - User Preferences
 
@@ -94,9 +93,6 @@ struct ExportDialog: View {
         }
         .frame(width: dialogWidth)
         .background(Color(nsColor: .windowBackgroundColor))
-        .sheet(isPresented: $showActivationSheet) {
-            LicenseActivationSheet()
-        }
         .onAppear {
             let available = availableFormats
             if !available.contains(where: { type(of: $0).formatId == config.formatId }) {
@@ -162,7 +158,7 @@ struct ExportDialog: View {
 
     private var availableFormats: [any ExportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        return PluginManager.shared.exportPlugins.values
+        return PluginManager.shared.allExportPlugins()
             .filter { plugin in
                 let pluginType = type(of: plugin)
                 if !pluginType.supportedDatabaseTypeIds.isEmpty {
@@ -185,7 +181,7 @@ struct ExportDialog: View {
     }
 
     private var currentPlugin: (any ExportFormatPlugin)? {
-        PluginManager.shared.exportPlugins[config.formatId]
+        PluginManager.shared.exportPlugin(forFormat: config.formatId)
     }
 
     // MARK: - Layout Constants
@@ -280,12 +276,8 @@ struct ExportDialog: View {
 
                         Picker("", selection: $config.formatId) {
                             ForEach(availableFormatIds, id: \.self) { formatId in
-                                if let plugin = PluginManager.shared.exportPlugins[formatId] {
-                                    if isProGatedFormat(formatId) {
-                                        Text("\(type(of: plugin).formatDisplayName) (Pro)").tag(formatId)
-                                    } else {
-                                        Text(type(of: plugin).formatDisplayName).tag(formatId)
-                                    }
+                                if let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) {
+                                    Text(type(of: plugin).formatDisplayName).tag(formatId)
                                 }
                             }
                         }
@@ -302,18 +294,8 @@ struct ExportDialog: View {
                     }
                 }
 
-                // Selection count or Pro gate message
                 VStack(spacing: 2) {
-                    if isProGatedFormat(config.formatId) {
-                        Text(String(localized: "XLSX export requires a Pro license."))
-                            .font(.subheadline)
-                            .foregroundStyle(Color(nsColor: .systemOrange))
-                        Button(String(localized: "Activate License...")) {
-                            showActivationSheet = true
-                        }
-                        .font(.subheadline)
-                        .buttonStyle(.link)
-                    } else if case .streamingQuery = mode {
+                    if case .streamingQuery = mode {
                         Text("All rows")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -450,7 +432,7 @@ struct ExportDialog: View {
     }
 
     private var isExportDisabled: Bool {
-        if isExporting || !isFileNameValid || availableFormats.isEmpty || isProGatedFormat(config.formatId) {
+        if isExporting || !isFileNameValid || availableFormats.isEmpty {
             return true
         }
         if case .streamingQuery = mode {
@@ -463,7 +445,6 @@ struct ExportDialog: View {
     }
 
     private static let formatDisplayOrder = ["csv", "json", "sql", "xlsx", "mql"]
-    private static let proFormatIds: Set<String> = ["xlsx"]
 
     private func formatDescription(for formatId: String) -> String {
         switch formatId {
@@ -474,10 +455,6 @@ struct ExportDialog: View {
         case "mql": return String(localized: "MongoDB query language. Use to import into MongoDB.")
         default: return ""
         }
-    }
-
-    private func isProGatedFormat(_ formatId: String) -> Bool {
-        Self.proFormatIds.contains(formatId) && !LicenseManager.shared.isFeatureAvailable(.xlsxExport)
     }
 
     /// Windows reserved device names (case-insensitive)
@@ -711,30 +688,28 @@ struct ExportDialog: View {
                 ORDER BY 1
                 """
             let result = try await driver.execute(query: query)
-            return result.rows.compactMap { row in
-                guard let name = row[safe: 0] ?? nil else { return nil }
-                let typeStr = (row[safe: 1] ?? nil) ?? "BASE TABLE"
+            return result.rows.compactMap { row -> TableInfo? in
+                guard let name = row[safe: 0]?.asText else { return nil }
+                let typeStr = row[safe: 1]?.asText ?? "BASE TABLE"
                 let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
                 return TableInfo(name: name, type: type, rowCount: nil)
             }
         }
 
-        // MSSQL / PostgreSQL / Redshift: use information_schema
         let query = """
             SELECT table_schema, table_name, table_type
             FROM information_schema.tables
             ORDER BY table_name
             """
         let result = try await driver.execute(query: query)
-        return result.rows.compactMap { row in
-            // Expect: [table_schema, table_name, table_type]
+        return result.rows.compactMap { row -> TableInfo? in
             guard row.count >= 2,
-                  let rowSchema = row[0],
+                  let rowSchema = row[0].asText,
                   rowSchema == schema,
-                  let name = row[1] else {
+                  let name = row[1].asText else {
                 return nil
             }
-            let typeStr = row.count > 2 ? (row[2] ?? "BASE TABLE") : "BASE TABLE"
+            let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
             let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
             return TableInfo(name: name, type: type, rowCount: nil)
         }
@@ -750,15 +725,14 @@ struct ExportDialog: View {
             """
         let result = try await driver.execute(query: query)
 
-        return result.rows.compactMap { row in
-            // Expect: [TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE]
+        return result.rows.compactMap { row -> TableInfo? in
             guard row.count >= 2,
-                  let rowSchema = row[0],
+                  let rowSchema = row[0].asText,
                   rowSchema == database,
-                  let name = row[1] else {
+                  let name = row[1].asText else {
                 return nil
             }
-            let typeStr = row.count > 2 ? (row[2] ?? "BASE TABLE") : "BASE TABLE"
+            let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
             let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
             return TableInfo(name: name, type: type, rowCount: nil)
         }

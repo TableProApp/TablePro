@@ -19,9 +19,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
     // Table description cache to avoid repeated DescribeTable calls
     private var _tableDescriptionCache: [String: TableDescription] = [:]
 
-    // Pagination state per query
-    private var _paginationStates: [String: PaginationState] = [:]
-
     private var connection: DynamoDBConnection? {
         lock.withLock { _connection }
     }
@@ -34,6 +31,13 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     var supportsTransactions: Bool { false }
+
+    var capabilities: PluginCapabilities {
+        [
+            .parameterizedQueries,
+            .cancelQuery,
+        ]
+    }
 
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
@@ -82,7 +86,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             _connection?.disconnect()
             _connection = nil
             _tableDescriptionCache.removeAll()
-            _paginationStates.removeAll()
         }
     }
 
@@ -110,7 +113,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["ok"],
                 columnTypeNames: ["Int32"],
-                rows: [["1"]],
+                rows: [[.text("1")]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -125,7 +128,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         return try await executePartiQL(trimmed, conn: conn, startTime: startTime)
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         let startTime = Date()
 
         guard let conn = connection else {
@@ -140,15 +143,18 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         }
 
         // Convert parameters to DynamoDB attribute value dictionaries
-        let dynamoParams: [[String: Any]] = parameters.map { param in
-            guard let value = param else {
-                return ["NULL": true] as [String: Any]
+        let dynamoParams: [[String: Any]] = parameters.map { param -> [String: Any] in
+            switch param {
+            case .null:
+                return ["NULL": true]
+            case .bytes(let data):
+                return ["B": data.base64EncodedString()]
+            case .text(let value):
+                if Double(value) != nil {
+                    return ["N": value]
+                }
+                return ["S": value]
             }
-            // Treat as number if it looks numeric
-            if Double(value) != nil {
-                return ["N": value]
-            }
-            return ["S": value]
         }
 
         let response = try await conn.executeStatement(statement: trimmed, parameters: dynamoParams)
@@ -158,7 +164,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Statement executed"]],
+                rows: [[.text("Statement executed")]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -181,73 +187,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             columnTypeNames: typeNames,
             rows: rows,
             rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
-    func fetchRowCount(query: String) async throws -> Int {
-        guard let conn = connection else {
-            throw DynamoDBError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let parsed = DynamoDBQueryBuilder.parseCountQuery(trimmed) {
-            if let col = parsed.filterColumn, let op = parsed.filterOp, let val = parsed.filterValue {
-                let filters = [DynamoDBFilterSpec(column: col, op: op, value: val)]
-                return try await countFilteredScanItems(
-                    tableName: parsed.tableName, conn: conn,
-                    filters: filters, logicMode: "AND"
-                )
-            }
-            return try await countItems(tableName: parsed.tableName, conn: conn)
-        }
-
-        if let parsed = DynamoDBQueryBuilder.parseScanQuery(trimmed) {
-            if !parsed.filters.isEmpty {
-                return try await countFilteredScanItems(
-                    tableName: parsed.tableName, conn: conn,
-                    filters: parsed.filters, logicMode: parsed.logicMode
-                )
-            }
-            return try await countItems(tableName: parsed.tableName, conn: conn)
-        }
-
-        if let parsed = DynamoDBQueryBuilder.parseQueryQuery(trimmed) {
-            return try await countQueryItems(parsed: parsed, conn: conn)
-        }
-
-        // For raw PartiQL, try to get count from table name
-        if let tableName = DynamoDBPartiQLParser.extractTableName(trimmed) {
-            return try await countItems(tableName: tableName, conn: conn)
-        }
-
-        return 0
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let startTime = Date()
-
-        guard let conn = connection else {
-            throw DynamoDBError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if DynamoDBQueryBuilder.isTaggedQuery(trimmed) {
-            return try await executePaginatedTaggedQuery(
-                trimmed, offset: offset, limit: limit, conn: conn, startTime: startTime
-            )
-        }
-
-        // For raw PartiQL, execute and paginate client-side
-        let fullResult = try await execute(query: trimmed)
-        let pageRows = Array(fullResult.rows.dropFirst(offset).prefix(limit))
-        return PluginQueryResult(
-            columns: fullResult.columns,
-            columnTypeNames: fullResult.columnTypeNames,
-            rows: pageRows,
-            rowsAffected: fullResult.rowsAffected,
             executionTime: Date().timeIntervalSince(startTime)
         )
     }
@@ -548,30 +487,17 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
     func generateStatements(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])]? {
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let keySchema = lock.withLock {
             extractKeySchema(from: _tableDescriptionCache[table])
         }
 
-        let typeNames: [String] = lock.withLock {
-            let matchingState = _paginationStates.values.first { state in
-                if let parsed = DynamoDBQueryBuilder.parseScanQuery(state.queryKey) {
-                    return parsed.tableName == table
-                }
-                if let parsed = DynamoDBQueryBuilder.parseQueryQuery(state.queryKey) {
-                    return parsed.tableName == table
-                }
-                return false
-            }
-            if let state = matchingState {
-                return state.columnTypeNames
-            }
-            return columns.map { _ in "S" }
-        }
+        let typeNames: [String] = columns.map { _ in "S" }
 
         let generator = DynamoDBStatementGenerator(
             tableName: table,
@@ -875,67 +801,13 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Count"],
                 columnTypeNames: ["Int64"],
-                rows: [[String(count)]],
+                rows: [[.text(String(count))]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
         }
 
         throw DynamoDBError.serverError("Invalid tagged query format")
-    }
-
-    private func executePaginatedTaggedQuery(
-        _ query: String, offset: Int, limit: Int,
-        conn: DynamoDBConnection, startTime: Date
-    ) async throws -> PluginQueryResult {
-        let queryKey = query
-
-        // If offset is 0, start a fresh scan/query
-        if offset == 0 {
-            lock.withLock { _paginationStates.removeValue(forKey: queryKey) }
-        }
-
-        var state = lock.withLock { _paginationStates[queryKey] }
-
-        // If we have cached items that cover the requested range, serve from cache
-        if let existingState = state {
-            let end = min(offset + limit, existingState.allItems.count)
-            if offset < existingState.allItems.count {
-                let pageItems = Array(existingState.allItems[offset..<end])
-                let rows = DynamoDBItemFlattener.flatten(items: pageItems, columns: existingState.discoveredColumns)
-                return PluginQueryResult(
-                    columns: existingState.discoveredColumns,
-                    columnTypeNames: existingState.columnTypeNames,
-                    rows: rows,
-                    rowsAffected: 0,
-                    executionTime: Date().timeIntervalSince(startTime)
-                )
-            }
-
-            // Need more items but exhausted
-            if existingState.isExhausted {
-                return emptyResult(columns: existingState.discoveredColumns,
-                                   typeNames: existingState.columnTypeNames,
-                                   startTime: startTime)
-            }
-        }
-
-        // Fetch more items from DynamoDB
-        if let parsed = DynamoDBQueryBuilder.parseScanQuery(query) {
-            return try await fetchMoreScanItems(
-                parsed: parsed, queryKey: queryKey, offset: offset, limit: limit,
-                existingState: state, conn: conn, startTime: startTime
-            )
-        }
-
-        if let parsed = DynamoDBQueryBuilder.parseQueryQuery(query) {
-            return try await fetchMoreQueryItems(
-                parsed: parsed, queryKey: queryKey, offset: offset, limit: limit,
-                existingState: state, conn: conn, startTime: startTime
-            )
-        }
-
-        return try await executeTaggedQuery(query, conn: conn, startTime: startTime)
     }
 
     // MARK: - Scan Execution
@@ -1056,161 +928,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         )
     }
 
-    // MARK: - Paginated Fetch Helpers
-
-    private func fetchMoreScanItems(
-        parsed: DynamoDBParsedScanQuery,
-        queryKey: String,
-        offset: Int,
-        limit: Int,
-        existingState: PaginationState?,
-        conn: DynamoDBConnection,
-        startTime: Date
-    ) async throws -> PluginQueryResult {
-        let keySchema = try await cachedKeySchema(parsed.tableName, conn: conn)
-        var state = existingState ?? PaginationState(
-            queryKey: queryKey,
-            allItems: [],
-            lastEvaluatedKey: nil,
-            isExhausted: false,
-            discoveredColumns: [],
-            columnTypeNames: [],
-            keySchema: keySchema
-        )
-
-        // Fetch until we have enough items or exhaust the table
-        let needed = offset + limit
-        while state.allItems.count < needed && !state.isExhausted {
-            let batchSize = min(needed - state.allItems.count, 1000)
-            let response = try await conn.scan(
-                tableName: parsed.tableName,
-                limit: batchSize,
-                exclusiveStartKey: state.lastEvaluatedKey
-            )
-
-            var newItems = response.Items ?? []
-
-            if !parsed.filters.isEmpty {
-                newItems = applyClientFilters(
-                    items: newItems, filters: parsed.filters, logicMode: parsed.logicMode
-                )
-            }
-
-            state.allItems.append(contentsOf: newItems)
-            state.lastEvaluatedKey = response.LastEvaluatedKey
-
-            if response.LastEvaluatedKey == nil {
-                state.isExhausted = true
-            }
-
-            if state.allItems.count >= Self.maxItems {
-                state.isExhausted = true
-                state.allItems = Array(state.allItems.prefix(Self.maxItems))
-            }
-        }
-
-        // Update discovered columns from all items
-        state.discoveredColumns = DynamoDBItemFlattener.unionColumns(from: state.allItems, keySchema: keySchema)
-        state.columnTypeNames = DynamoDBItemFlattener.columnTypeNames(
-            for: state.discoveredColumns, items: state.allItems
-        )
-
-        lock.withLock { _paginationStates[queryKey] = state }
-
-        // Serve the requested page
-        let end = min(offset + limit, state.allItems.count)
-        guard offset < state.allItems.count else {
-            return emptyResult(columns: state.discoveredColumns, typeNames: state.columnTypeNames, startTime: startTime)
-        }
-        let pageItems = Array(state.allItems[offset..<end])
-        let rows = DynamoDBItemFlattener.flatten(items: pageItems, columns: state.discoveredColumns)
-
-        return PluginQueryResult(
-            columns: state.discoveredColumns,
-            columnTypeNames: state.columnTypeNames,
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
-    private func fetchMoreQueryItems(
-        parsed: DynamoDBParsedQueryQuery,
-        queryKey: String,
-        offset: Int,
-        limit: Int,
-        existingState: PaginationState?,
-        conn: DynamoDBConnection,
-        startTime: Date
-    ) async throws -> PluginQueryResult {
-        let keySchema = try await cachedKeySchema(parsed.tableName, conn: conn)
-        var state = existingState ?? PaginationState(
-            queryKey: queryKey,
-            allItems: [],
-            lastEvaluatedKey: nil,
-            isExhausted: false,
-            discoveredColumns: [],
-            columnTypeNames: [],
-            keySchema: keySchema
-        )
-
-        var expressionValues: [String: DynamoDBAttributeValue] = [:]
-        switch parsed.partitionKeyType {
-        case "N":
-            expressionValues[":pkval"] = .number(parsed.partitionKeyValue)
-        default:
-            expressionValues[":pkval"] = .string(parsed.partitionKeyValue)
-        }
-        let keyCondition = "\(parsed.partitionKeyName) = :pkval"
-
-        let needed = offset + limit
-        while state.allItems.count < needed && !state.isExhausted {
-            let batchSize = min(needed - state.allItems.count, 1000)
-            let response = try await conn.query(
-                tableName: parsed.tableName,
-                keyConditionExpression: keyCondition,
-                expressionAttributeValues: expressionValues,
-                limit: batchSize,
-                exclusiveStartKey: state.lastEvaluatedKey
-            )
-
-            let fetchedItems = response.Items ?? []
-            state.allItems.append(contentsOf: fetchedItems)
-            state.lastEvaluatedKey = response.LastEvaluatedKey
-
-            if response.LastEvaluatedKey == nil {
-                state.isExhausted = true
-            }
-
-            if state.allItems.count >= Self.maxItems {
-                state.isExhausted = true
-                state.allItems = Array(state.allItems.prefix(Self.maxItems))
-            }
-        }
-
-        state.discoveredColumns = DynamoDBItemFlattener.unionColumns(from: state.allItems, keySchema: keySchema)
-        state.columnTypeNames = DynamoDBItemFlattener.columnTypeNames(
-            for: state.discoveredColumns, items: state.allItems
-        )
-
-        lock.withLock { _paginationStates[queryKey] = state }
-
-        let end = min(offset + limit, state.allItems.count)
-        guard offset < state.allItems.count else {
-            return emptyResult(columns: state.discoveredColumns, typeNames: state.columnTypeNames, startTime: startTime)
-        }
-        let pageItems = Array(state.allItems[offset..<end])
-        let rows = DynamoDBItemFlattener.flatten(items: pageItems, columns: state.discoveredColumns)
-
-        return PluginQueryResult(
-            columns: state.discoveredColumns,
-            columnTypeNames: state.columnTypeNames,
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
     // MARK: - PartiQL Execution
 
     private func executePartiQL(
@@ -1268,7 +985,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Item inserted successfully"]],
+                rows: [[.text("Item inserted successfully")]],
                 rowsAffected: 1,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -1277,7 +994,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Item updated successfully"]],
+                rows: [[.text("Item updated successfully")]],
                 rowsAffected: 1,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -1286,7 +1003,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Item deleted successfully"]],
+                rows: [[.text("Item deleted successfully")]],
                 rowsAffected: 1,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -1308,7 +1025,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             return PluginQueryResult(
                 columns: ["Result"],
                 columnTypeNames: ["String"],
-                rows: [["Statement executed"]],
+                rows: [[.text("Statement executed")]],
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -1511,31 +1228,9 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         }
     }
 
-    private func emptyResult(columns: [String], typeNames: [String], startTime: Date) -> PluginQueryResult {
-        PluginQueryResult(
-            columns: columns.isEmpty ? ["Result"] : columns,
-            columnTypeNames: typeNames.isEmpty ? ["String"] : typeNames,
-            rows: [],
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
     private func formatBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .binary
         return formatter.string(fromByteCount: bytes)
     }
-}
-
-// MARK: - Pagination State
-
-private struct PaginationState {
-    let queryKey: String
-    var allItems: [[String: DynamoDBAttributeValue]]
-    var lastEvaluatedKey: [String: DynamoDBAttributeValue]?
-    var isExhausted: Bool
-    var discoveredColumns: [String]
-    var columnTypeNames: [String]
-    var keySchema: [(name: String, keyType: String)]
 }

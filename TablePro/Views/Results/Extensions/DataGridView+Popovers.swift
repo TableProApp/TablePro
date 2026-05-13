@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 // MARK: - Popover Editors
 
@@ -13,27 +14,14 @@ extension TableViewCoordinator {
         guard let displayRow = displayRow(at: row), columnIndex >= 0, columnIndex < displayRow.values.count else {
             return nil
         }
-        return displayRow.values[columnIndex]
+        return displayRow.values[columnIndex].asText
     }
 
-    func showDatePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let currentValue = cellValue(at: row, column: columnIndex)
-        let tableRows = tableRowsProvider()
-        guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
-        let columnType = tableRows.columnTypes[columnIndex]
-
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
-
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        DatePickerPopoverController.shared.show(
-            relativeTo: cellRect,
-            of: tableView,
-            value: currentValue,
-            columnType: columnType
-        ) { [weak self] newValue in
-            guard let self else { return }
-            self.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+    func cellTypedValue(at row: Int, column columnIndex: Int) -> PluginCellValue {
+        guard let displayRow = displayRow(at: row), columnIndex >= 0, columnIndex < displayRow.values.count else {
+            return .null
         }
+        return displayRow.values[columnIndex]
     }
 
     func showForeignKeyPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, fkInfo: ForeignKeyInfo) {
@@ -64,7 +52,7 @@ extension TableViewCoordinator {
     func toggleForeignKeyPreview(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         if let popover = activeFKPreviewPopover, popover.isShown {
             popover.close()
-            activeFKPreviewPopover = nil
+            clearFKPreviewState()
             return
         }
         showForeignKeyPreview(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
@@ -79,6 +67,7 @@ extension TableViewCoordinator {
         guard let databaseType, let connectionId else { return }
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
+        let model = FKPreviewModel(cellValue: cellValue, fkInfo: fkInfo)
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         let popover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -86,19 +75,70 @@ extension TableViewCoordinator {
             contentSize: NSSize(width: 380, height: 400)
         ) { [weak self] dismiss in
             ForeignKeyPreviewView(
-                cellValue: cellValue,
-                fkInfo: fkInfo,
+                model: model,
                 connectionId: connectionId,
                 databaseType: databaseType,
-                onNavigate: {
+                onNavigate: { [weak self, model] in
                     dismiss()
-                    guard let value = cellValue else { return }
-                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
+                    guard let value = model.cellValue else { return }
+                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: model.fkInfo)
                 },
                 onDismiss: dismiss
             )
         }
         activeFKPreviewPopover = popover
+        activeFKPreviewModel = model
+        activeFKPreviewColumnIndex = columnIndex
+    }
+
+    func clearFKPreviewState() {
+        activeFKPreviewPopover = nil
+        activeFKPreviewModel = nil
+        activeFKPreviewColumnIndex = nil
+    }
+
+    func refreshFKPreviewForRowChange() {
+        guard let popover = activeFKPreviewPopover, popover.isShown,
+              let model = activeFKPreviewModel,
+              let columnIndex = activeFKPreviewColumnIndex,
+              let tableView else {
+            return
+        }
+        let focusedRow = (tableView as? KeyHandlingTableView)?.focusedRow ?? -1
+        let newRow = focusedRow >= 0 ? focusedRow : (tableView.selectedRowIndexes.max() ?? -1)
+        guard newRow >= 0,
+              let tableColumnIndex = DataGridView.tableColumnIndex(
+                for: columnIndex,
+                in: tableView,
+                schema: identitySchema
+              ) else {
+            popover.close()
+            clearFKPreviewState()
+            return
+        }
+        let tableRows = tableRowsProvider()
+        guard columnIndex < tableRows.columns.count,
+              let fkInfo = tableRows.columnForeignKeys[tableRows.columns[columnIndex]] else {
+            popover.close()
+            clearFKPreviewState()
+            return
+        }
+        let newValue = cellValue(at: newRow, column: columnIndex)
+        let newRect = tableView.rect(ofRow: newRow).intersection(tableView.rect(ofColumn: tableColumnIndex))
+        guard !newRect.isEmpty else {
+            popover.close()
+            clearFKPreviewState()
+            return
+        }
+        model.cellValue = newValue
+        model.fkInfo = fkInfo
+        popover.positioningRect = newRect
+    }
+
+    func dismissFKPreviewOnColumnChange() {
+        guard let popover = activeFKPreviewPopover, popover.isShown else { return }
+        popover.close()
+        clearFKPreviewState()
     }
 
     func showJSONEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
@@ -138,7 +178,13 @@ extension TableViewCoordinator {
     }
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let currentValue = cellValue(at: row, column: columnIndex)
+        let typed = cellTypedValue(at: row, column: columnIndex)
+        let currentValue: String?
+        switch typed {
+        case .null: currentValue = nil
+        case .text(let s): currentValue = s
+        case .bytes(let data): currentValue = String(data: data, encoding: .isoLatin1)
+        }
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
@@ -152,6 +198,9 @@ extension TableViewCoordinator {
                 initialValue: currentValue,
                 onCommit: { newValue in
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onCommitBytes: { data in
+                    self?.commitBinaryEdit(row: row, columnIndex: columnIndex, data: data)
                 },
                 onDismiss: dismiss
             )
@@ -288,6 +337,10 @@ extension TableViewCoordinator {
 
     func commitPopoverEdit(row: Int, columnIndex: Int, newValue: String?) {
         commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+    }
+
+    func commitBinaryEdit(row: Int, columnIndex: Int, data: Data) {
+        commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: .bytes(data))
     }
 }
 

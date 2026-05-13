@@ -180,6 +180,31 @@ struct CopilotConversationCreateParams: Codable, Sendable {
     let source: String
     let model: String?
     let workspaceFolders: [LSPWorkspaceFolder]?
+    let chatMode: String?
+    let customChatModeId: String?
+    let needToolCallConfirmation: Bool?
+
+    init(
+        workDoneToken: String,
+        turns: [CopilotConversationTurn],
+        capabilities: CopilotConversationCapabilities,
+        source: String,
+        model: String?,
+        workspaceFolders: [LSPWorkspaceFolder]?,
+        chatMode: String? = nil,
+        customChatModeId: String? = nil,
+        needToolCallConfirmation: Bool? = nil
+    ) {
+        self.workDoneToken = workDoneToken
+        self.turns = turns
+        self.capabilities = capabilities
+        self.source = source
+        self.model = model
+        self.workspaceFolders = workspaceFolders
+        self.chatMode = chatMode
+        self.customChatModeId = customChatModeId
+        self.needToolCallConfirmation = needToolCallConfirmation
+    }
 }
 
 struct CopilotConversationCreateResult: Codable, Sendable {
@@ -194,6 +219,31 @@ struct CopilotConversationTurnParams: Codable, Sendable {
     let source: String
     let model: String?
     let workspaceFolders: [LSPWorkspaceFolder]?
+    let chatMode: String?
+    let customChatModeId: String?
+    let needToolCallConfirmation: Bool?
+
+    init(
+        workDoneToken: String,
+        conversationId: String,
+        message: String,
+        source: String,
+        model: String?,
+        workspaceFolders: [LSPWorkspaceFolder]?,
+        chatMode: String? = nil,
+        customChatModeId: String? = nil,
+        needToolCallConfirmation: Bool? = nil
+    ) {
+        self.workDoneToken = workDoneToken
+        self.conversationId = conversationId
+        self.message = message
+        self.source = source
+        self.model = model
+        self.workspaceFolders = workspaceFolders
+        self.chatMode = chatMode
+        self.customChatModeId = customChatModeId
+        self.needToolCallConfirmation = needToolCallConfirmation
+    }
 }
 
 struct CopilotConversationTurnResult: Codable, Sendable {
@@ -320,4 +370,38 @@ enum AnyCodableValue: Sendable, Equatable {
             self = .null
         }
     }
+}
+
+// MARK: - Copilot tool calling
+
+struct CopilotLanguageModelToolInformation: Codable, Sendable {
+    let name: String
+    let description: String
+    let inputSchema: JsonValue?
+}
+
+struct CopilotRegisterToolsParams: Codable, Sendable {
+    let tools: [CopilotLanguageModelToolInformation]
+}
+
+struct CopilotInvokeClientToolParams: Codable, Sendable {
+    let name: String
+    let input: JsonValue?
+    let conversationId: String
+    let turnId: String
+}
+
+enum CopilotToolInvocationStatus: String, Codable, Sendable {
+    case success
+    case error
+    case cancelled
+}
+
+struct CopilotLanguageModelToolResultContent: Codable, Sendable {
+    let value: JsonValue
+}
+
+struct CopilotLanguageModelToolResult: Codable, Sendable {
+    let status: CopilotToolInvocationStatus
+    let content: [CopilotLanguageModelToolResultContent]
 }

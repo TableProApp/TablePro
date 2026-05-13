@@ -30,6 +30,7 @@ struct QueryTab: Identifiable, Equatable {
     var schemaVersion: Int
     var metadataVersion: Int
     var paginationVersion: Int
+    var loadEpoch: Int = 0
 
     init(
         id: UUID = UUID(),
@@ -56,6 +57,7 @@ struct QueryTab: Identifiable, Equatable {
         self.schemaVersion = 0
         self.metadataVersion = 0
         self.paginationVersion = 0
+        self.loadEpoch = 0
     }
 
     init(from persisted: PersistedTab) {
@@ -87,6 +89,7 @@ struct QueryTab: Identifiable, Equatable {
         self.schemaVersion = 0
         self.metadataVersion = 0
         self.paginationVersion = 0
+        self.loadEpoch = 0
     }
 
     @MainActor static func buildBaseTableQuery(
@@ -166,5 +169,6 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.tabType == rhs.tabType
             && lhs.isPreview == rhs.isPreview
             && lhs.hasUserInteraction == rhs.hasUserInteraction
+            && lhs.loadEpoch == rhs.loadEpoch
     }
 }

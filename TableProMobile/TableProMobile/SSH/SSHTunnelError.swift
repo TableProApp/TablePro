@@ -1,8 +1,3 @@
-//
-//  SSHTunnelError.swift
-//  TableProMobile
-//
-
 import Foundation
 
 enum SSHTunnelError: Error, LocalizedError {

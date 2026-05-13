@@ -12,9 +12,9 @@ Open with `Cmd+,`. Settings are grouped into tabs.
   <Card title="Appearance" icon="palette" href="/customization/appearance">Theme, accent colour, sidebar.</Card>
   <Card title="Editor" icon="code" href="/customization/editor-settings">Font, Vim mode, line numbers, JSON viewer.</Card>
   <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">Custom shortcuts.</Card>
-  <Card title="AI" icon="sparkles" href="/features/ai-assistant#configure-a-provider">Provider config, inline suggestions, context, privacy.</Card>
+  <Card title="AI" icon="sparkles" href="/customization/settings#ai">Providers, chat modes, custom slash commands, context, per-connection rules.</Card>
   <Card title="Terminal" icon="terminal" href="/features/terminal#settings">Font, theme, CLI paths.</Card>
-  <Card title="MCP" icon="network-wired" href="/features/mcp#enabling-the-server">MCP server config.</Card>
+  <Card title="MCP" icon="network-wired" href="/features/mcp#enabling-the-server">Server config, tokens, activity log, connected clients.</Card>
   <Card title="Plugins" icon="puzzle-piece" href="/customization/settings#plugins">Manage drivers and exporters.</Card>
   <Card title="Account" icon="user" href="/features/icloud-sync">License, iCloud sync, linked folders.</Card>
 </CardGroup>
@@ -73,6 +73,78 @@ No queries or database content is transmitted.
 | **Group all connections in one window** | Off | Force all tabs into one window regardless of connection |
 
 A tab is "clean" when it's a table tab (not query/create), unpinned, no unsaved changes, and no interactions (sort, filter, selection).
+
+## AI
+
+The **AI** tab configures providers and chat behavior. See [AI Assistant](/features/ai-assistant) for usage. The tab has these sections.
+
+### Enable AI Features
+
+Master switch. Turning it off hides every other AI section in this tab and disables chat, inline suggestions, and editor actions.
+
+### Active Provider
+
+The provider used by default. Override it per turn from the model picker in the chat composer.
+
+### Providers
+
+List of configured providers. Click a row to open its detail sheet, or pick **Add Provider…** to add one. The choices are GitHub Copilot (OAuth device flow), Claude, OpenAI, OpenRouter, Gemini, Ollama (no auth, local), and a custom OpenAI-compatible endpoint.
+
+API keys are stored in the macOS Keychain. Removing a provider deletes its key.
+
+### Inline Suggestions
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Enable inline suggestions while typing** | Off | Show ghost-text completions in the SQL editor. Requires an active provider. |
+
+With Copilot active, suggestions come from Copilot's inline-completion model. With any other provider, they come from chat completions.
+
+### Context
+
+Controls what the AI sees automatically each turn. New installs default all three toggles to **off**, so the AI sees only what you attach with `@` mentions or what tools pull in.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Include database schema** | Off | Auto-attach the active connection's schema |
+| **Include current query** | Off | Auto-attach the active editor tab's text |
+| **Include query results** | Off | Auto-attach the most recent query result snapshot |
+| **Max schema tables** | 20 | Cap on tables formatted into the schema attachment, range 1-100 |
+
+Existing installs keep their previous values.
+
+### Custom Slash Commands
+
+Add, edit, or delete user-defined slash commands. Each command has a name, an optional description, and a prompt template.
+
+Templates support these placeholders, substituted at send time:
+
+- `{{query}}`: the current editor query.
+- `{{schema}}`: the formatted schema for the active connection (capped by **Max schema tables**).
+- `{{database}}`: the active database name.
+- `{{body}}`: text typed after the command in the composer (e.g. `/review WHERE clauses` passes `WHERE clauses`).
+
+Save needs a name and a non-empty template.
+
+### Privacy
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Connection policy** | Ask Each Time | Default AI policy applied to new connections. Per-connection overrides live in the connection form. |
+
+For per-connection AI rules (system-prompt additions tied to a specific database), see [Per-connection AI rules](/features/ai-assistant#per-connection-ai-rules). Those are configured in the connection form, not here.
+
+## MCP
+
+The **MCP** tab covers the [External API](/external-api/index) surface. The server lazy-starts on first use and exposes the following sections:
+
+- **MCP Server**: enable toggle and live status. The server runs on a free port in the `51000-52000` range. See [MCP Server](/features/mcp).
+- **MCP Configuration**: row limit defaults, query timeout, "log MCP queries in history".
+- **Authentication**: list, create, and revoke bearer tokens. Issued by the [pairing flow](/external-api/pairing) or generated manually. See [Tokens](/external-api/tokens).
+- **Activity Log**: every authentication, tool call, and resource read with token, category, action, connection, and outcome. 90-day retention. Backed by `~/Library/Application Support/TablePro/mcp-audit.db`.
+- **Network**: remote access toggle, TLS certificate, fingerprint, and PEM export.
+- **MCP Setup**: one-click config snippets for Claude Code, Claude Desktop, and Cursor.
+- **Connected Clients**: live list of MCP clients connected to the server.
 
 ## Plugins
 

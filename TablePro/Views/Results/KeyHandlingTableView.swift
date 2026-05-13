@@ -3,8 +3,24 @@ import AppKit
 final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
 
+    private var isRaisingOverlayEditor = false
+
     override var acceptsFirstResponder: Bool {
         true
+    }
+
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        guard !isRaisingOverlayEditor else { return }
+        guard let editor = coordinator?.overlayEditor,
+              editor.isActive,
+              let container = editor.containerView,
+              container !== subview,
+              container.superview === self,
+              subviews.last !== container else { return }
+        isRaisingOverlayEditor = true
+        editor.raiseToFront()
+        isRaisingOverlayEditor = false
     }
 
     var selection = TableSelection() {
@@ -90,7 +106,7 @@ final class KeyHandlingTableView: NSTableView {
             if let schema = coordinator?.identitySchema,
                let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
                coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
-                editColumn(clickedColumn, row: clickedRow, with: nil, select: true)
+                coordinator?.beginCellEdit(row: clickedRow, tableColumnIndex: clickedColumn)
             }
         }
     }
@@ -200,17 +216,34 @@ final class KeyHandlingTableView: NSTableView {
               DataGridView.isDataTableColumn(focusedColumn),
               coordinator?.isEditable == true,
               let schema = coordinator?.identitySchema,
-              let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
+              let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
+              let coordinator else {
             return
         }
 
-        if let value = coordinator?.cellValue(at: row, column: columnIndex),
+        // Dropdown / type-picker columns: Return opens the popup, matching the
+        // chevron and double-click paths. Without this branch, Return on a focused
+        // dropdown cell does nothing because beginCellEdit is blocked by editEligibility.
+        if coordinator.dropdownColumns?.contains(columnIndex) == true ||
+           coordinator.typePickerColumns?.contains(columnIndex) == true {
+            coordinator.handleChevronAction(row: row, columnIndex: columnIndex)
+            return
+        }
+
+        let tableRows = coordinator.tableRowsProvider()
+        if columnIndex < tableRows.columnTypes.count,
+           tableRows.columnTypes[columnIndex].isBlobType {
+            coordinator.showBlobEditorPopover(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex)
+            return
+        }
+
+        if let value = coordinator.cellValue(at: row, column: columnIndex),
            value.containsLineBreak {
-            coordinator?.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
+            coordinator.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
             return
         }
 
-        editColumn(focusedColumn, row: row, with: nil, select: true)
+        coordinator.beginCellEdit(row: row, tableColumnIndex: focusedColumn)
     }
 
     @objc override func cancelOperation(_ sender: Any?) {
@@ -228,6 +261,7 @@ final class KeyHandlingTableView: NSTableView {
             : previousVisibleDataColumn(before: focusedColumn)
         guard DataGridView.isDataTableColumn(target) else { return }
         focusedColumn = target
+        coordinator?.dismissFKPreviewOnColumnChange()
         if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 
@@ -237,6 +271,7 @@ final class KeyHandlingTableView: NSTableView {
             : firstVisibleDataColumn()
         guard DataGridView.isDataTableColumn(target) else { return }
         focusedColumn = target
+        coordinator?.dismissFKPreviewOnColumnChange()
         if currentRow >= 0 { scrollColumnToVisible(target) }
     }
 

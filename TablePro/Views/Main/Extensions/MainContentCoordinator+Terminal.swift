@@ -12,8 +12,6 @@ extension MainContentCoordinator {
             return
         }
 
-        let session = DatabaseManager.shared.session(for: connectionId)
-        let dbName = session?.activeDatabase ?? connection.database
-        tabManager.addTerminalTab(databaseName: dbName)
+        tabManager.addTerminalTab(databaseName: activeDatabaseName)
     }
 }

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import SwiftUI
 import Testing
 @testable import TablePro
@@ -28,7 +29,6 @@ struct CommandActionsDispatchTests {
 
         let actions = MainContentCommandActions(
             coordinator: coordinator,
-            filterStateManager: state.filterStateManager,
             connection: connection,
             selectionState: coordinator.selectionState,
             selectedTables: Binding(get: { selectedTables }, set: { selectedTables = $0 }),

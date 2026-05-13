@@ -37,7 +37,7 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("PostgreSQL defaults to dollar style")
     func testPostgreSQLDefaultsDollar() throws {
         let generator = try makeGenerator(databaseType: .postgresql)
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         ]
@@ -57,7 +57,7 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("Redshift defaults to dollar style")
     func testRedshiftDefaultsDollar() throws {
         let generator = try makeGenerator(databaseType: .redshift)
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         ]
@@ -74,7 +74,7 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("DuckDB defaults to dollar style")
     func testDuckDBDefaultsDollar() throws {
         let generator = try makeGenerator(databaseType: .duckdb)
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         ]
@@ -91,7 +91,7 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("MySQL defaults to questionMark style")
     func testMySQLDefaultsQuestionMark() throws {
         let generator = try makeGenerator(databaseType: .mysql)
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         ]
@@ -109,7 +109,7 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("SQLite defaults to questionMark style")
     func testSQLiteDefaultsQuestionMark() throws {
         let generator = try makeGenerator(databaseType: .sqlite)
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         ]
@@ -127,7 +127,7 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("MSSQL defaults to questionMark style")
     func testMSSQLDefaultsQuestionMark() throws {
         let generator = try makeGenerator(databaseType: .mssql)
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         ]
@@ -147,7 +147,7 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("Dollar style generates $1, $2 placeholders for INSERT")
     func testDollarStyleInsert() throws {
         let generator = try makeGenerator(parameterStyle: .dollar)
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         ]
@@ -167,7 +167,7 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("QuestionMark style generates ? placeholders for INSERT")
     func testQuestionMarkStyleInsert() throws {
         let generator = try makeGenerator(parameterStyle: .questionMark)
-        let insertedRowData: [Int: [String?]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
             RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         ]

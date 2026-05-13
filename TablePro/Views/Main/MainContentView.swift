@@ -30,18 +30,21 @@ struct MainContentView: View {
 
     // Shared state from parent
     @Binding var windowTitle: String
-    @Binding var tables: [TableInfo]
+    @Bindable var schemaService = SchemaService.shared
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
     @Binding var tableOperationOptions: [String: TableOperationOptions]
     var rightPanelState: RightPanelState
 
+    private var tables: [TableInfo] {
+        schemaService.tables(for: connection.id)
+    }
+
     // MARK: - State Objects
 
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
-    let filterStateManager: FilterStateManager
     let toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator
 
@@ -66,7 +69,6 @@ struct MainContentView: View {
         connection: DatabaseConnection,
         payload: EditorTabPayload?,
         windowTitle: Binding<String>,
-        tables: Binding<[TableInfo]>,
         sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -74,14 +76,12 @@ struct MainContentView: View {
         rightPanelState: RightPanelState,
         tabManager: QueryTabManager,
         changeManager: DataChangeManager,
-        filterStateManager: FilterStateManager,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator
     ) {
         self.connection = connection
         self.payload = payload
         self._windowTitle = windowTitle
-        self._tables = tables
         self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
@@ -89,7 +89,6 @@ struct MainContentView: View {
         self.rightPanelState = rightPanelState
         self.tabManager = tabManager
         self.changeManager = changeManager
-        self.filterStateManager = filterStateManager
         self.toolbarState = toolbarState
         self.coordinator = coordinator
     }
@@ -179,7 +178,7 @@ struct MainContentView: View {
                         isPresented: dismissBinding,
                         mode: .queryResults(
                             connection: connectionWithCurrentDatabase,
-                            tableRows: coordinator.tableRowsStore.tableRows(for: tab.id),
+                            tableRows: coordinator.tabSessionRegistry.tableRows(for: tab.id),
                             suggestedFileName: fileName
                         )
                     )
@@ -199,15 +198,20 @@ struct MainContentView: View {
                 connection: connection,
                 initialFileURL: coordinator.importFileURL
             )
-        case .quickSwitcher:
-            QuickSwitcherSheet(
+        case .backupDatabase:
+            BackupDatabaseFlow(
                 isPresented: dismissBinding,
-                schemaProvider: coordinator.schemaProvider,
-                connectionId: connection.id,
-                databaseType: connection.type,
-                onSelect: { item in
-                    coordinator.handleQuickSwitcherSelection(item)
-                }
+                connection: connectionWithCurrentDatabase,
+                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.currentDatabase
+                    ?? connection.database
+            )
+        case .restoreDatabase(let fileURL):
+            RestoreDatabaseFlow(
+                isPresented: dismissBinding,
+                connection: connectionWithCurrentDatabase,
+                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.currentDatabase
+                    ?? connection.database,
+                sourceURL: fileURL
             )
         case .maintenance(let operation, let tableName):
             MaintenanceSheet(
@@ -215,6 +219,22 @@ struct MainContentView: View {
                 tableName: tableName,
                 databaseType: connection.type,
                 onExecute: coordinator.executeMaintenance
+            )
+        case .quickSwitcher:
+            QuickSwitcherSheet(
+                isPresented: dismissBinding,
+                schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
+                connectionId: connection.id,
+                databaseType: connection.type,
+                onSelect: coordinator.handleQuickSwitcherSelection
+            )
+        case .connectionSwitcher:
+            ConnectionSwitcherSheet(isPresented: dismissBinding)
+        case .sqlPreview:
+            SQLReviewSheet(
+                isPresented: dismissBinding,
+                statements: coordinator.toolbarState.previewStatements,
+                databaseType: coordinator.toolbarState.databaseType
             )
         }
     }
@@ -262,7 +282,6 @@ struct MainContentView: View {
                 setupCommandActions()
                 updateToolbarPendingState()
                 updateInspectorContext()
-                rightPanelState.aiViewModel.schemaProvider = coordinator.schemaProvider
                 coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
 
@@ -270,37 +289,6 @@ struct MainContentView: View {
                 // time `viewWindow` is still nil because WindowAccessor fires its
                 // callback on viewDidMoveToWindow, which runs AFTER SwiftUI's
                 // onAppear in NSHostingView-hosted content.)
-
-                // Wire view-layer callbacks invoked by TabWindowController's
-                // NSWindowDelegate → coordinator lifecycle methods. The closures
-                // capture SwiftUI-scoped state (tables binding, sidebarState,
-                // rightPanelState) that the coordinator can't reach directly.
-                let connectionId = connection.id
-                coordinator.onWindowBecameKey = { [tabManager, sidebarState] in
-                    // Read tables fresh from DatabaseManager every invocation —
-                    // capturing the @Binding's wrappedValue (or `tables`
-                    // shorthand) snapshots an empty array at onAppear time
-                    // because the schema load is async, and the closure is
-                    // installed once but invoked on every windowDidBecomeKey.
-                    let liveTables = DatabaseManager.shared
-                        .session(for: connectionId)?.tables ?? []
-                    let target: Set<TableInfo>
-                    if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
-                       let match = liveTables.first(where: { $0.name == currentTableName }) {
-                        target = [match]
-                    } else {
-                        target = []
-                    }
-                    if sidebarState.selectedTables != target {
-                        // Don't clear sidebar selection while tables still loading —
-                        // avoids double-navigation race against SidebarSyncAction.
-                        if target.isEmpty && liveTables.isEmpty { return }
-                        sidebarState.selectedTables = target
-                    }
-                }
-                coordinator.onWindowWillClose = { [rightPanelState] in
-                    rightPanelState.teardown()
-                }
 
                 Self.lifecycleLogger.info(
                     "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -350,13 +338,13 @@ struct MainContentView: View {
                 handleStructureChange()
             }
             .onChange(of: currentTab?.schemaVersion) { _, _ in
-                let columns = currentTab.map { coordinator.tableRowsStore.tableRows(for: $0.id).columns }
+                let columns = currentTab.map { coordinator.tabSessionRegistry.tableRows(for: $0.id).columns }
                 handleColumnsChange(newColumns: columns)
             }
             .task { handleConnectionStatusChange() }
             .onReceive(
-                NotificationCenter.default.publisher(for: .connectionStatusDidChange)
-                    .filter { ($0.object as? UUID) == connection.id }
+                AppEvents.shared.connectionStatusChanged
+                    .filter { $0.connectionId == connection.id }
             ) { _ in
                 handleConnectionStatusChange()
             }
@@ -368,10 +356,6 @@ struct MainContentView: View {
                 }
                 handleTableSelectionChange(from: oldTables, to: newTables)
             }
-            // Phase 2: NSWindow.didBecomeKey / .didResignKey observers removed.
-            // TabWindowController's NSWindowDelegate dispatches to
-            // MainContentCoordinator.handleWindowDidBecomeKey / handleWindowDidResignKey
-            // directly — window-scoped, fires once per focus change.
             .onChange(of: tables) { _, newTables in
                 let syncAction = SidebarSyncAction.resolveOnTablesLoad(
                     newTables: newTables,
@@ -394,8 +378,6 @@ struct MainContentView: View {
             tabManager: tabManager,
             coordinator: coordinator,
             changeManager: changeManager,
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: coordinator.columnVisibilityManager,
             connection: connection,
             windowId: windowId,
             connectionId: connection.id,
@@ -405,16 +387,8 @@ struct MainContentView: View {
                     rowIndex: rowIndex, columnIndex: colIndex, value: value)
                 scheduleInspectorUpdate()
             },
-            onSort: { columnIndex, ascending, isMultiSort in
-                coordinator.handleSort(
-                    columnIndex: columnIndex, ascending: ascending,
-                    isMultiSort: isMultiSort)
-            },
-            onClearSort: {
-                coordinator.clearSort()
-            },
-            onRemoveSortColumn: { columnIndex in
-                coordinator.removeMultiSortColumn(columnIndex: columnIndex)
+            onSortStateChanged: { newState in
+                coordinator.handleSortStateChanged(newState)
             },
             onAddRow: {
                 coordinator.addNewRow()
@@ -432,7 +406,7 @@ struct MainContentView: View {
                 scheduleInspectorUpdate(lazyLoadExcludedColumns: true)
             },
             onFilterColumn: { columnName in
-                filterStateManager.addFilterForColumn(columnName)
+                coordinator.addFilterForColumn(columnName)
             },
             onApplyFilters: { filters in
                 coordinator.applyFilters(filters)

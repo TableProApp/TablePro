@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import os
+import TableProPluginKit
 
 @MainActor
 final class RowOperationsManager {
@@ -10,7 +11,7 @@ final class RowOperationsManager {
 
     struct AddNewRowResult {
         let rowIndex: Int
-        let values: [String?]
+        let values: [PluginCellValue]
         let delta: Delta
     }
 
@@ -22,7 +23,7 @@ final class RowOperationsManager {
 
     struct PastedRowInfo {
         let rowIndex: Int
-        let values: [String?]
+        let values: [PluginCellValue]
     }
 
     struct PasteRowsResult {
@@ -51,12 +52,12 @@ final class RowOperationsManager {
         columnDefaults: [String: String?],
         tableRows: inout TableRows
     ) -> AddNewRowResult? {
-        var newRowValues: [String?] = []
+        var newRowValues: [PluginCellValue] = []
         for column in columns {
             if let defaultValue = columnDefaults[column], defaultValue != nil {
-                newRowValues.append("__DEFAULT__")
+                newRowValues.append(.text("__DEFAULT__"))
             } else {
-                newRowValues.append(nil)
+                newRowValues.append(.null)
             }
         }
 
@@ -75,11 +76,11 @@ final class RowOperationsManager {
     ) -> AddNewRowResult? {
         guard sourceRowIndex >= 0, sourceRowIndex < tableRows.count else { return nil }
 
-        var newValues = tableRows.rows[sourceRowIndex].values
+        var newValues = Array(tableRows.rows[sourceRowIndex].values)
 
         for pkColumn in changeManager.primaryKeyColumns {
             if let pkIndex = columns.firstIndex(of: pkColumn), pkIndex < newValues.count {
-                newValues[pkIndex] = "__DEFAULT__"
+                newValues[pkIndex] = .text("__DEFAULT__")
             }
         }
 
@@ -100,7 +101,7 @@ final class RowOperationsManager {
         }
 
         var insertedRowsToDelete: [Int] = []
-        var existingRowsToDelete: [(rowIndex: Int, originalRow: [String?])] = []
+        var existingRowsToDelete: [(rowIndex: Int, originalRow: [PluginCellValue])] = []
 
         let minSelectedRow = selectedIndices.min() ?? 0
         let maxSelectedRow = selectedIndices.max() ?? 0
@@ -110,7 +111,7 @@ final class RowOperationsManager {
                 insertedRowsToDelete.append(rowIndex)
             } else if !changeManager.isRowDeleted(rowIndex) {
                 if rowIndex < tableRows.count {
-                    existingRowsToDelete.append((rowIndex: rowIndex, originalRow: tableRows.rows[rowIndex].values))
+                    existingRowsToDelete.append((rowIndex: rowIndex, originalRow: Array(tableRows.rows[rowIndex].values)))
                 }
             }
         }
@@ -165,7 +166,7 @@ final class RowOperationsManager {
                 return UndoApplicationResult(adjustedSelection: Set<Int>(), delta: delta)
             } else if result.needsRowRestore {
                 let columnCount = tableRows.columns.count
-                let values = result.restoreRow ?? [String?](repeating: nil, count: columnCount)
+                let values = result.restoreRow ?? [PluginCellValue](repeating: .null, count: columnCount)
                 let delta = tableRows.insertInsertedRow(at: rowIndex, values: values)
                 return UndoApplicationResult(adjustedSelection: nil, delta: delta)
             }
@@ -261,9 +262,16 @@ final class RowOperationsManager {
         for rowIndex in indicesToCopy {
             guard rowIndex < tableRows.count else { continue }
             if !result.isEmpty { result.append("\n") }
-            for (colIdx, value) in tableRows.rows[rowIndex].values.enumerated() {
+            for (colIdx, cell) in tableRows.rows[rowIndex].values.enumerated() {
                 if colIdx > 0 { result.append("\t") }
-                result.append(value ?? "NULL")
+                switch cell {
+                case .null:
+                    result.append("NULL")
+                case .text(let s):
+                    result.append(s)
+                case .bytes(let data):
+                    result.append(BlobFormattingService.shared.format(data, for: .copy) ?? "")
+                }
             }
         }
 

@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class MongoDBPluginDriver: PluginDatabaseDriver {
+final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var mongoConnection: MongoDBConnection?
     private var currentDb: String
@@ -21,6 +21,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
     func quoteIdentifier(_ name: String) -> String { name }
+
+    var capabilities: PluginCapabilities {
+        [.cancelQuery]
+    }
 
     func defaultExportQuery(table: String) -> String? {
         "db.getCollection(\"\(table)\").find({})"
@@ -54,17 +58,17 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
         let effectiveHost = config.additionalFields["mongoHosts"].flatMap { hosts in
             hosts.isEmpty ? nil : hosts
         } ?? config.host
+        // mongodb+srv URIs require TLS per the spec; force it on if the user left it Disabled.
+        let effectiveSSL: SSLConfiguration = (useSrv && config.ssl.mode == .disabled)
+            ? SSLConfiguration(mode: .required)
+            : config.ssl
         let conn = MongoDBConnection(
             host: effectiveHost,
             port: config.port,
             user: config.username,
             password: config.password,
             database: currentDb,
-            sslMode: useSrv && (config.additionalFields["sslMode"] ?? "Disabled") == "Disabled"
-                ? "Required"
-                : config.additionalFields["sslMode"] ?? "Disabled",
-            sslCACertPath: config.additionalFields["sslCACertPath"] ?? "",
-            sslClientCertPath: config.additionalFields["sslClientCertPath"] ?? "",
+            ssl: effectiveSSL,
             authSource: config.additionalFields["mongoAuthSource"],
             readPreference: config.additionalFields["mongoReadPreference"],
             writeConcern: config.additionalFields["mongoWriteConcern"],
@@ -81,8 +85,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
                 let dbs = try await conn.listDatabases()
                 currentDb = dbs.first { !Self.systemDatabases.contains($0) } ?? dbs.first ?? ""
             } catch {
-                conn.disconnect()
-                throw error
+                Self.logger.warning("listDatabases failed during connect, continuing without default database: \(error.localizedDescription, privacy: .public)")
             }
         }
 
@@ -125,7 +128,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
         return try await executeOperation(operation, connection: conn, startTime: startTime)
     }
 
-    func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await execute(query: query)
     }
 
@@ -133,60 +136,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
 
     func cancelQuery() throws {
         mongoConnection?.cancelCurrentQuery()
-    }
-
-    // MARK: - Paginated Query Support
-
-    func fetchRowCount(query: String) async throws -> Int {
-        guard let conn = mongoConnection else {
-            throw MongoDBPluginError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let db = currentDb
-        let operation = try MongoShellParser.parse(trimmed)
-
-        switch operation {
-        case .find(let collection, let filter, _):
-            let count = try await conn.countDocuments(database: db, collection: collection, filter: filter)
-            return Int(count)
-        case .findOne:
-            return 1
-        case .aggregate(let collection, let pipeline):
-            let result = try await conn.aggregate(database: db, collection: collection, pipeline: pipeline)
-            return result.docs.count
-        case .countDocuments(let collection, let filter):
-            let count = try await conn.countDocuments(database: db, collection: collection, filter: filter)
-            return Int(count)
-        default:
-            return 0
-        }
-    }
-
-    func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let startTime = Date()
-
-        guard let conn = mongoConnection else {
-            throw MongoDBPluginError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let db = currentDb
-        let operation = try MongoShellParser.parse(trimmed)
-
-        switch operation {
-        case .find(let collection, let filter, var options):
-            options.skip = offset
-            options.limit = limit
-            let result = try await conn.find(
-                database: db, collection: collection, filter: filter,
-                sort: options.sort, projection: options.projection,
-                skip: offset, limit: limit
-            )
-            return buildPluginResult(from: result.docs, startTime: startTime, isTruncated: result.isTruncated)
-        default:
-            return try await executeOperation(operation, connection: conn, startTime: startTime)
-        }
     }
 
     // MARK: - Schema Operations
@@ -586,11 +535,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
     func generateStatements(
         table: String,
         columns: [String],
+        primaryKeyColumns: [String],
         changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
+        insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])]? {
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let generator = MongoDBStatementGenerator(collectionName: table, columns: columns)
         return generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
@@ -687,7 +637,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             let count = try await conn.countDocuments(database: db, collection: collection, filter: filter)
             return PluginQueryResult(
                 columns: ["count"], columnTypeNames: ["Int64"],
-                rows: [[String(count)]], rowsAffected: 0,
+                rows: [[.text(String(count))]], rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -695,7 +645,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             let insertedId = try await conn.insertOne(database: db, collection: collection, document: document)
             return PluginQueryResult(
                 columns: ["insertedId"], columnTypeNames: ["ObjectId"],
-                rows: [[insertedId ?? "null"]], rowsAffected: 1,
+                rows: [[.text(insertedId ?? "null")]], rowsAffected: 1,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -705,7 +655,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             let inserted = (result.first?["n"] as? Int) ?? 0
             return PluginQueryResult(
                 columns: ["insertedCount"], columnTypeNames: ["Int32"],
-                rows: [[String(inserted)]], rowsAffected: inserted,
+                rows: [[.text(String(inserted))]], rowsAffected: inserted,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -713,7 +663,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             let modified = try await conn.updateOne(database: db, collection: collection, filter: filter, update: update)
             return PluginQueryResult(
                 columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(modified)]], rowsAffected: Int(modified),
+                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -727,7 +677,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
                 ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
             return PluginQueryResult(
                 columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(modified)]], rowsAffected: Int(modified),
+                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -741,7 +691,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
                 ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
             return PluginQueryResult(
                 columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(modified)]], rowsAffected: Int(modified),
+                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -749,7 +699,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             let deleted = try await conn.deleteOne(database: db, collection: collection, filter: filter)
             return PluginQueryResult(
                 columns: ["deletedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(deleted)]], rowsAffected: Int(deleted),
+                rows: [[.text(String(deleted))]], rowsAffected: Int(deleted),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -763,7 +713,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
                 ?? (result.first?["n"] as? Int).map(Int64.init) ?? 0
             return PluginQueryResult(
                 columns: ["deletedCount"], columnTypeNames: ["Int64"],
-                rows: [[String(deleted)]], rowsAffected: Int(deleted),
+                rows: [[.text(String(deleted))]], rowsAffected: Int(deleted),
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -817,7 +767,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             let collections = try await conn.listCollections(database: db)
             return PluginQueryResult(
                 columns: ["collection"], columnTypeNames: ["String"],
-                rows: collections.map { [$0] }, rowsAffected: 0,
+                rows: collections.map { [.text($0)] }, rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
@@ -825,7 +775,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             let databases = try await conn.listDatabases()
             return PluginQueryResult(
                 columns: ["database"], columnTypeNames: ["String"],
-                rows: databases.map { [$0] }, rowsAffected: 0,
+                rows: databases.map { [.text($0)] }, rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 

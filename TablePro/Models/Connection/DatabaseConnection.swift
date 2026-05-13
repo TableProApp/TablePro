@@ -8,6 +8,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import TableProPluginKit
 
 // MARK: - SSH Configuration
 
@@ -86,7 +87,7 @@ extension DatabaseType {
     }
 
     var iconName: String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.iconName ?? "database-icon"
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.iconName ?? "database-icon"
     }
 
     /// Returns the correct SwiftUI Image for this database type, handling both
@@ -101,6 +102,39 @@ extension DatabaseType {
 
     var defaultPort: Int {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.defaultPort ?? 0
+    }
+
+    var category: DatabaseCategory {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.category ?? .other
+    }
+
+    var tagline: String? {
+        let raw = PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.tagline ?? ""
+        return raw.isEmpty ? nil : raw
+    }
+
+    var brandColor: Color {
+        switch rawValue {
+        case "MySQL": Color(hex: "00758F")
+        case "MariaDB": Color(hex: "C0765A")
+        case "PostgreSQL": Color(hex: "336791")
+        case "Redshift": Color(hex: "527FFF")
+        case "SQLite": Color(hex: "0F80CC")
+        case "SQL Server": Color(hex: "CC2927")
+        case "Oracle": Color(hex: "C74634")
+        case "MongoDB": Color(hex: "00684A")
+        case "Redis": Color(hex: "FF4438")
+        case "ClickHouse": Color(hex: "FFCC01")
+        case "DuckDB": Color(hex: "FFC827")
+        case "Cassandra": Color(hex: "1287B1")
+        case "ScyllaDB": Color(hex: "00C9C2")
+        case "etcd": Color(hex: "419EDA")
+        case "Cloudflare D1": Color(hex: "F38020")
+        case "libSQL", "Turso": Color(hex: "4FF8D2")
+        case "DynamoDB": Color(hex: "4053D6")
+        case "BigQuery": Color(hex: "4285F4")
+        default: Color.accentColor
+        }
     }
 
     var requiresAuthentication: Bool {
@@ -141,6 +175,36 @@ extension DatabaseType {
 
     var supportsModifyPrimaryKey: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsModifyPrimaryKey ?? true
+    }
+}
+
+// MARK: - External Access
+
+enum ExternalAccessLevel: String, Codable, Sendable, CaseIterable, Identifiable {
+    case blocked
+    case readOnly
+    case readWrite
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .blocked: return String(localized: "Blocked")
+        case .readOnly: return String(localized: "Read Only")
+        case .readWrite: return String(localized: "Read & Write")
+        }
+    }
+
+    private var rank: Int {
+        switch self {
+        case .blocked: 0
+        case .readOnly: 1
+        case .readWrite: 2
+        }
+    }
+
+    func satisfies(_ required: ExternalAccessLevel) -> Bool {
+        rank >= required.rank
     }
 }
 
@@ -213,11 +277,15 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sshTunnelMode: SSHTunnelMode
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
+    var aiRules: String?
+    var aiAlwaysAllowedTools: Set<String> = []
+    var externalAccess: ExternalAccessLevel = .readOnly
     var additionalFields: [String: String] = [:]
     var redisDatabase: Int?
     var startupCommands: String?
     var sortOrder: Int
     var localOnly: Bool = false
+    var isSample: Bool = false
 
     var mongoAuthSource: String? {
         get { additionalFields["mongoAuthSource"]?.nilIfEmpty }
@@ -291,6 +359,9 @@ struct DatabaseConnection: Identifiable, Hashable {
         sshTunnelMode: SSHTunnelMode = .disabled,
         safeModeLevel: SafeModeLevel = .silent,
         aiPolicy: AIConnectionPolicy? = nil,
+        aiRules: String? = nil,
+        aiAlwaysAllowedTools: Set<String> = [],
+        externalAccess: ExternalAccessLevel = .readOnly,
         mongoAuthSource: String? = nil,
         mongoReadPreference: String? = nil,
         mongoWriteConcern: String? = nil,
@@ -303,6 +374,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         startupCommands: String? = nil,
         sortOrder: Int = 0,
         localOnly: Bool = false,
+        isSample: Bool = false,
         additionalFields: [String: String]? = nil
     ) {
         self.id = id
@@ -335,10 +407,14 @@ struct DatabaseConnection: Identifiable, Hashable {
             self.sshTunnelMode = sshTunnelMode
         }
         self.aiPolicy = aiPolicy
+        self.aiRules = aiRules
+        self.aiAlwaysAllowedTools = aiAlwaysAllowedTools
+        self.externalAccess = externalAccess
         self.redisDatabase = redisDatabase
         self.startupCommands = startupCommands
         self.sortOrder = sortOrder
         self.localOnly = localOnly
+        self.isSample = isSample
         if let additionalFields {
             self.additionalFields = additionalFields
         } else {
@@ -385,8 +461,8 @@ extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, groupId, sshProfileId
-        case sshTunnelMode, safeModeLevel, aiPolicy, additionalFields
-        case redisDatabase, startupCommands, sortOrder, localOnly
+        case sshTunnelMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
+        case redisDatabase, startupCommands, sortOrder, localOnly, isSample
     }
 
     init(from decoder: Decoder) throws {
@@ -406,11 +482,15 @@ extension DatabaseConnection: Codable {
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
         safeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
         aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
+        aiRules = try container.decodeIfPresent(String.self, forKey: .aiRules)
+        aiAlwaysAllowedTools = try container.decodeIfPresent(Set<String>.self, forKey: .aiAlwaysAllowedTools) ?? []
+        externalAccess = try container.decodeIfPresent(ExternalAccessLevel.self, forKey: .externalAccess) ?? .readOnly
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields) ?? [:]
         redisDatabase = try container.decodeIfPresent(Int.self, forKey: .redisDatabase)
         startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
+        isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
 
         // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
@@ -446,11 +526,17 @@ extension DatabaseConnection: Codable {
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
+        try container.encodeIfPresent(aiRules, forKey: .aiRules)
+        if !aiAlwaysAllowedTools.isEmpty {
+            try container.encode(aiAlwaysAllowedTools, forKey: .aiAlwaysAllowedTools)
+        }
+        try container.encode(externalAccess, forKey: .externalAccess)
         try container.encode(additionalFields, forKey: .additionalFields)
         try container.encodeIfPresent(redisDatabase, forKey: .redisDatabase)
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encode(localOnly, forKey: .localOnly)
+        try container.encode(isSample, forKey: .isSample)
     }
 }
 

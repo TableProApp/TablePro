@@ -25,6 +25,7 @@ struct AISettingsView: View {
                 providersSection
                 inlineSuggestionsSection
                 contextSection
+                CustomSlashCommandsSection(storage: CustomSlashCommandStorage.shared)
                 privacySection
             }
         }
@@ -162,7 +163,7 @@ struct AISettingsView: View {
             ZStack {
                 if provider.id == settings.activeProviderID {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.caption.bold())
                         .foregroundStyle(Color.accentColor)
                 }
             }
@@ -224,6 +225,13 @@ struct AISettingsView: View {
                 .help(settings.hasActiveProvider
                     ? ""
                     : String(localized: "Configure an active provider to enable inline suggestions."))
+            Stepper(
+                String(format: String(localized: "Debounce: %d ms"), settings.inlineSuggestionDebounceMs),
+                value: $settings.inlineSuggestionDebounceMs,
+                in: AISettings.inlineSuggestionDebounceRange,
+                step: 50
+            )
+            .disabled(!settings.inlineSuggestionsEnabled)
         } header: {
             Text("Inline Suggestions")
         } footer: {

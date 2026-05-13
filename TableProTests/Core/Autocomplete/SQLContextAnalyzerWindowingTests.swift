@@ -6,6 +6,7 @@
 //  Ensures windowing optimizations preserve correct clause detection.
 //
 
+import TableProPluginKit
 @testable import TablePro
 import Testing
 

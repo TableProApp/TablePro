@@ -2,14 +2,11 @@
 //  OpenAICompatibleProvider.swift
 //  TablePro
 //
-//  OpenAI-compatible API provider supporting OpenAI, OpenRouter, Ollama, and custom endpoints.
-//
 
 import Foundation
 import os
 
-/// AI provider for OpenAI-compatible APIs (OpenAI, OpenRouter, Ollama, custom)
-final class OpenAICompatibleProvider: AIProvider {
+final class OpenAICompatibleProvider: ChatTransport {
     private static let logger = Logger(
         subsystem: "com.TablePro",
         category: "OpenAICompatibleProvider"
@@ -18,33 +15,37 @@ final class OpenAICompatibleProvider: AIProvider {
     private let endpoint: String
     private let apiKey: String?
     private let providerType: AIProviderType
+    private let model: String
     private let maxOutputTokens: Int?
     private let session: URLSession
-
-    init(endpoint: String, apiKey: String?, providerType: AIProviderType, maxOutputTokens: Int? = nil) {
-        self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
-        self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.providerType = providerType
-        self.maxOutputTokens = maxOutputTokens
-        self.session = URLSession(configuration: .ephemeral)
+    private var testConnectionModel: String {
+        model.isEmpty ? "test" : model
     }
 
-    // MARK: - AIProvider
+    init(
+        endpoint: String,
+        apiKey: String?,
+        providerType: AIProviderType,
+        model: String = "",
+        maxOutputTokens: Int? = nil,
+        session: URLSession = URLSession(configuration: .ephemeral)
+    ) {
+        self.endpoint = endpoint.normalizedEndpoint()
+        self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.providerType = providerType
+        self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.maxOutputTokens = maxOutputTokens
+        self.session = session
+    }
 
     func streamChat(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
-    ) -> AsyncThrowingStream<AIStreamEvent, Error> {
+        turns: [ChatTurnWire],
+        options: ChatTransportOptions
+    ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let request = try buildChatCompletionRequest(
-                        messages: messages,
-                        model: model,
-                        systemPrompt: systemPrompt
-                    )
-
+                    let request = try buildChatCompletionRequest(turns: turns, options: options)
                     let (bytes, response) = try await session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
@@ -59,65 +60,19 @@ final class OpenAICompatibleProvider: AIProvider {
                         )
                     }
 
-                    var inputTokens = 0
-                    var outputTokens = 0
-
+                    var state = OpenAIStreamState()
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
-
-                        let jsonString: String
-                        if self.providerType == .ollama {
-                            // Ollama: raw newline-delimited JSON (no SSE "data: " prefix)
-                            guard !line.isEmpty else { continue }
-                            jsonString = line
-                        } else {
-                            // OpenAI/OpenRouter/Custom: SSE with "data: " prefix
-                            guard line.hasPrefix("data: ") else { continue }
-                            let payload = String(line.dropFirst(6))
-                            guard payload != "[DONE]" else { break }
-                            jsonString = payload
+                        guard let json = Self.decodeStreamLine(line, providerType: self.providerType) else {
+                            if line == "data: [DONE]" { break }
+                            continue
                         }
-
-                        // Single JSON parse per SSE line
-                        guard let data = jsonString.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                        else { continue }
-
-                        // Text extraction
-                        if let choices = json["choices"] as? [[String: Any]],
-                           let delta = choices.first?["delta"] as? [String: Any],
-                           let content = delta["content"] as? String {
-                            continuation.yield(.text(content))
-                        } else if let message = json["message"] as? [String: Any],
-                                  let content = message["content"] as? String,
-                                  !content.isEmpty {
-                            continuation.yield(.text(content))
-                        }
-
-                        // Usage extraction
-                        if let usage = json["usage"] as? [String: Any],
-                           let promptTokens = usage["prompt_tokens"] as? Int,
-                           let completionTokens = usage["completion_tokens"] as? Int {
-                            inputTokens = promptTokens
-                            outputTokens = completionTokens
-                        } else if let done = json["done"] as? Bool, done,
-                                  let promptEval = json["prompt_eval_count"] as? Int,
-                                  let evalCount = json["eval_count"] as? Int {
-                            inputTokens = promptEval
-                            outputTokens = evalCount
-                        }
-
-                        // Ollama signals completion with "done":true
-                        if json["done"] as? Bool == true {
-                            break
-                        }
+                        let result = Self.parseChunk(json, state: &state)
+                        for event in result.events { continuation.yield(event) }
+                        if result.shouldBreak { break }
                     }
-
-                    if inputTokens > 0 || outputTokens > 0 {
-                        continuation.yield(.usage(AITokenUsage(
-                            inputTokens: inputTokens,
-                            outputTokens: outputTokens
-                        )))
+                    if let usage = state.finalUsageEvent() {
+                        continuation.yield(usage)
                     }
 
                     continuation.finish()
@@ -132,6 +87,139 @@ final class OpenAICompatibleProvider: AIProvider {
         }
     }
 
+    /// Decodes one streaming line. OpenAI/OpenRouter/Custom use SSE framing
+    /// (`data: {...}`); Ollama emits NDJSON (one JSON object per line). The
+    /// `[DONE]` sentinel returns nil; the caller should break on it.
+    static func decodeStreamLine(_ line: String, providerType: AIProviderType) -> [String: Any]? {
+        let jsonString: String
+        if providerType == .ollama {
+            guard !line.isEmpty else { return nil }
+            jsonString = line
+        } else {
+            guard line.hasPrefix("data: ") else { return nil }
+            let payload = String(line.dropFirst(6))
+            guard payload != "[DONE]" else { return nil }
+            jsonString = payload
+        }
+        guard let data = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return json
+    }
+
+    /// Translate one chunk JSON to events. Mutates state to thread tool-call
+    /// index→id mapping, ordering, and token counters across chunks.
+    /// Returns `(events, shouldBreak)` so the caller can stop the stream when
+    /// Ollama emits `done: true`.
+    static func parseChunk(
+        _ json: [String: Any],
+        state: inout OpenAIStreamState
+    ) -> (events: [ChatStreamEvent], shouldBreak: Bool) {
+        var events: [ChatStreamEvent] = []
+        let choices = json["choices"] as? [[String: Any]]
+        let firstChoice = choices?.first
+        let delta = firstChoice?["delta"] as? [String: Any]
+
+        if let delta, let content = delta["content"] as? String, !content.isEmpty {
+            events.append(.textDelta(content))
+        } else if let message = json["message"] as? [String: Any],
+                  let content = message["content"] as? String,
+                  !content.isEmpty {
+            events.append(.textDelta(content))
+        }
+
+        if let delta, let toolCalls = delta["tool_calls"] as? [[String: Any]] {
+            events.append(contentsOf: handleToolCallDeltas(toolCalls, state: &state))
+        } else if let message = json["message"] as? [String: Any],
+                  let toolCalls = message["tool_calls"] as? [[String: Any]] {
+            events.append(contentsOf: handleOllamaToolCalls(toolCalls, state: &state))
+        }
+
+        if let finishReason = firstChoice?["finish_reason"] as? String,
+           finishReason == "tool_calls" {
+            events.append(contentsOf: state.flushToolUseEnds())
+        }
+
+        if let usage = json["usage"] as? [String: Any],
+           let promptTokens = usage["prompt_tokens"] as? Int,
+           let completionTokens = usage["completion_tokens"] as? Int {
+            state.inputTokens = promptTokens
+            state.outputTokens = completionTokens
+        } else if let done = json["done"] as? Bool, done,
+                  let promptEval = json["prompt_eval_count"] as? Int,
+                  let evalCount = json["eval_count"] as? Int {
+            state.inputTokens = promptEval
+            state.outputTokens = evalCount
+        }
+
+        // Ollama signals stream-end via `done: true`. We flush again here only
+        // when finish_reason didn't already drain the tool-call map (which
+        // typically isn't set on Ollama responses).
+        let shouldBreak = (json["done"] as? Bool) == true
+        if shouldBreak, !state.toolCallIndexToId.isEmpty {
+            events.append(contentsOf: state.flushToolUseEnds())
+        }
+        return (events, shouldBreak)
+    }
+
+    private static func handleToolCallDeltas(
+        _ toolCalls: [[String: Any]],
+        state: inout OpenAIStreamState
+    ) -> [ChatStreamEvent] {
+        var events: [ChatStreamEvent] = []
+        for toolCall in toolCalls {
+            guard let index = toolCall["index"] as? Int else { continue }
+            let function = toolCall["function"] as? [String: Any]
+            if state.toolCallIndexToId[index] == nil {
+                let id = (toolCall["id"] as? String)
+                    ?? "call_\(index)_\(UUID().uuidString.prefix(8))"
+                let name = (function?["name"] as? String) ?? ""
+                state.toolCallIndexToId[index] = id
+                state.toolCallOrder.append(index)
+                events.append(.toolUseStart(id: id, name: name))
+            }
+            if let id = state.toolCallIndexToId[index],
+               let arguments = function?["arguments"] as? String,
+               !arguments.isEmpty {
+                events.append(.toolUseDelta(id: id, inputJSONDelta: arguments))
+            }
+        }
+        return events
+    }
+
+    private static func handleOllamaToolCalls(
+        _ toolCalls: [[String: Any]],
+        state: inout OpenAIStreamState
+    ) -> [ChatStreamEvent] {
+        var events: [ChatStreamEvent] = []
+        for (offset, toolCall) in toolCalls.enumerated() {
+            guard let function = toolCall["function"] as? [String: Any],
+                  let name = function["name"] as? String else { continue }
+            let index = (toolCall["index"] as? Int) ?? offset
+            let id = (toolCall["id"] as? String)
+                ?? "call_\(index)_\(UUID().uuidString.prefix(8))"
+            if state.toolCallIndexToId[index] == nil {
+                state.toolCallIndexToId[index] = id
+                state.toolCallOrder.append(index)
+                events.append(.toolUseStart(id: id, name: name))
+            }
+            let argumentsString: String
+            if let stringArgs = function["arguments"] as? String {
+                argumentsString = stringArgs
+            } else if let objectArgs = function["arguments"],
+                      let data = try? JSONSerialization.data(withJSONObject: objectArgs),
+                      let encoded = String(data: data, encoding: .utf8) {
+                argumentsString = encoded
+            } else {
+                argumentsString = ""
+            }
+            if !argumentsString.isEmpty, let resolvedId = state.toolCallIndexToId[index] {
+                events.append(.toolUseDelta(id: resolvedId, inputJSONDelta: argumentsString))
+            }
+        }
+        return events
+    }
+
     func fetchAvailableModels() async throws -> [String] {
         switch providerType {
         case .ollama:
@@ -144,7 +232,6 @@ final class OpenAICompatibleProvider: AIProvider {
     func testConnection() async throws -> Bool {
         switch providerType {
         case .ollama:
-            // Ollama is local — verify reachability and model availability
             do {
                 let models = try await fetchAvailableModels()
                 if models.isEmpty {
@@ -165,7 +252,6 @@ final class OpenAICompatibleProvider: AIProvider {
                 )
             }
         default:
-            // Send a minimal non-streaming chat request to verify auth
             let chatPath = "/v1/chat/completions"
             guard let url = URL(string: "\(endpoint)\(chatPath)") else {
                 throw AIProviderError.invalidEndpoint(endpoint)
@@ -183,28 +269,27 @@ final class OpenAICompatibleProvider: AIProvider {
             }
 
             let body: [String: Any] = [
-                "model": "test",
+                "model": testConnectionModel,
                 "messages": [["role": "user", "content": "Hi"]],
                 "max_tokens": 1,
                 "stream": false,
             ]
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-            let (_, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 return false
             }
 
-            // Check response is JSON (confirms we reached an API, not a random web page)
             let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? ""
             let isJSON = contentType.contains("application/json")
+                || (try? JSONSerialization.jsonObject(with: data)) != nil
 
             if httpResponse.statusCode == 401 {
                 throw AIProviderError.authenticationFailed("")
             }
 
-            // Non-JSON response means wrong endpoint (e.g., HTML 404 page)
             if !isJSON {
                 return false
             }
@@ -213,12 +298,9 @@ final class OpenAICompatibleProvider: AIProvider {
         }
     }
 
-    // MARK: - Request Building
-
     private func buildChatCompletionRequest(
-        messages: [AIChatMessage],
-        model: String,
-        systemPrompt: String?
+        turns: [ChatTurnWire],
+        options: ChatTransportOptions
     ) throws -> URLRequest {
         let chatPath = providerType == .ollama
             ? "/api/chat"
@@ -238,38 +320,103 @@ final class OpenAICompatibleProvider: AIProvider {
             )
         }
 
-        // Build messages array
-        var apiMessages: [[String: String]] = []
-        if let systemPrompt {
+        var apiMessages: [[String: Any]] = []
+        if let systemPrompt = options.systemPrompt {
             apiMessages.append(["role": "system", "content": systemPrompt])
         }
-        for message in messages where message.role != .system {
-            apiMessages.append([
-                "role": message.role.rawValue,
-                "content": message.content
-            ])
+        for turn in turns where turn.role != .system {
+            apiMessages.append(contentsOf: encodeTurn(turn))
         }
 
         var body: [String: Any] = [
-            "model": model,
+            "model": options.model,
             "messages": apiMessages,
             "stream": true
         ]
 
-        if let maxOutputTokens {
-            body["max_tokens"] = maxOutputTokens
+        let resolvedMaxTokens = options.maxOutputTokens ?? maxOutputTokens
+        if let resolvedMaxTokens {
+            body["max_tokens"] = resolvedMaxTokens
         }
 
-        // Request usage stats in stream (OpenAI/OpenRouter support this)
         if providerType != .ollama {
             body["stream_options"] = ["include_usage": true]
+        }
+
+        if !options.tools.isEmpty {
+            body["tools"] = try options.tools.map { try encodeTool($0) }
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
 
-    // MARK: - Model Fetching
+    func encodeTurn(_ turn: ChatTurnWire) -> [[String: Any]] {
+        let toolUseBlocks = turn.blocks.compactMap { block -> ToolUseBlock? in
+            if case .toolUse(let useBlock) = block.kind { return useBlock }
+            return nil
+        }
+        let toolResultBlocks = turn.blocks.compactMap { block -> ToolResultBlock? in
+            if case .toolResult(let resultBlock) = block.kind { return resultBlock }
+            return nil
+        }
+        let textContent = turn.plainText
+
+        if turn.role == .assistant, !toolUseBlocks.isEmpty {
+            var message: [String: Any] = ["role": "assistant"]
+            if textContent.isEmpty {
+                message["content"] = NSNull()
+            } else {
+                message["content"] = textContent
+            }
+            message["tool_calls"] = toolUseBlocks.map { block -> [String: Any] in
+                [
+                    "id": block.id,
+                    "type": "function",
+                    "function": [
+                        "name": block.name,
+                        "arguments": block.input.jsonString()
+                    ]
+                ]
+            }
+            return [message]
+        }
+
+        if turn.role == .user, !toolResultBlocks.isEmpty {
+            var messages: [[String: Any]] = toolResultBlocks.map { block in
+                [
+                    "role": "tool",
+                    "tool_call_id": block.toolUseId,
+                    "content": block.content
+                ]
+            }
+            if !textContent.isEmpty {
+                messages.append([
+                    "role": "user",
+                    "content": textContent
+                ])
+            }
+            return messages
+        }
+
+        guard !textContent.isEmpty else { return [] }
+        return [[
+            "role": turn.role.rawValue,
+            "content": textContent
+        ]]
+    }
+
+    func encodeTool(_ tool: ChatToolSpec) throws -> [String: Any] {
+        let parameters = try tool.inputSchema.jsonObject()
+        return [
+            "type": "function",
+            "function": [
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": parameters
+            ]
+        ]
+    }
 
     private func fetchOpenAIModels() async throws -> [String] {
         guard let url = URL(string: "\(endpoint)/v1/models") else {
@@ -277,6 +424,7 @@ final class OpenAICompatibleProvider: AIProvider {
         }
 
         var request = URLRequest(url: url)
+        request.timeoutInterval = AIProvider.modelListTimeout
         if let apiKey, !apiKey.isEmpty {
             request.setValue(
                 "Bearer \(apiKey)",
@@ -284,7 +432,14 @@ final class OpenAICompatibleProvider: AIProvider {
             )
         }
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            Self.logger.warning("OpenAI-compatible model fetch failed: \(error.localizedDescription, privacy: .public)")
+            throw AIProviderError.networkError("Failed to fetch models")
+        }
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200
@@ -307,8 +462,18 @@ final class OpenAICompatibleProvider: AIProvider {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 
-        let request = URLRequest(url: url)
-        let (data, response) = try await session.data(for: request)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = AIProvider.modelListTimeout
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            Self.logger.warning("Ollama model fetch failed: \(error.localizedDescription, privacy: .public)")
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), endpoint)
+            )
+        }
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200
@@ -327,5 +492,31 @@ final class OpenAICompatibleProvider: AIProvider {
         }
 
         return models.compactMap { $0["name"] as? String }.sorted()
+    }
+}
+
+/// Mutable state carried across `OpenAICompatibleProvider.parseChunk` calls.
+struct OpenAIStreamState {
+    var inputTokens: Int = 0
+    var outputTokens: Int = 0
+    var toolCallIndexToId: [Int: String] = [:]
+    var toolCallOrder: [Int] = []
+
+    /// Yield `.toolUseEnd` for every tracked tool call and clear the map.
+    /// Called when the provider signals tool-call completion (`finish_reason`
+    /// or Ollama `done: true`).
+    mutating func flushToolUseEnds() -> [ChatStreamEvent] {
+        let events: [ChatStreamEvent] = toolCallOrder.compactMap { index in
+            guard let id = toolCallIndexToId[index] else { return nil }
+            return .toolUseEnd(id: id)
+        }
+        toolCallIndexToId.removeAll()
+        toolCallOrder.removeAll()
+        return events
+    }
+
+    func finalUsageEvent() -> ChatStreamEvent? {
+        guard inputTokens > 0 || outputTokens > 0 else { return nil }
+        return .usage(AITokenUsage(inputTokens: inputTokens, outputTokens: outputTokens))
     }
 }

@@ -16,6 +16,7 @@ final class QueryTabManager {
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
             }
+            syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
         }
     }
 
@@ -25,6 +26,38 @@ final class QueryTabManager {
 
     @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
     @ObservationIgnored private var _tabIndexMapDirty = true
+
+    @ObservationIgnored private let globalTabsProvider: () -> [QueryTab]
+    @ObservationIgnored private weak var tabSessionRegistry: TabSessionRegistry?
+
+    init(
+        globalTabsProvider: @escaping () -> [QueryTab] = { [] },
+        tabSessionRegistry: TabSessionRegistry? = nil
+    ) {
+        self.globalTabsProvider = globalTabsProvider
+        self.tabSessionRegistry = tabSessionRegistry
+    }
+
+    func bindTabSessionRegistry(_ registry: TabSessionRegistry) {
+        tabSessionRegistry = registry
+        for tab in tabs where registry.session(for: tab.id) == nil {
+            registry.register(TabSession(queryTab: tab))
+        }
+    }
+
+    private func syncTabSessionRegistry(oldTabs: [QueryTab], newTabs: [QueryTab]) {
+        guard let registry = tabSessionRegistry else { return }
+        let oldIds = Set(oldTabs.map(\.id))
+        let newIds = Set(newTabs.map(\.id))
+        for removedId in oldIds.subtracting(newIds) {
+            registry.unregister(id: removedId)
+        }
+        for addedTab in newTabs where !oldIds.contains(addedTab.id) {
+            if registry.session(for: addedTab.id) == nil {
+                registry.register(TabSession(queryTab: addedTab))
+            }
+        }
+    }
 
     private func rebuildTabIndexMapIfNeeded() {
         guard _tabIndexMapDirty else { return }
@@ -50,11 +83,6 @@ final class QueryTabManager {
         return (tabs[index], index)
     }
 
-    init() {
-        tabs = []
-        selectedTabId = nil
-    }
-
     // MARK: - Tab Naming
 
     /// Next "Query N" title based on existing tabs across all windows.
@@ -69,6 +97,10 @@ final class QueryTabManager {
         return "Query \(maxNumber + 1)"
     }
 
+    private func nextTitle() -> String {
+        Self.nextQueryTitle(existingTabs: globalTabsProvider() + tabs)
+    }
+
     // MARK: - Tab Management
 
     func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil) {
@@ -81,7 +113,14 @@ final class QueryTabManager {
             return
         }
 
-        let tabTitle = title ?? Self.nextQueryTitle(existingTabs: tabs)
+        let tabTitle: String
+        if let title {
+            tabTitle = title
+        } else if let sourceFileURL {
+            tabTitle = sourceFileURL.deletingPathExtension().lastPathComponent
+        } else {
+            tabTitle = nextTitle()
+        }
         var newTab = QueryTab(title: tabTitle, tabType: .query)
 
         if let query = initialQuery {
@@ -91,8 +130,9 @@ final class QueryTabManager {
 
         newTab.tableContext.databaseName = databaseName
         newTab.content.sourceFileURL = sourceFileURL
-        if sourceFileURL != nil {
+        if let sourceFileURL {
             newTab.content.savedFileContent = newTab.content.query
+            newTab.content.loadMtime = (try? FileManager.default.attributesOfItem(atPath: sourceFileURL.path)[.modificationDate]) as? Date
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -181,6 +221,13 @@ final class QueryTabManager {
         databaseName: String = "",
         quoteIdentifier: ((String) -> String)? = nil
     ) throws {
+        if let existing = tabs.first(where: {
+            $0.tabType == .table && $0.tableContext.tableName == tableName && $0.tableContext.databaseName == databaseName
+        }) {
+            selectedTabId = existing.id
+            return
+        }
+
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName, databaseType: databaseType, quoteIdentifier: quoteIdentifier
@@ -254,6 +301,22 @@ final class QueryTabManager {
         if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
             tabs[index] = tab
         }
+    }
+
+    @discardableResult
+    func mutate(tabId: UUID, _ block: (inout QueryTab) -> Void) -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabId }) else {
+            return false
+        }
+        block(&tabs[index])
+        return true
+    }
+
+    @discardableResult
+    func mutate(at index: Int, _ block: (inout QueryTab) -> Void) -> Bool {
+        guard tabs.indices.contains(index) else { return false }
+        block(&tabs[index])
+        return true
     }
 
     func markTabRenamed(_ tabId: UUID) {

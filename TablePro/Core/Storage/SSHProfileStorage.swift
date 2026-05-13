@@ -14,9 +14,12 @@ final class SSHProfileStorage {
     private let defaults = UserDefaults.standard
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let keychain: KeychainHelper
     private(set) var lastLoadFailed = false
 
-    private init() {}
+    init(keychain: KeychainHelper = .shared) {
+        self.keychain = keychain
+    }
 
     // MARK: - Profile CRUD
 
@@ -78,11 +81,11 @@ final class SSHProfileStorage {
     }
 
     func deleteProfile(_ profile: SSHProfile) {
-        SyncChangeTracker.shared.markDeleted(.sshProfile, id: profile.id.uuidString)
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return }
         profiles.removeAll { $0.id == profile.id }
         saveProfiles(profiles)
+        SyncChangeTracker.shared.markDeleted(.sshProfile, id: profile.id.uuidString)
 
         deleteSSHPassword(for: profile.id)
         deleteKeyPassphrase(for: profile.id)
@@ -97,50 +100,72 @@ final class SSHProfileStorage {
 
     func saveSSHPassword(_ password: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.password.\(profileId.uuidString)"
-        KeychainHelper.shared.saveString(password, forKey: key)
+        keychain.writeString(password, forKey: key)
     }
 
     func loadSSHPassword(for profileId: UUID) -> String? {
         let key = "com.TablePro.sshprofile.password.\(profileId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        return resolveString(label: "SSH profile password", profileId: profileId, forKey: key)
     }
 
     func deleteSSHPassword(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.password.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        keychain.delete(forKey: key)
     }
 
     // MARK: - Key Passphrase Storage
 
     func saveKeyPassphrase(_ passphrase: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-        KeychainHelper.shared.saveString(passphrase, forKey: key)
+        keychain.writeString(passphrase, forKey: key)
     }
 
     func loadKeyPassphrase(for profileId: UUID) -> String? {
         let key = "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        return resolveString(label: "SSH profile key passphrase", profileId: profileId, forKey: key)
     }
 
     func deleteKeyPassphrase(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        keychain.delete(forKey: key)
     }
 
     // MARK: - TOTP Secret Storage
 
     func saveTOTPSecret(_ secret: String, for profileId: UUID) {
         let key = "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-        KeychainHelper.shared.saveString(secret, forKey: key)
+        keychain.writeString(secret, forKey: key)
     }
 
     func loadTOTPSecret(for profileId: UUID) -> String? {
         let key = "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        return resolveString(label: "SSH profile TOTP secret", profileId: profileId, forKey: key)
     }
 
     func deleteTOTPSecret(for profileId: UUID) {
         let key = "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-        KeychainHelper.shared.delete(key: key)
+        keychain.delete(forKey: key)
+    }
+
+    private func resolveString(label: String, profileId: UUID, forKey key: String) -> String? {
+        let pid = profileId.uuidString
+        switch keychain.readStringResult(forKey: key) {
+        case .found(let value):
+            return value
+        case .notFound:
+            return nil
+        case .locked:
+            Self.logger.warning("\(label, privacy: .public) unavailable: Keychain locked (profileId=\(pid, privacy: .public))")
+            return nil
+        case .userCancelled:
+            Self.logger.notice("\(label, privacy: .public) prompt cancelled (profileId=\(pid, privacy: .public))")
+            return nil
+        case .authFailed:
+            Self.logger.warning("\(label, privacy: .public) auth failed (profileId=\(pid, privacy: .public))")
+            return nil
+        case .error(let status):
+            Self.logger.error("\(label, privacy: .public) read error \(status) (profileId=\(pid, privacy: .public))")
+            return nil
+        }
     }
 }

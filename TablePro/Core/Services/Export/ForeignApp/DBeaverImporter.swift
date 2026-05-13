@@ -6,6 +6,7 @@
 import CommonCrypto
 import Foundation
 import os
+import TableProPluginKit
 
 struct DBeaverImporter: ForeignAppImporter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DBeaverImporter")
@@ -196,13 +197,13 @@ struct DBeaverImporter: ForeignAppImporter {
         guard enabled else { return nil }
 
         let host = properties["host"] as? String ?? ""
-        let port: Int
+        let port: Int?
         if let intPort = properties["port"] as? Int {
             port = intPort
         } else if let strPort = properties["port"] as? String, let parsed = Int(strPort) {
             port = parsed
         } else {
-            port = 22
+            port = nil
         }
         let username = properties["username"] as? String ?? ""
         let authType = properties["authType"] as? String ?? "PASSWORD"
@@ -223,7 +224,6 @@ struct DBeaverImporter: ForeignAppImporter {
             username: username,
             authMethod: authMethod,
             privateKeyPath: authType == "PUBLIC_KEY" ? keyPath : "",
-            useSSHConfig: true,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,

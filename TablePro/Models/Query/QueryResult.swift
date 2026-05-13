@@ -6,12 +6,12 @@
 //
 
 import Foundation
+import TableProPluginKit
 
-/// Result of a database query execution
 struct QueryResult {
     let columns: [String]
-    let columnTypes: [ColumnType]  // NEW: Type metadata for each column
-    let rows: [[String?]]
+    let columnTypes: [ColumnType]
+    let rows: [[PluginCellValue]]
     let rowsAffected: Int
     let executionTime: TimeInterval
     let error: DatabaseError?
@@ -72,7 +72,7 @@ enum DatabaseError: Error, LocalizedError {
 }
 
 /// Information about a database table
-struct TableInfo: Identifiable, Hashable {
+struct TableInfo: Identifiable, Hashable, Sendable {
     var id: String { "\(name)_\(type.rawValue)" }
     let name: String
     let type: TableType
@@ -81,6 +81,8 @@ struct TableInfo: Identifiable, Hashable {
     enum TableType: String, Sendable {
         case table = "TABLE"
         case view = "VIEW"
+        case materializedView = "MATERIALIZED VIEW"
+        case foreignTable = "FOREIGN TABLE"
         case systemTable = "SYSTEM TABLE"
     }
 
@@ -169,7 +171,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
 }
 
 /// Connection status
-enum ConnectionStatus: Equatable {
+enum ConnectionStatus: Equatable, Sendable {
     case disconnected
     case connecting
     case connected

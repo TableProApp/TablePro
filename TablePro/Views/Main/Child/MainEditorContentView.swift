@@ -9,6 +9,16 @@
 import AppKit
 import CodeEditSourceEditor
 import SwiftUI
+import TableProPluginKit
+
+/// Identity for the visibility-scoped lazy-load `.task(id:)` modifier on
+/// `MainEditorContentView`. Changes to either field cancel the previous
+/// task and start a new one — exactly the rapid-switch coalescing semantic
+/// we want for Cmd+Number tab navigation.
+private struct TabLoadKey: Hashable {
+    let tabId: UUID?
+    let loadEpoch: Int
+}
 
 struct MainEditorContentView: View {
     // MARK: - Dependencies
@@ -16,8 +26,6 @@ struct MainEditorContentView: View {
     var tabManager: QueryTabManager
     var coordinator: MainContentCoordinator
     var changeManager: DataChangeManager
-    var filterStateManager: FilterStateManager
-    var columnVisibilityManager: ColumnVisibilityManager
     let connection: DatabaseConnection
     let windowId: UUID
     let connectionId: UUID
@@ -29,9 +37,7 @@ struct MainEditorContentView: View {
     // MARK: - Callbacks
 
     let onCellEdit: (Int, Int, String?) -> Void
-    let onSort: (Int, Bool, Bool) -> Void
-    let onClearSort: () -> Void
-    let onRemoveSortColumn: (Int) -> Void
+    let onSortStateChanged: (SortState) -> Void
     let onAddRow: () -> Void
     let onUndoInsert: (Int) -> Void
     let onSelectionChange: (Set<Int>) -> Void
@@ -52,7 +58,6 @@ struct MainEditorContentView: View {
     @State private var cachedChangeManager: AnyChangeManager?
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
-    @State private var favoriteDialogQuery: FavoriteDialogQuery?
     @State private var dataTabDelegate = DataTabGridDelegate()
 
     // Native macOS window tabs — no LRU tracking needed (single tab per window)
@@ -92,7 +97,10 @@ struct MainEditorContentView: View {
             }
         }
         .background(.background)
-        .sheet(item: $favoriteDialogQuery) { item in
+        .sheet(item: Binding(
+            get: { coordinator.favoriteDialogQuery },
+            set: { coordinator.favoriteDialogQuery = $0 }
+        )) { item in
             FavoriteEditDialog(
                 connectionId: connectionId,
                 favorite: nil,
@@ -100,9 +108,30 @@ struct MainEditorContentView: View {
                 folders: []
             )
         }
-        .onReceive(NotificationCenter.default.publisher(for: .saveAsFavoriteRequested)) { notification in
-            guard let query = notification.userInfo?["query"] as? String else { return }
-            favoriteDialogQuery = FavoriteDialogQuery(query: query)
+        .sheet(item: Binding(
+            get: { coordinator.fileConflictRequest },
+            set: { coordinator.fileConflictRequest = $0 }
+        )) { request in
+            FileConflictDiffSheet(
+                fileName: request.url.lastPathComponent,
+                mineContent: request.mineContent,
+                diskContent: request.diskContent,
+                onKeepMine: {
+                    coordinator.commandActions?.writeTabContent(
+                        tabId: request.tabId,
+                        content: request.mineContent,
+                        to: request.url
+                    )
+                    coordinator.fileConflictRequest = nil
+                },
+                onReload: {
+                    coordinator.commandActions?.reloadFileFromDisk(tabId: request.tabId, url: request.url)
+                    coordinator.fileConflictRequest = nil
+                },
+                onCancel: {
+                    coordinator.fileConflictRequest = nil
+                }
+            )
         }
         .onChange(of: tabManager.tabStructureVersion) { _, _ in
             let openTabIds = Set(tabManager.tabIds)
@@ -119,10 +148,15 @@ struct MainEditorContentView: View {
             wireDataTabDelegateStableRefs()
             refreshDataTabDelegateMutableRefs()
             coordinator.dataTabDelegate = dataTabDelegate
-            coordinator.onTeardown = { [self] in
-                cachedChangeManager = nil
-                coordinator.dataTabDelegate = nil
-            }
+        }
+        .onDisappear {
+            cachedChangeManager = nil
+        }
+        .task(id: TabLoadKey(
+            tabId: tabManager.selectedTabId,
+            loadEpoch: tabManager.selectedTab?.loadEpoch ?? 0
+        )) {
+            coordinator.lazyLoadCurrentTabIfNeeded()
         }
         .onChange(of: selectionState.indices) { _, newIndices in
             onSelectionChange(newIndices)
@@ -143,12 +177,9 @@ struct MainEditorContentView: View {
 
     private func wireDataTabDelegateStableRefs() {
         dataTabDelegate.coordinator = coordinator
-        dataTabDelegate.columnVisibilityManager = columnVisibilityManager
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
-        dataTabDelegate.onSort = onSort
-        dataTabDelegate.onClearSort = onClearSort
-        dataTabDelegate.onRemoveSortColumn = onRemoveSortColumn
+        dataTabDelegate.onSortStateChanged = onSortStateChanged
         dataTabDelegate.onUndoInsert = onUndoInsert
         dataTabDelegate.onFilterColumn = onFilterColumn
         dataTabDelegate.onRefresh = onRefresh
@@ -257,13 +288,22 @@ struct MainEditorContentView: View {
             autosaveName: "QuerySplit-\(connectionId)-\(tab.id)",
             topContent: {
                 VStack(spacing: 0) {
+                    if tab.content.externalModificationDetected,
+                       let url = tab.content.sourceFileURL {
+                        FileModifiedOnDiskBanner(
+                            fileName: url.lastPathComponent,
+                            onReload: { reloadFileForTab(tabId: tab.id, url: url) },
+                            onDismiss: { dismissExternalModBanner(tabId: tab.id) }
+                        )
+                        Divider()
+                    }
                     QueryEditorView(
                         queryText: queryTextBinding(for: tab),
                         cursorPositions: $bindableCoordinator.cursorPositions,
                         parameters: parameterBinding(for: tab),
                         isParameterPanelVisible: parameterVisibilityBinding(for: tab),
                         onExecute: { coordinator.runQuery() },
-                        schemaProvider: coordinator.schemaProvider,
+                        schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id),
                         databaseType: coordinator.connection.type,
                         connectionId: coordinator.connection.id,
                         connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
@@ -292,7 +332,7 @@ struct MainEditorContentView: View {
                         },
                         onSaveAsFavorite: { text in
                             guard !text.isEmpty else { return }
-                            favoriteDialogQuery = FavoriteDialogQuery(query: text)
+                            coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
                         }
                     )
                 }
@@ -303,6 +343,25 @@ struct MainEditorContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         )
+    }
+
+    private func reloadFileForTab(tabId: UUID, url: URL) {
+        Task {
+            guard let loaded = FileTextLoader.load(url) else { return }
+            let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+            await MainActor.run {
+                coordinator.tabManager.mutate(tabId: tabId) { tab in
+                    tab.content.query = loaded.content
+                    tab.content.savedFileContent = loaded.content
+                    tab.content.loadMtime = mtime
+                    tab.content.externalModificationDetected = false
+                }
+            }
+        }
+    }
+
+    private func dismissExternalModBanner(tabId: UUID) {
+        coordinator.tabManager.mutate(tabId: tabId) { $0.content.externalModificationDetected = false }
     }
 
     private func updateHasQueryText() {
@@ -323,13 +382,10 @@ struct MainEditorContentView: View {
                 // flushTextUpdate() fires on the OLD tab's EditorCoordinator when
                 // selectedTabIndex already points to the NEW tab — writing to
                 // selectedTabIndex would overwrite the new tab's query.
-                guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                    index < tabManager.tabs.count
-                else { return }
+                guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
 
-                tabManager.tabs[index].content.query = newValue
-
-                if tabManager.tabs[index].content.sourceFileURL != nil {
+                if let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+                   tabManager.tabs[index].content.sourceFileURL != nil {
                     let isDirty = tabManager.tabs[index].content.isFileDirty
                     Task { @MainActor in
                         if let window = NSApp.keyWindow {
@@ -346,8 +402,7 @@ struct MainEditorContentView: View {
         return Binding(
             get: { tab.content.queryParameters },
             set: { newValue in
-                guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-                tabManager.tabs[index].content.queryParameters = newValue
+                tabManager.mutate(tabId: tabId) { $0.content.queryParameters = newValue }
             }
         )
     }
@@ -357,8 +412,7 @@ struct MainEditorContentView: View {
         return Binding(
             get: { tab.content.isParameterPanelVisible },
             set: { newValue in
-                guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-                tabManager.tabs[index].content.isParameterPanelVisible = newValue
+                tabManager.mutate(tabId: tabId) { $0.content.isParameterPanelVisible = newValue }
             }
         )
     }
@@ -430,9 +484,9 @@ struct MainEditorContentView: View {
                             )
                         }
                     } else {
-                        if filterStateManager.isVisible && tab.tabType == .table {
+                        if tab.filterState.isVisible && tab.tabType == .table {
                             FilterPanelView(
-                                filterState: filterStateManager,
+                                coordinator: coordinator,
                                 columns: resolvedRows.columns,
                                 primaryKeyColumn: changeManager.primaryKeyColumn,
                                 databaseType: connection.type,
@@ -444,7 +498,7 @@ struct MainEditorContentView: View {
 
                         if tab.tabType == .query && !resolvedRows.columns.isEmpty
                             && resolvedRows.rows.isEmpty && tab.execution.lastExecutedAt != nil
-                            && !tab.execution.isExecuting && !filterStateManager.hasAppliedFilters
+                            && !tab.execution.isExecuting && !tab.filterState.hasAppliedFilters
                         {
                             emptyResultView(executionTime: tab.display.activeResultSet?.executionTime ?? tab.execution.executionTime)
                         } else {
@@ -499,13 +553,16 @@ struct MainEditorContentView: View {
         let tabId = tab.id
         DataGridView(
             tableRowsProvider: { [coordinator] in
-                coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
+                coordinator.tabSessionRegistry.existingTableRows(for: tabId) ?? TableRows()
             },
             tableRowsMutator: { [coordinator] mutate in
                 coordinator.mutateActiveTableRows(for: tabId) { rows in
                     mutate(&rows)
                     return .none
                 }
+            },
+            paginationOffsetProvider: { [coordinator] in
+                coordinator.tabManager.tabs.first(where: { $0.id == tabId })?.pagination.currentOffset ?? 0
             },
             changeManager: currentChangeManager,
             isEditable: isEditable,
@@ -516,7 +573,7 @@ struct MainEditorContentView: View {
                 primaryKeyColumns: changeManager.primaryKeyColumns,
                 tabType: tab.tabType,
                 showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
-                hiddenColumns: columnVisibilityManager.hiddenColumns
+                hiddenColumns: tab.columnLayout.hiddenColumns
             ),
             sortedIDs: sortedIDsForTab(tab),
             displayFormats: displayFormats(for: tab),
@@ -532,7 +589,7 @@ struct MainEditorContentView: View {
     }
 
     private func resolvedTableRows(for tab: QueryTab) -> TableRows {
-        coordinator.tableRowsStore.existingTableRows(for: tab.id) ?? TableRows()
+        coordinator.tabSessionRegistry.existingTableRows(for: tab.id) ?? TableRows()
     }
 
     private func displayFormats(for tab: QueryTab) -> [ValueDisplayFormat?] {
@@ -548,16 +605,16 @@ struct MainEditorContentView: View {
             return cached.formats
         }
 
-        let tableRows = coordinator.tableRowsStore.existingTableRows(for: tab.id)
+        let tableRows = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)
         let columns = tableRows?.columns ?? []
         let columnTypes = tableRows?.columnTypes ?? []
         guard !columns.isEmpty else { return [] }
 
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if smartDetectionEnabled {
-            let sampleRows: [[String?]]? = {
-                let rows = tableRows?.rows.prefix(10).map(\.values) ?? []
-                return rows.isEmpty ? nil : Array(rows)
+            let sampleRows: [[PluginCellValue]]? = {
+                let rows: [[PluginCellValue]] = tableRows?.rows.prefix(10).map { Array($0.values) } ?? []
+                return rows.isEmpty ? nil : rows
             }()
             detected = ValueDisplayDetector.detect(
                 columns: columns,
@@ -637,9 +694,9 @@ struct MainEditorContentView: View {
             let row2 = storageRows[idx2].values
             for sortCol in sortColumns {
                 let val1 = sortCol.columnIndex < row1.count
-                    ? (row1[sortCol.columnIndex] ?? "") : ""
+                    ? row1[sortCol.columnIndex].sortKey : ""
                 let val2 = sortCol.columnIndex < row2.count
-                    ? (row2[sortCol.columnIndex] ?? "") : ""
+                    ? row2[sortCol.columnIndex].sortKey : ""
                 let colType = sortCol.columnIndex < colTypes.count
                     ? colTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(val1, val2, columnType: colType)
@@ -667,7 +724,7 @@ struct MainEditorContentView: View {
             get: { tab.sortState },
             set: { newValue in
                 if let index = tabManager.selectedTabIndex {
-                    tabManager.tabs[index].sortState = newValue
+                    tabManager.mutate(at: index) { $0.sortState = newValue }
                 }
             }
         )
@@ -679,7 +736,7 @@ struct MainEditorContentView: View {
             set: { newValue in
                 coordinator.isUpdatingColumnLayout = true
                 if let index = tabManager.selectedTabIndex {
-                    tabManager.tabs[index].columnLayout = newValue
+                    tabManager.mutate(at: index) { $0.columnLayout = newValue }
                 }
                 Task { @MainActor in
                     coordinator.isUpdatingColumnLayout = false
@@ -694,8 +751,8 @@ struct MainEditorContentView: View {
         let resolvedRows = resolvedTableRows(for: tab)
         return MainStatusBarView(
             snapshot: StatusBarSnapshot(tab: tab, tableRows: resolvedRows),
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: columnVisibilityManager,
+            filterState: tab.filterState,
+            hiddenColumns: tab.columnLayout.hiddenColumns,
             allColumns: resolvedRows.columns,
             selectedRowIndices: selectionState.indices,
             viewMode: resultsViewModeBinding(for: tab),
@@ -706,7 +763,10 @@ struct MainEditorContentView: View {
             onLimitChange: onLimitChange,
             onOffsetChange: onOffsetChange,
             onPaginationGo: onPaginationGo,
-            onLoadMore: { coordinator.loadMoreRows() },
+            onToggleColumn: { coordinator.toggleColumnVisibility($0) },
+            onShowAllColumns: { coordinator.showAllColumns() },
+            onHideAllColumns: { coordinator.hideAllColumns($0) },
+            onToggleFilters: { coordinator.toggleFilterPanel() },
             onFetchAll: { coordinator.fetchAllRows() }
         )
     }
@@ -717,7 +777,7 @@ struct MainEditorContentView: View {
             set: { newValue in
                 Task { @MainActor in
                     if let index = tabManager.selectedTabIndex {
-                        tabManager.tabs[index].display.resultsViewMode = newValue
+                        tabManager.mutate(at: index) { $0.display.resultsViewMode = newValue }
                     }
                 }
             }
@@ -730,9 +790,10 @@ struct MainEditorContentView: View {
         VStack(spacing: 20) {
             // Icon
             Image(systemName: "tablecells")
-                .font(.system(size: 56))
-                .foregroundStyle(.quaternary)
+                .font(.largeTitle)
+                .imageScale(.large)
                 .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.quaternary)
 
             // Title
             Text("No tabs open")

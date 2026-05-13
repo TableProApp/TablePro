@@ -66,6 +66,34 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return types.map { PluginEnumTypeInfo(name: $0.name, labels: $0.labels) }
     }
 
+    func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo] {
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            return []
+        }
+        return try await pluginDriver.fetchColumns(table: table, schema: pluginDriver.currentSchema)
+    }
+
+    func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            return [:]
+        }
+        return try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
+    }
+
+    func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            return []
+        }
+        return try await pluginDriver.fetchForeignKeys(table: table, schema: pluginDriver.currentSchema)
+    }
+
+    func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            return [:]
+        }
+        return try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)
+    }
+
     // MARK: - Helpers
 
     private func qualifiedTableRef(table: String, databaseName: String) -> String {

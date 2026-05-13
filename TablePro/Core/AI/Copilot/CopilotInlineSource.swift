@@ -11,6 +11,7 @@ final class CopilotInlineSource: InlineSuggestionSource {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotInlineSource")
 
     private let documentSync: CopilotDocumentSync
+    private var pendingCommands: [UUID: LSPCommand] = [:]
 
     init(documentSync: CopilotDocumentSync) {
         self.documentSync = documentSync
@@ -25,7 +26,7 @@ final class CopilotInlineSource: InlineSuggestionSource {
         guard let docInfo = documentSync.currentDocumentInfo() else { return nil }
 
         let editorSettings = AppSettingsManager.shared.editor
-        let preambleOffset = documentSync.schemaContext.preambleLineCount
+        let preambleOffset = documentSync.preambleBuilder.preambleLineCount
         let params = LSPInlineCompletionParams(
             textDocument: LSPVersionedTextDocumentIdentifier(uri: docInfo.uri, version: docInfo.version),
             position: LSPPosition(line: context.cursorLine + preambleOffset, character: context.cursorCharacter),
@@ -67,25 +68,33 @@ final class CopilotInlineSource: InlineSuggestionSource {
 
         guard !ghostText.isEmpty else { return nil }
 
-        return InlineSuggestion(
+        let suggestion = InlineSuggestion(
             text: ghostText,
             replacementRange: replacementRange,
-            replacementText: first.insertText,
-            acceptCommand: first.command
+            replacementText: first.insertText
         )
+
+        if let command = first.command {
+            pendingCommands[suggestion.id] = command
+        }
+
+        return suggestion
     }
 
     func didAcceptSuggestion(_ suggestion: InlineSuggestion) {
-        guard let command = suggestion.acceptCommand else { return }
+        guard let command = pendingCommands.removeValue(forKey: suggestion.id) else { return }
         Task {
             guard let client = CopilotService.shared.client else { return }
             try? await client.executeCommand(command: command.command, arguments: command.arguments)
         }
     }
 
+    func didDismissSuggestion(_ suggestion: InlineSuggestion) {
+        pendingCommands.removeValue(forKey: suggestion.id)
+    }
+
     // MARK: - Private
 
-    /// Convert LSP Position (line, character) to flat character offset in text.
     private static func offsetForPosition(_ position: LSPPosition, in text: NSString) -> Int {
         var offset = 0
         var line = 0

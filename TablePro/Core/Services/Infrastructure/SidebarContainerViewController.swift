@@ -2,9 +2,6 @@
 //  SidebarContainerViewController.swift
 //  TablePro
 //
-//  AppKit container that places a native NSSearchField above the SwiftUI sidebar content.
-//  The search field inherits sidebar vibrancy from the NSSplitViewItem automatically.
-//
 
 import AppKit
 import SwiftUI
@@ -14,6 +11,7 @@ internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
     private var hostingController: NSHostingController<AnyView>
     private var sidebarState: SharedSidebarState?
+    private var windowState: WindowSidebarState?
     private var observationGeneration = 0
 
     var rootView: AnyView {
@@ -59,53 +57,76 @@ internal final class SidebarContainerViewController: NSViewController {
         ])
     }
 
-    // MARK: - State Management
-
-    func updateSidebarState(_ state: SharedSidebarState?) {
+    func updateSidebarState(_ state: SharedSidebarState?, windowState: WindowSidebarState?) {
         observationGeneration += 1
-        sidebarState = state
-        guard let state else {
+        self.sidebarState = state
+        self.windowState = windowState
+        guard let state, let windowState else {
             searchField.isHidden = true
             return
         }
         searchField.isHidden = false
-        syncFromState(state)
-        startObserving(state, generation: observationGeneration)
+        syncFromState(state, windowState: windowState)
+        startObserving(state, windowState: windowState, generation: observationGeneration)
     }
 
-    private func startObserving(_ state: SharedSidebarState, generation: Int) {
+    private func startObserving(
+        _ state: SharedSidebarState,
+        windowState: WindowSidebarState,
+        generation: Int
+    ) {
         withObservationTracking {
             _ = state.searchText
             _ = state.selectedSidebarTab
+            _ = windowState.favoritesSearchText
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
-                guard let self, generation == self.observationGeneration,
-                      let sidebarState = self.sidebarState else { return }
-                self.syncFromState(sidebarState)
-                self.startObserving(sidebarState, generation: generation)
+                guard let self,
+                      generation == self.observationGeneration,
+                      let sidebarState = self.sidebarState,
+                      let windowState = self.windowState else { return }
+                self.syncFromState(sidebarState, windowState: windowState)
+                self.startObserving(sidebarState, windowState: windowState, generation: generation)
             }
         }
     }
 
-    private func syncFromState(_ state: SharedSidebarState) {
-        if searchField.stringValue != state.searchText {
-            searchField.stringValue = state.searchText
+    private func syncFromState(_ state: SharedSidebarState, windowState: WindowSidebarState) {
+        let activeText: String
+        let placeholder: String
+        switch state.selectedSidebarTab {
+        case .tables:
+            activeText = state.searchText
+            placeholder = String(localized: "Filter")
+        case .favorites:
+            activeText = windowState.favoritesSearchText
+            placeholder = String(localized: "Filter favorites")
         }
-        searchField.placeholderString = state.selectedSidebarTab == .tables
-            ? String(localized: "Filter")
-            : String(localized: "Filter favorites")
+
+        if searchField.stringValue != activeText {
+            searchField.stringValue = activeText
+        }
+        searchField.placeholderString = placeholder
     }
 }
-
-// MARK: - NSSearchFieldDelegate
 
 extension SidebarContainerViewController: NSSearchFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         guard let field = obj.object as? NSSearchField else { return }
-        sidebarState?.searchText = field.stringValue
+        writeSearchText(field.stringValue)
     }
 
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
-        sidebarState?.searchText = ""
+        writeSearchText("")
+    }
+
+    private func writeSearchText(_ text: String) {
+        guard let sidebarState else { return }
+        switch sidebarState.selectedSidebarTab {
+        case .tables:
+            sidebarState.searchText = text
+        case .favorites:
+            windowState?.favoritesSearchText = text
+        }
     }
 }

@@ -7,6 +7,7 @@
 
 import os
 import SwiftUI
+import TableProPluginKit
 
 struct ClickHousePartsView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePartsView")
@@ -203,12 +204,12 @@ struct ClickHousePartsView: View {
                 """
             let result = try await driver.execute(query: sql)
             parts = result.rows.compactMap { row -> ClickHousePartInfo? in
-                guard let name = row[safe: 1] ?? nil else { return nil }
-                let partition = (row[safe: 0] ?? nil) ?? ""
-                let rows = (row[safe: 2] ?? nil).flatMap { UInt64($0) } ?? 0
-                let bytesOnDisk = (row[safe: 3] ?? nil).flatMap { UInt64($0) } ?? 0
-                let modTime = (row[safe: 4] ?? nil) ?? ""
-                let active = (row[safe: 5] ?? nil) == "1"
+                guard let name = row[safe: 1]?.asText else { return nil }
+                let partition = row[safe: 0]?.asText ?? ""
+                let rows = row[safe: 2]?.asText.flatMap { UInt64($0) } ?? 0
+                let bytesOnDisk = row[safe: 3]?.asText.flatMap { UInt64($0) } ?? 0
+                let modTime = row[safe: 4]?.asText ?? ""
+                let active = row[safe: 5]?.asText == "1"
                 return ClickHousePartInfo(
                     partition: partition,
                     name: name,

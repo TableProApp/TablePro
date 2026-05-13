@@ -130,7 +130,6 @@ struct AIProviderDetailSheet: View {
     private var apiKeyAuthSection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .textFieldStyle(.roundedBorder)
                 .onChange(of: apiKey) {
                     testResult = nil
                 }
@@ -150,11 +149,11 @@ struct AIProviderDetailSheet: View {
             }
             if case .success = testResult {
                 Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color(nsColor: .systemGreen))
                     .font(.caption)
             } else if case .failure(let message) = testResult {
                 Label(message, systemImage: "xmark.circle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color(nsColor: .systemRed))
                     .font(.caption)
                     .lineLimit(3)
             }
@@ -199,7 +198,7 @@ struct AIProviderDetailSheet: View {
                         String(format: String(localized: "Signed in as %@"), username),
                         systemImage: "checkmark.circle.fill"
                     )
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color(nsColor: .systemGreen))
                     Spacer()
                     Button(String(localized: "Sign Out")) {
                         Task { await copilotService.signOut() }
@@ -210,7 +209,7 @@ struct AIProviderDetailSheet: View {
             if let copilotErrorMessage {
                 Text(copilotErrorMessage)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color(nsColor: .systemRed))
             }
 
             statusRow
@@ -249,7 +248,7 @@ struct AIProviderDetailSheet: View {
             EmptyView()
         case .error(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color(nsColor: .systemOrange))
                 .font(.caption)
                 .lineLimit(2)
         }
@@ -263,11 +262,9 @@ struct AIProviderDetailSheet: View {
             Section {
                 if draft.type == .custom {
                     TextField(String(localized: "Name"), text: $draft.name)
-                        .textFieldStyle(.roundedBorder)
                 }
                 if draft.type != .copilot {
                     TextField(String(localized: "Endpoint"), text: $draft.endpoint)
-                        .textFieldStyle(.roundedBorder)
                         .onChange(of: draft.endpoint) {
                             scheduleFetchModels()
                             testResult = nil
@@ -296,7 +293,7 @@ struct AIProviderDetailSheet: View {
                 HStack {
                     Text(modelFetchError)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color(nsColor: .systemRed))
                         .lineLimit(2)
                     Spacer()
                     Button(String(localized: "Reload")) {
@@ -315,7 +312,6 @@ struct AIProviderDetailSheet: View {
     private var modelControl: some View {
         HStack(spacing: 8) {
             TextField(String(localized: "Model name"), text: $draft.model)
-                .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
 
             if isFetchingModels {
@@ -351,7 +347,6 @@ struct AIProviderDetailSheet: View {
                 Text("Max output tokens")
                 Spacer()
                 TextField("", text: maxOutputTokensBinding)
-                    .textFieldStyle(.roundedBorder)
                     .frame(width: 100)
                     .multilineTextAlignment(.trailing)
             }

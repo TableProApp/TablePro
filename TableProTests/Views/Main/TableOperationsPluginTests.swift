@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -21,15 +22,12 @@ struct TableOperationsPluginTests {
         let connection = TestFixtures.makeConnection(database: "testdb", type: type)
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
-        let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         return MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
             changeManager: changeManager,
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
     }

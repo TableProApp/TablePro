@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 import TableProPluginKit
@@ -51,6 +52,7 @@ extension DatabaseManager {
             reconnectHandler: { [weak self] in
                 guard let self else { return false }
                 guard let session = await self.activeSessions[connectionId] else { return false }
+                await SchemaService.shared.invalidate(connectionId: connectionId)
                 do {
                     let result = try await self.trackOperation(sessionId: connectionId) {
                         try await self.reconnectDriver(for: session)
@@ -80,18 +82,11 @@ extension DatabaseManager {
                     case .reconnecting(let attempt):
                         Self.logger.info("Reconnecting session \(id) (attempt \(attempt))")
                         if case .connecting = self.activeSessions[id]?.status {
-                            // Already .connecting — skip redundant write
+                            // Already .connecting, skip redundant write
                         } else {
                             self.updateSession(id) { session in
                                 session.status = .connecting
                             }
-                        }
-                    case .failed:
-                        Self.logger.error(
-                            "Health monitoring failed for session \(id)")
-                        self.updateSession(id) { session in
-                            session.status = .error(String(localized: "Connection lost"))
-                            session.clearCachedData()
                         }
                     case .checking:
                         break  // No UI update needed
@@ -207,6 +202,8 @@ extension DatabaseManager {
             session.status = .connecting
         }
 
+        await SchemaService.shared.invalidate(connectionId: sessionId)
+
         // Stop existing health monitor
         await stopHealthMonitor(for: sessionId)
 
@@ -294,8 +291,7 @@ extension DatabaseManager {
                 await startHealthMonitor(for: sessionId)
             }
 
-            // Post connection notification for schema reload
-            NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
+            AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: sessionId))
 
             Self.logger.info("Manual reconnect succeeded for: \(session.connection.name)")
         } catch {

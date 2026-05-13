@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
@@ -403,7 +404,7 @@ struct SSHConfigParserTests {
         #expect(jumpHosts.count == 2)
         #expect(jumpHosts[0].username == "user1")
         #expect(jumpHosts[0].host == "hop1.com")
-        #expect(jumpHosts[0].port == 22)
+        #expect(jumpHosts[0].port == nil)
         #expect(jumpHosts[1].username == "user2")
         #expect(jumpHosts[1].host == "hop2.com")
         #expect(jumpHosts[1].port == 2_222)
@@ -424,7 +425,7 @@ struct SSHConfigParserTests {
         #expect(jumpHosts.count == 1)
         #expect(jumpHosts[0].username == "admin")
         #expect(jumpHosts[0].host == "bastion.com")
-        #expect(jumpHosts[0].port == 22)
+        #expect(jumpHosts[0].port == nil)
     }
 
     @Test("parseProxyJump with bracketed IPv6 and port")
@@ -442,7 +443,7 @@ struct SSHConfigParserTests {
         #expect(jumpHosts.count == 1)
         #expect(jumpHosts[0].username == "admin")
         #expect(jumpHosts[0].host == "fe80::1")
-        #expect(jumpHosts[0].port == 22)
+        #expect(jumpHosts[0].port == nil)
     }
 
     // MARK: - Multi-Word Host Filtering

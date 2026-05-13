@@ -13,6 +13,7 @@ struct ConnectionAdvancedView: View {
     @Binding var startupCommands: String
     @Binding var preConnectScript: String
     @Binding var aiPolicy: AIConnectionPolicy?
+    @Binding var externalAccess: ExternalAccessLevel
     @Binding var localOnly: Bool
 
     let databaseType: DatabaseType
@@ -40,40 +41,30 @@ struct ConnectionAdvancedView: View {
                 }
             }
 
-            Section(String(localized: "Startup Commands")) {
+            Section {
                 StartupCommandsEditor(text: $startupCommands)
                     .frame(height: 80)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                    )
-                Text(
-                    "SQL commands to run after connecting, e.g. SET time_zone = 'Asia/Ho_Chi_Minh'. One per line or separated by semicolons."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            } header: {
+                Text(String(localized: "Startup Commands"))
+            } footer: {
+                Text("SQL commands to run after connecting, e.g. SET time_zone = 'Asia/Ho_Chi_Minh'. One per line or separated by semicolons.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            Section(String(localized: "Pre-Connect Script")) {
+            Section {
                 StartupCommandsEditor(text: $preConnectScript)
                     .frame(height: 80)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                    )
-                Text(
-                    "Shell script to run before connecting. Non-zero exit aborts connection."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            } header: {
+                Text(String(localized: "Pre-Connect Script"))
+            } footer: {
+                Text("Shell script to run before connecting. Non-zero exit aborts connection.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            if AppSettingsManager.shared.ai.enabled {
-                Section(String(localized: "AI")) {
+            Section {
+                if AppSettingsManager.shared.ai.enabled {
                     Picker(String(localized: "AI Policy"), selection: $aiPolicy) {
                         Text(String(localized: "Use Default"))
                             .tag(AIConnectionPolicy?.none as AIConnectionPolicy?)
@@ -83,6 +74,27 @@ struct ConnectionAdvancedView: View {
                         }
                     }
                 }
+
+                Picker(String(localized: "External Clients"), selection: $externalAccess) {
+                    ForEach(ExternalAccessLevel.allCases) { level in
+                        Text(level.displayName).tag(level)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text(String(localized: "External Access"))
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    if AppSettingsManager.shared.ai.enabled {
+                        // swiftlint:disable:next line_length
+                        Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, and other MCP clients. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+                    } else {
+                        // swiftlint:disable:next line_length
+                        Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop) access this connection. Tokens cannot exceed this level even with full-access scope."))
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if AppSettingsManager.shared.sync.enabled {
@@ -125,13 +137,11 @@ struct StartupCommandsEditor: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isRichText = false
         textView.string = text
-        textView.textContainerInset = NSSize(width: 2, height: 6)
-        textView.drawsBackground = false
+        textView.textContainerInset = NSSize(width: 4, height: 6)
         textView.delegate = context.coordinator
 
-        scrollView.borderType = .noBorder
+        scrollView.borderType = .bezelBorder
         scrollView.hasVerticalScroller = true
-        scrollView.drawsBackground = false
 
         return scrollView
     }

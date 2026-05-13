@@ -26,9 +26,7 @@ struct ConnectionSSHTunnelView: View {
             if sshState.enabled {
                 sshProfileSection
 
-                if let profile = sshState.selectedProfile {
-                    sshProfileSummarySection(profile)
-                } else if sshState.profileId != nil {
+                if sshState.selectedProfile == nil, sshState.profileId != nil {
                     Section {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -39,7 +37,7 @@ struct ConnectionSSHTunnelView: View {
                             sshState.profileId = nil
                         }
                     }
-                } else {
+                } else if sshState.selectedProfile == nil {
                     sshInlineFields
                 }
             }
@@ -51,7 +49,7 @@ struct ConnectionSSHTunnelView: View {
     // MARK: - SSH Profile Section
 
     private var sshProfileSection: some View {
-        Section(String(localized: "SSH Profile")) {
+        Section(String(localized: "Profile")) {
             Picker(String(localized: "Profile"), selection: $sshState.profileId) {
                 Text("Inline Configuration").tag(UUID?.none)
                 ForEach(sshState.profiles) { profile in
@@ -79,6 +77,21 @@ struct ConnectionSSHTunnelView: View {
                 }
             }
             .controlSize(.small)
+
+            if let profile = sshState.selectedProfile {
+                DisclosureGroup(String(localized: "Profile Details")) {
+                    LabeledContent(String(localized: "Host"), value: profile.host)
+                    LabeledContent(String(localized: "Port"), value: profile.port.map(String.init) ?? "22")
+                    LabeledContent(String(localized: "Username"), value: profile.username)
+                    LabeledContent(String(localized: "Authentication Method"), value: profile.authMethod.rawValue)
+                    if !profile.privateKeyPath.isEmpty {
+                        LabeledContent(String(localized: "Key File"), value: profile.privateKeyPath)
+                    }
+                    if !profile.jumpHosts.isEmpty {
+                        LabeledContent(String(localized: "Jump Hosts"), value: "\(profile.jumpHosts.count)")
+                    }
+                }
+            }
         }
         .sheet(isPresented: $sshState.showingCreateProfile) {
             SSHProfileEditorView(existingProfile: nil, onSave: { _ in
@@ -119,11 +132,10 @@ struct ConnectionSSHTunnelView: View {
         SSHProfile(
             name: "",
             host: sshState.host,
-            port: Int(sshState.port) ?? 22,
+            port: Int(sshState.port),
             username: sshState.username,
             authMethod: sshState.authMethod,
             privateKeyPath: sshState.privateKeyPath,
-            useSSHConfig: !sshState.selectedConfigHost.isEmpty,
             agentSocketPath: sshState.resolvedAgentSocketPath,
             jumpHosts: sshState.jumpHosts,
             totpMode: sshState.totpMode,
@@ -131,21 +143,6 @@ struct ConnectionSSHTunnelView: View {
             totpDigits: sshState.totpDigits,
             totpPeriod: sshState.totpPeriod
         )
-    }
-
-    private func sshProfileSummarySection(_ profile: SSHProfile) -> some View {
-        Section(String(localized: "Profile Settings")) {
-            LabeledContent(String(localized: "Host"), value: profile.host)
-            LabeledContent(String(localized: "Port"), value: String(profile.port))
-            LabeledContent(String(localized: "Username"), value: profile.username)
-            LabeledContent(String(localized: "Auth Method"), value: profile.authMethod.rawValue)
-            if !profile.privateKeyPath.isEmpty {
-                LabeledContent(String(localized: "Key File"), value: profile.privateKeyPath)
-            }
-            if !profile.jumpHosts.isEmpty {
-                LabeledContent(String(localized: "Jump Hosts"), value: "\(profile.jumpHosts.count)")
-            }
-        }
     }
 
     // MARK: - SSH Inline Fields
@@ -180,14 +177,14 @@ struct ConnectionSSHTunnelView: View {
                 if sshState.authMethod == .password {
                     SecureField(String(localized: "Password"), text: $sshState.password)
                 } else if sshState.authMethod == .sshAgent {
-                    Picker("Agent Socket", selection: $sshState.agentSocketOption) {
+                    Picker(String(localized: "Agent Socket"), selection: $sshState.agentSocketOption) {
                         ForEach(SSHAgentSocketOption.allCases) { option in
                             Text(option.displayName).tag(option)
                         }
                     }
                     if sshState.agentSocketOption == .custom {
                         TextField(
-                            "Custom Path",
+                            String(localized: "Custom Path"),
                             text: $sshState.customAgentSocketPath,
                             prompt: Text("/path/to/agent.sock")
                         )
@@ -263,8 +260,8 @@ struct ConnectionSSHTunnelView: View {
                                 TextField(
                                     String(localized: "Port"),
                                     text: Binding(
-                                        get: { String(jumpHostBinding.wrappedValue.port) },
-                                        set: { jumpHostBinding.wrappedValue.port = Int($0) ?? 22 }
+                                        get: { jumpHostBinding.wrappedValue.port.map(String.init) ?? "" },
+                                        set: { jumpHostBinding.wrappedValue.port = Int($0) }
                                     ),
                                     prompt: Text("22")
                                 )
@@ -354,26 +351,7 @@ struct ConnectionSSHTunnelView: View {
     }
 
     private func applySSHConfigEntry(_ host: String) {
-        guard let entry = sshState.configEntries.first(where: { $0.host == host }) else {
-            return
-        }
-
-        sshState.host = entry.hostname ?? entry.host
-        if let port = entry.port {
-            sshState.port = String(port)
-        }
-        if let user = entry.user {
-            sshState.username = user
-        }
-        if let agentPath = entry.identityAgent {
-            sshState.applyAgentSocketPath(agentPath)
-            sshState.authMethod = .sshAgent
-        } else if let keyPath = entry.identityFiles.first {
-            sshState.privateKeyPath = keyPath
-            sshState.authMethod = .privateKey
-        }
-        if let proxyJump = entry.proxyJump {
-            sshState.jumpHosts = SSHConfigParser.parseProxyJump(proxyJump)
-        }
+        guard !host.isEmpty else { return }
+        sshState.host = host
     }
 }
