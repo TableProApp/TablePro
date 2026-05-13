@@ -180,6 +180,7 @@ final class AIChatViewModel {
     }
 
     func startNewConversation() {
+        AIProviderFactory.resetCopilotConversation()
         cancelStream()
         persistCurrentConversation()
         messages.removeAll()

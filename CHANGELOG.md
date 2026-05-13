@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- AI Chat: starting a new conversation now resets the Copilot server-side conversation. Previously the next message reused the prior conversation's context.
 - Cassandra: connection now fails fast with a clear "Cassandra 2.x is not supported" message instead of cryptic "table not found" errors during sidebar load.
 - MongoDB: dropped the `nameOnly: true` flag on `listDatabases` for servers older than 3.4, which previously rejected the flag.
 - ClickHouse: index sidebar no longer fails on ClickHouse older than 19.17 by skipping the `system.data_skipping_indices` lookup when the table doesn't exist.
