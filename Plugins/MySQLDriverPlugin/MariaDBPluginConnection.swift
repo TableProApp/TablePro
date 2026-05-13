@@ -49,24 +49,16 @@ struct MariaDBPluginQueryResult {
 // MARK: - SSL Configuration
 
 struct MySQLSSLConfig {
-    enum Mode: String {
-        case disabled = "Disabled"
-        case preferred = "Preferred"
-        case required = "Required"
-        case verifyCa = "Verify CA"
-        case verifyIdentity = "Verify Identity"
-    }
-
-    let mode: Mode
+    let mode: SSLMode
     let caCertificatePath: String
     let clientCertificatePath: String
     let clientKeyPath: String
 
-    init(from fields: [String: String]) {
-        self.mode = Mode(rawValue: fields["sslMode"] ?? "Disabled") ?? .disabled
-        self.caCertificatePath = fields["sslCaCertPath"] ?? ""
-        self.clientCertificatePath = fields["sslClientCertPath"] ?? ""
-        self.clientKeyPath = fields["sslClientKeyPath"] ?? ""
+    init(_ ssl: SSLConfiguration = SSLConfiguration()) {
+        self.mode = ssl.mode
+        self.caCertificatePath = ssl.caCertificatePath
+        self.clientCertificatePath = ssl.clientCertificatePath
+        self.clientKeyPath = ssl.clientKeyPath
     }
 }
 
@@ -265,7 +257,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
             }
 
-            if !self.sslConfig.caCertificatePath.isEmpty {
+            let verifiesCertificate = self.sslConfig.mode == .verifyCa
+                || self.sslConfig.mode == .verifyIdentity
+            if verifiesCertificate, !self.sslConfig.caCertificatePath.isEmpty {
                 _ = self.sslConfig.caCertificatePath.withCString { path in
                     mysql_options(mysql, MYSQL_OPT_SSL_CA, path)
                 }

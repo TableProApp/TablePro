@@ -60,7 +60,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let sslConfig = PQSSLConfig(additionalFields: config.additionalFields)
+        let sslConfig = PQSSLConfig(config.ssl)
 
         let pqConn = LibPQPluginConnection(
             host: config.host,

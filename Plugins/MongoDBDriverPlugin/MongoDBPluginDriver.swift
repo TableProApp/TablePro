@@ -58,17 +58,17 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let effectiveHost = config.additionalFields["mongoHosts"].flatMap { hosts in
             hosts.isEmpty ? nil : hosts
         } ?? config.host
+        // mongodb+srv URIs require TLS per the spec; force it on if the user left it Disabled.
+        let effectiveSSL: SSLConfiguration = (useSrv && config.ssl.mode == .disabled)
+            ? SSLConfiguration(mode: .required)
+            : config.ssl
         let conn = MongoDBConnection(
             host: effectiveHost,
             port: config.port,
             user: config.username,
             password: config.password,
             database: currentDb,
-            sslMode: useSrv && (config.additionalFields["sslMode"] ?? "Disabled") == "Disabled"
-                ? "Required"
-                : config.additionalFields["sslMode"] ?? "Disabled",
-            sslCACertPath: config.additionalFields["sslCACertPath"] ?? "",
-            sslClientCertPath: config.additionalFields["sslClientCertPath"] ?? "",
+            ssl: effectiveSSL,
             authSource: config.additionalFields["mongoAuthSource"],
             readPreference: config.additionalFields["mongoReadPreference"],
             writeConcern: config.additionalFields["mongoWriteConcern"],

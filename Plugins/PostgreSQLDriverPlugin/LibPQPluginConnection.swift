@@ -17,34 +17,29 @@ private let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category
 // MARK: - SSL Configuration
 
 struct PQSSLConfig {
-    var mode: String = "Disabled"
-    var caCertificatePath: String = ""
-    var clientCertificatePath: String = ""
-    var clientKeyPath: String = ""
+    let mode: SSLMode
+    let caCertificatePath: String
+    let clientCertificatePath: String
+    let clientKeyPath: String
 
-    init() {}
-
-    init(additionalFields: [String: String]) {
-        self.mode = additionalFields["sslMode"] ?? "Disabled"
-        self.caCertificatePath = additionalFields["sslCaCertPath"] ?? ""
-        self.clientCertificatePath = additionalFields["sslClientCertPath"] ?? ""
-        self.clientKeyPath = additionalFields["sslClientKeyPath"] ?? ""
+    init(_ ssl: SSLConfiguration = SSLConfiguration()) {
+        self.mode = ssl.mode
+        self.caCertificatePath = ssl.caCertificatePath
+        self.clientCertificatePath = ssl.clientCertificatePath
+        self.clientKeyPath = ssl.clientKeyPath
     }
 
     var libpqSslMode: String {
         switch mode {
-        case "Disabled": return "disable"
-        case "Preferred": return "prefer"
-        case "Required": return "require"
-        case "Verify CA": return "verify-ca"
-        case "Verify Identity": return "verify-full"
-        default: return "disable"
+        case .disabled: return "disable"
+        case .preferred: return "prefer"
+        case .required: return "require"
+        case .verifyCa: return "verify-ca"
+        case .verifyIdentity: return "verify-full"
         }
     }
 
-    var verifiesCertificate: Bool {
-        mode == "Verify CA" || mode == "Verify Identity"
-    }
+    var verifiesCertificate: Bool { mode == .verifyCa || mode == .verifyIdentity }
 }
 
 // MARK: - Error Types

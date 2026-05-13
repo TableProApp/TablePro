@@ -56,9 +56,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private let user: String
     private let password: String?
     private let database: String
-    private let sslMode: String
-    private let sslCACertPath: String
-    private let sslClientCertPath: String
+    private let ssl: SSLConfiguration
     private let authSource: String?
     private let readPreference: String?
     private let writeConcern: String?
@@ -113,9 +111,7 @@ final class MongoDBConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
-        sslMode: String = "Disabled",
-        sslCACertPath: String = "",
-        sslClientCertPath: String = "",
+        ssl: SSLConfiguration = SSLConfiguration(),
         authSource: String? = nil,
         readPreference: String? = nil,
         writeConcern: String? = nil,
@@ -129,9 +125,7 @@ final class MongoDBConnection: @unchecked Sendable {
         self.user = user
         self.password = password
         self.database = database
-        self.sslMode = sslMode
-        self.sslCACertPath = sslCACertPath
-        self.sslClientCertPath = sslClientCertPath
+        self.ssl = ssl
         self.authSource = authSource
         self.readPreference = readPreference
         self.writeConcern = writeConcern
@@ -220,22 +214,26 @@ final class MongoDBConnection: @unchecked Sendable {
             "authSource=\(encodedAuthSource)"
         ]
 
-        let sslEnabled = ["Preferred", "Required", "Verify CA", "Verify Identity"].contains(sslMode)
-        if sslEnabled {
+        if ssl.isEnabled {
             params.append("tls=true")
-            if sslMode == "Preferred" {
+            switch ssl.mode {
+            case .preferred, .required:
                 params.append("tlsAllowInvalidCertificates=true")
+            case .verifyCa:
+                params.append("tlsAllowInvalidHostnames=true")
+            case .disabled, .verifyIdentity:
+                break
             }
-            if !sslCACertPath.isEmpty {
-                let encodedCaPath = sslCACertPath
+            if ssl.verifiesCertificate, !ssl.caCertificatePath.isEmpty {
+                let encodedCaPath = ssl.caCertificatePath
                     .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-                    ?? sslCACertPath
+                    ?? ssl.caCertificatePath
                 params.append("tlsCAFile=\(encodedCaPath)")
             }
-            if !sslClientCertPath.isEmpty {
-                let encodedCertPath = sslClientCertPath
+            if !ssl.clientCertificatePath.isEmpty {
+                let encodedCertPath = ssl.clientCertificatePath
                     .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-                    ?? sslClientCertPath
+                    ?? ssl.clientCertificatePath
                 params.append("tlsCertificateKeyFile=\(encodedCertPath)")
             }
         }

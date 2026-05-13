@@ -67,7 +67,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let sslConfig = MySQLSSLConfig(from: config.additionalFields)
+        let sslConfig = MySQLSSLConfig(config.ssl)
 
         let conn = MariaDBPluginConnection(
             host: config.host,

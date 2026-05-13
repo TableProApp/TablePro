@@ -195,9 +195,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let useTLS = config.additionalFields["sslMode"] != nil
-            && config.additionalFields["sslMode"] != "Disabled"
-        let skipVerification = config.additionalFields["sslMode"] == "Required"
+        let useTLS = config.ssl.isEnabled
+        let skipVerification = !config.ssl.verifiesCertificate
 
         let urlConfig = URLSessionConfiguration.default
         urlConfig.timeoutIntervalForRequest = 30
@@ -911,8 +910,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func buildRequest(query: String, database: String, queryId: String? = nil, params: [String: String?]? = nil) throws -> URLRequest {
-        let useTLS = config.additionalFields["sslMode"] != nil
-            && config.additionalFields["sslMode"] != "Disabled"
+        let useTLS = config.ssl.isEnabled
 
         var components = URLComponents()
         components.scheme = useTLS ? "https" : "http"
@@ -1203,8 +1201,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func buildStreamRequest(query: String, database: String) throws -> URLRequest {
-        let useTLS = config.additionalFields["sslMode"] != nil
-            && config.additionalFields["sslMode"] != "Disabled"
+        let useTLS = config.ssl.isEnabled
 
         var components = URLComponents()
         components.scheme = useTLS ? "https" : "http"
