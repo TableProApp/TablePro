@@ -14,34 +14,6 @@ import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "LibPQPluginConnection")
 
-// MARK: - SSL Configuration
-
-struct PQSSLConfig {
-    let mode: SSLMode
-    let caCertificatePath: String
-    let clientCertificatePath: String
-    let clientKeyPath: String
-
-    init(_ ssl: SSLConfiguration = SSLConfiguration()) {
-        self.mode = ssl.mode
-        self.caCertificatePath = ssl.caCertificatePath
-        self.clientCertificatePath = ssl.clientCertificatePath
-        self.clientKeyPath = ssl.clientKeyPath
-    }
-
-    var libpqSslMode: String {
-        switch mode {
-        case .disabled: return "disable"
-        case .preferred: return "prefer"
-        case .required: return "require"
-        case .verifyCa: return "verify-ca"
-        case .verifyIdentity: return "verify-full"
-        }
-    }
-
-    var verifiesCertificate: Bool { mode == .verifyCa || mode == .verifyIdentity }
-}
-
 // MARK: - Error Types
 
 struct LibPQPluginError: Error {
@@ -120,7 +92,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let user: String
     private let password: String?
     private let database: String
-    private let sslConfig: PQSSLConfig
+    private let sslConfig: SSLConfiguration
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -154,7 +126,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
-        sslConfig: PQSSLConfig = PQSSLConfig()
+        sslConfig: SSLConfiguration = SSLConfiguration()
     ) {
         self.host = host
         self.port = port
@@ -194,7 +166,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 connStr += " password='\(escapeConnParam(password))'"
             }
 
-            connStr += " sslmode='\(sslConfig.libpqSslMode)'"
+            connStr += " sslmode='\(LibPQSSLMapping.sslmode(for: sslConfig.mode))'"
 
             if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
                 connStr += " sslrootcert='\(escapeConnParam(sslConfig.caCertificatePath))'"

@@ -48,21 +48,6 @@ struct MariaDBPluginQueryResult {
 
 // MARK: - SSL Configuration
 
-struct MySQLSSLConfig {
-    let mode: SSLMode
-    let caCertificatePath: String
-    let clientCertificatePath: String
-    let clientKeyPath: String
-
-    init(_ ssl: SSLConfiguration = SSLConfiguration()) {
-        self.mode = ssl.mode
-        self.caCertificatePath = ssl.caCertificatePath
-        self.clientCertificatePath = ssl.clientCertificatePath
-        self.clientKeyPath = ssl.clientKeyPath
-    }
-}
-
-
 // MARK: - Type Mapping
 
 func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
@@ -158,7 +143,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let user: String
     private let password: String?
     private let database: String
-    private let sslConfig: MySQLSSLConfig
+    private let sslConfig: SSLConfiguration
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -191,7 +176,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
-        sslConfig: MySQLSSLConfig
+        sslConfig: SSLConfiguration
     ) {
         self.host = host
         self.port = UInt32(port)
@@ -257,9 +242,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
             }
 
-            let verifiesCertificate = self.sslConfig.mode == .verifyCa
-                || self.sslConfig.mode == .verifyIdentity
-            if verifiesCertificate, !self.sslConfig.caCertificatePath.isEmpty {
+            if self.sslConfig.verifiesCertificate, !self.sslConfig.caCertificatePath.isEmpty {
                 _ = self.sslConfig.caCertificatePath.withCString { path in
                     mysql_options(mysql, MYSQL_OPT_SSL_CA, path)
                 }

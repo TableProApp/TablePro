@@ -51,7 +51,7 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let sslConfig = PQSSLConfig(config.ssl)
+        let sslConfig = config.ssl
 
         let pqConn = LibPQPluginConnection(
             host: config.host,

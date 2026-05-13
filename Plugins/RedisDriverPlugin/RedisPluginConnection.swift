@@ -96,7 +96,7 @@ final class RedisPluginConnection: @unchecked Sendable {
     private let username: String?
     private let password: String?
     private let database: Int
-    private let sslConfig: RedisSSLConfig
+    private let sslConfig: SSLConfiguration
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -132,7 +132,7 @@ final class RedisPluginConnection: @unchecked Sendable {
         username: String? = nil,
         password: String?,
         database: Int = 0,
-        sslConfig: RedisSSLConfig = RedisSSLConfig()
+        sslConfig: SSLConfiguration = SSLConfiguration()
     ) {
         self.host = host
         self.port = port
