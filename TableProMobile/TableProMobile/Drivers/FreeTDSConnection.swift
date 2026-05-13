@@ -202,8 +202,12 @@ final class FreeTDSConnection: @unchecked Sendable {
 
     func executeQuery(_ query: String) async throws -> MSSQLRawResult {
         let queryToRun = String(query)
-        return try await freetdsDispatchAsync(on: queue) { [self] in
-            try self.executeQuerySync(queryToRun)
+        return try await withTaskCancellationHandler {
+            try await freetdsDispatchAsync(on: queue) { [self] in
+                try self.executeQuerySync(queryToRun)
+            }
+        } onCancel: { [weak self] in
+            self?.cancelCurrentQuery()
         }
     }
 
@@ -319,8 +323,12 @@ final class FreeTDSConnection: @unchecked Sendable {
         continuation: AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation
     ) async throws {
         let queryToRun = String(query)
-        try await freetdsDispatchAsync(on: queue) { [self] in
-            try self.streamQuerySync(queryToRun, continuation: continuation)
+        try await withTaskCancellationHandler {
+            try await freetdsDispatchAsync(on: queue) { [self] in
+                try self.streamQuerySync(queryToRun, continuation: continuation)
+            }
+        } onCancel: { [weak self] in
+            self?.cancelCurrentQuery()
         }
     }
 

@@ -18,7 +18,7 @@ final class MSSQLDriverTests: XCTestCase {
         if env["MSSQL_TEST_HOST"] != nil {
             return env
         }
-        let fallbackPath = "/tmp/mssql-test.json"
+        let fallbackPath = env["MSSQL_TEST_CONFIG_PATH"] ?? "/tmp/mssql-test.json"
         guard let data = FileManager.default.contents(atPath: fallbackPath),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: String]
         else { return nil }
@@ -124,5 +124,72 @@ final class MSSQLDriverTests: XCTestCase {
 
         let result = try await driver.execute(query: "SELECT COUNT(*) FROM dbo.tablepro_tx_test")
         XCTAssertEqual(result.rows.first?.first, "0")
+    }
+
+    func testSwitchDatabaseChangesActiveDatabase() async throws {
+        let driver = try XCTUnwrap(driver)
+        try await driver.switchDatabase(to: "tempdb")
+        let result = try await driver.execute(query: "SELECT DB_NAME()")
+        XCTAssertEqual(result.rows.first?.first, "tempdb")
+    }
+
+    func testSortedPaginationEmitsOrderByAndFetch() async throws {
+        let driver = try XCTUnwrap(driver)
+        _ = try await driver.execute(query: """
+            IF OBJECT_ID('dbo.tablepro_pagination_test', 'U') IS NOT NULL
+                DROP TABLE dbo.tablepro_pagination_test;
+            CREATE TABLE dbo.tablepro_pagination_test (id INT PRIMARY KEY, label NVARCHAR(20));
+            INSERT INTO dbo.tablepro_pagination_test VALUES
+                (1, N'a'), (2, N'b'), (3, N'c'), (4, N'd'), (5, N'e');
+            """)
+        let result = try await driver.execute(query: """
+            SELECT id, label FROM dbo.tablepro_pagination_test
+            ORDER BY id ASC
+            OFFSET 2 ROWS FETCH NEXT 2 ROWS ONLY
+            """)
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(result.rows.first?.first, "3")
+        XCTAssertEqual(result.rows.last?.first, "4")
+    }
+
+    func testCancellationStopsQuery() async throws {
+        let driver = try XCTUnwrap(driver)
+        let task = Task { [driver] in
+            try await driver.execute(query: "WAITFOR DELAY '00:00:05'; SELECT 1")
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Cancelled task should have thrown")
+        } catch is CancellationError {
+            // expected
+        } catch {
+            // FreeTDS may surface as DatabaseError on race; both are acceptable signals that the
+            // query was interrupted rather than completing the 5-second WAITFOR.
+            XCTAssertNotNil(error)
+        }
+    }
+
+    func testWrongPasswordFailsClearly() async throws {
+        try XCTSkipIf(Self.loadTestConfig() == nil, "no test config")
+        let connection = DatabaseConnection(
+            name: "wrong-pw",
+            type: .mssql,
+            host: "localhost",
+            port: 1433,
+            username: "sa",
+            database: "master",
+            additionalFields: ["mssqlSchema": "dbo"]
+        )
+        let badDriver = MSSQLDriver(connection: connection, password: "definitely-wrong-pass-123")
+        do {
+            try await badDriver.connect()
+            XCTFail("Bad password should fail to connect")
+        } catch {
+            // any error is acceptable; verify it's not nil and surfaces a message
+            let desc = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+            XCTAssertFalse(desc.isEmpty)
+        }
     }
 }

@@ -157,12 +157,13 @@ final class DataBrowserViewModel {
     }
 
     private func buildSelectQuery(table: TableInfo) -> String {
+        let activeSort = effectiveSortState()
         if hasActiveSearch {
             return SQLBuilder.buildSearchSelect(
                 table: table.name, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
                 filters: filters, logicMode: filterLogicMode,
-                sortState: sortState,
+                sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
         }
@@ -170,14 +171,14 @@ final class DataBrowserViewModel {
             return SQLBuilder.buildFilteredSelect(
                 table: table.name, type: databaseType,
                 filters: filters, logicMode: filterLogicMode,
-                sortState: sortState,
+                sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
         }
-        if sortState.isSorting {
+        if activeSort.isSorting {
             return SQLBuilder.buildSelect(
                 table: table.name, type: databaseType,
-                sortState: sortState,
+                sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
         }
@@ -185,6 +186,17 @@ final class DataBrowserViewModel {
             table: table.name, type: databaseType,
             limit: pagination.pageSize, offset: pagination.currentOffset
         )
+    }
+
+    /// SQL Server's `OFFSET FETCH` requires `ORDER BY`. When the user has not picked an explicit
+    /// sort, inject a stable order (first primary-key column, falling back to the first column)
+    /// so paging is deterministic across requests. Other databases tolerate an empty ORDER BY.
+    private func effectiveSortState() -> SortState {
+        if sortState.isSorting { return sortState }
+        guard databaseType == .mssql else { return sortState }
+        let fallback = columnDetails.first(where: \.isPrimaryKey)?.name ?? columnDetails.first?.name
+        guard let fallback else { return sortState }
+        return SortState(columns: [SortColumn(name: fallback, ascending: true)])
     }
 
     private func searchableColumns() -> [ColumnInfo] {
