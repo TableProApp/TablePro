@@ -412,7 +412,7 @@ private extension RedisPluginConnection {
         let clientKey: UnsafePointer<CChar>? = sslConfig.clientKeyPath.isEmpty
             ? nil
             : (sslConfig.clientKeyPath as NSString).utf8String
-        let sniHostname: UnsafePointer<CChar>? = sslConfig.verifiesHostname
+        let sniHostname: UnsafePointer<CChar>? = sslConfig.isEnabled
             ? (host as NSString).utf8String
             : nil
 
