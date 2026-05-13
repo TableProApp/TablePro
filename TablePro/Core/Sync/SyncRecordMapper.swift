@@ -8,6 +8,7 @@
 import CloudKit
 import Foundation
 import os
+import TableProPluginKit
 
 /// CloudKit record types for sync
 enum SyncRecordType: String, CaseIterable {

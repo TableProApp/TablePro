@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -119,14 +120,17 @@ struct PostgresDumpServiceCommandTests {
         #expect(emptyPw.environment["PGPASSWORD"] == nil)
     }
 
-    @Test("SSL mode maps to libpq PGSSLMODE values", arguments: [
-        (SSLMode.disabled, nil as String?),
-        (SSLMode.preferred, "prefer"),
-        (SSLMode.required, "require"),
-        (SSLMode.verifyCa, "verify-ca"),
-        (SSLMode.verifyIdentity, "verify-full")
-    ])
-    func sslModeMapping(mode: SSLMode, expected: String?) {
+    @Test(
+        "SSL mode maps to libpq PGSSLMODE values",
+        arguments: [
+            (TableProPluginKit.SSLMode.disabled, nil as String?),
+            (TableProPluginKit.SSLMode.preferred, "prefer"),
+            (TableProPluginKit.SSLMode.required, "require"),
+            (TableProPluginKit.SSLMode.verifyCa, "verify-ca"),
+            (TableProPluginKit.SSLMode.verifyIdentity, "verify-full")
+        ]
+    )
+    func sslModeMapping(mode: TableProPluginKit.SSLMode, expected: String?) {
         let command = PostgresDumpService.buildCommand(
             kind: .backup,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),

@@ -227,20 +227,6 @@ private final class FreeTDSConnection: @unchecked Sendable {
         }
     }
 
-    /// FreeTDS dblib reads this value via DBSETENCRYPT. Accepted values come from
-    /// libtds: "off", "request", "require", "strict". Cert verification beyond what
-    /// the system trust store provides is configured in freetds.conf, not per
-    /// connection through dblib, so .verifyCa and .verifyIdentity both map to
-    /// "require"; the actual verification depends on the trust store and any
-    /// freetds.conf overrides on the machine.
-    private static func freetdsEncryptionFlag(for mode: SSLMode) -> String {
-        switch mode {
-        case .disabled: return "off"
-        case .preferred: return "request"
-        case .required, .verifyCa, .verifyIdentity: return "require"
-        }
-    }
-
     private func connectSync() throws {
         guard let login = dblogin() else {
             throw MSSQLPluginError.connectionFailed("Failed to create login")
@@ -253,7 +239,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
         _ = dbsetlname(login, "us_english", Int32(DBSETNATLANG))
         _ = dbsetlname(login, "UTF-8", Int32(DBSETCHARSET))
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
-        _ = dbsetlname(login, Self.freetdsEncryptionFlag(for: ssl.mode), Int32(DBSETENCRYPT))
+        _ = dbsetlname(login, MSSQLSSLMapping.freetdsEncryptionFlag(for: ssl.mode), Int32(DBSETENCRYPT))
 
         freetdsClearError(for: nil)
         let serverName = "\(host):\(port)"

@@ -6,6 +6,7 @@
 import CommonCrypto
 import Foundation
 import os
+import TableProPluginKit
 
 struct DBeaverImporter: ForeignAppImporter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DBeaverImporter")

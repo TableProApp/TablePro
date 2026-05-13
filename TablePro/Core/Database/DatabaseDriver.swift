@@ -417,7 +417,7 @@ enum DatabaseDriverFactory {
             username: connection.username,
             password: resolvePassword(for: connection, override: passwordOverride),
             database: connection.database,
-            ssl: pluginSSLConfiguration(from: connection.sslConfig),
+            ssl: connection.sslConfig,
             additionalFields: buildAdditionalFields(for: connection, plugin: plugin)
         )
         let pluginDriver = plugin.createDriver(config: config)
@@ -441,27 +441,6 @@ enum DatabaseDriverFactory {
             ) ?? ""
         }
         return ConnectionStorage.shared.loadPassword(for: connection.id) ?? ""
-    }
-
-    private static func pluginSSLConfiguration(
-        from appSSL: SSLConfiguration
-    ) -> TableProPluginKit.SSLConfiguration {
-        TableProPluginKit.SSLConfiguration(
-            mode: pluginSSLMode(from: appSSL.mode),
-            caCertificatePath: appSSL.caCertificatePath,
-            clientCertificatePath: appSSL.clientCertificatePath,
-            clientKeyPath: appSSL.clientKeyPath
-        )
-    }
-
-    private static func pluginSSLMode(from mode: SSLMode) -> TableProPluginKit.SSLMode {
-        switch mode {
-        case .disabled: return .disabled
-        case .preferred: return .preferred
-        case .required: return .required
-        case .verifyCa: return .verifyCa
-        case .verifyIdentity: return .verifyIdentity
-        }
     }
 
     private static func buildAdditionalFields(
