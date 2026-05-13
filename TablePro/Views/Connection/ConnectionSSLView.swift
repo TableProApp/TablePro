@@ -37,7 +37,11 @@ struct ConnectionSSLView: View {
             if sslMode != .disabled {
                 if !supportsPerConnectionCertPaths {
                     Section {
-                        Text(String(localized: "SQL Server connections use the system trust store. Per-connection CA and client certificate paths are not supported by FreeTDS dblib; configure them in `freetds.conf` if you need a custom trust anchor."))
+                        Text(String(localized: """
+                            SQL Server connections use the system trust store. Per-connection CA and client certificate \
+                            paths are not supported by FreeTDS dblib; configure them in `freetds.conf` if you need a \
+                            custom trust anchor.
+                            """))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } header: {
