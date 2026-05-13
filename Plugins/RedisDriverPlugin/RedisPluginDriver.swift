@@ -63,7 +63,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection Management
 
     func connect() async throws {
-        let sslConfig = RedisSSLConfig(additionalFields: config.additionalFields)
+        let sslConfig = RedisSSLConfig(config.ssl)
         let redisDb = Int(config.additionalFields["redisDatabase"] ?? "") ?? Int(config.database) ?? 0
 
         let conn = RedisPluginConnection(
