@@ -10,7 +10,7 @@ extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
         let safeTable = escapeLiteralForColumns(table)
-        let caps = capabilities
+        let caps = versionedCapabilities
         let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generatedProjection = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
         let attributeJoin = (caps.hasIdentityColumns || caps.hasGeneratedColumns) ? """
@@ -60,7 +60,7 @@ extension PostgreSQLPluginDriver {
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
-        let caps = capabilities
+        let caps = versionedCapabilities
         let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generatedProjection = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
         let attributeJoin = (caps.hasIdentityColumns || caps.hasGeneratedColumns) ? """

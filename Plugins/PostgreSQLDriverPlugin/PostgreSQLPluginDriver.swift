@@ -22,7 +22,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
-    var capabilities: PostgreSQLCapabilities {
+    var versionedCapabilities: PostgreSQLCapabilities {
         PostgreSQLCapabilities(serverVersion: serverVersionNumber)
     }
     var parameterStyle: ParameterStyle { .dollar }
@@ -234,7 +234,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let schemaLiteral = escapeLiteral(schema ?? _currentSchema)
-        let caps = capabilities
+        let caps = versionedCapabilities
 
         var unions: [String] = [
             """
@@ -284,7 +284,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let columnOrdering = capabilities.hasArrayPosition
+        let columnOrdering = versionedCapabilities.hasArrayPosition
             ? "ORDER BY array_position(ix.indkey, a.attnum)"
             : "ORDER BY a.attnum"
         let query = """
@@ -433,7 +433,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeLiteral(table)
         let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
-        let caps = capabilities
+        let caps = versionedCapabilities
 
         let identityClause: String = caps.hasIdentityColumns ? """
                 CASE
@@ -672,7 +672,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)] {
-        guard capabilities.hasSequencesCatalog else { return [] }
+        guard versionedCapabilities.hasSequencesCatalog else { return [] }
         let safeTable = escapeLiteral(table)
         let query = """
             SELECT s.sequencename,
@@ -720,7 +720,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ]
 
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
-        let supportsProvider = capabilities.hasDatabaseICULocale
+        let supportsProvider = versionedCapabilities.hasDatabaseICULocale
 
         async let templateDefaultsTask = fetchTemplate1Defaults()
         async let collationsTask = fetchCollations()
@@ -813,7 +813,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var sql = "CREATE DATABASE \"\(quotedName)\" ENCODING '\(encoding)'"
 
-        let supportsProvider = capabilities.hasDatabaseICULocale
+        let supportsProvider = versionedCapabilities.hasDatabaseICULocale
         let provider = supportsProvider ? (request.values["provider"] ?? "libc") : "libc"
 
         switch provider {
@@ -873,7 +873,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 )
             }
             let escapedIcu = escapeLiteral(icuLocale)
-            if let major = majorVersion, major >= 16 {
+            if versionedCapabilities.hasModernICUSyntax {
                 sql += " LOCALE_PROVIDER 'icu' LOCALE '\(escapedIcu)' TEMPLATE template0"
             } else {
                 sql += " LOCALE_PROVIDER 'icu' ICU_LOCALE '\(escapedIcu)' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0"
@@ -903,7 +903,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func fetchTemplate1Defaults() async -> Template1Defaults? {
-        let caps = capabilities
+        let caps = versionedCapabilities
         let selectColumns: String
         if caps.hasDatabaseLocale {
             selectColumns = "datcollate, datctype, datlocprovider, datlocale"

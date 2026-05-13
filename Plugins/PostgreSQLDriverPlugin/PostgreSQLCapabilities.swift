@@ -24,4 +24,5 @@ struct PostgreSQLCapabilities: Sendable, Equatable {
 
     var hasDatabaseICULocale: Bool { serverVersion >= 150_000 }
     var hasDatabaseLocale: Bool { serverVersion >= 170_000 }
+    var hasModernICUSyntax: Bool { serverVersion >= 160_000 }
 }
