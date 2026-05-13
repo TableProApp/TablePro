@@ -81,12 +81,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await conn.connect()
 
         if currentDb.isEmpty {
-            do {
-                let dbs = try await conn.listDatabases()
+            if let dbs = try? await conn.listDatabases() {
                 currentDb = dbs.first { !Self.systemDatabases.contains($0) } ?? dbs.first ?? ""
-            } catch {
-                conn.disconnect()
-                throw error
             }
         }
 

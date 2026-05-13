@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redis: "Required (skip verify)" SSL mode now actually skips certificate verification, matching `redis-cli --tls --insecure`. Previously every mode performed verification because of a phantom dictionary key the app never wrote. Connections to Upstash Redis and similar endpoints with untrusted CAs work (#1247).
 - MSSQL: SSL mode finally affects the connection. `Disabled` / `Preferred` / `Required` / `Verify CA` / `Verify Identity` map to FreeTDS `off` / `request` / `require` / `require` / `require` via `DBSETENCRYPT`. Previously the setting was read and silently ignored.
 - MongoDB: "Required" and "Verify CA" pass the right libmongoc flags (`tlsAllowInvalidCertificates`, `tlsAllowInvalidHostnames`) so connections to self-signed or untrusted-CA servers stop failing on those paths.
+- MongoDB: connecting no longer crashes with `dispatch_sync called on queue already owned by current thread` when the server version cache is cold (#1249).
+- MongoDB: TLS handshake to Atlas no longer fails with `internal error (-9838)` on macOS 26. libmongoc is rebuilt with OpenSSL 3.4.3 instead of Apple Secure Transport; the previous backend hit a peer-side `internal_error` alert during TLS 1.3 negotiation with Atlas clusters.
+- MongoDB: importing a connection URL without a database path no longer fails with Unauthorized when the user lacks `listDatabases` privilege on `admin`. `listDatabases` now passes `authorizedDatabases: true` so Atlas users restricted to one database see that database; if the call still fails, the connection stays open with no default database selected.
 - MySQL: CA certificate is no longer loaded when the user picked a mode that skips verification, matching PostgreSQL.
 
 ## [0.40.3] - 2026-05-13

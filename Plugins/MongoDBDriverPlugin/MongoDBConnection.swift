@@ -38,7 +38,9 @@ extension MongoDBError: PluginDriverError {
 
 /// Thread-safe MongoDB connection using libmongoc.
 /// All blocking C calls are dispatched to a dedicated serial queue.
-/// Uses `queue.async` + continuations (never `queue.sync`) to prevent deadlocks.
+/// Async entry points use `queue.async` + continuations. Synchronous entry points
+/// detect on-queue re-entry via `queueKey` and call sync helpers directly to
+/// avoid `dispatch_sync` deadlocks when an on-queue block re-enters a public API.
 final class MongoDBConnection: @unchecked Sendable {
     // MARK: - Properties
 
@@ -50,6 +52,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private var client: OpaquePointer?
     #endif
 
+    private static let queueKey = DispatchSpecificKey<ObjectIdentifier>()
     private let queue = DispatchQueue(label: "com.TablePro.mongodb", qos: .userInitiated)
     private let host: String
     private let port: Int
@@ -133,6 +136,11 @@ final class MongoDBConnection: @unchecked Sendable {
         self.authMechanism = authMechanism
         self.replicaSet = replicaSet
         self.extraUriParams = extraUriParams
+        queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
+    }
+
+    private var isOnQueue: Bool {
+        DispatchQueue.getSpecific(key: Self.queueKey) == ObjectIdentifier(self)
     }
 
     deinit {
@@ -416,7 +424,7 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.unlock()
 
         #if canImport(CLibMongoc)
-        let version = queue.sync { fetchServerVersionSync() }
+        let version = isOnQueue ? fetchServerVersionSync() : queue.sync { fetchServerVersionSync() }
         stateLock.lock()
         _cachedServerVersion = version
         stateLock.unlock()
@@ -1044,9 +1052,14 @@ private extension MongoDBConnection {
         try checkCancelled()
 
         let caps = MongoDBCapabilities.parse(serverVersion())
-        let commandJSON = caps.supportsListDatabasesNameOnly
-            ? "{\"listDatabases\": 1, \"nameOnly\": true}"
-            : "{\"listDatabases\": 1}"
+        var fields = ["\"listDatabases\": 1"]
+        if caps.supportsListDatabasesNameOnly {
+            fields.append("\"nameOnly\": true")
+        }
+        if caps.supportsAuthorizedDatabases {
+            fields.append("\"authorizedDatabases\": true")
+        }
+        let commandJSON = "{\(fields.joined(separator: ", "))}"
         guard let command = jsonToBson(commandJSON) else {
             throw MongoDBError(code: 0, message: "Failed to create listDatabases command")
         }
