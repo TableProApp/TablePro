@@ -3,10 +3,52 @@
 //  TablePro
 //
 
-import CFreeTDS
 import Foundation
 import os
+import TableProMSSQLCore
 import TableProPluginKit
+
+// MARK: - Core ↔ Plugin Bridges
+
+private extension MSSQLRawCell {
+    var asPluginCell: PluginCellValue {
+        switch self {
+        case .null: return .null
+        case .string(let s): return PluginCellValue.fromOptional(s)
+        case .bytes(let d): return .bytes(d)
+        }
+    }
+}
+
+private extension MSSQLRawResult {
+    func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
+        PluginQueryResult(
+            columns: columns.map { $0.name },
+            columnTypeNames: columns.map { $0.type.canonicalName },
+            rows: rows.map { row in row.map { $0.asPluginCell } },
+            rowsAffected: affectedRows,
+            executionTime: executionTime,
+            isTruncated: isTruncated
+        )
+    }
+}
+
+private extension MSSQLPluginError {
+    init(coreError: MSSQLCoreError) {
+        switch coreError {
+        case .notConnected:
+            self = .notConnected
+        case .connectionFailed(let m):
+            self = .connectionFailed(m)
+        case .queryFailed(let m):
+            self = .queryFailed(m)
+        case .cancelled:
+            self = .queryFailed(String(localized: "Query was cancelled"))
+        case .tlsHandshakeFailed(let m):
+            self = .connectionFailed(String(format: String(localized: "TLS: %@"), m))
+        }
+    }
+}
 
 final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "MSSQL Driver"
@@ -101,626 +143,6 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
-// MARK: - Global FreeTDS initialization
-
-/// Per-connection error storage keyed by DBPROCESS pointer.
-/// Falls back to a global error string when the DBPROCESS is nil (pre-connection errors).
-private let freetdsErrorLock = NSLock()
-private var freetdsConnectionErrors: [UnsafeRawPointer: String] = [:]
-private var freetdsGlobalError = ""
-
-private func freetdsGetError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) -> String {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        return freetdsConnectionErrors[UnsafeRawPointer(dbproc)] ?? freetdsGlobalError
-    }
-    return freetdsGlobalError
-}
-
-private func freetdsClearError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        freetdsConnectionErrors[UnsafeRawPointer(dbproc)] = nil
-    } else {
-        freetdsGlobalError = ""
-    }
-}
-
-private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?, overwrite: Bool = false) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        let key = UnsafeRawPointer(dbproc)
-        if overwrite || (freetdsConnectionErrors[key]?.isEmpty ?? true) {
-            freetdsConnectionErrors[key] = msg
-        }
-    } else if overwrite || freetdsGlobalError.isEmpty {
-        freetdsGlobalError = msg
-    }
-}
-
-private func freetdsUnregister(_ dbproc: UnsafeMutablePointer<DBPROCESS>) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    freetdsConnectionErrors.removeValue(forKey: UnsafeRawPointer(dbproc))
-}
-
-private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
-
-private let freetdsInitOnce: Void = {
-    _ = dbinit()
-    _ = dberrhandle { dbproc, _, dberr, _, dberrstr, oserrstr in
-        var msg = "db-lib error \(dberr)"
-        if let s = dberrstr { msg += ": \(String(cString: s))" }
-        if let s = oserrstr, String(cString: s) != "Success" { msg += " (os: \(String(cString: s)))" }
-        freetdsLogger.error("FreeTDS: \(msg)")
-        freetdsSetError(msg, for: dbproc)
-        return INT_CANCEL
-    }
-    _ = dbmsghandle { dbproc, msgno, _, severity, msgtext, _, _, _ in
-        guard let text = msgtext else { return 0 }
-        let msg = String(cString: text)
-        if severity > 10 {
-            // SQL Server sends informational messages first, error messages last —
-            // overwrite so the most specific error is kept
-            freetdsSetError(msg, for: dbproc, overwrite: true)
-            freetdsLogger.error("FreeTDS msg \(msgno) sev \(severity): \(msg)")
-        } else {
-            freetdsLogger.debug("FreeTDS msg \(msgno): \(msg)")
-        }
-        return 0
-    }
-}()
-
-// MARK: - FreeTDS Connection
-
-private struct FreeTDSQueryResult {
-    let columns: [String]
-    let columnTypeNames: [String]
-    let rows: [[PluginCellValue]]
-    let affectedRows: Int
-    let isTruncated: Bool
-}
-
-private final class FreeTDSConnection: @unchecked Sendable {
-    private var dbproc: UnsafeMutablePointer<DBPROCESS>?
-    private let queue: DispatchQueue
-    private let host: String
-    private let port: Int
-    private let user: String
-    private let password: String
-    private let database: String
-    private let ssl: SSLConfiguration
-    private let lock = NSLock()
-    private var _isConnected = false
-    private var _isCancelled = false
-
-    var isConnected: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return _isConnected
-    }
-
-    init(
-        host: String,
-        port: Int,
-        user: String,
-        password: String,
-        database: String,
-        ssl: SSLConfiguration
-    ) {
-        self.queue = DispatchQueue(label: "com.TablePro.freetds.\(host).\(port)", qos: .userInitiated)
-        self.host = host
-        self.port = port
-        self.user = user
-        self.password = password
-        self.database = database
-        self.ssl = ssl
-        _ = freetdsInitOnce
-    }
-
-    func connect() async throws {
-        try await pluginDispatchAsync(on: queue) { [self] in
-            try self.connectSync()
-        }
-    }
-
-    private func connectSync() throws {
-        guard let login = dblogin() else {
-            throw MSSQLPluginError.connectionFailed("Failed to create login")
-        }
-        defer { dbloginfree(login) }
-
-        _ = dbsetlname(login, user, Int32(DBSETUSER))
-        _ = dbsetlname(login, password, Int32(DBSETPWD))
-        _ = dbsetlname(login, "TablePro", Int32(DBSETAPP))
-        _ = dbsetlname(login, "us_english", Int32(DBSETNATLANG))
-        _ = dbsetlname(login, "UTF-8", Int32(DBSETCHARSET))
-        _ = dbsetlversion(login, UInt8(DBVERSION_74))
-        _ = dbsetlname(login, MSSQLSSLMapping.freetdsEncryptionFlag(for: ssl.mode), Int32(DBSETENCRYPT))
-
-        freetdsClearError(for: nil)
-        let serverName = "\(host):\(port)"
-        guard let proc = dbopen(login, serverName) else {
-            let detail = freetdsGetError(for: nil)
-            let msg = detail.isEmpty ? "Check host, port, and credentials" : detail
-            throw MSSQLPluginError.connectionFailed("Failed to connect to \(host):\(port) — \(msg)")
-        }
-
-        if !database.isEmpty {
-            if dbuse(proc, database) == FAIL {
-                _ = dbclose(proc)
-                throw MSSQLPluginError.connectionFailed("Cannot open database '\(database)'")
-            }
-        }
-
-        self.dbproc = proc
-        lock.lock()
-        _isConnected = true
-        lock.unlock()
-    }
-
-    func switchDatabase(_ database: String) async throws {
-        try await pluginDispatchAsync(on: queue) { [self] in
-            guard let proc = self.dbproc else {
-                throw MSSQLPluginError.notConnected
-            }
-            if dbuse(proc, database) == FAIL {
-                throw MSSQLPluginError.queryFailed("Cannot switch to database '\(database)'")
-            }
-        }
-    }
-
-    func disconnect() {
-        let handle = dbproc
-        dbproc = nil
-
-        lock.lock()
-        _isConnected = false
-        lock.unlock()
-
-        if let handle = handle {
-            freetdsUnregister(handle)
-            queue.async {
-                _ = dbclose(handle)
-            }
-        }
-    }
-
-    func cancelCurrentQuery() {
-        lock.lock()
-        _isCancelled = true
-        let proc = dbproc
-        lock.unlock()
-
-        guard let proc else { return }
-        dbcancel(proc)
-    }
-
-    func executeQuery(_ query: String) async throws -> FreeTDSQueryResult {
-        let queryToRun = String(query)
-        return try await pluginDispatchAsync(on: queue) { [self] in
-            try self.executeQuerySync(queryToRun)
-        }
-    }
-
-    private func executeQuerySync(_ query: String) throws -> FreeTDSQueryResult {
-        guard let proc = dbproc else {
-            throw MSSQLPluginError.notConnected
-        }
-
-        _ = dbcanquery(proc)
-
-        lock.lock()
-        _isCancelled = false
-        lock.unlock()
-
-        freetdsClearError(for: proc)
-        if dbcmd(proc, query) == FAIL {
-            throw MSSQLPluginError.queryFailed("Failed to prepare query")
-        }
-        if dbsqlexec(proc) == FAIL {
-            let detail = freetdsGetError(for: proc)
-            let msg = detail.isEmpty ? "Query execution failed" : detail
-            throw MSSQLPluginError.queryFailed(msg)
-        }
-
-        var allColumns: [String] = []
-        var allTypeNames: [String] = []
-        var allRows: [[PluginCellValue]] = []
-        var firstResultSet = true
-        var truncated = false
-
-        while true {
-            lock.lock()
-            let cancelledBetweenResults = _isCancelled
-            if cancelledBetweenResults { _isCancelled = false }
-            lock.unlock()
-            if cancelledBetweenResults {
-                throw CancellationError()
-            }
-
-            let resCode = dbresults(proc)
-            if resCode == FAIL {
-                throw MSSQLPluginError.queryFailed("Query execution failed")
-            }
-            if resCode == Int32(NO_MORE_RESULTS) {
-                break
-            }
-
-            let numCols = dbnumcols(proc)
-            if numCols <= 0 { continue }
-
-            var cols: [String] = []
-            var typeNames: [String] = []
-            for i in 1...numCols {
-                let name = dbcolname(proc, Int32(i)).map { String(cString: $0) } ?? "col\(i)"
-                cols.append(name)
-                typeNames.append(Self.freetdsTypeName(dbcoltype(proc, Int32(i))))
-            }
-
-            if firstResultSet {
-                allColumns = cols
-                allTypeNames = typeNames
-                firstResultSet = false
-            }
-
-            while true {
-                let rowCode = dbnextrow(proc)
-                if rowCode == Int32(NO_MORE_ROWS) { break }
-                if rowCode == FAIL { break }
-
-                lock.lock()
-                let cancelled = _isCancelled
-                if cancelled { _isCancelled = false }
-                lock.unlock()
-                if cancelled {
-                    throw CancellationError()
-                }
-
-                var row: [PluginCellValue] = []
-                for i in 1...numCols {
-                    let len = dbdatlen(proc, Int32(i))
-                    let colType = dbcoltype(proc, Int32(i))
-                    if len <= 0 && colType != Int32(SYBBIT) {
-                        row.append(.null)
-                    } else if let ptr = dbdata(proc, Int32(i)) {
-                        if Self.isBinaryType(colType) {
-                            row.append(.bytes(Data(bytes: ptr, count: Int(len))))
-                        } else {
-                            let str = Self.columnValueAsString(proc: proc, ptr: ptr, srcType: colType, srcLen: len)
-                            row.append(PluginCellValue.fromOptional(str))
-                        }
-                    } else {
-                        row.append(.null)
-                    }
-                }
-                allRows.append(row)
-                if allRows.count >= PluginRowLimits.emergencyMax {
-                    truncated = true
-                    break
-                }
-            }
-        }
-
-        let affectedRows = allColumns.isEmpty ? 0 : allRows.count
-        return FreeTDSQueryResult(
-            columns: allColumns,
-            columnTypeNames: allTypeNames,
-            rows: allRows,
-            affectedRows: affectedRows,
-            isTruncated: truncated
-        )
-    }
-
-    func streamQuery(
-        _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
-        let queryToRun = String(query)
-        try await pluginDispatchAsync(on: queue) { [self] in
-            try self.streamQuerySync(queryToRun, continuation: continuation)
-        }
-    }
-
-    private func streamQuerySync(
-        _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) throws {
-        guard let proc = dbproc else {
-            throw MSSQLPluginError.notConnected
-        }
-
-        _ = dbcanquery(proc)
-
-        lock.lock()
-        _isCancelled = false
-        lock.unlock()
-
-        freetdsClearError(for: proc)
-        if dbcmd(proc, query) == FAIL {
-            throw MSSQLPluginError.queryFailed("Failed to prepare query")
-        }
-        if dbsqlexec(proc) == FAIL {
-            let detail = freetdsGetError(for: proc)
-            let msg = detail.isEmpty ? "Query execution failed" : detail
-            throw MSSQLPluginError.queryFailed(msg)
-        }
-
-        var headerSent = false
-
-        while true {
-            lock.lock()
-            let cancelledBetweenResults = _isCancelled || Task.isCancelled
-            if cancelledBetweenResults { _isCancelled = false }
-            lock.unlock()
-            if cancelledBetweenResults {
-                continuation.finish(throwing: CancellationError())
-                return
-            }
-
-            let resCode = dbresults(proc)
-            if resCode == FAIL {
-                continuation.finish(throwing: MSSQLPluginError.queryFailed("Query execution failed"))
-                return
-            }
-            if resCode == Int32(NO_MORE_RESULTS) {
-                break
-            }
-
-            let numCols = dbnumcols(proc)
-            if numCols <= 0 { continue }
-
-            if !headerSent {
-                var cols: [String] = []
-                var typeNames: [String] = []
-                for i in 1...numCols {
-                    let name = dbcolname(proc, Int32(i)).map { String(cString: $0) } ?? "col\(i)"
-                    cols.append(name)
-                    typeNames.append(Self.freetdsTypeName(dbcoltype(proc, Int32(i))))
-                }
-                continuation.yield(.header(PluginStreamHeader(
-                    columns: cols,
-                    columnTypeNames: typeNames,
-                    estimatedRowCount: nil
-                )))
-                headerSent = true
-            }
-
-            let batchSize = 5_000
-            var batch: [PluginRow] = []
-            batch.reserveCapacity(batchSize)
-
-            while true {
-                let rowCode = dbnextrow(proc)
-                if rowCode == Int32(NO_MORE_ROWS) { break }
-                if rowCode == FAIL { break }
-
-                lock.lock()
-                let cancelled = _isCancelled || Task.isCancelled
-                if cancelled { _isCancelled = false }
-                lock.unlock()
-                if cancelled {
-                    if !batch.isEmpty {
-                        continuation.yield(.rows(batch))
-                    }
-                    continuation.finish(throwing: CancellationError())
-                    return
-                }
-
-                var row: [PluginCellValue] = []
-                for i in 1...numCols {
-                    let len = dbdatlen(proc, Int32(i))
-                    let colType = dbcoltype(proc, Int32(i))
-                    if len <= 0 && colType != Int32(SYBBIT) {
-                        row.append(.null)
-                    } else if let ptr = dbdata(proc, Int32(i)) {
-                        if Self.isBinaryType(colType) {
-                            row.append(.bytes(Data(bytes: ptr, count: Int(len))))
-                        } else {
-                            let str = Self.columnValueAsString(proc: proc, ptr: ptr, srcType: colType, srcLen: len)
-                            row.append(PluginCellValue.fromOptional(str))
-                        }
-                    } else {
-                        row.append(.null)
-                    }
-                }
-                batch.append(row)
-                if batch.count >= batchSize {
-                    continuation.yield(.rows(batch))
-                    batch.removeAll(keepingCapacity: true)
-                }
-            }
-
-            if !batch.isEmpty {
-                continuation.yield(.rows(batch))
-            }
-        }
-
-        continuation.finish()
-    }
-
-    private static func isBinaryType(_ srcType: Int32) -> Bool {
-        switch srcType {
-        case Int32(SYBBINARY), Int32(SYBVARBINARY), Int32(SYBIMAGE):
-            return true
-        default:
-            return false
-        }
-    }
-
-    private static func columnValueAsString(proc: UnsafeMutablePointer<DBPROCESS>, ptr: UnsafePointer<BYTE>, srcType: Int32, srcLen: DBINT) -> String? {
-        switch srcType {
-        case Int32(SYBCHAR), Int32(SYBVARCHAR), Int32(SYBTEXT):
-            return String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .utf8)
-                ?? String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .isoLatin1)
-        case Int32(SYBNCHAR), Int32(SYBNVARCHAR), Int32(SYBNTEXT):
-            // With client charset UTF-8, FreeTDS converts UTF-16 wire data to UTF-8
-            // but may still report the original nvarchar type token
-            return String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .utf8)
-                ?? String(data: Data(bytes: ptr, count: Int(srcLen)), encoding: .utf16LittleEndian)
-        default:
-            let bufSize: DBINT = 256
-            var buf = [BYTE](repeating: 0, count: Int(bufSize))
-            let converted = buf.withUnsafeMutableBufferPointer { bufPtr in
-                dbconvert(proc, srcType, ptr, srcLen, Int32(SYBCHAR), bufPtr.baseAddress, bufSize)
-            }
-            guard converted > 0,
-                  let raw = String(bytes: buf.prefix(Int(converted)), encoding: .utf8)
-            else { return nil }
-            return MSSQLDatetimeFormatter.reformat(raw, srcType: srcType) ?? raw
-        }
-    }
-
-    private static func freetdsTypeName(_ type: Int32) -> String {
-        switch type {
-        case Int32(SYBCHAR), Int32(SYBVARCHAR): return "varchar"
-        case Int32(SYBNCHAR), Int32(SYBNVARCHAR): return "nvarchar"
-        case Int32(SYBTEXT): return "text"
-        case Int32(SYBNTEXT): return "ntext"
-        case Int32(SYBINT1): return "tinyint"
-        case Int32(SYBINT2): return "smallint"
-        case Int32(SYBINT4): return "int"
-        case Int32(SYBINT8): return "bigint"
-        case Int32(SYBFLT8): return "float"
-        case Int32(SYBREAL): return "real"
-        case Int32(SYBDECIMAL), Int32(SYBNUMERIC): return "decimal"
-        case Int32(SYBMONEY), Int32(SYBMONEY4): return "money"
-        case Int32(SYBBIT): return "bit"
-        case Int32(SYBBINARY), Int32(SYBVARBINARY): return "varbinary"
-        case Int32(SYBIMAGE): return "image"
-        case Int32(SYBDATETIME), Int32(SYBDATETIMN): return "datetime"
-        case Int32(SYBDATETIME4): return "smalldatetime"
-        case Int32(SYBUNIQUE): return "uniqueidentifier"
-        default: return "unknown"
-        }
-    }
-}
-
-// MARK: - Datetime Reformatting
-
-/// Reformats FreeTDS msdblib datetime output into ISO 8601 so values round-trip
-/// through SQL Server's implicit string-to-datetime conversion.
-///
-/// FreeTDS dbconvert(... SYBCHAR) emits legacy datetime values as
-/// "MMM d yyyy h:mm[:ss[:fffffff]]AM/PM" (msdblib mode). SQL Server's parser
-/// rejects that format on subsequent UPDATE/WHERE binding. ISO 8601
-/// (yyyy-MM-dd HH:mm:ss[.fffffff]) parses everywhere and preserves the original
-/// fractional digits exactly without Foundation.Date precision loss.
-internal enum MSSQLDatetimeFormatter {
-    /// Reformats a FreeTDS-emitted column value when the source type is one of
-    /// SQL Server's datetime variants. Returns nil for non-datetime types so the
-    /// caller falls back to the raw FreeTDS string.
-    static func reformat(_ raw: String, srcType: Int32) -> String? {
-        switch srcType {
-        case Int32(SYBDATETIME), Int32(SYBDATETIME4), Int32(SYBDATETIMN):
-            break
-        case 40, 41, 42:
-            // SYBMSDATE (40), SYBMSTIME (41), SYBMSDATETIME2 (42) from TDS 7.3+.
-            // Constants are not declared in the CFreeTDS stub header; matched
-            // by raw value. SYBMSDATETIMEOFFSET (43) is intentionally excluded
-            // because the offset suffix format is not verified.
-            break
-        default:
-            return nil
-        }
-        return parse(raw)
-    }
-
-    /// Returns ISO 8601 if the input is recognized, nil otherwise. Already-ISO
-    /// inputs pass through verbatim. Public so tests can exercise it directly.
-    static func parse(_ raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        if isAlreadyISO(trimmed) {
-            return trimmed
-        }
-        return parseLegacyAMPM(trimmed)
-    }
-
-    /// FreeTDS emits "yyyy-MM-dd ..." for some TDS 7.3+ types. Detect the prefix
-    /// and pass through, since the rest of the value is already SQL Server parseable.
-    static func isAlreadyISO(_ s: String) -> Bool {
-        let chars = Array(s)
-        guard chars.count >= 10 else { return false }
-        return chars[0].isASCIIDigit && chars[1].isASCIIDigit
-            && chars[2].isASCIIDigit && chars[3].isASCIIDigit
-            && chars[4] == "-"
-            && chars[5].isASCIIDigit && chars[6].isASCIIDigit
-            && chars[7] == "-"
-            && chars[8].isASCIIDigit && chars[9].isASCIIDigit
-    }
-
-    /// Parses "MMM d yyyy h:mm[:ss[:fff[fffff]]] AM|PM" (msdblib 12-hour) or the
-    /// 24-hour variant without an AM/PM marker. Returns ISO 8601 with fractional
-    /// digits preserved verbatim.
-    private static func parseLegacyAMPM(_ raw: String) -> String? {
-        let scanner = Scanner(string: raw)
-        scanner.charactersToBeSkipped = nil
-        _ = scanner.scanCharacters(from: .whitespaces)
-
-        guard let monthToken = scanner.scanCharacters(from: .letters),
-              monthToken.count >= 3,
-              let month = monthNamesByPrefix[String(monthToken.prefix(3))]
-        else { return nil }
-
-        _ = scanner.scanCharacters(from: .whitespaces)
-        guard let day = scanner.scanInt(), (1...31).contains(day) else { return nil }
-        _ = scanner.scanCharacters(from: .whitespaces)
-        guard let year = scanner.scanInt(), (1...9999).contains(year) else { return nil }
-        _ = scanner.scanCharacters(from: .whitespaces)
-        guard var hour = scanner.scanInt() else { return nil }
-
-        var minute = 0
-        var second = 0
-        var fractional = ""
-
-        if scanner.scanString(":") != nil {
-            guard let m = scanner.scanInt(), (0...59).contains(m) else { return nil }
-            minute = m
-        }
-        if scanner.scanString(":") != nil {
-            guard let s = scanner.scanInt(), (0...59).contains(s) else { return nil }
-            second = s
-        }
-        if scanner.scanString(":") != nil || scanner.scanString(".") != nil {
-            fractional = scanner.scanCharacters(from: .decimalDigits) ?? ""
-        }
-
-        _ = scanner.scanCharacters(from: .whitespaces)
-        let ampm = scanner.scanCharacters(from: .letters)?.uppercased()
-
-        if let ampm {
-            guard ampm == "AM" || ampm == "PM" else { return nil }
-            guard (1...12).contains(hour) else { return nil }
-            if ampm == "PM", hour < 12 {
-                hour += 12
-            } else if ampm == "AM", hour == 12 {
-                hour = 0
-            }
-        } else {
-            guard (0...23).contains(hour) else { return nil }
-        }
-
-        var iso = String(format: "%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second)
-        if !fractional.isEmpty {
-            iso += "." + fractional
-        }
-        return iso
-    }
-
-    private static let monthNamesByPrefix: [String: Int] = [
-        "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
-        "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
-    ]
-}
-
-private extension Character {
-    var isASCIIDigit: Bool { isASCII && isNumber }
-}
-
 // MARK: - MSSQL Plugin Driver
 
 final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -794,18 +216,24 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let conn = FreeTDSConnection(
+        let options = MSSQLConnectionOptions(
             host: config.host,
             port: config.port,
             user: config.username,
             password: config.password,
             database: config.database,
-            ssl: config.ssl
+            schema: _currentSchema,
+            encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode)
         )
-        try await conn.connect()
+        let conn = FreeTDSConnection(options: options)
+        do {
+            try await conn.connect()
+        } catch let error as MSSQLCoreError {
+            throw MSSQLPluginError(coreError: error)
+        }
         self.freeTDSConn = conn
 
-        if let result = try? await conn.executeQuery("SELECT SCHEMA_NAME()"),
+        if let result = try? await executeInternal("SELECT SCHEMA_NAME()"),
            let serverSchema = result.rows.first?.first?.asText,
            !serverSchema.isEmpty {
             _currentSchema = serverSchema
@@ -818,9 +246,22 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _currentSchema = formSchema
         }
 
-        if let result = try? await conn.executeQuery("SELECT @@VERSION"),
+        if let result = try? await executeInternal("SELECT @@VERSION"),
            let versionStr = result.rows.first?.first?.asText {
             _serverVersion = String(versionStr.prefix(50))
+        }
+    }
+
+    private func executeInternal(_ query: String) async throws -> PluginQueryResult {
+        guard let conn = freeTDSConn else {
+            throw MSSQLPluginError.notConnected
+        }
+        let startTime = Date()
+        do {
+            let raw = try await conn.executeQuery(query)
+            return raw.toPluginResult(executionTime: Date().timeIntervalSince(startTime))
+        } catch let error as MSSQLCoreError {
+            throw MSSQLPluginError(coreError: error)
         }
     }
 
@@ -842,19 +283,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        guard let conn = freeTDSConn else {
-            throw MSSQLPluginError.notConnected
-        }
-        let startTime = Date()
-        let result = try await conn.executeQuery(query)
-        return PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: result.rows,
-            rowsAffected: result.affectedRows,
-            executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: result.isTruncated
-        )
+        try await executeInternal(query)
     }
 
     // MARK: - DML Statement Generation
@@ -1025,8 +454,36 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
+                let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error> { coreContinuation in
+                    Task {
+                        do {
+                            try await conn.streamQuery(query, continuation: coreContinuation)
+                        } catch let error as MSSQLCoreError {
+                            coreContinuation.finish(throwing: MSSQLPluginError(coreError: error))
+                        } catch {
+                            coreContinuation.finish(throwing: error)
+                        }
+                    }
+                }
                 do {
-                    try await conn.streamQuery(query, continuation: continuation)
+                    for try await element in coreStream {
+                        switch element {
+                        case .header(let columns):
+                            continuation.yield(.header(PluginStreamHeader(
+                                columns: columns.map { $0.name },
+                                columnTypeNames: columns.map { $0.type.canonicalName },
+                                estimatedRowCount: nil
+                            )))
+                        case .rows(let batch):
+                            let pluginRows: [PluginRow] = batch.map { row in
+                                row.map { $0.asPluginCell }
+                            }
+                            continuation.yield(.rows(pluginRows))
+                        case .affectedRows:
+                            break
+                        }
+                    }
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }

@@ -192,4 +192,56 @@ final class MSSQLDriverTests: XCTestCase {
             XCTAssertFalse(desc.isEmpty)
         }
     }
+
+    func testUnreachableHostFails() async throws {
+        try XCTSkipIf(Self.loadTestConfig() == nil, "no test config")
+        let connection = DatabaseConnection(
+            name: "unreachable",
+            type: .mssql,
+            host: "192.0.2.1",
+            port: 1433,
+            username: "sa",
+            database: "master",
+            additionalFields: ["mssqlSchema": "dbo"]
+        )
+        let badDriver = MSSQLDriver(connection: connection, password: "x")
+        do {
+            try await badDriver.connect()
+            XCTFail("Connecting to RFC5737 TEST-NET should fail")
+        } catch {
+            let desc = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+            XCTAssertFalse(desc.isEmpty)
+        }
+    }
+
+    // Note: FreeTDS db-lib does not expose per-connection cert validation. `verifyFull` maps to
+    // `require` (TLS on, but no CA chain check). Testing strict TLS rejection requires either
+    // building FreeTDS with custom OpenSSL callbacks or trusting the certificate via machine-wide
+    // freetds.conf, neither of which is per-connection. Out of scope for this driver.
+
+    func testMultiColumnForeignKey() async throws {
+        let driver = try XCTUnwrap(driver)
+        _ = try await driver.execute(query: """
+            IF OBJECT_ID('dbo.tp_fk_child', 'U') IS NOT NULL DROP TABLE dbo.tp_fk_child;
+            IF OBJECT_ID('dbo.tp_fk_parent', 'U') IS NOT NULL DROP TABLE dbo.tp_fk_parent;
+            CREATE TABLE dbo.tp_fk_parent (
+                tenant_id INT NOT NULL,
+                external_id INT NOT NULL,
+                CONSTRAINT pk_tp_fk_parent PRIMARY KEY (tenant_id, external_id)
+            );
+            CREATE TABLE dbo.tp_fk_child (
+                id INT PRIMARY KEY,
+                tenant_id INT NOT NULL,
+                external_id INT NOT NULL,
+                CONSTRAINT fk_tp_fk_child_parent FOREIGN KEY (tenant_id, external_id)
+                    REFERENCES dbo.tp_fk_parent (tenant_id, external_id)
+            );
+            """)
+        let fks = try await driver.fetchForeignKeys(table: "tp_fk_child", schema: "dbo")
+        let matched = fks.filter { $0.name == "fk_tp_fk_child_parent" }
+        XCTAssertEqual(matched.count, 2, "composite FK should produce two rows")
+        let cols = Set(matched.map { $0.column })
+        XCTAssertEqual(cols, Set(["tenant_id", "external_id"]))
+        XCTAssertTrue(matched.allSatisfy { $0.referencedTable == "tp_fk_parent" })
+    }
 }

@@ -56,7 +56,16 @@ struct ConnectionFormView: View {
 
                 if viewModel.type != .sqlite {
                     Section {
-                        Toggle("SSL", isOn: $viewModel.sslEnabled)
+                        if viewModel.type == .mssql {
+                            Picker(String(localized: "SSL Mode"), selection: $viewModel.mssqlSSLMode) {
+                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
+                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                Text(String(localized: "Verify Full")).tag(SSLConfiguration.SSLMode.verifyFull)
+                            }
+                        } else {
+                            Toggle("SSL", isOn: $viewModel.sslEnabled)
+                        }
                     }
                     sshSection(viewModel: viewModel)
                 }

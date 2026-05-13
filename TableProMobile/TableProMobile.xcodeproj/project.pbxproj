@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5AD1F2002FB5500000000002 /* FreeTDSConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD1F2002FB5500000000001 /* FreeTDSConnection.swift */; };
 		5A72D6232F97A69500E2ADE0 /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */; };
 		5A7E81B12F95F23600EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEED2F7F893000D028D1 /* TableProAnalytics */; };
 		5A87EEED2F7F893000D028D0 /* TableProSync in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEEC2F7F893000D028D0 /* TableProSync */; };
@@ -60,6 +61,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5AD1F2002FB5500000000001 /* FreeTDSConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FreeTDSConnection.swift; path = ../Plugins/MSSQLDriverPlugin/FreeTDSConnection.swift; sourceTree = "<group>"; };
 		5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		5A87ECDD2F7F88F200D028D0 /* AIPromptTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIPromptTemplates.swift; sourceTree = "<group>"; };
 		5A87ECDE2F7F88F200D028D0 /* AIPromptTemplates+InlineSuggest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIPromptTemplates+InlineSuggest.swift"; sourceTree = "<group>"; };
@@ -1834,6 +1836,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5AD1F2002FB5500000000002 /* FreeTDSConnection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -30,6 +30,7 @@ final class ConnectionFormViewModel {
     var password = ""
     var database = ""
     var sslEnabled = false
+    var mssqlSSLMode: SSLConfiguration.SSLMode = .disable
 
     // Organization
     var groupId: UUID?
@@ -72,6 +73,7 @@ final class ConnectionFormViewModel {
         username = conn.username
         database = conn.database
         sslEnabled = conn.sslEnabled
+        mssqlSSLMode = conn.sslConfiguration?.mode ?? .disable
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId
@@ -318,10 +320,13 @@ final class ConnectionFormViewModel {
             username: username,
             database: database,
             sshEnabled: sshEnabled,
-            sslEnabled: sslEnabled,
+            sslEnabled: type == .mssql ? (mssqlSSLMode != .disable) : sslEnabled,
             groupId: groupId,
             tagId: tagId
         )
+        if type == .mssql {
+            conn.sslConfiguration = SSLConfiguration(mode: mssqlSSLMode)
+        }
         conn.safeModeLevel = safeModeLevel
         if sshEnabled {
             conn.sshConfiguration = SSHConfiguration(
