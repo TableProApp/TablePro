@@ -4,7 +4,7 @@ import TableProPluginKit
 typealias SSLConfiguration = TableProPluginKit.SSLConfiguration
 typealias SSLMode = TableProPluginKit.SSLMode
 
-extension SSLMode: Identifiable {
+extension SSLMode: @retroactive Identifiable {
     public var id: String { rawValue }
 
     var displayLabel: String {
