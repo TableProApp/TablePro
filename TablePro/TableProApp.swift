@@ -304,12 +304,12 @@ struct AppMenuCommands: Commands {
                     || !(actions.map { PluginManager.shared.supportsImport(for: $0.currentDatabaseType) } ?? true)
             )
 
-            Button(String(localized: "Backup Dump...")) {
+            Button(String(localized: "Backup Dump\u{2026}")) {
                 actions?.backupDatabase()
             }
             .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsBackup ?? false))
 
-            Button(String(localized: "Restore Dump...")) {
+            Button(String(localized: "Restore Dump\u{2026}")) {
                 actions?.restoreDatabase()
             }
             .disabled(

@@ -162,7 +162,7 @@ struct RestoreDatabaseFlow: View {
         openPanel.allowedContentTypes = Self.allowedDumpTypes
         openPanel.title = String(localized: "Choose Dump File")
         openPanel.prompt = String(localized: "Choose")
-        openPanel.message = String(localized: "Select a backup file produced by pg_dump in custom archive format (.dump).")
+        openPanel.message = String(localized: "Select a dump file produced by pg_dump in custom archive format.")
 
         let window = NSApp.keyWindow
         let response: NSApplication.ModalResponse
