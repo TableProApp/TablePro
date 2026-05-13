@@ -11,11 +11,8 @@ import SwiftUI
 import TableProPluginKit
 
 struct DatabaseSwitcherSheet: View {
-    /// What the sheet is being used for. `switch` (default) switches the active
-    /// database/schema; `backup` picks a database to feed into a backup flow;
-    /// `restore` picks the target database for a restore flow.
     enum Mode {
-        case `switch`
+        case switching
         case backup
         case restore
     }
@@ -59,7 +56,7 @@ struct DatabaseSwitcherSheet: View {
 
     init(
         isPresented: Binding<Bool>,
-        mode: Mode = .switch,
+        mode: Mode = .switching,
         currentDatabase: String?,
         currentSchema: String? = nil,
         databaseType: DatabaseType,
@@ -395,7 +392,7 @@ struct DatabaseSwitcherSheet: View {
 
     private var navigationTitleString: String {
         switch mode {
-        case .switch:
+        case .switching:
             return isSchemaMode
                 ? String(localized: "Open Schema")
                 : String(localized: "Open Database")
@@ -408,7 +405,7 @@ struct DatabaseSwitcherSheet: View {
 
     private var primaryButtonLabel: String {
         switch mode {
-        case .switch: return String(localized: "Open")
+        case .switching: return String(localized: "Open")
         case .backup: return String(localized: "Backup Dump\u{2026}")
         case .restore: return String(localized: "Restore Dump\u{2026}")
         }
@@ -416,9 +413,7 @@ struct DatabaseSwitcherSheet: View {
 
     private var primaryButtonDisabled: Bool {
         guard let selected = viewModel.selectedDatabase else { return true }
-        // In switch mode, picking the already-active database/schema is a no-op.
-        // In backup/restore modes the active database is a valid target.
-        if mode == .switch, selected == activeName { return true }
+        if mode == .switching, selected == activeName { return true }
         return false
     }
 
