@@ -165,11 +165,11 @@ struct PostgresDumpServiceCommandTests {
 
 // MARK: - Fake Runner
 
-/// Test double for `PostgresDumpRunner` that lets tests drive the result.
 private final class FakeDumpRunner: PostgresDumpRunner, @unchecked Sendable {
     private(set) var startedCommand: PostgresDumpCommand?
     private(set) var cancelCount: Int = 0
     private var continuation: CheckedContinuation<PostgresDumpRunResult, Never>?
+    private var bufferedResult: PostgresDumpRunResult?
     private let lock = NSLock()
 
     func start(_ command: PostgresDumpCommand) throws {
@@ -185,20 +185,29 @@ private final class FakeDumpRunner: PostgresDumpRunner, @unchecked Sendable {
     var result: PostgresDumpRunResult {
         get async {
             await withCheckedContinuation { continuation in
-                self.lock.lock()
+                lock.lock()
+                if let buffered = bufferedResult {
+                    bufferedResult = nil
+                    lock.unlock()
+                    continuation.resume(returning: buffered)
+                    return
+                }
                 self.continuation = continuation
-                self.lock.unlock()
+                lock.unlock()
             }
         }
     }
 
-    /// Test driver: resolves the pending `result` await with the given outcome.
     func finish(_ outcome: PostgresDumpRunResult) {
         lock.lock()
-        let continuation = self.continuation
-        self.continuation = nil
-        lock.unlock()
-        continuation?.resume(returning: outcome)
+        if let continuation = self.continuation {
+            self.continuation = nil
+            lock.unlock()
+            continuation.resume(returning: outcome)
+        } else {
+            bufferedResult = outcome
+            lock.unlock()
+        }
     }
 }
 

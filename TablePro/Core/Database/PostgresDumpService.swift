@@ -102,16 +102,16 @@ final class PostgresDumpService {
     @ObservationIgnored private var stateObservers: [UUID: AsyncStream<PostgresDumpState>.Continuation] = [:]
 
     func stateUpdates() -> AsyncStream<PostgresDumpState> {
-        AsyncStream { continuation in
-            let id = UUID()
-            stateObservers[id] = continuation
-            continuation.yield(state)
-            continuation.onTermination = { @Sendable [weak self] _ in
-                Task { @MainActor in
-                    self?.stateObservers.removeValue(forKey: id)
-                }
+        let (stream, continuation) = AsyncStream<PostgresDumpState>.makeStream()
+        let id = UUID()
+        stateObservers[id] = continuation
+        continuation.yield(state)
+        continuation.onTermination = { @Sendable [weak self] _ in
+            Task { @MainActor in
+                self?.stateObservers.removeValue(forKey: id)
             }
         }
+        return stream
     }
 
     private func setState(_ newState: PostgresDumpState) {

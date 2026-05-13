@@ -9,6 +9,7 @@ import TableProPluginKit
 import Testing
 
 @Suite("DataGridRowView Set Value presets")
+@MainActor
 struct DataGridRowViewSetValueTests {
     @Test("date column offers CURRENT_DATE only")
     func dateColumnOffersCurrentDate() {
