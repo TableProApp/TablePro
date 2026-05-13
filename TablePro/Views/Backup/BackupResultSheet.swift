@@ -35,15 +35,7 @@ struct BackupResultSheet: View {
                 .font(.title3.weight(.semibold))
                 .multilineTextAlignment(.center)
 
-            if let detail {
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(8)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .textSelection(.enabled)
-            }
+            detailView
 
             HStack(spacing: 12) {
                 if case .backupSuccess = outcome, let onShowInFinder {
@@ -62,6 +54,39 @@ struct BackupResultSheet: View {
         .padding(24)
         .frame(width: 420)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch outcome {
+        case .failure(let message):
+            ScrollView {
+                Text(message)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(8)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(maxHeight: 160)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+        default:
+            if let detail {
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(6)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .textSelection(.enabled)
+            }
+        }
     }
 
     @ViewBuilder
