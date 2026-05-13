@@ -437,10 +437,11 @@ extension PostgresDumpService {
         database: String
     ) async -> Int64? {
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return nil }
-        let escaped = database.replacingOccurrences(of: "'", with: "''")
-        let query = "SELECT pg_database_size('\(escaped)')"
         do {
-            let result = try await driver.execute(query: query)
+            let result = try await driver.executeParameterized(
+                query: "SELECT pg_database_size($1)",
+                parameters: [database]
+            )
             guard let text = result.rows.first?.first?.asText else { return nil }
             return Int64(text)
         } catch {
