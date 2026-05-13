@@ -202,7 +202,7 @@ final class MSSQLDriverTests: XCTestCase {
             port: 1433,
             username: "sa",
             database: "master",
-            additionalFields: ["mssqlSchema": "dbo"]
+            additionalFields: ["mssqlSchema": "dbo", "mssqlLoginTimeout": "5"]
         )
         let badDriver = MSSQLDriver(connection: connection, password: "x")
         do {
@@ -218,6 +218,36 @@ final class MSSQLDriverTests: XCTestCase {
     // `require` (TLS on, but no CA chain check). Testing strict TLS rejection requires either
     // building FreeTDS with custom OpenSSL callbacks or trusting the certificate via machine-wide
     // freetds.conf, neither of which is per-connection. Out of scope for this driver.
+
+    func testSortedWithFilterCombinesOrderAndWhere() async throws {
+        let driver = try XCTUnwrap(driver)
+        _ = try await driver.execute(query: """
+            IF OBJECT_ID('dbo.tp_filter_sort', 'U') IS NOT NULL DROP TABLE dbo.tp_filter_sort;
+            CREATE TABLE dbo.tp_filter_sort (id INT PRIMARY KEY, kind NVARCHAR(10), score INT);
+            INSERT INTO dbo.tp_filter_sort VALUES
+                (1, N'a', 10), (2, N'b', 5), (3, N'a', 20), (4, N'a', 15), (5, N'b', 1);
+            """)
+        let result = try await driver.execute(query: """
+            SELECT id, kind, score FROM [dbo].[tp_filter_sort]
+            WHERE kind = N'a'
+            ORDER BY score DESC
+            OFFSET 0 ROWS FETCH NEXT 2 ROWS ONLY
+            """)
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(result.rows.first?[0], "3")
+        XCTAssertEqual(result.rows.last?[0], "4")
+    }
+
+    func testSelectTopOneCellLookup() async throws {
+        let driver = try XCTUnwrap(driver)
+        _ = try await driver.execute(query: """
+            IF OBJECT_ID('dbo.tp_lookup', 'U') IS NOT NULL DROP TABLE dbo.tp_lookup;
+            CREATE TABLE dbo.tp_lookup (id INT PRIMARY KEY, payload NVARCHAR(MAX));
+            INSERT INTO dbo.tp_lookup VALUES (7, N'hello');
+            """)
+        let result = try await driver.execute(query: "SELECT TOP 1 [payload] FROM [dbo].[tp_lookup] WHERE [id] = 7")
+        XCTAssertEqual(result.rows.first?.first, "hello")
+    }
 
     func testMultiColumnForeignKey() async throws {
         let driver = try XCTUnwrap(driver)

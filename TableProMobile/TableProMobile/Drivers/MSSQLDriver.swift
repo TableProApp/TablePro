@@ -36,7 +36,8 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             password: password ?? "",
             database: connection.database,
             schema: MSSQLConnectionOptions.schema(from: connection.additionalFields),
-            encryptionFlag: Self.freetdsEncryptionFlag(for: connection.sslConfiguration)
+            encryptionFlag: Self.freetdsEncryptionFlag(for: connection.sslConfiguration),
+            loginTimeoutSeconds: Int(connection.additionalFields["mssqlLoginTimeout"] ?? "") ?? MSSQLConnectionOptions.defaultLoginTimeoutSeconds
         )
         self.conn = FreeTDSConnection(options: options)
         self.host = connection.host

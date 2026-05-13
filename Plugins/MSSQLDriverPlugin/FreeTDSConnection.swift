@@ -1,3 +1,14 @@
+//
+//  FreeTDSConnection.swift
+//  TablePro
+//
+//  Dual-ownership: compiled into BOTH the macOS MSSQLDriver plugin target
+//  (Plugins/MSSQLDriverPlugin/ is its FileSystemSynchronizedRootGroup) AND the
+//  iOS TableProMobile target (via the cross-project file reference at
+//  TableProMobile/TableProMobile.xcodeproj path = ../Plugins/MSSQLDriverPlugin/...).
+//  Edits here ship to both platforms, so keep the API neutral (no PluginKit deps).
+//
+
 import CFreeTDS
 import Foundation
 import os
@@ -141,6 +152,11 @@ final class FreeTDSConnection: @unchecked Sendable {
         _ = dbsetlname(login, "UTF-8", Int32(DBSETCHARSET))
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
         _ = dbsetlname(login, options.encryptionFlag, Int32(DBSETENCRYPT))
+
+        // dbsetlogintime is process-global; setting before dbopen bounds this call. Concurrent
+        // connectSync from another FreeTDSConnection would race, but the serial connect queue and
+        // the brief window (cleared at function exit) keeps the cost acceptable for interactive use.
+        _ = dbsetlogintime(Int32(options.loginTimeoutSeconds))
 
         freetdsClearError(for: nil)
         let serverName = "\(options.host):\(options.port)"

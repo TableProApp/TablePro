@@ -73,7 +73,10 @@ final class ConnectionFormViewModel {
         username = conn.username
         database = conn.database
         sslEnabled = conn.sslEnabled
-        mssqlSSLMode = conn.sslConfiguration?.mode ?? .disable
+        // Coerce verify modes to .require: FreeTDS doesn't honor per-connection cert verification
+        // (MSSQLSSLMapping treats verify* as "require"). Matches what the driver actually does.
+        let storedMode = conn.sslConfiguration?.mode ?? .disable
+        mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId

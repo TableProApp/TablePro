@@ -9,11 +9,13 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
     public var schema: String
     public var encryptionFlag: String
     public var applicationName: String
+    public var loginTimeoutSeconds: Int
 
     public static let defaultPort = 1433
     public static let defaultSchema = "dbo"
     public static let defaultApplicationName = "TablePro"
     public static let defaultEncryptionFlag = "off"
+    public static let defaultLoginTimeoutSeconds = 30
 
     public init(
         host: String,
@@ -23,7 +25,8 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
         database: String,
         schema: String = MSSQLConnectionOptions.defaultSchema,
         encryptionFlag: String = MSSQLConnectionOptions.defaultEncryptionFlag,
-        applicationName: String = MSSQLConnectionOptions.defaultApplicationName
+        applicationName: String = MSSQLConnectionOptions.defaultApplicationName,
+        loginTimeoutSeconds: Int = MSSQLConnectionOptions.defaultLoginTimeoutSeconds
     ) {
         self.host = host
         self.port = port
@@ -33,6 +36,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
         self.schema = schema
         self.encryptionFlag = encryptionFlag
         self.applicationName = applicationName
+        self.loginTimeoutSeconds = loginTimeoutSeconds
     }
 }
 

@@ -121,4 +121,7 @@ extern MHANDLEFUNC dbmsghandle(MHANDLEFUNC handler);
 
 extern char *dbversion(void);
 
+// Global login timeout in seconds. Applies to all subsequent dblogin/dbopen calls.
+extern RETCODE dbsetlogintime(int seconds);
+
 #endif /* _SYBDB_H_ */
