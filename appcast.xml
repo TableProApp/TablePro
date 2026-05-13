@@ -3,6 +3,61 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.41.0</title>
+            <pubDate>Wed, 13 May 2026 08:52:30 +0000</pubDate>
+            <sparkle:version>84</sparkle:version>
+            <sparkle:shortVersionString>0.41.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>File > Backup Dump… and Restore Dump… for PostgreSQL and Redshift, with live progress, cancel, and SSH tunnel reuse (#1211).</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Plugin format updated. Older plugin builds no longer load; reinstall plugins from the registry after updating.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Redis: "Required (skip verify)" SSL mode now actually skips certificate verification, so Upstash and other untrusted-CA endpoints connect (#1247).</li>
+<li>MSSQL: SSL mode setting now affects the connection. Previously every mode was silently ignored.</li>
+<li>MongoDB: "Required" and "Verify CA" SSL modes connect to self-signed and untrusted-CA servers instead of failing.</li>
+<li>MongoDB: connecting no longer crashes with `dispatch_sync called on queue already owned by current thread` (#1249).</li>
+<li>MongoDB: TLS handshake to Atlas no longer fails with `internal error (-9838)` on macOS 26.</li>
+<li>MongoDB: importing a connection URL with no database path now works for Atlas users restricted to one database.</li>
+<li>MySQL: CA certificate is no longer loaded when the SSL mode skips verification, matching PostgreSQL.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.41.0/TablePro-0.41.0-arm64.zip" length="20938745" type="application/octet-stream" sparkle:edSignature="kN0zs3i+oBFaeSpRDbCWWWj8E5lhgBtyBOaRHy2slb7Bffe2R4UeKLtyQp9Im6G+teA0dc3ksz8aFfmulGp2CQ=="/>
+        </item>
+        <item>
+            <title>0.41.0</title>
+            <pubDate>Wed, 13 May 2026 08:52:31 +0000</pubDate>
+            <sparkle:version>84</sparkle:version>
+            <sparkle:shortVersionString>0.41.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>File > Backup Dump… and Restore Dump… for PostgreSQL and Redshift, with live progress, cancel, and SSH tunnel reuse (#1211).</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Plugin format updated. Older plugin builds no longer load; reinstall plugins from the registry after updating.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Redis: "Required (skip verify)" SSL mode now actually skips certificate verification, so Upstash and other untrusted-CA endpoints connect (#1247).</li>
+<li>MSSQL: SSL mode setting now affects the connection. Previously every mode was silently ignored.</li>
+<li>MongoDB: "Required" and "Verify CA" SSL modes connect to self-signed and untrusted-CA servers instead of failing.</li>
+<li>MongoDB: connecting no longer crashes with `dispatch_sync called on queue already owned by current thread` (#1249).</li>
+<li>MongoDB: TLS handshake to Atlas no longer fails with `internal error (-9838)` on macOS 26.</li>
+<li>MongoDB: importing a connection URL with no database path now works for Atlas users restricted to one database.</li>
+<li>MySQL: CA certificate is no longer loaded when the SSL mode skips verification, matching PostgreSQL.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.41.0/TablePro-0.41.0-x86_64.zip" length="22189374" type="application/octet-stream" sparkle:edSignature="MHYFSxTaskh8m6U8M8L6V5VME3vPsCICh647g57H5uwB0xpMdx7ZKsr4vijT9uQXHOAW5UvEKNqPx8WrM4AUCg=="/>
+        </item>
+        <item>
             <title>0.40.3</title>
             <pubDate>Wed, 13 May 2026 03:13:19 +0000</pubDate>
             <sparkle:version>83</sparkle:version>

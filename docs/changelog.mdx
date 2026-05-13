@@ -4,6 +4,26 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="May 13, 2026" description="v0.41.0">
+  ### New Features
+
+  - **Backup and Restore**: New File menu entries `Backup Dump…` and `Restore Dump…` for PostgreSQL and Redshift, with live progress, cancel, and SSH tunnel reuse (#1211)
+
+  ### Bug Fixes
+
+  - **Redis SSL**: "Required (skip verify)" mode now actually skips certificate verification, so Upstash and other untrusted-CA endpoints connect (#1247)
+  - **MSSQL SSL**: SSL mode setting now affects the connection. Previously every mode was silently ignored
+  - **MongoDB SSL**: "Required" and "Verify CA" modes now connect to self-signed and untrusted-CA servers instead of failing
+  - **MongoDB Crash on macOS**: Connecting no longer crashes with a `dispatch_sync` libdispatch trap (#1249)
+  - **MongoDB Atlas TLS on macOS 26**: TLS handshake to Atlas no longer fails with `internal error (-9838)`. The Mongo plugin now uses OpenSSL instead of Apple Secure Transport
+  - **MongoDB URL Import**: Importing a connection string with no database path now works for Atlas users restricted to a single database
+  - **MySQL SSL**: The CA certificate is no longer loaded when the SSL mode skips verification, matching PostgreSQL
+
+  ### Notes
+
+  - **Plugin format updated**. Older plugin builds no longer load. Reinstall plugins from the registry after updating.
+</Update>
+
 <Update label="May 13, 2026" description="v0.40.3">
   ### Bug Fixes
 

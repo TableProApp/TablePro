@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## Added
 
 - AI Chat: OpenAI provider now uses the Responses API for GPT-5 and Codex models, with reasoning shown in a collapsible Thinking panel above each reply. (#1112)
 - AI Chat: image input via drag-and-drop or paste into the composer. HEIC, TIFF, and BMP convert to PNG or JPEG. EXIF and GPS metadata are stripped before sending. (#1112)
@@ -17,16 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI Chat: tool schemas are strict by default, matching the Responses API and Claude strict tool use. (#1112)
 - File > Backup Dump… and Restore Dump… for PostgreSQL and Redshift connections, running `pg_dump -Fc` and `pg_restore --no-owner --no-acl` with live progress, cancel, SSH tunnel reuse, and custom binary paths under Settings > Terminal > CLI Paths (#1211).
 
+## [0.41.0] - 2026-05-13
+
+### Added
+
+- File > Backup Dump… and Restore Dump… for PostgreSQL and Redshift, with live progress, cancel, and SSH tunnel reuse (#1211).
+
 ### Changed
 
-- PluginKit ABI bumped to v12: `DriverConnectionConfig` now carries a typed `SSLConfiguration` instead of stringified `sslMode` / `sslCaCertPath` keys in `additionalFields`. Every bundled plugin migrated; registry-only plugins (MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL) must be re-tagged and republished before the next app release.
+- Plugin format updated. Older plugin builds no longer load; reinstall plugins from the registry after updating.
 
 ### Fixed
 
-- Redis: "Required (skip verify)" SSL mode now actually skips certificate verification, matching `redis-cli --tls --insecure`. Previously every mode performed verification because of a phantom dictionary key the app never wrote. Connections to Upstash Redis and similar endpoints with untrusted CAs work (#1247).
-- MSSQL: SSL mode finally affects the connection. `Disabled` / `Preferred` / `Required` / `Verify CA` / `Verify Identity` map to FreeTDS `off` / `request` / `require` / `require` / `require` via `DBSETENCRYPT`. Previously the setting was read and silently ignored.
-- MongoDB: "Required" and "Verify CA" pass the right libmongoc flags (`tlsAllowInvalidCertificates`, `tlsAllowInvalidHostnames`) so connections to self-signed or untrusted-CA servers stop failing on those paths.
-- MySQL: CA certificate is no longer loaded when the user picked a mode that skips verification, matching PostgreSQL.
+- Redis: "Required (skip verify)" SSL mode now actually skips certificate verification, so Upstash and other untrusted-CA endpoints connect (#1247).
+- MSSQL: SSL mode setting now affects the connection. Previously every mode was silently ignored.
+- MongoDB: "Required" and "Verify CA" SSL modes connect to self-signed and untrusted-CA servers instead of failing.
+- MongoDB: connecting no longer crashes with `dispatch_sync called on queue already owned by current thread` (#1249).
+- MongoDB: TLS handshake to Atlas no longer fails with `internal error (-9838)` on macOS 26.
+- MongoDB: importing a connection URL with no database path now works for Atlas users restricted to one database.
+- MySQL: CA certificate is no longer loaded when the SSL mode skips verification, matching PostgreSQL.
 
 ## [0.40.3] - 2026-05-13
 
@@ -1816,7 +1825,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.40.3...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.41.0...HEAD
+[0.41.0]: https://github.com/TableProApp/TablePro/compare/v0.40.3...v0.41.0
 [0.40.3]: https://github.com/TableProApp/TablePro/compare/v0.40.2...v0.40.3
 [0.40.2]: https://github.com/TableProApp/TablePro/compare/v0.40.1...v0.40.2
 [0.40.1]: https://github.com/TableProApp/TablePro/compare/v0.40.0...v0.40.1

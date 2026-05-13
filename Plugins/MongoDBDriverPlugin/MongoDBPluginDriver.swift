@@ -85,8 +85,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 let dbs = try await conn.listDatabases()
                 currentDb = dbs.first { !Self.systemDatabases.contains($0) } ?? dbs.first ?? ""
             } catch {
-                conn.disconnect()
-                throw error
+                Self.logger.warning("listDatabases failed during connect, continuing without default database: \(error.localizedDescription, privacy: .public)")
             }
         }
 

@@ -2282,7 +2282,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 83;
+				CURRENT_PROJECT_VERSION = 84;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_APP_SANDBOX = NO;
@@ -2314,7 +2314,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.40.3;
+				MARKETING_VERSION = 0.41.0;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2359,7 +2359,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 83;
+				CURRENT_PROJECT_VERSION = 84;
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
@@ -2392,7 +2392,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.40.3;
+				MARKETING_VERSION = 0.41.0;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2871,8 +2871,14 @@
 				);
 				INFOPLIST_FILE = Plugins/MongoDBDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).MongoDBPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -2880,10 +2886,8 @@
 					"$(PROJECT_DIR)/Libs/libmongoc.a",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libbson.a",
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
+					"-lssl.3",
+					"-lcrypto.3",
 					"-lresolv",
 					"-lz",
 				);
@@ -2913,8 +2917,14 @@
 				);
 				INFOPLIST_FILE = Plugins/MongoDBDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).MongoDBPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -2922,10 +2932,8 @@
 					"$(PROJECT_DIR)/Libs/libmongoc.a",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libbson.a",
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
+					"-lssl.3",
+					"-lcrypto.3",
 					"-lresolv",
 					"-lz",
 				);

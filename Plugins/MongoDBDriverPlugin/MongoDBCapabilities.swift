@@ -15,6 +15,10 @@ struct MongoDBCapabilities: Sendable, Equatable {
         major > 3 || (major == 3 && minor >= 4)
     }
 
+    var supportsAuthorizedDatabases: Bool {
+        major >= 4
+    }
+
     static func parse(_ version: String?) -> MongoDBCapabilities {
         guard let version else { return .unknown }
         let parts = version.split(separator: ".")
