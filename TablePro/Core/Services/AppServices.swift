@@ -32,7 +32,6 @@ struct AppServices {
     let mcpServerManager: MCPServerManager
     let syncTracker: SyncChangeTracker
     let themeEngine: ThemeEngine
-    let feedbackAPIClient: FeedbackAPIClient
 
     static let live = AppServices(
         appEvents: .shared,
@@ -59,8 +58,7 @@ struct AppServices {
         copilotService: .shared,
         mcpServerManager: .shared,
         syncTracker: .shared,
-        themeEngine: .shared,
-        feedbackAPIClient: .shared
+        themeEngine: .shared
     )
 }
 

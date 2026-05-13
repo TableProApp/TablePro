@@ -2358,6 +2358,7 @@
       }
     },
     "%lld/5" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6833,6 +6834,7 @@
 
     },
     "Attachments" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7783,6 +7785,7 @@
       }
     },
     "Brief summary of the issue" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7888,28 +7891,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "浏览..."
-          }
-        }
-      }
-    },
-    "Bug Report" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hata Raporu"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Báo lỗi"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bug 报告"
           }
         }
       }
@@ -8540,6 +8521,7 @@
       }
     },
     "Capture Window" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13366,6 +13348,7 @@
       }
     },
     "Created as GitHub issue #%d" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -18809,6 +18792,7 @@
       }
     },
     "Expected Behavior" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21156,28 +21140,6 @@
         }
       }
     },
-    "Feature Request" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Özellik İsteği"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yêu cầu tính năng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "功能请求"
-          }
-        }
-      }
-    },
     "Feature Routing" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -21202,6 +21164,7 @@
       }
     },
     "Feedback submitted!" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -22496,28 +22459,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通用"
-          }
-        }
-      }
-    },
-    "General Feedback" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Genel Geri Bildirim"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phản hồi chung"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一般反馈"
           }
         }
       }
@@ -24343,6 +24284,7 @@
       }
     },
     "Include diagnostics" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -29371,28 +29313,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "网络错误：%@"
-          }
-        }
-      }
-    },
-    "Network error. Check your connection and try again." : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ağ hatası. Bağlantınızı kontrol edin ve tekrar deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lỗi mạng. Hãy kiểm tra kết nối và thử lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "网络错误。请检查网络连接后重试。"
           }
         }
       }
@@ -38365,28 +38285,6 @@
         }
       }
     },
-    "Report an Issue..." : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sorun Bildir..."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Báo cáo sự cố..."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "报告问题…"
-          }
-        }
-      }
-    },
     "Require authentication" : {
       "localizations" : {
         "tr" : {
@@ -41276,6 +41174,7 @@
       }
     },
     "Select images to attach" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -44880,6 +44779,7 @@
       }
     },
     "Steps to Reproduce" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -45100,29 +45000,8 @@
         }
       }
     },
-    "Submission too large. Try removing the screenshot." : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gönderim çok büyük. Ekran görüntüsünü kaldırmayı deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nội dung gửi quá lớn. Hãy thử bỏ ảnh chụp màn hình."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "提交内容过大。请尝试移除截图。"
-          }
-        }
-      }
-    },
     "Submit" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -45145,6 +45024,7 @@
       }
     },
     "Submit Another" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -45167,6 +45047,7 @@
       }
     },
     "Submitting..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48242,6 +48123,7 @@
       }
     },
     "Title" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -48943,28 +48825,6 @@
         }
       }
     },
-    "Too many submissions. Please try again later." : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Çok fazla gönderim. Lütfen daha sonra tekrar deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gửi quá nhiều lần. Hãy thử lại sau."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "提交次数过多。请稍后重试。"
-          }
-        }
-      }
-    },
     "Tool" : {
       "localizations" : {
         "tr" : {
@@ -49662,28 +49522,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "撤销删除"
-          }
-        }
-      }
-    },
-    "Unexpected server response." : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beklenmeyen sunucu yanıtı."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phản hồi server không mong đợi."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "服务器响应异常。"
           }
         }
       }
@@ -51377,6 +51215,7 @@
       }
     },
     "View on GitHub" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
