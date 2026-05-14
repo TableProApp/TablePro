@@ -84,6 +84,58 @@ struct OpenAIResponsesProviderEncodingTests {
         #expect(items[2]["type"] as? String == "function_call")
     }
 
+    @Test("assistant turn with [toolUse, text] drops trailing text to keep tool-call adjacent to its output")
+    func assistantTrailingTextAfterToolUseDropped() throws {
+        let toolUse = ToolUseBlock(id: "call_1", name: "ping", input: .object([:]))
+        let turn = ChatTurnWire(role: .assistant, blocks: [
+            .toolUse(toolUse),
+            .text("trailing chatter")
+        ])
+        let items = try OpenAIResponsesProvider.encodeTurn(turn)
+        #expect(items.count == 1, "Trailing text after function_call must not produce a message item")
+        #expect(items[0]["type"] as? String == "function_call")
+    }
+
+    @Test("assistant reasoning with empty itemID is skipped, not emitted")
+    func reasoningWithEmptyItemIDSkipped() throws {
+        let badOpaque = ReasoningOpaque(
+            kind: .openAIEncrypted,
+            itemID: "",
+            value: "ENC=",
+            blockType: "reasoning"
+        )
+        let turn = ChatTurnWire(role: .assistant, blocks: [
+            .reasoning(ReasoningBlock(opaque: badOpaque)),
+            .text("hi")
+        ])
+        let items = try OpenAIResponsesProvider.encodeTurn(turn)
+        #expect(items.count == 1, "Empty itemID reasoning item must be dropped")
+        #expect(items[0]["type"] as? String == "message")
+    }
+
+    @Test("ChatContentBlockWire(.reasoning) round-trips through Codable preserving every opaque field")
+    func reasoningBlockCodableRoundTrip() throws {
+        let opaque = ReasoningOpaque(
+            kind: .openAIEncrypted,
+            itemID: "rs_roundtrip",
+            value: "BLOB==",
+            blockType: "reasoning"
+        )
+        let block: ChatContentBlockWire = .reasoning(ReasoningBlock(text: "think", opaque: opaque))
+        let encoded = try JSONEncoder().encode(block)
+        let decoded = try JSONDecoder().decode(ChatContentBlockWire.self, from: encoded)
+        switch decoded.kind {
+        case .reasoning(let restored):
+            #expect(restored.text == "think")
+            #expect(restored.opaque?.kind == .openAIEncrypted)
+            #expect(restored.opaque?.itemID == "rs_roundtrip")
+            #expect(restored.opaque?.value == "BLOB==")
+            #expect(restored.opaque?.blockType == "reasoning")
+        default:
+            Issue.record("decoded was not a reasoning block")
+        }
+    }
+
     @Test("user turn with tool_result emits function_call_output with matching call_id")
     func toolResultEncoding() throws {
         let result = ToolResultBlock(toolUseId: "call_1", content: "ok")

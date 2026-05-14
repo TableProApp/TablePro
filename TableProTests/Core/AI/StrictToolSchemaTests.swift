@@ -46,6 +46,41 @@ struct StrictToolSchemaTests {
         #expect(dict["additionalProperties"] as? Bool == false)
     }
 
+    @Test("enumString(optional:true) appends null to the enum array under strict mode")
+    func enumStringOptionalIncludesNull() throws {
+        let schema = ChatToolSchemaBuilder.enumString(
+            ["asc", "desc"],
+            description: "sort direction",
+            optional: true
+        )
+        let dict = try (schema.jsonObject() as? [String: Any]) ?? [:]
+        let typeValue = dict["type"]
+        if let union = typeValue as? [String] {
+            #expect(union.contains("string"))
+            #expect(union.contains("null"))
+        } else {
+            Issue.record("expected union type, got \(String(describing: typeValue))")
+        }
+        let enumValues = dict["enum"] as? [Any] ?? []
+        let stringValues = enumValues.compactMap { $0 as? String }
+        #expect(stringValues.contains("asc"))
+        #expect(stringValues.contains("desc"))
+        let hasNull = enumValues.contains(where: { $0 is NSNull })
+        #expect(hasNull, "enum array must include null when type union includes null")
+    }
+
+    @Test("enumString(optional:false) does not include null in the enum array")
+    func enumStringRequiredOmitsNull() throws {
+        let schema = ChatToolSchemaBuilder.enumString(
+            ["asc", "desc"],
+            description: "sort direction"
+        )
+        let dict = try (schema.jsonObject() as? [String: Any]) ?? [:]
+        let enumValues = dict["enum"] as? [Any] ?? []
+        let hasNull = enumValues.contains(where: { $0 is NSNull })
+        #expect(!hasNull)
+    }
+
     @Test("ChatToolSchemaBuilder.object marks all properties required when not specified")
     func builderAutoIncludesRequired() throws {
         let schema = ChatToolSchemaBuilder.object(properties: [
