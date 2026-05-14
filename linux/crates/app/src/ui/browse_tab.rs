@@ -1028,19 +1028,38 @@ impl BrowseTab {
         self.last_button
             .set_sensitive(last_target.is_some_and(|target| self.current_offset != target));
 
-        // Empty-state: zero rows on the first page with no drafts →
-        // show a status page instead of an empty grid rectangle. As
-        // soon as the user inserts a draft, the next ChangedRows
-        // event re-binds and we flip back to "grid".
-        let has_drafts =
-            crate::services::change_tracker::with_tab_ref(self.tab_id, |t| !t.drafts().is_empty()).unwrap_or(false);
-        if result.rows.is_empty() && self.current_offset == 0 && !has_drafts {
+        self.refresh_inner_stack_visibility();
+        self.suppress_combo_emit.set(false);
+    }
+
+    /// Decide whether the inner stack shows the empty status page or
+    /// the grid. The empty page only makes sense on the first page
+    /// with no persisted rows AND no in-memory drafts; any draft (or
+    /// any persisted row) means the grid has content to show and
+    /// must take over.
+    ///
+    /// Called from every code path that mutates either side of the
+    /// equation: `refresh_grid_chrome` (post `RowsLoaded`),
+    /// `InsertRow` (after appending the draft), and any future
+    /// path that adds / removes drafts without going through a
+    /// fresh page fetch. Going through a single helper keeps the
+    /// empty ↔ grid transition derivable from observed state
+    /// rather than ad-hoc flips at each call site.
+    fn refresh_inner_stack_visibility(&self) {
+        let has_persisted_rows = self
+            .current_result
+            .as_ref()
+            .map(|r| !r.rows.is_empty())
+            .unwrap_or(false);
+        let has_drafts = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| !t.drafts().is_empty())
+            .unwrap_or(false);
+        let on_first_page = self.current_offset == 0;
+        if !has_persisted_rows && !has_drafts && on_first_page {
             self.show_empty_inner();
             self.inner_stack.set_visible_child_name("empty");
         } else {
             self.inner_stack.set_visible_child_name("grid");
         }
-        self.suppress_combo_emit.set(false);
     }
 
     /// Walk `tracker.drafts()` and prepend each as a draft `RowObject`
@@ -1921,6 +1940,12 @@ impl SimpleComponent for BrowseTab {
                     let draft_row = super::row_object::RowObject::new_draft(draft_id, default_values);
                     store.insert(0, &draft_row);
                 }
+                // The empty-state status page hides the column view —
+                // if we were sitting on it (zero persisted rows on the
+                // first page) the draft we just appended would be
+                // invisible. Re-derive the inner stack visibility now
+                // that there's a draft to show.
+                self.refresh_inner_stack_visibility();
                 // Scroll the new row into view immediately, then defer
                 // the start-editing call to the next event-loop tick
                 // through a self-message. Self-messaging (instead of
