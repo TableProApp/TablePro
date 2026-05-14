@@ -303,6 +303,34 @@ final class QueryTabManager {
         }
     }
 
+    func removeTab(id: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasSelected = selectedTabId == id
+        tabs.remove(at: index)
+        guard wasSelected else { return }
+        if tabs.isEmpty {
+            selectedTabId = nil
+        } else {
+            let nextIndex = min(index, tabs.count - 1)
+            selectedTabId = tabs[nextIndex].id
+        }
+    }
+
+    func selectTab(id: UUID) {
+        guard tabs.contains(where: { $0.id == id }) else { return }
+        selectedTabId = id
+    }
+
+    func moveTab(from source: IndexSet, to destination: Int) {
+        let moved = source.sorted(by: >).compactMap { index -> QueryTab? in
+            guard tabs.indices.contains(index) else { return nil }
+            return tabs.remove(at: index)
+        }
+        let insertionOffset = source.filter { $0 < destination }.count
+        let clampedDestination = max(0, min(destination - insertionOffset, tabs.count))
+        tabs.insert(contentsOf: moved.reversed(), at: clampedDestination)
+    }
+
     @discardableResult
     func mutate(tabId: UUID, _ block: (inout QueryTab) -> Void) -> Bool {
         guard let index = tabs.firstIndex(where: { $0.id == tabId }) else {
