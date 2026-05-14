@@ -56,7 +56,7 @@ struct AIProviderDescriptor: Sendable {
         if let curated = curatedModel(forID: id), !curated.supportedEffortLevels.isEmpty {
             return curated.supportedEffortLevels
         }
-        return ReasoningEffort.allCases
+        return [.low, .medium, .high]
     }
 
     init(
