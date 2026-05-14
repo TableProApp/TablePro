@@ -362,6 +362,19 @@ impl App {
         let connection_id = database_service::instance().active_id();
         let read_only = self.read_only;
 
+        // Per-table "Insert row" button — packed into the per-table
+        // HeaderBar (built further down with the Data/Structure
+        // ViewSwitcher). Canonical GNOME "Add" placement: primary
+        // action in the HeaderBar pack_end slot (Contacts, Calendar,
+        // To Do, Music). The widget is created here, threaded into
+        // BrowseTab's init so the tab owns sensitivity/visibility
+        // logic, and parented into `switcher_header` below.
+        let insert_button = gtk::Button::builder()
+            .icon_name("list-add-symbolic")
+            .tooltip_text(crate::tr!("Insert row (Ctrl+N)"))
+            .sensitive(false)
+            .build();
+
         // Browse-side controller for the Data view of this Table tab.
         let browse_init = BrowseTabInit {
             tab_id,
@@ -373,6 +386,7 @@ impl App {
             page_size,
             initial_offset: offset,
             initial_sort: sort,
+            insert_button: insert_button.clone(),
         };
         let browse = BrowseTab::builder()
             .launch(browse_init)
@@ -457,6 +471,19 @@ impl App {
             .title_widget(&switcher)
             .build();
         switcher_header.add_css_class("flat");
+        // Insert row sits in the HeaderBar's pack_end slot (right
+        // side). Only meaningful while the Data view is active — the
+        // Structure tab has its own "Add column" affordance and a
+        // global "+" there would conflict. Bind visibility to the
+        // ViewStack's current child name.
+        switcher_header.pack_end(&insert_button);
+        let insert_button_for_mode = insert_button.clone();
+        let sync_insert_visibility = move |stack: &adw::ViewStack| {
+            let on_data = stack.visible_child_name().as_deref() == Some("data");
+            insert_button_for_mode.set_visible(on_data);
+        };
+        sync_insert_visibility(&view_stack);
+        view_stack.connect_visible_child_name_notify(sync_insert_visibility);
 
         let wrapper = adw::ToolbarView::builder().build();
         wrapper.add_top_bar(&switcher_header);

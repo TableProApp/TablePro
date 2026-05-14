@@ -30,6 +30,14 @@ pub struct BrowseTabInit {
     pub page_size: u64,
     pub initial_offset: u64,
     pub initial_sort: Option<(usize, bool)>,
+    /// "Insert row" button parented by the per-table HeaderBar in
+    /// `workspace_tabs.rs`. BrowseTab connects its click handler and
+    /// owns the sensitivity/visibility/tooltip logic, but the widget
+    /// lives outside the BrowseTab's own tree — moved up to the
+    /// header so the bottom toolbar can drop the mutation strip
+    /// entirely (Files / Builder / Calendar pattern: primary "Add"
+    /// action in HeaderBar, not a bottom action bar).
+    pub insert_button: gtk::Button,
 }
 
 pub struct BrowseTab {
@@ -109,8 +117,18 @@ pub struct BrowseTab {
     /// revealed. Owned per-tab so the rules editor doesn't lose
     /// in-progress state if the user accidentally clicks outside it.
     filter_strip: Option<crate::ui::filter_strip::FilterStrip>,
+    /// Insert row button — lives in the per-table HeaderBar (see
+    /// `BrowseTabInit::insert_button`), but state mutations (sensitive,
+    /// visible, tooltip) are driven from this struct via
+    /// `refresh_crud_buttons`. Delete affordance was dropped from the
+    /// toolbar entirely — right-click "Delete row" + the Delete key
+    /// shortcut cover the action surface (Files / Contacts pattern).
     insert_button: gtk::Button,
-    delete_button: gtk::Button,
+    /// Pending-changes footer (Save / Discard / count label) wrapped
+    /// in a `GtkRevealer` so it slides into view only when there are
+    /// unsaved edits. Lives as the BrowseTab's only bottom bar besides
+    /// the paginator; reveal flips inside `refresh_pending_bar`.
+    pending_revealer: gtk::Revealer,
     save_button: gtk::Button,
     discard_button: gtk::Button,
     pending_label: gtk::Label,
@@ -346,10 +364,9 @@ impl BrowseTab {
     }
 
     /// Build the navigation toolbar — Prev / Next / page label / page
-    /// size dropdown / Export. Mutation actions (Insert / Edit /
-    /// Delete) live in a separate `gtk::ActionBar` (see
-    /// `build_mutation_bar`) so destructive controls aren't sitting
-    /// next to navigation arrows in misclick range.
+    /// size dropdown / Filter / Export. Row-level mutations live
+    /// elsewhere: Insert in the per-table HeaderBar (canonical GNOME
+    /// "Add" placement), Delete via right-click + the Delete key.
     fn build_paginator(sender: ComponentSender<Self>, page_size: u64) -> Paginator {
         // First / Last bracket the Prev / Next pair. Tables of
         // millions of rows make Last especially valuable — without
@@ -516,37 +533,22 @@ impl BrowseTab {
         }
     }
 
-    /// Mutation actions in their own `gtk::ActionBar` (the Adwaita
-    /// widget for selection-dependent toolbars). Visually separated
-    /// from the paginator so a misclick on Next never lands on Delete.
-    fn build_mutation_bar(sender: ComponentSender<Self>) -> Mutations {
-        let insert_button = gtk::Button::builder()
-            .icon_name("list-add-symbolic")
-            .tooltip_text(crate::tr!("Insert row (Ctrl+N)"))
-            .sensitive(false)
-            .build();
-        let delete_button = gtk::Button::builder()
-            .icon_name("user-trash-symbolic")
-            .tooltip_text(crate::tr!("Delete selected row (Delete)"))
-            .sensitive(false)
-            .build();
-        delete_button.add_css_class("destructive-action");
-        let sender_for_insert = sender.clone();
-        insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
-        let sender_for_delete = sender.clone();
-        delete_button.connect_clicked(move |_| sender_for_delete.input(BrowseTabInput::DeleteSelectedRow));
-
-        // Pending-changeset cluster on pack_end: count label, Discard,
-        // Save. Hidden until any pending change exists. Subscribes
-        // are wired in `init`; this builder just lays them out.
-        let pending_label = gtk::Label::builder().visible(false).build();
+    /// Pending-changes footer: a `gtk::ActionBar` wrapped in a
+    /// `GtkRevealer` so the entire bar slides in only when there are
+    /// unsaved edits. Mirrors GNOME Text Editor / Builder's behaviour
+    /// of revealing a transient action footer rather than reserving a
+    /// permanent strip for occasionally-used controls.
+    ///
+    /// Layout: pending-count label on the left ("3 unsaved changes"),
+    /// Discard + Save on the right (Save is `.suggested-action`).
+    fn build_pending_revealer(sender: ComponentSender<Self>) -> PendingRevealer {
+        let pending_label = gtk::Label::new(None);
         pending_label.add_css_class("dim-label");
         pending_label.add_css_class("caption");
 
         let discard_button = gtk::Button::builder()
             .label(crate::tr!("Discard"))
             .tooltip_text(crate::tr!("Discard all pending edits"))
-            .visible(false)
             .build();
         let sender_for_discard = sender.clone();
         discard_button.connect_clicked(move |_| sender_for_discard.input(BrowseTabInput::DiscardAll));
@@ -554,22 +556,25 @@ impl BrowseTab {
         let save_button = gtk::Button::builder()
             .label(crate::tr!("Save"))
             .tooltip_text(crate::tr!("Save pending edits (Ctrl+S)"))
-            .visible(false)
             .build();
         save_button.add_css_class("suggested-action");
         let sender_for_save = sender;
         save_button.connect_clicked(move |_| sender_for_save.input(BrowseTabInput::CommitSave));
 
         let bar = gtk::ActionBar::new();
-        bar.pack_start(&insert_button);
-        bar.pack_start(&delete_button);
+        bar.pack_start(&pending_label);
         bar.pack_end(&save_button);
         bar.pack_end(&discard_button);
-        bar.pack_end(&pending_label);
-        Mutations {
-            bar,
-            insert_button,
-            delete_button,
+
+        let revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideUp)
+            .transition_duration(150)
+            .reveal_child(false)
+            .child(&bar)
+            .build();
+
+        PendingRevealer {
+            widget: revealer,
             save_button,
             discard_button,
             pending_label,
@@ -583,9 +588,6 @@ impl BrowseTab {
     /// the dirty-state communication — no banner.
     fn refresh_pending_bar(&self, count: usize) {
         let visible = count > 0;
-        self.save_button.set_visible(visible);
-        self.discard_button.set_visible(visible);
-        self.pending_label.set_visible(visible);
         if visible {
             let label = if count == 1 {
                 crate::tr!("1 unsaved change")
@@ -594,6 +596,11 @@ impl BrowseTab {
             };
             self.pending_label.set_label(&label);
         }
+        // Slide the whole footer in/out as one unit instead of
+        // toggling each child's visibility. GtkRevealer animates the
+        // reveal so the bar doesn't pop into existence; the bar's
+        // own children stay always-visible inside it.
+        self.pending_revealer.set_reveal_child(visible);
         self.refresh_banner_visibility();
     }
 
@@ -946,15 +953,14 @@ impl BrowseTab {
         // fresh instance per rebuild, so the previous binding (if
         // any) drops with the old selection — no leak.
         let selection_label_for_signal = self.selection_label.clone();
-        let delete_button_for_signal = self.delete_button.clone();
         if let Some(sel) = self.current_selection.as_ref() {
             sel.connect_selection_changed(move |sel, _, _| {
                 let n = sel.selection().size() as u32;
-                update_selection_chrome(&selection_label_for_signal, &delete_button_for_signal, n);
+                update_selection_chrome(&selection_label_for_signal, n);
             });
             // Page rebuild clears MultiSelection's bitset; reset the
             // chrome explicitly so a stale "5 selected" doesn't linger.
-            update_selection_chrome(&self.selection_label, &self.delete_button, 0);
+            update_selection_chrome(&self.selection_label, 0);
         }
 
         // Re-prepend any pending draft rows so they survive page changes,
@@ -1097,30 +1103,28 @@ impl BrowseTab {
 
     fn refresh_crud_buttons(&self) {
         let has_columns = !self.current_columns.is_empty();
-        let has_rows = self.current_result.is_some();
         let has_pk = self.has_primary_key();
         if self.read_only {
+            // The Insert button lives in the per-table HeaderBar, not
+            // in this tab's own widget tree — but the visibility flip
+            // still drives the GtkWidget directly, so the header-bar
+            // slot just collapses when the connection is read-only.
             self.insert_button.set_visible(false);
-            self.delete_button.set_visible(false);
             return;
         }
         self.insert_button.set_visible(true);
-        self.delete_button.set_visible(true);
         // No-PK tables don't get inline editing because RowKey can't be
         // formed without a PK and our materialise path would silently
         // no-op on UPDATE/DELETE. Disable instead of hide so the
         // affordance stays discoverable; tooltip explains the gate.
-        let pk_tip = crate::tr!("This table has no primary key. Inline editing is disabled.");
         self.insert_button.set_sensitive(has_columns && has_pk);
-        self.delete_button.set_sensitive(has_columns && has_rows && has_pk);
         if has_columns && !has_pk {
-            self.insert_button.set_tooltip_text(Some(&pk_tip));
-            self.delete_button.set_tooltip_text(Some(&pk_tip));
+            self.insert_button.set_tooltip_text(Some(&crate::tr!(
+                "This table has no primary key. Inline editing is disabled."
+            )));
         } else {
             self.insert_button
                 .set_tooltip_text(Some(&crate::tr!("Insert row (Ctrl+N)")));
-            self.delete_button
-                .set_tooltip_text(Some(&crate::tr!("Delete selected row (Delete)")));
         }
         self.refresh_banner_visibility();
     }
@@ -1303,7 +1307,17 @@ impl SimpleComponent for BrowseTab {
         inner_stack.set_visible_child_name("loading");
 
         let paginator = Self::build_paginator(sender.clone(), init.page_size);
-        let mutations = Self::build_mutation_bar(sender.clone());
+        let pending = Self::build_pending_revealer(sender.clone());
+
+        // Wire the externally-parented Insert button (lives in the
+        // per-table HeaderBar — see `BrowseTabInit::insert_button`).
+        // Click dispatches into this tab's own input queue, exactly
+        // like the dropped toolbar Insert did; state mutations run
+        // through `refresh_crud_buttons` against the same widget.
+        let insert_button = init.insert_button.clone();
+        insert_button.set_sensitive(false);
+        let sender_for_insert = sender.clone();
+        insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
 
         // Per-HIG banner rule: banners persist hard constraints the
         // user can't fix by saving. Both reveal only when their
@@ -1339,11 +1353,14 @@ impl SimpleComponent for BrowseTab {
         let filter_strip = crate::ui::filter_strip::build(Vec::new(), filter_set_for_strip, on_apply_filter);
         root.add_top_bar(&filter_strip.widget);
         root.set_content(Some(&inner_stack));
-        // Mutations bar sits below the paginator (call order = stack
-        // order in AdwToolbarView's add_bottom_bar) so the visual
-        // hierarchy is: grid → paginator → mutations.
+        // Bottom toolbars (stacked in `add_bottom_bar` call order):
+        //   1. Paginator — always visible (nav + count + page size +
+        //      Filter + Export).
+        //   2. Pending revealer — slides into view only when the tab
+        //      has unsaved edits (Save / Discard / "N unsaved" label).
+        // Visual hierarchy: grid → paginator → pending (transient).
         root.add_bottom_bar(&paginator.bar);
-        root.add_bottom_bar(&mutations.bar);
+        root.add_bottom_bar(&pending.widget);
         // Per-tab GridMsg channel: events from this tab's grid (sort
         // change, cell edits, context-menu actions) flow into this tab's
         // own input queue, which then re-emits them as outputs to App
@@ -1573,11 +1590,11 @@ impl SimpleComponent for BrowseTab {
             filter_button: paginator.filter_button,
             filter_badge: paginator.filter_badge,
             filter_strip: Some(filter_strip),
-            insert_button: mutations.insert_button,
-            delete_button: mutations.delete_button,
-            save_button: mutations.save_button,
-            discard_button: mutations.discard_button,
-            pending_label: mutations.pending_label,
+            insert_button,
+            pending_revealer: pending.widget,
+            save_button: pending.save_button,
+            discard_button: pending.discard_button,
+            pending_label: pending.pending_label,
             grid_sender,
             suppress_combo_emit,
         };
@@ -2410,23 +2427,23 @@ fn build_persisted_row_key(
     Some((key, cells))
 }
 
-/// Update the selection-count badge + Delete button tooltip in
-/// response to a `MultiSelection` change. Hidden when 0–1 rows are
-/// selected (single-row state has no scaling text need); shows
-/// "{n} selected" + tweaks the Delete tooltip to "Delete {n}
-/// selected rows (Delete)" once the user multi-selects.
-fn update_selection_chrome(label: &gtk::Label, delete_button: &gtk::Button, n: u32) {
+/// Update the selection-count badge in response to a
+/// `MultiSelection` change. Hidden when 0–1 rows are selected
+/// (single-row state has no scaling text need); shows
+/// "{n} selected · press Delete to remove" once the user
+/// multi-selects so the affordance stays discoverable now that
+/// the toolbar Delete button is gone (right-click + Delete key
+/// are the action surface).
+fn update_selection_chrome(label: &gtk::Label, n: u32) {
     if n <= 1 {
         label.set_visible(false);
-        delete_button.set_tooltip_text(Some(&crate::tr!("Delete selected row (Delete)")));
         return;
     }
     let count = n.to_string();
-    label.set_label(&crate::tr!("{n} selected").replace("{n}", &count));
+    label.set_label(
+        &crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count),
+    );
     label.set_visible(true);
-    delete_button.set_tooltip_text(Some(
-        &crate::tr!("Delete {n} selected rows (Delete)").replace("{n}", &count),
-    ));
 }
 
 fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
@@ -2670,11 +2687,9 @@ struct Paginator {
     selection_label: gtk::Label,
 }
 
-/// Bundle of widgets returned by `build_mutation_bar`.
-struct Mutations {
-    bar: gtk::ActionBar,
-    insert_button: gtk::Button,
-    delete_button: gtk::Button,
+/// Bundle of widgets returned by `build_pending_revealer`.
+struct PendingRevealer {
+    widget: gtk::Revealer,
     save_button: gtk::Button,
     discard_button: gtk::Button,
     pending_label: gtk::Label,
