@@ -24,8 +24,12 @@ enum ChatToolSchemaBuilder {
     }
 
     static func enumString(_ values: [String], description: String, optional: Bool = false) -> JsonValue {
-        scalar("string", description: description, optional: optional, extras: [
-            "enum": .array(values.map(JsonValue.string))
+        var members = values.map(JsonValue.string)
+        if optional {
+            members.append(.null)
+        }
+        return scalar("string", description: description, optional: optional, extras: [
+            "enum": .array(members)
         ])
     }
 
