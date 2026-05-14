@@ -28,6 +28,21 @@ struct WindowLayoutMigrationTests {
         #expect(defaults.bool(forKey: WindowLayoutMigration.migrationCompleteKey))
         #expect(defaults.object(forKey: WindowLayoutMigration.perConnectionSplitFramesKey(connectionId)) == nil)
         #expect(defaults.object(forKey: WindowLayoutMigration.perConnectionInspectorKey(connectionId)) == nil)
+        #expect(defaults.object(forKey: WindowLayoutMigration.perConnectionWindowFrameKey(connectionId)) == nil)
+    }
+
+    @Test("seeds the per-connection window frame from the legacy global key")
+    func seedsWindowFrame() {
+        let defaults = makeDefaults()
+        let connectionId = UUID()
+        let legacyFrame = "100 200 1200 800 0 0 1440 900 "
+        defaults.set(legacyFrame, forKey: WindowLayoutMigration.windowFrameKey("MainEditorWindow"))
+
+        WindowLayoutMigration.migrate(defaults: defaults, connectionIds: [connectionId])
+
+        let seeded = defaults.string(forKey: WindowLayoutMigration.perConnectionWindowFrameKey(connectionId))
+        #expect(seeded == legacyFrame)
+        #expect(defaults.object(forKey: WindowLayoutMigration.windowFrameKey("MainEditorWindow")) == nil)
     }
 
     @Test("seeds the per-connection split frames from the legacy global key")

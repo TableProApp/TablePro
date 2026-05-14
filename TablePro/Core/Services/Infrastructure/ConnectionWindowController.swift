@@ -32,14 +32,16 @@ private final class ConnectionWindow: NSWindow {
 internal final class ConnectionWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
-
     internal let connection: DatabaseConnection
     internal let controllerId: UUID
     internal let coordinator: MainContentCoordinator
 
     private let sessionState: SessionStateFactory.SessionState
     private var activity: NSUserActivity?
+
+    private var frameAutosaveName: NSWindow.FrameAutosaveName {
+        "MainEditorWindow.\(connection.id.uuidString)"
+    }
 
     internal init(connection: DatabaseConnection, sessionState: SessionStateFactory.SessionState) {
         self.connection = connection
@@ -74,7 +76,7 @@ internal final class ConnectionWindowController: NSWindowController, NSWindowDel
 
         refreshWindowTitle()
 
-        if !window.setFrameUsingName(Self.frameAutosaveName) {
+        if !window.setFrameUsingName(frameAutosaveName) {
             let visibleSize = (window.screen ?? NSScreen.main)?.visibleFrame.size
                 ?? NSSize(width: 1_440, height: 900)
             window.setContentSize(NSSize(
@@ -104,17 +106,17 @@ internal final class ConnectionWindowController: NSWindowController, NSWindowDel
     internal func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         guard !window.inLiveResize else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingName: frameAutosaveName)
     }
 
     internal func windowDidEndLiveResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingName: frameAutosaveName)
     }
 
     internal func windowDidMove(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingName: frameAutosaveName)
     }
 
     internal func windowDidBecomeKey(_ notification: Notification) {
@@ -144,7 +146,7 @@ internal final class ConnectionWindowController: NSWindowController, NSWindowDel
         )
 
         cancelPendingConnectionIfNeeded()
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingName: frameAutosaveName)
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.invalidateToolbar()
