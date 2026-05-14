@@ -150,7 +150,7 @@ final class OpenAIResponsesProvider: ChatTransport {
         }
 
         if let effort = options.reasoningEffort {
-            body["reasoning"] = ["effort": effort.openAIWireValue]
+            body["reasoning"] = ["effort": effort.openAIWireValue, "summary": "auto"]
             body["include"] = ["reasoning.encrypted_content"]
         }
 
