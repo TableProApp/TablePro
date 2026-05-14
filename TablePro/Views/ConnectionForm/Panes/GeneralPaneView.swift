@@ -152,8 +152,7 @@ struct GeneralPaneView: View {
     private var authenticationSection: some View {
         if connectionMode != .fileBased {
             Section(String(localized: "Authentication")) {
-                if PluginManager.shared.requiresAuthentication(for: type)
-                    && connectionMode != .apiOnly {
+                if connectionMode == .network {
                     TextField(
                         String(localized: "Username"),
                         text: $coordinator.auth.username,
