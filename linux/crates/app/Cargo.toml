@@ -37,6 +37,3 @@ uuid.workspace = true
 gettext-rs = { version = "0.7", features = ["gettext-system"] }
 libc = "0.2"
 sqlformat = "0.5"
-
-[build-dependencies]
-glib-build-tools = "0.22"

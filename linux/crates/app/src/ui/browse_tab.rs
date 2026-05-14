@@ -98,13 +98,12 @@ pub struct BrowseTab {
     prev_button: gtk::Button,
     next_button: gtk::Button,
     last_button: gtk::Button,
-    /// Toolbar button that toggles the filter strip. When the
-    /// current filter has any rules, a small count badge appears
-    /// next to the funnel icon (mirroring the unread-count pattern
-    /// GNOME Mail / Files use). The accent-color path was dropped
-    /// because GNOME's user-selectable accent (orange, red, ...)
-    /// made the button look like a destructive action on some
-    /// themes.
+    /// Toolbar button that toggles the filter strip. Text-only
+    /// ("Filter") because adwaita-icon-theme has no canonical
+    /// symbolic icon for filtering and reusing a search/find icon
+    /// would clash with Ctrl+F "Find on page". When the current
+    /// filter has any rules, a small count badge appears next to
+    /// the word; hidden otherwise.
     filter_button: gtk::Button,
     /// Count badge inside `filter_button`. Hidden when the filter
     /// is empty, otherwise reads `N` for N active rules.
@@ -464,22 +463,30 @@ impl BrowseTab {
         // Filter button — opens the rule editor for server-side WHERE.
         // Action `win.open-filter` is registered in app/mod.rs and
         // reads the active tab's controller, so the button implicitly
-        // targets this tab when this tab is active. Visual content is a
-        // box with the funnel icon + a count badge label so we can show
-        // active-rule count without leaning on the system accent color
-        // (which can be red/orange depending on user preference).
-        let filter_icon = gtk::Image::from_icon_name("funnel-symbolic");
+        // targets this tab when this tab is active.
+        //
+        // Text-only label (no icon) because there is no canonical GNOME
+        // symbolic icon for "filter rows" in adwaita-icon-theme — the
+        // alternatives (system-search-symbolic, edit-find-symbolic)
+        // clash with Ctrl+F "Find on page". GNOME HIG accepts text-
+        // labeled toolbar buttons; the surrounding paginator strip is
+        // already text-heavy (`Rows 1–12 of 12`, `Rows: 100`) so a
+        // text label reads as native here. The `filter_badge` label
+        // shows the active rule count next to the word when ≥1 rule
+        // applies; hidden otherwise.
+        let filter_label = gtk::Label::new(Some(&crate::tr!("Filter")));
         let filter_badge = gtk::Label::builder()
             .label("")
             .visible(false)
             .build();
         filter_badge.add_css_class("numeric");
         filter_badge.add_css_class("caption-heading");
+        filter_badge.add_css_class("dim-label");
         let filter_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
-            .spacing(4)
+            .spacing(6)
             .build();
-        filter_box.append(&filter_icon);
+        filter_box.append(&filter_label);
         filter_box.append(&filter_badge);
         let filter_button = gtk::Button::builder()
             .tooltip_text(crate::tr!("Filter rows (Ctrl+R)"))
