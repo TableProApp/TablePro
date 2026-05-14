@@ -87,9 +87,6 @@ final class OpenAICompatibleProvider: ChatTransport {
         }
     }
 
-    /// Decodes one streaming line. OpenAI/OpenRouter/Custom use SSE framing
-    /// (`data: {...}`); Ollama emits NDJSON (one JSON object per line). The
-    /// `[DONE]` sentinel returns nil; the caller should break on it.
     static func decodeStreamLine(_ line: String, providerType: AIProviderType) -> [String: Any]? {
         let jsonString: String
         if providerType == .ollama {
@@ -107,10 +104,6 @@ final class OpenAICompatibleProvider: ChatTransport {
         return json
     }
 
-    /// Translate one chunk JSON to events. Mutates state to thread tool-call
-    /// index→id mapping, ordering, and token counters across chunks.
-    /// Returns `(events, shouldBreak)` so the caller can stop the stream when
-    /// Ollama emits `done: true`.
     static func parseChunk(
         _ json: [String: Any],
         state: inout OpenAIStreamState
@@ -152,9 +145,6 @@ final class OpenAICompatibleProvider: ChatTransport {
             state.outputTokens = evalCount
         }
 
-        // Ollama signals stream-end via `done: true`. We flush again here only
-        // when finish_reason didn't already drain the tool-call map (which
-        // typically isn't set on Ollama responses).
         let shouldBreak = (json["done"] as? Bool) == true
         if shouldBreak, !state.toolCallIndexToId.isEmpty {
             events.append(contentsOf: state.flushToolUseEnds())

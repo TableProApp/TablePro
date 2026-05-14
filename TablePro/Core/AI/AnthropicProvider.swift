@@ -214,10 +214,6 @@ final class AnthropicProvider: ChatTransport {
         return false
     }
 
-    /// Decodes one SSE line of the form `data: {...}` to a JSON object.
-    /// Returns `nil` for non-data lines, the `[DONE]` sentinel, and unparsable
-    /// payloads. Keeping this separate from `parseChunk` lets tests skip the
-    /// SSE framing and feed JSON dictionaries directly.
     static func decodeStreamLine(_ line: String) -> [String: Any]? {
         guard line.hasPrefix("data: ") else { return nil }
         let jsonString = String(line.dropFirst(6))
@@ -228,10 +224,6 @@ final class AnthropicProvider: ChatTransport {
         return json
     }
 
-    /// Translate a single Anthropic SSE event JSON into zero or more
-    /// `ChatStreamEvent`s. Mutates `state` to carry index→id mappings and
-    /// token counters across calls. Throws `AIProviderError.streamingFailed`
-    /// on `error` events.
     static func parseChunk(
         _ json: [String: Any],
         state: inout AnthropicStreamState
