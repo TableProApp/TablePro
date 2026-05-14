@@ -1265,7 +1265,16 @@ impl SimpleComponent for BrowseTab {
     type Widgets = ();
 
     fn init_root() -> Self::Root {
-        adw::ToolbarView::new()
+        let root = adw::ToolbarView::new();
+        // BrowseTab attaches directly to the workspace `AdwTabView`
+        // now (no outer wrapper / view switcher), so the default
+        // "raised" top-bar style draws a 1px separator above the grid
+        // even when every top bar is collapsed (banners + filter
+        // strip all start `revealed=false`). Flat style drops the
+        // separator + the slot padding — the grid butts cleanly
+        // against the bottom of the AdwTabBar.
+        root.set_top_bar_style(adw::ToolbarStyle::Flat);
+        root
     }
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
