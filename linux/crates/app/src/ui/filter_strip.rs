@@ -1,6 +1,6 @@
 //! Inline filter strip — server-side WHERE clause editor that slides
 //! in above the Browse-tab grid. Reachable via the Filter button on
-//! the paginator action bar or the Ctrl+R shortcut.
+//! the paginator action bar or the Ctrl+F shortcut.
 //!
 //! Why inline (vs. a modal dialog)? The user is filtering data they
 //! can see; obscuring the grid with a dialog adds a round-trip every
@@ -290,7 +290,7 @@ fn is_filterable(col: &ColumnInfo) -> bool {
 
 /// The inline filter editor. BrowseTab owns one of these per tab,
 /// adds `widget` as a top bar on its `AdwToolbarView`, and toggles
-/// reveal via the Filter button / Ctrl+R / Esc.
+/// reveal via the Filter button / Ctrl+F / Esc.
 pub struct FilterStrip {
     pub widget: gtk::Revealer,
     state: Rc<RefCell<FilterSet>>,

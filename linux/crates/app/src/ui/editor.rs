@@ -738,7 +738,7 @@ fn summary_label(n_total: usize, n_ok: usize, total_ms: u128, has_error: bool) -
 fn build_outcome_widget(o: &StatementOutcome, idx: usize) -> gtk::Widget {
     match &o.kind {
         StatementOutcomeKind::Rows(result) if !result.rows.is_empty() => {
-            let (column_view, _selection, _filter) = build_column_view(
+            let (column_view, _selection) = build_column_view(
                 result,
                 &result.columns,
                 "",

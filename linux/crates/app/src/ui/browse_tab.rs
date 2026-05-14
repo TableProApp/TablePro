@@ -84,9 +84,6 @@ pub struct BrowseTab {
     /// match by draft_id (for the rare case where a draft is focused
     /// when a sort happens). Cleared by `restore_focused_row`.
     pending_focus_restore: std::cell::RefCell<Option<crate::services::change_tracker::RowKey>>,
-    grid_search: gtk::SearchEntry,
-    grid_search_bar: gtk::SearchBar,
-    grid_search_handler: Option<glib::SignalHandlerId>,
     paginator_label: gtk::Label,
     /// Live count of selected rows. Hidden when 0 or 1 rows are
     /// selected; shows "{n} selected" once the user shift-clicks
@@ -101,9 +98,9 @@ pub struct BrowseTab {
     /// Toolbar button that toggles the filter strip. Text-only
     /// ("Filter") because adwaita-icon-theme has no canonical
     /// symbolic icon for filtering and reusing a search/find icon
-    /// would clash with Ctrl+F "Find on page". When the current
-    /// filter has any rules, a small count badge appears next to
-    /// the word; hidden otherwise.
+    /// would clash with the universal Ctrl+F shortcut now bound to
+    /// this filter action. When the current filter has any rules, a
+    /// small count badge appears next to the word; hidden otherwise.
     filter_button: gtk::Button,
     /// Count badge inside `filter_button`. Hidden when the filter
     /// is empty, otherwise reads `N` for N active rules.
@@ -139,20 +136,13 @@ pub enum BrowseTabInput {
     ShowError(String),
     /// Re-issue the fetch for this tab (F5).
     Refresh,
-    /// Reveal the in-grid find bar and focus it.
-    FindInResults,
-    /// Restore focus to the column view. Fired after the search bar
-    /// is closed via Escape so the next keystroke lands on the grid
-    /// (F2 to edit, Tab to traverse, etc.) instead of the floating
-    /// post-search focus state.
-    FocusGrid,
     /// Clear a multi-row selection (Esc when 2+ rows are selected
     /// and no search bar / cell editor is active). Single-row
     /// selections are intentionally preserved — unselecting the
     /// only-row would strand the keyboard focus indicator.
     ClearSelection,
     /// Toggle the inline filter strip's reveal state. Wired to the
-    /// Filter button + Ctrl+R action.
+    /// Filter button + Ctrl+F action.
     ToggleFilterStrip,
     /// User confirmed a new filter set in the filter strip (or hit
     /// "Clear all" — that's an empty FilterSet). BrowseTab persists,
@@ -468,7 +458,7 @@ impl BrowseTab {
         // Text-only label (no icon) because there is no canonical GNOME
         // symbolic icon for "filter rows" in adwaita-icon-theme — the
         // alternatives (system-search-symbolic, edit-find-symbolic)
-        // clash with Ctrl+F "Find on page". GNOME HIG accepts text-
+        // clash with Ctrl+F (now bound here). GNOME HIG accepts text-
         // labeled toolbar buttons; the surrounding paginator strip is
         // already text-heavy (`Rows 1–12 of 12`, `Rows: 100`) so a
         // text label reads as native here. The `filter_badge` label
@@ -489,7 +479,7 @@ impl BrowseTab {
         filter_box.append(&filter_label);
         filter_box.append(&filter_badge);
         let filter_button = gtk::Button::builder()
-            .tooltip_text(crate::tr!("Filter rows (Ctrl+R)"))
+            .tooltip_text(crate::tr!("Filter rows (Ctrl+F)"))
             .action_name("win.open-filter")
             .child(&filter_box)
             .build();
@@ -618,36 +608,23 @@ impl BrowseTab {
         self.no_pk_banner.set_revealed(!read_only && no_pk);
     }
 
-    /// Walk the selection → FilterListModel → ListStore chain to
-    /// expose the underlying store for direct mutation (used by the
-    /// inline-Insert path to prepend a draft row).
+    /// Walk the selection → ListStore chain to expose the underlying
+    /// store for direct mutation (used by the inline-Insert path to
+    /// prepend a draft row).
     fn list_store(&self) -> Option<gtk::gio::ListStore> {
         let selection = self.current_selection.as_ref()?;
-        let filter_model = selection.model()?.downcast::<gtk::FilterListModel>().ok()?;
-        filter_model.model()?.downcast::<gtk::gio::ListStore>().ok()
+        selection.model()?.downcast::<gtk::gio::ListStore>().ok()
     }
 
-    /// Notify the chain (ListStore → FilterListModel → SelectionModel
-    /// → ColumnView) that the row at `filter_pos` has changed so the
-    /// view rebinds its cells.
+    /// Notify the chain (ListStore → SelectionModel → ColumnView) that
+    /// the row at `pos` has changed so the view rebinds its cells.
     ///
     /// Why: per GTK4 docs, `items-changed` "should never be emitted
-    /// directly by users of the model" — it's a signal the *model
-    /// implementation* emits when its content changes. Calling
-    /// `filter_model.items_changed(...)` from the outside emits the
-    /// signal but the FilterListModel's internal change-tracking
-    /// state stays stale, so the downstream ColumnView sees no
-    /// item-identity change and skips the bind. CSS classes
-    /// (orange-tint pending state) update correctly because they're
-    /// applied at bind time on every connect_bind, but the cell text
-    /// won't refresh because connect_bind never re-runs.
-    ///
-    /// Walking through to the underlying `gio::ListStore` and
-    /// emitting `items_changed` *there* propagates correctly: the
-    /// ListStore is the change-emitter the chain expects, every
-    /// derived model invalidates its caches, and the factory rebinds.
-    fn refresh_row_at(&self, filter_pos: u32) {
-        let row_obj = self.row_object_at(filter_pos);
+    /// directly by users of the model". Splicing a fresh RowObject
+    /// into the underlying `gio::ListStore` is the canonical way to
+    /// force the downstream chain to invalidate caches and rebind.
+    fn refresh_row_at(&self, pos: u32) {
+        let row_obj = self.row_object_at(pos);
         let store = self.list_store();
         let store_pos = match (row_obj.as_ref(), store.as_ref()) {
             (Some(r), Some(s)) => s.find(r),
@@ -682,8 +659,8 @@ impl BrowseTab {
         }
     }
 
-    /// Look up the live `RowObject` at a filter-model position. Used
-    /// to detect whether a row is a draft (`draft_id().is_some()`)
+    /// Look up the live `RowObject` at a selection-model position.
+    /// Used to detect whether a row is a draft (`draft_id().is_some()`)
     /// vs a persisted row, and to mutate draft cells in place when
     /// the user types into them.
     fn row_object_at(&self, position: u32) -> Option<super::row_object::RowObject> {
@@ -792,10 +769,7 @@ impl BrowseTab {
                 && let Some(row_obj) = model
                     .item(position)
                     .and_then(|o| o.downcast::<super::row_object::RowObject>().ok())
-                && let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>()
-                && let Some(store) = filter_model
-                    .model()
-                    .and_then(|m| m.downcast::<gtk::gio::ListStore>().ok())
+                && let Some(store) = model.downcast::<gtk::gio::ListStore>().ok()
                 && let Some(store_pos) = store.find(&row_obj)
             {
                 store.items_changed(store_pos, 1, 1);
@@ -953,7 +927,7 @@ impl BrowseTab {
             tab_id: Some(self.tab_id),
             pk_col_indices,
         };
-        let (column_view, selection, filter_setter) = build_column_view(
+        let (column_view, selection) = build_column_view(
             &result,
             &self.current_columns,
             &self.table,
@@ -963,15 +937,6 @@ impl BrowseTab {
             self.connection_id,
             tab_ctx,
         );
-        if let Some(prev) = self.grid_search_handler.take() {
-            self.grid_search.disconnect(prev);
-        }
-        let setter = filter_setter.clone();
-        let id = self.grid_search.connect_search_changed(move |entry| {
-            setter(&entry.text());
-        });
-        self.grid_search_handler = Some(id);
-        filter_setter(&self.grid_search.text());
         self.current_selection = Some(selection);
         self.current_column_view = Some(column_view.clone());
         self.rendered_column_count.set(self.current_columns.len());
@@ -1028,8 +993,6 @@ impl BrowseTab {
             store.append(&super::row_object::RowObject::new(row.clone()));
         }
         self.reprepend_drafts();
-        // Re-apply the search filter against the new data.
-        self.grid_search.emit_by_name::<()>("search-changed", &[]);
     }
 
     /// Update paginator label, button sensitivity, and stack child —
@@ -1089,19 +1052,18 @@ impl BrowseTab {
         }
     }
 
-    /// Force a single-row re-bind via `items_changed(pos, 1, 1)` on the
-    /// FilterListModel. Used when rejecting an invalid cell edit: the
-    /// `CellEditor` still holds the user's typed text after editing-
-    /// notify fires, so we trigger a re-bind to restore the canonical
-    /// display from `RowObject.cell_value()` (which we did NOT mutate
-    /// because the parse failed).
+    /// Force a single-row re-bind. Used when rejecting an invalid
+    /// cell edit: the `CellEditor` still holds the user's typed text
+    /// after editing-notify fires, so we trigger a re-bind to restore
+    /// the canonical display from `RowObject.cell_value()` (which we
+    /// did NOT mutate because the parse failed).
     fn refresh_row(&self, position: u32) {
         self.refresh_row_at(position);
     }
 
     /// Build the (RowKey, current_values) pair for a row at the
-    /// given position. `row_position` is in filter-model space (the
-    /// space `GtkColumnView` activates against), which includes
+    /// given position. `row_position` is in selection-model space
+    /// (the space `GtkColumnView` activates against), which includes
     /// prepended drafts — so we resolve through the selection model
     /// rather than indexing `result.rows` directly. The earlier
     /// direct-indexing version was off by N when N drafts were
@@ -1175,7 +1137,7 @@ impl BrowseTab {
             self.filter_badge.set_visible(false);
             self.filter_badge.set_label("");
             self.filter_button
-                .set_tooltip_text(Some(&crate::tr!("Filter rows (Ctrl+R)")));
+                .set_tooltip_text(Some(&crate::tr!("Filter rows (Ctrl+F)")));
         } else {
             self.filter_badge.set_label(&n.to_string());
             self.filter_badge.set_visible(true);
@@ -1315,16 +1277,6 @@ impl SimpleComponent for BrowseTab {
             .orientation(gtk::Orientation::Vertical)
             .vexpand(true)
             .build();
-        let grid_search = gtk::SearchEntry::builder()
-            .placeholder_text(crate::tr!("Find in results"))
-            .build();
-        let grid_search_bar = gtk::SearchBar::builder()
-            .child(&grid_search)
-            .show_close_button(true)
-            .search_mode_enabled(false)
-            .build();
-        grid_search_bar.connect_entry(&grid_search);
-
         let inner_stack = gtk::Stack::builder()
             .transition_type(gtk::StackTransitionType::Crossfade)
             .build();
@@ -1386,29 +1338,12 @@ impl SimpleComponent for BrowseTab {
         });
         let filter_strip = crate::ui::filter_strip::build(Vec::new(), filter_set_for_strip, on_apply_filter);
         root.add_top_bar(&filter_strip.widget);
-        root.add_top_bar(&grid_search_bar);
         root.set_content(Some(&inner_stack));
         // Mutations bar sits below the paginator (call order = stack
         // order in AdwToolbarView's add_bottom_bar) so the visual
         // hierarchy is: grid → paginator → mutations.
         root.add_bottom_bar(&paginator.bar);
         root.add_bottom_bar(&mutations.bar);
-        // No `set_key_capture_widget` on the search bar: that property
-        // makes any printable keystroke anywhere in the BrowseTab open
-        // the search entry, even while the user is typing into a
-        // cell's GtkText (the "type-to-search" pattern from GNOME
-        // Files). It conflicts with inline cell editing — the first
-        // keystroke after entering edit mode jumps focus to the search
-        // entry instead of going into the cell. Ctrl+F still opens
-        // search, which is the documented shortcut.
-
-        // SearchBar's built-in Escape handler only fires while the
-        // SearchEntry (or its close button) has focus. If the user opens
-        // search and then clicks the page-size dropdown or any paginator
-        // control, Esc lands outside the bar's reach. A Local-scope
-        // shortcut on root catches Escape anywhere in this tab and
-        // dismisses the bar — matching the GNOME Files / Text Editor
-        // behaviour where Esc reliably closes search regardless of focus.
         // Per-tab GridMsg channel: events from this tab's grid (sort
         // change, cell edits, context-menu actions) flow into this tab's
         // own input queue, which then re-emits them as outputs to App
@@ -1417,33 +1352,22 @@ impl SimpleComponent for BrowseTab {
         // focused cell to NULL) can route directly to the grid sender.
         let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
 
-        let search_bar_for_esc = grid_search_bar.clone();
         let sender_for_esc = sender.clone();
         let esc_shortcut = gtk::Shortcut::builder()
             .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
             .action(&gtk::CallbackAction::new(move |_, _| {
-                if search_bar_for_esc.is_search_mode() {
-                    search_bar_for_esc.set_search_mode(false);
-                    // Restore focus to the grid — without this the
-                    // SearchBar leaves focus floating and the next
-                    // keystroke vanishes (or re-opens the search if
-                    // it lands on something keypress-capturing).
-                    sender_for_esc.input(BrowseTabInput::FocusGrid);
-                    glib::Propagation::Stop
-                } else {
-                    // Esc on the grid (no search, no edit) clears a
-                    // multi-row selection. Spreadsheet convention
-                    // (Excel / LibreOffice / DataGrip): Esc cancels
-                    // the in-progress selection without deleting
-                    // anything. Single-row selections fall through
-                    // because GtkColumnView treats single-select as
-                    // "the focused row" and unselecting it would
-                    // strand the focus indicator. Cell-edit Esc fires
-                    // first via the editor's capture-phase handler
-                    // and never reaches us.
-                    sender_for_esc.input(BrowseTabInput::ClearSelection);
-                    glib::Propagation::Proceed
-                }
+                // Esc on the grid (no edit in progress) clears a
+                // multi-row selection. Spreadsheet convention
+                // (Excel / LibreOffice / DataGrip): Esc cancels
+                // the in-progress selection without deleting
+                // anything. Single-row selections fall through
+                // because GtkColumnView treats single-select as
+                // "the focused row" and unselecting it would
+                // strand the focus indicator. Cell-edit Esc fires
+                // first via the editor's capture-phase handler
+                // and never reaches us.
+                sender_for_esc.input(BrowseTabInput::ClearSelection);
+                glib::Propagation::Proceed
             }))
             .build();
 
@@ -1640,9 +1564,6 @@ impl SimpleComponent for BrowseTab {
             no_pk_banner,
             was_dirty: std::cell::Cell::new(false),
             pending_focus_restore: std::cell::RefCell::new(None),
-            grid_search,
-            grid_search_bar,
-            grid_search_handler: None,
             paginator_label: paginator.paginator_label,
             selection_label: paginator.selection_label,
             first_button: paginator.first_button,
@@ -1764,17 +1685,6 @@ impl SimpleComponent for BrowseTab {
                 let _ = sender.output(BrowseTabOutput::FetchPage);
                 let _ = sender.output(BrowseTabOutput::FetchRowCount);
             }
-            BrowseTabInput::FindInResults => {
-                if !self.grid_search_bar.is_search_mode() {
-                    self.grid_search_bar.set_search_mode(true);
-                }
-                self.grid_search.grab_focus();
-            }
-            BrowseTabInput::FocusGrid => {
-                if let Some(cv) = self.current_column_view.as_ref() {
-                    cv.grab_focus();
-                }
-            }
             BrowseTabInput::ClearSelection => {
                 let Some(sel) = self.current_selection.as_ref() else {
                     return;
@@ -1884,12 +1794,11 @@ impl SimpleComponent for BrowseTab {
                     return;
                 }
                 // Read the source row through the live RowObject at
-                // `row_position` in the FilterListModel — NOT by
-                // indexing `current_result.rows` directly. The grid's
-                // row_position reflects the user's current sort + any
-                // active search filter; raw `rows` is fetch order. A
-                // sort or filter would otherwise hand us the wrong
-                // row's cells.
+                // `row_position` — NOT by indexing
+                // `current_result.rows` directly. The grid's
+                // row_position reflects the user's current sort and
+                // any prepended drafts; raw `rows` is fetch order. A
+                // sort would otherwise hand us the wrong row's cells.
                 let Some(source) = self.row_object_at(row_position) else {
                     return;
                 };
@@ -1999,7 +1908,7 @@ impl SimpleComponent for BrowseTab {
                 // PK to build a RowKey) and drafts (in-memory only,
                 // discarded by id). We resolve through the selection
                 // model rather than `result.rows[pos]` directly
-                // because `pos` is in filter-model space, which
+                // because `pos` is in selection-model space, which
                 // includes prepended drafts. A pure-draft selection
                 // is valid (the user can bulk-discard pending
                 // inserts before saving).
@@ -2487,7 +2396,7 @@ fn normalize_single_line_input(text: &str) -> String {
 ///
 /// Pure function so it stays unit-testable without spinning up GTK
 /// / RowObject. Callers feed it a clone of the row's cells (already
-/// pulled from the model in filter-model space, see the
+/// pulled from the model in selection-model space, see the
 /// row-position-vs-result-rows note in `DeleteSelectedRow`).
 fn build_persisted_row_key(
     cells: Vec<Value>,

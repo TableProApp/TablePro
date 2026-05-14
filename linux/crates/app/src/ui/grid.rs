@@ -10,8 +10,6 @@ use tablepro_core::{ColumnInfo, QueryResult, Value};
 
 use super::row_object::RowObject;
 
-pub type FilterSetter = Rc<dyn Fn(&str)>;
-
 #[derive(Debug)]
 pub enum GridMsg {
     /// User clicked a column header. `(col_idx, ascending)` is the
@@ -73,42 +71,12 @@ pub fn build_column_view(
     sort_sender: Option<relm4::Sender<GridMsg>>,
     connection_id: Option<uuid::Uuid>,
     tab_ctx: TabGridContext,
-) -> (gtk::ColumnView, gtk::MultiSelection, FilterSetter) {
+) -> (gtk::ColumnView, gtk::MultiSelection) {
     let store = gtk4::gio::ListStore::new::<RowObject>();
     for row in &result.rows {
         store.append(&RowObject::new(row.clone()));
     }
-    let filter_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
-    let filter_text_for_filter = filter_text.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let query = filter_text_for_filter.borrow();
-        if query.is_empty() {
-            return true;
-        }
-        let Some(row) = item.downcast_ref::<RowObject>() else {
-            return true;
-        };
-        // Always show draft rows regardless of search text — their
-        // initial NULL values would otherwise hide them from view
-        // the moment the user types anything in the find bar.
-        if row.draft_id().is_some() {
-            return true;
-        }
-        let needle = query.to_lowercase();
-        row.with_cells(|cells| {
-            cells
-                .iter()
-                .any(|v| value_to_display_text(v).to_lowercase().contains(&needle))
-        })
-    });
-    let filter_model = gtk::FilterListModel::new(Some(store), Some(filter.clone()));
-    let selection = gtk::MultiSelection::new(Some(filter_model));
-
-    let filter_for_setter = filter.clone();
-    let setter: FilterSetter = Rc::new(move |q: &str| {
-        filter_text.replace(q.to_string());
-        filter_for_setter.changed(gtk::FilterChange::Different);
-    });
+    let selection = gtk::MultiSelection::new(Some(store));
     let column_view = gtk::ColumnView::builder()
         .model(&selection)
         .show_row_separators(true)
@@ -220,7 +188,7 @@ pub fn build_column_view(
         view_sorter.connect_primary_sort_order_notify(move |sorter| dispatch(sorter));
     }
 
-    (column_view, selection, setter)
+    (column_view, selection)
 }
 
 #[allow(clippy::too_many_arguments)]

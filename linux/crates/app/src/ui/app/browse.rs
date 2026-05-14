@@ -321,13 +321,7 @@ impl App {
         });
     }
 
-    pub(super) fn on_find_in_results(&self) {
-        if let Some(id) = self.selected_browse_tab_id() {
-            self.dispatch_to_tab(id, BrowseTabInput::FindInResults);
-        }
-    }
-
-    /// Ctrl+R / Filter button — toggle the inline filter strip on
+    /// Ctrl+F / Filter button — toggle the inline filter strip on
     /// the active Browse tab. Strip lives inside the tab (always
     /// constructed at init), so this is just a reveal flip.
     pub(super) fn on_show_filter_dialog(&self) {

@@ -345,7 +345,6 @@ pub enum AppMsg {
     ShowPreferences,
     /// Sort flipped on tab_id's grid for column idx.
     RowCountLoaded(Uuid, u64),
-    FindInResults,
     ExportCsv,
     ExportJson,
     CopyToClipboard(String),
@@ -539,7 +538,7 @@ pub enum AppMsg {
     /// buffer; Table tabs come back with their schema/table/mode and
     /// last-known pagination, sort, page size.
     ReopenClosedTab,
-    /// Ctrl+R → open the filter dialog for the active Browse tab.
+    /// Ctrl+F → open the filter strip for the active Browse tab.
     /// No-op when the active tab isn't a Browse / Table tab.
     ShowFilterDialog,
 }
@@ -1485,7 +1484,6 @@ impl SimpleComponent for App {
             AppMsg::ShowShortcuts => self.on_show_shortcuts(),
             AppMsg::ShowAbout => self.on_show_about(),
             AppMsg::ShowPreferences => super::preferences::present(&self.window),
-            AppMsg::FindInResults => self.on_find_in_results(),
             AppMsg::ExportCsv => self.on_export(ExportFormat::Csv),
             AppMsg::ExportJson => self.on_export(ExportFormat::Json),
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
@@ -1615,7 +1613,6 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("preferences", AppMsg::ShowPreferences),
         input_action!("show-history", AppMsg::ShowHistory),
         input_action!("refresh-page", AppMsg::RefreshPage),
-        input_action!("find-in-results", AppMsg::FindInResults),
         input_action!("export-csv", AppMsg::ExportCsv),
         input_action!("export-json", AppMsg::ExportJson),
         input_action!("save-changes", AppMsg::SaveActiveBrowseTab),
@@ -1643,7 +1640,7 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut("<Primary>w", "win.close-current"));
     controller.add_shortcut(make_shortcut("<Primary>e", "win.open-editor"));
     controller.add_shortcut(make_shortcut("F5", "win.refresh-page"));
-    controller.add_shortcut(make_shortcut("<Primary>f", "win.find-in-results"));
+    controller.add_shortcut(make_shortcut("<Primary>f", "win.open-filter"));
     controller.add_shortcut(make_shortcut("<Primary>comma", "win.preferences"));
     controller.add_shortcut(make_shortcut("<Primary>h", "win.show-history"));
     controller.add_shortcut(make_shortcut("<Primary>s", "win.save-changes"));
@@ -1651,7 +1648,6 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut("<Primary>y", "win.redo-change"));
     controller.add_shortcut(make_shortcut("<Primary><Shift>z", "win.redo-change"));
     controller.add_shortcut(make_shortcut("<Primary><Shift>t", "win.reopen-closed-tab"));
-    controller.add_shortcut(make_shortcut("<Primary>r", "win.open-filter"));
     window.add_controller(controller);
 }
 
@@ -1671,7 +1667,6 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
 
     let general = gtk::ShortcutsGroup::builder().title(crate::tr!("General")).build();
     general.append(&shortcut_entry("<Primary>e", &crate::tr!("Open SQL editor")));
-    general.append(&shortcut_entry("<Primary>f", &crate::tr!("Find in results")));
     general.append(&shortcut_entry("F5", &crate::tr!("Refresh table")));
     general.append(&shortcut_entry("<Primary>comma", &crate::tr!("Open Preferences")));
     general.append(&shortcut_entry("<Primary>h", &crate::tr!("Open Query History")));
@@ -1709,7 +1704,7 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
         "<Primary><Shift>n",
         &crate::tr!("Set focused cell to NULL"),
     ));
-    browse.append(&shortcut_entry("<Primary>r", &crate::tr!("Filter rows")));
+    browse.append(&shortcut_entry("<Primary>f", &crate::tr!("Filter rows")));
     browse.append(&shortcut_entry("<Primary>a", &crate::tr!("Select all rows")));
     browse.append(&shortcut_entry(
         "<Shift>Pointer_Button1",
