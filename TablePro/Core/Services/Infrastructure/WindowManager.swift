@@ -83,6 +83,12 @@ internal final class WindowManager {
         )
     }
 
+    internal func openConnectionWindow(for connectionId: UUID) {
+        Self.lifecycleLogger.info(
+            "[open] WindowManager.openConnectionWindow stub connId=\(connectionId, privacy: .public)"
+        )
+    }
+
     // MARK: - Retention
 
     private func retain(controller: TabWindowController, window: NSWindow) {
