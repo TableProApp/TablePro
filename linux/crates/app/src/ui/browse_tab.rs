@@ -838,21 +838,38 @@ impl BrowseTab {
     }
 
     /// Grab focus + start-editing on the freshly-inserted draft row's
-    /// first editable cell. Called via `BrowseTabInput::FocusInsertedDraft`
-    /// rather than directly so we read the current `column_view` /
-    /// `selection` state rather than a captured-by-value reference that
-    /// could go stale if a RowsLoaded fires between Insert and the
-    /// deferred focus. The actual `start_editing` call is queued via
-    /// `idle_add_local_once` so the new row finishes layout first.
+    /// Scroll + focus + select the freshly-prepended draft row, then
+    /// open its first editable cell for input. Called via
+    /// `BrowseTabInput::FocusInsertedDraft` rather than directly so we
+    /// read the current `column_view` / `selection` state rather than
+    /// a captured-by-value reference that could go stale if a
+    /// RowsLoaded fires between Insert and the deferred focus. The
+    /// whole sequence is queued via `idle_add_local_once` so the
+    /// inner-stack flip (empty → grid) has time to allocate the
+    /// ScrolledWindow's adjustments before `cv.scroll_to(...)` runs.
     fn focus_inserted_draft(&self) {
         let Some(cv) = self.current_column_view.clone() else {
             return;
         };
+        let selection = self.current_selection.clone();
         glib::idle_add_local_once(move || {
             // At idle time the column-view may already be detached
             // (rare race, e.g. user pressed F5 between InsertRow and
             // this idle). Bail silently — the row was inserted; only
             // the auto-edit affordance is missed.
+            if cv.root().is_none() {
+                return;
+            }
+            // New drafts always land at position 0 (prepended).
+            if let Some(sel) = selection.as_ref() {
+                sel.select_item(0, true);
+            }
+            cv.scroll_to(
+                0,
+                None,
+                gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+                None,
+            );
             let Some(window) = cv.root().and_then(|r| r.dynamic_cast::<gtk::Window>().ok()) else {
                 return;
             };
@@ -1907,14 +1924,11 @@ impl SimpleComponent for BrowseTab {
                     let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
                     store.insert(0, &draft_row);
                 }
-                if let Some(cv) = self.current_column_view.as_ref() {
-                    cv.scroll_to(
-                        0,
-                        None,
-                        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
-                        None,
-                    );
-                }
+                self.refresh_inner_stack_visibility();
+                // Scroll + focus deferred via FocusInsertedDraft — see
+                // the matching note in the `InsertRow` arm above. Same
+                // `bounds.y == 0` assertion fires if `cv.scroll_to`
+                // lands in the same tick as a stack flip.
                 sender.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::InsertRow => {
@@ -1946,23 +1960,17 @@ impl SimpleComponent for BrowseTab {
                 // invisible. Re-derive the inner stack visibility now
                 // that there's a draft to show.
                 self.refresh_inner_stack_visibility();
-                // Scroll the new row into view immediately, then defer
-                // the start-editing call to the next event-loop tick
-                // through a self-message. Self-messaging (instead of
-                // capturing column_view by value into an
-                // `idle_add_local_once`) means the handler reads the
-                // freshest `self.current_column_view` — if a
-                // RowsLoaded fires between Insert and the deferred
-                // focus, we use the rebuilt view rather than a dangling
-                // reference to the old one.
-                if let Some(cv) = self.current_column_view.as_ref() {
-                    cv.scroll_to(
-                        0,
-                        None,
-                        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
-                        None,
-                    );
-                }
+                // Scroll + focus are deferred via FocusInsertedDraft.
+                // Calling `cv.scroll_to(...)` synchronously here used
+                // to crash with
+                //   Gtk-ERROR gtk_list_base_update_adjustments:
+                //   assertion failed: (bounds.y == 0)
+                // when the empty → grid flip and the scroll landed in
+                // the same tick: the ColumnView's ScrolledWindow had
+                // no realized adjustments to update. FocusInsertedDraft
+                // runs from `glib::idle_add_local_once`, after GTK has
+                // finished allocating the now-visible grid, so the
+                // adjustments are valid by then.
                 sender.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::DeleteSelectedRow => {
