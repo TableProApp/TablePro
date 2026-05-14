@@ -28,9 +28,7 @@ extension MainContentCoordinator {
     // MARK: - Close Tab
 
     /// Remove the currently selected tab. When it is the last tab, close the
-    /// connection window instead. Uses `NSWindow.close()` rather than
-    /// `performClose(_:)` so it bypasses `ConnectionWindow`'s `performClose`
-    /// override (which routes back here) and avoids re-entrant recursion.
+    /// connection window instead.
     func closeCurrentTab() {
         guard let selectedId = tabManager.selectedTabId,
               let tab = tabManager.tabs.first(where: { $0.id == selectedId }) else {

@@ -27,14 +27,8 @@ extension MainContentCoordinator {
             )
         }
 
-        // Commit any in-flight cell edit and dismiss the FK preview popover on
-        // the outgoing tab before the shared data grid re-renders for the new
-        // tab. `DataGridView.updateNSView` bails out early while an overlay
-        // editor is active, which would otherwise leave the grid showing the
-        // old tab's content after the strip already switched.
         if oldTabId != nil {
-            dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
-            dataTabDelegate?.tableViewCoordinator?.dismissFKPreviewOnColumnChange()
+            commitOutgoingTabGridState()
         }
 
         let saveStart = Date()
@@ -161,5 +155,10 @@ extension MainContentCoordinator {
         Self.lifecycleLogger.debug(
             "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
+    }
+
+    private func commitOutgoingTabGridState() {
+        dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
+        dataTabDelegate?.tableViewCoordinator?.dismissFKPreviewOnColumnChange()
     }
 }
