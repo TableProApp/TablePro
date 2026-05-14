@@ -175,12 +175,16 @@ final class OpenAIResponsesProvider: ChatTransport {
         var messageParts: [[String: Any]] = []
 
         if turn.role == .assistant {
+            var hasFunctionCall = false
             for block in turn.blocks {
                 switch block.kind {
                 case .reasoning(let reasoning):
                     guard let opaque = reasoning.opaque,
-                          opaque.kind == .openAIEncrypted,
-                          !opaque.itemID.isEmpty else { continue }
+                          opaque.kind == .openAIEncrypted else { continue }
+                    if opaque.itemID.isEmpty {
+                        Self.logger.warning("Dropping reasoning item without itemID; history may be inconsistent")
+                        continue
+                    }
                     flushAssistantMessage(parts: &messageParts, into: &items)
                     items.append([
                         "type": "reasoning",
@@ -198,11 +202,19 @@ final class OpenAIResponsesProvider: ChatTransport {
                         "name": useBlock.name,
                         "arguments": useBlock.input.jsonString()
                     ])
+                    hasFunctionCall = true
                 case .toolResult, .attachment, .image:
                     continue
                 }
             }
-            flushAssistantMessage(parts: &messageParts, into: &items)
+            if hasFunctionCall {
+                if !messageParts.isEmpty {
+                    Self.logger.warning("Dropping \(messageParts.count) text parts after function_call to keep tool-call adjacent to its output")
+                    messageParts.removeAll()
+                }
+            } else {
+                flushAssistantMessage(parts: &messageParts, into: &items)
+            }
             return items
         }
 
