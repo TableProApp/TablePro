@@ -1,10 +1,7 @@
 import Foundation
-import os
 import TableProModels
 
 struct GroupPersistence {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "GroupPersistence")
-
     private var fileURL: URL? {
         guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
@@ -14,14 +11,10 @@ struct GroupPersistence {
         return appDir.appendingPathComponent("groups.json")
     }
 
-    func save(_ groups: [ConnectionGroup]) {
+    func save(_ groups: [ConnectionGroup]) throws {
         guard let fileURL else { return }
-        do {
-            let data = try JSONEncoder().encode(groups)
-            try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        } catch {
-            Self.logger.error("Failed to save groups: \(error.localizedDescription, privacy: .public)")
-        }
+        let data = try JSONEncoder().encode(groups)
+        try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
     func load() throws -> [ConnectionGroup] {

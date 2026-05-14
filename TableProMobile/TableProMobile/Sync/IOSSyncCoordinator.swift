@@ -30,7 +30,7 @@ final class IOSSyncCoordinator {
     var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
     var onGroupsChanged: (([ConnectionGroup]) -> Void)?
     var onTagsChanged: (([ConnectionTag]) -> Void)?
-    var getCurrentState: (() -> (connections: [DatabaseConnection], groups: [ConnectionGroup], tags: [ConnectionTag]))?
+    var getCurrentState: (() -> (connections: [DatabaseConnection], groups: [ConnectionGroup], tags: [ConnectionTag])?)?
 
     // MARK: - Sync
 
@@ -71,15 +71,9 @@ final class IOSSyncCoordinator {
                 localTags: mergedTags
             )
 
-            if !remoteChanges.changedConnections.isEmpty || !remoteChanges.deletedConnectionIDs.isEmpty {
-                onConnectionsChanged?(mergedConnections)
-            }
-            if !remoteChanges.changedGroups.isEmpty || !remoteChanges.deletedGroupIDs.isEmpty {
-                onGroupsChanged?(mergedGroups)
-            }
-            if !remoteChanges.changedTags.isEmpty || !remoteChanges.deletedTagIDs.isEmpty {
-                onTagsChanged?(mergedTags)
-            }
+            onConnectionsChanged?(mergedConnections)
+            onGroupsChanged?(mergedGroups)
+            onTagsChanged?(mergedTags)
 
             metadata.lastSyncDate = Date()
             lastSyncDate = metadata.lastSyncDate
