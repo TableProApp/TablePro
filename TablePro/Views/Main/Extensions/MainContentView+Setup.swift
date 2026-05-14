@@ -102,9 +102,6 @@ extension MainContentView {
         toolbarState.hasPendingChanges = hasDataChanges || hasFileChanges
     }
 
-    /// Refresh the window title, proxy icon, and dirty dot. Delegates to
-    /// `ConnectionWindowController.refreshWindowTitle()` — the single source of
-    /// truth for window-title resolution.
     func updateWindowTitleAndFileState() {
         (viewWindow?.windowController as? ConnectionWindowController)?.refreshWindowTitle()
     }

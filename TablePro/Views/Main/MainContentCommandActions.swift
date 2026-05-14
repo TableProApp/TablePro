@@ -364,10 +364,6 @@ final class MainContentCommandActions {
         }
     }
 
-    /// Close a specific tab by id. When it is the selected tab, this is the
-    /// same as `closeTab()`. When it is a background tab, the unsaved-changes
-    /// guard is evaluated against that tab's own state without first selecting
-    /// it, so the save dialog never fires the selection side effects.
     func closeTab(id: UUID) {
         guard let coordinator else { return }
         guard id != coordinator.tabManager.selectedTabId else {
@@ -563,7 +559,6 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Navigation (Group A — Called Directly)
 
-    /// Selects the Nth in-window tab (1-based) in the connection's tab manager.
     func selectTab(number: Int) {
         guard let coordinator else { return }
         let tabs = coordinator.tabManager.tabs

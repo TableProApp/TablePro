@@ -169,7 +169,6 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Add a new in-window table tab, configure it, and run its query.
     private func addTableTabAndRun(
         _ tableName: String, isView: Bool, databaseName: String,
         schemaName: String?, showStructure: Bool, isPreview: Bool = false
@@ -267,7 +266,6 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Replace the currently selected tab's content with a preview table.
     private func replacePreviewTabContent(
         _ tableName: String, isView: Bool, databaseName: String,
         schemaName: String?, showStructure: Bool
