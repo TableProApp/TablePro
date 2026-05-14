@@ -5,9 +5,9 @@ description: Each tab keeps its own SQL, results, pagination, sorting, and filte
 
 # Query Tabs
 
-Every tab is a native macOS window tab. Each tab is a separate NSWindow in a tab group, managed by the system window tabbing API. This means you get standard macOS tab behavior: drag tabs between windows, merge windows via **Window > Merge All Windows**, and use **Window > Move Tab to New Window** to split them out.
+Each connection opens one window with an in-window tab bar. All tabs for a connection live in that single window and share its sidebar and inspector. Open as many tabs as you need.
 
-Each tab is an independent workspace with its own SQL content, results, pagination, sorting, and filter state. Open as many as you need. They persist across app restarts.
+Each tab is an independent workspace with its own SQL content, results, pagination, sorting, and filter state. They persist across app restarts.
 
 {/* Screenshot: Tab bar showing multiple open tabs */}
 <Frame caption="Tab bar with multiple query and table tabs">
@@ -40,7 +40,7 @@ Enable **Reuse clean table tab** in **Settings** > **Tabs** for TablePlus-style 
 
 ### Preview Tabs
 
-Single-clicking a table opens a temporary preview tab that gets replaced when you click a different table (like VS Code's preview tabs). Preview tabs show "Preview" in the window subtitle.
+Single-clicking a table opens a temporary preview tab that gets replaced when you click a different table (like VS Code's preview tabs). Preview tabs show their title in italic in the tab bar.
 
 A preview tab becomes permanent when you:
 
@@ -159,15 +159,11 @@ Each tab maintains its own pending changes. Switching tabs saves and restores ea
 | Tab type and table name | Selected rows, sort/filter state |
 | Pin state | Preview tabs (discarded) |
 
-Tab state auto-saves 500ms after any change. On reconnect, TablePro restores your tabs and re-executes table queries.
+Tab state auto-saves 500ms after any change. On reconnect, TablePro restores every tab for the connection into the tab bar and re-executes table queries.
 
-### Multi-Window Restoration
+### Window Size and Position
 
-If you had several editor windows open with their own tab groups, TablePro restores every window on next launch. Earlier versions kept tabs from one window and dropped the rest.
-
-### Window Size, Position, and Zoom
-
-Each editor window remembers its frame and zoom across launches. Reopen a connection and the window comes back at the same size, position, and zoom state. The first window opens at 1200x800 centered on the active screen.
+Each connection window remembers its frame across launches. Reopen a connection and the window comes back at the same size and position. The first window opens at 1200x800 centered on the active screen.
 
 ## Pagination
 

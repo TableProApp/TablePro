@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Editor tabs now live inside one window per connection, with an in-window tab bar. The sidebar and inspector are shared across all tabs of a connection instead of duplicated per window. (#1220)
 - Add competitive tracking docs sourced from top TablePlus issues.
 
 ### Fixed

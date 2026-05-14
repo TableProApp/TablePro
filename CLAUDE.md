@@ -117,7 +117,7 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 - **`SQLEditorTheme`** — single source of truth for editor colors/fonts
 - **`TableProEditorTheme`** — adapter to CodeEdit's `EditorTheme` protocol
 - **`CompletionEngine`** — framework-agnostic; **`SQLCompletionAdapter`** bridges to CodeEdit's `CodeSuggestionDelegate`
-- Editor tabs use native NSWindow tabs (`NSWindow.tabbingMode = .preferred` in `TabWindowController`); there is no custom tab bar.
+- Editor tabs are in-window tabs: one `ConnectionWindowController` window per connection, with `EditorTabStripView` (the in-window tab bar) driving `QueryTabManager.selectedTabId`. `MainContentView` renders the selected tab. `ConnectionWindow.tabbingMode = .automatic`. There are no per-tab NSWindows.
 - Cursor model: `cursorPositions: [CursorPosition]` (multi-cursor via CodeEditSourceEditor)
 
 ### Change Tracking Flow
@@ -135,12 +135,9 @@ These have caused real bugs when violated:
 
 **WelcomeViewModel tree rebuild**: The welcome screen renders `treeItems` (grouped/filtered), not `connections` directly. Every mutation to `connections` must call `rebuildTree()` afterward, or the UI won't update.
 
-**Tab replacement guard**: `openTableTab` checks for active work (unsaved edits, applied filters, sorting) before replacing the current tab. Tabs with active work open a new native window tab instead. This check runs before the preview tab branch.
+**Tab replacement guard**: `openTableTab` checks for active work (unsaved edits, applied filters, sorting) before replacing the current tab. Tabs with active work open a new in-window tab instead. This check runs before the preview tab branch.
 
-**Window tab titles**: Resolved in TWO places that must stay in sync:
-1. `ContentView.init` (title resolution chain) — initial title from payload
-2. `MainContentView+Setup.swift` `updateWindowTitleAndFileState()` — ongoing title updates
-Missing a case produces a wrong "{Language} Query" title on the first frame.
+**Window title resolution**: `ConnectionWindowController.refreshWindowTitle()` is the single source of truth for the window title, proxy icon, and dirty dot. It is called from `windowDidBecomeKey`, the controller's `init`, and the selected-tab-change hook in `MainContentView`. Do not resolve the title anywhere else.
 
 **Schema loading**: `SQLSchemaProvider` (actor) stores an in-flight `loadTask: Task<Void, Never>?`. Concurrent callers `await` the same Task instead of firing duplicate `fetchTables()` queries. Never use a boolean `isLoading` guard that returns without data — callers need to await the result.
 
@@ -150,7 +147,7 @@ Missing a case produces a wrong "{Language} Query" title on the first frame.
 
 ### Window Close (Cmd+W)
 
-`EditorWindow` (NSWindow subclass in `TabWindowController.swift`) overrides `performClose:` to route Cmd+W through `closeTab()`. SwiftUI's `.commands { Button(...).keyboardShortcut("w") }` does NOT replace AppKit's built-in "File > Close" — both fire, and AppKit's wins. The NSWindow subclass is the correct native pattern.
+`ConnectionWindow` (NSWindow subclass in `ConnectionWindowController.swift`) overrides `performClose:` to route Cmd+W through `commandActions.closeTab()`, which closes the selected in-window tab (or the window when it is the last tab). SwiftUI's `.commands { Button(...).keyboardShortcut("w") }` does NOT replace AppKit's built-in "File > Close": both fire, and AppKit's wins. The NSWindow subclass is the correct native pattern. `closeCurrentTab` closes the window with `NSWindow.close()`, not `performClose(_:)`, to avoid re-entering the override.
 
 ### Storage Patterns
 
