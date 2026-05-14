@@ -251,6 +251,12 @@ final class AIChatViewModel {
         activeConversationID = nil
         sessionApprovedConnections = []
         streamingState = .idle
+        for image in attachedImages {
+            if case .cacheFile(let filename, _) = image.source {
+                AIImageCache.shared.delete(filename: filename)
+            }
+        }
+        attachedImages = []
     }
 
     func handleFixError(query: String, error: String) {
