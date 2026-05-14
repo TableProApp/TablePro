@@ -341,17 +341,16 @@ fn build_column(
         // Persisted rows are keyed by PK column values via
         // RowKey::from_pk_values.
         //
-        // The leftmost cell (idx == 0) gets an extra row-level class
-        // (tp-row-leftmost-{insert|update|delete}) that draws a 3px
-        // accent ribbon flush to the left edge — a HIG-aligned signal
-        // for "this row has changes" that survives row recycling.
+        // Pending state is communicated through the row's BACKGROUND
+        // TINT alone (insert = green, modified = orange via
+        // `.tp-cell-modified`, delete = red+strikethrough). No
+        // leftmost-cell ribbon — that custom GNOME-Builder-style
+        // gutter felt foreign next to the AdwListView idiom, and
+        // the tint+strikethrough already make the row state legible
+        // at a glance.
         let pending_classes: Vec<&'static str> = if let Some(_tab_id) = tab_ctx_for_bind.tab_id {
             if row.draft_id().is_some() {
-                let mut v = vec!["tp-row-pending-insert"];
-                if idx == 0 {
-                    v.push("tp-row-leftmost-insert");
-                }
-                v
+                vec!["tp-row-pending-insert"]
             } else {
                 let pk_values: Vec<Value> = tab_ctx_for_bind
                     .pk_col_indices
@@ -372,20 +371,12 @@ fn build_column(
                         (_, CellState::Modified) => v.push("tp-cell-modified"),
                         _ => {}
                     }
-                    if idx == 0 {
-                        // Error-row flash takes precedence over the
-                        // pending-state ribbon: the user's attention
-                        // should be on the failing row first.
-                        if t.is_error_row(&key) {
-                            v.push("tp-row-leftmost-error-flash");
-                        } else {
-                            match row_state {
-                                RowState::PendingDelete => v.push("tp-row-leftmost-delete"),
-                                RowState::InsertDraft => v.push("tp-row-leftmost-insert"),
-                                RowState::Modified => v.push("tp-row-leftmost-update"),
-                                RowState::Clean => {}
-                            }
-                        }
+                    // Error-flash overlay on the leftmost cell — a
+                    // transient background-only animation pulls the
+                    // eye to the row that failed to commit. No
+                    // accompanying gutter ribbon (see comment above).
+                    if idx == 0 && t.is_error_row(&key) {
+                        v.push("tp-row-leftmost-error-flash");
                     }
                     v
                 })
@@ -683,9 +674,6 @@ const PENDING_CSS_CLASSES: &[&str] = &[
     "tp-cell-modified",
     "tp-row-pending-delete",
     "tp-row-pending-insert",
-    "tp-row-leftmost-insert",
-    "tp-row-leftmost-update",
-    "tp-row-leftmost-delete",
     "tp-row-leftmost-error-flash",
 ];
 

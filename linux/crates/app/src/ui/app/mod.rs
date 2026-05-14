@@ -749,30 +749,14 @@ impl SimpleComponent for App {
                     box-shadow: inset 0 0 0 2px @accent_color;\
                     border-radius: 2px;\
                 }\
-                /* Row-level pending indicators on the leftmost cell.\
-                   A 4px inset ribbon flush to the left edge marks the\
-                   row's overall mutation state. Independent of the\
-                   per-cell highlights so a row with one modified cell\
-                   still reads as a modified row at a glance. The\
-                   `solid` (non-alpha) accent matches the saturation of\
-                   GNOME Builder's diff gutters — at 3px+alpha the\
-                   ribbon was effectively invisible against tinted row\
-                   backgrounds.\
-                */\
-                .tp-row-leftmost-insert {\
-                    box-shadow: inset 4px 0 0 @success_color;\
-                }\
-                .tp-row-leftmost-update {\
-                    box-shadow: inset 4px 0 0 @warning_color;\
-                }\
-                .tp-row-leftmost-delete {\
-                    box-shadow: inset 4px 0 0 @error_color;\
-                }\
                 /* One-shot flash on the row that produced a failing\
                    commit statement. Animation fades the red overlay\
                    to transparent over ~1.8s; the bind callback\
                    re-applies the class until the BrowseTab clears\
-                   tracker.error_row.\
+                   tracker.error_row. No leftmost ribbon — the row's\
+                   background already turns red via the animation,\
+                   matching the pending-state row tints which are\
+                   themselves background-only (no extra gutter).\
                 */\
                 @keyframes tp-flash-error {\
                     0%   { background: alpha(@error_color, 0.55); }\
@@ -780,7 +764,6 @@ impl SimpleComponent for App {
                 }\
                 .tp-row-leftmost-error-flash {\
                     animation: tp-flash-error 1.8s ease-out;\
-                    box-shadow: inset 3px 0 0 @error_color;\
                 }",
             );
             gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
