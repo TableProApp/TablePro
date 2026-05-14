@@ -1355,24 +1355,43 @@ impl SimpleComponent for BrowseTab {
         });
         let filter_strip = crate::ui::filter_strip::build(Vec::new(), filter_set_for_strip, on_apply_filter);
 
-        // Banners + filter strip live INSIDE the content GtkBox, not
-        // in `AdwToolbarView::add_top_bar`. The top-bar slot reserves
-        // a small vertical allocation even when every child banner is
-        // `revealed=false`, which produced a visible empty strip
-        // between the AdwTabBar and the grid on a fresh browse tab.
-        // Wrapping them in the content box means: when collapsed each
-        // GtkRevealer reports 0px and the grid butts cleanly against
-        // the tab bar (matches the SQL Editor tab's look, which has
-        // an always-visible toolbar filling the same slot).
-        let content_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-        content_box.append(&read_only_banner);
-        content_box.append(&no_pk_banner);
-        content_box.append(&filter_strip.widget);
-        content_box.append(&inner_stack);
-        // `inner_stack` is the grid host — make it stretch so the
-        // collapsed revealers above don't grab any of its space.
-        inner_stack.set_vexpand(true);
-        root.set_content(Some(&content_box));
+        // Banners + filter strip live in `AdwToolbarView::add_top_bar`
+        // (the libadwaita-canonical placement). The default top-bar
+        // slot allocates a thin strip even when every child banner is
+        // collapsed; toggling `reveal-top-bars` on the slot itself
+        // (based on whether ANY child is currently revealed) is the
+        // idiomatic way to collapse the slot to 0px. The closure
+        // re-runs on every banner / filter-strip reveal change.
+        root.add_top_bar(&read_only_banner);
+        root.add_top_bar(&no_pk_banner);
+        root.add_top_bar(&filter_strip.widget);
+        root.set_content(Some(&inner_stack));
+
+        let sync_top_bar_slot: std::rc::Rc<dyn Fn()> = {
+            let root_for_sync = root.clone();
+            let read_only_for_sync = read_only_banner.clone();
+            let no_pk_for_sync = no_pk_banner.clone();
+            let filter_for_sync = filter_strip.widget.clone();
+            std::rc::Rc::new(move || {
+                let any_revealed = read_only_for_sync.is_revealed()
+                    || no_pk_for_sync.is_revealed()
+                    || filter_for_sync.reveals_child();
+                root_for_sync.set_reveal_top_bars(any_revealed);
+            })
+        };
+        sync_top_bar_slot();
+        {
+            let sync = sync_top_bar_slot.clone();
+            read_only_banner.connect_revealed_notify(move |_| sync());
+        }
+        {
+            let sync = sync_top_bar_slot.clone();
+            no_pk_banner.connect_revealed_notify(move |_| sync());
+        }
+        {
+            let sync = sync_top_bar_slot.clone();
+            filter_strip.widget.connect_reveal_child_notify(move |_| sync());
+        }
         // Bottom toolbars (stacked in `add_bottom_bar` call order):
         //   1. Paginator — always visible (nav + count + page size +
         //      Filter + Export).
