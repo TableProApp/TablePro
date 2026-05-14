@@ -23,7 +23,7 @@ struct TerminalSettingsView: View {
     ]
 
     private static let terminalDatabaseTypes: [DatabaseType] = [
-        .mysql, .mariadb, .postgresql, .redshift, .redis, .mongodb,
+        .mysql, .mariadb, .postgresql, .redshift, .cockroachdb, .redis, .mongodb,
         .sqlite, .mssql, .clickhouse, .duckdb, .oracle
     ]
 

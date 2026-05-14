@@ -39,6 +39,7 @@
                   "databases/mariadb",
                   "databases/postgresql",
                   "databases/redshift",
+                  "databases/cockroachdb",
                   "databases/mssql",
                   "databases/oracle"
                 ]

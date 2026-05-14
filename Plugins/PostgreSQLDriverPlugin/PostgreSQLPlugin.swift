@@ -14,7 +14,7 @@ import TableProPluginKit
 final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "PostgreSQL Driver"
     static let pluginVersion = "1.0.0"
-    static let pluginDescription = "PostgreSQL/Redshift support via libpq"
+    static let pluginDescription = "PostgreSQL, Redshift, and CockroachDB support via libpq"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "PostgreSQL"
@@ -29,9 +29,16 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             fieldType: .toggle,
             section: .authentication,
             hidesPassword: true
+        ),
+        ConnectionField(
+            id: "connectionOptions",
+            label: String(localized: "Connection Options"),
+            placeholder: "--cluster=my-cluster",
+            fieldType: .text,
+            section: .advanced
         )
     ]
-    static let additionalDatabaseTypeIds: [String] = ["Redshift"]
+    static let additionalDatabaseTypeIds: [String] = ["Redshift", "CockroachDB"]
 
     // MARK: - UI/Capability Metadata
 
@@ -116,15 +123,17 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         switch databaseTypeId {
         case "PostgreSQL": return "PostgreSQL"
         case "Redshift": return "Redshift"
+        case "CockroachDB": return "CockroachDB"
         default: return nil
         }
     }
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         let variant = config.additionalFields["driverVariant"] ?? ""
-        if variant == "Redshift" {
-            return RedshiftPluginDriver(config: config)
+        switch variant {
+        case "Redshift": return RedshiftPluginDriver(config: config)
+        case "CockroachDB": return CockroachPluginDriver(config: config)
+        default: return PostgreSQLPluginDriver(config: config)
         }
-        return PostgreSQLPluginDriver(config: config)
     }
 }

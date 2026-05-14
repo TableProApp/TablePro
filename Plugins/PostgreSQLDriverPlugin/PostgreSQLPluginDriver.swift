@@ -10,22 +10,15 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
-    private let config: DriverConnectionConfig
-    private var libpqConnection: LibPQPluginConnection?
-    private var _currentSchema: String = "public"
+final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
+    let core: LibPQDriverCore
 
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "PostgreSQLPluginDriver")
 
-    var currentSchema: String? { _currentSchema }
-    var supportsSchemas: Bool { true }
-    var supportsTransactions: Bool { true }
-    var serverVersion: String? { libpqConnection?.serverVersion() }
-    var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
+    var serverVersionNumber: Int32 { core.serverVersionNumber }
     var versionedCapabilities: PostgreSQLCapabilities {
-        PostgreSQLCapabilities(serverVersion: serverVersionNumber)
+        PostgreSQLCapabilities(serverVersion: core.serverVersionNumber)
     }
-    var parameterStyle: ParameterStyle { .dollar }
 
     var capabilities: PluginCapabilities {
         [
@@ -43,133 +36,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     init(config: DriverConnectionConfig) {
-        self.config = config
-    }
-
-    private var escapedSchema: String {
-        escapeLiteral(_currentSchema)
-    }
-
-    private func escapeLiteral(_ str: String) -> String {
-        var result = str
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
-    }
-
-    // MARK: - Connection
-
-    func connect() async throws {
-        let sslConfig = config.ssl
-
-        let pqConn = LibPQPluginConnection(
-            host: config.host,
-            port: config.port,
-            user: config.username,
-            password: config.password.isEmpty ? nil : config.password,
-            database: config.database,
-            sslConfig: sslConfig
-        )
-
-        try await pqConn.connect()
-        self.libpqConnection = pqConn
-
-        if let schemaResult = try? await pqConn.executeQuery("SELECT current_schema()"),
-           let schema = schemaResult.rows.first?.first?.asText {
-            _currentSchema = schema
-        }
-    }
-
-    func disconnect() {
-        libpqConnection?.disconnect()
-        libpqConnection = nil
-    }
-
-    func ping() async throws {
-        _ = try await execute(query: "SELECT 1")
-    }
-
-    // MARK: - Query Execution
-
-    func execute(query: String) async throws -> PluginQueryResult {
-        try await executeWithReconnect(query: query, isRetry: false)
-    }
-
-    private func executeWithReconnect(query: String, isRetry: Bool) async throws -> PluginQueryResult {
-        guard let pqConn = libpqConnection else {
-            throw LibPQPluginError.notConnected
-        }
-
-        let startTime = Date()
-
-        do {
-            let result = try await pqConn.executeQuery(query)
-            return PluginQueryResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                rowsAffected: result.affectedRows,
-                executionTime: Date().timeIntervalSince(startTime),
-                isTruncated: result.isTruncated
-            )
-        } catch let error as NSError where !isRetry && isConnectionLostError(error) {
-            try await reconnect()
-            return try await executeWithReconnect(query: query, isRetry: true)
-        }
-    }
-
-    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        guard let pqConn = libpqConnection else {
-            throw LibPQPluginError.notConnected
-        }
-
-        let startTime = Date()
-        let result = try await pqConn.executeParameterizedQuery(query, parameters: parameters)
-        return PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: result.rows,
-            rowsAffected: result.affectedRows,
-            executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: result.isTruncated
-        )
-    }
-
-    // MARK: - Streaming
-
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let pqConn = libpqConnection else {
-            return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
-        }
-        return pqConn.streamQuery(query)
-    }
-
-    // MARK: - Reconnect
-
-    private func isConnectionLostError(_ error: NSError) -> Bool {
-        let errorMessage = error.localizedDescription.lowercased()
-        return errorMessage.contains("connection") &&
-            (errorMessage.contains("lost") ||
-                errorMessage.contains("closed") ||
-                errorMessage.contains("no connection") ||
-                errorMessage.contains("could not send"))
-    }
-
-    private func reconnect() async throws {
-        libpqConnection?.disconnect()
-        libpqConnection = nil
-        try await connect()
-    }
-
-    // MARK: - Cancellation
-
-    func cancelQuery() throws {
-        libpqConnection?.cancelCurrentQuery()
-    }
-
-    func applyQueryTimeout(_ seconds: Int) async throws {
-        let ms = seconds * 1_000
-        _ = try await execute(query: "SET statement_timeout = '\(ms)'")
+        self.core = LibPQDriverCore(config: config)
     }
 
     // MARK: - EXPLAIN
@@ -233,7 +100,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? _currentSchema)
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let caps = versionedCapabilities
 
         var unions: [String] = [
@@ -527,7 +394,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var parts = columnDefs
         parts.append(contentsOf: constraints)
 
-        let quotedSchema = "\"\(_currentSchema.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let quotedSchema = "\"\(core.currentSchema.replacingOccurrences(of: "\"", with: "\"\""))\""
         let ddl = "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
             parts.joined(separator: ",\n  ") +
             "\n);"
@@ -594,12 +461,6 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchSchemas() async throws -> [String] {
         let result = try await execute(query: PostgreSQLSchemaQueries.listSchemas)
         return result.rows.compactMap { row in row.first?.asText }
-    }
-
-    func switchSchema(to schema: String) async throws {
-        let escapedName = schema.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "SET search_path TO \"\(escapedName)\", public")
-        _currentSchema = schema
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
@@ -692,7 +553,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%nextval%'
             """
         let result = try await execute(query: query)
-        let schemaName = schema ?? _currentSchema
+        let schemaName = schema ?? core.currentSchema
         return result.rows.compactMap { row -> (name: String, ddl: String)? in
             guard let seqName = row[0].asText else { return nil }
             let startVal = row[1].asText ?? "1"
@@ -988,7 +849,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         guard !definition.columns.isEmpty else { return nil }
 
-        let schema = _currentSchema
+        let schema = core.currentSchema
         let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
         let pkColumns = definition.columns.filter { $0.isPrimaryKey }
         let inlinePK = pkColumns.count == 1
@@ -1109,7 +970,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - ALTER TABLE DDL
 
     private func qualifiedTableName(_ table: String) -> String {
-        "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
+        "\(quoteIdentifier(core.currentSchema)).\(quoteIdentifier(table))"
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
@@ -1163,7 +1024,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(_currentSchema)).\(quoteIdentifier(indexName))"
+        "DROP INDEX \(quoteIdentifier(core.currentSchema)).\(quoteIdentifier(indexName))"
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {

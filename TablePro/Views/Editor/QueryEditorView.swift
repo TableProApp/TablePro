@@ -131,9 +131,7 @@ struct QueryEditorView: View {
 
     @ViewBuilder
     private func explainButton(hasQueryText: Bool) -> some View {
-        let variants = databaseType.flatMap {
-            PluginMetadataRegistry.shared.snapshot(forTypeId: $0.pluginTypeId)?.explainVariants
-        } ?? []
+        let variants = databaseType?.explainVariants ?? []
 
         if variants.count <= 1 {
             Button {

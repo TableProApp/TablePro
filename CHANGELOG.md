@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CockroachDB support over the PostgreSQL wire protocol: browse tables, schemas, columns, indexes, and foreign keys, run queries, and view EXPLAIN plans. The new Connection Options field passes libpq options such as CockroachDB Cloud cluster routing. (#1226)
 - AI Chat: OpenAI provider now uses the Responses API for GPT-5 and Codex models, with reasoning shown in a collapsible Thinking panel above each reply. (#1112)
 - AI Chat: image input via drag-and-drop or paste into the composer. HEIC, TIFF, and BMP convert to PNG or JPEG. EXIF and GPS metadata are stripped before sending. (#1112)
 - AI Chat: reasoning effort picker for OpenAI (Minimal to Extra High) and Claude (Low to Extra High), shown only for models that support it. (#1112)

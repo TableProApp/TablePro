@@ -35,7 +35,7 @@ struct ConnectionURLFormatter {
     // MARK: - Private
 
     private static func urlScheme(for type: DatabaseType) -> String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?.primaryUrlScheme
+        PluginMetadataRegistry.shared.snapshot(forTypeId: type.rawValue)?.primaryUrlScheme
             ?? type.rawValue.lowercased()
     }
 

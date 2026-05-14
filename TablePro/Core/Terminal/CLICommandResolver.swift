@@ -73,7 +73,7 @@ enum CLICommandResolver {
             return resolveMysql(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .mariadb:
             return resolveMariadbOrMysql(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
-        case .postgresql, .redshift:
+        case .postgresql, .redshift, .cockroachdb:
             return resolvePsql(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .redis:
             return resolveRedisCli(connection: connection, password: password, customCliPath: customCliPath)
@@ -197,7 +197,7 @@ enum CLICommandResolver {
             if !connection.username.isEmpty { cmd += " -u \(shellEscape(connection.username))" }
             if !database.isEmpty { cmd += " \(shellEscape(database))" }
 
-        case .postgresql, .redshift:
+        case .postgresql, .redshift, .cockroachdb:
             if let password, !password.isEmpty {
                 envPrefix = "PGPASSWORD=\(shellEscape(password)) "
             }
@@ -316,7 +316,7 @@ enum CLICommandResolver {
         switch databaseType {
         case .mysql: return "mysql"
         case .mariadb: return "mariadb"
-        case .postgresql, .redshift: return "psql"
+        case .postgresql, .redshift, .cockroachdb: return "psql"
         case .redis: return "redis-cli"
         case .mongodb: return "mongosh"
         case .sqlite: return "sqlite3"
@@ -335,7 +335,7 @@ enum CLICommandResolver {
             return "brew install mysql-client"
         case .mariadb:
             return "brew install mariadb"
-        case .postgresql, .redshift:
+        case .postgresql, .redshift, .cockroachdb:
             return "brew install libpq"
         case .redis:
             return "brew install redis"

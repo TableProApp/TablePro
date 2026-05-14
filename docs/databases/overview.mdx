@@ -22,6 +22,9 @@ Natively supported:
   <Card title="Amazon Redshift" icon="database">
     Redshift data warehouses via PostgreSQL wire protocol. Default port: 5439
   </Card>
+  <Card title="CockroachDB" icon="database">
+    Distributed SQL via PostgreSQL wire protocol. Default port: 26257
+  </Card>
   <Card title="SQLite" icon="file">
     File-based databases, no server required
   </Card>
@@ -155,7 +158,7 @@ open "mysql://root:secret@localhost:3306/myapp"
 open "redis://:password@localhost:6379"
 ```
 
-TablePro registers `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `mssql`, `sqlserver`, `oracle`, `clickhouse`, `cassandra`, and `scylladb` as URL schemes on macOS, so the OS routes these URLs directly to the app.
+TablePro registers `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `clickhouse`, `cassandra`, and `scylladb` as URL schemes on macOS, so the OS routes these URLs directly to the app.
 
 **What happens:**
 

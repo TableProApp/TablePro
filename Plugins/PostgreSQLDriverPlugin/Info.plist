@@ -8,6 +8,7 @@
 	<array>
 		<string>PostgreSQL</string>
 		<string>Redshift</string>
+		<string>CockroachDB</string>
 	</array>
 </dict>
 </plist>

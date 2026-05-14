@@ -1,0 +1,77 @@
+---
+title: CockroachDB
+description: Connect to CockroachDB clusters over the PostgreSQL wire protocol, including CockroachDB Cloud with cluster routing
+---
+
+# CockroachDB Connections
+
+TablePro connects to CockroachDB, a distributed SQL database that is wire-compatible with PostgreSQL. Connections use the same libpq driver as PostgreSQL. Schema introspection reads `information_schema` and `pg_catalog`, and uses CockroachDB's native `SHOW CREATE` statements for table and view DDL.
+
+## Quick Setup
+
+<Steps>
+  <Step title="Create Connection">
+    Click **New Connection**, select **CockroachDB**, enter host, port, credentials, and database, then click **Create**
+  </Step>
+</Steps>
+
+## Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | - | Cluster host (or `localhost` for a local node) |
+| **Port** | `26257` | CockroachDB port |
+| **Database** | `defaultdb` | Default database in every cluster |
+| **User** | `root` | `root` works for local insecure clusters |
+
+For a local node started with `cockroach start-single-node --insecure`, set SSL Mode to **Disable** and leave the password empty.
+
+## CockroachDB Cloud
+
+CockroachDB Cloud connection strings include a cluster routing parameter. Copy the host, port, user, password, and database from the Cloud console, then put the routing value in the **Connection Options** field under the Advanced tab:
+
+```text
+--cluster=my-cluster-1234
+```
+
+Set SSL Mode to **Verify Full** for Cloud clusters. The Connection Options field is passed straight to libpq, so it also accepts other libpq options for self-hosted clusters.
+
+## Connection URL
+
+```text
+cockroachdb://user:password@host:26257/defaultdb
+```
+
+`cockroach://` also works. See [Connection URL Reference](/databases/connection-urls) for all parameters.
+
+## Features
+
+**Schemas**: Like PostgreSQL. Switch with **Cmd+K**. Default schema is `public`.
+
+**Query Execution**: Full SQL support, parameterized queries, transactions, and query cancel. Export to CSV/JSON/SQL/XLSX. Import from CSV/JSON/SQL/XLSX.
+
+**DDL**: Table and view definitions come from `SHOW CREATE`. Indexes come from `SHOW INDEXES`. Foreign keys are read from `information_schema`.
+
+**EXPLAIN**: `EXPLAIN` and `EXPLAIN ANALYZE` render as a visual plan tree. CockroachDB returns text plans, not JSON.
+
+**SSL/TLS**: Use **Verify Full** for CockroachDB Cloud. Local insecure clusters use **Disable**.
+
+**SSH Tunnels**: Supported for private clusters.
+
+## Limitations
+
+Distributed SQL database, not a drop-in for every PostgreSQL feature:
+
+- No `pg_dump` / `pg_restore`. The **Backup Dump** and **Restore Dump** menu items are not available. Use CockroachDB's `BACKUP` and `RESTORE` SQL statements instead.
+- No `VACUUM`. CockroachDB garbage-collects automatically, so the maintenance panel does not offer it.
+- Foreign key checks are not deferrable.
+
+## Troubleshooting
+
+**Connection refused**: Check the cluster is running and the port (default `26257`) is reachable. For local clusters, confirm `cockroach start` is still running.
+
+**Auth failed**: For local insecure clusters use user `root` with no password and SSL Mode **Disable**. For Cloud, copy credentials from the console and use SSL Mode **Verify Full**.
+
+**Cloud connection hangs or rejects**: Make sure the cluster routing value is set in **Connection Options** (`--cluster=your-cluster-name`).
+
+**EXPLAIN shows raw text**: CockroachDB plan output that does not match the expected tree shape falls back to raw text display.

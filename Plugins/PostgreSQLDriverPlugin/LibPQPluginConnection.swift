@@ -93,6 +93,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let password: String?
     private let database: String
     private let sslConfig: SSLConfiguration
+    private let options: String?
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -126,7 +127,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
-        sslConfig: SSLConfiguration = SSLConfiguration()
+        sslConfig: SSLConfiguration = SSLConfiguration(),
+        options: String? = nil
     ) {
         self.host = host
         self.port = port
@@ -134,6 +136,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.password = password
         self.database = database
         self.sslConfig = sslConfig
+        self.options = options
     }
 
     deinit {
@@ -176,6 +179,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
             if !sslConfig.clientKeyPath.isEmpty {
                 connStr += " sslkey='\(escapeConnParam(sslConfig.clientKeyPath))'"
+            }
+
+            if let options, !options.isEmpty {
+                connStr += " options='\(escapeConnParam(options))'"
             }
 
             let connection = connStr.withCString { cStr in

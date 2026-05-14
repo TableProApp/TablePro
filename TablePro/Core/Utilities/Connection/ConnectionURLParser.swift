@@ -254,6 +254,8 @@ struct ConnectionURLParser {
             return .postgresql
         case "redshift":
             return .redshift
+        case "cockroachdb", "cockroach":
+            return .cockroachdb
         case "mysql":
             return .mysql
         case "mariadb":

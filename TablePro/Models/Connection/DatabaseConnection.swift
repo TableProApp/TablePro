@@ -28,6 +28,7 @@ extension DatabaseType {
     static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     static let sqlite = DatabaseType(rawValue: "SQLite")
     static let redshift = DatabaseType(rawValue: "Redshift")
+    static let cockroachdb = DatabaseType(rawValue: "CockroachDB")
 
     // Registry-distributed types (known plugins, downloadable separately)
     static let mongodb = DatabaseType(rawValue: "MongoDB")
@@ -101,7 +102,11 @@ extension DatabaseType {
     }
 
     var defaultPort: Int {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.defaultPort ?? 0
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.defaultPort ?? 0
+    }
+
+    var explainVariants: [ExplainVariant] {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.explainVariants ?? []
     }
 
     var category: DatabaseCategory {
@@ -119,6 +124,7 @@ extension DatabaseType {
         case "MariaDB": Color(hex: "C0765A")
         case "PostgreSQL": Color(hex: "336791")
         case "Redshift": Color(hex: "527FFF")
+        case "CockroachDB": Color(hex: "6933FF")
         case "SQLite": Color(hex: "0F80CC")
         case "SQL Server": Color(hex: "CC2927")
         case "Oracle": Color(hex: "C74634")
@@ -146,35 +152,35 @@ extension DatabaseType {
     }
 
     var supportsSchemaEditing: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.supportsSchemaEditing ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.supportsSchemaEditing ?? true
     }
 
     var supportsAddColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsAddColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsAddColumn ?? true
     }
 
     var supportsModifyColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsModifyColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsModifyColumn ?? true
     }
 
     var supportsDropColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsDropColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsDropColumn ?? true
     }
 
     var supportsRenameColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsRenameColumn ?? false
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsRenameColumn ?? false
     }
 
     var supportsAddIndex: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsAddIndex ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsAddIndex ?? true
     }
 
     var supportsDropIndex: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsDropIndex ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsDropIndex ?? true
     }
 
     var supportsModifyPrimaryKey: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsModifyPrimaryKey ?? true
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsModifyPrimaryKey ?? true
     }
 }
 

@@ -8970,6 +8970,7 @@
 
     },
     "Choose a fetched model" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -11396,6 +11397,9 @@
         }
       }
     },
+    "Connection Options" : {
+
+    },
     "Connection policy" : {
       "localizations" : {
         "tr" : {
@@ -12717,6 +12721,12 @@
           }
         }
       }
+    },
+    "Could not decode image" : {
+
+    },
+    "Could not encode image" : {
+
     },
     "Could not export activity log" : {
       "localizations" : {
@@ -16278,6 +16288,9 @@
       }
     },
     "Distributed key-value store for service discovery" : {
+
+    },
+    "Distributed SQL, PostgreSQL-compatible" : {
 
     },
     "Distributed SQLite by Turso" : {
@@ -20030,6 +20043,9 @@
         }
       }
     },
+    "Extra High" : {
+
+    },
     "Extra Large" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -21229,6 +21245,9 @@
           }
         }
       }
+    },
+    "Fetching models…" : {
+
     },
     "Fields" : {
       "localizations" : {
@@ -23149,6 +23168,9 @@
           }
         }
       }
+    },
+    "High" : {
+
     },
     "Higher values create fewer INSERT statements, resulting in smaller files and faster imports" : {
       "extractionState" : "stale",
@@ -27639,6 +27661,9 @@
         }
       }
     },
+    "Low" : {
+
+    },
     "LSP process exited with code %d" : {
       "localizations" : {
         "tr" : {
@@ -28467,7 +28492,6 @@
       }
     },
     "Medium" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -28602,6 +28626,9 @@
     "Microsoft's enterprise SQL database" : {
 
     },
+    "Minimal" : {
+
+    },
     "Missing argument: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -28713,7 +28740,11 @@
         }
       }
     },
+    "Model ID" : {
+
+    },
     "Model name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33269,6 +33300,9 @@
         }
       }
     },
+    "Other…" : {
+
+    },
     "Outcome" : {
 
     },
@@ -37107,6 +37141,12 @@
         }
       }
     },
+    "Reasoning" : {
+
+    },
+    "Reasoning…" : {
+
+    },
     "Reassign" : {
       "localizations" : {
         "tr" : {
@@ -37938,6 +37978,9 @@
     "Remove from Sidebar" : {
 
     },
+    "Remove image" : {
+
+    },
     "Remove jump host" : {
       "localizations" : {
         "tr" : {
@@ -38583,6 +38626,9 @@
           }
         }
       }
+    },
+    "Response failed" : {
+
     },
     "Restart Claude Desktop" : {
       "localizations" : {
@@ -50059,6 +50105,9 @@
           }
         }
       }
+    },
+    "Unsupported image format" : {
+
     },
     "Unsupported intent: %@" : {
       "localizations" : {

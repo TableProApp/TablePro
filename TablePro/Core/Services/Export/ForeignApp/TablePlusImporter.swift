@@ -263,7 +263,7 @@ struct TablePlusImporter: ForeignAppImporter {
         case "MSSQL": return "SQL Server"
         case "Redshift": return "Redshift"
         case "MariaDB": return "MariaDB"
-        case "CockroachDB": return "PostgreSQL"
+        case "CockroachDB": return "CockroachDB"
         default: return driver
         }
     }
@@ -272,6 +272,7 @@ struct TablePlusImporter: ForeignAppImporter {
         switch dbType {
         case "MySQL", "MariaDB": return 3_306
         case "PostgreSQL", "Redshift": return 5_432
+        case "CockroachDB": return 26_257
         case "MongoDB": return 27_017
         case "Redis": return 6_379
         case "SQL Server": return 1_433

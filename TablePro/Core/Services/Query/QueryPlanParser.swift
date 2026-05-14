@@ -346,6 +346,143 @@ struct IndentedTextPlanParser: QueryPlanParser {
     }
 }
 
+// MARK: - CockroachDB Parser
+
+/// Parses CockroachDB `EXPLAIN` and `EXPLAIN ANALYZE` text output. CockroachDB
+/// renders plans as a tree using `•` node markers with `│ ├── └──` tree-drawing
+/// characters, and `key: value` properties indented beneath each node.
+struct CockroachDBPlanParser: QueryPlanParser {
+    private struct RawNode {
+        let depth: Int
+        let operation: String
+        var properties: [String: String]
+    }
+
+    private static let knownKeys: Set<String> = ["estimated row count", "actual row count", "table"]
+    private static let treeDecoration = CharacterSet(charactersIn: " \t│├└─")
+
+    func parse(rawText: String) -> QueryPlan? {
+        let lines = rawText.components(separatedBy: "\n")
+
+        var planningTime: Double?
+        var executionTime: Double?
+        var nodes: [RawNode] = []
+
+        for line in lines {
+            guard let bulletRange = line.range(of: "•") else {
+                let trimmed = line.trimmingCharacters(in: Self.treeDecoration)
+                guard !trimmed.isEmpty, let (key, value) = Self.keyValue(trimmed) else { continue }
+                switch key {
+                case "planning time":
+                    planningTime = Self.milliseconds(from: value)
+                case "execution time":
+                    executionTime = Self.milliseconds(from: value)
+                default:
+                    if !nodes.isEmpty {
+                        nodes[nodes.count - 1].properties[key] = value
+                    }
+                }
+                continue
+            }
+
+            let depth = line.distance(from: line.startIndex, to: bulletRange.lowerBound)
+            let operation = line[bulletRange.upperBound...].trimmingCharacters(in: .whitespaces)
+            nodes.append(RawNode(depth: depth, operation: operation, properties: [:]))
+        }
+
+        guard !nodes.isEmpty else { return nil }
+
+        var index = 0
+        func build(parentDepth: Int) -> [QueryPlanNode] {
+            var result: [QueryPlanNode] = []
+            while index < nodes.count {
+                let raw = nodes[index]
+                if raw.depth <= parentDepth { break }
+                index += 1
+                let children = build(parentDepth: raw.depth)
+                result.append(Self.makeNode(raw, children: children))
+            }
+            return result
+        }
+
+        let roots = build(parentDepth: -1)
+        let rootNode: QueryPlanNode
+        if roots.count == 1 {
+            rootNode = roots[0]
+        } else {
+            rootNode = QueryPlanNode(
+                operation: "Query Plan",
+                relation: nil, schema: nil, alias: nil,
+                estimatedStartupCost: nil, estimatedTotalCost: nil,
+                estimatedRows: nil, estimatedWidth: nil,
+                actualStartupTime: nil, actualTotalTime: nil,
+                actualRows: nil, actualLoops: nil,
+                properties: [:],
+                children: roots
+            )
+        }
+
+        return QueryPlan(
+            rootNode: rootNode,
+            planningTime: planningTime,
+            executionTime: executionTime,
+            rawText: rawText
+        )
+    }
+
+    private static func makeNode(_ raw: RawNode, children: [QueryPlanNode]) -> QueryPlanNode {
+        let relation = raw.properties["table"].map { value in
+            String(value.split(separator: "@").first ?? Substring(value))
+        }
+        let properties = raw.properties.filter { !knownKeys.contains($0.key) }
+        return QueryPlanNode(
+            operation: raw.operation.isEmpty ? "Unknown" : raw.operation,
+            relation: relation,
+            schema: nil,
+            alias: nil,
+            estimatedStartupCost: nil,
+            estimatedTotalCost: nil,
+            estimatedRows: rowCount(from: raw.properties["estimated row count"]),
+            estimatedWidth: nil,
+            actualStartupTime: nil,
+            actualTotalTime: nil,
+            actualRows: rowCount(from: raw.properties["actual row count"]),
+            actualLoops: nil,
+            properties: properties,
+            children: children
+        )
+    }
+
+    private static func keyValue(_ line: String) -> (key: String, value: String)? {
+        guard let separator = line.range(of: ": ") else { return nil }
+        let key = String(line[..<separator.lowerBound])
+            .trimmingCharacters(in: .whitespaces)
+            .lowercased()
+        let value = String(line[separator.upperBound...]).trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return nil }
+        return (key, value)
+    }
+
+    private static func rowCount(from value: String?) -> Int? {
+        guard let value else { return nil }
+        let digits = value.prefix { $0.isNumber || $0 == "," }
+            .filter { $0 != "," }
+        return Int(digits)
+    }
+
+    private static func milliseconds(from value: String) -> Double? {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        let numberPart = trimmed.prefix { $0.isNumber || $0 == "." }
+        guard let number = Double(numberPart) else { return nil }
+        let unit = trimmed.dropFirst(numberPart.count).trimmingCharacters(in: .whitespaces).lowercased()
+        switch unit {
+        case "s": return number * 1_000
+        case "µs", "us": return number / 1_000
+        default: return number
+        }
+    }
+}
+
 // MARK: - Factory
 
 enum QueryPlanParserFactory {
@@ -353,6 +490,8 @@ enum QueryPlanParserFactory {
         switch databaseType {
         case .postgresql, .redshift:
             return PostgreSQLPlanParser()
+        case .cockroachdb:
+            return CockroachDBPlanParser()
         case .mysql, .mariadb:
             return MySQLPlanParser()
         case .sqlite:

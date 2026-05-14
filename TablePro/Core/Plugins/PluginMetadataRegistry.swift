@@ -163,6 +163,23 @@ struct PluginMetadataSnapshot: Sendable {
         )
     }
 
+    func withExplainVariants(_ newExplainVariants: [ExplainVariant]) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: newExplainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
+            capabilities: capabilities, schema: schema, editor: editor, connection: connection
+        )
+    }
+
     func withBranding(from source: PluginMetadataSnapshot) -> PluginMetadataSnapshot {
         PluginMetadataSnapshot(
             displayName: source.displayName, iconName: source.iconName, defaultPort: defaultPort,
@@ -394,6 +411,14 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             hidesPassword: true
         )
 
+        let connectionOptionsField = ConnectionField(
+            id: "connectionOptions",
+            label: String(localized: "Connection Options"),
+            placeholder: "--cluster=my-cluster",
+            fieldType: .text,
+            section: .advanced
+        )
+
         let defaults: [(typeId: String, snapshot: PluginMetadataSnapshot)] = [
             ("MySQL", PluginMetadataSnapshot(
                 displayName: "MySQL", iconName: "mysql-icon", defaultPort: 3_306,
@@ -530,7 +555,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField],
+                    additionalConnectionFields: [pgpassField, connectionOptionsField],
                     category: .relational,
                     tagline: String(localized: "Advanced object-relational SQL")
                 )
@@ -577,9 +602,68 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField],
+                    additionalConnectionFields: [pgpassField, connectionOptionsField],
                     category: .analytical,
                     tagline: String(localized: "Amazon's columnar warehouse on Postgres")
+                )
+            )),
+            ("CockroachDB", PluginMetadataSnapshot(
+                displayName: "CockroachDB", iconName: "cockroachdb-icon", defaultPort: 26_257,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
+                isDownloadable: false, primaryUrlScheme: "cockroachdb", parameterStyle: .dollar,
+                navigationModel: .standard,
+                explainVariants: [
+                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
+                    ExplainVariant(id: "analyze", label: "EXPLAIN ANALYZE", sqlPrefix: "EXPLAIN ANALYZE"),
+                ],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["cockroachdb", "cockroach"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#6933FF",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: true,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: true,
+                    supportsDropDatabase: true,
+                    supportsAddColumn: false,
+                    supportsModifyColumn: false,
+                    supportsDropColumn: false,
+                    supportsRenameColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "public",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: ["postgres", "system", "defaultdb"],
+                    systemSchemaNames: [],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .bySchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: postgresqlDialect,
+                    statementCompletions: [],
+                    columnTypesByCategory: postgresqlColumnTypes
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [pgpassField, connectionOptionsField],
+                    category: .relational,
+                    tagline: String(localized: "Distributed SQL, PostgreSQL-compatible")
                 )
             )),
             ("SQLite", PluginMetadataSnapshot(
@@ -644,6 +728,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         // Built-in type aliases: multi-type plugins where an alias maps to a primary plugin type ID
         reverseTypeIndex["MariaDB"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
+        reverseTypeIndex["CockroachDB"] = "PostgreSQL"
         reverseTypeIndex["ScyllaDB"] = "Cassandra"
         reverseTypeIndex["Turso"] = "libSQL"
     }

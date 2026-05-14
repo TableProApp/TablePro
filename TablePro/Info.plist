@@ -236,6 +236,8 @@
 				<string>redis</string>
 				<string>rediss</string>
 				<string>redshift</string>
+				<string>cockroachdb</string>
+				<string>cockroach</string>
 				<string>mongodb+srv</string>
 				<string>mssql</string>
 				<string>sqlserver</string>

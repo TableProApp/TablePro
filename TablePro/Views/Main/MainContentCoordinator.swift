@@ -933,9 +933,7 @@ final class MainContentCoordinator {
         let needsConfirmation = level.appliesToAllQueries && level.requiresConfirmation
 
         // Multi-variant EXPLAIN: use plugin-declared variants if available
-        let explainVariants = PluginMetadataRegistry.shared.snapshot(
-            forTypeId: connection.type.pluginTypeId
-        )?.explainVariants ?? []
+        let explainVariants = connection.type.explainVariants
 
         if !explainVariants.isEmpty {
             if needsConfirmation {
