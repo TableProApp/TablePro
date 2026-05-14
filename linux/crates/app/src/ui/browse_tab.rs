@@ -1344,8 +1344,6 @@ impl SimpleComponent for BrowseTab {
             .revealed(false)
             .build();
 
-        root.add_top_bar(&read_only_banner);
-        root.add_top_bar(&no_pk_banner);
         // Filter strip — inline editor that slides down above the
         // grid when revealed. Ownership stays inside this BrowseTab
         // so the user's in-progress rule edits survive a click into
@@ -1356,8 +1354,25 @@ impl SimpleComponent for BrowseTab {
             sender_for_strip.input(BrowseTabInput::FilterApplied(set));
         });
         let filter_strip = crate::ui::filter_strip::build(Vec::new(), filter_set_for_strip, on_apply_filter);
-        root.add_top_bar(&filter_strip.widget);
-        root.set_content(Some(&inner_stack));
+
+        // Banners + filter strip live INSIDE the content GtkBox, not
+        // in `AdwToolbarView::add_top_bar`. The top-bar slot reserves
+        // a small vertical allocation even when every child banner is
+        // `revealed=false`, which produced a visible empty strip
+        // between the AdwTabBar and the grid on a fresh browse tab.
+        // Wrapping them in the content box means: when collapsed each
+        // GtkRevealer reports 0px and the grid butts cleanly against
+        // the tab bar (matches the SQL Editor tab's look, which has
+        // an always-visible toolbar filling the same slot).
+        let content_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+        content_box.append(&read_only_banner);
+        content_box.append(&no_pk_banner);
+        content_box.append(&filter_strip.widget);
+        content_box.append(&inner_stack);
+        // `inner_stack` is the grid host — make it stretch so the
+        // collapsed revealers above don't grab any of its space.
+        inner_stack.set_vexpand(true);
+        root.set_content(Some(&content_box));
         // Bottom toolbars (stacked in `add_bottom_bar` call order):
         //   1. Paginator — always visible (nav + count + page size +
         //      Filter + Export).
