@@ -98,11 +98,17 @@ pub struct BrowseTab {
     prev_button: gtk::Button,
     next_button: gtk::Button,
     last_button: gtk::Button,
-    /// Toolbar button that toggles the filter strip. Carries an
-    /// `.accent` CSS class + tooltip suffix when the current filter
-    /// has any rules; visually flat otherwise so the user spots an
-    /// active filter at a glance.
+    /// Toolbar button that toggles the filter strip. When the
+    /// current filter has any rules, a small count badge appears
+    /// next to the funnel icon (mirroring the unread-count pattern
+    /// GNOME Mail / Files use). The accent-color path was dropped
+    /// because GNOME's user-selectable accent (orange, red, ...)
+    /// made the button look like a destructive action on some
+    /// themes.
     filter_button: gtk::Button,
+    /// Count badge inside `filter_button`. Hidden when the filter
+    /// is empty, otherwise reads `N` for N active rules.
+    filter_badge: gtk::Label,
     /// Inline filter editor — slides in above the grid when
     /// revealed. Owned per-tab so the rules editor doesn't lose
     /// in-progress state if the user accidentally clicks outside it.
@@ -458,11 +464,27 @@ impl BrowseTab {
         // Filter button — opens the rule editor for server-side WHERE.
         // Action `win.open-filter` is registered in app/mod.rs and
         // reads the active tab's controller, so the button implicitly
-        // targets this tab when this tab is active.
+        // targets this tab when this tab is active. Visual content is a
+        // box with the funnel icon + a count badge label so we can show
+        // active-rule count without leaning on the system accent color
+        // (which can be red/orange depending on user preference).
+        let filter_icon = gtk::Image::from_icon_name("funnel-symbolic");
+        let filter_badge = gtk::Label::builder()
+            .label("")
+            .visible(false)
+            .build();
+        filter_badge.add_css_class("numeric");
+        filter_badge.add_css_class("caption-heading");
+        let filter_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(4)
+            .build();
+        filter_box.append(&filter_icon);
+        filter_box.append(&filter_badge);
         let filter_button = gtk::Button::builder()
-            .icon_name("funnel-symbolic")
             .tooltip_text(crate::tr!("Filter rows (Ctrl+R)"))
             .action_name("win.open-filter")
+            .child(&filter_box)
             .build();
         filter_button.add_css_class("flat");
 
@@ -491,6 +513,7 @@ impl BrowseTab {
             next_button,
             last_button,
             filter_button,
+            filter_badge,
             paginator_label,
             selection_label,
         }
@@ -1133,19 +1156,22 @@ impl BrowseTab {
         self.refresh_banner_visibility();
     }
 
-    /// Update the Filter button's CSS class + tooltip based on the
-    /// current FilterSet. Active filters get an accent tint and the
-    /// rule-count in the tooltip; empty falls back to flat + the
-    /// generic shortcut hint. Called from FilterApplied + once on
-    /// init so a restored filter shows immediately.
+    /// Update the Filter button's count badge + tooltip based on the
+    /// current FilterSet. Active filters reveal a small numeric badge
+    /// next to the funnel icon and a count-aware tooltip; empty hides
+    /// the badge and falls back to the generic shortcut hint. Called
+    /// from FilterApplied + once on init so a restored filter shows
+    /// immediately.
     fn refresh_filter_chrome(&self) {
         let n = self.current_filter.len();
         if n == 0 {
-            self.filter_button.remove_css_class("accent");
+            self.filter_badge.set_visible(false);
+            self.filter_badge.set_label("");
             self.filter_button
                 .set_tooltip_text(Some(&crate::tr!("Filter rows (Ctrl+R)")));
         } else {
-            self.filter_button.add_css_class("accent");
+            self.filter_badge.set_label(&n.to_string());
+            self.filter_badge.set_visible(true);
             self.filter_button.set_tooltip_text(Some(
                 &crate::tr!("{n} filter rule(s) active — click to edit").replace("{n}", &n.to_string()),
             ));
@@ -1617,6 +1643,7 @@ impl SimpleComponent for BrowseTab {
             next_button: paginator.next_button,
             last_button: paginator.last_button,
             filter_button: paginator.filter_button,
+            filter_badge: paginator.filter_badge,
             filter_strip: Some(filter_strip),
             insert_button: mutations.insert_button,
             delete_button: mutations.delete_button,
@@ -2722,6 +2749,7 @@ struct Paginator {
     next_button: gtk::Button,
     last_button: gtk::Button,
     filter_button: gtk::Button,
+    filter_badge: gtk::Label,
     paginator_label: gtk::Label,
     selection_label: gtk::Label,
 }
