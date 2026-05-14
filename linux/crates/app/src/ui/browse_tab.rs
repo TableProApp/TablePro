@@ -1677,6 +1677,19 @@ impl SimpleComponent for BrowseTab {
         match msg {
             BrowseTabInput::RowsLoaded { offset, result } => {
                 self.current_offset = offset;
+                // Driver fallback: every shipping driver derives the
+                // `QueryResult.columns` list from the FIRST returned
+                // row, so a zero-row page comes back with an empty
+                // columns vector. The grid factory iterates that vector
+                // to build column-view columns, which left the empty
+                // table rendering as a column-less dark rectangle.
+                // information_schema (via ColumnsLoaded) already gave
+                // us the authoritative column list — substitute it in
+                // so the headers render even when the page is empty.
+                let mut result = result;
+                if result.columns.is_empty() && !self.current_columns.is_empty() {
+                    result.columns = self.current_columns.clone();
+                }
                 self.current_result = Some(result);
                 // Defer rendering until columns are also loaded — the
                 // QueryResult's ColumnInfo lacks `primary_key` /
@@ -1690,6 +1703,16 @@ impl SimpleComponent for BrowseTab {
             BrowseTabInput::ColumnsLoaded(columns) => {
                 let words: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
                 self.current_columns = columns.clone();
+                // Late-arriving columns: if RowsLoaded already cached a
+                // zero-row result with an empty `columns` vector (the
+                // driver derives it from the first row), refill it now
+                // so the upcoming `render_grid_if_ready` builds headers
+                // against the real schema instead of an empty list.
+                if let Some(result) = self.current_result.as_mut()
+                    && result.columns.is_empty()
+                {
+                    result.columns = columns.clone();
+                }
                 self.refresh_crud_buttons();
                 // Filter strip rebuilds against the new schema —
                 // operator allowlists narrow per type, so a column
