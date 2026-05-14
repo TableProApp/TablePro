@@ -71,9 +71,15 @@ final class IOSSyncCoordinator {
                 localTags: mergedTags
             )
 
-            onConnectionsChanged?(mergedConnections)
-            onGroupsChanged?(mergedGroups)
-            onTagsChanged?(mergedTags)
+            if !remoteChanges.changedConnections.isEmpty || !remoteChanges.deletedConnectionIDs.isEmpty {
+                onConnectionsChanged?(mergedConnections)
+            }
+            if !remoteChanges.changedGroups.isEmpty || !remoteChanges.deletedGroupIDs.isEmpty {
+                onGroupsChanged?(mergedGroups)
+            }
+            if !remoteChanges.changedTags.isEmpty || !remoteChanges.deletedTagIDs.isEmpty {
+                onTagsChanged?(mergedTags)
+            }
 
             metadata.lastSyncDate = Date()
             lastSyncDate = metadata.lastSyncDate
@@ -93,6 +99,26 @@ final class IOSSyncCoordinator {
         } catch {
             status = .error(error.localizedDescription)
         }
+    }
+
+    // MARK: - Token Reset
+
+    func resetSyncToken(
+        localConnections: [DatabaseConnection],
+        localGroups: [ConnectionGroup],
+        localTags: [ConnectionTag]
+    ) async {
+        debounceTask?.cancel()
+        metadata.saveToken(nil)
+        cachedRecords.removeAll()
+        cachedGroupRecords.removeAll()
+        cachedTagRecords.removeAll()
+        Self.logger.info("Sync token cleared; forcing full pull from iCloud")
+        await sync(
+            localConnections: localConnections,
+            localGroups: localGroups,
+            localTags: localTags
+        )
     }
 
     // MARK: - Dirty / Tombstone Tracking

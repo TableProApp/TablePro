@@ -1,17 +1,26 @@
 import CoreSpotlight
 import Foundation
 import Observation
+import os
 import TableProDatabase
 import TableProModels
 import WidgetKit
 
+enum PersistenceIntegrity: Equatable {
+    case ok
+    case loadFailed
+}
+
 @MainActor @Observable
 final class AppState {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "AppState")
+
     var connections: [DatabaseConnection] = []
     var groups: [ConnectionGroup] = []
     var tags: [ConnectionTag] = []
     var pendingConnectionId: UUID?
     var pendingTableName: String?
+    var persistenceIntegrity: PersistenceIntegrity = .ok
     let connectionManager: ConnectionManager
     let syncCoordinator = IOSSyncCoordinator()
     let sshProvider: IOSSSHProvider
@@ -32,9 +41,7 @@ final class AppState {
             secureStore: secureStore,
             sshProvider: sshProvider
         )
-        connections = storage.load()
-        groups = groupStorage.load()
-        tags = tagStorage.load()
+        loadPersistedData()
 
         // Skip side-effecting callbacks (Spotlight, WidgetKit, sync wiring) when
         // running unit tests inside the host app. These rely on entitlements
@@ -52,6 +59,7 @@ final class AppState {
             guard let self else { return }
             self.connections = merged
             self.storage.save(merged)
+            self.persistenceIntegrity = .ok
             self.updateWidgetData()
             self.updateSpotlightIndex()
         }
@@ -60,18 +68,58 @@ final class AppState {
             guard let self else { return }
             self.groups = merged
             self.groupStorage.save(merged)
+            self.persistenceIntegrity = .ok
         }
 
         syncCoordinator.onTagsChanged = { [weak self] merged in
             guard let self else { return }
             self.tags = merged
             self.tagStorage.save(merged)
+            self.persistenceIntegrity = .ok
         }
 
         syncCoordinator.getCurrentState = { [weak self] in
             guard let self else { return ([], [], []) }
             return (self.connections, self.groups, self.tags)
         }
+    }
+
+    // MARK: - Load / Retry
+
+    func retryLoadIfFailed() {
+        guard persistenceIntegrity == .loadFailed else { return }
+        Self.logger.info("Retrying persistence load after previous failure")
+        loadPersistedData()
+    }
+
+    private func loadPersistedData() {
+        var failed = false
+
+        do {
+            connections = try storage.load()
+        } catch {
+            connections = []
+            failed = true
+            Self.logger.error("Connections load failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        do {
+            groups = try groupStorage.load()
+        } catch {
+            groups = []
+            failed = true
+            Self.logger.error("Groups load failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        do {
+            tags = try tagStorage.load()
+        } catch {
+            tags = ConnectionTag.presets
+            failed = true
+            Self.logger.error("Tags load failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        persistenceIntegrity = failed ? .loadFailed : .ok
     }
 
     // MARK: - Connections
@@ -264,6 +312,8 @@ final class AppState {
 // MARK: - Persistence
 
 private struct ConnectionPersistence {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionPersistence")
+
     private var fileURL: URL? {
         guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
@@ -274,15 +324,21 @@ private struct ConnectionPersistence {
     }
 
     func save(_ connections: [DatabaseConnection]) {
-        guard let fileURL, let data = try? JSONEncoder().encode(connections) else { return }
-        try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+        guard let fileURL else { return }
+        do {
+            let data = try JSONEncoder().encode(connections)
+            try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
-    func load() -> [DatabaseConnection] {
-        guard let fileURL, let data = try? Data(contentsOf: fileURL),
-              let connections = try? JSONDecoder().decode([DatabaseConnection].self, from: data) else {
+    func load() throws -> [DatabaseConnection] {
+        guard let fileURL else { return [] }
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
             return []
         }
-        return connections
+        let data = try Data(contentsOf: fileURL)
+        return try JSONDecoder().decode([DatabaseConnection].self, from: data)
     }
 }

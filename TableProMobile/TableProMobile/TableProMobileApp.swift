@@ -72,7 +72,8 @@ struct TableProMobileApp: App {
             switch phase {
             case .active:
                 MemoryPressureMonitor.shared.start()
-                if AppPreferences.isCloudSyncEnabled {
+                appState.retryLoadIfFailed()
+                if AppPreferences.isCloudSyncEnabled && appState.persistenceIntegrity == .ok {
                     syncTask?.cancel()
                     syncTask = Task {
                         await appState.syncCoordinator.sync(
@@ -121,6 +122,12 @@ struct TableProMobileApp: App {
     private func runBackgroundSync() async {
         scheduleBackgroundSync()
         guard AppPreferences.isCloudSyncEnabled else { return }
+        await MainActor.run { appState.retryLoadIfFailed() }
+        let integrity = await MainActor.run { appState.persistenceIntegrity }
+        guard integrity == .ok else {
+            Self.backgroundLogger.warning("Background sync skipped: persistence load failed (likely device locked)")
+            return
+        }
         Self.backgroundLogger.info("Background sync starting")
         await appState.syncCoordinator.sync(
             localConnections: appState.connections,
