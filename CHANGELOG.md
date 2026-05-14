@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- AI Chat: DeepSeek V4 thinking content (`reasoning_content`) is now captured during streaming and passed back in subsequent turns, fixing 400 errors when using deepseek-v4-pro or deepseek-v4-flash.
 - MongoDB: the connection form now shows a Username field. It was hidden for databases where authentication is optional, so connections to auth-enabled servers saved with no credentials and every query failed with "requires authentication" even though the connection looked healthy.
 - SQL import dropped statements when the database executed them slower than the file was parsed, so a re-imported export could fail with errors like "relation does not exist". The parser now waits for each statement to be consumed before reading more. (#1264)
 - SQL import ignored the database dialect, so PostgreSQL dumps with dollar-quoted function bodies were split at semicolons inside the body. (#1264)

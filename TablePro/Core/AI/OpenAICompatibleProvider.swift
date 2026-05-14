@@ -71,6 +71,9 @@ final class OpenAICompatibleProvider: ChatTransport {
                         for event in result.events { continuation.yield(event) }
                         if result.shouldBreak { break }
                     }
+                    if let reasoningEnd = state.flushReasoningEnd() {
+                        continuation.yield(reasoningEnd)
+                    }
                     if let usage = state.finalUsageEvent() {
                         continuation.yield(usage)
                     }
@@ -113,6 +116,19 @@ final class OpenAICompatibleProvider: ChatTransport {
         let firstChoice = choices?.first
         let delta = firstChoice?["delta"] as? [String: Any]
 
+        if let delta, let reasoningContent = delta["reasoning_content"] as? String, !reasoningContent.isEmpty {
+            let reasoningID: String
+            if let existing = state.reasoningBlockID {
+                reasoningID = existing
+            } else {
+                let newID = "reasoning_\(UUID().uuidString.prefix(8))"
+                state.reasoningBlockID = newID
+                events.append(.reasoningStart(id: newID))
+                reasoningID = newID
+            }
+            events.append(.reasoningDelta(id: reasoningID, text: reasoningContent))
+        }
+
         if let delta, let content = delta["content"] as? String, !content.isEmpty {
             events.append(.textDelta(content))
         } else if let message = json["message"] as? [String: Any],
@@ -128,9 +144,13 @@ final class OpenAICompatibleProvider: ChatTransport {
             events.append(contentsOf: handleOllamaToolCalls(toolCalls, state: &state))
         }
 
-        if let finishReason = firstChoice?["finish_reason"] as? String,
-           finishReason == "tool_calls" {
-            events.append(contentsOf: state.flushToolUseEnds())
+        if let finishReason = firstChoice?["finish_reason"] as? String, !finishReason.isEmpty {
+            if let event = state.flushReasoningEnd() {
+                events.append(event)
+            }
+            if finishReason == "tool_calls" {
+                events.append(contentsOf: state.flushToolUseEnds())
+            }
         }
 
         if let usage = json["usage"] as? [String: Any],
@@ -373,6 +393,10 @@ final class OpenAICompatibleProvider: ChatTransport {
                     ]
                 ]
             }
+            let reasoningText = Self.plainReasoningText(from: turn)
+            if !reasoningText.isEmpty {
+                message["reasoning_content"] = reasoningText
+            }
             return [message]
         }
 
@@ -411,10 +435,26 @@ final class OpenAICompatibleProvider: ChatTransport {
         }
 
         guard !textContent.isEmpty else { return [] }
-        return [[
+        var message: [String: Any] = [
             "role": turn.role.rawValue,
             "content": textContent
-        ]]
+        ]
+        if turn.role == .assistant {
+            let reasoningText = Self.plainReasoningText(from: turn)
+            if !reasoningText.isEmpty {
+                message["reasoning_content"] = reasoningText
+            }
+        }
+        return [message]
+    }
+
+    private static func plainReasoningText(from turn: ChatTurnWire) -> String {
+        turn.blocks.compactMap { block -> String? in
+            guard case .reasoning(let rb) = block.kind,
+                  rb.opaque == nil,
+                  let text = rb.text else { return nil }
+            return text
+        }.joined()
     }
 
     private func chatCompletionsImagePart(_ input: ChatImageInput) -> [String: Any]? {
@@ -523,6 +563,13 @@ struct OpenAIStreamState {
     var outputTokens: Int = 0
     var toolCallIndexToId: [Int: String] = [:]
     var toolCallOrder: [Int] = []
+    var reasoningBlockID: String?
+
+    mutating func flushReasoningEnd() -> ChatStreamEvent? {
+        guard let id = reasoningBlockID else { return nil }
+        reasoningBlockID = nil
+        return .reasoningEnd(id: id, opaque: nil)
+    }
 
     /// Yield `.toolUseEnd` for every tracked tool call and clear the map.
     /// Called when the provider signals tool-call completion (`finish_reason`

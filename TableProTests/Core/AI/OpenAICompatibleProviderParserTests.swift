@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("OpenAICompatibleProvider stream parser")
@@ -173,6 +173,112 @@ struct OpenAICompatibleProviderParserTests {
             return
         }
         #expect(text == "hi")
+    }
+
+    @Test("delta.reasoning_content on first chunk emits reasoningStart then reasoningDelta")
+    func reasoningContentFirstChunk() {
+        var state = OpenAIStreamState()
+        let result = OpenAICompatibleProvider.parseChunk([
+            "choices": [[
+                "delta": ["reasoning_content": "Let me think..."]
+            ]]
+        ], state: &state)
+        #expect(result.events.count == 2)
+        guard case .reasoningStart(let id) = result.events[0] else {
+            Issue.record("expected reasoningStart; got \(result.events[0])")
+            return
+        }
+        guard case .reasoningDelta(let deltaID, let text) = result.events[1] else {
+            Issue.record("expected reasoningDelta; got \(result.events[1])")
+            return
+        }
+        #expect(deltaID == id)
+        #expect(text == "Let me think...")
+        #expect(state.reasoningBlockID == id)
+    }
+
+    @Test("Subsequent delta.reasoning_content chunks emit only reasoningDelta (no duplicate start)")
+    func reasoningContentSubsequentChunk() {
+        var state = OpenAIStreamState()
+        state.reasoningBlockID = "reasoning_abc"
+        let result = OpenAICompatibleProvider.parseChunk([
+            "choices": [[
+                "delta": ["reasoning_content": " more thinking"]
+            ]]
+        ], state: &state)
+        #expect(result.events.count == 1)
+        guard case .reasoningDelta(let id, let text) = result.events[0] else {
+            Issue.record("expected reasoningDelta; got \(result.events)")
+            return
+        }
+        #expect(id == "reasoning_abc")
+        #expect(text == " more thinking")
+    }
+
+    @Test("finish_reason: stop flushes open reasoning block as reasoningEnd with nil opaque")
+    func finishReasonStopClosesReasoningBlock() {
+        var state = OpenAIStreamState()
+        state.reasoningBlockID = "reasoning_xyz"
+        let result = OpenAICompatibleProvider.parseChunk([
+            "choices": [["finish_reason": "stop"]]
+        ], state: &state)
+        #expect(result.events.count == 1)
+        guard case .reasoningEnd(let id, let opaque) = result.events[0] else {
+            Issue.record("expected reasoningEnd; got \(result.events)")
+            return
+        }
+        #expect(id == "reasoning_xyz")
+        #expect(opaque == nil)
+        #expect(state.reasoningBlockID == nil)
+    }
+
+    @Test("reasoning_content followed by finish_reason in same chunk emits start, delta, end")
+    func reasoningContentWithFinishReason() {
+        var state = OpenAIStreamState()
+        let result = OpenAICompatibleProvider.parseChunk([
+            "choices": [[
+                "delta": ["reasoning_content": "final thought"],
+                "finish_reason": "stop"
+            ]]
+        ], state: &state)
+        let kinds = result.events.map { event -> String in
+            switch event {
+            case .reasoningStart: return "start"
+            case .reasoningDelta: return "delta"
+            case .reasoningEnd: return "end"
+            default: return "other"
+            }
+        }
+        #expect(kinds == ["start", "delta", "end"])
+        #expect(state.reasoningBlockID == nil)
+    }
+
+    @Test("delta.reasoning_content: null is ignored and does not emit reasoningStart")
+    func reasoningContentNullIgnored() {
+        var state = OpenAIStreamState()
+        let result = OpenAICompatibleProvider.parseChunk([
+            "choices": [[
+                "delta": ["content": "hello", "reasoning_content": NSNull()]
+            ]]
+        ], state: &state)
+        #expect(state.reasoningBlockID == nil)
+        #expect(result.events.count == 1)
+        guard case .textDelta = result.events[0] else {
+            Issue.record("expected only textDelta; got \(result.events)")
+            return
+        }
+    }
+
+    @Test("finish_reason: stop does not flush pending tool calls")
+    func finishReasonStopLeavesToolCallsIntact() {
+        var state = OpenAIStreamState()
+        state.toolCallIndexToId = [0: "call_a"]
+        state.toolCallOrder = [0]
+        let result = OpenAICompatibleProvider.parseChunk([
+            "choices": [["finish_reason": "stop"]]
+        ], state: &state)
+        #expect(result.events.isEmpty)
+        #expect(state.toolCallIndexToId[0] == "call_a")
     }
 
     @Test("Empty chunk yields no events and doesn't break")
