@@ -34,12 +34,14 @@ final class IOSDriverFactory: DriverFactory {
                 database: dbIndex,
                 sslEnabled: connection.sslEnabled
             )
+        case .mssql:
+            return MSSQLDriver(connection: connection, password: password)
         default:
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }
     }
 
     func supportedTypes() -> [DatabaseType] {
-        [.sqlite, .mysql, .mariadb, .postgresql, .redshift, .redis]
+        [.sqlite, .mysql, .mariadb, .postgresql, .redshift, .redis, .mssql]
     }
 }

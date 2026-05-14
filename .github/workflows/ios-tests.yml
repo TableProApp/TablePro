@@ -57,7 +57,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Libs
-          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256') }}
+          # Include the FreeTDS stub header in the cache key so iOS xcframework refreshes
+          # whenever the C bridge surface (e.g. new symbol declarations) changes.
+          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h') }}
 
       - name: Download static libraries
         env:

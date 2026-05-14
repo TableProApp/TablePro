@@ -624,8 +624,10 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button(String(localized: "Report an Issue...")) {
-                FeedbackWindowController.shared.showFeedbackPanel()
+            Button(String(localized: "Report an Issue")) {
+                if let url = URL(string: "https://github.com/TableProApp/TablePro/issues") {
+                    NSWorkspace.shared.open(url)
+                }
             }
         }
     }

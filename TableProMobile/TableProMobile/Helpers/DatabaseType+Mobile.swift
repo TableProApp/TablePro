@@ -8,6 +8,7 @@ extension DatabaseType {
         case .postgresql: return "5432"
         case .redshift: return "5439"
         case .redis: return "6379"
+        case .mssql: return "1433"
         case .sqlite: return ""
         default: return "3306"
         }
@@ -21,6 +22,7 @@ extension DatabaseType {
         case .redshift: "Redshift"
         case .sqlite: "SQLite"
         case .redis: "Redis"
+        case .mssql: "SQL Server"
         default: rawValue.uppercased()
         }
     }
@@ -30,6 +32,7 @@ extension DatabaseType {
         .mariadb,
         .postgresql,
         .sqlite,
-        .redis
+        .redis,
+        .mssql
     ]
 }

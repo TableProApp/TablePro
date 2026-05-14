@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## Added
+### Added
 
 - AI Chat: OpenAI provider now uses the Responses API for GPT-5 and Codex models, with reasoning shown in a collapsible Thinking panel above each reply. (#1112)
 - AI Chat: image input via drag-and-drop or paste into the composer. HEIC, TIFF, and BMP convert to PNG or JPEG. EXIF and GPS metadata are stripped before sending. (#1112)
@@ -15,7 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI Chat: curated model picker for the OpenAI provider with GPT-5.5, GPT-5-Codex, GPT-5.3-Codex, and GPT-5.4-Mini at the top; free-text entry still works for unlisted models. (#1112)
 - AI Chat: Claude provider now supports extended thinking on Opus 4.7, Sonnet 4.6, and Haiku 4.5 using the same Thinking panel. (#1112)
 - AI Chat: tool schemas are strict by default, matching the Responses API and Claude strict tool use. (#1112)
-- File > Backup Dump… and Restore Dump… for PostgreSQL and Redshift connections, running `pg_dump -Fc` and `pg_restore --no-owner --no-acl` with live progress, cancel, SSH tunnel reuse, and custom binary paths under Settings > Terminal > CLI Paths (#1211).
+- iOS: SQL Server (MSSQL) connections via FreeTDS over TDS 7.4. Uses the shared `SSLConfiguration` model from connection settings. Supports connect, query, streaming results, schema browsing (tables, columns, indexes, foreign keys), database and schema switching, and explicit transactions.
+- iOS: data browser, search, filter, and pagination now render correct SQL Server syntax (bracket-quoted identifiers, `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` pagination, `SELECT TOP 1` for cell value fetch).
+- iOS: Settings > Sync now shows last sync time, a Sync Now button, and a Refresh from iCloud action that re-downloads every connection, group, and tag when items are missing on this device but visible on another.
+
+### Fixed
+
+- iOS: connections, groups, and tags no longer silently disappear after a TestFlight or App Store update. Persistence files are now stored with `.completeFileProtectionUntilFirstUserAuthentication` so they stay readable across background sync runs, load failures are no longer swallowed, and the sync engine refuses to overwrite local data when the load was not actually empty.
+
+### Removed
+
+- Help > Report an Issue panel. The menu item now opens GitHub Issues in a browser.
 
 ## [0.41.0] - 2026-05-13
 

@@ -157,12 +157,13 @@ final class DataBrowserViewModel {
     }
 
     private func buildSelectQuery(table: TableInfo) -> String {
+        let activeSort = effectiveSortState()
         if hasActiveSearch {
             return SQLBuilder.buildSearchSelect(
                 table: table.name, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
                 filters: filters, logicMode: filterLogicMode,
-                sortState: sortState,
+                sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
         }
@@ -170,14 +171,14 @@ final class DataBrowserViewModel {
             return SQLBuilder.buildFilteredSelect(
                 table: table.name, type: databaseType,
                 filters: filters, logicMode: filterLogicMode,
-                sortState: sortState,
+                sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
         }
-        if sortState.isSorting {
+        if activeSort.isSorting {
             return SQLBuilder.buildSelect(
                 table: table.name, type: databaseType,
-                sortState: sortState,
+                sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
         }
@@ -185,6 +186,17 @@ final class DataBrowserViewModel {
             table: table.name, type: databaseType,
             limit: pagination.pageSize, offset: pagination.currentOffset
         )
+    }
+
+    /// SQL Server's `OFFSET FETCH` requires `ORDER BY`. When the user has not picked an explicit
+    /// sort, inject a stable order (first primary-key column, falling back to the first column)
+    /// so paging is deterministic across requests. Other databases tolerate an empty ORDER BY.
+    private func effectiveSortState() -> SortState {
+        if sortState.isSorting { return sortState }
+        guard databaseType == .mssql else { return sortState }
+        let fallback = columnDetails.first(where: \.isPrimaryKey)?.name ?? columnDetails.first?.name
+        guard let fallback else { return sortState }
+        return SortState(columns: [SortColumn(name: fallback, ascending: true)])
     }
 
     private func searchableColumns() -> [ColumnInfo] {
@@ -337,14 +349,20 @@ final class DataBrowserViewModel {
 
     // MARK: - Lazy Cell Loading
 
-    func loadFullValue(driver: DatabaseDriver, ref: CellRef) async throws -> String? {
+    func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType) async throws -> String? {
         let predicates = ref.primaryKey.map { component in
-            "\"\(component.column.replacingOccurrences(of: "\"", with: "\"\""))\" = '\(component.value.replacingOccurrences(of: "'", with: "''"))'"
+            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(component.value.replacingOccurrences(of: "'", with: "''"))'"
         }
         let predicate = predicates.joined(separator: " AND ")
-        let column = "\"\(ref.column.replacingOccurrences(of: "\"", with: "\"\""))\""
-        let table = "\"\(ref.table.replacingOccurrences(of: "\"", with: "\"\""))\""
-        let query = "SELECT \(column) FROM \(table) WHERE \(predicate) LIMIT 1"
+        let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
+        let table = SQLBuilder.quoteIdentifier(ref.table, for: databaseType)
+        let query: String
+        switch databaseType {
+        case .mssql:
+            query = "SELECT TOP 1 \(column) FROM \(table) WHERE \(predicate)"
+        default:
+            query = "SELECT \(column) FROM \(table) WHERE \(predicate) LIMIT 1"
+        }
 
         let result = try await driver.execute(query: query)
         return result.rows.first?.first ?? nil

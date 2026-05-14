@@ -49,11 +49,13 @@ final class ConnectionCoordinator {
 
     var supportsDatabaseSwitching: Bool {
         connection.type == .mysql || connection.type == .mariadb ||
-        connection.type == .postgresql || connection.type == .redshift
+        connection.type == .postgresql || connection.type == .redshift ||
+        connection.type == .mssql
     }
 
     var supportsSchemas: Bool {
-        connection.type == .postgresql || connection.type == .redshift
+        connection.type == .postgresql || connection.type == .redshift ||
+        connection.type == .mssql
     }
 
     init(connection: DatabaseConnection, appState: AppState) {

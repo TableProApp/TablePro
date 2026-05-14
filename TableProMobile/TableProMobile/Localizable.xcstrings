@@ -1560,6 +1560,9 @@
         }
       }
     },
+    "Disabled" : {
+
+    },
     "Disconnected" : {
       "localizations" : {
         "vi" : {
@@ -2174,6 +2177,17 @@
         }
       }
     },
+    "Hide query in Live Activities" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ẩn truy vấn trong Live Activity"
+          }
+        }
+      }
+    },
     "History" : {
       "localizations" : {
         "vi" : {
@@ -2215,6 +2229,9 @@
           }
         }
       }
+    },
+    "If items appear on another device but not here, refresh forces a full re-download from iCloud. This may take a moment on slow networks." : {
+
     },
     "Immediately" : {
       "localizations" : {
@@ -2316,6 +2333,9 @@
           }
         }
       }
+    },
+    "Last Sync" : {
+
     },
     "Load Failed" : {
       "localizations" : {
@@ -2507,6 +2527,9 @@
           }
         }
       }
+    },
+    "Never" : {
+
     },
     "New Connection" : {
       "localizations" : {
@@ -3354,6 +3377,12 @@
         }
       }
     },
+    "Refresh from iCloud" : {
+
+    },
+    "Refresh from iCloud?" : {
+
+    },
     "Reload" : {
       "localizations" : {
         "vi" : {
@@ -3399,6 +3428,9 @@
           }
         }
       }
+    },
+    "Required" : {
+
     },
     "Results Cleared" : {
       "localizations" : {
@@ -3529,6 +3561,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "运行查询"
+          }
+        }
+      }
+    },
+    "Running query" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang chạy truy vấn"
           }
         }
       }
@@ -4012,6 +4055,9 @@
         }
       }
     },
+    "SSL Mode" : {
+
+    },
     "Stats" : {
       "localizations" : {
         "vi" : {
@@ -4085,6 +4131,9 @@
         }
       }
     },
+    "Sync Now" : {
+
+    },
     "Sync with iCloud" : {
       "localizations" : {
         "vi" : {
@@ -4110,6 +4159,9 @@
           }
         }
       }
+    },
+    "Syncing…" : {
+
     },
     "Tab" : {
       "extractionState" : "stale",
@@ -4163,6 +4215,9 @@
           }
         }
       }
+    },
+    "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
+
     },
     "Tables" : {
       "localizations" : {
@@ -4698,6 +4753,17 @@
         }
       }
     },
+    "When on, the lock screen and Dynamic Island show \"Running query\" instead of the SQL preview." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khi bật, màn hình khóa và Dynamic Island hiển thị \"Đang chạy truy vấn\" thay cho nội dung SQL."
+          }
+        }
+      }
+    },
     "Write Query Blocked" : {
       "localizations" : {
         "vi" : {
@@ -4726,39 +4792,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编写SQL并点击运行按钮。"
-          }
-        }
-      }
-    },
-    "Hide query in Live Activities" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ẩn truy vấn trong Live Activity"
-          }
-        }
-      }
-    },
-    "When on, the lock screen and Dynamic Island show \"Running query\" instead of the SQL preview." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Khi bật, màn hình khóa và Dynamic Island hiển thị \"Đang chạy truy vấn\" thay cho nội dung SQL."
-          }
-        }
-      }
-    },
-    "Running query" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đang chạy truy vấn"
           }
         }
       }

@@ -56,7 +56,17 @@ struct ConnectionFormView: View {
 
                 if viewModel.type != .sqlite {
                     Section {
-                        Toggle("SSL", isOn: $viewModel.sslEnabled)
+                        if viewModel.type == .mssql {
+                            // FreeTDS db-lib only honors on/off encryption (DBSETENCRYPT). Per-connection
+                            // cert chain verification is not exposed, so only Disabled and Required are listed.
+                            // See Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift for the FreeTDS contract.
+                            Picker(String(localized: "SSL Mode"), selection: $viewModel.mssqlSSLMode) {
+                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
+                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                            }
+                        } else {
+                            Toggle("SSL", isOn: $viewModel.sslEnabled)
+                        }
                     }
                     sshSection(viewModel: viewModel)
                 }
