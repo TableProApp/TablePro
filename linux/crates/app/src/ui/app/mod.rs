@@ -158,10 +158,13 @@ pub enum ClosedTabDescriptor {
     Table {
         schema: Option<String>,
         table: String,
-        mode: TableMode,
         offset: u64,
         page_size: u64,
         sort: Option<(usize, bool)>,
+    },
+    Structure {
+        schema: Option<String>,
+        table: String,
     },
 }
 
@@ -185,56 +188,31 @@ pub struct StructureTabSlot {
     pub mode: crate::ui::structure_tab::StructureMode,
 }
 
-/// Active axis inside a `Table` tab — Data view (the Browse grid) or
-/// Structure view (the DDL editor). Each entity (table) has both
-/// lenses available; user toggles via `AdwViewSwitcher` in the tab
-/// content. This mirrors how TablePlus / DataGrip / DBeaver / Postico
-/// surface the same data, and matches GNOME HIG guidance that
-/// AdwViewSwitcher is for "different views of the same content".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TableMode {
-    Data,
-    Structure,
-}
 
-/// One workspace tab pinned to a single `(schema, table)` entity, with
-/// both Data (Browse) and Structure (DDL) controllers alive in
-/// parallel inside an `AdwViewStack`. Switching `mode` flips the
-/// stack's visible child without destroying state on the inactive
-/// side; pending-change trackers, pagination, sort, search remain.
+/// One workspace tab pinned to a single `(schema, table)` entity in
+/// Data (Browse) mode. The Structure (DDL) view is no longer fused
+/// into the same tab — `WorkspaceTab::Structure` is its own
+/// dedicated tab opened via the sidebar right-click "Edit Structure"
+/// action. This split mirrors GNOME's "one TabPage per surface"
+/// idiom (Files, Builder) instead of a per-tab AdwViewSwitcher.
 pub struct TableTabSlot {
     pub id: Uuid,
     pub page: adw::TabPage,
     pub schema: Option<String>,
     pub table: String,
-    pub mode: TableMode,
     pub browse: Controller<BrowseTab>,
-    pub structure: Controller<crate::ui::structure_tab::StructureTab>,
-    /// Always `StructureMode::Edit` for tabs created from a sidebar
-    /// table; `New` only for the explicit "New Table…" flow which
-    /// promotes to `Edit` on first successful save.
-    pub structure_mode: crate::ui::structure_tab::StructureMode,
-    pub view_stack: adw::ViewStack,
-    /// Whether the Structure-side controller has been told to load
-    /// columns / indexes / FKs yet. Data-mode opens defer this to
-    /// avoid an N-tabs introspection stampede; flips to `true` on
-    /// the first mode switch into Structure (or eagerly when the
-    /// user opens directly to Structure mode via "Edit Structure").
-    pub structure_loaded: bool,
 }
 
 /// A tab in the unified workspace.
 ///
-/// - **Table**: one (schema, table) entity with an `AdwViewSwitcher`
-///   to flip between Data (Browse grid) and Structure (DDL editor).
-///   The canonical shape per GNOME HIG (M-1 audit) and the default
-///   for every sidebar-driven open.
+/// - **Table**: one (schema, table) entity in Data (Browse grid)
+///   view. Default for every sidebar single-click.
 /// - **Editor**: a free-form SQL workspace, orthogonal to any one
 ///   table.
-/// - **Structure**: only used for the New-Table draft flow — there
-///   is no real `(schema, table)` to browse yet, so the Data side
-///   would be meaningless. After a successful CreateTable the slot
-///   transitions into a `Table` tab.
+/// - **Structure**: the DDL editor — opens for "New Table" drafts
+///   AND for "Edit Structure" against an existing table (via the
+///   sidebar right-click action). Replaces the previous inline
+///   AdwViewSwitcher on the Table tab.
 pub enum WorkspaceTab {
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
@@ -242,8 +220,7 @@ pub enum WorkspaceTab {
 }
 
 impl WorkspaceTab {
-    /// The Browse-side controller. Editor / Structure-only slots
-    /// return `None`.
+    /// The Browse-side controller. Only `Table` slots carry one.
     pub fn browse_controller(&self) -> Option<&Controller<BrowseTab>> {
         match self {
             WorkspaceTab::Table(s) => Some(&s.browse),
@@ -251,12 +228,11 @@ impl WorkspaceTab {
         }
     }
 
-    /// The Structure-side controller, whether the New-Table draft or
-    /// the unified `Table` variant.
+    /// The Structure-side controller. Only `Structure` slots carry
+    /// one (Table slots no longer fuse the DDL editor in).
     pub fn structure_controller(&self) -> Option<&Controller<crate::ui::structure_tab::StructureTab>> {
         match self {
             WorkspaceTab::Structure(s) => Some(&s.controller),
-            WorkspaceTab::Table(s) => Some(&s.structure),
             _ => None,
         }
     }
@@ -375,14 +351,6 @@ pub enum AppMsg {
     /// triggers persistence (writes the current display order + each
     /// slot's state to workspace_state.json).
     WorkspaceTabsChanged,
-    /// User flipped a Table tab's `AdwViewSwitcher` between Data and
-    /// Structure. Routed through the message loop so the slot.mode
-    /// mutation lands at a safe point — the visible-child-name notify
-    /// fires synchronously inside GTK signal cascades (during
-    /// `tab_view.append`, `set_selected_page`, etc.) and a direct
-    /// `borrow_mut()` from the closure re-enters another live borrow
-    /// and panics with "RefCell already borrowed".
-    TableTabModeChanged(Uuid, TableMode),
     /// Run a sequence of pending-changeset statements inside a single
     /// DB transaction. Materialised by a BrowseTab's change tracker
     /// when the user clicks Save. App calls
@@ -1346,20 +1314,6 @@ impl SimpleComponent for App {
             AppMsg::FetchBrowseColumns(tab_id) => self.fetch_browse_columns(tab_id, sender),
             AppMsg::FetchBrowseRowCount(tab_id) => self.fetch_browse_row_count(tab_id, sender),
             AppMsg::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
-            AppMsg::TableTabModeChanged(id, mode) => {
-                let mut needs_fetch = false;
-                if let Some(WorkspaceTab::Table(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
-                    slot.mode = mode;
-                    if matches!(mode, TableMode::Structure) && !slot.structure_loaded {
-                        slot.structure_loaded = true;
-                        needs_fetch = true;
-                    }
-                }
-                if needs_fetch {
-                    sender.input(AppMsg::FetchStructureData { tab_id: id });
-                }
-                self.on_workspace_tabs_changed();
-            }
             AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
             AppMsg::ExecuteBrowseTransaction {
                 tab_id,

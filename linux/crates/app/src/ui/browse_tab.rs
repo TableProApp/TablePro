@@ -30,14 +30,6 @@ pub struct BrowseTabInit {
     pub page_size: u64,
     pub initial_offset: u64,
     pub initial_sort: Option<(usize, bool)>,
-    /// "Insert row" button parented by the per-table HeaderBar in
-    /// `workspace_tabs.rs`. BrowseTab connects its click handler and
-    /// owns the sensitivity/visibility/tooltip logic, but the widget
-    /// lives outside the BrowseTab's own tree — moved up to the
-    /// header so the bottom toolbar can drop the mutation strip
-    /// entirely (Files / Builder / Calendar pattern: primary "Add"
-    /// action in HeaderBar, not a bottom action bar).
-    pub insert_button: gtk::Button,
 }
 
 pub struct BrowseTab {
@@ -117,11 +109,10 @@ pub struct BrowseTab {
     /// revealed. Owned per-tab so the rules editor doesn't lose
     /// in-progress state if the user accidentally clicks outside it.
     filter_strip: Option<crate::ui::filter_strip::FilterStrip>,
-    /// Insert row button — lives in the per-table HeaderBar (see
-    /// `BrowseTabInit::insert_button`), but state mutations (sensitive,
-    /// visible, tooltip) are driven from this struct via
-    /// `refresh_crud_buttons`. Delete affordance was dropped from the
-    /// toolbar entirely — right-click "Delete row" + the Delete key
+    /// Insert row button — sits at the start of the paginator bar
+    /// (`gtk::ActionBar` pack_start), separated from the nav arrows
+    /// by the actionbar's start group. Delete affordance is gone
+    /// from the toolbar — right-click "Delete row" + the Delete key
     /// shortcut cover the action surface (Files / Contacts pattern).
     insert_button: gtk::Button,
     /// Pending-changes footer (Save / Discard / count label) wrapped
@@ -373,6 +364,19 @@ impl BrowseTab {
         // it the user has to spam Next to reach the bottom. Same
         // visual + interaction model as TablePlus / DataGrip /
         // DBeaver. Last stays disabled until the row count loads.
+        // Insert row sits at the very start of the paginator's
+        // pack_start group — clearly separated from the nav arrows by
+        // its position and by the GtkActionBar's start group spacing,
+        // so a mis-aim toward Next doesn't land on Insert.
+        let insert_button = gtk::Button::builder()
+            .icon_name("list-add-symbolic")
+            .tooltip_text(crate::tr!("Insert row (Ctrl+N)"))
+            .sensitive(false)
+            .build();
+        insert_button.add_css_class("flat");
+        let sender_for_insert = sender.clone();
+        insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
+
         let first_button = gtk::Button::builder()
             .icon_name("go-first-symbolic")
             .tooltip_text(crate::tr!("First page"))
@@ -512,6 +516,7 @@ impl BrowseTab {
         nav_box.append(&next_button);
         nav_box.append(&last_button);
 
+        paginator_bar.pack_start(&insert_button);
         paginator_bar.pack_start(&nav_box);
         paginator_bar.pack_start(&paginator_label);
         paginator_bar.pack_start(&selection_label);
@@ -522,6 +527,7 @@ impl BrowseTab {
 
         Paginator {
             bar: paginator_bar,
+            insert_button,
             first_button,
             prev_button,
             next_button,
@@ -1309,16 +1315,6 @@ impl SimpleComponent for BrowseTab {
         let paginator = Self::build_paginator(sender.clone(), init.page_size);
         let pending = Self::build_pending_revealer(sender.clone());
 
-        // Wire the externally-parented Insert button (lives in the
-        // per-table HeaderBar — see `BrowseTabInit::insert_button`).
-        // Click dispatches into this tab's own input queue, exactly
-        // like the dropped toolbar Insert did; state mutations run
-        // through `refresh_crud_buttons` against the same widget.
-        let insert_button = init.insert_button.clone();
-        insert_button.set_sensitive(false);
-        let sender_for_insert = sender.clone();
-        insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
-
         // Per-HIG banner rule: banners persist hard constraints the
         // user can't fix by saving. Both reveal only when their
         // condition triggers:
@@ -1590,7 +1586,7 @@ impl SimpleComponent for BrowseTab {
             filter_button: paginator.filter_button,
             filter_badge: paginator.filter_badge,
             filter_strip: Some(filter_strip),
-            insert_button,
+            insert_button: paginator.insert_button,
             pending_revealer: pending.widget,
             save_button: pending.save_button,
             discard_button: pending.discard_button,
@@ -2677,6 +2673,7 @@ fn format_thousands(n: u64) -> String {
 /// signature stays narrow.
 struct Paginator {
     bar: gtk::ActionBar,
+    insert_button: gtk::Button,
     first_button: gtk::Button,
     prev_button: gtk::Button,
     next_button: gtk::Button,

@@ -232,14 +232,15 @@ impl App {
                     sort_col,
                     sort_asc,
                 } => {
-                    let initial_mode = match mode {
-                        crate::services::workspace_state::PersistedTableMode::Data => super::TableMode::Data,
-                        crate::services::workspace_state::PersistedTableMode::Structure => super::TableMode::Structure,
-                    };
+                    // The persisted `mode` field is now ignored — Data
+                    // and Structure are separate AdwTabPages. Restoring
+                    // a Table record always opens the Data side; if the
+                    // user had a Structure tab open, that's captured as
+                    // a separate `WorkspaceTabRecord::Structure` record.
+                    let _ = mode;
                     self.append_table_tab(
                         schema.clone(),
                         table.clone(),
-                        initial_mode,
                         *offset,
                         *page_size,
                         match (sort_col, sort_asc) {
@@ -332,12 +333,15 @@ impl App {
     /// sub-controllers initialise eagerly so switching modes is
     /// instant and per-side state (pagination, sort, search,
     /// pending edits) survives a round trip.
+    /// Append a Browse (Data-view) tab for an existing
+    /// `(schema, table)`. The DDL editor for the same table opens as
+    /// a separate `WorkspaceTab::Structure` page via the sidebar
+    /// right-click "Edit Structure" action (`append_existing_structure_tab`).
     #[allow(clippy::too_many_arguments)]
     pub(super) fn append_table_tab(
         &mut self,
         schema: Option<String>,
         table: String,
-        initial_mode: super::TableMode,
         offset: u64,
         page_size: u64,
         sort: Option<(usize, bool)>,
@@ -352,31 +356,16 @@ impl App {
         let connection_id = database_service::instance().active_id();
         let read_only = self.read_only;
 
-        // Per-table "Insert row" button — packed into the per-table
-        // HeaderBar (built further down with the Data/Structure
-        // ViewSwitcher). Canonical GNOME "Add" placement: primary
-        // action in the HeaderBar pack_end slot (Contacts, Calendar,
-        // To Do, Music). The widget is created here, threaded into
-        // BrowseTab's init so the tab owns sensitivity/visibility
-        // logic, and parented into `switcher_header` below.
-        let insert_button = gtk::Button::builder()
-            .icon_name("list-add-symbolic")
-            .tooltip_text(crate::tr!("Insert row (Ctrl+N)"))
-            .sensitive(false)
-            .build();
-
-        // Browse-side controller for the Data view of this Table tab.
         let browse_init = BrowseTabInit {
             tab_id,
             schema: schema.clone(),
             table: table.clone(),
-            driver_id: driver_id.clone(),
+            driver_id,
             connection_id,
             read_only,
             page_size,
             initial_offset: offset,
             initial_sort: sort,
-            insert_button: insert_button.clone(),
         };
         let browse = BrowseTab::builder()
             .launch(browse_init)
@@ -398,105 +387,7 @@ impl App {
                 },
             });
 
-        // Structure-side controller. Always Edit mode for an existing
-        // table; the New-Table flow has its own dedicated entry point.
-        // Skip the auto-fetch on init when the user is opening to
-        // Data mode — we'll fire it on first mode switch instead, so
-        // a workspace with N tabs doesn't burst N×3 introspection
-        // queries at once on restore.
-        let structure_mode = crate::ui::structure_tab::StructureMode::Edit;
-        let defer_structure_fetch = !matches!(initial_mode, super::TableMode::Structure);
-        let structure_init = crate::ui::structure_tab::StructureTabInit {
-            tab_id,
-            schema: schema.clone(),
-            table: table.clone(),
-            mode: structure_mode,
-            driver_id,
-            defer_initial_fetch: defer_structure_fetch,
-        };
-        let structure = crate::ui::structure_tab::StructureTab::builder()
-            .launch(structure_init)
-            .forward(sender.input_sender(), move |out| match out {
-                crate::ui::structure_tab::StructureTabOutput::DirtyChanged(dirty) => {
-                    AppMsg::StructureTabDirtyChanged(tab_id, dirty)
-                }
-                crate::ui::structure_tab::StructureTabOutput::FetchStructure => AppMsg::FetchStructureData { tab_id },
-                crate::ui::structure_tab::StructureTabOutput::ExecuteTransaction { statements } => {
-                    AppMsg::ExecuteStructureTransaction { tab_id, statements }
-                }
-                crate::ui::structure_tab::StructureTabOutput::DropTableRequested { schema, table } => {
-                    AppMsg::DropTablePrompt { schema, table }
-                }
-                crate::ui::structure_tab::StructureTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
-                crate::ui::structure_tab::StructureTabOutput::ShowAlert { title, body } => {
-                    AppMsg::ShowAlert { title, body }
-                }
-            });
-
-        // Wrapper: AdwToolbarView whose top-bar is a flat AdwHeaderBar
-        // hosting the Data/Structure ViewSwitcher in its title slot.
-        // Matches the GNOME Calendar / Files pattern: per-content
-        // header with the view switcher centred in the title widget.
-        // The `flat` style class drops the headerbar's separator so
-        // it reads as a content header, not a window header.
-        let view_stack = adw::ViewStack::new();
-        view_stack.add_titled_with_icon(browse.widget(), Some("data"), &crate::tr!("Data"), "view-list-symbolic");
-        view_stack.add_titled_with_icon(
-            structure.widget(),
-            Some("structure"),
-            &crate::tr!("Structure"),
-            "view-grid-symbolic",
-        );
-        view_stack.set_visible_child_name(match initial_mode {
-            super::TableMode::Data => "data",
-            super::TableMode::Structure => "structure",
-        });
-        let switcher = adw::ViewSwitcher::builder()
-            .stack(&view_stack)
-            .policy(adw::ViewSwitcherPolicy::Wide)
-            .build();
-        let switcher_header = adw::HeaderBar::builder()
-            .show_start_title_buttons(false)
-            .show_end_title_buttons(false)
-            .title_widget(&switcher)
-            .build();
-        switcher_header.add_css_class("flat");
-        // Insert row sits in the HeaderBar's pack_end slot (right
-        // side). Only meaningful while the Data view is active — the
-        // Structure tab has its own "Add column" affordance and a
-        // global "+" there would conflict. Bind visibility to the
-        // ViewStack's current child name.
-        switcher_header.pack_end(&insert_button);
-        let insert_button_for_mode = insert_button.clone();
-        let sync_insert_visibility = move |stack: &adw::ViewStack| {
-            let on_data = stack.visible_child_name().as_deref() == Some("data");
-            insert_button_for_mode.set_visible(on_data);
-        };
-        sync_insert_visibility(&view_stack);
-        view_stack.connect_visible_child_name_notify(sync_insert_visibility);
-
-        let wrapper = adw::ToolbarView::builder().build();
-        wrapper.add_top_bar(&switcher_header);
-        wrapper.set_content(Some(&view_stack));
-
-        // Mode-change observer: keep slot.mode in sync with the stack
-        // visible child so persistence reflects the user's last view.
-        // Route through a queued message — `visible-child-name` notify
-        // fires synchronously inside GTK signal cascades during widget
-        // realization (tab_view.append → realize → switcher binding
-        // notify → this closure), and a direct `workspace_tabs.borrow_mut()`
-        // here can re-enter another live borrow and panic with
-        // "RefCell already borrowed".
-        let sender_for_mode = sender.clone();
-        view_stack.connect_visible_child_name_notify(move |stack| {
-            let new_mode = match stack.visible_child_name().as_deref() {
-                Some("structure") => super::TableMode::Structure,
-                _ => super::TableMode::Data,
-            };
-            sender_for_mode.input(AppMsg::TableTabModeChanged(tab_id, new_mode));
-        });
-
-        let page = tab_view.append(&wrapper);
+        let page = tab_view.append(browse.widget());
         let label = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
         page.set_title(&label);
         if let Some(tip) = browse_tab_tooltip(schema.as_deref(), &table, &label) {
@@ -509,19 +400,85 @@ impl App {
             page: page.clone(),
             schema,
             table,
-            mode: initial_mode,
             browse,
-            structure,
-            structure_mode,
-            view_stack,
-            // Structure mode opens fetched eagerly; Data mode opens
-            // deferred — `TableTabModeChanged` flips this on first
-            // switch so we only fetch once.
-            structure_loaded: !defer_structure_fetch,
         };
         self.workspace_tabs
             .borrow_mut()
             .insert(tab_id, WorkspaceTab::Table(slot));
+        tab_view.set_selected_page(&page);
+        self.workspace_outer_stack.set_visible_child_name("tabs");
+        self.refresh_window_title();
+        self.persist_workspace_state();
+    }
+
+    /// Open a Structure (DDL editor) tab for an EXISTING
+    /// `(schema, table)`. Mirrors `append_new_structure_tab` shape
+    /// but uses `StructureMode::Edit` and fetches the table's columns
+    /// / indexes / FKs immediately. Called from
+    /// `on_edit_structure_tab` (sidebar right-click → Edit Structure).
+    pub(super) fn append_existing_structure_tab(
+        &mut self,
+        schema: Option<String>,
+        table: String,
+        sender: ComponentSender<Self>,
+    ) {
+        self.ensure_workspace_root(sender.clone());
+        let Some(tab_view) = self.workspace_tab_view.clone() else {
+            return;
+        };
+        let tab_id = Uuid::new_v4();
+        let driver_id = self.driver_id().to_string();
+        let mode = crate::ui::structure_tab::StructureMode::Edit;
+        let init = crate::ui::structure_tab::StructureTabInit {
+            tab_id,
+            schema: schema.clone(),
+            table: table.clone(),
+            mode,
+            driver_id,
+            defer_initial_fetch: false,
+        };
+        let controller =
+            crate::ui::structure_tab::StructureTab::builder()
+                .launch(init)
+                .forward(sender.input_sender(), move |out| match out {
+                    crate::ui::structure_tab::StructureTabOutput::DirtyChanged(dirty) => {
+                        AppMsg::StructureTabDirtyChanged(tab_id, dirty)
+                    }
+                    crate::ui::structure_tab::StructureTabOutput::FetchStructure => {
+                        AppMsg::FetchStructureData { tab_id }
+                    }
+                    crate::ui::structure_tab::StructureTabOutput::ExecuteTransaction { statements } => {
+                        AppMsg::ExecuteStructureTransaction { tab_id, statements }
+                    }
+                    crate::ui::structure_tab::StructureTabOutput::DropTableRequested { schema, table } => {
+                        AppMsg::DropTablePrompt { schema, table }
+                    }
+                    crate::ui::structure_tab::StructureTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
+                    crate::ui::structure_tab::StructureTabOutput::ShowAlert { title, body } => {
+                        AppMsg::ShowAlert { title, body }
+                    }
+                });
+
+        let page = tab_view.append(controller.widget());
+        let title = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
+        // Disambiguate from the Data-side tab with the same base name
+        // by suffixing the structure tab title — "products · Structure".
+        // GNOME uses U+00B7 middle dot as the canonical separator
+        // (Files, Builder, Console all do this for compound titles).
+        page.set_title(&format!("{title} · {}", crate::tr!("Structure")));
+        write_workspace_tab_id(&page, tab_id);
+
+        let slot = super::StructureTabSlot {
+            id: tab_id,
+            controller,
+            page: page.clone(),
+            schema,
+            table,
+            mode,
+        };
+        self.workspace_tabs
+            .borrow_mut()
+            .insert(tab_id, WorkspaceTab::Structure(slot));
         tab_view.set_selected_page(&page);
         self.workspace_outer_stack.set_visible_child_name("tabs");
         self.refresh_window_title();
@@ -869,17 +826,10 @@ impl App {
                 return;
             }
         }
-        // Default open path uses the unified Table tab so the user gets
-        // the AdwViewSwitcher (Data ↔ Structure) without an extra step.
-        self.append_table_tab(
-            schema,
-            name,
-            super::TableMode::Data,
-            0,
-            self.default_page_size,
-            None,
-            sender,
-        );
+        // Default open path appends a Data-view Browse tab. Structure
+        // for the same table opens as its own separate tab via the
+        // sidebar right-click "Edit Structure" action.
+        self.append_table_tab(schema, name, 0, self.default_page_size, None, sender);
     }
 
     /// Persist workspace tabs for the active connection. Walks
@@ -956,10 +906,10 @@ fn do_persist_workspace_state(
                 WorkspaceTabRecord::Table {
                     schema: s.schema.clone(),
                     table: s.table.clone(),
-                    mode: match s.mode {
-                        super::TableMode::Data => crate::services::workspace_state::PersistedTableMode::Data,
-                        super::TableMode::Structure => crate::services::workspace_state::PersistedTableMode::Structure,
-                    },
+                    // `mode` is a legacy field — Table records always
+                    // describe a Data-side Browse tab now. Structure
+                    // tabs persist as separate `Structure` records.
+                    mode: crate::services::workspace_state::PersistedTableMode::Data,
                     offset: model.current_offset(),
                     page_size: model.page_size(),
                     sort_col: sort.map(|(c, _)| c),
@@ -1240,15 +1190,20 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
             Some(ClosedTabDescriptor::Table {
                 schema: s.schema.clone(),
                 table: s.table.clone(),
-                mode: s.mode,
                 offset: model.current_offset(),
                 page_size: model.page_size(),
                 sort,
             })
         }
-        // New-Table draft: nothing to reopen. The Edit-mode case is
-        // unreachable post-M-1 (Structure tabs only exist for drafts).
-        WorkspaceTab::Structure(_) => None,
+        WorkspaceTab::Structure(s) => match s.mode {
+            // New-Table drafts have no entity to point at and lose
+            // their in-progress DDL on close — nothing to reopen.
+            crate::ui::structure_tab::StructureMode::New => None,
+            crate::ui::structure_tab::StructureMode::Edit => Some(ClosedTabDescriptor::Structure {
+                schema: s.schema.clone(),
+                table: s.table.clone(),
+            }),
+        },
     }
 }
 
@@ -1285,12 +1240,14 @@ impl App {
             ClosedTabDescriptor::Table {
                 schema,
                 table,
-                mode,
                 offset,
                 page_size,
                 sort,
             } => {
-                self.append_table_tab(schema, table, mode, offset, page_size, sort, sender);
+                self.append_table_tab(schema, table, offset, page_size, sort, sender);
+            }
+            ClosedTabDescriptor::Structure { schema, table } => {
+                self.append_existing_structure_tab(schema, table, sender);
             }
         }
     }

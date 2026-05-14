@@ -29,13 +29,12 @@ impl App {
         self.append_new_structure_tab(schema, sender);
     }
 
-    /// Sidebar right-click → "Edit Structure". Routes to the unified
-    /// Table tab (M-1): if a Table tab already exists for this
-    /// (schema, table), select it and flip its `AdwViewSwitcher` to
-    /// Structure mode. Otherwise append a new Table tab opened
-    /// directly to Structure mode. Legacy `Browse` / `Structure` slots
-    /// from older sessions are also considered a match so the user
-    /// doesn't end up with both a legacy tab and a fresh Table tab.
+    /// Sidebar right-click → "Edit Structure". Opens a dedicated
+    /// Structure tab (separate AdwTabPage). If one already exists for
+    /// this `(schema, table)` it's just re-selected; otherwise a new
+    /// `WorkspaceTab::Structure` is appended via
+    /// `append_existing_structure_tab`. The Data-side Browse tab (if
+    /// any) is independent — both can stay open side by side.
     pub(super) fn on_edit_structure_tab(
         &mut self,
         schema: Option<String>,
@@ -46,56 +45,21 @@ impl App {
             self.show_toast(&crate::tr!("Connect to a database first."));
             return;
         }
-        let selected_page = self.workspace_tab_view.as_ref().and_then(|tv| tv.selected_page());
-        let mut existing_table: Option<(uuid::Uuid, adw::TabPage)> = None;
-        let mut existing_legacy: Option<adw::TabPage> = None;
-        for (id, tab) in self.workspace_tabs.borrow().iter() {
-            match tab {
-                WorkspaceTab::Table(slot) if slot.schema == schema && slot.table == table => {
-                    if Some(&slot.page) == selected_page.as_ref() {
-                        existing_table = Some((*id, slot.page.clone()));
-                        break;
-                    }
-                    if existing_table.is_none() {
-                        existing_table = Some((*id, slot.page.clone()));
-                    }
-                }
-                WorkspaceTab::Structure(slot)
-                    if slot.mode == StructureMode::Edit && slot.schema == schema && slot.table == table =>
-                {
-                    if existing_legacy.is_none() {
-                        existing_legacy = Some(slot.page.clone());
-                    }
-                }
-                _ => {}
+        let existing_structure = self.workspace_tabs.borrow().iter().find_map(|(_, tab)| match tab {
+            WorkspaceTab::Structure(slot)
+                if slot.mode == StructureMode::Edit && slot.schema == schema && slot.table == table =>
+            {
+                Some(slot.page.clone())
             }
-        }
-        if let Some((id, page)) = existing_table {
-            if let Some(tab_view) = self.workspace_tab_view.as_ref() {
-                tab_view.set_selected_page(&page);
-            }
-            if let Some(WorkspaceTab::Table(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
-                slot.view_stack.set_visible_child_name("structure");
-                slot.mode = super::TableMode::Structure;
-            }
-            return;
-        }
-        if let Some(page) = existing_legacy
+            _ => None,
+        });
+        if let Some(page) = existing_structure
             && let Some(tab_view) = self.workspace_tab_view.as_ref()
         {
             tab_view.set_selected_page(&page);
             return;
         }
-        super::App::append_table_tab(
-            self,
-            schema,
-            table,
-            super::TableMode::Structure,
-            0,
-            self.default_page_size,
-            None,
-            sender,
-        );
+        self.append_existing_structure_tab(schema, table, sender);
     }
 
     /// Right-click → "Drop Table…", or in-tab destructive button.
@@ -290,7 +254,11 @@ impl App {
             };
             match slot {
                 WorkspaceTab::Structure(s) => s.mode,
-                WorkspaceTab::Table(s) => s.structure_mode,
+                // Table tabs no longer host the DDL editor — structure
+                // lives in its own WorkspaceTab::Structure. A structure
+                // Save dispatched against a Table-tab id can only be a
+                // stale queued message from before the split; clear the
+                // in-flight gate and bail.
                 _ => {
                     self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
                     return;
@@ -405,11 +373,16 @@ impl App {
                 if let Some(tab_view) = self.workspace_tab_view.clone() {
                     self.finish_close_workspace_tab(tab_id, &tab_view);
                 }
+                // After the CREATE TABLE lands, drop the user into a
+                // Browse tab on the freshly-created table — they just
+                // designed it, so showing Data (empty grid) is the
+                // natural next step. If they want to keep editing the
+                // schema, sidebar right-click → "Edit Structure"
+                // reopens a Structure tab.
                 super::App::append_table_tab(
                     self,
                     schema.clone(),
                     name.clone(),
-                    super::TableMode::Structure,
                     0,
                     self.default_page_size,
                     None,
