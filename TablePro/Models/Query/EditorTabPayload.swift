@@ -8,14 +8,12 @@
 
 import Foundation
 
-/// Declares the intent behind creating a new window tab.
+/// Declares the intent behind creating a new in-window tab.
 internal enum TabIntent: String, Codable, Hashable {
     /// Open a specific tab with content (table, query with SQL, create-table, etc.)
     case openContent
-    /// Create a new empty query tab (Cmd+T, native "+" button, toolbar "+")
+    /// Create a new empty query tab (Cmd+T, the tab strip "+" button, toolbar "+")
     case newEmptyTab
-    /// First window for a connection — restore tabs from disk or create default
-    case restoreOrDefault
 }
 
 /// Payload passed to each native window tab to identify what content it should display.

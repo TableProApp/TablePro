@@ -364,6 +364,43 @@ final class MainContentCommandActions {
         }
     }
 
+    /// Close a specific tab by id. When it is the selected tab, this is the
+    /// same as `closeTab()`. When it is a background tab, the unsaved-changes
+    /// guard is evaluated against that tab's own state without first selecting
+    /// it, so the save dialog never fires the selection side effects.
+    func closeTab(id: UUID) {
+        guard let coordinator else { return }
+        guard id != coordinator.tabManager.selectedTabId else {
+            closeTab()
+            return
+        }
+
+        guard let tab = coordinator.tabManager.tabs.first(where: { $0.id == id }) else { return }
+        let tabHasUnsavedChanges = tab.pendingChanges.hasChanges || tab.content.isFileDirty
+
+        guard tabHasUnsavedChanges else {
+            coordinator.closeTab(id: id)
+            return
+        }
+
+        Task {
+            let result = await AlertHelper.confirmSaveChanges(
+                message: String(localized: "Your changes will be lost if you don't save them."),
+                window: NSApp.keyWindow
+            )
+            switch result {
+            case .save:
+                coordinator.tabManager.selectTab(id: id)
+                await saveAndClose()
+            case .dontSave:
+                coordinator.tabManager.selectTab(id: id)
+                discardAndClose()
+            case .cancel:
+                break
+            }
+        }
+    }
+
     private func performClose() {
         coordinator?.closeCurrentTab()
     }

@@ -30,8 +30,17 @@ extension MainContentCoordinator {
     /// Remove the currently selected tab. When it is the last tab, close the
     /// connection window instead.
     func closeCurrentTab() {
-        guard let selectedId = tabManager.selectedTabId,
-              let tab = tabManager.tabs.first(where: { $0.id == selectedId }) else {
+        guard let selectedId = tabManager.selectedTabId else {
+            contentWindow?.close()
+            return
+        }
+        closeTab(id: selectedId)
+    }
+
+    /// Remove the tab with the given id. When it is the last tab, close the
+    /// connection window instead.
+    func closeTab(id: UUID) {
+        guard let tab = tabManager.tabs.first(where: { $0.id == id }) else {
             contentWindow?.close()
             return
         }
@@ -47,7 +56,7 @@ extension MainContentCoordinator {
         }
         querySortCache.removeValue(forKey: tab.id)
         displayFormatsCache.removeValue(forKey: tab.id)
-        tabManager.removeTab(id: selectedId)
+        tabManager.removeTab(id: id)
     }
 
     // MARK: - New Tab Intent
@@ -60,8 +69,6 @@ extension MainContentCoordinator {
             applyOpenContentIntent(payload)
         case .newEmptyTab:
             addNewQueryTab(initialQuery: payload.initialQuery)
-        case .restoreOrDefault:
-            tabIntentLogger.warning("handleNewTabIntent received .restoreOrDefault, ignored")
         }
 
         if let sourceFileURL = payload.sourceFileURL, let windowId {

@@ -26,8 +26,7 @@ struct ConnectionSplitContainerView: View {
                 tabManager: tabManager,
                 onNewTab: { coordinator.addNewQueryTab() },
                 onCloseTab: { tabId in
-                    tabManager.selectTab(id: tabId)
-                    coordinator.commandActions?.closeTab()
+                    coordinator.commandActions?.closeTab(id: tabId)
                 },
                 onSelectTab: { tabManager.selectTab(id: $0) },
                 onMoveTab: { tabManager.moveTab(from: $0, to: $1) }
