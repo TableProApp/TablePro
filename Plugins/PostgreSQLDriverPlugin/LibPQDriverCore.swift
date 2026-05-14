@@ -7,12 +7,9 @@
 //
 
 import Foundation
-import os
 import TableProPluginKit
 
 final class LibPQDriverCore: @unchecked Sendable {
-    private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "LibPQDriverCore")
-
     private let config: DriverConnectionConfig
     private var libpqConnection: LibPQPluginConnection?
 

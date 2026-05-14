@@ -32,9 +32,9 @@ struct DatabaseTypeCockroachDBTests {
         #expect(DatabaseType.cockroachdb.supportsForeignKeys == true)
     }
 
-    @Test("supportsSchemaEditing is true")
+    @Test("supportsSchemaEditing is false (no driver-side DDL generators)")
     func supportsSchemaEditing() {
-        #expect(DatabaseType.cockroachdb.supportsSchemaEditing == true)
+        #expect(DatabaseType.cockroachdb.supportsSchemaEditing == false)
     }
 
     @Test("iconName is cockroachdb-icon")

@@ -9,13 +9,10 @@
 //
 
 import Foundation
-import os
 import TableProPluginKit
 
 final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     let core: LibPQDriverCore
-
-    private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "CockroachPluginDriver")
 
     private var cachedServerVersion: String?
 
