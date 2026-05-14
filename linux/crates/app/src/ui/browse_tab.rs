@@ -1049,32 +1049,25 @@ impl BrowseTab {
         self.suppress_combo_emit.set(false);
     }
 
-    /// Decide whether the inner stack shows the empty status page or
-    /// the grid. The empty page only makes sense on the first page
-    /// with no persisted rows AND no in-memory drafts; any draft (or
-    /// any persisted row) means the grid has content to show and
-    /// must take over.
+    /// Switch the inner stack to the grid once the first page has
+    /// loaded. Previously this helper also flipped to a dedicated
+    /// "empty" AdwStatusPage when there were 0 rows + 0 drafts on
+    /// page 0 — but that pattern triggered a GtkListBase bounds
+    /// invariant violation when the user then inserted a draft and
+    /// the stack crossfaded back to "grid": the GtkColumnView's
+    /// adjustments hadn't been allocated yet because the view was
+    /// the hidden stack child during the empty interlude, and the
+    /// first scroll / select call against it aborted with
+    /// `gtk_list_base_update_adjustments: bounds.y == 0`.
     ///
-    /// Called from every code path that mutates either side of the
-    /// equation: `refresh_grid_chrome` (post `RowsLoaded`),
-    /// `InsertRow` (after appending the draft), and any future
-    /// path that adds / removes drafts without going through a
-    /// fresh page fetch. Going through a single helper keeps the
-    /// empty ↔ grid transition derivable from observed state
-    /// rather than ad-hoc flips at each call site.
+    /// GNOME Files / Builder don't show a status page for empty
+    /// lists either — they just render an empty list with column
+    /// headers. Mirror that: once the grid is built, stay on it
+    /// regardless of row count. The "Press Ctrl+N to add the first
+    /// row" hint moves into the column view's empty body (handled
+    /// natively by GtkColumnView's empty-area rendering).
     fn refresh_inner_stack_visibility(&self) {
-        let has_persisted_rows = self
-            .current_result
-            .as_ref()
-            .map(|r| !r.rows.is_empty())
-            .unwrap_or(false);
-        let has_drafts = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| !t.drafts().is_empty())
-            .unwrap_or(false);
-        let on_first_page = self.current_offset == 0;
-        if !has_persisted_rows && !has_drafts && on_first_page {
-            self.show_empty_inner();
-            self.inner_stack.set_visible_child_name("empty");
-        } else {
+        if self.current_result.is_some() {
             self.inner_stack.set_visible_child_name("grid");
         }
     }
@@ -1263,34 +1256,6 @@ impl BrowseTab {
         self.replace_status_child("error", &page);
     }
 
-    /// Empty-state placeholder for tables with no rows on offset 0 and
-    /// no pending drafts. AdwStatusPage with a context-appropriate
-    /// description: "Press Ctrl+N to add the first row" for editable
-    /// tables, "Use the SQL editor to add rows" for read-only ones.
-    fn show_empty_inner(&self) {
-        let (title, description) = if self.read_only {
-            (
-                crate::tr!("No rows yet"),
-                crate::tr!("This table is empty. Use the SQL editor to add rows."),
-            )
-        } else if !self.has_primary_key() {
-            (
-                crate::tr!("No rows yet"),
-                crate::tr!("This table has no primary key. Use the SQL editor to add rows."),
-            )
-        } else {
-            (
-                crate::tr!("No rows yet"),
-                crate::tr!("Press Ctrl+N to add the first row."),
-            )
-        };
-        let page = adw::StatusPage::builder()
-            .icon_name("view-grid-symbolic")
-            .title(&title)
-            .description(&description)
-            .build();
-        self.replace_status_child("empty", &page);
-    }
 }
 
 impl SimpleComponent for BrowseTab {
