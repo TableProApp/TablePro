@@ -10,6 +10,11 @@ mod ui;
 
 const APP_ID: &str = "com.tablepro.linux";
 
+/// Compiled gresource produced by `build.rs` (glib-build-tools).
+/// Holds symbolic icons that Ubuntu's adwaita-icon-theme is missing
+/// (notably `funnel-symbolic`, which only ships on GNOME ≥48).
+const APP_GRESOURCE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app.gresource"));
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
@@ -54,6 +59,8 @@ fn main() {
     let registry = Arc::new(build_registry());
     tracing::info!(drivers = registry.len(), "starting tablepro-app");
 
+    register_bundled_icons();
+
     let app = RelmApp::new(APP_ID);
     app.run::<ui::App>(registry);
 
@@ -74,4 +81,27 @@ fn build_registry() -> DriverRegistry {
     r.register(Arc::new(drivers_postgres::PgDriver));
     r.register(Arc::new(drivers_sqlite::SqliteDriver));
     r
+}
+
+/// Loads the embedded gresource bundle and points the default
+/// `gtk::IconTheme` at its `/com/tablepro/linux/icons` prefix so
+/// `funnel-symbolic` (and any future fallback icons) resolves even
+/// on systems where the stock adwaita-icon-theme lacks them.
+///
+/// Must run after GTK has been initialised at least implicitly —
+/// `gtk::IconTheme::for_display(Display::default())` needs a display.
+/// Relm4 lazily initialises GTK on the first `RelmApp` activation,
+/// so we defer the icon-theme tweak to the app's startup signal via
+/// `gtk::gio::ApplicationCommandLine`-adjacent timing: doing it before
+/// `app.run` is fine because the call only registers the resource
+/// bundle (display-independent); the search-path wiring is done lazily
+/// inside `ui::App::init`.
+fn register_bundled_icons() {
+    use gtk4::gio;
+    match gio::Resource::from_data(&glib::Bytes::from_static(APP_GRESOURCE)) {
+        Ok(res) => gio::resources_register(&res),
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to load embedded gresource; bundled icons unavailable");
+        }
+    }
 }

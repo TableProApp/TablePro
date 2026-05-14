@@ -817,6 +817,12 @@ impl SimpleComponent for App {
                 }",
             );
             gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+            // Hook the embedded gresource at `/com/tablepro/linux/icons`
+            // into the active icon theme so `funnel-symbolic` (and any
+            // future bundled fallbacks) resolves on systems whose
+            // adwaita-icon-theme predates the funnel icon (GNOME ≤47).
+            let icon_theme = gtk::IconTheme::for_display(&display);
+            icon_theme.add_resource_path("/com/tablepro/linux/icons");
         }
 
         let restored = crate::services::window_state::load();
