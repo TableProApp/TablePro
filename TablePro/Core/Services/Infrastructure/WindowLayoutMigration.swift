@@ -7,25 +7,37 @@
 //  the one-window-per-connection model.
 //
 
-import AppKit
+import Foundation
 import os
 
 @MainActor
 internal enum WindowLayoutMigration {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WindowLayoutMigration")
-    private static let migrationCompleteKey = "com.TablePro.windowLayoutMigrationComplete"
+    static let migrationCompleteKey = "com.TablePro.windowLayoutMigrationComplete"
 
     private static let legacySplitAutosaveName = "com.TablePro.mainSplit"
     private static let legacyInspectorPresentedKey = "com.TablePro.rightPanel.isPresented"
 
-    private static func splitFramesKey(_ autosaveName: String) -> String {
+    static func splitFramesKey(_ autosaveName: String) -> String {
         "NSSplitView Subview Frames \(autosaveName)"
+    }
+
+    static func perConnectionSplitFramesKey(_ connectionId: UUID) -> String {
+        splitFramesKey("com.TablePro.mainSplit.\(connectionId.uuidString)")
+    }
+
+    static func perConnectionInspectorKey(_ connectionId: UUID) -> String {
+        "com.TablePro.rightPanel.isPresented.\(connectionId.uuidString)"
     }
 
     /// Seed each saved connection's per-connection layout keys from the old
     /// global values, once. Runs at launch before any window opens.
-    internal static func runIfNeeded() {
-        let defaults = UserDefaults.standard
+    static func runIfNeeded() {
+        let connectionIds = ConnectionStorage.shared.loadConnections().map(\.id)
+        migrate(defaults: .standard, connectionIds: connectionIds)
+    }
+
+    static func migrate(defaults: UserDefaults, connectionIds: [UUID]) {
         guard !defaults.bool(forKey: migrationCompleteKey) else { return }
 
         let legacySplitFrames = defaults.array(forKey: splitFramesKey(legacySplitAutosaveName))
@@ -38,22 +50,21 @@ internal enum WindowLayoutMigration {
             return
         }
 
-        let connections = ConnectionStorage.shared.loadConnections()
-        for connection in connections {
-            let perConnectionSplitKey = splitFramesKey("com.TablePro.mainSplit.\(connection.id.uuidString)")
+        for connectionId in connectionIds {
+            let perConnectionSplitKey = perConnectionSplitFramesKey(connectionId)
             if let legacySplitFrames, defaults.object(forKey: perConnectionSplitKey) == nil {
                 defaults.set(legacySplitFrames, forKey: perConnectionSplitKey)
             }
 
-            let perConnectionInspectorKey = "com.TablePro.rightPanel.isPresented.\(connection.id.uuidString)"
-            if hasLegacyInspector, defaults.object(forKey: perConnectionInspectorKey) == nil {
-                defaults.set(legacyInspectorPresented, forKey: perConnectionInspectorKey)
+            let inspectorKey = perConnectionInspectorKey(connectionId)
+            if hasLegacyInspector, defaults.object(forKey: inspectorKey) == nil {
+                defaults.set(legacyInspectorPresented, forKey: inspectorKey)
             }
         }
 
         defaults.removeObject(forKey: splitFramesKey(legacySplitAutosaveName))
         defaults.removeObject(forKey: legacyInspectorPresentedKey)
         defaults.set(true, forKey: migrationCompleteKey)
-        logger.trace("Window-layout migration complete for \(connections.count) connections")
+        logger.trace("Window-layout migration complete for \(connectionIds.count) connections")
     }
 }
