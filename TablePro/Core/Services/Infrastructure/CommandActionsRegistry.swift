@@ -8,7 +8,7 @@
 //  (toolbar items + main content) is its own SwiftUI scene context, and
 //  focus-scene-value propagation breaks once a toolbar Button takes scene
 //  focus. The registry is updated on `windowDidBecomeKey` from
-//  `TabWindowController`, then read by `AppMenuCommands` as a fallback when
+//  `ConnectionWindowController`, then read by `AppMenuCommands` as a fallback when
 //  `@FocusedValue` returns nil — so menu shortcuts (Cmd+T, Cmd+1...9, etc.)
 //  stay live regardless of which sub-NSHostingController holds focus.
 //

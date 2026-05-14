@@ -8,8 +8,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor @Suite("Save Completion")
@@ -22,7 +22,7 @@ struct SaveCompletionTests {
     ) -> (MainContentCoordinator, QueryTabManager, DataChangeManager) {
         var conn = TestFixtures.makeConnection(type: type)
         conn.safeModeLevel = safeModeLevel
-        let state = SessionStateFactory.create(connection: conn, payload: nil)
+        let state = SessionStateFactory.create(connection: conn)
         return (state.coordinator, state.tabManager, state.changeManager)
     }
 

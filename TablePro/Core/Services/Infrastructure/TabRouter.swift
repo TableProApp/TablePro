@@ -81,8 +81,7 @@ internal final class TabRouter {
             return
         }
         try await runPreConnectScriptIfNeeded(connection)
-        let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
-        WindowManager.shared.openTab(payload: payload)
+        WindowManager.shared.openConnectionWindow(for: connection.id)
         NSApp.activate(ignoringOtherApps: true)
         try await DatabaseManager.shared.ensureConnected(connection)
         guard WindowManager.shared.hasOpenWindow(for: connection.id) else {
@@ -131,7 +130,7 @@ internal final class TabRouter {
             schemaName: schema,
             isView: isView
         )
-        WindowManager.shared.openTab(payload: payload)
+        WindowManager.shared.openConnectionWindow(for: connectionId, intent: payload)
         NSApp.activate(ignoringOtherApps: true)
         closeWelcomeWindows()
     }
@@ -195,7 +194,7 @@ internal final class TabRouter {
             tabType: .query,
             initialQuery: sql
         )
-        WindowManager.shared.openTab(payload: payload)
+        WindowManager.shared.openConnectionWindow(for: connectionId, intent: payload)
         NSApp.activate(ignoringOtherApps: true)
         closeWelcomeWindows()
     }
@@ -275,8 +274,7 @@ internal final class TabRouter {
             }
 
             try await runPreConnectScriptIfNeeded(connection)
-            let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
-            WindowManager.shared.openTab(payload: payload)
+            WindowManager.shared.openConnectionWindow(for: connection.id)
             NSApp.activate(ignoringOtherApps: true)
             try await DatabaseManager.shared.ensureConnected(connection)
             closeWelcomeWindows()
@@ -316,8 +314,7 @@ internal final class TabRouter {
             type: type
         )
 
-        let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
-        WindowManager.shared.openTab(payload: payload)
+        WindowManager.shared.openConnectionWindow(for: connection.id)
         NSApp.activate(ignoringOtherApps: true)
         try await DatabaseManager.shared.ensureConnected(connection)
         closeWelcomeWindows()
@@ -346,7 +343,7 @@ internal final class TabRouter {
                 initialQuery: content,
                 sourceFileURL: url
             )
-            WindowManager.shared.openTab(payload: payload)
+            WindowManager.shared.openConnectionWindow(for: session.connection.id, intent: payload)
             NSApp.activate(ignoringOtherApps: true)
         } else {
             WelcomeRouter.shared.enqueueSQLFile(url)

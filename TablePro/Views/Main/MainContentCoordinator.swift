@@ -204,10 +204,10 @@ final class MainContentCoordinator {
     /// (e.g. save-then-close). Set before calling `saveChanges`, resumed by `executeCommitStatements`.
     @ObservationIgnored internal var saveCompletionContinuation: CheckedContinuation<Bool, Never>?
 
-    // MARK: - Window Lifecycle (driven by TabWindowController NSWindowDelegate)
+    // MARK: - Window Lifecycle (driven by ConnectionWindowController NSWindowDelegate)
 
     /// Whether this coordinator's window is the key (focused) window.
-    /// Updated by TabWindowController delegate methods; consumed by
+    /// Updated by ConnectionWindowController delegate methods; consumed by
     /// event handlers (e.g. sidebar table-selection navigation filter).
     @ObservationIgnored var isKeyWindow = false
 
@@ -262,40 +262,23 @@ final class MainContentCoordinator {
         Self.activeCoordinators.removeValue(forKey: instanceId)
     }
 
-    /// Collect non-preview tabs for persistence.
+    /// Collect non-preview tabs for persistence. One coordinator owns all tabs
+    /// for a connection, so this is that coordinator's tab list.
     static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
-        let coordinators = activeCoordinators.values
-            .filter { $0.connectionId == connectionId }
-
-        // Sort by native window tab order to preserve left-to-right position
-        let orderedCoordinators: [MainContentCoordinator]
-        if let firstWindow = coordinators.compactMap({ $0.contentWindow }).first,
-           let tabbedWindows = firstWindow.tabbedWindows {
-            let windowOrder = Dictionary(uniqueKeysWithValues:
-                tabbedWindows.enumerated().map { (ObjectIdentifier($0.element), $0.offset) }
-            )
-            orderedCoordinators = coordinators.sorted { a, b in
-                let aIdx = a.contentWindow.flatMap { windowOrder[ObjectIdentifier($0)] } ?? Int.max
-                let bIdx = b.contentWindow.flatMap { windowOrder[ObjectIdentifier($0)] } ?? Int.max
-                return aIdx < bIdx
-            }
-        } else {
-            orderedCoordinators = Array(coordinators)
-        }
-
-        return orderedCoordinators
-            .flatMap { $0.tabManager.tabs }
-            .filter { !$0.isPreview }
+        activeCoordinators.values
+            .first { $0.connectionId == connectionId }?
+            .tabManager.tabs
+            .filter { !$0.isPreview } ?? []
     }
 
-    /// Get selected tab ID from any coordinator for a given connectionId.
+    /// Get the selected tab ID for a connection.
     static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
         activeCoordinators.values
-            .first { $0.connectionId == connectionId && $0.tabManager.selectedTabId != nil }?
+            .first { $0.connectionId == connectionId }?
             .tabManager.selectedTabId
     }
 
-    /// Check if this coordinator is the first registered for its connection.
+    /// Check if this coordinator is the one registered for its connection.
     private func isFirstCoordinatorForConnection() -> Bool {
         Self.activeCoordinators.values
             .first { $0.connectionId == self.connectionId } === self
@@ -541,21 +524,18 @@ final class MainContentCoordinator {
             )
             return
         }
-        Task { [connectionId = connection.id, routine] in
+        Task { [weak self, routine] in
             do {
                 let ddl = try await adapter.fetchRoutineDDL(routine: routine)
                 let titleFormat: String = routine.kind == .procedure
                     ? String(localized: "Procedure: %@")
                     : String(localized: "Function: %@")
-                let payload = EditorTabPayload(
-                    connectionId: connectionId,
-                    tabType: .query,
-                    initialQuery: ddl,
-                    skipAutoExecute: true,
-                    tabTitle: String(format: titleFormat, routine.name)
-                )
                 await MainActor.run {
-                    WindowManager.shared.openTab(payload: payload)
+                    self?.tabManager.addTab(
+                        initialQuery: ddl,
+                        title: String(format: titleFormat, routine.name),
+                        databaseName: self?.activeDatabaseName ?? ""
+                    )
                 }
             } catch {
                 await MainActor.run {
@@ -863,12 +843,7 @@ final class MainContentCoordinator {
                 $0.hasUserInteraction = true
             }
         } else {
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .query,
-                initialQuery: query
-            )
-            WindowManager.shared.openTab(payload: payload)
+            tabManager.addTab(initialQuery: query, databaseName: activeDatabaseName)
         }
     }
 
@@ -884,15 +859,8 @@ final class MainContentCoordinator {
                 }
                 mutTab.hasUserInteraction = true
             }
-        } else if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: activeDatabaseName)
         } else {
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .query,
-                initialQuery: query
-            )
-            WindowManager.shared.openTab(payload: payload)
+            tabManager.addTab(initialQuery: query, databaseName: activeDatabaseName)
         }
     }
 

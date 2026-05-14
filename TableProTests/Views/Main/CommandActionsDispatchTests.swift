@@ -7,10 +7,10 @@
 //
 
 import Foundation
-import TableProPluginKit
 import SwiftUI
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 @MainActor @Suite("CommandActions Dispatch")
 struct CommandActionsDispatchTests {
@@ -18,7 +18,7 @@ struct CommandActionsDispatchTests {
 
     private func makeSUT() -> (MainContentCommandActions, MainContentCoordinator) {
         let connection = TestFixtures.makeConnection()
-        let state = SessionStateFactory.create(connection: connection, payload: nil)
+        let state = SessionStateFactory.create(connection: connection)
         let coordinator = state.coordinator
 
         var selectedTables: Set<TableInfo> = []

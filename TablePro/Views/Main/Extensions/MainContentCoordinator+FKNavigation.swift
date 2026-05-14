@@ -43,7 +43,8 @@ extension MainContentCoordinator {
             return
         }
 
-        // If current tab has unsaved changes, open in a new native tab instead of replacing
+        // If the current tab has unsaved changes, open a new in-window tab
+        // instead of replacing the active one.
         if changeManager.hasChanges {
             let fkFilterState = TabFilterState(
                 filters: [filter],
@@ -51,16 +52,24 @@ extension MainContentCoordinator {
                 isVisible: true,
                 filterLogicMode: .and
             )
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .table,
-                tableName: referencedTable,
-                databaseName: currentDatabase,
-                schemaName: targetSchema,
-                isView: false,
-                initialFilterState: fkFilterState
-            )
-            WindowManager.shared.openTab(payload: payload)
+            do {
+                try tabManager.addTableTab(
+                    tableName: referencedTable,
+                    databaseType: connection.type,
+                    databaseName: currentDatabase
+                )
+            } catch {
+                fkNavigationLogger.error(
+                    "navigateToFKReference addTableTab failed: \(error.localizedDescription, privacy: .public)"
+                )
+                return
+            }
+            if let index = tabManager.selectedTabIndex {
+                tabManager.mutate(at: index) { tab in
+                    tab.tableContext.schemaName = targetSchema
+                    tab.filterState = fkFilterState
+                }
+            }
             return
         }
 

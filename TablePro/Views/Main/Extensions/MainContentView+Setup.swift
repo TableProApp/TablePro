@@ -94,79 +94,54 @@ extension MainContentView {
     }
 
     private func handleRestoreOrDefault() async {
-        if WindowLifecycleMonitor.shared.hasOtherWindows(for: connection.id, excluding: windowId) {
-            MainContentView.lifecycleLogger.info(
-                "[open] handleRestoreOrDefault short-circuit (other windows exist) windowId=\(windowId, privacy: .public)"
-            )
-            return
-        }
-
         let restoreStart = Date()
         let result = await coordinator.persistence.restoreFromDisk()
         MainContentView.lifecycleLogger.info(
             "[open] restoreFromDisk done windowId=\(windowId, privacy: .public) tabsRestored=\(result.tabs.count) source=\(String(describing: result.source), privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(restoreStart) * 1_000))"
         )
         guard !result.tabs.isEmpty else { return }
-        do {
-            var restoredTabs = result.tabs
-            for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
-                if let tableName = restoredTabs[i].tableContext.tableName {
-                    do {
-                        restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
-                            tableName: tableName,
-                            databaseType: connection.type,
-                            schemaName: restoredTabs[i].tableContext.schemaName
-                        )
-                    } catch {
-                        MainContentView.lifecycleLogger.error(
-                            "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                        )
-                    }
+
+        var restoredTabs = result.tabs
+        for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
+            if let tableName = restoredTabs[i].tableContext.tableName {
+                do {
+                    restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
+                        tableName: tableName,
+                        databaseType: connection.type,
+                        schemaName: restoredTabs[i].tableContext.schemaName
+                    )
+                } catch {
+                    MainContentView.lifecycleLogger.error(
+                        "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
                 }
             }
+        }
 
-            let selectedId = result.selectedTabId
+        // All restored tabs load into this connection window's tab manager.
+        tabManager.tabs = restoredTabs
+        let selectedId = result.selectedTabId.flatMap { id in
+            restoredTabs.contains(where: { $0.id == id }) ? id : nil
+        }
+        tabManager.selectedTabId = selectedId ?? restoredTabs.first?.id
 
-            // First tab in the array gets the current window to preserve order.
-            // Remaining tabs open as native window tabs in order.
-            let firstTab = restoredTabs[0]
-            tabManager.tabs = [firstTab]
-            tabManager.selectedTabId = firstTab.id
+        guard let selectedTab = tabManager.selectedTab,
+              selectedTab.tabType == .table,
+              !selectedTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
 
-            let remainingTabs = Array(restoredTabs.dropFirst())
-
-            if !remainingTabs.isEmpty {
-                let selectedWasFirst = firstTab.id == selectedId
-                for tab in remainingTabs {
-                    let restorePayload = EditorTabPayload(
-                        from: tab, connectionId: connection.id, skipAutoExecute: true)
-                    WindowManager.shared.openTab(payload: restorePayload)
+        if let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected {
+            if !selectedTab.tableContext.databaseName.isEmpty,
+               selectedTab.tableContext.databaseName != session.activeDatabase {
+                Task { await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName) }
+            } else {
+                if let tableName = selectedTab.tableContext.tableName {
+                    coordinator.restoreLastHiddenColumnsForTable(tableName)
                 }
-                if selectedWasFirst {
-                    viewWindow?.makeKeyAndOrderFront(nil)
-                }
+                coordinator.executeTableTabQueryDirectly()
             }
-
-            if firstTab.tabType == .table,
-                !firstTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            {
-                if let session = DatabaseManager.shared.activeSessions[connection.id],
-                    session.isConnected
-                {
-                    if !firstTab.tableContext.databaseName.isEmpty,
-                        firstTab.tableContext.databaseName != session.activeDatabase
-                    {
-                        Task { await coordinator.switchDatabase(to: firstTab.tableContext.databaseName) }
-                    } else {
-                        if let tableName = firstTab.tableContext.tableName {
-                            coordinator.restoreLastHiddenColumnsForTable(tableName)
-                        }
-                        coordinator.executeTableTabQueryDirectly()
-                    }
-                } else {
-                    coordinator.needsLazyLoad = true
-                }
-            }
+        } else {
+            coordinator.needsLazyLoad = true
         }
     }
 
@@ -213,23 +188,13 @@ extension MainContentView {
         MainContentView.lifecycleLogger.info(
             "[open] configureWindow start windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public)"
         )
-        let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
-        if isPreview {
-            window.subtitle = String(format: String(localized: "%@ — Preview"), connection.name)
-        } else {
-            window.subtitle = connection.name
-        }
-
-        let resolvedId = WindowManager.tabbingIdentifier(for: connection.id)
-        window.tabbingIdentifier = resolvedId
-        window.tabbingMode = .preferred
+        window.subtitle = connection.name
         coordinator.windowId = windowId
 
         WindowLifecycleMonitor.shared.register(
             window: window,
             connectionId: connection.id,
-            windowId: windowId,
-            isPreview: isPreview
+            windowId: windowId
         )
         viewWindow = window
         coordinator.contentWindow = window
@@ -264,7 +229,7 @@ extension MainContentView {
             splitVC.installToolbar(coordinator: coordinator)
         }
         MainContentView.lifecycleLogger.info(
-            "[open] configureWindow done windowId=\(windowId, privacy: .public) tabbingId=\(resolvedId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            "[open] configureWindow done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 

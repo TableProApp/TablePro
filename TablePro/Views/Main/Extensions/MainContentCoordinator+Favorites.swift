@@ -50,16 +50,6 @@ extension MainContentCoordinator {
             WindowLifecycleMonitor.shared.unregisterSourceFile(favorite.fileURL)
         }
 
-        if tabManager.tabs.isEmpty {
-            tabManager.addTab(
-                initialQuery: loaded.content,
-                title: favorite.name,
-                sourceFileURL: favorite.fileURL
-            )
-            registerWindowForSourceFile(favorite.fileURL)
-            return
-        }
-
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query,
            tab.content.sourceFileURL == nil,
@@ -76,15 +66,13 @@ extension MainContentCoordinator {
             return
         }
 
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .query,
-            databaseName: activeDatabaseName,
+        tabManager.addTab(
             initialQuery: loaded.content,
-            sourceFileURL: favorite.fileURL,
-            tabTitle: favorite.name
+            title: favorite.name,
+            databaseName: activeDatabaseName,
+            sourceFileURL: favorite.fileURL
         )
-        WindowManager.shared.openTab(payload: payload)
+        registerWindowForSourceFile(favorite.fileURL)
     }
 
     private func registerWindowForSourceFile(_ url: URL) {
@@ -102,11 +90,6 @@ extension MainContentCoordinator {
     }
 
     func runFavoriteInNewTab(_ favorite: SQLFavorite) {
-        if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: favorite.query)
-            return
-        }
-
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query,
            tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -114,12 +97,6 @@ extension MainContentCoordinator {
             return
         }
 
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .query,
-            databaseName: activeDatabaseName,
-            initialQuery: favorite.query
-        )
-        WindowManager.shared.openTab(payload: payload)
+        tabManager.addTab(initialQuery: favorite.query, databaseName: activeDatabaseName)
     }
 }

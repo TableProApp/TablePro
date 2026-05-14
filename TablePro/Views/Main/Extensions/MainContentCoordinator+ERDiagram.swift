@@ -3,38 +3,20 @@ import Foundation
 
 extension MainContentCoordinator {
     /// Open (or focus) an ER Diagram tab for the current database/schema.
-    ///
-    /// Resolution order:
-    /// 1. If another window for this connection already hosts an ER Diagram
-    ///    tab with the same schema key, focus that window.
-    /// 2. If this window's tabManager is empty (fresh window with no restored
-    ///    tabs yet), add the ER Diagram tab locally.
-    /// 3. Otherwise open a new native window tab so the current tab's content
-    ///    (unsaved queries, filters, etc.) is preserved.
+    /// If a tab with the same schema key is already open, select it; otherwise
+    /// add a new ER Diagram tab.
     func showERDiagram() {
         let dbName = activeDatabaseName
         let schemaName = DatabaseManager.shared.session(for: connectionId)?.currentSchema
         let schemaKey = "\(dbName).\(schemaName ?? "default")"
 
-        if let existing = Self.coordinator(forConnection: connectionId, tabMatching: {
+        if let existing = tabManager.tabs.first(where: {
             $0.tabType == .erDiagram && $0.display.erDiagramSchemaKey == schemaKey
         }) {
-            existing.contentWindow?.makeKeyAndOrderFront(nil)
+            tabManager.selectTab(id: existing.id)
             return
         }
 
-        if tabManager.tabs.isEmpty {
-            tabManager.addERDiagramTab(schemaKey: schemaKey, databaseName: dbName)
-            return
-        }
-
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .erDiagram,
-            databaseName: dbName,
-            schemaName: schemaName,
-            erDiagramSchemaKey: schemaKey
-        )
-        WindowManager.shared.openTab(payload: payload)
+        tabManager.addERDiagramTab(schemaKey: schemaKey, databaseName: dbName)
     }
 }

@@ -2,7 +2,7 @@
 //  MainContentCoordinator+WindowLifecycle.swift
 //  TablePro
 //
-//  Window-lifecycle handlers invoked by TabWindowController's NSWindowDelegate
+//  Window-lifecycle handlers invoked by ConnectionWindowController's NSWindowDelegate
 //  methods. windowDidBecomeKey is intentionally lightweight (focus state +
 //  sidebar sync only) per Apple's documentation; visibility-scoped lazy-load
 //  lives in MainEditorContentView's `.task(id:)` modifier.
@@ -16,7 +16,7 @@ import TableProPluginKit
 extension MainContentCoordinator {
     // MARK: - Window Delegate Dispatch
 
-    /// Called from `TabWindowController.windowDidBecomeKey(_:)`.
+    /// Called from `ConnectionWindowController.windowDidBecomeKey(_:)`.
     /// Updates focus state, refreshes file-based schema if stale, and syncs the
     /// sidebar selection to the active tab. No query work runs here — lazy-load
     /// is owned by `MainEditorContentView`'s `.task(id:)` modifier.
@@ -42,7 +42,7 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Called from `TabWindowController.windowDidResignKey(_:)`.
+    /// Called from `ConnectionWindowController.windowDidResignKey(_:)`.
     /// Schedules a 5s-delayed eviction of row data in inactive tabs; a fresh
     /// `windowDidBecomeKey` cancels the eviction before it fires.
     func handleWindowDidResignKey() {
@@ -62,7 +62,7 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Called from `TabWindowController.windowWillClose(_:)`.
+    /// Called from `ConnectionWindowController.windowWillClose(_:)`.
     /// Synchronous teardown — no grace period, no delayed Task. Writes tab
     /// state to disk, releases SwiftUI-scoped right-panel state, then
     /// disconnects the session if this was the last window for the connection.

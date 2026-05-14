@@ -110,7 +110,7 @@ extension MainContentView {
         }
 
         let isPreviewMode = AppSettingsManager.shared.tabs.enablePreviewTabs
-        let hasPreview = WindowLifecycleMonitor.shared.previewWindow(for: connection.id) != nil
+        let hasPreview = tabManager.tabs.contains { $0.isPreview }
 
         let result = SidebarNavigationResult.resolve(
             clickedTableName: tableName,

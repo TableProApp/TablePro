@@ -4,9 +4,6 @@
 //
 
 import Foundation
-import os
-
-private let sessionStateLogger = Logger(subsystem: "com.TablePro", category: "SessionStateFactory")
 
 @MainActor
 enum SessionStateFactory {
@@ -15,45 +12,10 @@ enum SessionStateFactory {
         let changeManager: DataChangeManager
         let toolbarState: ConnectionToolbarState
         let coordinator: MainContentCoordinator
+        let rightPanelState: RightPanelState
     }
 
-    private static var pendingSessionStates: [UUID: SessionState] = [:]
-    private static var pendingExpirationTasks: [UUID: Task<Void, Never>] = [:]
-
-    private static let pendingEntryTTL: Duration = .seconds(5)
-
-    static func registerPending(_ state: SessionState, for payloadId: UUID) {
-        pendingSessionStates[payloadId] = state
-        pendingExpirationTasks[payloadId]?.cancel()
-        pendingExpirationTasks[payloadId] = Task { [payloadId] in
-            try? await Task.sleep(for: pendingEntryTTL)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                pendingExpirationTasks.removeValue(forKey: payloadId)
-                guard let abandoned = pendingSessionStates.removeValue(forKey: payloadId) else {
-                    return
-                }
-                MainContentCoordinator.activeCoordinators.removeValue(
-                    forKey: abandoned.coordinator.instanceId
-                )
-            }
-        }
-    }
-
-    static func consumePending(for payloadId: UUID) -> SessionState? {
-        pendingExpirationTasks.removeValue(forKey: payloadId)?.cancel()
-        return pendingSessionStates.removeValue(forKey: payloadId)
-    }
-
-    static func removePending(for payloadId: UUID) {
-        pendingExpirationTasks.removeValue(forKey: payloadId)?.cancel()
-        pendingSessionStates.removeValue(forKey: payloadId)
-    }
-
-    static func create(
-        connection: DatabaseConnection,
-        payload: EditorTabPayload?
-    ) -> SessionState {
+    static func create(connection: DatabaseConnection) -> SessionState {
         let connectionId = connection.id
         let tabSessionRegistry = TabSessionRegistry()
         let tabMgr = QueryTabManager(
@@ -82,87 +44,6 @@ enum SessionStateFactory {
             toolbarSt.currentDatabase = String(dbIndex)
         }
 
-        let activeDatabaseName = DatabaseManager.shared.activeDatabaseName(for: connection)
-
-        if let payload {
-            switch payload.intent {
-            case .openContent:
-                switch payload.tabType {
-                case .table:
-                    toolbarSt.isTableTab = true
-                    if let tableName = payload.tableName {
-                        do {
-                            if payload.isPreview {
-                                try tabMgr.addPreviewTableTab(
-                                    tableName: tableName,
-                                    databaseType: connection.type,
-                                    databaseName: payload.databaseName ?? activeDatabaseName
-                                )
-                            } else {
-                                try tabMgr.addTableTab(
-                                    tableName: tableName,
-                                    databaseType: connection.type,
-                                    databaseName: payload.databaseName ?? activeDatabaseName
-                                )
-                            }
-                        } catch {
-                            sessionStateLogger.error("create tab for table failed: \(error.localizedDescription, privacy: .public)")
-                        }
-                        if let index = tabMgr.selectedTabIndex {
-                            tabMgr.tabs[index].tableContext.isView = payload.isView
-                            tabMgr.tabs[index].tableContext.isEditable = !payload.isView
-                            tabMgr.tabs[index].tableContext.schemaName = payload.schemaName
-                            if payload.showStructure {
-                                tabMgr.tabs[index].display.resultsViewMode = .structure
-                            }
-                            if let initialFilter = payload.initialFilterState {
-                                tabMgr.tabs[index].filterState = initialFilter
-                            }
-                        }
-                    } else {
-                        tabMgr.addTab(databaseName: payload.databaseName ?? activeDatabaseName)
-                    }
-                case .query:
-                    let hasContent = payload.initialQuery != nil
-                        || payload.tabTitle != nil
-                        || payload.sourceFileURL != nil
-                    if hasContent {
-                        tabMgr.addTab(
-                            initialQuery: payload.initialQuery,
-                            title: payload.tabTitle,
-                            databaseName: payload.databaseName ?? activeDatabaseName,
-                            sourceFileURL: payload.sourceFileURL
-                        )
-                    }
-                case .createTable:
-                    tabMgr.addCreateTableTab(
-                        databaseName: payload.databaseName ?? activeDatabaseName
-                    )
-                case .erDiagram:
-                    tabMgr.addERDiagramTab(
-                        schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? activeDatabaseName,
-                        databaseName: payload.databaseName ?? activeDatabaseName
-                    )
-                case .serverDashboard:
-                    tabMgr.addServerDashboardTab()
-                case .terminal:
-                    tabMgr.addTerminalTab(
-                        databaseName: payload.databaseName ?? activeDatabaseName
-                    )
-                }
-            case .newEmptyTab:
-                let allTabs = MainContentCoordinator.allTabs(for: connection.id)
-                let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
-                tabMgr.addTab(
-                    initialQuery: payload.initialQuery,
-                    title: title,
-                    databaseName: payload.databaseName ?? activeDatabaseName
-                )
-            case .restoreOrDefault:
-                break
-            }
-        }
-
         let queryExecutor = QueryExecutor(connection: connection)
 
         let coord = MainContentCoordinator(
@@ -174,18 +55,16 @@ enum SessionStateFactory {
             queryExecutor: queryExecutor
         )
 
-        // Eagerly publish to the active-coordinator registry so concurrent
-        // window opens for the same connection both observe each other when
-        // computing globals like nextQueryTitle. Without this, two windows
-        // opened back-to-back can both compute "Query 1" before either has
-        // run onAppear.
+        // Eagerly publish to the active-coordinator registry so globals like
+        // nextQueryTitle observe this coordinator immediately.
         coord.registerEagerly()
 
         return SessionState(
             tabManager: tabMgr,
             changeManager: changeMgr,
             toolbarState: toolbarSt,
-            coordinator: coord
+            coordinator: coord,
+            rightPanelState: RightPanelState()
         )
     }
 }

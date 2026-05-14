@@ -47,8 +47,7 @@ struct FocusedCommandActionsModifier: ViewModifier {
 
 #Preview("With Connection") {
     let state = SessionStateFactory.create(
-        connection: DatabaseConnection.preview,
-        payload: nil
+        connection: DatabaseConnection.preview
     )
     MainContentView(
         connection: DatabaseConnection.preview,

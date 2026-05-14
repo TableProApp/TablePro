@@ -21,7 +21,6 @@ internal final class WindowLifecycleMonitor {
         let connectionId: UUID
         weak var window: NSWindow?
         var observer: NSObjectProtocol?
-        var isPreview: Bool = false
     }
 
     private var entries: [UUID: Entry] = [:]
@@ -41,9 +40,9 @@ internal final class WindowLifecycleMonitor {
     // MARK: - Registration
 
     /// Register a window and start observing its willCloseNotification.
-    internal func register(window: NSWindow, connectionId: UUID, windowId: UUID, isPreview: Bool = false) {
+    internal func register(window: NSWindow, connectionId: UUID, windowId: UUID) {
         Self.lifecycleLogger.info(
-            "[open] WindowLifecycleMonitor.register windowId=\(windowId, privacy: .public) connId=\(connectionId, privacy: .public) isPreview=\(isPreview) registeredBefore=\(self.entries.count)"
+            "[open] WindowLifecycleMonitor.register windowId=\(windowId, privacy: .public) connId=\(connectionId, privacy: .public) registeredBefore=\(self.entries.count)"
         )
         // Remove any existing entry for this windowId to avoid duplicate observers
         if let existing = entries[windowId] {
@@ -69,8 +68,7 @@ internal final class WindowLifecycleMonitor {
         entries[windowId] = Entry(
             connectionId: connectionId,
             window: window,
-            observer: observer,
-            isPreview: isPreview
+            observer: observer
         )
     }
 
@@ -148,26 +146,10 @@ internal final class WindowLifecycleMonitor {
         return entries[windowId] != nil
     }
 
-    /// Find the first preview window for a connection.
-    internal func previewWindow(for connectionId: UUID) -> (windowId: UUID, window: NSWindow)? {
-        purgeStaleEntries()
-        for (windowId, entry) in entries {
-            guard entry.connectionId == connectionId, entry.isPreview else { continue }
-            guard let window = entry.window else { continue }
-            return (windowId, window)
-        }
-        return nil
-    }
-
     /// Look up the NSWindow for a given windowId.
     internal func window(for windowId: UUID) -> NSWindow? {
         purgeStaleEntries()
         return entries[windowId]?.window
-    }
-
-    /// Update the preview flag for a registered window.
-    internal func setPreview(_ isPreview: Bool, for windowId: UUID) {
-        entries[windowId]?.isPreview = isPreview
     }
 
     // MARK: - Source File Tracking

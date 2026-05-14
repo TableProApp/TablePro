@@ -2,13 +2,13 @@
 //  SessionStateFactoryTests.swift
 //  TableProTests
 //
-//  Tests for SessionStateFactory, validating session state creation logic
-//  extracted from MainContentView.init.
+//  Tests for SessionStateFactory session-state creation and
+//  MainContentCoordinator.handleNewTabIntent payload routing.
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("SessionStateFactory")
@@ -22,7 +22,8 @@ struct SessionStateFactoryTests {
         databaseName: String? = nil,
         initialQuery: String? = nil,
         isView: Bool = false,
-        showStructure: Bool = false
+        showStructure: Bool = false,
+        intent: TabIntent = .openContent
     ) -> EditorTabPayload {
         EditorTabPayload(
             connectionId: connectionId,
@@ -31,59 +32,87 @@ struct SessionStateFactoryTests {
             databaseName: databaseName,
             initialQuery: initialQuery,
             isView: isView,
-            showStructure: showStructure
+            showStructure: showStructure,
+            intent: intent
         )
     }
 
-    // MARK: - Tests
+    // MARK: - Factory
 
-    @Test("Payload with tableName creates a table tab")
+    @Test("create produces an empty tab manager")
     @MainActor
-    func payloadWithTableName_createsTableTab() {
+    func createProducesEmptyTabManager() {
         let conn = TestFixtures.makeConnection()
-        let payload = makePayload(
-            connectionId: conn.id,
-            tabType: .table,
-            tableName: "users"
-        )
 
-        let state = SessionStateFactory.create(connection: conn, payload: payload)
+        let state = SessionStateFactory.create(connection: conn)
+
+        #expect(state.tabManager.tabs.isEmpty)
+    }
+
+    @Test("create wires the coordinator to the factory's tab manager")
+    @MainActor
+    func coordinatorReceivesCorrectDependencies() {
+        let conn = TestFixtures.makeConnection()
+
+        let state = SessionStateFactory.create(connection: conn)
+
+        #expect(state.coordinator.tabManager === state.tabManager)
+    }
+
+    @Test("create is idempotent: two calls produce fresh instances")
+    @MainActor
+    func factoryIsIdempotent() {
+        let conn = TestFixtures.makeConnection()
+
+        let state1 = SessionStateFactory.create(connection: conn)
+        let state2 = SessionStateFactory.create(connection: conn)
+
+        #expect(state1.tabManager !== state2.tabManager)
+        #expect(state1.coordinator !== state2.coordinator)
+    }
+
+    // MARK: - handleNewTabIntent
+
+    @Test("Payload with tableName adds a table tab")
+    @MainActor
+    func payloadWithTableName_addsTableTab() {
+        let conn = TestFixtures.makeConnection()
+        let state = SessionStateFactory.create(connection: conn)
+
+        state.coordinator.handleNewTabIntent(
+            makePayload(connectionId: conn.id, tabType: .table, tableName: "users")
+        )
 
         #expect(state.tabManager.tabs.count == 1)
         #expect(state.tabManager.tabs.first?.tableContext.tableName == "users")
         #expect(state.tabManager.tabs.first?.tabType == .table)
     }
 
-    @Test("Payload with initialQuery creates a query tab with that text")
+    @Test("Payload with initialQuery adds a query tab with that text")
     @MainActor
-    func payloadWithQuery_createsQueryTab() {
+    func payloadWithQuery_addsQueryTab() {
         let conn = TestFixtures.makeConnection()
+        let state = SessionStateFactory.create(connection: conn)
         let query = "SELECT * FROM orders"
-        let payload = makePayload(
-            connectionId: conn.id,
-            tabType: .query,
-            initialQuery: query
-        )
 
-        let state = SessionStateFactory.create(connection: conn, payload: payload)
+        state.coordinator.handleNewTabIntent(
+            makePayload(connectionId: conn.id, tabType: .query, initialQuery: query)
+        )
 
         #expect(state.tabManager.tabs.count == 1)
         #expect(state.tabManager.tabs.first?.content.query == query)
         #expect(state.tabManager.tabs.first?.tabType == .query)
     }
 
-    @Test("Payload with showStructure sets showStructure on the tab")
+    @Test("Payload with showStructure sets structure view mode on the tab")
     @MainActor
     func payloadWithStructure_setsShowStructure() {
         let conn = TestFixtures.makeConnection()
-        let payload = makePayload(
-            connectionId: conn.id,
-            tabType: .table,
-            tableName: "users",
-            showStructure: true
-        )
+        let state = SessionStateFactory.create(connection: conn)
 
-        let state = SessionStateFactory.create(connection: conn, payload: payload)
+        state.coordinator.handleNewTabIntent(
+            makePayload(connectionId: conn.id, tabType: .table, tableName: "users", showStructure: true)
+        )
 
         guard let tab = state.tabManager.tabs.first else {
             Issue.record("Expected at least one tab")
@@ -96,14 +125,11 @@ struct SessionStateFactoryTests {
     @MainActor
     func payloadWithView_setsIsViewAndNotEditable() {
         let conn = TestFixtures.makeConnection()
-        let payload = makePayload(
-            connectionId: conn.id,
-            tabType: .table,
-            tableName: "user_view",
-            isView: true
-        )
+        let state = SessionStateFactory.create(connection: conn)
 
-        let state = SessionStateFactory.create(connection: conn, payload: payload)
+        state.coordinator.handleNewTabIntent(
+            makePayload(connectionId: conn.id, tabType: .table, tableName: "user_view", isView: true)
+        )
 
         guard let tab = state.tabManager.tabs.first else {
             Issue.record("Expected at least one tab")
@@ -113,73 +139,30 @@ struct SessionStateFactoryTests {
         #expect(tab.tableContext.isEditable == false)
     }
 
-    @Test("Nil payload creates empty tab manager")
+    @Test("openContent query payload with no content is a no-op")
     @MainActor
-    func nilPayload_createsEmptyTabManager() {
+    func openContentQueryWithoutContent_isNoOp() {
         let conn = TestFixtures.makeConnection()
+        let state = SessionStateFactory.create(connection: conn)
 
-        let state = SessionStateFactory.create(connection: conn, payload: nil)
+        state.coordinator.handleNewTabIntent(
+            makePayload(connectionId: conn.id, tabType: .query)
+        )
 
         #expect(state.tabManager.tabs.isEmpty)
     }
 
-    @Test("Connection-only payload without isNewTab creates empty tab manager")
+    @Test("newEmptyTab intent adds a default query tab")
     @MainActor
-    func connectionOnlyPayload_createsEmptyTabManager() {
+    func newEmptyTabIntent_addsDefaultQueryTab() {
         let conn = TestFixtures.makeConnection()
-        let payload = makePayload(connectionId: conn.id, tabType: .query)
+        let state = SessionStateFactory.create(connection: conn)
 
-        let state = SessionStateFactory.create(connection: conn, payload: payload)
-
-        #expect(state.tabManager.tabs.isEmpty)
-    }
-
-    @Test("Connection-only payload with isNewTab creates a default query tab")
-    @MainActor
-    func connectionOnlyPayload_isNewTab_createsDefaultTab() {
-        let conn = TestFixtures.makeConnection()
-        let payload = EditorTabPayload(connectionId: conn.id, tabType: .query, intent: .newEmptyTab)
-
-        let state = SessionStateFactory.create(connection: conn, payload: payload)
+        state.coordinator.handleNewTabIntent(
+            EditorTabPayload(connectionId: conn.id, tabType: .query, intent: .newEmptyTab)
+        )
 
         #expect(state.tabManager.tabs.count == 1)
         #expect(state.tabManager.tabs.first?.tabType == .query)
-    }
-
-    @Test("Factory is idempotent: two calls produce fresh but equivalent instances")
-    @MainActor
-    func factoryIsIdempotent() {
-        let conn = TestFixtures.makeConnection()
-        let payload = makePayload(
-            connectionId: conn.id,
-            tabType: .table,
-            tableName: "products"
-        )
-
-        let state1 = SessionStateFactory.create(connection: conn, payload: payload)
-        let state2 = SessionStateFactory.create(connection: conn, payload: payload)
-
-        // Different instances
-        #expect(state1.tabManager !== state2.tabManager)
-        #expect(state1.coordinator !== state2.coordinator)
-
-        // Equivalent content
-        #expect(state1.tabManager.tabs.count == state2.tabManager.tabs.count)
-        #expect(state1.tabManager.tabs.first?.tableContext.tableName == state2.tabManager.tabs.first?.tableContext.tableName)
-    }
-
-    @Test("Coordinator receives the factory's tabManager")
-    @MainActor
-    func coordinatorReceivesCorrectDependencies() {
-        let conn = TestFixtures.makeConnection()
-        let payload = makePayload(
-            connectionId: conn.id,
-            tabType: .table,
-            tableName: "items"
-        )
-
-        let state = SessionStateFactory.create(connection: conn, payload: payload)
-
-        #expect(state.coordinator.tabManager === state.tabManager)
     }
 }

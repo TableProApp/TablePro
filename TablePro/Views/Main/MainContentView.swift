@@ -301,8 +301,8 @@ struct MainContentView: View {
 
     private var bodyContentCore: some View {
         mainContentView
-            // Phase 3: SwiftUI `.toolbar { ... }` removed — NSToolbar is now
-            // installed directly on NSWindow by TabWindowController (see
+            // SwiftUI `.toolbar { ... }` removed. NSToolbar is now installed
+            // directly on NSWindow by ConnectionWindowController (see
             // `MainWindowToolbar`). Reuses every existing SwiftUI subview
             // (ConnectionStatusView, SafeModeBadgeView, popovers, etc.) via
             // `NSHostingView` inside `NSToolbarItem.view`. Connection color
@@ -331,7 +331,7 @@ struct MainContentView: View {
                 Self.lifecycleLogger.debug(
                     "[switch] selectedTabId changed seq=\(seq) from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
                 )
-                (viewWindow?.windowController as? TabWindowController)?.refreshUserActivity()
+                (viewWindow?.windowController as? ConnectionWindowController)?.refreshUserActivity()
                 handleTabSelectionChange(from: oldTabId, to: newTabId)
             }
             .onChange(of: tabManager.tabStructureVersion) { _, _ in

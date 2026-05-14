@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @MainActor @Suite("StructureViewActionHandler")
 struct StructureActionHandlerTests {
@@ -16,7 +16,7 @@ struct StructureActionHandlerTests {
 
     private func makeCoordinator() -> MainContentCoordinator {
         let connection = TestFixtures.makeConnection()
-        let state = SessionStateFactory.create(connection: connection, payload: nil)
+        let state = SessionStateFactory.create(connection: connection)
         return state.coordinator
     }
 

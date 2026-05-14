@@ -41,17 +41,7 @@ extension MainContentCoordinator {
 
     func createNewTable() {
         guard !safeModeLevel.blocksAllWrites else { return }
-
-        if tabManager.tabs.isEmpty {
-            tabManager.addCreateTableTab(databaseName: activeDatabaseName)
-        } else {
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .createTable,
-                databaseName: activeDatabaseName
-            )
-            WindowManager.shared.openTab(payload: payload)
-        }
+        tabManager.addCreateTableTab(databaseName: activeDatabaseName)
     }
 
     // MARK: - View Operations
@@ -63,39 +53,22 @@ extension MainContentCoordinator {
         let template = driver?.createViewTemplate()
             ?? "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
 
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .query,
-            databaseName: activeDatabaseName,
-            initialQuery: template
-        )
-        WindowManager.shared.openTab(payload: payload)
+        tabManager.addTab(initialQuery: template, databaseName: activeDatabaseName)
     }
 
     func editViewDefinition(_ viewName: String) {
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 guard let driver = DatabaseManager.shared.driver(for: self.connection.id) else { return }
                 let definition = try await driver.fetchViewDefinition(view: viewName)
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: definition
-                )
-                WindowManager.shared.openTab(payload: payload)
+                self.tabManager.addTab(initialQuery: definition, databaseName: self.activeDatabaseName)
             } catch {
                 let driver = DatabaseManager.shared.driver(for: self.connection.id)
                 let template = driver?.editViewFallbackTemplate(viewName: viewName)
                     ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
                 let fallbackSQL = "-- Could not fetch view definition: \(error.localizedDescription)\n\(template)"
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: fallbackSQL
-                )
-                WindowManager.shared.openTab(payload: payload)
+                self.tabManager.addTab(initialQuery: fallbackSQL, databaseName: self.activeDatabaseName)
             }
         }
     }

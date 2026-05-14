@@ -37,9 +37,9 @@ final class ConnectionWindowRestoration: NSObject, NSWindowRestoration {
 
             let restored = NSApp.windows.first { candidate in
                 guard candidate.isVisible,
-                      let controller = candidate.windowController as? TabWindowController
+                      let controller = candidate.windowController as? ConnectionWindowController
                 else { return false }
-                return controller.payload.connectionId == connection.id
+                return controller.connection.id == connection.id
             }
 
             if let restored {

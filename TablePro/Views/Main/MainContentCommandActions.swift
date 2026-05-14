@@ -336,19 +336,7 @@ final class MainContentCommandActions {
     // MARK: - Tab Operations (Group A — Called Directly)
 
     func newTab(initialQuery: String? = nil) {
-        if let coordinator, coordinator.tabManager.tabs.isEmpty {
-            coordinator.tabManager.addTab(
-                initialQuery: initialQuery,
-                databaseName: coordinator.activeDatabaseName
-            )
-            return
-        }
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            initialQuery: initialQuery,
-            intent: .newEmptyTab
-        )
-        WindowManager.shared.openTab(payload: payload)
+        coordinator?.addNewQueryTab(initialQuery: initialQuery)
     }
 
     func closeTab() {
@@ -377,29 +365,7 @@ final class MainContentCommandActions {
     }
 
     private func performClose() {
-        let t0 = Date()
-        guard let window = coordinator?.contentWindow ?? NSApp.keyWindow else { return }
-        let visibleTabbedWindows = (window.tabbedWindows ?? [window]).filter(\.isVisible)
-        Self.logger.info("[close] performClose visibleTabs=\(visibleTabbedWindows.count) tabManagerTabs=\(self.coordinator?.tabManager.tabs.count ?? 0)")
-
-        if visibleTabbedWindows.count > 1 {
-            window.close()
-        } else if coordinator?.tabManager.tabs.isEmpty == true {
-            window.close()
-        } else {
-            if let coordinator {
-                for tab in coordinator.tabManager.tabs {
-                    coordinator.tabSessionRegistry.removeTableRows(for: tab.id)
-                    if let url = tab.content.sourceFileURL {
-                        WindowLifecycleMonitor.shared.unregisterSourceFile(url)
-                    }
-                }
-                coordinator.tabManager.tabs.removeAll()
-                coordinator.tabManager.selectedTabId = nil
-                coordinator.toolbarState.isTableTab = false
-            }
-        }
-        Self.logger.info("[close] performClose done ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+        coordinator?.closeCurrentTab()
     }
 
     private func saveAndClose() async {
@@ -560,25 +526,12 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Navigation (Group A — Called Directly)
 
-    /// Selects the Nth native window tab. Wrapping the `selectedWindow`
-    /// assignment in `NSAnimationContext.runAnimationGroup` with `duration = 0`
-    /// suppresses AppKit's tab-transition animation, so rapid Cmd+Number
-    /// presses don't queue up CAAnimations that drain visibly after the user
-    /// releases the keys.
-    ///
-    /// Per-switch AppKit overhead (window-focus change, NSHostingView layout,
-    /// Window Server roundtrip) is platform-inherent to one-NSWindow-per-tab
-    /// and is intentionally not coalesced. See `docs/architecture/tab-subsystem-rewrite.md` D2.
+    /// Selects the Nth in-window tab (1-based) in the connection's tab manager.
     func selectTab(number: Int) {
-        guard let keyWindow = NSApp.keyWindow,
-              let tabGroup = keyWindow.tabGroup else { return }
-        let windows = tabGroup.windows
-        guard windows.indices.contains(number - 1) else { return }
-        let target = windows[number - 1]
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0
-            tabGroup.selectedWindow = target
-        }
+        guard let coordinator else { return }
+        let tabs = coordinator.tabManager.tabs
+        guard tabs.indices.contains(number - 1) else { return }
+        coordinator.tabManager.selectTab(id: tabs[number - 1].id)
     }
 
     // MARK: - Filter Operations (Group A — Called Directly)

@@ -3,9 +3,10 @@
 //  TablePro
 //
 //  NSSplitViewController replacing NavigationSplitView for native sidebar/inspector.
-//  Owns session state, manages three panes (sidebar, detail, inspector), and
-//  serves as window.contentViewController so .toggleSidebar and
-//  .sidebarTrackingSeparator work via the responder chain.
+//  One instance per connection window, created once and never rebuilt. Manages
+//  three panes (sidebar, detail, inspector) and serves as
+//  window.contentViewController so .toggleSidebar and .sidebarTrackingSeparator
+//  work via the responder chain.
 //
 
 import AppKit
@@ -17,14 +18,13 @@ import SwiftUI
 internal final class MainSplitViewController: NSSplitViewController, InspectorVisibilityProxy {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    // MARK: - Payload & Session
+    // MARK: - Connection & Session
 
-    let payload: EditorTabPayload?
-    private let payloadConnection: DatabaseConnection?
-    private var currentSession: ConnectionSession?
-    private var sessionState: SessionStateFactory.SessionState?
-    private var rightPanelState: RightPanelState?
-    private var closingSessionId: UUID?
+    private let connection: DatabaseConnection
+    private let sessionState: SessionStateFactory.SessionState
+    private var coordinator: MainContentCoordinator { sessionState.coordinator }
+    private var rightPanelState: RightPanelState { sessionState.rightPanelState }
+    private var didTeardown = false
 
     var windowTitle: String {
         didSet { view.window?.title = windowTitle }
@@ -51,64 +51,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Init
 
-    init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?) {
-        self.payload = payload
-        if let connectionId = payload?.connectionId {
-            self.payloadConnection = DatabaseManager.shared.activeSessions[connectionId]?.connection
-                ?? ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
-        } else {
-            self.payloadConnection = nil
-        }
-
-        let defaultTitle: String
-        if payload?.tabType == .serverDashboard {
-            defaultTitle = String(localized: "Server Dashboard")
-        } else if payload?.tabType == .erDiagram {
-            defaultTitle = String(localized: "ER Diagram")
-        } else if payload?.tabType == .createTable {
-            defaultTitle = String(localized: "Create Table")
-        } else if payload?.tabType == .terminal {
-            defaultTitle = String(localized: "Terminal")
-        } else if let tabTitle = payload?.tabTitle {
-            defaultTitle = tabTitle
-        } else if let tableName = payload?.tableName {
-            defaultTitle = tableName
-        } else if let connectionId = payload?.connectionId,
-                  let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection {
-            let langName = PluginManager.shared.queryLanguageName(for: connection.type)
-            defaultTitle = "\(langName) Query"
-        } else {
-            defaultTitle = String(localized: "SQL Query")
-        }
-        self.windowTitle = defaultTitle
-
-        var resolvedSession: ConnectionSession?
-        if let connectionId = payload?.connectionId {
-            resolvedSession = DatabaseManager.shared.activeSessions[connectionId]
-        } else if let currentId = DatabaseManager.shared.currentSessionId {
-            resolvedSession = DatabaseManager.shared.activeSessions[currentId]
-        }
-        self.currentSession = resolvedSession
-
-        if let session = resolvedSession {
-            self.rightPanelState = RightPanelState()
-            let state: SessionStateFactory.SessionState
-            if let payloadId = payload?.id,
-               let pending = SessionStateFactory.consumePending(for: payloadId) {
-                state = pending
-                Self.lifecycleLogger.info(
-                    "[open] MainSplitVC.init consumed pending payloadId=\(payloadId, privacy: .public)"
-                )
-            } else {
-                state = SessionStateFactory.create(connection: session.connection, payload: payload)
-            }
-            self.sessionState = state
-            if payload?.intent == .newEmptyTab,
-               let tabTitle = state.coordinator.tabManager.selectedTab?.title {
-                self.windowTitle = tabTitle
-            }
-        }
-
+    init(connection: DatabaseConnection, sessionState: SessionStateFactory.SessionState) {
+        self.connection = connection
+        self.sessionState = sessionState
+        self.windowTitle = connection.name
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -124,7 +70,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
         splitView.dividerStyle = .thin
         splitView.isVertical = true
-        splitView.autosaveName = "com.TablePro.mainSplit"
+        splitView.autosaveName = "com.TablePro.mainSplit.\(connection.id.uuidString)"
+
+        coordinator.inspectorProxy = self
+        coordinator.splitViewController = self
 
         sidebarContainer = SidebarContainerViewController(rootView: AnyView(buildSidebarView()))
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarContainer)
@@ -139,7 +88,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         detailSplitItem.holdingPriority = .defaultLow
         addSplitViewItem(detailSplitItem)
 
-        let inspectorPresented = UserDefaults.standard.bool(forKey: Self.inspectorPresentedKey)
+        let inspectorPresented = UserDefaults.standard.bool(forKey: inspectorPresentedKey)
         let initialInspectorContent: AnyView
         if inspectorPresented {
             initialInspectorContent = AnyView(buildInspectorView())
@@ -154,15 +103,19 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorSplitItem.maximumThickness = 400
         addSplitViewItem(inspectorSplitItem)
 
-        if currentSession?.driver == nil {
-            sidebarSplitItem.isCollapsed = true
-        } else if let session = currentSession, let coordinator = sessionState?.coordinator {
+        if isConnected {
             sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(session.connection.id),
+                SharedSidebarState.forConnection(connection.id),
                 windowState: coordinator.windowSidebarState
             )
+        } else {
+            sidebarSplitItem.isCollapsed = true
         }
         inspectorSplitItem.isCollapsed = !inspectorPresented
+    }
+
+    private var isConnected: Bool {
+        DatabaseManager.shared.activeSessions[connection.id]?.driver != nil
     }
 
     private func materializeInspectorIfNeeded() {
@@ -176,19 +129,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         guard let window = view.window else { return }
 
         window.title = windowTitle
-        if let session = currentSession {
-            window.subtitle = session.connection.name
-        }
+        window.subtitle = connection.name
 
-        if let sessionState {
-            sessionState.coordinator.inspectorProxy = self
-            sessionState.coordinator.splitViewController = self
-            installToolbar(coordinator: sessionState.coordinator)
-        }
+        installToolbar(coordinator: coordinator)
 
-        if let currentSession, let coordinator = sessionState?.coordinator {
+        if isConnected {
             sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(currentSession.connection.id),
+                SharedSidebarState.forConnection(connection.id),
                 windowState: coordinator.windowSidebarState
             )
         }
@@ -207,6 +154,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         guard connectionStatusCancellable == nil else { return }
         connectionStatusCancellable = AppEvents.shared.connectionStatusChanged
             .receive(on: RunLoop.main)
+            .filter { [weak self] payload in
+                payload.connectionId == self?.connection.id
+            }
             .sink { [weak self] _ in
                 self?.handleConnectionStatusChange()
             }
@@ -236,65 +186,38 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Connection Status
 
+    /// The connection window is created once per connection. This handler only
+    /// reacts to the driver becoming available (rebuild panes out of the
+    /// connecting state, expand the sidebar) or the session being torn down.
     private func handleConnectionStatusChange() {
-        guard closingSessionId == nil else { return }
+        guard !didTeardown else { return }
 
-        let sessions = DatabaseManager.shared.activeSessions
-        let connectionId = payload?.connectionId ?? currentSession?.id ?? DatabaseManager.shared.currentSessionId
-
-        guard let sid = connectionId else {
-            if currentSession != nil { currentSession = nil }
-            return
-        }
-
-        guard let newSession = sessions[sid] else {
-            if currentSession?.id == sid {
-                Self.lifecycleLogger.info(
-                    "[close] MainSplitVC session removed connId=\(sid, privacy: .public)"
-                )
-                closingSessionId = sid
-                rightPanelState?.teardown()
-                rightPanelState = nil
-                sessionState?.coordinator.teardown()
-                sessionState = nil
-                currentSession = nil
-                sidebarContainer.updateSidebarState(nil, windowState: nil)
-                if view.window?.isVisible == true {
-                    sidebarSplitItem.animator().isCollapsed = true
-                } else {
-                    sidebarSplitItem.isCollapsed = true
-                }
+        let session = DatabaseManager.shared.activeSessions[connection.id]
+        guard session != nil else {
+            Self.lifecycleLogger.info(
+                "[close] MainSplitVC session removed connId=\(self.connection.id, privacy: .public)"
+            )
+            didTeardown = true
+            sidebarContainer.updateSidebarState(nil, windowState: nil)
+            if view.window?.isVisible == true {
+                sidebarSplitItem.animator().isCollapsed = true
+            } else {
+                sidebarSplitItem.isCollapsed = true
             }
             return
         }
 
-        if let existing = currentSession, existing.isContentViewEquivalent(to: newSession) {
-            return
-        }
-        currentSession = newSession
-
-        if payload?.tableName == nil,
-           windowTitle == String(localized: "SQL Query") || windowTitle.hasSuffix(" Query") {
-            windowTitle = newSession.connection.name
-        }
-        view.window?.subtitle = newSession.connection.name
-
-        if rightPanelState == nil {
-            rightPanelState = RightPanelState()
-        }
-        if sessionState == nil {
-            let state = SessionStateFactory.create(connection: newSession.connection, payload: payload)
-            sessionState = state
-            state.coordinator.inspectorProxy = self
-            state.coordinator.splitViewController = self
-            installToolbar(coordinator: state.coordinator)
-        }
-
-        let collapseSidebar = newSession.driver == nil
+        let connected = session?.driver != nil
         if view.window?.isVisible == true {
-            sidebarSplitItem.animator().isCollapsed = collapseSidebar
+            sidebarSplitItem.animator().isCollapsed = !connected
         } else {
-            sidebarSplitItem.isCollapsed = collapseSidebar
+            sidebarSplitItem.isCollapsed = !connected
+        }
+        if connected {
+            sidebarContainer.updateSidebarState(
+                SharedSidebarState.forConnection(connection.id),
+                windowState: coordinator.windowSidebarState
+            )
         }
         rebuildPanes()
     }
@@ -303,9 +226,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private func rebuildPanes() {
         sidebarContainer.rootView = AnyView(buildSidebarView())
-        if let currentSession, let coordinator = sessionState?.coordinator {
+        if isConnected {
             sidebarContainer.updateSidebarState(
-                SharedSidebarState.forConnection(currentSession.connection.id),
+                SharedSidebarState.forConnection(connection.id),
                 windowState: coordinator.windowSidebarState
             )
         }
@@ -315,8 +238,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     @ViewBuilder
     private func buildSidebarView() -> some View {
-        if let currentSession, let sessionState {
-            sidebarBody(currentSession: currentSession, sessionState: sessionState)
+        if isConnected {
+            sidebarBody()
                 .transaction { $0.animation = nil }
         } else {
             Color.clear
@@ -324,35 +247,21 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     @ViewBuilder
-    private func sidebarBody(
-        currentSession: ConnectionSession,
-        sessionState: SessionStateFactory.SessionState
-    ) -> some View {
+    private func sidebarBody() -> some View {
         SidebarView(
-            sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
+            sidebarState: SharedSidebarState.forConnection(connection.id),
             onDoubleClick: { [weak self] table in
-                guard let coordinator = self?.sessionState?.coordinator else { return }
-                let connectionId = coordinator.connectionId
+                guard let self else { return }
                 let isView = table.type == .view
-                if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId),
-                   let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
-                    if previewCoordinator.tabManager.selectedTab?.tableContext.tableName == table.name {
-                        previewCoordinator.promotePreviewTab()
-                    } else {
-                        previewCoordinator.promotePreviewTab()
-                        coordinator.openTableTab(table.name, isView: isView)
-                    }
-                } else {
-                    coordinator.promotePreviewTab()
-                    coordinator.openTableTab(table.name, isView: isView)
-                }
+                self.coordinator.promotePreviewTab()
+                self.coordinator.openTableTab(table.name, isView: isView)
             },
             pendingTruncates: sessionPendingTruncatesBinding,
             pendingDeletes: sessionPendingDeletesBinding,
             tableOperationOptions: sessionTableOperationOptionsBinding,
-            databaseType: currentSession.connection.type,
-            connectionId: currentSession.connection.id,
-            coordinator: sessionState.coordinator
+            databaseType: connection.type,
+            connectionId: connection.id,
+            coordinator: coordinator
         )
     }
 
@@ -362,12 +271,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             ConnectingStateView(connection: pendingConnection) { [weak self] in
                 self?.cancelConnectionAttempt()
             }
-        } else if let currentSession, let rightPanelState, let sessionState {
-            MainContentView(
-                connection: currentSession.connection,
-                payload: payload,
+        } else {
+            ConnectionSplitContainerView(
+                connection: connection,
                 windowTitle: windowTitleBinding,
-                sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
+                sidebarState: SharedSidebarState.forConnection(connection.id),
                 pendingTruncates: sessionPendingTruncatesBinding,
                 pendingDeletes: sessionPendingDeletesBinding,
                 tableOperationOptions: sessionTableOperationOptionsBinding,
@@ -375,21 +283,18 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 tabManager: sessionState.tabManager,
                 changeManager: sessionState.changeManager,
                 toolbarState: sessionState.toolbarState,
-                coordinator: sessionState.coordinator
+                coordinator: coordinator
             )
             .transaction { $0.animation = nil }
-        } else {
-            Color.clear
         }
     }
 
     private var connectingConnection: DatabaseConnection? {
-        guard closingSessionId == nil else { return nil }
-        guard let connectionId = payload?.connectionId else { return nil }
-        if let session = DatabaseManager.shared.activeSessions[connectionId] {
+        guard !didTeardown else { return nil }
+        if let session = DatabaseManager.shared.activeSessions[connection.id] {
             return session.driver == nil ? session.connection : nil
         }
-        return payloadConnection
+        return connection
     }
 
     private func cancelConnectionAttempt() {
@@ -398,14 +303,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     @ViewBuilder
     private func buildInspectorView() -> some View {
-        if let currentSession, let rightPanelState {
-            UnifiedRightPanelView(
-                state: rightPanelState,
-                connection: currentSession.connection
-            )
-        } else {
-            Color.clear
-        }
+        UnifiedRightPanelView(
+            state: rightPanelState,
+            connection: connection
+        )
     }
 
     // MARK: - Session Bindings
@@ -417,13 +318,16 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     ) -> Binding<T> {
         Binding(
             get: { [weak self] in
-                guard let session = self?.currentSession else { return defaultValue }
+                guard let self,
+                      let session = DatabaseManager.shared.activeSessions[self.connection.id]
+                else { return defaultValue }
                 return get(session)
             },
             set: { [weak self] newValue in
-                guard let sessionId = self?.payload?.connectionId ?? self?.currentSession?.id else { return }
+                guard let self else { return }
+                let connectionId = self.connection.id
                 Task {
-                    DatabaseManager.shared.updateSession(sessionId) { session in
+                    DatabaseManager.shared.updateSession(connectionId) { session in
                         set(&session, newValue)
                     }
                 }
@@ -460,12 +364,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     func showInspector() {
         materializeInspectorIfNeeded()
         inspectorSplitItem?.animator().isCollapsed = false
-        UserDefaults.standard.set(true, forKey: Self.inspectorPresentedKey)
+        UserDefaults.standard.set(true, forKey: inspectorPresentedKey)
     }
 
     func hideInspector() {
         inspectorSplitItem?.animator().isCollapsed = true
-        UserDefaults.standard.set(false, forKey: Self.inspectorPresentedKey)
+        UserDefaults.standard.set(false, forKey: inspectorPresentedKey)
     }
 
     @objc override func toggleInspector(_ sender: Any?) {
@@ -479,8 +383,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     func setSidebarTab(_ tab: SidebarTab) {
-        guard let connectionId = currentSession?.connection.id else { return }
-        let sidebarState = SharedSidebarState.forConnection(connectionId)
+        let sidebarState = SharedSidebarState.forConnection(connection.id)
 
         if sidebarSplitItem?.isCollapsed == true {
             sidebarState.selectedSidebarTab = tab
@@ -494,5 +397,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Constants
 
-    private static let inspectorPresentedKey = "com.TablePro.rightPanel.isPresented"
+    private var inspectorPresentedKey: String {
+        "com.TablePro.rightPanel.isPresented.\(connection.id.uuidString)"
+    }
 }

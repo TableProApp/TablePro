@@ -9,8 +9,8 @@
 
 import AppKit
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 // MARK: - QueryTab sourceFileURL Property Tests
@@ -131,11 +131,11 @@ struct EditorTabPayloadSourceFileURLTests {
     }
 }
 
-// MARK: - SessionStateFactory sourceFileURL Propagation Tests
+// MARK: - handleNewTabIntent sourceFileURL Propagation Tests
 
-@Suite("SessionStateFactory sourceFileURL propagation")
-struct SessionStateFactorySourceFileURLTests {
-    @Test("SessionStateFactory propagates sourceFileURL to tab")
+@Suite("handleNewTabIntent sourceFileURL propagation")
+struct HandleNewTabIntentSourceFileURLTests {
+    @Test("handleNewTabIntent propagates sourceFileURL to tab")
     @MainActor
     func propagatesSourceFileURL() {
         let conn = TestFixtures.makeConnection()
@@ -147,7 +147,8 @@ struct SessionStateFactorySourceFileURLTests {
             sourceFileURL: url
         )
 
-        let state = SessionStateFactory.create(connection: conn, payload: payload)
+        let state = SessionStateFactory.create(connection: conn)
+        state.coordinator.handleNewTabIntent(payload)
 
         #expect(state.tabManager.tabs.count == 1)
         #expect(state.tabManager.tabs.first?.content.sourceFileURL == url)

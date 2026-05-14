@@ -1,5 +1,5 @@
 //
-//  TabWindowController.swift
+//  ConnectionWindowController.swift
 //  TablePro
 //
 
@@ -8,7 +8,7 @@ import os
 import SwiftUI
 
 @MainActor
-private final class EditorWindow: NSWindow {
+private final class ConnectionWindow: NSWindow {
     override func performClose(_ sender: Any?) {
         if let coordinator = MainContentCoordinator.coordinator(forWindow: self),
            let actions = coordinator.commandActions {
@@ -29,22 +29,25 @@ private final class EditorWindow: NSWindow {
 }
 
 @MainActor
-internal final class TabWindowController: NSWindowController, NSWindowDelegate {
+internal final class ConnectionWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
-    internal let payload: EditorTabPayload
-
+    internal let connection: DatabaseConnection
     internal let controllerId: UUID
+    internal let coordinator: MainContentCoordinator
 
+    private let sessionState: SessionStateFactory.SessionState
     private var activity: NSUserActivity?
 
-    internal init(payload: EditorTabPayload, sessionState: SessionStateFactory.SessionState? = nil) {
-        self.payload = payload
+    internal init(connection: DatabaseConnection, sessionState: SessionStateFactory.SessionState) {
+        self.connection = connection
         self.controllerId = UUID()
+        self.sessionState = sessionState
+        self.coordinator = sessionState.coordinator
 
-        let window = EditorWindow(
+        let window = ConnectionWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
@@ -53,14 +56,13 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.minSize = NSSize(width: 720, height: 480)
         window.isRestorable = AppSettingsStorage.shared.loadGeneral().startupBehavior == .reopenLast
-        window.restorationClass = TabWindowRestoration.self
+        window.restorationClass = ConnectionWindowRestoration.self
         window.toolbarStyle = .unified
         window.titleVisibility = .hidden
-        window.tabbingMode = .preferred
-        window.tabbingIdentifier = WindowManager.tabbingIdentifier(for: payload.connectionId)
+        window.tabbingMode = .automatic
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
 
-        let splitVC = MainSplitViewController(payload: payload, sessionState: sessionState)
+        let splitVC = MainSplitViewController(connection: connection, sessionState: sessionState)
         window.contentViewController = splitVC
 
         super.init(window: window)
@@ -79,18 +81,18 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         }
 
         Self.lifecycleLogger.info(
-            "[open] TabWindowController.init payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) controllerId=\(self.controllerId, privacy: .public) eagerToolbar=\(sessionState != nil)"
+            "[open] ConnectionWindowController.init connId=\(connection.id, privacy: .public) controllerId=\(self.controllerId, privacy: .public)"
         )
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("TabWindowController does not support NSCoder init")
+        fatalError("ConnectionWindowController does not support NSCoder init")
     }
 
     override func encodeRestorableState(with coder: NSCoder) {
         super.encodeRestorableState(with: coder)
-        coder.encode(payload.connectionId.uuidString as NSString, forKey: TabWindowRestoration.connectionIdKey)
+        coder.encode(connection.id.uuidString as NSString, forKey: ConnectionWindowRestoration.connectionIdKey)
     }
 
     // MARK: - NSWindowDelegate
@@ -112,71 +114,48 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     }
 
     internal func windowDidBecomeKey(_ notification: Notification) {
-        let seq = MainContentCoordinator.nextSwitchSeq()
-        let t0 = Date()
-        guard let window = notification.object as? NSWindow,
-              let coordinator = MainContentCoordinator.coordinator(forWindow: window)
-        else { return }
-        Self.lifecycleLogger.debug(
-            "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
-        )
+        guard let window = notification.object as? NSWindow else { return }
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.installToolbar(coordinator: coordinator)
         }
-        Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) installToolbar ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         CommandActionsRegistry.shared.current = coordinator.commandActions
-        updateUserActivity(coordinator: coordinator)
-        Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) userActivity ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+        updateUserActivity()
         coordinator.handleWindowDidBecomeKey()
-        Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     internal func windowDidResignKey(_ notification: Notification) {
-        let seq = MainContentCoordinator.nextSwitchSeq()
-        let t0 = Date()
-        guard let window = notification.object as? NSWindow,
-              let coordinator = MainContentCoordinator.coordinator(forWindow: window)
-        else { return }
-        Self.lifecycleLogger.debug(
-            "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"
-        )
         if let actions = coordinator.commandActions,
            CommandActionsRegistry.shared.current === actions {
             CommandActionsRegistry.shared.current = nil
         }
         activity?.resignCurrent()
         coordinator.handleWindowDidResignKey()
-        Self.lifecycleLogger.debug("[switch] windowDidResignKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     internal func windowWillClose(_ notification: Notification) {
-        let seq = MainContentCoordinator.nextSwitchSeq()
-        let t0 = Date()
         guard let window = notification.object as? NSWindow else { return }
-        Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
+        Self.lifecycleLogger.info(
+            "[close] ConnectionWindowController.windowWillClose controllerId=\(self.controllerId, privacy: .public)"
+        )
 
         cancelPendingConnectionIfNeeded()
-
         window.saveFrame(usingName: Self.frameAutosaveName)
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.invalidateToolbar()
         }
 
-        let coordinator = MainContentCoordinator.coordinator(forWindow: window)
-        coordinator?.handleWindowWillClose()
-        Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) handleWindowWillClose ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
-        if let actions = coordinator?.commandActions,
+        coordinator.handleWindowWillClose()
+        if let actions = coordinator.commandActions,
            CommandActionsRegistry.shared.current === actions {
             CommandActionsRegistry.shared.current = nil
         }
         activity?.invalidate()
         activity = nil
-        Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     private func cancelPendingConnectionIfNeeded() {
-        let connectionId = payload.connectionId
+        let connectionId = connection.id
         let session = DatabaseManager.shared.activeSessions[connectionId]
         guard session?.driver == nil else { return }
         Task {
@@ -186,15 +165,16 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - NSUserActivity
 
+    /// Refresh the Handoff activity from the current tab. Called on
+    /// `windowDidBecomeKey` and from `MainContentView` when the selected tab
+    /// changes. The key-window guard prevents a background window's tab switch
+    /// from overwriting the foreground window's activity.
     internal func refreshUserActivity() {
-        guard let window, window.isKeyWindow,
-              let coordinator = MainContentCoordinator.coordinator(forWindow: window)
-        else { return }
-        updateUserActivity(coordinator: coordinator)
+        guard let window, window.isKeyWindow else { return }
+        updateUserActivity()
     }
 
-    private func updateUserActivity(coordinator: MainContentCoordinator) {
-        let connection = coordinator.connection
+    private func updateUserActivity() {
         let selectedTab = coordinator.tabManager.selectedTab
         let tableName: String? = (selectedTab?.tabType == .table) ? selectedTab?.tableContext.tableName : nil
         let activityType = tableName != nil ? "com.TablePro.viewTable" : "com.TablePro.viewConnection"
@@ -213,12 +193,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             info["tableName"] = tableName
         }
         activity.userInfo = info
-
-        // becomeCurrent is unconditional. A previous becomeCurrent: Bool gate
-        // dropped Continuity mid-session whenever the user switched between
-        // table and query tabs in the same window, because the activity-type
-        // flip above invalidates the old activity but never promotes its
-        // replacement.
         activity.becomeCurrent()
     }
 }

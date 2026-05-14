@@ -56,7 +56,7 @@ public struct OpenTableTabTool: MCPToolImplementation {
 
         Self.logger.debug("open_table_tab invoked for connection \(connectionId.uuidString, privacy: .public)")
 
-        let windowId = await MainActor.run { () -> UUID in
+        let windowId = await MainActor.run { () -> UUID? in
             let payload = EditorTabPayload(
                 connectionId: connectionId,
                 tabType: .table,
@@ -65,16 +65,16 @@ public struct OpenTableTabTool: MCPToolImplementation {
                 schemaName: schemaName,
                 intent: .openContent
             )
-            WindowManager.shared.openTab(payload: payload)
+            let id = WindowManager.shared.openConnectionWindow(for: connectionId, intent: payload)
             NSApp.activate(ignoringOtherApps: true)
-            return payload.id
+            return id
         }
 
         let result: JsonValue = .object([
             "status": .string("opened"),
             "connection_id": .string(connectionId.uuidString),
             "table_name": .string(tableName),
-            "window_id": .string(windowId.uuidString)
+            "window_id": .string(windowId?.uuidString ?? "")
         ])
         return .structured(result)
     }

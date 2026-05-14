@@ -81,8 +81,6 @@ struct MainEditorContentView: View {
         let isHistoryVisible = coordinator.toolbarState.isHistoryPanelVisible
 
         VStack(spacing: 0) {
-            // Native macOS window tabs replace the custom tab bar.
-            // Each window-tab contains a single tab — no ZStack keep-alive needed.
             if let tab = tabManager.selectedTab {
                 tabContent(for: tab)
             } else {
@@ -309,7 +307,7 @@ struct MainEditorContentView: View {
                         connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                         tabID: tab.id,
                         onCloseTab: {
-                            NSApp.keyWindow?.close()
+                            coordinator.closeCurrentTab()
                         },
                         onExecuteQuery: { coordinator.runQuery() },
                         onExplain: { variant in

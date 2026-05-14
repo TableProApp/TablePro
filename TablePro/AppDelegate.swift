@@ -260,8 +260,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 .first(where: { $0.connectionId == connectionId })?.commandActions {
                 actions.newTab()
             } else {
-                WindowManager.shared.openTab(
-                    payload: EditorTabPayload(connectionId: connectionId, intent: .newEmptyTab)
+                WindowManager.shared.openConnectionWindow(
+                    for: connectionId,
+                    intent: EditorTabPayload(connectionId: connectionId, intent: .newEmptyTab)
                 )
             }
         }

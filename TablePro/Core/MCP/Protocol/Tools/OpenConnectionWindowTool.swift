@@ -40,21 +40,16 @@ public struct OpenConnectionWindowTool: MCPToolImplementation {
 
         Self.logger.debug("open_connection_window invoked for connection \(connectionId.uuidString, privacy: .public)")
 
-        let windowId = await MainActor.run { () -> UUID in
-            let payload = EditorTabPayload(
-                connectionId: connectionId,
-                tabType: .query,
-                intent: .restoreOrDefault
-            )
-            WindowManager.shared.openTab(payload: payload)
+        let windowId = await MainActor.run { () -> UUID? in
+            let id = WindowManager.shared.openConnectionWindow(for: connectionId)
             NSApp.activate(ignoringOtherApps: true)
-            return payload.id
+            return id
         }
 
         let result: JsonValue = .object([
             "status": .string("opened"),
             "connection_id": .string(connectionId.uuidString),
-            "window_id": .string(windowId.uuidString)
+            "window_id": .string(windowId?.uuidString ?? "")
         ])
         return .structured(result)
     }
