@@ -62,7 +62,7 @@ struct CoordinatorEditorLoadTests {
         #expect(tabManager.tabs[0].hasUserInteraction == true)
     }
 
-    @Test("loadQueryIntoEditor does not modify table tab")
+    @Test("loadQueryIntoEditor does not modify the selected table tab")
     @MainActor
     func loadQuerySkipsTableTab() throws {
         let (coordinator, tabManager) = makeCoordinator()
@@ -71,14 +71,14 @@ struct CoordinatorEditorLoadTests {
         try tabManager.addTableTab(tableName: "users")
         let originalQuery = tabManager.tabs[0].content.query
 
-        // Falls through to WindowOpener path; table tab unchanged
+        // Selected tab is not a query tab, so a new query tab is added instead.
         coordinator.loadQueryIntoEditor("SELECT * FROM users")
 
         #expect(tabManager.tabs[0].tabType == .table)
         #expect(tabManager.tabs[0].content.query == originalQuery)
     }
 
-    @Test("loadQueryIntoEditor does nothing when no tabs exist")
+    @Test("loadQueryIntoEditor adds a query tab when no tabs exist")
     @MainActor
     func loadQueryNoTabs() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -86,10 +86,11 @@ struct CoordinatorEditorLoadTests {
 
         #expect(tabManager.tabs.isEmpty)
 
-        // Falls through to WindowOpener path; no crash
         coordinator.loadQueryIntoEditor("SELECT 1")
 
-        #expect(tabManager.tabs.isEmpty)
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.tabs[0].tabType == .query)
+        #expect(tabManager.tabs[0].content.query == "SELECT 1")
     }
 
     // MARK: - insertQueryFromAI
@@ -164,7 +165,7 @@ struct CoordinatorEditorLoadTests {
         #expect(tabManager.tabs[0].content.query == originalQuery)
     }
 
-    @Test("insertQueryFromAI does nothing when no tabs exist")
+    @Test("insertQueryFromAI adds a query tab when no tabs exist")
     @MainActor
     func insertAiNoTabs() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -174,6 +175,8 @@ struct CoordinatorEditorLoadTests {
 
         coordinator.insertQueryFromAI("SELECT 1")
 
-        #expect(tabManager.tabs.isEmpty)
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.tabs[0].tabType == .query)
+        #expect(tabManager.tabs[0].content.query == "SELECT 1")
     }
 }
