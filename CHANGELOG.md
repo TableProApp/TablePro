@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SQL import dropped statements when the database executed them slower than the file was parsed, so a re-imported export could fail with errors like "relation does not exist". The parser now waits for each statement to be consumed before reading more. (#1264)
 - SQL import ignored the database dialect, so PostgreSQL dumps with dollar-quoted function bodies were split at semicolons inside the body. (#1264)
+- SQL export emitted `DROP TABLE` for views, materialized views, and foreign tables, so re-importing failed with "is not a table". It now emits `DROP VIEW`, `DROP MATERIALIZED VIEW`, or `DROP FOREIGN TABLE` to match the object. (#1264)
 - iOS: connections, groups, and tags no longer silently disappear after a TestFlight or App Store update. Persistence files are now stored with `.completeFileProtectionUntilFirstUserAuthentication` so they stay readable across background sync runs, load failures are no longer swallowed, and the sync engine refuses to overwrite local data when the load was not actually empty.
 
 ### Removed
