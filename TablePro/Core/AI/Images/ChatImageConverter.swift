@@ -78,7 +78,7 @@ enum ChatImageConverter {
         guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             throw ChatImageConverterError.decodingFailed
         }
-        let scaledImage = downscaleIfNeeded(cgImage)
+        let scaledImage = redrawInSRGB(cgImage)
         let targetType: CFString = useJPEG ? UTType.jpeg.identifier as CFString : UTType.png.identifier as CFString
         let mediaType = useJPEG ? "image/jpeg" : "image/png"
         let output = NSMutableData()
@@ -98,28 +98,27 @@ enum ChatImageConverter {
         return ChatImageInput(source: .cacheFile(filename: filename, mediaType: mediaType))
     }
 
-    private static func downscaleIfNeeded(_ image: CGImage) -> CGImage {
-        let width = CGFloat(image.width)
-        let height = CGFloat(image.height)
-        let longEdge = max(width, height)
-        guard longEdge > maxLongEdgePixels else { return image }
-        let scale = maxLongEdgePixels / longEdge
-        let newWidth = Int(width * scale)
-        let newHeight = Int(height * scale)
-        let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
-        let bitsPerComponent = 8
-        let bytesPerRow = newWidth * 4
+    /// Always re-draws into a premultiplied-RGBA sRGB context. Strips ICC/IPTC
+    /// metadata carried on the source CGImage (CMYK TIFF, HEIC with embedded
+    /// EXIF), and downscales to `maxLongEdgePixels` when needed.
+    private static func redrawInSRGB(_ image: CGImage) -> CGImage {
+        let srcW = CGFloat(image.width)
+        let srcH = CGFloat(image.height)
+        let longEdge = max(srcW, srcH)
+        let scale = longEdge > maxLongEdgePixels ? maxLongEdgePixels / longEdge : 1
+        let width = max(1, Int(srcW * scale))
+        let height = max(1, Int(srcH * scale))
         guard let context = CGContext(
             data: nil,
-            width: newWidth,
-            height: newHeight,
-            bitsPerComponent: bitsPerComponent,
-            bytesPerRow: bytesPerRow,
-            space: colorSpace,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return image }
         context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return context.makeImage() ?? image
     }
 
