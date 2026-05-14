@@ -28,68 +28,7 @@ extension MainContentView {
             )
         }()
 
-        guard let payload else {
-            await handleRestoreOrDefault()
-            _ = await schemaLoad
-            return
-        }
-
-        MainContentView.lifecycleLogger.info(
-            "[open] initializeAndRestoreTabs intent=\(String(describing: payload.intent), privacy: .public) windowId=\(windowId, privacy: .public) skipAutoExecute=\(payload.skipAutoExecute)"
-        )
-
-        switch payload.intent {
-        case .openContent:
-            if payload.skipAutoExecute {
-                _ = await schemaLoad
-                return
-            }
-            if let selectedTab = tabManager.selectedTab,
-                selectedTab.tabType == .table,
-                !selectedTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            {
-                if let session = DatabaseManager.shared.activeSessions[connection.id],
-                    session.isConnected
-                {
-                    if !selectedTab.tableContext.databaseName.isEmpty,
-                        selectedTab.tableContext.databaseName != session.activeDatabase
-                    {
-                        await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
-                    } else {
-                        if !selectedTab.filterState.appliedFilters.isEmpty,
-                            let tableName = selectedTab.tableContext.tableName,
-                            let tabIndex = tabManager.selectedTabIndex
-                        {
-                            let filteredQuery = coordinator.queryBuilder.buildFilteredQuery(
-                                tableName: tableName,
-                                filters: selectedTab.filterState.appliedFilters,
-                                columns: [],
-                                limit: selectedTab.pagination.pageSize,
-                                offset: selectedTab.pagination.currentOffset
-                            )
-                            tabManager.mutate(at: tabIndex) { $0.content.query = filteredQuery }
-                        }
-                        if let tableName = selectedTab.tableContext.tableName {
-                            coordinator.restoreLastHiddenColumnsForTable(tableName)
-                        }
-                        coordinator.executeTableTabQueryDirectly()
-                    }
-                } else {
-                    coordinator.needsLazyLoad = true
-                }
-            }
-            if let sourceURL = payload.sourceFileURL {
-                WindowLifecycleMonitor.shared.registerSourceFile(sourceURL, windowId: windowId)
-            }
-
-        case .newEmptyTab:
-            _ = await schemaLoad
-            return
-
-        case .restoreOrDefault:
-            await handleRestoreOrDefault()
-        }
-
+        await handleRestoreOrDefault()
         _ = await schemaLoad
     }
 
@@ -125,6 +64,12 @@ extension MainContentView {
         }
         tabManager.selectedTabId = selectedId ?? restoredTabs.first?.id
 
+        for tab in restoredTabs {
+            if let sourceURL = tab.content.sourceFileURL {
+                WindowLifecycleMonitor.shared.registerSourceFile(sourceURL, windowId: windowId)
+            }
+        }
+
         guard let selectedTab = tabManager.selectedTab,
               selectedTab.tabType == .table,
               !selectedTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -158,28 +103,11 @@ extension MainContentView {
         toolbarState.hasPendingChanges = hasDataChanges || hasFileChanges
     }
 
-    /// Update window title, proxy icon, and dirty dot based on the selected tab.
+    /// Refresh the window title, proxy icon, and dirty dot. Delegates to
+    /// `ConnectionWindowController.refreshWindowTitle()` — the single source of
+    /// truth for window-title resolution.
     func updateWindowTitleAndFileState() {
-        let selectedTab = tabManager.selectedTab
-        if selectedTab?.tabType == .serverDashboard {
-            windowTitle = String(localized: "Server Dashboard")
-        } else if selectedTab?.tabType == .createTable {
-            windowTitle = String(localized: "Create Table")
-        } else if selectedTab?.tabType == .erDiagram {
-            windowTitle = String(localized: "ER Diagram")
-        } else if selectedTab?.tabType == .terminal {
-            windowTitle = String(localized: "Terminal")
-        } else if let fileURL = selectedTab?.content.sourceFileURL {
-            windowTitle = selectedTab?.title ?? fileURL.deletingPathExtension().lastPathComponent
-        } else {
-            let langName = PluginManager.shared.queryLanguageName(for: connection.type)
-            let queryLabel = String(format: String(localized: "%@ Query"), langName)
-            windowTitle = (selectedTab?.tabType == .table ? selectedTab?.tableContext.tableName : nil)
-                ?? selectedTab?.title
-                ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
-        }
-        viewWindow?.representedURL = selectedTab?.content.sourceFileURL
-        viewWindow?.isDocumentEdited = selectedTab?.content.isFileDirty ?? false
+        (viewWindow?.windowController as? ConnectionWindowController)?.refreshWindowTitle()
     }
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.

@@ -26,10 +26,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var rightPanelState: RightPanelState { sessionState.rightPanelState }
     private var didTeardown = false
 
-    var windowTitle: String {
-        didSet { view.window?.title = windowTitle }
-    }
-
     // MARK: - Split View Items
 
     private var sidebarSplitItem: NSSplitViewItem!
@@ -54,7 +50,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     init(connection: DatabaseConnection, sessionState: SessionStateFactory.SessionState) {
         self.connection = connection
         self.sessionState = sessionState
-        self.windowTitle = connection.name
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -128,7 +123,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         super.viewWillAppear()
         guard let window = view.window else { return }
 
-        window.title = windowTitle
         window.subtitle = connection.name
 
         installToolbar(coordinator: coordinator)
@@ -274,7 +268,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         } else {
             ConnectionSplitContainerView(
                 connection: connection,
-                windowTitle: windowTitleBinding,
                 sidebarState: SharedSidebarState.forConnection(connection.id),
                 pendingTruncates: sessionPendingTruncatesBinding,
                 pendingDeletes: sessionPendingDeletesBinding,
@@ -345,13 +338,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private var sessionTableOperationOptionsBinding: Binding<[String: TableOperationOptions]> {
         createSessionBinding(get: { $0.tableOperationOptions }, set: { $0.tableOperationOptions = $1 }, defaultValue: [:])
-    }
-
-    private var windowTitleBinding: Binding<String> {
-        Binding(
-            get: { [weak self] in self?.windowTitle ?? "" },
-            set: { [weak self] in self?.windowTitle = $0 }
-        )
     }
 
     // MARK: - InspectorVisibilityProxy

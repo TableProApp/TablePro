@@ -10,7 +10,6 @@ import SwiftUI
 
 struct ConnectionSplitContainerView: View {
     let connection: DatabaseConnection
-    @Binding var windowTitle: String
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
@@ -36,8 +35,6 @@ struct ConnectionSplitContainerView: View {
             Divider()
             MainContentView(
                 connection: connection,
-                payload: nil,
-                windowTitle: $windowTitle,
                 sidebarState: sidebarState,
                 pendingTruncates: $pendingTruncates,
                 pendingDeletes: $pendingDeletes,

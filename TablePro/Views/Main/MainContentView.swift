@@ -25,11 +25,8 @@ struct MainContentView: View {
     // MARK: - Properties
 
     let connection: DatabaseConnection
-    /// Payload identifying what this window-tab should display (nil = default query tab)
-    let payload: EditorTabPayload?
 
     // Shared state from parent
-    @Binding var windowTitle: String
     @Bindable var schemaService = SchemaService.shared
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
@@ -67,8 +64,6 @@ struct MainContentView: View {
 
     init(
         connection: DatabaseConnection,
-        payload: EditorTabPayload?,
-        windowTitle: Binding<String>,
         sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -80,8 +75,6 @@ struct MainContentView: View {
         coordinator: MainContentCoordinator
     ) {
         self.connection = connection
-        self.payload = payload
-        self._windowTitle = windowTitle
         self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
@@ -274,11 +267,6 @@ struct MainContentView: View {
                     "[open] MainContentView.onAppear start windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public) tabs=\(tabManager.tabs.count)"
                 )
                 coordinator.markActivated()
-
-                // Set window title for empty state (no tabs restored)
-                if tabManager.tabs.isEmpty {
-                    windowTitle = connection.name
-                }
                 setupCommandActions()
                 updateToolbarPendingState()
                 updateInspectorContext()

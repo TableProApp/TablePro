@@ -65,10 +65,14 @@ internal final class ConnectionWindowController: NSWindowController, NSWindowDel
         let splitVC = MainSplitViewController(connection: connection, sessionState: sessionState)
         window.contentViewController = splitVC
 
+        window.title = connection.name
+
         super.init(window: window)
 
         window.isReleasedWhenClosed = false
         window.delegate = self
+
+        refreshWindowTitle()
 
         if !window.setFrameUsingName(Self.frameAutosaveName) {
             let visibleSize = (window.screen ?? NSScreen.main)?.visibleFrame.size
@@ -120,6 +124,7 @@ internal final class ConnectionWindowController: NSWindowController, NSWindowDel
         }
         CommandActionsRegistry.shared.current = coordinator.commandActions
         updateUserActivity()
+        refreshWindowTitle()
         coordinator.handleWindowDidBecomeKey()
     }
 
@@ -161,6 +166,45 @@ internal final class ConnectionWindowController: NSWindowController, NSWindowDel
         Task {
             await DatabaseManager.shared.cancelEnsureConnected(connectionId)
         }
+    }
+
+    // MARK: - Window Title
+
+    /// Single source of truth for the window title, proxy icon, and dirty dot.
+    /// Resolved from the selected tab. Called on `windowDidBecomeKey`, once
+    /// after the window is created, and from `MainContentView` when the
+    /// selected tab changes.
+    internal func refreshWindowTitle() {
+        guard let window else { return }
+        let selectedTab = coordinator.tabManager.selectedTab
+
+        let title: String
+        switch selectedTab?.tabType {
+        case .serverDashboard:
+            title = String(localized: "Server Dashboard")
+        case .createTable:
+            title = String(localized: "Create Table")
+        case .erDiagram:
+            title = String(localized: "ER Diagram")
+        case .terminal:
+            title = String(localized: "Terminal")
+        case .table:
+            title = selectedTab?.tableContext.tableName
+                ?? selectedTab?.title
+                ?? connection.name
+        default:
+            if let fileURL = selectedTab?.content.sourceFileURL {
+                title = selectedTab?.title ?? fileURL.deletingPathExtension().lastPathComponent
+            } else if let selectedTab {
+                title = selectedTab.title
+            } else {
+                title = connection.name
+            }
+        }
+
+        window.title = title
+        window.representedURL = selectedTab?.content.sourceFileURL
+        window.isDocumentEdited = selectedTab?.content.isFileDirty ?? false
     }
 
     // MARK: - NSUserActivity
