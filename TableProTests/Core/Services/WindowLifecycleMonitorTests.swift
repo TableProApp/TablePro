@@ -5,9 +5,9 @@
 
 import AppKit
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("WindowLifecycleMonitor")
 @MainActor
@@ -78,38 +78,6 @@ struct WindowLifecycleMonitorTests {
     @Test("unregisterWindow for unknown windowId — does not crash")
     func unregisterUnknownWindowId() {
         monitor.unregisterWindow(for: UUID())
-    }
-
-    // MARK: - hasOtherWindows
-
-    @Test("hasOtherWindows — returns true when other windows exist for same connection")
-    func hasOtherWindowsTrueWhenOthersExist() {
-        let windowId1 = UUID()
-        let windowId2 = UUID()
-        let connectionId = UUID()
-
-        monitor.register(window: NSWindow(), connectionId: connectionId, windowId: windowId1)
-        monitor.register(window: NSWindow(), connectionId: connectionId, windowId: windowId2)
-        defer { cleanup(windowId1, windowId2) }
-
-        #expect(monitor.hasOtherWindows(for: connectionId, excluding: windowId1))
-        #expect(monitor.hasOtherWindows(for: connectionId, excluding: windowId2))
-    }
-
-    @Test("hasOtherWindows — returns false when only the excluded window exists")
-    func hasOtherWindowsFalseWhenOnlySelf() {
-        let windowId = UUID()
-        let connectionId = UUID()
-
-        monitor.register(window: NSWindow(), connectionId: connectionId, windowId: windowId)
-        defer { cleanup(windowId) }
-
-        #expect(!monitor.hasOtherWindows(for: connectionId, excluding: windowId))
-    }
-
-    @Test("hasOtherWindows — returns false when no windows exist")
-    func hasOtherWindowsFalseWhenEmpty() {
-        #expect(!monitor.hasOtherWindows(for: UUID(), excluding: UUID()))
     }
 
     // MARK: - Multiple connections

@@ -60,7 +60,6 @@ extension MainContentCoordinator {
             return
         }
 
-        // If an in-window tab already shows this table, select it.
         if let existing = tabManager.tabs.first(where: { tab in
             tab.tabType == .table
                 && !tab.isPreview
@@ -148,8 +147,6 @@ extension MainContentCoordinator {
             return
         }
 
-        // If the current tab has unsaved changes, active filters, or sorting,
-        // open a new in-window tab instead of replacing the active one.
         let hasActiveWork = changeManager.hasChanges
             || selectedTabFilterState.hasAppliedFilters
             || (tabManager.selectedTab?.sortState.isSorting ?? false)
@@ -161,13 +158,11 @@ extension MainContentCoordinator {
             return
         }
 
-        // Preview tab mode: reuse or create a preview tab.
         if AppSettingsManager.shared.tabs.enablePreviewTabs {
             openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, schemaName: currentSchema, showStructure: showStructure)
             return
         }
 
-        // Default: open the table in a new in-window tab.
         addTableTabAndRun(
             tableName, isView: isView, databaseName: currentDatabase,
             schemaName: currentSchema, showStructure: showStructure
@@ -221,7 +216,6 @@ extension MainContentCoordinator {
         databaseName: String = "", schemaName: String? = nil,
         showStructure: Bool = false
     ) {
-        // If a preview tab already exists, reuse it.
         if let previewIndex = tabManager.tabs.firstIndex(where: { $0.isPreview }) {
             let previewTab = tabManager.tabs[previewIndex]
             tabManager.selectTab(id: previewTab.id)
@@ -240,9 +234,6 @@ extension MainContentCoordinator {
             return
         }
 
-        // No preview tab, but the current tab can be reused: replace in-place.
-        // Covers: non-preview table tabs with no active work, and empty/default
-        // query tabs (no user-entered content).
         let isReusableTab: Bool = {
             guard let tab = tabManager.selectedTab else { return false }
             if tab.tabType == .table && !changeManager.hasChanges
@@ -270,7 +261,6 @@ extension MainContentCoordinator {
             return
         }
 
-        // No reusable tab: add a new in-window preview table tab.
         addTableTabAndRun(
             tableName, isView: isView, databaseName: databaseName,
             schemaName: schemaName, showStructure: showStructure, isPreview: true

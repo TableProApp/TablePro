@@ -92,14 +92,6 @@ internal final class WindowLifecycleMonitor {
             .compactMap(\.window)
     }
 
-    /// Check if other live windows exist for a connection, excluding a specific windowId.
-    internal func hasOtherWindows(for connectionId: UUID, excluding windowId: UUID) -> Bool {
-        purgeStaleEntries()
-        return entries.contains { key, value in
-            key != windowId && value.connectionId == connectionId
-        }
-    }
-
     /// All connection IDs that currently have registered windows.
     internal func allConnectionIds() -> Set<UUID> {
         purgeStaleEntries()

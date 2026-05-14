@@ -57,7 +57,6 @@ extension MainContentView {
             }
         }
 
-        // All restored tabs load into this connection window's tab manager.
         tabManager.tabs = restoredTabs
         let selectedId = result.selectedTabId.flatMap { id in
             restoredTabs.contains(where: { $0.id == id }) ? id : nil

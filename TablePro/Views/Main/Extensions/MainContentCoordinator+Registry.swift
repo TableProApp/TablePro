@@ -31,14 +31,4 @@ extension MainContentCoordinator {
             .filter { $0.connectionId == connectionId }
             .flatMap { $0.tabManager.tabs }
     }
-
-    static func coordinator(
-        forConnection connectionId: UUID,
-        tabMatching predicate: (QueryTab) -> Bool
-    ) -> MainContentCoordinator? {
-        activeCoordinators.values.first { coordinator in
-            coordinator.connectionId == connectionId
-                && coordinator.tabManager.tabs.contains(where: predicate)
-        }
-    }
 }
