@@ -1211,12 +1211,24 @@ impl SimpleComponent for App {
         let workspace_outer_stack = gtk::Stack::builder()
             .transition_type(gtk::StackTransitionType::Crossfade)
             .build();
+        // CTA button parented inside the empty-state status page so
+        // the "open editor" affordance is reachable with the mouse —
+        // without it the only path was the keyboard shortcut and the
+        // tab-bar "+", and the tab bar is hidden in this empty state.
+        let workspace_empty_cta = gtk::Button::builder()
+            .label(crate::tr!("Open SQL editor"))
+            .action_name("win.open-editor")
+            .halign(gtk::Align::Center)
+            .build();
+        workspace_empty_cta.add_css_class("suggested-action");
+        workspace_empty_cta.add_css_class("pill");
         let workspace_empty_page = adw::StatusPage::builder()
             .icon_name(StatusKind::Info.icon())
             .title(crate::tr!("Select a table"))
             .description(crate::tr!(
-                "Pick a table from the sidebar, or press Ctrl+E to open a query editor."
+                "Pick a table from the sidebar, or use the button below (Ctrl+T)."
             ))
+            .child(&workspace_empty_cta)
             .build();
         workspace_outer_stack.add_named(&workspace_empty_page, Some("empty"));
         workspace_outer_stack.set_visible_child_name("empty");
@@ -1639,6 +1651,10 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut("<Primary>q", "win.quit"));
     controller.add_shortcut(make_shortcut("<Primary>w", "win.close-current"));
     controller.add_shortcut(make_shortcut("<Primary>e", "win.open-editor"));
+    // Ctrl+T mirrors Ctrl+E for the browser/IDE muscle memory ("new
+    // tab"). Both fire `win.open-editor` so the empty workspace state
+    // can be exited via either shortcut without focus tricks.
+    controller.add_shortcut(make_shortcut("<Primary>t", "win.open-editor"));
     controller.add_shortcut(make_shortcut("F5", "win.refresh-page"));
     controller.add_shortcut(make_shortcut("<Primary>f", "win.open-filter"));
     controller.add_shortcut(make_shortcut("<Primary>comma", "win.preferences"));

@@ -194,22 +194,12 @@ impl App {
             page
         });
 
-        // Ctrl+T shortcut: new editor tab. Scoped to the workspace inner
-        // box so it only fires when the workspace has focus.
-        let new_tab_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>t").expect("valid trigger"))
-            .action(&gtk::CallbackAction::new({
-                let s = sender;
-                move |_, _| {
-                    s.input(AppMsg::NewEditorTab);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        let controller = gtk::ShortcutController::new();
-        controller.set_scope(gtk::ShortcutScope::Local);
-        controller.add_shortcut(new_tab_shortcut);
-        inner.add_controller(controller);
+        // Ctrl+T is bound globally (alongside Ctrl+E) in
+        // `install_window_shortcuts` so it fires even when this
+        // tab-area widget tree isn't focused (e.g. the empty-state
+        // status page). Keeping a local controller here would just
+        // duplicate the binding.
+        let _ = sender;
 
         self.workspace_root = Some(tab_overview);
         self.workspace_tab_view = Some(tab_view);
