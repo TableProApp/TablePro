@@ -4,5 +4,7 @@
 <dict>
 	<key>TableProPluginKitVersion</key>
 	<integer>12</integer>
+	<key>TableProMinAppVersion</key>
+	<string>0.42.0</string>
 </dict>
 </plist>
