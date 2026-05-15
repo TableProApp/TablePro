@@ -59,6 +59,9 @@ struct MainContentView: View {
     @State var hasInitialized = false
     /// Reference to this view's NSWindow for filtering notifications
     @State var viewWindow: NSWindow?
+    /// Error message surfaced after a failed drop. The popover that triggered the drop
+    /// has already dismissed, so the failure has to be reported on the main window.
+    @State private var dropErrorMessage: String?
 
     // MARK: - Environment
 
@@ -115,7 +118,27 @@ struct MainContentView: View {
             } message: { _ in
                 Text(String(localized: "All tables and data will be permanently deleted."))
             }
+            .alert(
+                String(localized: "Drop Failed"),
+                isPresented: dropErrorBinding,
+                presenting: dropErrorMessage
+            ) { _ in
+                Button(String(localized: "OK"), role: .cancel) {
+                    dropErrorMessage = nil
+                }
+            } message: { message in
+                Text(message)
+            }
             .modifier(FocusedCommandActionsModifier(actions: commandActions))
+    }
+
+    private var dropErrorBinding: Binding<Bool> {
+        Binding(
+            get: { dropErrorMessage != nil },
+            set: { newValue in
+                if !newValue { dropErrorMessage = nil }
+            }
+        )
     }
 
     private var dropConfirmationBinding: Binding<Bool> {
@@ -143,6 +166,7 @@ struct MainContentView: View {
             try await driver.dropDatabase(name: name)
         } catch {
             MainContentCoordinator.logger.error("Drop database failed: \(error.localizedDescription)")
+            dropErrorMessage = error.localizedDescription
         }
         coordinator.databaseToDrop = nil
     }
@@ -186,11 +210,8 @@ struct MainContentView: View {
             CreateDatabaseSheet(
                 databaseType: connection.type,
                 viewModel: viewModel,
-                onCreated: {
-                    let database = DatabaseManager.shared.session(for: connection.id)?.currentDatabase
-                    if let database {
-                        Task { await coordinator.switchDatabase(to: database) }
-                    }
+                onCreated: { newDatabaseName in
+                    Task { await coordinator.switchDatabase(to: newDatabaseName) }
                 }
             )
         case .exportDialog:

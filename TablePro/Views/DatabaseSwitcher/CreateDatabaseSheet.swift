@@ -5,7 +5,7 @@ struct CreateDatabaseSheet: View {
 
     let databaseType: DatabaseType
     let viewModel: DatabaseSwitcherViewModel
-    var onCreated: (() -> Void)?
+    var onCreated: ((String) -> Void)?
 
     @State private var loadState: LoadState = .loading
     @State private var databaseName = ""
@@ -276,7 +276,7 @@ struct CreateDatabaseSheet: View {
         Task {
             do {
                 try await viewModel.createDatabase(name: name, values: submissionValues)
-                onCreated?()
+                onCreated?(name)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
