@@ -197,7 +197,9 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         connection?.cancelCurrentRequest()
     }
 
-    func applyQueryTimeout(_ seconds: Int) async throws {}
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        connection?.setQueryTimeout(seconds)
+    }
 
     // MARK: - Schema Operations
 
