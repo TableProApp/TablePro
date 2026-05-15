@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Drop database now uses the native confirmation dialog instead of a custom sheet.
 - Add competitive tracking docs sourced from top TablePlus issues.
 
+### Security
+
+- AI Chat: destructive operations (DROP, TRUNCATE, ALTER...DROP) now always require user approval before executing. Silent safe-mode and "Always Allow" no longer bypass the confirmation for `confirm_destructive_operation`. Previously an AI could drop tables without the user seeing any prompt when the connection was in Silent mode.
+
 ### Fixed
 
 - AI Chat: Gemini provider now sends tool schemas with `additionalProperties` stripped and optional fields rewritten from `type: [X, null]` to `type: X, nullable: true`, fixing 400 errors when sending a message with tools enabled.

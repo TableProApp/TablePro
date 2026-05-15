@@ -78,9 +78,25 @@ extension AIChatViewModel {
 
     @MainActor
     func computeInitialApprovalState(for toolName: String) -> ToolApprovalState {
-        if !ChatToolRegistry.shared.requiresApproval(toolName: toolName) {
+        let tool = ChatToolRegistry.shared.tool(named: toolName)
+        let toolMode = tool?.mode
+
+        if toolMode == .readOnly {
             return .approved
         }
+
+        // Destructive operations (`.agentOnly`) always require user approval.
+        // Safe-mode level and "Always Allow" cannot bypass them — the AI must not
+        // be able to drop tables, truncate, or alter-drop without an explicit click.
+        if toolMode == .agentOnly {
+            if let connection, connection.safeModeLevel.blocksAllWrites {
+                return .denied(reason: String(
+                    localized: "Connection is read-only. Destructive operations are not permitted."
+                ))
+            }
+            return .pending
+        }
+
         if let connection, connection.aiAlwaysAllowedTools.contains(toolName) {
             return .approved
         }
@@ -119,6 +135,11 @@ extension AIChatViewModel {
 
     @MainActor
     func persistAlwaysAllowed(toolName: String) {
+        // Refuse to persist Always Allow for destructive operations.
+        // Each DROP/TRUNCATE/ALTER...DROP must be confirmed individually.
+        if ChatToolRegistry.shared.tool(named: toolName)?.mode == .agentOnly {
+            return
+        }
         guard var current = connection else { return }
         guard !current.aiAlwaysAllowedTools.contains(toolName) else { return }
         current.aiAlwaysAllowedTools.insert(toolName)
