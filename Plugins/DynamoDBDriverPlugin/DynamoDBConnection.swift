@@ -261,7 +261,7 @@ internal final class DynamoDBConnection: @unchecked Sendable {
     private var _session: URLSession?
     private var _credentials: AWSCredentials?
     private var _currentTask: URLSessionDataTask?
-    private var _queryTimeout = HttpQueryTimeout()
+    private let _queryTimeout = HttpQueryTimeoutBox()
     private let region: String
     private let endpointUrl: String
     private static let logger = Logger(subsystem: "com.TablePro", category: "DynamoDBConnection")
@@ -272,7 +272,7 @@ internal final class DynamoDBConnection: @unchecked Sendable {
     }
 
     func setQueryTimeout(_ seconds: Int) {
-        lock.withLock { _queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds) }
+        _queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     init(config: DriverConnectionConfig) {
@@ -447,7 +447,7 @@ internal final class DynamoDBConnection: @unchecked Sendable {
         urlRequest.setValue(hostHeader, forHTTPHeaderField: "Host")
 
         signRequest(&urlRequest, body: bodyData, credentials: credentials)
-        urlRequest.timeoutInterval = lock.withLock { _queryTimeout.requestTimeoutInterval }
+        urlRequest.timeoutInterval = _queryTimeout.requestTimeoutInterval
 
         let (data, response) = try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<(Data, URLResponse), Error>) in

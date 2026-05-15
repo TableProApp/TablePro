@@ -284,7 +284,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
     private var _currentJobId: String?
     private var _currentJobLocation: String?
     private var _queryTimeoutSeconds: Int = 300
-    private var _queryTimeout = HttpQueryTimeout()
+    private let _queryTimeout = HttpQueryTimeoutBox()
     private let location: String?
     private static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryConnection")
     private static let baseUrl = "https://bigquery.googleapis.com/bigquery/v2"
@@ -294,10 +294,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
     }
 
     func setQueryTimeout(_ seconds: Int) {
-        lock.withLock {
-            _queryTimeoutSeconds = max(seconds, 30)
-            _queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
-        }
+        lock.withLock { _queryTimeoutSeconds = max(seconds, 30) }
+        _queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     init(config: DriverConnectionConfig) {
@@ -841,7 +839,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
         session: URLSession
     ) async throws -> (Data, URLResponse) {
         var timedRequest = request
-        timedRequest.timeoutInterval = lock.withLock { _queryTimeout.requestTimeoutInterval }
+        timedRequest.timeoutInterval = _queryTimeout.requestTimeoutInterval
         return try await withCheckedThrowingContinuation { continuation in
             let task = session.dataTask(with: timedRequest) { [weak self] data, response, error in
                 self?.lock.withLock { self?._currentTask = nil }

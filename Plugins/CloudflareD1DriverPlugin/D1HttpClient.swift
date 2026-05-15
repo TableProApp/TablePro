@@ -137,7 +137,7 @@ final class D1HttpClient: @unchecked Sendable {
     private var _databaseId: String
     private var session: URLSession?
     private var currentTask: URLSessionDataTask?
-    private var queryTimeout = HttpQueryTimeout()
+    private let queryTimeout = HttpQueryTimeoutBox()
 
     var databaseId: String {
         get {
@@ -159,9 +159,7 @@ final class D1HttpClient: @unchecked Sendable {
     }
 
     func setQueryTimeout(_ seconds: Int) {
-        lock.lock()
-        queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
-        lock.unlock()
+        queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     func createSession() {
@@ -311,12 +309,11 @@ final class D1HttpClient: @unchecked Sendable {
             lock.unlock()
             throw D1HttpError(message: String(localized: "Not connected to database"))
         }
-        let timeoutInterval = queryTimeout.requestTimeoutInterval
         lock.unlock()
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = timeoutInterval
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
         request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body

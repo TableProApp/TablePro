@@ -145,7 +145,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var currentTask: URLSessionDataTask?
     private var _currentDatabase: String
     private var _lastQueryId: String?
-    private var _queryTimeout = HttpQueryTimeout()
+    private let _queryTimeout = HttpQueryTimeoutBox()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePluginDriver")
 
@@ -733,9 +733,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        lock.lock()
-        _queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
-        lock.unlock()
+        _queryTimeout.set(serverTimeoutSeconds: seconds)
         guard seconds > 0 else { return }
         _ = try await execute(query: "SET max_execution_time = \(seconds)")
     }
@@ -804,11 +802,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let queryId {
             _lastQueryId = queryId
         }
-        let timeoutInterval = _queryTimeout.requestTimeoutInterval
         lock.unlock()
 
         var request = try buildRequest(query: query, database: database, queryId: queryId)
-        request.timeoutInterval = timeoutInterval
+        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
         let isSelect = Self.isSelectLikeQuery(query)
 
         let (data, response) = try await withTaskCancellationHandler {
@@ -865,11 +862,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let queryId {
             _lastQueryId = queryId
         }
-        let timeoutInterval = _queryTimeout.requestTimeoutInterval
         lock.unlock()
 
         var request = try buildRequest(query: query, database: database, queryId: queryId, params: params)
-        request.timeoutInterval = timeoutInterval
+        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
         let isSelect = Self.isSelectLikeQuery(query)
 
         let (data, response) = try await withTaskCancellationHandler {

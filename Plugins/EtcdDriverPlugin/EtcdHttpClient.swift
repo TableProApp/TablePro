@@ -315,7 +315,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private var authToken: String?
     private var _isAuthenticating = false
     private var apiPrefix = "v3"
-    private var queryTimeout = HttpQueryTimeout()
+    private let queryTimeout = HttpQueryTimeoutBox()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdHttpClient")
 
@@ -324,9 +324,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     }
 
     func setQueryTimeout(_ seconds: Int) {
-        lock.lock()
-        queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
-        lock.unlock()
+        queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     // MARK: - Base URL
@@ -717,7 +715,6 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         }
         let token = authToken
         let generation = sessionGeneration
-        let timeoutInterval = queryTimeout.requestTimeoutInterval
         lock.unlock()
 
         guard let url = URL(string: "\(baseUrl)/\(path)") else {
@@ -726,7 +723,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = timeoutInterval
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token {
             request.setValue(token, forHTTPHeaderField: "Authorization")

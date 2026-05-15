@@ -115,7 +115,7 @@ final class HranaHttpClient: @unchecked Sendable {
     private let lock = NSLock()
     private var session: URLSession?
     private var currentTask: URLSessionDataTask?
-    private var queryTimeout = HttpQueryTimeout()
+    private let queryTimeout = HttpQueryTimeoutBox()
 
     init(baseUrl: URL, authToken: String?) {
         self.baseUrl = baseUrl
@@ -123,9 +123,7 @@ final class HranaHttpClient: @unchecked Sendable {
     }
 
     func setQueryTimeout(_ seconds: Int) {
-        lock.lock()
-        queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
-        lock.unlock()
+        queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     func createSession() {
@@ -215,12 +213,11 @@ final class HranaHttpClient: @unchecked Sendable {
             lock.unlock()
             throw HranaHttpError(message: String(localized: "Not connected to database"))
         }
-        let timeoutInterval = queryTimeout.requestTimeoutInterval
         lock.unlock()
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = timeoutInterval
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
