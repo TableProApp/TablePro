@@ -69,7 +69,7 @@ struct ChatToolSpec: Codable, Equatable, Sendable {
 
 enum ChatStreamEvent: Sendable {
     case textDelta(String)
-    case toolUseStart(id: String, name: String)
+    case toolUseStart(id: String, name: String, providerMetadata: [String: String]? = nil)
     case toolUseDelta(id: String, inputJSONDelta: String)
     case toolUseEnd(id: String)
     case usage(AITokenUsage)

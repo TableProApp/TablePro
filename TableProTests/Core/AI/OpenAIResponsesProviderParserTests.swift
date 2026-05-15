@@ -93,7 +93,7 @@ struct OpenAIResponsesProviderParserTests {
                 "name": "execute_query"
             ]
         ], state: &state)
-        guard case .toolUseStart(let id, let name) = events.first else {
+        guard case .toolUseStart(let id, let name, _) = events.first else {
             Issue.record("expected toolUseStart; got \(events)")
             return
         }

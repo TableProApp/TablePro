@@ -42,7 +42,7 @@ struct OpenAICompatibleProviderParserTests {
             ]]
         ], state: &state)
         #expect(result.events.count == 1)
-        if case .toolUseStart(let id, let name) = result.events.first {
+        if case .toolUseStart(let id, let name, _) = result.events.first {
             #expect(id == "call_abc")
             #expect(name == "list_tables")
         } else {

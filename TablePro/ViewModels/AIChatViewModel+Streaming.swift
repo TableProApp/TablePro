@@ -20,6 +20,7 @@ extension AIChatViewModel {
         let toolUseOrder: [String]
         let toolUseNames: [String: String]
         let toolUseInputs: [String: String]
+        let toolUseMetadata: [String: [String: String]]
         let cancelled: Bool
     }
 
@@ -144,7 +145,8 @@ extension AIChatViewModel {
                     let assembled = Self.assembleToolUseBlocks(
                         order: round.toolUseOrder,
                         names: round.toolUseNames,
-                        inputs: round.toolUseInputs
+                        inputs: round.toolUseInputs,
+                        metadata: round.toolUseMetadata
                     )
                     let context = await MainActor.run {
                         ChatToolContext(
@@ -244,6 +246,7 @@ extension AIChatViewModel {
         var toolUseOrder: [String] = []
         var toolUseNames: [String: String] = [:]
         var toolUseInputs: [String: String] = [:]
+        var toolUseMetadata: [String: [String: String]] = [:]
         var reasoningIDMap: [String: UUID] = [:]
         let flushInterval: ContinuousClock.Duration = .milliseconds(150)
         var lastFlushTime: ContinuousClock.Instant = .now
@@ -255,7 +258,7 @@ extension AIChatViewModel {
                 pendingContent += token
             case .usage(let usage):
                 pendingUsage = usage
-            case .toolUseStart(let id, let name):
+            case .toolUseStart(let id, let name, let providerMetadata):
                 if !pendingContent.isEmpty {
                     await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
                     pendingContent = ""
@@ -270,6 +273,9 @@ extension AIChatViewModel {
                     toolUseInputs[id] = ""
                 }
                 toolUseNames[id] = name
+                if let providerMetadata, !providerMetadata.isEmpty {
+                    toolUseMetadata[id] = providerMetadata
+                }
             case .toolUseDelta(let id, let inputJSONDelta):
                 toolUseInputs[id, default: ""] += inputJSONDelta
             case .toolUseEnd:
@@ -309,6 +315,7 @@ extension AIChatViewModel {
             toolUseOrder: toolUseOrder,
             toolUseNames: toolUseNames,
             toolUseInputs: toolUseInputs,
+            toolUseMetadata: toolUseMetadata,
             cancelled: Task.isCancelled
         )
     }
@@ -465,7 +472,8 @@ extension AIChatViewModel {
     nonisolated static func assembleToolUseBlocks(
         order: [String],
         names: [String: String],
-        inputs: [String: String]
+        inputs: [String: String],
+        metadata: [String: [String: String]] = [:]
     ) -> [ToolUseBlock] {
         order.compactMap { id -> ToolUseBlock? in
             guard let name = names[id] else { return nil }
@@ -479,7 +487,12 @@ extension AIChatViewModel {
             } else {
                 inputValue = .object([:])
             }
-            return ToolUseBlock(id: id, name: name, input: inputValue)
+            return ToolUseBlock(
+                id: id,
+                name: name,
+                input: inputValue,
+                providerMetadata: metadata[id]
+            )
         }
     }
 

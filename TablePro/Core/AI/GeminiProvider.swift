@@ -220,12 +220,16 @@ final class GeminiProvider: ChatTransport {
                 continue
             case .toolUse(let useBlock):
                 let argsObject = (try? useBlock.input.jsonObject()) ?? [String: Any]()
-                parts.append([
+                var partEntry: [String: Any] = [
                     "functionCall": [
                         "name": useBlock.name,
                         "args": argsObject
                     ]
-                ])
+                ]
+                if let signature = useBlock.providerMetadata?["thoughtSignature"], !signature.isEmpty {
+                    partEntry["thoughtSignature"] = signature
+                }
+                parts.append(partEntry)
             case .toolResult(let resultBlock):
                 let toolName = resolveToolName(
                     forToolUseId: resultBlock.toolUseId,
@@ -296,7 +300,11 @@ final class GeminiProvider: ChatTransport {
                     let id = idGenerator()
                     let argsObject = functionCall["args"] ?? [String: Any]()
                     let argsString = encodeArgsToJSONString(argsObject)
-                    events.append(.toolUseStart(id: id, name: name))
+                    var metadata: [String: String]?
+                    if let signature = part["thoughtSignature"] as? String, !signature.isEmpty {
+                        metadata = ["thoughtSignature": signature]
+                    }
+                    events.append(.toolUseStart(id: id, name: name, providerMetadata: metadata))
                     events.append(.toolUseDelta(id: id, inputJSONDelta: argsString))
                     events.append(.toolUseEnd(id: id))
                 }

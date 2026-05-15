@@ -396,12 +396,23 @@ struct ToolUseBlock: Codable, Equatable, Sendable {
     let name: String
     let input: JsonValue
     var approvalState: ToolApprovalState
+    /// Opaque provider-specific data that must round-trip with the call (e.g., Gemini's
+    /// `thoughtSignature` required when echoing a function call alongside its response).
+    /// Keys are provider-defined; unknown providers ignore them.
+    var providerMetadata: [String: String]?
 
-    init(id: String, name: String, input: JsonValue, approvalState: ToolApprovalState = .approved) {
+    init(
+        id: String,
+        name: String,
+        input: JsonValue,
+        approvalState: ToolApprovalState = .approved,
+        providerMetadata: [String: String]? = nil
+    ) {
         self.id = id
         self.name = name
         self.input = input
         self.approvalState = approvalState
+        self.providerMetadata = providerMetadata
     }
 
     init(from decoder: Decoder) throws {
@@ -410,6 +421,7 @@ struct ToolUseBlock: Codable, Equatable, Sendable {
         name = try container.decode(String.self, forKey: .name)
         input = try container.decode(JsonValue.self, forKey: .input)
         approvalState = try container.decodeIfPresent(ToolApprovalState.self, forKey: .approvalState) ?? .approved
+        providerMetadata = try container.decodeIfPresent([String: String].self, forKey: .providerMetadata)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -418,10 +430,11 @@ struct ToolUseBlock: Codable, Equatable, Sendable {
         try container.encode(name, forKey: .name)
         try container.encode(input, forKey: .input)
         try container.encode(approvalState, forKey: .approvalState)
+        try container.encodeIfPresent(providerMetadata, forKey: .providerMetadata)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, input, approvalState
+        case id, name, input, approvalState, providerMetadata
     }
 }
 

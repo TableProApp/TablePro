@@ -41,7 +41,7 @@ struct AnthropicProviderParserTests {
             ]
         ], state: &state)
         #expect(events.count == 1)
-        if case .toolUseStart(let id, let name) = events.first {
+        if case .toolUseStart(let id, let name, _) = events.first {
             #expect(id == "toolu_abc")
             #expect(name == "list_tables")
         } else {

@@ -51,6 +51,34 @@ struct GeminiProviderEncodingTests {
         #expect(args?["connection_id"] as? String == "abc")
     }
 
+    @Test("toolUse echoes thoughtSignature alongside functionCall when present")
+    func toolUseRoundTripsThoughtSignature() throws {
+        let toolUse = ToolUseBlock(
+            id: "call_1",
+            name: "list_tables",
+            input: .object([:]),
+            providerMetadata: ["thoughtSignature": "sig-abc-123"]
+        )
+        let turn = ChatTurnWire(role: .assistant, blocks: [.toolUse(toolUse)])
+        let encoded = try #require(makeProvider().encodeTurn(turn, priorTurns: []))
+        let parts = encoded["parts"] as? [[String: Any]]
+        #expect((parts?[0])?["thoughtSignature"] as? String == "sig-abc-123")
+        #expect((parts?[0])?["functionCall"] != nil)
+    }
+
+    @Test("toolUse without thoughtSignature omits the field")
+    func toolUseOmitsSignatureWhenAbsent() throws {
+        let toolUse = ToolUseBlock(
+            id: "call_1",
+            name: "list_tables",
+            input: .object([:])
+        )
+        let turn = ChatTurnWire(role: .assistant, blocks: [.toolUse(toolUse)])
+        let encoded = try #require(makeProvider().encodeTurn(turn, priorTurns: []))
+        let parts = encoded["parts"] as? [[String: Any]]
+        #expect((parts?[0])?["thoughtSignature"] == nil)
+    }
+
     @Test("toolResult resolves the originating tool name from prior turns")
     func toolResultLookupAcrossTurns() throws {
         let toolUse = ToolUseBlock(id: "call_1", name: "list_tables", input: .object([:]))

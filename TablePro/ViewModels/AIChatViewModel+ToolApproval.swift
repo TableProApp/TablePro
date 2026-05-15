@@ -31,7 +31,13 @@ extension AIChatViewModel {
             guard let self else { return assembledBlocks }
             let initial = assembledBlocks.map { block -> ToolUseBlock in
                 let state = self.computeInitialApprovalState(for: block.name)
-                return ToolUseBlock(id: block.id, name: block.name, input: block.input, approvalState: state)
+                return ToolUseBlock(
+                    id: block.id,
+                    name: block.name,
+                    input: block.input,
+                    approvalState: state,
+                    providerMetadata: block.providerMetadata
+                )
             }
             self.appendPendingToolUseBlocks(initial, assistantID: assistantID)
             return initial
@@ -60,7 +66,11 @@ extension AIChatViewModel {
                 self?.updateApprovalState(blockID: block.id, newState: finalState, assistantID: assistantID)
             }
             resolved.append(ToolUseBlock(
-                id: block.id, name: block.name, input: block.input, approvalState: finalState
+                id: block.id,
+                name: block.name,
+                input: block.input,
+                approvalState: finalState,
+                providerMetadata: block.providerMetadata
             ))
         }
         return resolved
@@ -142,7 +152,11 @@ extension AIChatViewModel {
     ) async {
         let initialState = computeInitialApprovalState(for: block.name)
         let pendingBlock = ToolUseBlock(
-            id: block.id, name: block.name, input: block.input, approvalState: initialState
+            id: block.id,
+            name: block.name,
+            input: block.input,
+            approvalState: initialState,
+            providerMetadata: block.providerMetadata
         )
         appendPendingToolUseBlocks([pendingBlock], assistantID: assistantID)
 
