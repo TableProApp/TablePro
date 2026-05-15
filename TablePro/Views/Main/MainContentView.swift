@@ -100,7 +100,51 @@ struct MainContentView: View {
             .sheet(item: Bindable(coordinator).activeSheet) { sheet in
                 sheetContent(for: sheet)
             }
+            .confirmationDialog(
+                dropConfirmationTitle,
+                isPresented: dropConfirmationBinding,
+                titleVisibility: .visible,
+                presenting: coordinator.databaseToDrop
+            ) { name in
+                Button(String(localized: "Drop Database"), role: .destructive) {
+                    Task { await dropDatabase(name: name) }
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    coordinator.databaseToDrop = nil
+                }
+            } message: { _ in
+                Text(String(localized: "All tables and data will be permanently deleted."))
+            }
             .modifier(FocusedCommandActionsModifier(actions: commandActions))
+    }
+
+    private var dropConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.databaseToDrop != nil },
+            set: { newValue in
+                if !newValue { coordinator.databaseToDrop = nil }
+            }
+        )
+    }
+
+    private var dropConfirmationTitle: String {
+        if let name = coordinator.databaseToDrop {
+            return String(format: String(localized: "Drop database “%@”?"), name)
+        }
+        return ""
+    }
+
+    private func dropDatabase(name: String) async {
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+            coordinator.databaseToDrop = nil
+            return
+        }
+        do {
+            try await driver.dropDatabase(name: name)
+        } catch {
+            MainContentCoordinator.logger.error("Drop database failed: \(error.localizedDescription)")
+        }
+        coordinator.databaseToDrop = nil
     }
 
     // MARK: - Sheet Content
@@ -131,23 +175,22 @@ struct MainContentView: View {
         )
 
         switch sheet {
-        case .databaseSwitcher:
-            let session = DatabaseManager.shared.session(for: connection.id)
-            let activeDatabase = session?.currentDatabase ?? connection.database
-            let activeSchema = session?.currentSchema
-            let currentSelection =
-                PluginManager.shared.supportsSchemaSwitching(for: connection.type)
-                ? (activeSchema ?? activeDatabase)
-                : activeDatabase
-            DatabaseSwitcherSheet(
-                isPresented: dismissBinding,
-                currentDatabase: currentSelection,
-                currentSchema: activeSchema,
-                databaseType: connection.type,
+        case .createDatabase:
+            let viewModel = DatabaseSwitcherViewModel(
                 connectionId: connection.id,
-                onSelect: switchDatabase,
-                onSelectSchema: { schema in
-                    Task { await coordinator.switchSchema(to: schema) }
+                currentDatabase: nil,
+                currentSchema: nil,
+                databaseType: connection.type,
+                initialMode: .database
+            )
+            CreateDatabaseSheet(
+                databaseType: connection.type,
+                viewModel: viewModel,
+                onCreated: {
+                    let database = DatabaseManager.shared.session(for: connection.id)?.currentDatabase
+                    if let database {
+                        Task { await coordinator.switchDatabase(to: database) }
+                    }
                 }
             )
         case .exportDialog:

@@ -828,7 +828,7 @@ final class MainContentCommandActions {
     // MARK: - Database Operations (Group A — Called Directly)
 
     func openDatabaseSwitcher() {
-        coordinator?.activeSheet = .databaseSwitcher
+        coordinator?.isDatabaseSwitcherShown = true
     }
 
     func openQuickSwitcher() {

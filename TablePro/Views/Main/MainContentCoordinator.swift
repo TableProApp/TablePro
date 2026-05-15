@@ -42,7 +42,6 @@ struct DisplayFormatsCacheEntry {
 /// Represents which sheet is currently active in MainContentView.
 /// Uses a single `.sheet(item:)` modifier instead of multiple `.sheet(isPresented:)`.
 enum ActiveSheet: Identifiable {
-    case databaseSwitcher
     case quickSwitcher
     case connectionSwitcher
     case sqlPreview
@@ -52,10 +51,10 @@ enum ActiveSheet: Identifiable {
     case backupDatabase
     case restoreDatabase(fileURL: URL)
     case maintenance(operation: String, tableName: String)
+    case createDatabase
 
     var id: String {
         switch self {
-        case .databaseSwitcher: "databaseSwitcher"
         case .quickSwitcher: "quickSwitcher"
         case .connectionSwitcher: "connectionSwitcher"
         case .sqlPreview: "sqlPreview"
@@ -65,6 +64,7 @@ enum ActiveSheet: Identifiable {
         case .backupDatabase: "backupDatabase"
         case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"
         case .maintenance(let operation, let tableName): "maintenance-\(operation)-\(tableName)"
+        case .createDatabase: "createDatabase"
         }
     }
 }
@@ -152,6 +152,8 @@ final class MainContentCoordinator {
     var cursorPositions: [CursorPosition] = []
     var tableMetadata: TableMetadata?
     var activeSheet: ActiveSheet?
+    var isDatabaseSwitcherShown = false
+    var databaseToDrop: String?
     var importFileURL: URL?
     var exportPreselectedTableNames: Set<String>?
     var needsLazyLoad = false

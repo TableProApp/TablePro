@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Database switcher now opens as a popover anchored to the database chip in the toolbar, with a checkmark on the active row and direct row-click to switch. Refresh sits beside the search field; New Database is a menu-style footer row that appears only when the engine supports it. ⌘N and ⌘R bind globally inside the popover. Schemas use folder icons; databases keep the cylinder.
+- New Database dialog uses the native sheet layout: title in the toolbar, Cancel and Create as toolbar items, wider form so the Name field no longer wraps.
+- Drop database now uses the native confirmation dialog instead of a custom sheet.
 - Add competitive tracking docs sourced from top TablePlus issues.
 
 ### Fixed

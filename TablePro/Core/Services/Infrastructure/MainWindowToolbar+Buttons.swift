@@ -22,7 +22,7 @@ struct ConnectionToolbarButton: View {
 }
 
 struct DatabaseToolbarButton: View {
-    let coordinator: MainContentCoordinator
+    @Bindable var coordinator: MainContentCoordinator
 
     var body: some View {
         let state = coordinator.toolbarState
@@ -38,6 +38,9 @@ struct DatabaseToolbarButton: View {
                 state.connectionState != .connected
                     || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
             )
+            .popover(isPresented: $coordinator.isDatabaseSwitcherShown, arrowEdge: .bottom) {
+                DatabaseSwitcherPopoverHost(coordinator: coordinator)
+            }
         }
     }
 }
