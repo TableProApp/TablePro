@@ -145,6 +145,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var currentTask: URLSessionDataTask?
     private var _currentDatabase: String
     private var _lastQueryId: String?
+    private var _queryTimeout = HttpQueryTimeout()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePluginDriver")
 
@@ -196,8 +197,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         let urlConfig = URLSessionConfiguration.default
-        urlConfig.timeoutIntervalForRequest = 30
-        urlConfig.timeoutIntervalForResource = 300
+        urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         lock.lock()
         if let delegate = ClickHouseTLSDelegate.make(for: config.ssl) {
@@ -732,6 +733,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
+        lock.lock()
+        _queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
+        lock.unlock()
         guard seconds > 0 else { return }
         _ = try await execute(query: "SET max_execution_time = \(seconds)")
     }
@@ -800,9 +804,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let queryId {
             _lastQueryId = queryId
         }
+        let timeoutInterval = _queryTimeout.requestTimeoutInterval
         lock.unlock()
 
-        let request = try buildRequest(query: query, database: database, queryId: queryId)
+        var request = try buildRequest(query: query, database: database, queryId: queryId)
+        request.timeoutInterval = timeoutInterval
         let isSelect = Self.isSelectLikeQuery(query)
 
         let (data, response) = try await withTaskCancellationHandler {
@@ -859,9 +865,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let queryId {
             _lastQueryId = queryId
         }
+        let timeoutInterval = _queryTimeout.requestTimeoutInterval
         lock.unlock()
 
-        let request = try buildRequest(query: query, database: database, queryId: queryId, params: params)
+        var request = try buildRequest(query: query, database: database, queryId: queryId, params: params)
+        request.timeoutInterval = timeoutInterval
         let isSelect = Self.isSelectLikeQuery(query)
 
         let (data, response) = try await withTaskCancellationHandler {
