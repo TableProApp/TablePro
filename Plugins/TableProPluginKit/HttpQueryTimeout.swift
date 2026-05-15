@@ -9,8 +9,8 @@ public struct HttpQueryTimeout: Sendable, Equatable {
     public let graceSeconds: Int
 
     public init(
-        serverTimeoutSeconds: Int = HttpQueryTimeout.bootstrapSeconds,
-        graceSeconds: Int = HttpQueryTimeout.defaultGraceSeconds
+        serverTimeoutSeconds: Int = Self.bootstrapSeconds,
+        graceSeconds: Int = Self.defaultGraceSeconds
     ) {
         self.serverTimeoutSeconds = serverTimeoutSeconds
         self.graceSeconds = max(graceSeconds, 0)
@@ -18,7 +18,7 @@ public struct HttpQueryTimeout: Sendable, Equatable {
 
     public var requestTimeoutInterval: TimeInterval {
         guard serverTimeoutSeconds > 0 else {
-            return TimeInterval(HttpQueryTimeout.resourceCeilingSeconds)
+            return TimeInterval(Self.resourceCeilingSeconds)
         }
         return TimeInterval(serverTimeoutSeconds + graceSeconds)
     }

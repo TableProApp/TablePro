@@ -9,7 +9,6 @@ import CommonCrypto
 import Foundation
 import os
 import TableProPluginKit
-import TableProPluginKit
 
 // MARK: - DynamoDB Attribute Value
 

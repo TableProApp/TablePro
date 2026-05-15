@@ -317,16 +317,16 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private var apiPrefix = "v3"
     private var queryTimeout = HttpQueryTimeout()
 
-    func setQueryTimeout(_ seconds: Int) {
-        lock.lock()
-        queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
-        lock.unlock()
-    }
-
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdHttpClient")
 
     init(config: DriverConnectionConfig) {
         self.config = config
+    }
+
+    func setQueryTimeout(_ seconds: Int) {
+        lock.lock()
+        queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
+        lock.unlock()
     }
 
     // MARK: - Base URL

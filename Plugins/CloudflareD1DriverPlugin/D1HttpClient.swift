@@ -139,12 +139,6 @@ final class D1HttpClient: @unchecked Sendable {
     private var currentTask: URLSessionDataTask?
     private var queryTimeout = HttpQueryTimeout()
 
-    func setQueryTimeout(_ seconds: Int) {
-        lock.lock()
-        queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
-        lock.unlock()
-    }
-
     var databaseId: String {
         get {
             lock.lock()
@@ -162,6 +156,12 @@ final class D1HttpClient: @unchecked Sendable {
         self.accountId = accountId
         self.apiToken = apiToken
         self._databaseId = databaseId
+    }
+
+    func setQueryTimeout(_ seconds: Int) {
+        lock.lock()
+        queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
+        lock.unlock()
     }
 
     func createSession() {

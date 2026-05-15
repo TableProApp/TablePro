@@ -117,15 +117,15 @@ final class HranaHttpClient: @unchecked Sendable {
     private var currentTask: URLSessionDataTask?
     private var queryTimeout = HttpQueryTimeout()
 
+    init(baseUrl: URL, authToken: String?) {
+        self.baseUrl = baseUrl
+        self.authToken = authToken
+    }
+
     func setQueryTimeout(_ seconds: Int) {
         lock.lock()
         queryTimeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
         lock.unlock()
-    }
-
-    init(baseUrl: URL, authToken: String?) {
-        self.baseUrl = baseUrl
-        self.authToken = authToken
     }
 
     func createSession() {
