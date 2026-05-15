@@ -59,9 +59,6 @@ struct MainContentView: View {
     @State var hasInitialized = false
     /// Reference to this view's NSWindow for filtering notifications
     @State var viewWindow: NSWindow?
-    /// Error message surfaced after a failed drop. The popover that triggered the drop
-    /// has already dismissed, so the failure has to be reported on the main window.
-    @State private var dropErrorMessage: String?
 
     // MARK: - Environment
 
@@ -118,27 +115,7 @@ struct MainContentView: View {
             } message: { _ in
                 Text(String(localized: "All tables and data will be permanently deleted."))
             }
-            .alert(
-                String(localized: "Drop Failed"),
-                isPresented: dropErrorBinding,
-                presenting: dropErrorMessage
-            ) { _ in
-                Button(String(localized: "OK"), role: .cancel) {
-                    dropErrorMessage = nil
-                }
-            } message: { message in
-                Text(message)
-            }
             .modifier(FocusedCommandActionsModifier(actions: commandActions))
-    }
-
-    private var dropErrorBinding: Binding<Bool> {
-        Binding(
-            get: { dropErrorMessage != nil },
-            set: { newValue in
-                if !newValue { dropErrorMessage = nil }
-            }
-        )
     }
 
     private var dropConfirmationBinding: Binding<Bool> {
@@ -158,16 +135,7 @@ struct MainContentView: View {
     }
 
     private func dropDatabase(name: String) async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            coordinator.databaseToDrop = nil
-            return
-        }
-        do {
-            try await driver.dropDatabase(name: name)
-        } catch {
-            MainContentCoordinator.logger.error("Drop database failed: \(error.localizedDescription)")
-            dropErrorMessage = error.localizedDescription
-        }
+        await coordinator.dropDatabase(name: name)
         coordinator.databaseToDrop = nil
     }
 

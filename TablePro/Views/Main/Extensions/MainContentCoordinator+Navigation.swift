@@ -478,6 +478,25 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Drop a database. Called from the database switcher's confirmation dialog.
+    func dropDatabase(name: String) async {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            navigationLogger.warning("dropDatabase(name: \(name, privacy: .public)) ignored: no active driver")
+            return
+        }
+
+        do {
+            try await driver.dropDatabase(name: name)
+        } catch {
+            navigationLogger.error("Failed to drop database: \(error.localizedDescription, privacy: .public)")
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Drop Failed"),
+                message: error.localizedDescription,
+                window: contentWindow
+            )
+        }
+    }
+
     // MARK: - Redis Database Selection
 
     /// Select a Redis database index and then run the query.

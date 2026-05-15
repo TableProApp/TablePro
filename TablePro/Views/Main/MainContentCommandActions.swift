@@ -828,7 +828,11 @@ final class MainContentCommandActions {
     // MARK: - Database Operations (Group A — Called Directly)
 
     func openDatabaseSwitcher() {
-        coordinator?.isDatabaseSwitcherShown = true
+        guard let coordinator else { return }
+        let type = coordinator.connection.type
+        guard PluginManager.shared.supportsDatabaseSwitching(for: type) else { return }
+        guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return }
+        coordinator.isDatabaseSwitcherShown = true
     }
 
     func openQuickSwitcher() {
