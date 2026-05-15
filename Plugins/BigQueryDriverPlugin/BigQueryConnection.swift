@@ -284,6 +284,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
     private var _currentJobId: String?
     private var _currentJobLocation: String?
     private var _queryTimeoutSeconds: Int = 300
+    private let _queryTimeout = HttpQueryTimeoutBox()
     private let location: String?
     private static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryConnection")
     private static let baseUrl = "https://bigquery.googleapis.com/bigquery/v2"
@@ -294,6 +295,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
 
     func setQueryTimeout(_ seconds: Int) {
         lock.withLock { _queryTimeoutSeconds = max(seconds, 30) }
+        _queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     init(config: DriverConnectionConfig) {
@@ -306,8 +308,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
         let authProvider = try createAuthProvider()
 
         let sessionConfig = URLSessionConfiguration.default
-        sessionConfig.timeoutIntervalForRequest = 60
-        sessionConfig.timeoutIntervalForResource = 300
+        sessionConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        sessionConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
         let urlSession = URLSession(configuration: sessionConfig)
 
         lock.withLock {
@@ -836,8 +838,10 @@ internal final class BigQueryConnection: @unchecked Sendable {
         _ request: URLRequest,
         session: URLSession
     ) async throws -> (Data, URLResponse) {
-        try await withCheckedThrowingContinuation { continuation in
-            let task = session.dataTask(with: request) { [weak self] data, response, error in
+        var timedRequest = request
+        timedRequest.timeoutInterval = _queryTimeout.requestTimeoutInterval
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = session.dataTask(with: timedRequest) { [weak self] data, response, error in
                 self?.lock.withLock { self?._currentTask = nil }
                 if let error {
                     if (error as? URLError)?.code == .cancelled {

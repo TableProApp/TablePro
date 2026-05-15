@@ -153,7 +153,7 @@ final class ExportService {
             PluginExportTable(
                 name: table.name,
                 databaseName: table.databaseName,
-                tableType: table.type == .view ? "view" : "table",
+                tableType: table.type.rawValue.lowercased(),
                 optionValues: table.optionValues
             )
         }

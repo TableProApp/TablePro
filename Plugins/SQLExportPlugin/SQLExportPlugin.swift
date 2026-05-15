@@ -230,9 +230,19 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         guard !dropTargets.isEmpty else { return }
         for table in dropTargets {
             let tableRef = dataSource.quoteIdentifier(table.name)
-            try fileHandle.write(contentsOf: "DROP TABLE IF EXISTS \(tableRef) CASCADE;\n".toUTF8Data())
+            let keyword = dropStatementKeyword(for: table.tableType)
+            try fileHandle.write(contentsOf: "\(keyword) IF EXISTS \(tableRef) CASCADE;\n".toUTF8Data())
         }
         try fileHandle.write(contentsOf: "\n".toUTF8Data())
+    }
+
+    private func dropStatementKeyword(for tableType: String) -> String {
+        switch tableType {
+        case "view": return "DROP VIEW"
+        case "materialized view": return "DROP MATERIALIZED VIEW"
+        case "foreign table": return "DROP FOREIGN TABLE"
+        default: return "DROP TABLE"
+        }
     }
 
     private func writeDependentTypesAndSequences(

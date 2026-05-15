@@ -182,6 +182,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         lock.unlock()
     }
 
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        lock.lock()
+        let client = httpClient
+        lock.unlock()
+        client?.setQueryTimeout(seconds)
+    }
+
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

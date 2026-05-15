@@ -212,7 +212,7 @@ struct SQLFileParserTests {
 
     @Test("Large multi-row INSERT yields correct statement count and content")
     func large_multi_row_insert_correctness() async throws {
-        let rows = (1...5_000).map { "  ($0, 'row\($0)')" }.joined(separator: ",\n")
+        let rows = (1...5_000).map { "  (\($0), 'row\($0)')" }.joined(separator: ",\n")
         let sql = "INSERT INTO t (id, label) VALUES\n\(rows);\nSELECT 100;"
         let stmts = try await Self.parse(sql, dialect: .postgres)
         #expect(stmts.count == 2)
@@ -220,6 +220,45 @@ struct SQLFileParserTests {
         #expect(stmts[0].contains("(1, 'row1')"))
         #expect(stmts[0].contains("(5000, 'row5000')"))
         #expect(stmts[1] == "SELECT 100")
+    }
+
+    @Test("Slow consumer receives every statement in order with no drops")
+    func slow_consumer_no_dropped_statements() async throws {
+        let statementCount = 200
+        let sql = (1...statementCount)
+            .map { "CREATE INDEX idx_\($0) ON t USING btree (c\($0));" }
+            .joined(separator: "\n")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sql")
+        try sql.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var received: [String] = []
+        let parser = SQLFileParser()
+        for try await (stmt, _) in parser.parseFile(url: url, encoding: .utf8, dialect: .postgres) {
+            received.append(stmt)
+            try await Task.sleep(nanoseconds: 100_000)
+        }
+
+        #expect(received.count == statementCount)
+        #expect(received.first == "CREATE INDEX idx_1 ON t USING btree (c1)")
+        #expect(received.last == "CREATE INDEX idx_200 ON t USING btree (c200)")
+    }
+
+    @Test("Statement count matches across a file larger than one read chunk")
+    func count_statements_across_chunk_boundary() async throws {
+        let statementCount = 4_000
+        let sql = (1...statementCount)
+            .map { "INSERT INTO t (id) VALUES (\($0));" }
+            .joined(separator: "\n")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sql")
+        try sql.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let parser = SQLFileParser()
+        let count = try await parser.countStatements(url: url, encoding: .utf8, dialect: .postgres)
+        #expect(count == statementCount)
     }
 
     @Test("Dialect.from maps known database type ids")

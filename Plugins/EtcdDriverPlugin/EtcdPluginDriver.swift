@@ -264,7 +264,9 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         httpClient?.cancelCurrentRequest()
     }
 
-    func applyQueryTimeout(_ seconds: Int) async throws {}
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        httpClient?.setQueryTimeout(seconds)
+    }
 
     // MARK: - Schema Operations
 

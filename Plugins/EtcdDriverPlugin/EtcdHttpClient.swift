@@ -315,11 +315,16 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private var authToken: String?
     private var _isAuthenticating = false
     private var apiPrefix = "v3"
+    private let queryTimeout = HttpQueryTimeoutBox()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdHttpClient")
 
     init(config: DriverConnectionConfig) {
         self.config = config
+    }
+
+    func setQueryTimeout(_ seconds: Int) {
+        queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     // MARK: - Base URL
@@ -347,8 +352,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         let tlsMode = config.additionalFields["etcdTlsMode"] ?? "Disabled"
 
         let urlConfig = URLSessionConfiguration.default
-        urlConfig.timeoutIntervalForRequest = 30
-        urlConfig.timeoutIntervalForResource = 300
+        urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         let delegate: URLSessionDelegate?
         switch tlsMode {
@@ -718,6 +723,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token {
             request.setValue(token, forHTTPHeaderField: "Authorization")

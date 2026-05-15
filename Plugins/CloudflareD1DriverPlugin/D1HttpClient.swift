@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 // MARK: - API Response Types
 
@@ -136,6 +137,7 @@ final class D1HttpClient: @unchecked Sendable {
     private var _databaseId: String
     private var session: URLSession?
     private var currentTask: URLSessionDataTask?
+    private let queryTimeout = HttpQueryTimeoutBox()
 
     var databaseId: String {
         get {
@@ -156,10 +158,14 @@ final class D1HttpClient: @unchecked Sendable {
         self._databaseId = databaseId
     }
 
+    func setQueryTimeout(_ seconds: Int) {
+        queryTimeout.set(serverTimeoutSeconds: seconds)
+    }
+
     func createSession() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 300
+        config.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        config.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         lock.lock()
         session = URLSession(configuration: config)
@@ -307,6 +313,7 @@ final class D1HttpClient: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
         request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body

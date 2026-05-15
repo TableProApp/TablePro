@@ -102,16 +102,12 @@ extension DatabaseManager {
             try await driver.connect()
 
             let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
-            if timeoutSeconds > 0 {
-                do {
-                    try await driver.applyQueryTimeout(timeoutSeconds)
-                } catch {
-                    // Best-effort: some PostgreSQL-compatible databases like Aurora DSQL
-                    // don't support SET statement_timeout.
-                    Self.logger.warning(
-                        "Query timeout not supported for \(connection.name): \(error.localizedDescription)"
-                    )
-                }
+            do {
+                try await driver.applyQueryTimeout(timeoutSeconds)
+            } catch {
+                Self.logger.warning(
+                    "Query timeout not supported for \(connection.name): \(error.localizedDescription)"
+                )
             }
 
             await executeStartupCommands(

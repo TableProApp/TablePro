@@ -138,6 +138,7 @@ final class SQLFileParser: Sendable {
         var isSingleCharDelimiter = true
         var dollarTag: String = ""
         var backslashEscapesActive = false
+        var collected: [(statement: String, lineNumber: Int)] = []
     }
 
     private static func trimmedStatement(_ ctx: ParserContext) -> String {
@@ -211,8 +212,7 @@ final class SQLFileParser: Sendable {
         nextChar: unichar?,
         i: inout Int,
         nsBuffer: NSString,
-        bufLen: Int,
-        continuation: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>.Continuation
+        bufLen: Int
     ) -> StepResult {
         processDelimiterChange(&ctx, char: char)
 
@@ -280,13 +280,13 @@ final class SQLFileParser: Sendable {
         }
 
         if ctx.isSingleCharDelimiter && char == kSemicolon {
-            yieldAndReset(&ctx, continuation: continuation)
+            yieldAndReset(&ctx)
             return StepResult(advanced: false, deferred: false)
         }
 
         if !ctx.isSingleCharDelimiter
             && matchesDelimiter(at: i, delimiter: ctx.currentDelimiter, in: nsBuffer, bufLen: bufLen) {
-            yieldAndReset(&ctx, continuation: continuation)
+            yieldAndReset(&ctx)
             i += ctx.currentDelimiter.length
             return StepResult(advanced: true, deferred: false)
         }
@@ -335,13 +335,10 @@ final class SQLFileParser: Sendable {
         return nil
     }
 
-    private static func yieldAndReset(
-        _ ctx: inout ParserContext,
-        continuation: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>.Continuation
-    ) {
+    private static func yieldAndReset(_ ctx: inout ParserContext) {
         if ctx.hasStatementContent {
             let text = trimmedStatement(ctx)
-            continuation.yield((text, ctx.statementStartLine))
+            ctx.collected.append((text, ctx.statementStartLine))
         }
         resetStatement(&ctx)
     }
@@ -503,149 +500,203 @@ final class SQLFileParser: Sendable {
         dialect: SqlDialect = .generic,
         countOnly: Bool = false
     ) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
-        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(8)) { continuation in
-            let task = Task.detached {
+        let session = ParseSession(url: url, encoding: encoding, dialect: dialect, countOnly: countOnly)
+        return AsyncThrowingStream(unfolding: {
+            try await session.next()
+        })
+    }
+
+    private final class ParseSession: @unchecked Sendable {
+        private let url: URL
+        private let encoding: String.Encoding
+        private let dialect: SqlDialect
+        private let chunkSize = 65_536
+
+        private var fileHandle: FileHandle?
+        private var ctx: ParserContext
+        private let nsBuffer = NSMutableString()
+        private var pendingTail = Data()
+        private var emitIndex = 0
+        private var finished = false
+
+        init(url: URL, encoding: String.Encoding, dialect: SqlDialect, countOnly: Bool) {
+            self.url = url
+            self.encoding = encoding
+            self.dialect = dialect
+            self.ctx = ParserContext(
+                dialect: dialect,
+                currentStatement: countOnly ? nil : NSMutableString()
+            )
+        }
+
+        deinit {
+            closeFile()
+        }
+
+        func next() async throws -> (statement: String, lineNumber: Int)? {
+            while true {
+                if emitIndex < ctx.collected.count {
+                    let item = ctx.collected[emitIndex]
+                    emitIndex += 1
+                    return item
+                }
+                ctx.collected.removeAll(keepingCapacity: true)
+                emitIndex = 0
+
+                if finished {
+                    return nil
+                }
+                if Task.isCancelled {
+                    finished = true
+                    closeFile()
+                    return nil
+                }
+
                 do {
-                    let fileHandle = try FileHandle(forReadingFrom: url)
-                    defer {
-                        do {
-                            try fileHandle.close()
-                        } catch {
-                            Self.logger.warning("Failed to close file handle for \(url.path): \(error)")
-                        }
-                    }
-
-                    var ctx = ParserContext(
-                        dialect: dialect,
-                        currentStatement: countOnly ? nil : NSMutableString()
-                    )
-                    let nsBuffer = NSMutableString()
-                    let chunkSize = 65_536
-                    var pendingTail = Data()
-
-                    while true {
-                        guard !Task.isCancelled else {
-                            continuation.finish()
-                            return
-                        }
-                        let rawData = fileHandle.readData(ofLength: chunkSize)
-                        if rawData.isEmpty && pendingTail.isEmpty { break }
-
-                        let isFinalChunk = rawData.isEmpty
-                        guard let chunk = Self.decodeChunkOrCarryTail(
-                            rawData: rawData, pendingTail: &pendingTail, encoding: encoding
-                        ) else {
-                            Self.logger.error("Failed to decode chunk with encoding \(encoding.description)")
-                            continuation.finish(throwing: DecompressionError.fileReadFailed(
-                                "Failed to decode file with \(encoding.description) encoding"
-                            ))
-                            return
-                        }
-
-                        if isFinalChunk && !pendingTail.isEmpty {
-                            Self.logger.error("Trailing bytes did not form a valid \(encoding.description) sequence at end of file")
-                            continuation.finish(throwing: DecompressionError.fileReadFailed(
-                                "Trailing bytes did not form a valid \(encoding.description) sequence at end of file"
-                            ))
-                            return
-                        }
-
-                        nsBuffer.append(chunk)
-                        let bufLen = nsBuffer.length
-                        var i = 0
-
-                        while i < bufLen {
-                            let char = nsBuffer.character(at: i)
-                            let nextChar: unichar? = (i + 1 < bufLen) ? nsBuffer.character(at: i + 1) : nil
-
-                            if nextChar == nil && Self.needsLookahead(
-                                char,
-                                state: ctx.state,
-                                dialect: dialect,
-                                delimiter: ctx.currentDelimiter,
-                                isSingleCharDelimiter: ctx.isSingleCharDelimiter
-                            ) {
-                                break
-                            }
-
-                            if char == Self.kNewline { ctx.currentLine += 1 }
-                            var didManuallyAdvance = false
-                            var shouldDefer = false
-
-                            switch ctx.state {
-                            case .normal:
-                                let result = Self.processNormalChar(
-                                    &ctx, char: char, nextChar: nextChar,
-                                    i: &i, nsBuffer: nsBuffer, bufLen: bufLen,
-                                    continuation: continuation)
-                                didManuallyAdvance = result.advanced
-                                shouldDefer = result.deferred
-
-                            case .inSingleLineComment:
-                                if char == Self.kNewline {
-                                    ctx.state = .normal
-                                }
-
-                            case .inMultiLineComment:
-                                didManuallyAdvance = Self.processMultiLineComment(
-                                    &ctx, char: char, nextChar: nextChar, i: &i)
-
-                            case .inSingleQuotedString:
-                                let result = Self.processQuotedString(
-                                    &ctx, quoteChar: Self.kSingleQuote,
-                                    i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                                didManuallyAdvance = result.advanced
-                                shouldDefer = result.deferred
-
-                            case .inDoubleQuotedString:
-                                let result = Self.processQuotedString(
-                                    &ctx, quoteChar: Self.kDoubleQuote,
-                                    i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                                didManuallyAdvance = result.advanced
-                                shouldDefer = result.deferred
-
-                            case .inBacktickQuotedString:
-                                let result = Self.processQuotedString(
-                                    &ctx, quoteChar: Self.kBacktick,
-                                    i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                                didManuallyAdvance = result.advanced
-                                shouldDefer = result.deferred
-
-                            case .inDollarQuote:
-                                let result = Self.processDollarQuote(
-                                    &ctx, i: &i,
-                                    nsBuffer: nsBuffer, bufLen: bufLen)
-                                didManuallyAdvance = result.advanced
-                                shouldDefer = result.deferred
-                            }
-
-                            if shouldDefer { break }
-                            if !didManuallyAdvance { i += 1 }
-                        }
-
-                        if i < bufLen {
-                            nsBuffer.deleteCharacters(in: NSRange(location: 0, length: i))
-                        } else {
-                            nsBuffer.setString("")
-                        }
-                    }
-
-                    if ctx.hasStatementContent {
-                        let text = Self.trimmedStatement(ctx)
-                        if Self.extractDelimiterChange(text) == nil {
-                            continuation.yield((text, ctx.statementStartLine))
-                        }
-                    }
-
-                    continuation.finish()
+                    try advanceOneChunk()
                 } catch {
-                    Self.logger.error("SQL file parsing failed: \(error.localizedDescription)")
-                    continuation.finish(throwing: error)
+                    finished = true
+                    closeFile()
+                    SQLFileParser.logger.error("SQL file parsing failed: \(error.localizedDescription)")
+                    throw error
                 }
             }
+        }
 
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
+        private func advanceOneChunk() throws {
+            let handle = try openFileIfNeeded()
+            let rawData = handle.readData(ofLength: chunkSize)
+
+            if rawData.isEmpty && pendingTail.isEmpty {
+                emitTrailingStatement()
+                finished = true
+                closeFile()
+                return
+            }
+
+            let isFinalChunk = rawData.isEmpty
+            guard let chunk = SQLFileParser.decodeChunkOrCarryTail(
+                rawData: rawData, pendingTail: &pendingTail, encoding: encoding
+            ) else {
+                throw DecompressionError.fileReadFailed(
+                    "Failed to decode file with \(encoding.description) encoding"
+                )
+            }
+
+            if isFinalChunk && !pendingTail.isEmpty {
+                throw DecompressionError.fileReadFailed(
+                    "Trailing bytes did not form a valid \(encoding.description) sequence at end of file"
+                )
+            }
+
+            nsBuffer.append(chunk)
+            processBuffer()
+        }
+
+        private func processBuffer() {
+            let bufLen = nsBuffer.length
+            var i = 0
+
+            while i < bufLen {
+                let char = nsBuffer.character(at: i)
+                let nextChar: unichar? = (i + 1 < bufLen) ? nsBuffer.character(at: i + 1) : nil
+
+                if nextChar == nil && SQLFileParser.needsLookahead(
+                    char,
+                    state: ctx.state,
+                    dialect: dialect,
+                    delimiter: ctx.currentDelimiter,
+                    isSingleCharDelimiter: ctx.isSingleCharDelimiter
+                ) {
+                    break
+                }
+
+                if char == SQLFileParser.kNewline { ctx.currentLine += 1 }
+                var didManuallyAdvance = false
+                var shouldDefer = false
+
+                switch ctx.state {
+                case .normal:
+                    let result = SQLFileParser.processNormalChar(
+                        &ctx, char: char, nextChar: nextChar,
+                        i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
+                    didManuallyAdvance = result.advanced
+                    shouldDefer = result.deferred
+
+                case .inSingleLineComment:
+                    if char == SQLFileParser.kNewline {
+                        ctx.state = .normal
+                    }
+
+                case .inMultiLineComment:
+                    didManuallyAdvance = SQLFileParser.processMultiLineComment(
+                        &ctx, char: char, nextChar: nextChar, i: &i)
+
+                case .inSingleQuotedString:
+                    let result = SQLFileParser.processQuotedString(
+                        &ctx, quoteChar: SQLFileParser.kSingleQuote,
+                        i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
+                    didManuallyAdvance = result.advanced
+                    shouldDefer = result.deferred
+
+                case .inDoubleQuotedString:
+                    let result = SQLFileParser.processQuotedString(
+                        &ctx, quoteChar: SQLFileParser.kDoubleQuote,
+                        i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
+                    didManuallyAdvance = result.advanced
+                    shouldDefer = result.deferred
+
+                case .inBacktickQuotedString:
+                    let result = SQLFileParser.processQuotedString(
+                        &ctx, quoteChar: SQLFileParser.kBacktick,
+                        i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
+                    didManuallyAdvance = result.advanced
+                    shouldDefer = result.deferred
+
+                case .inDollarQuote:
+                    let result = SQLFileParser.processDollarQuote(
+                        &ctx, i: &i,
+                        nsBuffer: nsBuffer, bufLen: bufLen)
+                    didManuallyAdvance = result.advanced
+                    shouldDefer = result.deferred
+                }
+
+                if shouldDefer { break }
+                if !didManuallyAdvance { i += 1 }
+            }
+
+            if i < bufLen {
+                nsBuffer.deleteCharacters(in: NSRange(location: 0, length: i))
+            } else {
+                nsBuffer.setString("")
+            }
+        }
+
+        private func emitTrailingStatement() {
+            guard ctx.hasStatementContent else { return }
+            let text = SQLFileParser.trimmedStatement(ctx)
+            if SQLFileParser.extractDelimiterChange(text) == nil {
+                ctx.collected.append((text, ctx.statementStartLine))
+            }
+        }
+
+        private func openFileIfNeeded() throws -> FileHandle {
+            if let fileHandle {
+                return fileHandle
+            }
+            let handle = try FileHandle(forReadingFrom: url)
+            fileHandle = handle
+            return handle
+        }
+
+        private func closeFile() {
+            guard let handle = fileHandle else { return }
+            fileHandle = nil
+            do {
+                try handle.close()
+            } catch {
+                SQLFileParser.logger.warning(
+                    "Failed to close file handle for \(self.url.path): \(error.localizedDescription)")
             }
         }
     }
