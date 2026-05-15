@@ -157,13 +157,14 @@ private struct CreateTagSheet: View {
 
             HStack {
                 Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Create") {
                     onSave(tagName, tagColor)
                     dismiss()
                 }
-                .keyboardShortcut(.return)
                 .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
                 .disabled(tagName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .padding(12)

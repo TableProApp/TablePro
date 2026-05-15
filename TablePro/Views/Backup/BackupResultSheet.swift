@@ -48,7 +48,7 @@ struct BackupResultSheet: View {
                     onClose()
                 }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.return)
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(24)

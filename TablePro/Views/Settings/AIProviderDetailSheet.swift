@@ -27,6 +27,8 @@ struct AIProviderDetailSheet: View {
     @State private var copilotService = CopilotService.shared
     @State private var copilotErrorMessage: String?
 
+    @State private var showRemoveConfirmation = false
+
     enum TestResult: Equatable {
         case success
         case failure(String)
@@ -89,6 +91,18 @@ struct AIProviderDetailSheet: View {
             }
         }
         .frame(minWidth: 520, minHeight: 480)
+        .confirmationDialog(
+            String(format: String(localized: "Remove “%@”?"), draft.displayName),
+            isPresented: $showRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Remove Provider"), role: .destructive) {
+                onDelete?()
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "The provider configuration and stored API key will be deleted."))
+        }
     }
 
     private var navigationTitle: String {
@@ -461,7 +475,7 @@ struct AIProviderDetailSheet: View {
     private func deleteSection(onDelete: @escaping () -> Void) -> some View {
         Section {
             Button(role: .destructive) {
-                onDelete()
+                showRemoveConfirmation = true
             } label: {
                 Label(String(localized: "Remove Provider"), systemImage: "trash")
                     .frame(maxWidth: .infinity)

@@ -73,7 +73,6 @@ struct LicenseActivationSheet: View {
                         dismiss()
                     }
                     .keyboardShortcut(.cancelAction)
-                    .keyboardShortcut(.cancelAction)
                 }
             }
             .padding(.top, 20)

@@ -220,6 +220,8 @@ struct PairingApprovalSheet: View {
                 )
                 onComplete(.success(approval))
             }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
             .disabled(approveDisabled)
         }
     }
