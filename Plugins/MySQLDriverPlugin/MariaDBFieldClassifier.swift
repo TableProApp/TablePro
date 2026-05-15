@@ -18,6 +18,19 @@ internal enum MariaDBFieldClassifier {
     }
 
     static func isBit(typeRaw: UInt32) -> Bool {
-        return typeRaw == bitType
+        typeRaw == bitType
+    }
+
+    static func bitFieldToString(_ buffer: UnsafeRawBufferPointer) -> String {
+        guard !buffer.isEmpty else { return "0" }
+        var value: UInt64 = 0
+        for byte in buffer {
+            value = (value << 8) | UInt64(byte)
+        }
+        return String(value)
+    }
+
+    static func bitFieldToString(_ data: Data) -> String {
+        data.withUnsafeBytes { bitFieldToString($0) }
     }
 }

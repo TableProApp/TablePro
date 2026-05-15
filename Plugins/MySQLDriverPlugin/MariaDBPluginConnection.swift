@@ -44,7 +44,6 @@ struct MariaDBPluginQueryResult {
     let affectedRows: UInt64
     let insertId: UInt64
     let isTruncated: Bool
-    let columnIsBit: [Bool]
 }
 
 // MARK: - SSL Configuration
@@ -131,19 +130,6 @@ internal func mariaDBTypeName(
     case 255: return "GEOMETRY"
     default: return "UNKNOWN"
     }
-}
-
-/// Converts a MySQL/MariaDB BIT field's raw byte buffer to its decimal string representation.
-///
-/// MySQL stores BIT(N) as a binary value with N bits packed into ceil(N/8) bytes,
-/// most-significant-bit first. For bit(1), the buffer contains a single byte like 0x00 or 0x01.
-private func bitFieldToString(_ buffer: UnsafeRawBufferPointer) -> String {
-    guard !buffer.isEmpty else { return "0" }
-    var value: UInt64 = 0
-    for byte in buffer {
-        value = (value << 8) | UInt64(byte)
-    }
-    return String(value)
 }
 
 // MARK: - Connection Class
@@ -455,12 +441,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
         var columnIsBinary: [Bool] = []
-        var columnIsBit: [Bool] = []
         columns.reserveCapacity(numFields)
         columnTypes.reserveCapacity(numFields)
         columnTypeNames.reserveCapacity(numFields)
         columnIsBinary.reserveCapacity(numFields)
-        columnIsBit.reserveCapacity(numFields)
 
         if let fields = mysql_fetch_fields(resultPtr) {
             for i in 0..<numFields {
@@ -482,7 +466,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         charset: field.charsetnr
                     )
                 )
-                columnIsBit.append(MariaDBFieldClassifier.isBit(typeRaw: field.type.rawValue))
             }
         }
 
@@ -528,8 +511,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
                     if columnTypes[i] == 255 {
                         row.append(.text(GeometryWKBParser.parse(bufferPtr)))
-                    } else if columnIsBit[i] {
-                        row.append(.text(bitFieldToString(bufferPtr)))
+                    } else if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
+                        row.append(.text(MariaDBFieldClassifier.bitFieldToString(bufferPtr)))
                     } else if columnIsBinary[i] {
                         row.append(.bytes(Data(bufferPtr)))
                     } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
@@ -561,8 +544,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated,
-            columnIsBit: columnIsBit
+            rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated
         )
     }
 
@@ -648,8 +630,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         columns: [String],
         columnTypes: [UInt32],
         columnTypeNames: [String],
-        columnIsBinary: [Bool],
-        columnIsBit: [Bool]
+        columnIsBinary: [Bool]
     ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool) {
         let numFields = columns.count
         var resultBinds: [MYSQL_BIND] = Array(repeating: MYSQL_BIND(), count: numFields)
@@ -731,8 +712,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     let length = Int(resultBinds[i].length?.pointee ?? 0)
                     let buffer = resultBuffers[i].assumingMemoryBound(to: UInt8.self)
                     let data = Data(bytes: buffer, count: length)
-                    if columnIsBit[i] {
-                        row.append(.text(bitFieldToString(data)))
+                    if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
+                        row.append(.text(MariaDBFieldClassifier.bitFieldToString(data)))
                     } else if columnIsBinary[i] {
                         row.append(.bytes(data))
                     } else if let str = String(data: data, encoding: .utf8) {
@@ -818,7 +799,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
         var columnIsBinary: [Bool] = []
-        var columnIsBit: [Bool] = []
         let numFields = Int(mysql_num_fields(metadata))
 
         if let fields = mysql_fetch_fields(metadata) {
@@ -841,20 +821,19 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         charset: field.charsetnr
                     )
                 )
-                columnIsBit.append(MariaDBFieldClassifier.isBit(typeRaw: field.type.rawValue))
             }
         }
 
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            columnIsBinary: columnIsBinary, columnIsBit: columnIsBit
+            columnIsBinary: columnIsBinary
         )
 
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
             rows: fetchResult.rows, affectedRows: UInt64(fetchResult.rows.count),
-            insertId: 0, isTruncated: fetchResult.isTruncated, columnIsBit: columnIsBit
+            insertId: 0, isTruncated: fetchResult.isTruncated
         )
     }
 
@@ -921,12 +900,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 var columnTypes: [UInt32] = []
                 var columnTypeNames: [String] = []
                 var columnIsBinary: [Bool] = []
-                var columnIsBit: [Bool] = []
                 columns.reserveCapacity(numFields)
                 columnTypes.reserveCapacity(numFields)
                 columnTypeNames.reserveCapacity(numFields)
                 columnIsBinary.reserveCapacity(numFields)
-                columnIsBit.reserveCapacity(numFields)
 
                 if let fields = mysql_fetch_fields(resultPtr) {
                     for i in 0..<numFields {
@@ -948,7 +925,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                                 charset: field.charsetnr
                             )
                         )
-                        columnIsBit.append(MariaDBFieldClassifier.isBit(typeRaw: field.type.rawValue))
                     }
                 }
 
@@ -984,8 +960,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
                             if columnTypes[i] == 255 {
                                 row.append(.text(GeometryWKBParser.parse(bufferPtr)))
-                            } else if columnIsBit[i] {
-                                row.append(.text(bitFieldToString(bufferPtr)))
+                            } else if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
+                                row.append(.text(MariaDBFieldClassifier.bitFieldToString(bufferPtr)))
                             } else if columnIsBinary[i] {
                                 row.append(.bytes(Data(bufferPtr)))
                             } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
