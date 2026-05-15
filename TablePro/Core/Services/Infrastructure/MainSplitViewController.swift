@@ -24,7 +24,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private let sessionState: SessionStateFactory.SessionState
     private var coordinator: MainContentCoordinator { sessionState.coordinator }
     private var rightPanelState: RightPanelState { sessionState.rightPanelState }
-    private var didTeardown = false
 
     // MARK: - Split View Items
 
@@ -180,27 +179,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Connection Status
 
-    /// The connection window is created once per connection. This handler only
-    /// reacts to the driver becoming available (rebuild panes out of the
-    /// connecting state, expand the sidebar) or the session being torn down.
     private func handleConnectionStatusChange() {
-        guard !didTeardown else { return }
-
         let session = DatabaseManager.shared.activeSessions[connection.id]
-        guard session != nil else {
-            Self.lifecycleLogger.info(
-                "[close] MainSplitVC session removed connId=\(self.connection.id, privacy: .public)"
-            )
-            didTeardown = true
-            sidebarContainer.updateSidebarState(nil, windowState: nil)
-            if view.window?.isVisible == true {
-                sidebarSplitItem.animator().isCollapsed = true
-            } else {
-                sidebarSplitItem.isCollapsed = true
-            }
-            return
-        }
-
         let connected = session?.driver != nil
         if view.window?.isVisible == true {
             sidebarSplitItem.animator().isCollapsed = !connected
@@ -212,6 +192,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 SharedSidebarState.forConnection(connection.id),
                 windowState: coordinator.windowSidebarState
             )
+        } else {
+            sidebarContainer.updateSidebarState(nil, windowState: nil)
         }
         rebuildPanes()
     }
@@ -283,7 +265,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     private var connectingConnection: DatabaseConnection? {
-        guard !didTeardown else { return nil }
         if let session = DatabaseManager.shared.activeSessions[connection.id] {
             return session.driver == nil ? session.connection : nil
         }
