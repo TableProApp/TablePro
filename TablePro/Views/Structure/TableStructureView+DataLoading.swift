@@ -167,6 +167,7 @@ extension TableStructureView {
     }
 
     private func reloadAllTabs() async {
+        loadedTabs.removeAll()
         await loadColumns()
         await fetchTabData(.indexes)
         if connection.type.supportsForeignKeys {

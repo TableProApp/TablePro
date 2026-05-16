@@ -51,6 +51,9 @@ struct ClickHousePartsView: View {
             }
         }
         .task { await loadParts() }
+        .onReceive(AppCommands.shared.refreshData) { _ in
+            Task { await loadParts() }
+        }
     }
 
     private var partsToolbar: some View {

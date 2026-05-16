@@ -165,10 +165,12 @@ struct DataGridView: NSViewRepresentable {
             isEditable: isEditable,
             hasMoveDelegate: delegate != nil,
             rowHeight: rowHeight,
-            alternatingRows: alternatingRows
+            alternatingRows: alternatingRows,
+            reloadVersion: changeManager.reloadVersion
         )
 
         if snapshot != coordinator.lastUpdateSnapshot {
+            let contentChanged = snapshot.reloadVersion != coordinator.lastUpdateSnapshot?.reloadVersion
             applyStructuralUpdate(
                 tableView: tableView,
                 coordinator: coordinator,
@@ -177,7 +179,8 @@ struct DataGridView: NSViewRepresentable {
                 columnCount: columnCount,
                 rowHeight: rowHeight,
                 alternatingRows: alternatingRows,
-                hasMoveDelegate: snapshot.hasMoveDelegate
+                hasMoveDelegate: snapshot.hasMoveDelegate,
+                contentChanged: contentChanged
             )
             coordinator.lastUpdateSnapshot = snapshot
         }
@@ -194,7 +197,8 @@ struct DataGridView: NSViewRepresentable {
         columnCount: Int,
         rowHeight: CGFloat,
         alternatingRows: Bool,
-        hasMoveDelegate: Bool
+        hasMoveDelegate: Bool,
+        contentChanged: Bool
     ) {
         if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier == ColumnIdentitySchema.rowNumberIdentifier }) {
             let shouldHide = !configuration.showRowNumbers
@@ -231,7 +235,10 @@ struct DataGridView: NSViewRepresentable {
         let structureChanged = oldRowCount != rowDisplayCount || oldColumnCount != columnCount
 
         let schemaChanged = coordinator.rebuildColumnMetadataCache(from: latestRows)
-        let needsFullReload = structureChanged || schemaChanged
+        let needsFullReload = structureChanged || schemaChanged || contentChanged
+        if contentChanged {
+            coordinator.invalidateDisplayCache()
+        }
 
         if oldRowCount == 0, rowDisplayCount > 0, rowHeight > 0 {
             let visibleRows = Int(tableView.visibleRect.height / rowHeight) + 5
