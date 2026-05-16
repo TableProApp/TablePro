@@ -18,4 +18,5 @@ struct DataGridUpdateSnapshot: Equatable {
     let hasMoveDelegate: Bool
     let rowHeight: CGFloat
     let alternatingRows: Bool
+    let reloadVersion: Int
 }
