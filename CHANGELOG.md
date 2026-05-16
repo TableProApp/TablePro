@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Drivers populate allowed enum values directly in column metadata instead of parsing them downstream
+- PluginKit ABI bumped to version 13; all registry plugins need to be re-tagged
 
 ## [0.42.0] - 2026-05-16
 

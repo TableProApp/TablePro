@@ -163,8 +163,13 @@ extension PostgreSQLPluginDriver {
         let allowedValues: [String]?
         let dataType: String
         if rawDataType.uppercased() == "USER-DEFINED", let udt = udtName {
-            allowedValues = enumLabelsByType[udt]
-            dataType = allowedValues != nil ? "ENUM" : udt
+            if let labels = enumLabelsByType[udt] {
+                allowedValues = labels
+                dataType = "ENUM"
+            } else {
+                allowedValues = nil
+                dataType = "ENUM(\(udt))"
+            }
         } else {
             allowedValues = nil
             dataType = rawDataType.uppercased()

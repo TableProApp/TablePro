@@ -6,7 +6,7 @@ public enum EnumValueParser {
         guard upper.hasPrefix("ENUM(") || upper.hasPrefix("SET(") else {
             return nil
         }
-        return parseQuotedList(in: typeString)
+        return parseQuotedList(in: typeString, mode: .csv)
     }
 
     public static func parseClickHouseEnum(from typeString: String) -> [String]? {
@@ -14,53 +14,65 @@ public enum EnumValueParser {
         guard upper.hasPrefix("ENUM8(") || upper.hasPrefix("ENUM16(") else {
             return nil
         }
-        return parseQuotedList(in: typeString, ignoreAfterQuote: true)
+        return parseQuotedList(in: typeString, mode: .quotedOnly)
     }
 
-    private static func parseQuotedList(in typeString: String, ignoreAfterQuote: Bool = false) -> [String]? {
+    private enum ParseMode {
+        case csv
+        case quotedOnly
+    }
+
+    private static func parseQuotedList(in typeString: String, mode: ParseMode) -> [String]? {
         guard let openParen = typeString.firstIndex(of: "("),
               let closeParen = typeString.lastIndex(of: ")") else {
             return nil
         }
         let inner = typeString[typeString.index(after: openParen)..<closeParen]
+        let scalars = Array(inner)
 
         var values: [String] = []
         var current = ""
         var inQuote = false
-        var escaped = false
+        var index = 0
 
-        for char in inner {
-            if escaped {
-                current.append(char)
-                escaped = false
-                continue
-            }
-            if char == "\\" {
-                escaped = true
-                continue
-            }
-            if char == "'" {
-                if inQuote {
-                    if ignoreAfterQuote {
+        while index < scalars.count {
+            let char = scalars[index]
+            if inQuote {
+                if char == "\\", index + 1 < scalars.count {
+                    current.append(scalars[index + 1])
+                    index += 2
+                    continue
+                }
+                if char == "'" {
+                    if index + 1 < scalars.count, scalars[index + 1] == "'" {
+                        current.append("'")
+                        index += 2
+                        continue
+                    }
+                    if mode == .quotedOnly {
                         values.append(current)
                         current = ""
                     }
                     inQuote = false
-                } else {
-                    inQuote = true
+                    index += 1
+                    continue
                 }
-                continue
-            }
-            if inQuote {
                 current.append(char)
+                index += 1
                 continue
             }
-            if !ignoreAfterQuote, char == "," {
+            if char == "'" {
+                inQuote = true
+                index += 1
+                continue
+            }
+            if mode == .csv, char == "," {
                 values.append(current.trimmingCharacters(in: .whitespaces))
                 current = ""
             }
+            index += 1
         }
-        if !ignoreAfterQuote, !current.isEmpty {
+        if mode == .csv, !current.isEmpty {
             values.append(current.trimmingCharacters(in: .whitespaces))
         }
         return values.isEmpty ? nil : values

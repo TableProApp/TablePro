@@ -209,6 +209,24 @@ struct ColumnTypeTests {
         #expect(result == ["only"])
     }
 
+    @Test("parses values with SQL doubled-quote escape")
+    func parseValuesWithDoubledQuote() {
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM('a''b','c')")
+        #expect(result == ["a'b", "c"])
+    }
+
+    @Test("parses ClickHouse enum with doubled-quote escape")
+    func parseClickHouseDoubledQuote() {
+        let result = EnumValueParser.parseClickHouseEnum(from: "Enum8('a''b' = 1, 'c' = 2)")
+        #expect(result == ["a'b", "c"])
+    }
+
+    @Test("stray backslash outside quotes does not corrupt parse")
+    func parseStrayBackslashOutsideQuotes() {
+        let result = EnumValueParser.parseMySQLEnumOrSet(from: "ENUM('a'\\,'b')")
+        #expect(result == ["a", "b"])
+    }
+
     // MARK: - Other Type Properties Are False for Enum/Set
 
     @Test("enumType is not JSON type")

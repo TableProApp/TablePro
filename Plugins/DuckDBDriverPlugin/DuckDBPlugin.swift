@@ -865,33 +865,36 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func fetchEnumLabelMap(schema: String) async throws -> [String: [String]] {
-        let query = """
-            SELECT type_name, enum_dictionary
+        let typeNamesQuery = """
+            SELECT type_name
             FROM duckdb_types()
             WHERE schema_name = $1 AND type_category = 'ENUM'
         """
-        let result: PluginQueryResult
+        let typeResult: PluginQueryResult
         do {
-            result = try await executeParameterized(query: query, parameters: [.text(schema)])
+            typeResult = try await executeParameterized(query: typeNamesQuery, parameters: [.text(schema)])
         } catch {
             return [:]
         }
+        let typeNames = typeResult.rows.compactMap { $0[safe: 0]?.asText }
+        guard !typeNames.isEmpty else { return [:] }
+
         var map: [String: [String]] = [:]
-        for row in result.rows {
-            guard let typeName = row[safe: 0]?.asText,
-                  let dict = row[safe: 1]?.asText else { continue }
-            map[typeName] = parseDuckDBEnumDictionary(dict)
+        for typeName in typeNames {
+            let quoted = "\"\(typeName.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let valuesQuery = "SELECT UNNEST(enum_range(NULL::\(quoted)))::VARCHAR AS value"
+            let valuesResult: PluginQueryResult
+            do {
+                valuesResult = try await execute(query: valuesQuery)
+            } catch {
+                continue
+            }
+            let labels = valuesResult.rows.compactMap { $0[safe: 0]?.asText }
+            if !labels.isEmpty {
+                map[typeName] = labels
+            }
         }
         return map
-    }
-
-    private func parseDuckDBEnumDictionary(_ text: String) -> [String] {
-        let trimmed = text.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        guard !trimmed.isEmpty else { return [] }
-        return trimmed.split(separator: ",").map {
-            $0.trimmingCharacters(in: .whitespaces)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
-        }
     }
 
     private func resolveEnumValues(dataType: String, enumMap: [String: [String]]) -> [String]? {

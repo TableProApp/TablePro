@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>12</integer>
+	<integer>13</integer>
 	<key>TableProMinAppVersion</key>
 	<string>0.42.0</string>
 </dict>

@@ -211,12 +211,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func extractStringEnum(_ value: Any?) -> [String]? {
-        guard let array = value as? [Any] else { return nil }
-        let strings = array.compactMap { item -> String? in
-            if let s = item as? String { return s }
-            if let n = item as? NSNumber { return n.stringValue }
-            return nil
-        }
+        guard let array = value as? [Any], !array.isEmpty else { return nil }
+        guard array.allSatisfy({ $0 is String }) else { return nil }
+        let strings = array.compactMap { $0 as? String }
         return strings.isEmpty ? nil : strings
     }
 
