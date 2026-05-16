@@ -75,11 +75,20 @@ struct SortColumn: Equatable {
     var direction: SortDirection
 }
 
+enum SortSource: Equatable {
+    case user
+    case defaultSort
+}
+
 /// Tracks sorting state for a table (supports multi-column sort)
 struct SortState: Equatable {
     var columns: [SortColumn] = []
+    var source: SortSource = .user
 
-    init() {}
+    init(columns: [SortColumn] = [], source: SortSource = .user) {
+        self.columns = columns
+        self.source = source
+    }
 
     var isSorting: Bool { !columns.isEmpty }
 
@@ -232,6 +241,7 @@ struct TabExecutionState: Equatable {
     var errorMessage: String?
     var rowsAffected: Int = 0
     var lastExecutedAt: Date?
+    var didEvaluateDefaultSort: Bool = false
 
     static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
         lhs.isExecuting == rhs.isExecuting

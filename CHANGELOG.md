@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS: SQL Server (MSSQL) connections via FreeTDS over TDS 7.4. Uses the shared `SSLConfiguration` model from connection settings. Supports connect, query, streaming results, schema browsing (tables, columns, indexes, foreign keys), database and schema switching, and explicit transactions.
 - iOS: data browser, search, filter, and pagination now render correct SQL Server syntax (bracket-quoted identifiers, `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` pagination, `SELECT TOP 1` for cell value fetch).
 - iOS: Settings > Sync now shows last sync time, a Sync Now button, and a Refresh from iCloud action that re-downloads every connection, group, and tag when items are missing on this device but visible on another.
+- Settings > Data Grid > Default row sort: opt in to sort tables by Primary key or First column on open. Defaults to No sorting (engine order). Click any column header to override. (#1284)
 
 ### Changed
 

@@ -6245,6 +6245,9 @@
         }
       }
     },
+    "Applied when opening a table. Click a column header to override." : {
+
+    },
     "Apply" : {
       "localizations" : {
         "tr" : {
@@ -11303,6 +11306,9 @@
         }
       }
     },
+    "Connection is read-only. Destructive operations are not permitted." : {
+
+    },
     "Connection is read-only. Set safe mode to Confirm Writes or higher to allow this tool." : {
 
     },
@@ -15000,6 +15006,9 @@
           }
         }
       }
+    },
+    "Default row sort:" : {
+
     },
     "Default value" : {
       "extractionState" : "stale",
@@ -21929,6 +21938,9 @@
           }
         }
       }
+    },
+    "First column" : {
+
     },
     "Fit to Window" : {
       "localizations" : {
@@ -31389,6 +31401,9 @@
         }
       }
     },
+    "No sorting (engine order)" : {
+
+    },
     "No SSL encryption" : {
       "localizations" : {
         "tr" : {
@@ -35625,6 +35640,9 @@
           }
         }
       }
+    },
+    "Primary key" : {
+
     },
     "Primary Key" : {
       "localizations" : {

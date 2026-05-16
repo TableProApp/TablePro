@@ -37,6 +37,13 @@ struct DataGridSection: View {
             Toggle("Show row numbers", isOn: $settings.showRowNumbers)
             Toggle("Auto-show inspector on row select", isOn: $settings.autoShowInspector)
             Toggle("Smart value detection", isOn: $settings.enableSmartValueDetection)
+
+            Picker("Default row sort:", selection: $settings.defaultSortBehavior) {
+                ForEach(DefaultSortBehavior.allCases) { behavior in
+                    Text(behavior.displayName).tag(behavior)
+                }
+            }
+            .help(String(localized: "Applied when opening a table. Click a column header to override."))
         }
 
         Section("Pagination") {

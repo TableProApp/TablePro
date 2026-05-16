@@ -126,6 +126,22 @@ enum DateFormatOption: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum DefaultSortBehavior: String, Codable, CaseIterable, Identifiable, Equatable {
+    case none
+    case primaryKey
+    case firstColumn
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none: return String(localized: "No sorting (engine order)")
+        case .primaryKey: return String(localized: "Primary key")
+        case .firstColumn: return String(localized: "First column")
+        }
+    }
+}
+
 /// Data grid settings
 struct DataGridSettings: Codable, Equatable {
     var rowHeight: DataGridRowHeight
@@ -139,6 +155,7 @@ struct DataGridSettings: Codable, Equatable {
     var countRowsIfEstimateLessThan: Int
     var queryResultRowCap: Int
     var truncateQueryResults: Bool
+    var defaultSortBehavior: DefaultSortBehavior
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -151,7 +168,8 @@ struct DataGridSettings: Codable, Equatable {
         enableSmartValueDetection: true,
         countRowsIfEstimateLessThan: 100_000,
         queryResultRowCap: 10_000,
-        truncateQueryResults: true
+        truncateQueryResults: true,
+        defaultSortBehavior: .none
     )
 
     init(
@@ -165,7 +183,8 @@ struct DataGridSettings: Codable, Equatable {
         enableSmartValueDetection: Bool = true,
         countRowsIfEstimateLessThan: Int = 100_000,
         queryResultRowCap: Int = 10_000,
-        truncateQueryResults: Bool = true
+        truncateQueryResults: Bool = true,
+        defaultSortBehavior: DefaultSortBehavior = .none
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -178,6 +197,7 @@ struct DataGridSettings: Codable, Equatable {
         self.countRowsIfEstimateLessThan = countRowsIfEstimateLessThan
         self.queryResultRowCap = queryResultRowCap
         self.truncateQueryResults = truncateQueryResults
+        self.defaultSortBehavior = defaultSortBehavior
     }
 
     init(from decoder: Decoder) throws {
@@ -193,6 +213,7 @@ struct DataGridSettings: Codable, Equatable {
         countRowsIfEstimateLessThan = try container.decodeIfPresent(Int.self, forKey: .countRowsIfEstimateLessThan) ?? 100_000
         queryResultRowCap = try container.decodeIfPresent(Int.self, forKey: .queryResultRowCap) ?? 10_000
         truncateQueryResults = try container.decodeIfPresent(Bool.self, forKey: .truncateQueryResults) ?? true
+        defaultSortBehavior = try container.decodeIfPresent(DefaultSortBehavior.self, forKey: .defaultSortBehavior) ?? .none
     }
 
     // MARK: - Validated Properties

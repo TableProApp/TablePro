@@ -132,6 +132,10 @@ struct QueryTab: Identifiable, Equatable {
         }
     }
 
+    var hasUserActiveSort: Bool {
+        sortState.isSorting && sortState.source == .user
+    }
+
     func toPersistedTab() -> PersistedTab {
         let persistedQuery: String
         if (content.query as NSString).length > TabQueryContent.maxPersistableQuerySize {

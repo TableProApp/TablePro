@@ -727,6 +727,12 @@ final class PluginManager {
         return provider.diagnose(error: error)
     }
 
+    func defaultSortHint(for type: DatabaseType, table: String) -> DefaultSortHint {
+        guard let driver = driverPlugins[type.pluginTypeId] else { return .useAppDefault }
+        guard let provider = driver as? PluginDefaultSortProvider else { return .useAppDefault }
+        return provider.defaultSortHint(forTable: table)
+    }
+
     func replaceExistingPlugin(bundleId: String) {
         guard let existingIndex = plugins.firstIndex(where: { $0.id == bundleId }) else { return }
         unregisterCapabilities(pluginId: bundleId)

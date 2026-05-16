@@ -156,7 +156,7 @@ extension MainContentCoordinator {
         // If current tab has unsaved changes, active filters, or sorting, open in a new native tab
         let hasActiveWork = changeManager.hasChanges
             || selectedTabFilterState.hasAppliedFilters
-            || (tabManager.selectedTab?.sortState.isSorting ?? false)
+            || (tabManager.selectedTab?.hasUserActiveSort ?? false)
         if hasActiveWork {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
@@ -250,7 +250,7 @@ extension MainContentCoordinator {
             if tab.isPreview { return true }
             // Table tab with no active work
             if tab.tabType == .table && !changeManager.hasChanges
-                && !selectedTabFilterState.hasAppliedFilters && !tab.sortState.isSorting {
+                && !selectedTabFilterState.hasAppliedFilters && !tab.hasUserActiveSort {
                 return true
             }
             // Empty/default query tab (no user content, no results, never executed)
@@ -271,7 +271,7 @@ extension MainContentCoordinator {
             } ?? false
             let previewHasWork = changeManager.hasChanges
                 || selectedTabFilterState.hasAppliedFilters
-                || selectedTab.sortState.isSorting
+                || selectedTab.hasUserActiveSort
                 || hasUnsavedQuery
             if previewHasWork {
                 promotePreviewTab()

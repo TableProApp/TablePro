@@ -47,6 +47,8 @@ Click a column header to sort:
 - **Second click**: Sort descending (Z-A, 9-0)
 - **Third click**: Remove sort
 
+By default tables open in engine order (no `ORDER BY`). To always sort by primary key or first column on open, set Settings > Data Grid > Default row sort. Options are **No sorting** (default), **Primary key**, and **First column**. Tables without a primary key fall back to engine order even when Primary key is selected. Click a column header at any time to replace the default sort.
+
 Sort applies to the full result. TablePro re-runs the query with `ORDER BY` appended; if your query already has an `ORDER BY`, it is replaced.
 
 {/* Screenshot: Column header with sort indicator */}
