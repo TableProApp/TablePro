@@ -10,6 +10,27 @@ struct HostEntry: Identifiable {
     var value: String
 }
 
+/// Selection arithmetic for `HostListFieldRow`.
+///
+/// `List(selection:)` with an empty `Set` after a row deletion leaves SwiftUI's
+/// selection state stuck, so subsequent clicks on remaining rows do not register
+/// until the parent view forces a redraw. This mirrors `NSTableView` HIG
+/// behaviour by moving selection to the row that takes the removed row's place.
+enum HostListSelection {
+    static func nextSelection(
+        afterRemoving removedIds: Set<UUID>,
+        from entries: [HostEntry]
+    ) -> Set<UUID> {
+        guard let firstRemoveIndex = entries.firstIndex(where: { removedIds.contains($0.id) }) else {
+            return []
+        }
+        let remaining = entries.filter { !removedIds.contains($0.id) }
+        guard !remaining.isEmpty else { return [] }
+        let nextIndex = min(firstRemoveIndex, remaining.count - 1)
+        return [remaining[nextIndex].id]
+    }
+}
+
 struct HostListFieldRow: View {
     let label: String
     let placeholder: String
@@ -116,11 +137,17 @@ struct HostListFieldRow: View {
 
     private func removeSelected() {
         guard !selectedId.isEmpty, entries.count > 1 else { return }
+        let nextSelection = HostListSelection.nextSelection(
+            afterRemoving: selectedId,
+            from: entries
+        )
         entries.removeAll { selectedId.contains($0.id) }
         if entries.isEmpty {
             entries.append(HostEntry(value: ""))
+            selectedId = []
+        } else {
+            selectedId = nextSelection
         }
-        selectedId = []
         syncValue()
     }
 
