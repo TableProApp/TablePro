@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Inline dropdown picker when editing ENUM and SET columns, covering MySQL, MariaDB, PostgreSQL, ClickHouse, DuckDB, and MongoDB JSON-schema enums (#1283)
+- Filter rows show an enum dropdown for `=` and `!=` operators on enum columns (#1283)
+
+### Changed
+
+- Drivers populate allowed enum values directly in column metadata instead of parsing them downstream
+
 ## [0.42.0] - 2026-05-16
 
 ### Added

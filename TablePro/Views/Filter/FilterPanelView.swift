@@ -10,6 +10,7 @@ struct FilterPanelView: View {
     let columns: [String]
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
+    let enumValuesByColumn: [String: [String]]
     let onApply: ([TableFilter]) -> Void
     let onUnset: () -> Void
 
@@ -181,6 +182,7 @@ struct FilterPanelView: View {
                     filter: coordinator.filterBinding(for: filter),
                     columns: columns,
                     completions: completionItems(),
+                    enumValuesByColumn: enumValuesByColumn,
                     onAdd: {
                         coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
                         focusedFilterId = filterState.filters.last?.id

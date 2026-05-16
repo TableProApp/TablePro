@@ -1154,7 +1154,6 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Fetch enum/set values for columns from database-specific sources
     func fetchEnumValues(
         columnInfo: [ColumnInfo],
         tableName: String,
@@ -1163,37 +1162,14 @@ final class MainContentCoordinator {
     ) async -> [String: [String]] {
         var result: [String: [String]] = [:]
 
-        // Build enum/set value lookup map from column types (MySQL/MariaDB + ClickHouse Enum8/Enum16)
         for col in columnInfo {
-            if let values = ColumnType.parseEnumValues(from: col.dataType) {
-                result[col.name] = values
-            } else if let values = ColumnType.parseClickHouseEnumValues(from: col.dataType) {
+            if let values = col.allowedValues, !values.isEmpty {
                 result[col.name] = values
             }
         }
 
-        // Fetch actual enum values from catalog via dependent types (PostgreSQL returns values, others return [])
-        if let enumTypes = try? await driver.fetchDependentTypes(forTable: tableName),
-           !enumTypes.isEmpty {
-            let typeMap = Dictionary(uniqueKeysWithValues: enumTypes.map { ($0.name, $0.labels) })
-            for col in columnInfo where col.dataType.uppercased().hasPrefix("ENUM(") {
-                let raw = col.dataType
-                if let openParen = raw.firstIndex(of: "("),
-                   let closeParen = raw.lastIndex(of: ")") {
-                    let typeName = String(raw[raw.index(after: openParen)..<closeParen])
-                    if let values = typeMap[typeName] {
-                        result[col.name] = values
-                    }
-                }
-            }
-        }
-
-        // Fetch CHECK constraint pseudo-enum values from DDL (SQLite-style CHECK ... IN constraints).
-        // Only attempt DDL parsing when no enum values were found via catalog (avoids unnecessary
-        // fetchTableDDL calls for databases that don't use CHECK constraints for enums).
         if result.isEmpty, let createSQL = try? await driver.fetchTableDDL(table: tableName) {
-            let columns = try? await driver.fetchColumns(table: tableName)
-            for col in columns ?? [] {
+            for col in columnInfo {
                 if let values = QuerySqlParser.parseSQLiteCheckConstraintValues(
                     createSQL: createSQL, columnName: col.name
                 ) {

@@ -9,11 +9,23 @@ struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
     let completions: [String]
+    var enumValuesByColumn: [String: [String]] = [:]
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
     let onSubmit: () -> Void
     @Binding var focusedFilterId: UUID?
+
+    private var pickerEligibleOperators: Set<FilterOperator> {
+        [.equal, .notEqual]
+    }
+
+    private var allowedValuesForCurrentColumn: [String]? {
+        guard !filter.isRawSQL,
+              let values = enumValuesByColumn[filter.columnName],
+              !values.isEmpty else { return nil }
+        return values
+    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -79,16 +91,21 @@ struct FilterRowView: View {
             )
             .accessibilityLabel(String(localized: "WHERE clause"))
         } else if filter.filterOperator.requiresValue {
-            FilterValueTextField(
-                text: $filter.value,
-                focusedId: $focusedFilterId,
-                identity: filter.id,
-                placeholder: String(localized: "Value"),
-                completions: completions,
-                onSubmit: onSubmit
-            )
-            .frame(minWidth: 80)
-            .accessibilityLabel(String(localized: "Filter value"))
+            if let allowedValues = allowedValuesForCurrentColumn,
+               pickerEligibleOperators.contains(filter.filterOperator) {
+                enumValuePicker(allowedValues: allowedValues)
+            } else {
+                FilterValueTextField(
+                    text: $filter.value,
+                    focusedId: $focusedFilterId,
+                    identity: filter.id,
+                    placeholder: String(localized: "Value"),
+                    completions: completions,
+                    onSubmit: onSubmit
+                )
+                .frame(minWidth: 80)
+                .accessibilityLabel(String(localized: "Filter value"))
+            }
 
             if filter.filterOperator.requiresSecondValue {
                 Text("and")
@@ -158,6 +175,26 @@ struct FilterRowView: View {
         } label: {
             Label(String(localized: "Remove Filter"), systemImage: "trash")
         }
+    }
+
+    @ViewBuilder
+    private func enumValuePicker(allowedValues: [String]) -> some View {
+        let isDrift = !filter.value.isEmpty && !allowedValues.contains(filter.value)
+        Picker("", selection: $filter.value) {
+            ForEach(allowedValues, id: \.self) { value in
+                Text(value).tag(value)
+            }
+            if isDrift {
+                Divider()
+                Text(filter.value).tag(filter.value)
+            }
+        }
+        .pickerStyle(.menu)
+        .controlSize(.small)
+        .frame(minWidth: 100)
+        .labelsHidden()
+        .accessibilityLabel(String(localized: "Filter value"))
+        .onChange(of: filter.value) { _, _ in onSubmit() }
     }
 
     private struct OperatorMenuLabel: View {

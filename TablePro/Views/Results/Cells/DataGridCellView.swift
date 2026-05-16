@@ -205,8 +205,11 @@ final class DataGridCellView: NSView {
         let accessoryRect = computeAccessoryRect()
         accessoryHitRect = accessoryRect
 
+        NSGraphicsContext.current?.saveGraphicsState()
+        NSBezierPath(rect: bounds).addClip()
         drawText(reservingTrailingWidth: accessoryRect.width)
         drawAccessory(in: accessoryRect)
+        NSGraphicsContext.current?.restoreGraphicsState()
 
         if isFocusedCell && onEmphasizedSelection {
             drawFocusBorder()
@@ -221,15 +224,15 @@ final class DataGridCellView: NSView {
 
         let fullLine = cachedCTLine()
         let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
-
-        let availableWidth: CGFloat = typographicWidth > Double(totalAvailable)
-            ? totalAvailable - trailing
-            : totalAvailable
+        let trailingGap: CGFloat = trailing > 0 ? trailing + 4 : 0
+        let availableWidth = max(0, totalAvailable - trailingGap)
+        let ellipsisLine = makeEllipsisLine()
+        let ellipsisWidth = CTLineGetTypographicBounds(ellipsisLine, nil, nil, nil)
+        guard Double(availableWidth) >= ellipsisWidth else { return }
 
         let lineToDraw: CTLine
         if typographicWidth > Double(availableWidth) {
-            let ellipsis = makeEllipsisLine()
-            lineToDraw = CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis) ?? fullLine
+            lineToDraw = CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsisLine) ?? ellipsisLine
         } else {
             lineToDraw = fullLine
         }
@@ -292,6 +295,8 @@ final class DataGridCellView: NSView {
         case .dropdown, .boolean, .json, .blob:
             guard isEditableCell else { return .zero }
             let size = NSSize(width: 12, height: 14)
+            let minRequired = size.width + 2 * DataGridMetrics.cellHorizontalInset
+            guard bounds.width >= minRequired else { return .zero }
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
             let y = (bounds.height - size.height) / 2
             return NSRect(x: x, y: y, width: size.width, height: size.height)

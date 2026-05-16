@@ -50990,6 +50990,12 @@
         }
       }
     },
+    "Value is not in the declared enum." : {
+
+    },
+    "Value is not in the declared set." : {
+
+    },
     "Value is required" : {
       "localizations" : {
         "tr" : {

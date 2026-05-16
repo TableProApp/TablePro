@@ -648,9 +648,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         for i in 0..<columns.count {
             let name = columns[i]
-            if i < types.count {
-                let ct = types[i]
-                if (ct.isEnumType || ct.isSetType) && enumValues[name]?.isEmpty == false {
+            if let values = enumValues[name], !values.isEmpty {
+                let ct = i < types.count ? types[i] : nil
+                let isExcluded = ct?.isJsonType == true || ct?.isBlobType == true || ct?.isBooleanType == true
+                if !isExcluded {
                     enumSet.insert(i)
                 }
             }

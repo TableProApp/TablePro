@@ -94,10 +94,12 @@ extension TableViewCoordinator {
 
         if ct.isBooleanType {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-        } else if ct.isEnumType, let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
-            showEnumPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-        } else if ct.isSetType, let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
-            showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
+            if ct.isSetType {
+                showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            } else {
+                showEnumPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            }
         } else if ct.isJsonType {
             showJSONEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if ct.isBlobType {

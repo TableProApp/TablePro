@@ -490,6 +490,7 @@ struct MainEditorContentView: View {
                                 columns: resolvedRows.columns,
                                 primaryKeyColumn: changeManager.primaryKeyColumn,
                                 databaseType: connection.type,
+                                enumValuesByColumn: resolvedRows.columnEnumValues,
                                 onApply: onApplyFilters,
                                 onUnset: onClearFilters
                             )

@@ -785,6 +785,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await executeParameterized(query: query, parameters: [.text(schemaName), .text(table)])
 
         let pkColumns = try await fetchPrimaryKeyColumns(table: table, schema: schemaName)
+        let enumMap = try await fetchEnumLabelMap(schema: schemaName)
 
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
@@ -801,7 +802,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 dataType: dataType,
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue
+                defaultValue: defaultValue,
+                allowedValues: resolveEnumValues(dataType: dataType, enumMap: enumMap)
             )
         }
     }
@@ -833,6 +835,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
+        let enumMap = try await fetchEnumLabelMap(schema: schemaName)
         var allColumns: [String: [PluginColumnInfo]] = [:]
 
         for row in result.rows {
@@ -851,13 +854,51 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 dataType: dataType,
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue
+                defaultValue: defaultValue,
+                allowedValues: resolveEnumValues(dataType: dataType, enumMap: enumMap)
             )
 
             allColumns[tableName, default: []].append(column)
         }
 
         return allColumns
+    }
+
+    private func fetchEnumLabelMap(schema: String) async throws -> [String: [String]] {
+        let query = """
+            SELECT type_name, enum_dictionary
+            FROM duckdb_types()
+            WHERE schema_name = $1 AND type_category = 'ENUM'
+        """
+        let result: PluginQueryResult
+        do {
+            result = try await executeParameterized(query: query, parameters: [.text(schema)])
+        } catch {
+            return [:]
+        }
+        var map: [String: [String]] = [:]
+        for row in result.rows {
+            guard let typeName = row[safe: 0]?.asText,
+                  let dict = row[safe: 1]?.asText else { continue }
+            map[typeName] = parseDuckDBEnumDictionary(dict)
+        }
+        return map
+    }
+
+    private func parseDuckDBEnumDictionary(_ text: String) -> [String] {
+        let trimmed = text.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        guard !trimmed.isEmpty else { return [] }
+        return trimmed.split(separator: ",").map {
+            $0.trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+        }
+    }
+
+    private func resolveEnumValues(dataType: String, enumMap: [String: [String]]) -> [String]? {
+        if let values = enumMap[dataType], !values.isEmpty {
+            return values
+        }
+        return EnumValueParser.parseMySQLEnumOrSet(from: dataType)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {

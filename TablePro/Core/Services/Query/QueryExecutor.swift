@@ -200,9 +200,7 @@ final class QueryExecutor {
         }
         var enumValues: [String: [String]] = [:]
         for col in schema.columnInfo {
-            if let values = ColumnType.parseEnumValues(from: col.dataType) {
-                enumValues[col.name] = values
-            } else if let values = ColumnType.parseClickHouseEnumValues(from: col.dataType) {
+            if let values = col.allowedValues, !values.isEmpty {
                 enumValues[col.name] = values
             }
         }

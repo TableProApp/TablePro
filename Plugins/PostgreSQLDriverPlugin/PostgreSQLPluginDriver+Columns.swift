@@ -10,6 +10,7 @@ extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
         let safeTable = escapeLiteralForColumns(table)
+        let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
         let caps = versionedCapabilities
         let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generatedProjection = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
@@ -54,12 +55,13 @@ extension PostgreSQLPluginDriver {
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
-            mapPgColumnRow(row, tableNameOffset: 0)
+            mapPgColumnRow(row, tableNameOffset: 0, enumLabelsByType: enumMap)
         }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let safeSchema = escapeLiteralForColumns(currentSchema ?? "public")
+        let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
         let caps = versionedCapabilities
         let identityProjection = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generatedProjection = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
@@ -106,18 +108,41 @@ extension PostgreSQLPluginDriver {
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard row.count >= 5, let tableName = row[0].asText else { continue }
-            if let column = mapPgColumnRow(row, tableNameOffset: 1) {
+            if let column = mapPgColumnRow(row, tableNameOffset: 1, enumLabelsByType: enumMap) {
                 allColumns[tableName, default: []].append(column)
             }
         }
         return allColumns
     }
 
+    fileprivate func fetchEnumLabelMap(schema: String) async throws -> [String: [String]] {
+        let query = """
+            SELECT t.typname, e.enumlabel
+            FROM pg_catalog.pg_type t
+            JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+            JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
+            WHERE n.nspname = '\(schema)'
+            ORDER BY t.typname, e.enumsortorder
+            """
+        let result = try await execute(query: query)
+        var map: [String: [String]] = [:]
+        for row in result.rows {
+            guard let typeName = row[safe: 0]?.asText,
+                  let label = row[safe: 1]?.asText else { continue }
+            map[typeName, default: []].append(label)
+        }
+        return map
+    }
+
     fileprivate func escapeLiteralForColumns(_ str: String) -> String {
         str.replacingOccurrences(of: "'", with: "''")
     }
 
-    fileprivate func mapPgColumnRow(_ row: [PluginCellValue], tableNameOffset: Int) -> PluginColumnInfo? {
+    fileprivate func mapPgColumnRow(
+        _ row: [PluginCellValue],
+        tableNameOffset: Int,
+        enumLabelsByType: [String: [String]]
+    ) -> PluginColumnInfo? {
         let nameIdx = tableNameOffset
         let typeIdx = tableNameOffset + 1
         let nullableIdx = tableNameOffset + 2
@@ -135,10 +160,13 @@ extension PostgreSQLPluginDriver {
         else { return nil }
 
         let udtName = row.count > udtIdx ? row[udtIdx].asText : nil
+        let allowedValues: [String]?
         let dataType: String
         if rawDataType.uppercased() == "USER-DEFINED", let udt = udtName {
-            dataType = "ENUM(\(udt))"
+            allowedValues = enumLabelsByType[udt]
+            dataType = allowedValues != nil ? "ENUM" : udt
         } else {
+            allowedValues = nil
             dataType = rawDataType.uppercased()
         }
 
@@ -165,7 +193,8 @@ extension PostgreSQLPluginDriver {
             collation: collation,
             comment: comment?.isEmpty == false ? comment : nil,
             identityKind: pgIdentityKind(attidentity),
-            isGenerated: attgenerated == "s"
+            isGenerated: attgenerated == "s",
+            allowedValues: allowedValues
         )
     }
 

@@ -342,7 +342,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isPrimaryKey: pkColumns.contains(name),
                 defaultValue: defaultValue,
                 extra: extra,
-                comment: (comment?.isEmpty == false) ? comment : nil
+                comment: (comment?.isEmpty == false) ? comment : nil,
+                allowedValues: EnumValueParser.parseClickHouseEnum(from: ClickHousePluginDriver.unwrapTypeWrappers(dataType))
             )
         }
     }
@@ -402,11 +403,23 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isPrimaryKey: pkLookup[tableName]?.contains(colName) == true,
                 defaultValue: defaultValue,
                 extra: extra,
-                comment: (comment?.isEmpty == false) ? comment : nil
+                comment: (comment?.isEmpty == false) ? comment : nil,
+                allowedValues: EnumValueParser.parseClickHouseEnum(from: ClickHousePluginDriver.unwrapTypeWrappers(dataType))
             )
             columnsByTable[tableName, default: []].append(colInfo)
         }
         return columnsByTable
+    }
+
+    static func unwrapTypeWrappers(_ value: String) -> String {
+        for prefix in ["Nullable(", "LowCardinality("] {
+            if value.hasPrefix(prefix), value.hasSuffix(")") {
+                let start = value.index(value.startIndex, offsetBy: prefix.count)
+                let end = value.index(before: value.endIndex)
+                return unwrapTypeWrappers(String(value[start..<end]))
+            }
+        }
+        return value
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {

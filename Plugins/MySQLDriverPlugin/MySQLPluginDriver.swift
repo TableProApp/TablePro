@@ -219,6 +219,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let upperType = dataType.uppercased()
             let normalizedType = (upperType.hasPrefix("ENUM(") || upperType.hasPrefix("SET("))
                 ? dataType : upperType
+            let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
 
             return PluginColumnInfo(
                 name: name,
@@ -229,7 +230,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 extra: extra,
                 charset: charset,
                 collation: collation == "NULL" ? nil : collation,
-                comment: comment?.isEmpty == false ? comment : nil
+                comment: comment?.isEmpty == false ? comment : nil,
+                allowedValues: allowedValues
             )
         }
     }
@@ -270,6 +272,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let upperType = dataType.uppercased()
             let normalizedType = (upperType.hasPrefix("ENUM(") || upperType.hasPrefix("SET("))
                 ? dataType : upperType
+            let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
 
             let column = PluginColumnInfo(
                 name: name,
@@ -280,7 +283,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 extra: extra,
                 charset: charset,
                 collation: collation == "NULL" ? nil : collation,
-                comment: comment?.isEmpty == false ? comment : nil
+                comment: comment?.isEmpty == false ? comment : nil,
+                allowedValues: allowedValues
             )
 
             allColumns[tableName, default: []].append(column)

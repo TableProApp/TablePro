@@ -216,27 +216,18 @@ extension TableViewCoordinator {
 
         let currentValue = cellValue(at: row, column: columnIndex)
         let isNullable = tableRows.columnNullable[columnName] ?? true
-
-        var values: [String] = []
-        if isNullable {
-            values.append("\u{2300} NULL")
-        }
-        values.append(contentsOf: allowedValues)
+        let defaultValue = tableRows.columnDefaults[columnName] ?? nil
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        EnumMenuPicker.presentEnum(
             relativeTo: cellRect,
-            of: tableView
-        ) { [weak self] dismiss in
-            EnumPopoverContentView(
-                allValues: values,
-                currentValue: currentValue,
-                isNullable: isNullable,
-                onCommit: { newValue in
-                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-                },
-                onDismiss: dismiss
-            )
+            in: tableView,
+            allowedValues: allowedValues,
+            currentValue: currentValue,
+            isNullable: isNullable,
+            defaultValue: defaultValue
+        ) { [weak self] newValue in
+            self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
     }
 
@@ -248,31 +239,14 @@ extension TableViewCoordinator {
         guard let allowedValues = tableRows.columnEnumValues[columnName] else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex)
-
-        let currentSet: Set<String>
-        if let value = currentValue {
-            currentSet = Set(value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
-        } else {
-            currentSet = []
-        }
-        var selections: [String: Bool] = [:]
-        for value in allowedValues {
-            selections[value] = currentSet.contains(value)
-        }
-
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        EnumMenuPicker.presentSet(
             relativeTo: cellRect,
-            of: tableView
-        ) { [weak self] dismiss in
-            SetPopoverContentView(
-                allowedValues: allowedValues,
-                initialSelections: selections,
-                onCommit: { newValue in
-                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-                },
-                onDismiss: dismiss
-            )
+            in: tableView,
+            allowedValues: allowedValues,
+            currentCsv: currentValue
+        ) { [weak self] newValue in
+            self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
     }
 

@@ -202,7 +202,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
                 extra: col.extra,
                 charset: col.charset,
                 collation: col.collation,
-                comment: col.comment
+                comment: col.comment,
+                allowedValues: col.allowedValues
             )
         }
     }
@@ -376,7 +377,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             result[table] = cols.map { col in
                 ColumnInfo(name: col.name, dataType: col.dataType, isNullable: col.isNullable,
                            isPrimaryKey: col.isPrimaryKey, defaultValue: col.defaultValue,
-                           extra: col.extra, charset: col.charset, collation: col.collation, comment: col.comment)
+                           extra: col.extra, charset: col.charset, collation: col.collation, comment: col.comment,
+                           allowedValues: col.allowedValues)
             }
         }
         return result

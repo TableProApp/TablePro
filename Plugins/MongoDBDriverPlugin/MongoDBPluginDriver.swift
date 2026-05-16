@@ -160,6 +160,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             filter: "{}", sort: nil, projection: nil, skip: 0, limit: 50
         ).docs
 
+        let enumMap = (try? await fetchJsonSchemaEnums(conn: conn, table: table)) ?? [:]
+
         if docs.isEmpty {
             return [
                 PluginColumnInfo(
@@ -176,9 +178,46 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let typeName = bsonTypeToString(types[index])
             return PluginColumnInfo(
                 name: name, dataType: typeName, isNullable: name != "_id", isPrimaryKey: name == "_id",
-                defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
+                defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
+                allowedValues: enumMap[name]
             )
         }
+    }
+
+    private func fetchJsonSchemaEnums(conn: MongoDBConnection, table: String) async throws -> [String: [String]] {
+        let escaped = escapeJsonString(table)
+        let result = try await conn.runCommand(
+            "{\"listCollections\": 1, \"filter\": {\"name\": \"\(escaped)\"}}",
+            database: currentDb
+        )
+        guard let firstDoc = result.first,
+              let cursor = firstDoc["cursor"] as? [String: Any],
+              let firstBatch = cursor["firstBatch"] as? [[String: Any]],
+              let collInfo = firstBatch.first,
+              let options = collInfo["options"] as? [String: Any],
+              let validator = options["validator"] as? [String: Any],
+              let jsonSchema = validator["$jsonSchema"] as? [String: Any],
+              let properties = jsonSchema["properties"] as? [String: Any]
+        else { return [:] }
+
+        var map: [String: [String]] = [:]
+        for (colName, spec) in properties {
+            guard let specDict = spec as? [String: Any] else { continue }
+            if let enumValues = extractStringEnum(specDict["enum"]) {
+                map[colName] = enumValues
+            }
+        }
+        return map
+    }
+
+    private func extractStringEnum(_ value: Any?) -> [String]? {
+        guard let array = value as? [Any] else { return nil }
+        let strings = array.compactMap { item -> String? in
+            if let s = item as? String { return s }
+            if let n = item as? NSNumber { return n.stringValue }
+            return nil
+        }
+        return strings.isEmpty ? nil : strings
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {

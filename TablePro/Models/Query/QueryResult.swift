@@ -108,6 +108,31 @@ struct ColumnInfo: Identifiable, Hashable {
     let charset: String?
     let collation: String?
     let comment: String?
+    let allowedValues: [String]?
+
+    init(
+        name: String,
+        dataType: String,
+        isNullable: Bool,
+        isPrimaryKey: Bool,
+        defaultValue: String? = nil,
+        extra: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        comment: String? = nil,
+        allowedValues: [String]? = nil
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.extra = extra
+        self.charset = charset
+        self.collation = collation
+        self.comment = comment
+        self.allowedValues = allowedValues
+    }
 }
 
 /// Information about a table index
