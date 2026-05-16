@@ -22,6 +22,12 @@ final class SuggestionViewModel: ObservableObject {
 
     weak var delegate: CodeSuggestionDelegate?
 
+    /// Invoked after a successful apply so the owning controller can dismiss the
+    /// suggestion window through its own ``close()`` override (which performs the
+    /// monitor and state cleanup). Bypassing this and calling `NSWindow.close()`
+    /// directly leaves the local key monitor installed.
+    var onApply: (() -> Void)?
+
     private var cursorPosition: CursorPosition?
     private var syntaxHighlightedCache: [Int: NSAttributedString] = [:]
 
@@ -165,7 +171,7 @@ final class SuggestionViewModel: ObservableObject {
         delegate?.completionWindowDidSelect(item: item)
     }
 
-    func applySelectedItem(item: CodeSuggestionEntry, window: NSWindow?) {
+    func applySelectedItem(item: CodeSuggestionEntry) {
         guard let activeTextView else {
             return
         }
@@ -174,7 +180,7 @@ final class SuggestionViewModel: ObservableObject {
             textView: activeTextView,
             cursorPosition: activeTextView.cursorPositions.first
         )
-        window?.close()
+        onApply?()
     }
 
     func willClose() {

@@ -54,10 +54,7 @@ struct SuggestionContentView: View {
                     .onTapGesture(count: 2) {
                         model.selectedIndex = index
                         if let selectedItem = model.selectedItem {
-                            model.applySelectedItem(
-                                item: selectedItem,
-                                window: model.activeTextView?.view.window
-                            )
+                            model.applySelectedItem(item: selectedItem)
                         }
                     }
                     .listRowInsets(EdgeInsets())

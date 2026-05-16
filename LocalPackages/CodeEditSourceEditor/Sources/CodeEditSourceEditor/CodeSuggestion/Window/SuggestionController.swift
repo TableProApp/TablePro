@@ -11,7 +11,7 @@ import Combine
 import SwiftUI
 
 public final class SuggestionController: NSWindowController {
-    static var shared: SuggestionController = SuggestionController()
+    static var shared = SuggestionController()
 
     // MARK: - Properties
 
@@ -20,7 +20,7 @@ public final class SuggestionController: NSWindowController {
         window?.isVisible ?? false || popover?.isShown ?? false
     }
 
-    var model: SuggestionViewModel = SuggestionViewModel()
+    var model = SuggestionViewModel()
 
     // MARK: - Private Properties
 
@@ -50,6 +50,15 @@ public final class SuggestionController: NSWindowController {
         let contentView = SuggestionContentView(model: model)
         let hostingView = NSHostingView(rootView: contentView)
         window.contentView = hostingView
+
+        model.onApply = { [weak self] in self?.close() }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWindowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
 
         // Resize window when items change
         model.$items
@@ -160,8 +169,24 @@ public final class SuggestionController: NSWindowController {
         window.orderFront(nil)
     }
 
-    /// Close the window
-    public override func close() {
+    /// Close the window. Cleanup is performed by ``handleWindowWillClose(_:)``
+    /// which fires off `NSWindow.willCloseNotification`. Routing through the
+    /// notification means cleanup is idempotent and runs even when callers
+    /// invoke `window.close()` on the underlying `NSWindow` directly.
+    override public func close() {
+        if popover != nil {
+            popover?.close()
+            popover = nil
+        }
+        super.close()
+    }
+
+    @objc private func handleWindowWillClose(_ notification: Notification) {
+        guard (notification.object as AnyObject?) === window else { return }
+        performCleanup()
+    }
+
+    private func performCleanup() {
         model.willClose()
         removeEventMonitors()
 
@@ -172,13 +197,6 @@ public final class SuggestionController: NSWindowController {
 
         firstResponderKVO?.invalidate()
         firstResponderKVO = nil
-
-        if popover != nil {
-            popover?.close()
-            popover = nil
-        }
-
-        super.close()
     }
 
     // MARK: - Cursors Updated
@@ -233,7 +251,7 @@ public final class SuggestionController: NSWindowController {
                 return nil
             case 36, 48: // Return, Tab
                 if let item = self.model.selectedItem {
-                    self.model.applySelectedItem(item: item, window: self.window)
+                    self.model.applySelectedItem(item: item)
                 }
                 return nil
             default:

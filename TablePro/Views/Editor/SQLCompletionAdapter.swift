@@ -165,9 +165,6 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         guard offset >= prefixStart, offset <= docLength else { return nil }
 
         let prefixLength = offset - prefixStart
-        // Guard against stale replacementRange producing an unreasonably
-        // large prefix read. Normal prefixes are <200 chars even for
-        // qualified identifiers (schema.table.column).
         guard prefixLength > 0, prefixLength <= 500 else { return nil }
 
         let prefixRange = NSRange(location: prefixStart, length: prefixLength)
@@ -191,20 +188,16 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
 
         suppressNextCompletion = true
 
-        // Extend replacement range from original start to current cursor position,
-        // since the user may have typed more characters since completions were triggered.
         let originalStart = context.replacementRange.location
         let currentEnd = cursorPosition?.range.location ?? (originalStart + context.replacementRange.length)
         let replaceRange = NSRange(location: originalStart, length: currentEnd - originalStart)
         let insertText = entry.item.insertText
 
-        // Replace text in the text view
         textView.textView.replaceCharacters(
             in: [replaceRange],
             with: insertText
         )
 
-        // Move cursor: for function completions ending with "()", place cursor between parens
         let insertLength = (insertText as NSString).length
         let newPosition: Int
         if insertText.hasSuffix("()") {
