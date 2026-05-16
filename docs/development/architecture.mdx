@@ -93,6 +93,24 @@ All database drivers are `.tableplugin` bundles loaded at runtime. This keeps th
 
 Built-in plugins ship inside the app bundle. Registry plugins are downloaded on demand from the [plugin registry](/development/plugin-registry).
 
+### Opt-in Plugin Protocols
+
+Plugins can adopt additional protocols beyond `PluginDatabaseDriver` to expose extra capabilities. These are runtime-cast (`as?`) by `PluginManager`, so existing plugins that do not conform keep working without an ABI bump.
+
+| Protocol | Purpose | Lookup |
+|----------|---------|--------|
+| `PluginDiagnosticProvider` | Provide a user-facing diagnostic for driver errors | `PluginManager.diagnose(error:for:)` |
+| `PluginProcedureFunctionSupport` | Expose stored procedures and functions in the structure tab | `PluginDriverAdapter` |
+| `PluginDefaultSortProvider` | Override the app default-sort behavior for opened tables | `PluginManager.defaultSortHint(for:table:)` |
+
+A `PluginDefaultSortProvider` returns one of:
+
+- `.useAppDefault` (default if the plugin does not conform): apply the user setting (Primary key, First column, or No sorting).
+- `.suppress`: never auto-sort tables opened with this plugin (useful for NoSQL engines where ORDER BY is not meaningful).
+- `.forceColumns([String])`: ignore the user setting and sort by the supplied column names (for example MongoDB could force `_id`).
+
+The hint receives the table name, so plugins can vary the answer per table.
+
 ## Key Components
 
 ### DatabaseManager
