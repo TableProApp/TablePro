@@ -137,7 +137,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Column"))
         validate()
-        reloadVersion += 1
     }
 
     func addNewIndex() {
@@ -151,7 +150,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Index"))
         validate()
-        reloadVersion += 1
     }
 
     func addNewForeignKey() {
@@ -165,7 +163,6 @@ final class StructureChangeManager: ChangeManaging {
         }
         undoManager.setActionName(String(localized: "Add Foreign Key"))
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Paste Operations (public methods for adding copied items)
@@ -179,7 +176,6 @@ final class StructureChangeManager: ChangeManaging {
             target.applySchemaUndo(.columnAdd(column: column))
         }
         undoManager.setActionName(String(localized: "Add Column"))
-        reloadVersion += 1
     }
 
     func addIndex(_ index: EditableIndexDefinition) {
@@ -191,7 +187,6 @@ final class StructureChangeManager: ChangeManaging {
             target.applySchemaUndo(.indexAdd(index: index))
         }
         undoManager.setActionName(String(localized: "Add Index"))
-        reloadVersion += 1
     }
 
     func addForeignKey(_ foreignKey: EditableForeignKeyDefinition) {
@@ -203,7 +198,6 @@ final class StructureChangeManager: ChangeManaging {
             target.applySchemaUndo(.foreignKeyAdd(fk: foreignKey))
         }
         undoManager.setActionName(String(localized: "Add Foreign Key"))
-        reloadVersion += 1
     }
 
     // MARK: - Column Operations
@@ -240,7 +234,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     func deleteColumn(id: UUID) {
@@ -266,7 +259,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Index Operations
@@ -303,7 +295,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     func deleteIndex(id: UUID) {
@@ -329,7 +320,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Foreign Key Operations
@@ -366,7 +356,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     func deleteForeignKey(id: UUID) {
@@ -392,7 +381,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Row-Specific Undo Delete
@@ -424,7 +412,6 @@ final class StructureChangeManager: ChangeManaging {
         pendingChanges.removeValue(forKey: key)
         untrackChangeKey(key)
         validate()
-        reloadVersion += 1
     }
 
     // MARK: - Validation
@@ -568,7 +555,6 @@ final class StructureChangeManager: ChangeManaging {
         }
 
         validate()
-        reloadVersion += 1
     }
 
     private func applyColumnEditUndo(id: UUID, old: EditableColumnDefinition, new: EditableColumnDefinition) {

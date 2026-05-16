@@ -155,6 +155,16 @@ actor SQLSchemaProvider {
         startEagerColumnLoad()
     }
 
+    func clearColumnCache() {
+        eagerColumnTask?.cancel()
+        eagerColumnTask = nil
+        columnCache.removeAll()
+        columnAccessOrder.removeAll()
+        if cachedDriver != nil {
+            startEagerColumnLoad()
+        }
+    }
+
     // MARK: - Eager Column Loading
 
     private func startEagerColumnLoad() {

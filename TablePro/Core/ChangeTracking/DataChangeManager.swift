@@ -128,7 +128,6 @@ final class DataChangeManager: ChangeManaging {
         )
         guard recorded else {
             hasChanges = !pending.isEmpty
-            reloadVersion += 1
             return
         }
         registerUndo(actionName: String(localized: "Edit Cell")) { target in
@@ -138,7 +137,6 @@ final class DataChangeManager: ChangeManaging {
             ))
         }
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
     }
 
     func recordRowDeletion(rowIndex: Int, originalRow: [PluginCellValue]) {
@@ -147,7 +145,6 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.rowDeletion(rowIndex: rowIndex, originalRow: originalRow))
         }
         hasChanges = true
-        reloadVersion += 1
     }
 
     func recordBatchRowDeletion(rows: [(rowIndex: Int, originalRow: [PluginCellValue])]) {
@@ -165,7 +162,6 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.batchRowDeletion(rows: batchData))
         }
         hasChanges = true
-        reloadVersion += 1
     }
 
     func recordRowInsertion(rowIndex: Int, values: [PluginCellValue]) {
@@ -174,7 +170,6 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.rowInsertion(rowIndex: rowIndex))
         }
         hasChanges = true
-        reloadVersion += 1
     }
 
     // MARK: - Undo Operations
@@ -182,13 +177,11 @@ final class DataChangeManager: ChangeManaging {
     func undoRowDeletion(rowIndex: Int) {
         guard pending.undoRowDeletion(rowIndex: rowIndex) else { return }
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
     }
 
     func undoRowInsertion(rowIndex: Int) {
         guard pending.undoRowInsertion(rowIndex: rowIndex) else { return }
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
     }
 
     func undoBatchRowInsertion(rowIndices: [Int]) {
@@ -199,7 +192,6 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.batchRowInsertion(rowIndices: validRows, rowValues: rowValues))
         }
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
     }
 
     // MARK: - Core Undo Application
@@ -227,7 +219,6 @@ final class DataChangeManager: ChangeManaging {
         }
 
         hasChanges = !pending.isEmpty
-        reloadVersion += 1
 
         if let result = lastUndoResult {
             onUndoApplied?(result)

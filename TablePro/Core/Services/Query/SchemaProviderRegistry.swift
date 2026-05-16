@@ -6,6 +6,7 @@
 //  Ref-counted with grace period removal to avoid redundant schema loads.
 //
 
+import Combine
 import Foundation
 import os
 
@@ -18,13 +19,37 @@ final class SchemaProviderRegistry {
     private var providers: [UUID: SQLSchemaProvider] = [:]
     private var refCounts: [UUID: Int] = [:]
     private var removalTasks: [UUID: Task<Void, Never>] = [:]
+    private var cancellables: Set<AnyCancellable> = []
 
     #if DEBUG
     /// Test-only init for `@testable` tests in DEBUG builds; release builds must use `.shared`.
-    internal init() {}
+    internal init() {
+        subscribeToRefreshSignal()
+    }
     #else
-    private init() {}
+    private init() {
+        subscribeToRefreshSignal()
+    }
     #endif
+
+    private func subscribeToRefreshSignal() {
+        AppCommands.shared.refreshData
+            .sink { [weak self] connectionId in
+                self?.invalidateColumnCache(for: connectionId)
+            }
+            .store(in: &cancellables)
+    }
+
+    func invalidateColumnCache(for connectionId: UUID?) {
+        if let id = connectionId {
+            guard let provider = providers[id] else { return }
+            Task { await provider.clearColumnCache() }
+            return
+        }
+        for provider in providers.values {
+            Task { await provider.clearColumnCache() }
+        }
+    }
 
     func provider(for connectionId: UUID) -> SQLSchemaProvider? {
         providers[connectionId]
