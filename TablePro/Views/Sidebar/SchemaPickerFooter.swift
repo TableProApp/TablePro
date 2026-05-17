@@ -35,22 +35,16 @@ struct SchemaPickerFooter: View {
         if allSchemas.count > 1 {
             VStack(spacing: 0) {
                 Divider()
-                HStack(spacing: 0) {
-                    SchemaPopUpButton(
-                        title: currentSchema ?? String(localized: "Select schema"),
-                        userSchemas: userSchemas,
-                        systemSchemas: visibleSystemSchemas,
-                        showSystemSchemas: $showSystemSchemas,
-                        currentSchema: currentSchema,
-                        onSelect: select(schema:),
-                        onRefresh: { Task { await schemaService.invalidate(connectionId: connectionId) } }
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, minHeight: 28)
-                .background(.bar)
+                SchemaPopUpButton(
+                    title: currentSchema ?? String(localized: "Select schema"),
+                    userSchemas: userSchemas,
+                    systemSchemas: visibleSystemSchemas,
+                    showSystemSchemas: $showSystemSchemas,
+                    currentSchema: currentSchema,
+                    onSelect: select(schema:),
+                    onRefresh: { Task { await schemaService.refresh(connectionId: connectionId) } }
+                )
+                .padding(8)
             }
         }
     }
@@ -85,10 +79,7 @@ private struct SchemaPopUpButton: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSPopUpButton {
         let button = NSPopUpButton(frame: .zero, pullsDown: true)
-        button.bezelStyle = .accessoryBarAction
         button.preferredEdge = .maxY
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         button.target = context.coordinator
         button.action = #selector(Coordinator.itemSelected(_:))
         rebuildMenu(button: button, context: context)
