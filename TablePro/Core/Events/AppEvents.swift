@@ -20,9 +20,9 @@ final class AppEvents {
 
     let editorSettingsChanged = PassthroughSubject<Void, Never>()
 
-    let sidebarSettingsChanged = PassthroughSubject<Void, Never>()
-
     let dataGridSettingsChanged = PassthroughSubject<Void, Never>()
+
+    let currentSchemaChanged = PassthroughSubject<UUID, Never>()
 
     let aiSettingsChanged = PassthroughSubject<Void, Never>()
 

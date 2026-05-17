@@ -16321,9 +16321,6 @@
         }
       }
     },
-    "Display schemas as collapsible sections" : {
-
-    },
     "Distributed key-value store for service discovery" : {
 
     },
@@ -31324,6 +31321,9 @@
         }
       }
     },
+    "No schema" : {
+
+    },
     "No schemas" : {
 
     },
@@ -42570,6 +42570,9 @@
           }
         }
       }
+    },
+    "Show System Schemas" : {
+
     },
     "Show Welcome Screen" : {
       "localizations" : {

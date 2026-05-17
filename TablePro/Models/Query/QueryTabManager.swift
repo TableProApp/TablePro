@@ -163,7 +163,7 @@ final class QueryTabManager {
             quoteIdentifier: quoteIdentifier
         )
         var newTab = QueryTab(
-            title: tableName,
+            title: Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType),
             query: query,
             tabType: .table,
             tableName: tableName
@@ -173,6 +173,14 @@ final class QueryTabManager {
         newTab.tableContext.schemaName = schemaName
         tabs.append(newTab)
         selectedTabId = newTab.id
+    }
+
+    static func tabTitle(name: String, schema: String?, databaseType: DatabaseType) -> String {
+        guard let schema, !schema.isEmpty else { return name }
+        let defaultSchema = PluginMetadataRegistry.shared
+            .snapshot(forTypeId: databaseType.pluginTypeId)?
+            .schema.defaultSchemaName ?? ""
+        return schema == defaultSchema ? name : "\(schema).\(name)"
     }
 
     func addCreateTableTab(databaseName: String = "") {
@@ -248,7 +256,7 @@ final class QueryTabManager {
             quoteIdentifier: quoteIdentifier
         )
         var newTab = QueryTab(
-            title: tableName,
+            title: Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType),
             query: query,
             tabType: .table,
             tableName: tableName
@@ -287,7 +295,7 @@ final class QueryTabManager {
 
         var tab = tabs[selectedIndex]
         tab.tabType = .table
-        tab.title = tableName
+        tab.title = Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType)
         tab.tableContext.tableName = tableName
         tab.content.query = query
         tab.schemaVersion += 1
