@@ -29,7 +29,7 @@ Uses HTTP API (HTTPS on port 8443 with SSL/TLS enabled). Cloud providers typical
 **ClickHouse Cloud**: Port 8443, enable SSL/TLS
 **Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for unencrypted HTTP
 
-**SSL/TLS**: Enable in connection form for HTTPS (port 8443). Cloud requires HTTPS.
+**SSL/TLS**: ClickHouse over HTTP uses URLSession; setting any non-Disabled SSL Mode switches the URL scheme to `https`. **Required** skips cert verification, **Verify CA** validates against the supplied CA, **Verify Identity** relies on system default HTTPS trust (cert chain + hostname). Use **Required** for ClickHouse Cloud (port 8443). See [SSL/TLS](/features/ssl) for details.
 
 ## Connection URL
 

@@ -96,7 +96,7 @@ SELECT * FROM category_tree;
 
 ### SSL/TLS
 
-Configure in **SSL/TLS** section. Cloud providers (AWS RDS, Google Cloud SQL, Azure) typically require SSL. Use **Verify CA** with the provider's certificate. Optionally provide client cert/key for mutual TLS. For unencrypted alternatives, use [SSH tunneling](/databases/ssh-tunneling).
+New connections default to **Preferred**, which does a 2-pass connect: tries TLS first, falls back to plain only on SSL handshake errors (auth and network errors are not retried). Works for Cloud SQL, Azure MySQL, and local Docker. Use **Verify CA** with the provider's certificate for stricter validation. See [SSL/TLS](/features/ssl) for details.
 
 ## Performance Tips
 

@@ -105,7 +105,7 @@ Supports `jsonb` (formatted JSON), `array`, `uuid`, `inet` (IP), `timestamp with
 
 **Permission denied**: Grant access with `GRANT ALL ON DATABASE/SCHEMA/TABLES TO username;`
 
-**SSL/TLS**: Cloud providers (AWS RDS, Heroku, Supabase) typically require SSL. Use **Required** or **Verify CA**. For unencrypted alternatives, use [SSH tunneling](/databases/ssh-tunneling).
+**SSL/TLS**: New connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Works for both local Postgres and hosted providers (AWS RDS, Cloud SQL, Heroku, Supabase, Neon). Pick **Verify CA** when you need to validate the server certificate. See [SSL/TLS](/features/ssl) for details.
 
 ## Advanced Configuration
 

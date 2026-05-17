@@ -69,7 +69,7 @@ SSH tunneling only forwards the first host. Other members must be reachable from
 
 ## SSL/TLS
 
-Configure in **SSL/TLS** section. MongoDB Atlas requires SSL/TLS - use **Required** or **Verify CA**. For unencrypted alternatives, use [SSH tunneling](/databases/ssh-tunneling).
+The MongoDB driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). MongoDB Atlas requires TLS, so use **Required** or **Verify CA**. For unencrypted local instances, use **Disabled** or [SSH tunneling](/databases/ssh-tunneling). See [SSL/TLS](/features/ssl) for details.
 
 ## Connection URL
 
