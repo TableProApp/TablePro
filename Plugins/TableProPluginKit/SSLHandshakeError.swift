@@ -1,0 +1,62 @@
+import Foundation
+
+public enum SSLHandshakeError: Error, LocalizedError, Sendable {
+    case serverRejectedPlaintext(serverMessage: String)
+    case serverRequiresPlaintext(serverMessage: String)
+    case untrustedCertificate(serverMessage: String)
+    case hostnameMismatch(serverMessage: String)
+    case clientCertRequired(serverMessage: String)
+    case cipherMismatch(serverMessage: String)
+    case unknown(serverMessage: String)
+
+    public var serverMessage: String {
+        switch self {
+        case .serverRejectedPlaintext(let msg),
+             .serverRequiresPlaintext(let msg),
+             .untrustedCertificate(let msg),
+             .hostnameMismatch(let msg),
+             .clientCertRequired(let msg),
+             .cipherMismatch(let msg),
+             .unknown(let msg):
+            return msg
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .serverRejectedPlaintext:
+            return String(localized: "The server requires an encrypted connection but TablePro is configured to connect in plain text.")
+        case .serverRequiresPlaintext:
+            return String(localized: "The server does not accept encrypted connections but TablePro is configured to require TLS.")
+        case .untrustedCertificate:
+            return String(localized: "The server's TLS certificate could not be verified against any trusted root.")
+        case .hostnameMismatch:
+            return String(localized: "The server's TLS certificate does not match the hostname being connected to.")
+        case .clientCertRequired:
+            return String(localized: "The server requires a client certificate for TLS mutual authentication.")
+        case .cipherMismatch:
+            return String(localized: "The server and TablePro could not agree on a TLS cipher or protocol version.")
+        case .unknown:
+            return String(localized: "TLS handshake failed.")
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .serverRejectedPlaintext:
+            return String(localized: "Open the connection editor, switch to the SSL tab, and set Mode to Required (or stricter).")
+        case .serverRequiresPlaintext:
+            return String(localized: "Open the connection editor, switch to the SSL tab, and set Mode to Disabled.")
+        case .untrustedCertificate:
+            return String(localized: "Switch SSL Mode to Verify CA and provide the server's CA certificate path, or use Required to skip verification.")
+        case .hostnameMismatch:
+            return String(localized: "Switch SSL Mode to Verify CA (validates the CA chain but skips hostname check), or update the host field to match the certificate.")
+        case .clientCertRequired:
+            return String(localized: "Provide the client certificate and key paths in the SSL tab.")
+        case .cipherMismatch:
+            return String(localized: "Update the server's TLS configuration or use a newer database server version that supports modern ciphers.")
+        case .unknown:
+            return nil
+        }
+    }
+}

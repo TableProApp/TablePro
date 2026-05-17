@@ -540,13 +540,28 @@ final class ConnectionFormCoordinator {
                     } else {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Connection Test Failed"),
-                            message: error.localizedDescription,
+                            message: Self.formatErrorMessage(error),
                             window: window
                         )
                     }
                 }
             }
         }
+    }
+
+    static func formatErrorMessage(_ error: Error) -> String {
+        if let sslError = error as? SSLHandshakeError {
+            var parts: [String] = []
+            if let description = sslError.errorDescription {
+                parts.append(description)
+            }
+            if let suggestion = sslError.recoverySuggestion {
+                parts.append(suggestion)
+            }
+            parts.append(String(format: String(localized: "Server response: %@"), sslError.serverMessage))
+            return parts.joined(separator: "\n\n")
+        }
+        return error.localizedDescription
     }
 
     func cleanupTestSecrets(for testId: UUID) {

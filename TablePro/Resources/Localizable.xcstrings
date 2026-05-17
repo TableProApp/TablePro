@@ -28934,6 +28934,9 @@
         }
       }
     },
+    "MongoDB driver has no TLS fallback. Preferred and Required both force TLS. Use Required for MongoDB Atlas and other hosted instances." : {
+
+    },
     "MongoDB query language. Use to import into MongoDB." : {
       "localizations" : {
         "tr" : {
@@ -33344,6 +33347,9 @@
         }
       }
     },
+    "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database." : {
+
+    },
     "Orange" : {
       "localizations" : {
         "tr" : {
@@ -35117,6 +35123,15 @@
           }
         }
       }
+    },
+    "Preferred performs a 2-pass connect: tries TLS first, falls back to plain only on SSL handshake errors. Required by Cloud SQL and Azure MySQL." : {
+
+    },
+    "Preferred requests TLS; the server decides. Required by SQL Server 2022 and Azure SQL Database." : {
+
+    },
+    "Preferred tries TLS first, falls back to plain. Matches psql and DataGrip defaults. Required by AWS RDS, Cloud SQL, Heroku, Supabase, Neon." : {
+
     },
     "Preserve all values as strings" : {
       "extractionState" : "stale",
@@ -37485,6 +37500,9 @@
           }
         }
       }
+    },
+    "Redis driver has no TLS fallback. Preferred and Required both force TLS. Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints." : {
+
     },
     "Redo" : {
       "localizations" : {
@@ -50631,6 +50649,12 @@
       }
     },
     "Use Password File" : {
+
+    },
+    "Use Required for AstraDB, DataStax Astra, and other hosted Cassandra deployments." : {
+
+    },
+    "Use Required for ClickHouse Cloud and other managed instances." : {
 
     },
     "Use SSL if available" : {

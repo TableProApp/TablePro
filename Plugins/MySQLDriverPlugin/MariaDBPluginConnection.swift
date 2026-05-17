@@ -213,7 +213,19 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 handle = try self.attemptConnect(enforceSSL: mode != .disabled)
             } catch let error as MariaDBPluginError where mode == .preferred && Self.sslOnlyErrorCodes.contains(error.code) {
                 logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
-                handle = try self.attemptConnect(enforceSSL: false)
+                do {
+                    handle = try self.attemptConnect(enforceSSL: false)
+                } catch let fallbackError as MariaDBPluginError {
+                    if let sslError = Self.classifySSLError(fallbackError) {
+                        throw sslError
+                    }
+                    throw fallbackError
+                }
+            } catch let error as MariaDBPluginError {
+                if let sslError = Self.classifySSLError(error) {
+                    throw sslError
+                }
+                throw error
             }
 
             if let versionPtr = mysql_get_server_info(handle) {
@@ -225,6 +237,20 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self._isConnected = true
             self.stateLock.unlock()
         }
+    }
+
+    static func classifySSLError(_ error: MariaDBPluginError) -> SSLHandshakeError? {
+        let lower = error.message.lowercased()
+        if lower.contains("insecure transport") || lower.contains("require_secure_transport") {
+            return .serverRejectedPlaintext(serverMessage: error.message)
+        }
+        if Self.sslOnlyErrorCodes.contains(error.code) {
+            if lower.contains("certificate") {
+                return .untrustedCertificate(serverMessage: error.message)
+            }
+            return .cipherMismatch(serverMessage: error.message)
+        }
+        return nil
     }
 
     private func attemptConnect(enforceSSL: Bool) throws -> UnsafeMutablePointer<MYSQL> {
