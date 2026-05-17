@@ -221,6 +221,9 @@ private actor CassandraConnectionActor {
             cass_session_free(newSession)
             cass_cluster_free(cluster)
             self.cluster = nil
+            if let sslError = Self.classifySSLError(rc: rc, message: errorMessage) {
+                throw sslError
+            }
             throw CassandraPluginError.connectionFailed(errorMessage)
         }
 
@@ -836,6 +839,26 @@ private actor CassandraConnectionActor {
 
     private func escapeIdentifier(_ value: String) -> String {
         value.replacingOccurrences(of: "\"", with: "\"\"")
+    }
+
+    static func classifySSLError(rc: CassError, message: String) -> SSLHandshakeError? {
+        switch rc {
+        case CASS_ERROR_SSL_NO_PEER_CERT, CASS_ERROR_SSL_INVALID_PEER_CERT:
+            return .untrustedCertificate(serverMessage: message)
+        case CASS_ERROR_SSL_IDENTITY_MISMATCH:
+            return .hostnameMismatch(serverMessage: message)
+        case CASS_ERROR_SSL_INVALID_PRIVATE_KEY, CASS_ERROR_SSL_INVALID_CERT:
+            return .clientCertRequired(serverMessage: message)
+        case CASS_ERROR_SSL_PROTOCOL_ERROR:
+            return .cipherMismatch(serverMessage: message)
+        default:
+            break
+        }
+        let lower = message.lowercased()
+        if lower.contains("ssl") && (lower.contains("handshake") || lower.contains("verify")) {
+            return .cipherMismatch(serverMessage: message)
+        }
+        return nil
     }
 }
 

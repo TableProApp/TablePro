@@ -186,13 +186,44 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         } catch let sqlError as OracleSQLError {
             let detail = sqlError.serverInfo?.message ?? sqlError.description
             osLogger.error("Oracle connection failed: \(detail)")
+            if let sslError = Self.classifySSLError(detail) {
+                throw sslError
+            }
             throw OracleError(message: detail, category: classifyConnectError(sqlError))
+        } catch let nioSslError as NIOSSLError {
+            let detail = String(describing: nioSslError)
+            osLogger.error("Oracle TLS error: \(detail)")
+            throw Self.classifySSLError(detail) ?? SSLHandshakeError.unknown(serverMessage: detail)
         } catch {
             let detail = String(describing: error)
             osLogger.error("Oracle connection failed: \(detail)")
+            if let sslError = Self.classifySSLError(detail) {
+                throw sslError
+            }
             throw OracleError(message: detail, category: .connectionFailed)
         }
     }
+
+    static func classifySSLError(_ message: String) -> SSLHandshakeError? {
+        let lower = message.lowercased()
+        if lower.contains("ora-28759") || lower.contains("failure to open file") && lower.contains("wallet") {
+            return .clientCertRequired(serverMessage: message)
+        }
+        if lower.contains("ora-29024") {
+            return .cipherMismatch(serverMessage: message)
+        }
+        if lower.contains("ora-28860") {
+            return .cipherMismatch(serverMessage: message)
+        }
+        if lower.contains("ora-12537") || lower.contains("ora-12606") {
+            return .serverRejectedPlaintext(serverMessage: message)
+        }
+        if lower.contains("certificate") && (lower.contains("verify") || lower.contains("untrusted")) {
+            return .untrustedCertificate(serverMessage: message)
+        }
+        return nil
+    }
+
 
     private func classifyConnectError(_ error: OracleSQLError) -> OracleError.Category {
         let codeDescription = error.code.description

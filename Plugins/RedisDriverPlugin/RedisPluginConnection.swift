@@ -393,6 +393,26 @@ final class RedisPluginConnection: @unchecked Sendable {
         throw RedisPluginError.hiredisUnavailable
         #endif
     }
+
+    static func classifySSLError(_ message: String) -> SSLHandshakeError? {
+        let lower = message.lowercased()
+        if lower.contains("certificate verify failed") || lower.contains("unable to get local issuer") {
+            return .untrustedCertificate(serverMessage: message)
+        }
+        if lower.contains("hostname") {
+            return .hostnameMismatch(serverMessage: message)
+        }
+        if lower.contains("sslv3") || lower.contains("unsupported protocol") || lower.contains("no shared cipher") {
+            return .cipherMismatch(serverMessage: message)
+        }
+        if lower.contains("ssl handshake failed") || lower.contains("tlsv1") {
+            return .cipherMismatch(serverMessage: message)
+        }
+        if lower.contains("client certificate") {
+            return .clientCertRequired(serverMessage: message)
+        }
+        return nil
+    }
 }
 
 // MARK: - Synchronous Helpers (must be called on the serial queue)
@@ -439,6 +459,9 @@ private extension RedisPluginConnection {
             redisFreeSSLContext(ssl)
             let errMsg = withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
                 ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
+            }
+            if let sslError = Self.classifySSLError(errMsg) {
+                throw sslError
             }
             throw RedisPluginError(code: Int(result), message: "SSL handshake failed: \(errMsg)")
         }
