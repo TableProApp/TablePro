@@ -26,6 +26,11 @@ struct ConnectionSSLView: View {
                         Text(mode.displayLabel).tag(mode)
                     }
                 }
+                if sslMode == .preferred, !databaseType.supportsOpportunisticTLS {
+                    Label(String(localized: "This driver has no TLS fallback — Preferred behaves the same as Required."), systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.caption)
+                }
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     if !databaseType.sslPaneTooltip.isEmpty {

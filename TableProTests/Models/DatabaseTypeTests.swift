@@ -170,6 +170,31 @@ struct DatabaseTypeTests {
         #expect(DatabaseType(rawValue: "FutureDB").defaultSSLMode == .disabled)
     }
 
+    @Test("Drivers with native prefer support report supportsOpportunisticTLS=true", arguments: [
+        DatabaseType.postgresql,
+        DatabaseType.redshift,
+        DatabaseType.cockroachdb,
+        DatabaseType.mysql,
+        DatabaseType.mariadb,
+        DatabaseType.mssql
+    ])
+    func testOpportunisticTLSSupported(type: DatabaseType) {
+        #expect(type.supportsOpportunisticTLS == true)
+    }
+
+    @Test("Binary-TLS drivers report supportsOpportunisticTLS=false", arguments: [
+        DatabaseType.mongodb,
+        DatabaseType.redis,
+        DatabaseType.cassandra,
+        DatabaseType.scylladb,
+        DatabaseType.clickhouse,
+        DatabaseType.oracle,
+        DatabaseType.etcd
+    ])
+    func testOpportunisticTLSUnsupported(type: DatabaseType) {
+        #expect(type.supportsOpportunisticTLS == false)
+    }
+
     @Test("Unknown type round-trips via rawValue")
     func testUnknownTypeRoundTrip() {
         #expect(DatabaseType(rawValue: "FutureDB").rawValue == "FutureDB")

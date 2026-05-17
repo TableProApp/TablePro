@@ -60,6 +60,7 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsDropIndex: Bool = true
         var supportsModifyPrimaryKey: Bool = true
         var defaultSSLMode: SSLMode = .disabled
+        var supportsOpportunisticTLS: Bool = true
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -80,7 +81,8 @@ struct PluginMetadataSnapshot: Sendable {
             supportsAddIndex: true,
             supportsDropIndex: true,
             supportsModifyPrimaryKey: true,
-            defaultSSLMode: .disabled
+            defaultSSLMode: .disabled,
+            supportsOpportunisticTLS: true
         )
     }
 
@@ -882,7 +884,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsAddIndex: driverType.supportsAddIndex,
                 supportsDropIndex: driverType.supportsDropIndex,
                 supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
-                defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled
+                defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
+                supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL and MariaDB Preferred SSL mode now performs a real 2-pass connect: tries TLS first, falls back to plaintext only on SSL handshake errors (CR_SSL_CONNECTION_ERROR, CR_SERVER_HANDSHAKE_ERR, ER_HANDSHAKE_ERROR)
 - SSL pane shows per-engine guidance explaining how that driver handles Preferred, when TLS is required by hosted providers, and any driver-specific quirks
 - Failed connections caused by SSL/TLS handshake errors now show a structured message that names the cause (server requires encryption, server rejects encryption, untrusted certificate, hostname mismatch, client cert required, cipher mismatch) and recommends a specific SSL Mode to switch to. Covers PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, MongoDB, Redis, Cassandra, and ClickHouse.
+- SSL pane warns inline when a driver does not support TLS fallback for Preferred mode (MongoDB, Redis, Cassandra, ScyllaDB, ClickHouse, Oracle, etcd), so the user knows Preferred behaves the same as Required for that engine.
 
 ### Fixed
 
