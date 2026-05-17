@@ -31,17 +31,18 @@ final class SSLPaneViewModel {
         return issues
     }
 
-    func upgradeIfDisabled(to newMode: SSLMode) {
-        if mode == .disabled {
-            mode = newMode
-        }
-    }
-
     func load(from connection: DatabaseConnection) {
         mode = connection.sslConfig.mode
         caCertPath = connection.sslConfig.caCertificatePath
         clientCertPath = connection.sslConfig.clientCertificatePath
         clientKeyPath = connection.sslConfig.clientKeyPath
+    }
+
+    func resetForType(_ type: DatabaseType) {
+        mode = type.defaultSSLMode
+        caCertPath = ""
+        clientCertPath = ""
+        clientKeyPath = ""
     }
 
     func buildConfig() -> SSLConfiguration {

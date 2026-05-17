@@ -664,7 +664,8 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "dbo",

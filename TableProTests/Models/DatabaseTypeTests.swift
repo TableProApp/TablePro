@@ -122,6 +122,48 @@ struct DatabaseTypeTests {
         #expect(DatabaseType(rawValue: "MySQL") == .mysql)
     }
 
+    // MARK: - Default SSL Mode Tests
+
+    @Test("libpq-family engines default SSL mode to preferred", arguments: [
+        DatabaseType.postgresql,
+        DatabaseType.redshift,
+        DatabaseType.cockroachdb
+    ])
+    func testLibPQEnginesDefaultSSLPreferred(type: DatabaseType) {
+        #expect(type.defaultSSLMode == .preferred)
+    }
+
+    @Test("SQL Server defaults SSL mode to preferred")
+    func testMSSQLDefaultSSLPreferred() {
+        #expect(DatabaseType.mssql.defaultSSLMode == .preferred)
+    }
+
+    @Test("Binary on/off engines default SSL mode to disabled", arguments: [
+        DatabaseType.mysql,
+        DatabaseType.mariadb,
+        DatabaseType.mongodb,
+        DatabaseType.redis,
+        DatabaseType.cassandra,
+        DatabaseType.clickhouse,
+        DatabaseType.oracle
+    ])
+    func testBinaryEnginesDefaultSSLDisabled(type: DatabaseType) {
+        #expect(type.defaultSSLMode == .disabled)
+    }
+
+    @Test("Local file-based engines default SSL mode to disabled", arguments: [
+        DatabaseType.sqlite,
+        DatabaseType.duckdb
+    ])
+    func testLocalEnginesDefaultSSLDisabled(type: DatabaseType) {
+        #expect(type.defaultSSLMode == .disabled)
+    }
+
+    @Test("Unknown future engine defaults SSL mode to disabled")
+    func testUnknownEngineDefaultSSLDisabled() {
+        #expect(DatabaseType(rawValue: "FutureDB").defaultSSLMode == .disabled)
+    }
+
     @Test("Unknown type round-trips via rawValue")
     func testUnknownTypeRoundTrip() {
         #expect(DatabaseType(rawValue: "FutureDB").rawValue == "FutureDB")

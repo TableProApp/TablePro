@@ -59,6 +59,7 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsAddIndex: Bool = true
         var supportsDropIndex: Bool = true
         var supportsModifyPrimaryKey: Bool = true
+        var defaultSSLMode: SSLMode = .disabled
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -78,7 +79,8 @@ struct PluginMetadataSnapshot: Sendable {
             supportsRenameColumn: false,
             supportsAddIndex: true,
             supportsDropIndex: true,
-            supportsModifyPrimaryKey: true
+            supportsModifyPrimaryKey: true,
+            defaultSSLMode: .disabled
         )
     }
 
@@ -535,7 +537,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -582,7 +585,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -641,7 +645,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: false,
                     supportsAddIndex: false,
                     supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false
+                    supportsModifyPrimaryKey: false,
+                    defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -874,7 +879,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRenameColumn: driverType.supportsRenameColumn,
                 supportsAddIndex: driverType.supportsAddIndex,
                 supportsDropIndex: driverType.supportsDropIndex,
-                supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey
+                supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
+                defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

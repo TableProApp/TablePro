@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Drivers populate allowed enum values directly in column metadata instead of parsing them downstream
 - PluginKit ABI bumped to version 13; all registry plugins need to be re-tagged
+- New PostgreSQL, SQL Server, Redshift, and CockroachDB connections default SSL mode to Preferred, matching libpq and FreeTDS native behavior
+
+### Fixed
+
+- PostgreSQL connections to AWS RDS, Cloud SQL, Azure, and other hosted Postgres now succeed out of the box instead of failing with "no pg_hba.conf entry for host" (#1298)
 
 ## [0.42.0] - 2026-05-16
 

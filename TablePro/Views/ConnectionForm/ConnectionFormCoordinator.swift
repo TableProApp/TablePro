@@ -192,6 +192,7 @@ final class ConnectionFormCoordinator {
         if includeNetwork {
             network.applyTypeDefaults(forNewType: newType)
         }
+        ssl.resetForType(newType)
     }
 
     // MARK: - Save
@@ -623,7 +624,7 @@ final class ConnectionFormCoordinator {
         network.database = parsed.database
         auth.username = parsed.username
         auth.password = parsed.password
-        ssl.mode = parsed.sslMode ?? .disabled
+        ssl.mode = parsed.sslMode ?? parsed.type.defaultSSLMode
 
         if let sshHostValue = parsed.sshHost {
             ssh.state.enabled = true
@@ -784,7 +785,7 @@ final class ConnectionFormCoordinator {
         }
 
         if parsed.useSSL {
-            ssl.upgradeIfDisabled(to: .required)
+            ssl.mode = .required
         }
 
         if parsed.type == .mongodb {

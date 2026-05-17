@@ -105,6 +105,10 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.defaultPort ?? 0
     }
 
+    var defaultSSLMode: SSLMode {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.defaultSSLMode ?? .disabled
+    }
+
     var explainVariants: [ExplainVariant] {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.explainVariants ?? []
     }

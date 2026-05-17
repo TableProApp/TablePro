@@ -173,7 +173,8 @@ struct SyncRecordMapper {
             Self.expandPaths(&sshConfig)
         }
 
-        var sslConfig = SSLConfiguration()
+        let connectionType = DatabaseType(rawValue: typeRawValue)
+        var sslConfig = SSLConfiguration(mode: connectionType.defaultSSLMode)
         if let sslData = record["sslConfigJson"] as? Data {
             do {
                 sslConfig = try decoder.decode(SSLConfiguration.self, from: sslData)
@@ -199,7 +200,7 @@ struct SyncRecordMapper {
             port: port,
             database: database,
             username: username,
-            type: DatabaseType(rawValue: typeRawValue),
+            type: connectionType,
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: ConnectionColor(rawValue: colorRaw) ?? .none,
