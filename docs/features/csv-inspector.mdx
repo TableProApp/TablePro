@@ -5,6 +5,19 @@ description: Open, view, and edit CSV and TSV files natively without importing i
 
 TablePro opens `.csv` and `.tsv` files directly as documents. No scratch database, no import step. The file is the source of truth; Save writes back to it.
 
+<Frame caption="CSV inspector window with toolbar, header row, and paginated data">
+  <img
+    className="block dark:hidden"
+    src="/images/csv-inspector.png"
+    alt="CSV Inspector"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/csv-inspector-dark.png"
+    alt="CSV Inspector"
+  />
+</Frame>
+
 ## Opening a file
 
 - Double-click a `.csv` or `.tsv` in Finder.
@@ -30,6 +43,19 @@ When a file opens, TablePro reads the first 8 KB to detect:
 
 ## Column operations
 
+<Frame caption="Columns toolbar menu with per-column submenu for rename, insert, type override, and delete">
+  <img
+    className="block dark:hidden"
+    src="/images/csv-inspector-columns-menu.png"
+    alt="CSV Inspector Columns Menu"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/csv-inspector-columns-menu-dark.png"
+    alt="CSV Inspector Columns Menu"
+  />
+</Frame>
+
 The toolbar `Columns` button opens a menu listing every column with its current type. Each column has a submenu for:
 
 - **Rename…** opens a sheet to enter a new name; the column stays in place.
@@ -38,6 +64,19 @@ The toolbar `Columns` button opens a menu listing every column with its current 
 - **Delete** removes the column (undoable).
 
 ## Filter and sort
+
+<Frame caption="Filter bar with multiple conditions (AND) above the data grid">
+  <img
+    className="block dark:hidden"
+    src="/images/csv-inspector-filter.png"
+    alt="CSV Inspector Filter Bar"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/csv-inspector-filter-dark.png"
+    alt="CSV Inspector Filter Bar"
+  />
+</Frame>
 
 - `Cmd+F` toggles the filter bar. Each row is one condition: column, operator (`contains`, `equals`, `does not equal`, `starts with`, `ends with`, `is empty`, `is not empty`), and value.
 - Use `+ Add filter` for additional conditions. All conditions are combined with AND.
