@@ -476,12 +476,8 @@ extension MainContentCoordinator {
             tabSessionRegistry.removeAll()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
-            await SchemaService.shared.invalidate(connectionId: connectionId)
-
-            await refreshTables()
         } catch {
             toolbarState.currentSchema = previousSchema
-            await refreshTables()
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
