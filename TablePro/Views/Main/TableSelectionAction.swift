@@ -14,9 +14,8 @@ enum TableSelectionAction: Equatable {
     /// Covers: Cmd+A (multi-select), Shift+click range, deselection.
     case noNavigation
     /// Exactly one table was added — navigate to it.
-    case navigate(tableName: String, isView: Bool)
+    case navigate(tableName: String, schema: String?, isView: Bool)
 
-    /// Pure function — determines the action from old/new selection sets.
     static func resolve(
         oldTables: Set<TableInfo>,
         newTables: Set<TableInfo>
@@ -25,7 +24,7 @@ enum TableSelectionAction: Equatable {
         guard added.count == 1, let table = added.first else {
             return .noNavigation
         }
-        return .navigate(tableName: table.name, isView: table.type == .view)
+        return .navigate(tableName: table.name, schema: table.schema, isView: table.type == .view)
     }
 }
 

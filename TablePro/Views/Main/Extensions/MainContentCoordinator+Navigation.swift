@@ -30,8 +30,7 @@ extension MainContentCoordinator {
             currentDatabase = activeDatabaseName
         }
 
-        let connectionSchema = DatabaseManager.shared.session(for: connectionId)?.currentSchema
-        let resolvedSchema = schema ?? connectionSchema
+        let resolvedSchema = schema
 
         // Fast path: if this table is already the active tab in the same database, skip all work
         if let current = tabManager.selectedTab,

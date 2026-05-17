@@ -35,7 +35,7 @@ struct SharedSidebarSyncTests {
             oldTables: previousSelectedTables,
             newTables: newSelectedTables
         )
-        #expect(action == .navigate(tableName: "users", isView: false))
+        #expect(action == .navigate(tableName: "users", schema: nil, isView: false))
 
         // But SidebarNavigationResult.resolve skips because clicked == current tab
         let result = SidebarNavigationResult.resolve(
@@ -75,7 +75,7 @@ struct SharedSidebarSyncTests {
             oldTables: [makeTable("orders")],
             newTables: [makeTable("users")]
         )
-        #expect(action == .navigate(tableName: "users", isView: false))
+        #expect(action == .navigate(tableName: "users", schema: nil, isView: false))
 
         // But isKeyWindow guard blocks it. We test the invariant:
         // handleTableSelectionChange should early-return when isKeyWindow=false.
@@ -106,7 +106,7 @@ struct SharedSidebarSyncTests {
             newTables: [makeTable("users")]
         )
         // This produces .navigate — but SidebarNavigationResult catches it
-        #expect(action == .navigate(tableName: "users", isView: false))
+        #expect(action == .navigate(tableName: "users", schema: nil, isView: false))
 
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
@@ -135,7 +135,7 @@ struct SharedSidebarSyncTests {
             oldTables: [makeTable("users")],
             newTables: [makeTable("orders")]
         )
-        #expect(action == .navigate(tableName: "orders", isView: false))
+        #expect(action == .navigate(tableName: "orders", schema: nil, isView: false))
 
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
@@ -151,7 +151,7 @@ struct SharedSidebarSyncTests {
             oldTables: [],
             newTables: [makeTable("users")]
         )
-        #expect(action == .navigate(tableName: "users", isView: false))
+        #expect(action == .navigate(tableName: "users", schema: nil, isView: false))
 
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
@@ -168,7 +168,7 @@ struct SharedSidebarSyncTests {
             oldTables: [],
             newTables: [makeTable("users")]
         )
-        #expect(action == .navigate(tableName: "users", isView: false))
+        #expect(action == .navigate(tableName: "users", schema: nil, isView: false))
 
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
@@ -188,7 +188,7 @@ struct SharedSidebarSyncTests {
             oldTables: [makeTable("orders")],
             newTables: [makeTable("users")]
         )
-        #expect(action == .navigate(tableName: "users", isView: false))
+        #expect(action == .navigate(tableName: "users", schema: nil, isView: false))
         // Window B's isKeyWindow = false → handleTableSelectionChange returns early
         // This is enforced by the guard, not by these pure functions
     }

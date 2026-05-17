@@ -21,7 +21,7 @@ struct TableSelectionChangeTests {
         let old: Set<TableInfo> = []
         let new: Set<TableInfo> = [TestFixtures.makeTableInfo(name: "orders")]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new)
-        #expect(action == .navigate(tableName: "orders", isView: false))
+        #expect(action == .navigate(tableName: "orders", schema: nil, isView: false))
     }
 
     @Test("Single click on a view — navigate with isView true")
@@ -30,7 +30,7 @@ struct TableSelectionChangeTests {
         let view = TableInfo(name: "my_view", type: .view, rowCount: nil)
         let new: Set<TableInfo> = [view]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new)
-        #expect(action == .navigate(tableName: "my_view", isView: true))
+        #expect(action == .navigate(tableName: "my_view", schema: nil, isView: true))
     }
 
     @Test("Cmd+click adds exactly one more table — navigate to it")
@@ -40,7 +40,7 @@ struct TableSelectionChangeTests {
         let old: Set<TableInfo> = [existing]
         let new: Set<TableInfo> = [existing, added]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new)
-        #expect(action == .navigate(tableName: "orders", isView: false))
+        #expect(action == .navigate(tableName: "orders", schema: nil, isView: false))
     }
 
     // MARK: - Multi-selection (Cmd+A, Shift+click)
