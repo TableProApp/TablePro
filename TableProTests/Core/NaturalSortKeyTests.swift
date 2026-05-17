@@ -60,3 +60,37 @@ struct NaturalSortKeyTests {
         #expect(naturalSortKey("v1.2.3") < naturalSortKey("v1.10.0"))
     }
 }
+
+@Suite("FilterClause Equatable")
+struct FilterClauseEquatableTests {
+    @Test("Same content, different id compares equal (spec equality)")
+    func differentIdSameContent() {
+        let a = FilterClause(id: UUID(), column: 1, op: .contains, value: "x")
+        let b = FilterClause(id: UUID(), column: 1, op: .contains, value: "x")
+        #expect(a == b)
+    }
+
+    @Test("Different column compares unequal even with same id")
+    func differentColumn() {
+        let id = UUID()
+        let a = FilterClause(id: id, column: 1, op: .contains, value: "x")
+        let b = FilterClause(id: id, column: 2, op: .contains, value: "x")
+        #expect(a != b)
+    }
+
+    @Test("Different operator compares unequal")
+    func differentOperator() {
+        let id = UUID()
+        let a = FilterClause(id: id, column: 1, op: .contains, value: "x")
+        let b = FilterClause(id: id, column: 1, op: .equals, value: "x")
+        #expect(a != b)
+    }
+
+    @Test("Different value compares unequal")
+    func differentValue() {
+        let id = UUID()
+        let a = FilterClause(id: id, column: 1, op: .contains, value: "x")
+        let b = FilterClause(id: id, column: 1, op: .contains, value: "y")
+        #expect(a != b)
+    }
+}

@@ -130,19 +130,6 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         }
     }
 
-    override public func writeSafely(
-        to url: URL,
-        ofType typeName: String,
-        for saveOperation: NSDocument.SaveOperationType
-    ) throws {
-        let resolvedType = typeName.isEmpty
-            ? (url.pathExtension.lowercased() == "tsv"
-                ? "public.tab-separated-values-text"
-                : "public.comma-separated-values-text")
-            : typeName
-        try super.writeSafely(to: url, ofType: resolvedType, for: saveOperation)
-    }
-
     override public func updateChangeCount(_ change: NSDocument.ChangeType) {
         super.updateChangeCount(change)
         let edited = isDocumentEdited

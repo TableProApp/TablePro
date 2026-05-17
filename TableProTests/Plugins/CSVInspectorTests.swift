@@ -250,6 +250,21 @@ struct CSVRowStoreTests {
         #expect(store.rowCount == 2)
     }
 
+    @Test("removeRows capture supports undo round-trip via ascending reinsert")
+    func bulkRemoveUndoRoundTrip() {
+        let store = makeStore("a,b\n1,1\n2,2\n3,3\n4,4\n5,5\n")
+        let removed = store.removeRows(at: IndexSet([0, 2, 4]))
+        for entry in removed.sorted(by: { $0.index < $1.index }) {
+            store.insertRow(entry.cells, at: entry.index)
+        }
+        #expect(store.rowCount == 5)
+        #expect(store.cells(forRow: 0) == ["1", "1"])
+        #expect(store.cells(forRow: 1) == ["2", "2"])
+        #expect(store.cells(forRow: 2) == ["3", "3"])
+        #expect(store.cells(forRow: 3) == ["4", "4"])
+        #expect(store.cells(forRow: 4) == ["5", "5"])
+    }
+
     @Test("renameColumn updates columnNames in place")
     func renameColumnInPlace() {
         let store = makeStore("a,b,c\n1,2,3\n")
