@@ -21,11 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Drivers populate allowed enum values directly in column metadata instead of parsing them downstream
 - PluginKit ABI bumped to version 13; all registry plugins need to be re-tagged
-- New PostgreSQL, SQL Server, Redshift, and CockroachDB connections default SSL mode to Preferred, matching libpq and FreeTDS native behavior
+- New PostgreSQL, MySQL, MariaDB, SQL Server, Redshift, and CockroachDB connections default SSL mode to Preferred, matching libpq, libmariadb 2-pass, and FreeTDS native behavior
+- Oracle SSL mode is now honored: Required, Verify CA, and Verify Identity wire through to OracleNIO TCPS (was silently ignored)
+- Cassandra SSL mode is now honored via the standard SSL pane (was silently ignored because the plugin read from a hidden field that was never set)
+- MySQL and MariaDB Preferred SSL mode now performs a real 2-pass connect: tries TLS first, falls back to plaintext only on SSL handshake errors (CR_SSL_CONNECTION_ERROR, CR_SERVER_HANDSHAKE_ERR, ER_HANDSHAKE_ERROR)
 
 ### Fixed
 
 - PostgreSQL connections to AWS RDS, Cloud SQL, Azure, and other hosted Postgres now succeed out of the box instead of failing with "no pg_hba.conf entry for host" (#1298)
+- Oracle: SSL/TCPS settings from the SSL pane are now respected; previously every Oracle connection was plain TCP regardless of SSL mode
+- Cassandra: SSL settings from the SSL pane are now respected; previously every Cassandra connection was plain TCP because the plugin read from a non-existent "sslMode" field
+- MySQL/MariaDB Cloud SQL, Azure Database, and other hosted MySQL servers that require TLS no longer fail with "Connections using insecure transport are prohibited" when SSL mode is Preferred
 
 ## [0.42.0] - 2026-05-16
 

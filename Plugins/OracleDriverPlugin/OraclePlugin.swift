@@ -192,7 +192,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             user: config.username,
             password: config.password,
             database: config.database,
-            serviceName: serviceName
+            serviceName: serviceName,
+            sslConfig: config.ssl
         )
         try await conn.connect()
         self.oracleConn = conn

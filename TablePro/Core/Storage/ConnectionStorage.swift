@@ -766,9 +766,15 @@ private struct StoredConnection: Codable {
             resolvedTunnelMode = .disabled
         }
 
+        var resolvedSSLCaPath = sslCaCertificatePath
+        if type == "Cassandra", resolvedSSLCaPath.isEmpty,
+           let legacy = additionalFields?["sslCaCertPath"], !legacy.isEmpty {
+            resolvedSSLCaPath = legacy
+        }
+
         let sslConfig = SSLConfiguration(
             mode: SSLMode(rawValue: sslMode) ?? .disabled,
-            caCertificatePath: sslCaCertificatePath,
+            caCertificatePath: resolvedSSLCaPath,
             clientCertificatePath: sslClientCertificatePath,
             clientKeyPath: sslClientKeyPath
         )

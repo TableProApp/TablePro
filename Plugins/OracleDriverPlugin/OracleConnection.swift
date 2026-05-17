@@ -9,6 +9,7 @@
 import Foundation
 import Logging
 import NIOCore
+import NIOSSL
 import OracleNIO
 import OSLog
 import TableProPluginKit
@@ -116,6 +117,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     private let password: String
     private let database: String
     private let serviceName: String
+    private let sslConfig: SSLConfiguration
 
     private struct LockedState: Sendable {
         var isConnected = false
@@ -131,25 +133,36 @@ final class OracleConnectionWrapper: @unchecked Sendable {
 
     // MARK: - Initialization
 
-    init(host: String, port: Int, user: String, password: String, database: String, serviceName: String = "") {
+    init(
+        host: String,
+        port: Int,
+        user: String,
+        password: String,
+        database: String,
+        serviceName: String = "",
+        sslConfig: SSLConfiguration = SSLConfiguration()
+    ) {
         self.host = host
         self.port = port
         self.user = user
         self.password = password
         self.database = database
         self.serviceName = serviceName
+        self.sslConfig = sslConfig
     }
 
     // MARK: - Connection
 
     func connect() async throws {
         let service = serviceName.isEmpty ? database : serviceName
+        let tls = try buildTLS()
         let config = OracleNIO.OracleConnection.Configuration(
             host: host,
             port: port,
             service: .serviceName(service),
             username: user,
-            password: password
+            password: password,
+            tls: tls
         )
 
         let connectionId = Self.connectionCounter.withLock { state -> Int in
@@ -193,6 +206,41 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             return .authVersionNotSupported
         default:
             return .connectionFailed
+        }
+    }
+
+    private func buildTLS() throws -> OracleNIO.OracleConnection.Configuration.TLS {
+        switch sslConfig.mode {
+        case .disabled:
+            return .disable
+        case .preferred:
+            osLogger.warning("Oracle SSL mode 'Preferred' is not supported by OracleNIO; falling back to plain TCP. Use 'Required' to enforce TCPS.")
+            return .disable
+        case .required, .verifyCa, .verifyIdentity:
+            var tlsConfiguration = TLSConfiguration.makeClientConfiguration()
+            tlsConfiguration.certificateVerification = certificateVerification(for: sslConfig.mode)
+            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
+                let caCerts = try NIOSSLCertificate.fromPEMFile(sslConfig.caCertificatePath)
+                tlsConfiguration.trustRoots = .certificates(caCerts)
+            }
+            if !sslConfig.clientCertificatePath.isEmpty {
+                let clientCerts = try NIOSSLCertificate.fromPEMFile(sslConfig.clientCertificatePath)
+                tlsConfiguration.certificateChain = clientCerts.map { .certificate($0) }
+            }
+            if !sslConfig.clientKeyPath.isEmpty {
+                let key = try NIOSSLPrivateKey(file: sslConfig.clientKeyPath, format: .pem)
+                tlsConfiguration.privateKey = .privateKey(key)
+            }
+            let sslContext = try NIOSSLContext(configuration: tlsConfiguration)
+            return .require(sslContext)
+        }
+    }
+
+    private func certificateVerification(for mode: SSLMode) -> CertificateVerification {
+        switch mode {
+        case .verifyIdentity: return .fullVerification
+        case .verifyCa: return .noHostnameVerification
+        case .required, .preferred, .disabled: return .none
         }
     }
 

@@ -199,133 +199,131 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
+    private static let sslOnlyErrorCodes: Set<UInt32> = [
+        2_026,
+        2_012,
+        1_043
+    ]
+
     func connect() async throws {
         try await pluginDispatchAsync(on: queue) { [self] in
-            guard let mysql = mysql_init(nil) else {
-                throw MariaDBPluginError.initFailed
+            let mode = self.sslConfig.mode
+            let handle: UnsafeMutablePointer<MYSQL>
+            do {
+                handle = try self.attemptConnect(enforceSSL: mode != .disabled)
+            } catch let error as MariaDBPluginError where mode == .preferred && Self.sslOnlyErrorCodes.contains(error.code) {
+                logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
+                handle = try self.attemptConnect(enforceSSL: false)
             }
 
-            self.mysql = mysql
-
-            var reconnect: my_bool = 0
-            mysql_options(mysql, MYSQL_OPT_RECONNECT, &reconnect)
-
-            var timeout: UInt32 = 10
-            mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
-
-            var readTimeout: UInt32 = 30
-            mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &readTimeout)
-
-            var writeTimeout: UInt32 = 30
-            mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
-
-            var protocol_tcp = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
-            mysql_options(mysql, MYSQL_OPT_PROTOCOL, &protocol_tcp)
-
-            switch self.sslConfig.mode {
-            case .disabled, .preferred:
-                var sslEnforce: my_bool = 0
-                mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
-                var sslVerify: my_bool = 0
-                mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
-
-            case .required:
-                var sslEnforce: my_bool = 1
-                mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
-                var sslVerify: my_bool = 0
-                mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
-
-            case .verifyCa, .verifyIdentity:
-                var sslEnforce: my_bool = 1
-                mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
-                var sslVerify: my_bool = 1
-                mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
-            }
-
-            if self.sslConfig.verifiesCertificate, !self.sslConfig.caCertificatePath.isEmpty {
-                _ = self.sslConfig.caCertificatePath.withCString { path in
-                    mysql_options(mysql, MYSQL_OPT_SSL_CA, path)
-                }
-            }
-            if !self.sslConfig.clientCertificatePath.isEmpty {
-                _ = self.sslConfig.clientCertificatePath.withCString { path in
-                    mysql_options(mysql, MYSQL_OPT_SSL_CERT, path)
-                }
-            }
-            if !self.sslConfig.clientKeyPath.isEmpty {
-                _ = self.sslConfig.clientKeyPath.withCString { path in
-                    mysql_options(mysql, MYSQL_OPT_SSL_KEY, path)
-                }
-            }
-
-            mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4")
-
-            let dbToUse = self.database.isEmpty ? nil : self.database
-            let passToUse = self.password
-
-            let result: UnsafeMutablePointer<MYSQL>?
-
-            if let db = dbToUse, let pass = passToUse {
-                result = self.host.withCString { hostPtr in
-                    self.user.withCString { userPtr in
-                        pass.withCString { passPtr in
-                            db.withCString { dbPtr in
-                                mysql_real_connect(
-                                    mysql, hostPtr, userPtr, passPtr, dbPtr,
-                                    self.port, nil, 0
-                                )
-                            }
-                        }
-                    }
-                }
-            } else if let db = dbToUse {
-                result = self.host.withCString { hostPtr in
-                    self.user.withCString { userPtr in
-                        db.withCString { dbPtr in
-                            mysql_real_connect(
-                                mysql, hostPtr, userPtr, nil, dbPtr,
-                                self.port, nil, 0
-                            )
-                        }
-                    }
-                }
-            } else if let pass = passToUse {
-                result = self.host.withCString { hostPtr in
-                    self.user.withCString { userPtr in
-                        pass.withCString { passPtr in
-                            mysql_real_connect(
-                                mysql, hostPtr, userPtr, passPtr, nil,
-                                self.port, nil, 0
-                            )
-                        }
-                    }
-                }
-            } else {
-                result = self.host.withCString { hostPtr in
-                    self.user.withCString { userPtr in
-                        mysql_real_connect(
-                            mysql, hostPtr, userPtr, nil, nil,
-                            self.port, nil, 0
-                        )
-                    }
-                }
-            }
-
-            if result == nil {
-                let error = self.getError()
-                mysql_close(mysql)
-                self.mysql = nil
-                throw error
-            }
-
-            if let versionPtr = mysql_get_server_info(mysql) {
+            if let versionPtr = mysql_get_server_info(handle) {
                 self._cachedServerVersion = String(cString: versionPtr)
             }
 
             self.stateLock.lock()
+            self.mysql = handle
             self._isConnected = true
             self.stateLock.unlock()
         }
+    }
+
+    private func attemptConnect(enforceSSL: Bool) throws -> UnsafeMutablePointer<MYSQL> {
+        guard let mysql = mysql_init(nil) else {
+            throw MariaDBPluginError.initFailed
+        }
+
+        var reconnect: my_bool = 0
+        mysql_options(mysql, MYSQL_OPT_RECONNECT, &reconnect)
+
+        var timeout: UInt32 = 10
+        mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
+
+        var readTimeout: UInt32 = 30
+        mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &readTimeout)
+
+        var writeTimeout: UInt32 = 30
+        mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
+
+        var protocol_tcp = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
+        mysql_options(mysql, MYSQL_OPT_PROTOCOL, &protocol_tcp)
+
+        var sslEnforce: my_bool = enforceSSL ? 1 : 0
+        mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
+
+        var sslVerify: my_bool = sslConfig.verifiesCertificate ? 1 : 0
+        mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
+
+        if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
+            _ = sslConfig.caCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CA, $0) }
+        }
+        if !sslConfig.clientCertificatePath.isEmpty {
+            _ = sslConfig.clientCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CERT, $0) }
+        }
+        if !sslConfig.clientKeyPath.isEmpty {
+            _ = sslConfig.clientKeyPath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_KEY, $0) }
+        }
+
+        mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4")
+
+        let dbToUse = database.isEmpty ? nil : database
+        let passToUse = password
+
+        let result: UnsafeMutablePointer<MYSQL>?
+        if let db = dbToUse, let pass = passToUse {
+            result = host.withCString { hostPtr in
+                user.withCString { userPtr in
+                    pass.withCString { passPtr in
+                        db.withCString { dbPtr in
+                            mysql_real_connect(mysql, hostPtr, userPtr, passPtr, dbPtr, port, nil, 0)
+                        }
+                    }
+                }
+            }
+        } else if let db = dbToUse {
+            result = host.withCString { hostPtr in
+                user.withCString { userPtr in
+                    db.withCString { dbPtr in
+                        mysql_real_connect(mysql, hostPtr, userPtr, nil, dbPtr, port, nil, 0)
+                    }
+                }
+            }
+        } else if let pass = passToUse {
+            result = host.withCString { hostPtr in
+                user.withCString { userPtr in
+                    pass.withCString { passPtr in
+                        mysql_real_connect(mysql, hostPtr, userPtr, passPtr, nil, port, nil, 0)
+                    }
+                }
+            }
+        } else {
+            result = host.withCString { hostPtr in
+                user.withCString { userPtr in
+                    mysql_real_connect(mysql, hostPtr, userPtr, nil, nil, port, nil, 0)
+                }
+            }
+        }
+
+        if result == nil {
+            let error = readError(from: mysql)
+            mysql_close(mysql)
+            throw error
+        }
+        return mysql
+    }
+
+    private func readError(from mysql: UnsafeMutablePointer<MYSQL>) -> MariaDBPluginError {
+        let code = mysql_errno(mysql)
+        let message: String
+        if let msgPtr = mysql_error(mysql) {
+            message = String(cString: msgPtr)
+        } else {
+            message = "Unknown error"
+        }
+        var sqlState: String?
+        if let statePtr = mysql_sqlstate(mysql), statePtr[0] != 0 {
+            sqlState = String(cString: statePtr)
+        }
+        return MariaDBPluginError(code: code, message: message, sqlState: sqlState)
     }
 
     func disconnect() {

@@ -138,9 +138,15 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.mssql.defaultSSLMode == .preferred)
     }
 
-    @Test("Binary on/off engines default SSL mode to disabled", arguments: [
+    @Test("libmariadb-family engines default SSL mode to preferred (2-pass connect)", arguments: [
         DatabaseType.mysql,
-        DatabaseType.mariadb,
+        DatabaseType.mariadb
+    ])
+    func testMariaDBClientEnginesDefaultSSLPreferred(type: DatabaseType) {
+        #expect(type.defaultSSLMode == .preferred)
+    }
+
+    @Test("Binary on/off engines default SSL mode to disabled", arguments: [
         DatabaseType.mongodb,
         DatabaseType.redis,
         DatabaseType.cassandra,

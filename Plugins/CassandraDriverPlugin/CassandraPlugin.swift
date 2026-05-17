@@ -25,14 +25,7 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Cassandra / ScyllaDB"
     static let iconName = "cassandra-icon"
     static let defaultPort = 9042
-    static let additionalConnectionFields: [ConnectionField] = [
-        ConnectionField(
-            id: "sslCaCertPath",
-            label: "CA Certificate",
-            placeholder: "/path/to/ca-cert.pem",
-            section: .advanced
-        ),
-    ]
+    static let additionalConnectionFields: [ConnectionField] = []
     static let additionalDatabaseTypeIds: [String] = ["ScyllaDB"]
 
     // MARK: - UI/Capability Metadata
@@ -900,10 +893,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Connection
 
     func connect() async throws {
-        let sslMode = config.additionalFields["sslMode"] ?? "Disabled"
-        let sslCaCertPath = config.additionalFields["sslCaCertPath"]
-
         let keyspace = config.database.isEmpty ? nil : config.database
+        let legacyCaPath = config.additionalFields["sslCaCertPath"]
+        let resolvedCaPath = config.ssl.caCertificatePath.isEmpty ? legacyCaPath : config.ssl.caCertificatePath
 
         try await connectionActor.connect(
             host: config.host,
@@ -911,8 +903,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             username: config.username.isEmpty ? nil : config.username,
             password: config.password.isEmpty ? nil : config.password,
             keyspace: keyspace,
-            sslMode: sslMode,
-            sslCaCertPath: sslCaCertPath
+            sslMode: config.ssl.mode.rawValue,
+            sslCaCertPath: resolvedCaPath
         )
 
         if let keyspace {
