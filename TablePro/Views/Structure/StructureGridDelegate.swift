@@ -627,6 +627,6 @@ final class StructureGridDelegate: DataGridViewDelegate {
     private func handleNavigateToFK(_ row: Int) {
         guard row < structureChangeManager.workingForeignKeys.count else { return }
         let fk = structureChangeManager.workingForeignKeys[row]
-        coordinator?.openTableTab(fk.referencedTable, showStructure: false, isView: false)
+        coordinator?.openTableTab(fk.referencedTable, schema: fk.referencedSchema)
     }
 }

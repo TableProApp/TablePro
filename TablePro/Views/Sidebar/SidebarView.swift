@@ -235,7 +235,7 @@ struct SidebarView: View {
             EmptyView()
         } primaryAction: { selection in
             guard let table = selection.first else { return }
-            handleTableOpen(table)
+            onDoubleClick?(table)
         }
         .onExitCommand {
             sidebarState.selectedTables.removeAll()
@@ -254,7 +254,7 @@ struct SidebarView: View {
             EmptyView()
         } primaryAction: { selection in
             guard let table = selection.first else { return }
-            handleTableOpen(table)
+            onDoubleClick?(table)
         }
         .onExitCommand {
             sidebarState.selectedTables.removeAll()
@@ -315,10 +315,6 @@ struct SidebarView: View {
             get: { viewModel.effectiveSchemaExpanded(schema, hasMatches: hasMatches) },
             set: { viewModel.schemaExpanded[schema] = $0 }
         )
-    }
-
-    private func handleTableOpen(_ table: TableInfo) {
-        onDoubleClick?(table)
     }
 
     // MARK: - Section View
