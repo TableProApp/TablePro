@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Failed connections caused by SSL/TLS handshake errors now show a structured message that names the cause (server requires encryption, server rejects encryption, untrusted certificate, hostname mismatch, client cert required, cipher mismatch) and recommends a specific SSL Mode to switch to. Covers PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, MongoDB, Redis, Cassandra, and ClickHouse.
 - SSL pane warns inline when a driver does not support TLS fallback for Preferred mode (MongoDB, Redis, Cassandra, ScyllaDB, ClickHouse, Oracle, etcd), so the user knows Preferred behaves the same as Required for that engine.
 - Welcome screen connection errors (single-click connect, sample database launch) also surface the structured SSL handshake message when applicable
+- All driver SSL mapping logic now lives in dedicated `XxxSSLMapping` files (PostgreSQL, MSSQL, Cassandra, MongoDB, Oracle); ClickHouse and Redis keep their existing encapsulated helpers
+
+### Known limitations
+
+- iOS app SSL form still uses a binary Toggle for non-MSSQL engines (mysql, mariadb, postgresql, redshift). Verify CA and Verify Identity are not yet exposed on iOS. macOS users get the full per-engine picker. Will be addressed in a follow-up.
 
 ### Fixed
 

@@ -155,7 +155,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
 
     func connect() async throws {
         let service = serviceName.isEmpty ? database : serviceName
-        let tls = try buildTLS()
+        let tls = try OracleSSLMapping.tls(for: sslConfig)
         let config = OracleNIO.OracleConnection.Configuration(
             host: host,
             port: port,
@@ -237,41 +237,6 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             return .authVersionNotSupported
         default:
             return .connectionFailed
-        }
-    }
-
-    private func buildTLS() throws -> OracleNIO.OracleConnection.Configuration.TLS {
-        switch sslConfig.mode {
-        case .disabled:
-            return .disable
-        case .preferred:
-            osLogger.warning("Oracle SSL mode 'Preferred' is not supported by OracleNIO; falling back to plain TCP. Use 'Required' to enforce TCPS.")
-            return .disable
-        case .required, .verifyCa, .verifyIdentity:
-            var tlsConfiguration = TLSConfiguration.makeClientConfiguration()
-            tlsConfiguration.certificateVerification = certificateVerification(for: sslConfig.mode)
-            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-                let caCerts = try NIOSSLCertificate.fromPEMFile(sslConfig.caCertificatePath)
-                tlsConfiguration.trustRoots = .certificates(caCerts)
-            }
-            if !sslConfig.clientCertificatePath.isEmpty {
-                let clientCerts = try NIOSSLCertificate.fromPEMFile(sslConfig.clientCertificatePath)
-                tlsConfiguration.certificateChain = clientCerts.map { .certificate($0) }
-            }
-            if !sslConfig.clientKeyPath.isEmpty {
-                let key = try NIOSSLPrivateKey(file: sslConfig.clientKeyPath, format: .pem)
-                tlsConfiguration.privateKey = .privateKey(key)
-            }
-            let sslContext = try NIOSSLContext(configuration: tlsConfiguration)
-            return .require(sslContext)
-        }
-    }
-
-    private func certificateVerification(for mode: SSLMode) -> CertificateVerification {
-        switch mode {
-        case .verifyIdentity: return .fullVerification
-        case .verifyCa: return .noHostnameVerification
-        case .required, .preferred, .disabled: return .none
         }
     }
 
