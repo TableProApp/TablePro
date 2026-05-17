@@ -130,6 +130,13 @@ final class SchemaService {
         lastLoadDates.removeValue(forKey: connectionId)
     }
 
+    func refresh(connectionId: UUID) async {
+        guard let session = DatabaseManager.shared.activeSessions[connectionId],
+              let driver = session.driver else { return }
+        await invalidate(connectionId: connectionId)
+        await reload(connectionId: connectionId, driver: driver, connection: session.connection)
+    }
+
     private func runLoad(
         connectionId: UUID,
         driver: DatabaseDriver,
