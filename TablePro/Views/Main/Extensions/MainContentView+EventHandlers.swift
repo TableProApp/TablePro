@@ -99,7 +99,7 @@ extension MainContentView {
     ) {
         let action = TableSelectionAction.resolve(oldTables: oldTables, newTables: newTables)
 
-        guard case .navigate(let tableName, let schema, let isView) = action else {
+        guard case .navigate(let table) = action else {
             return
         }
 
@@ -111,7 +111,7 @@ extension MainContentView {
         let hasPreview = WindowLifecycleMonitor.shared.previewWindow(for: connection.id) != nil
 
         let result = SidebarNavigationResult.resolve(
-            clickedTableName: tableName,
+            clickedTableName: table.name,
             currentTabTableName: tabManager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !tabManager.tabs.isEmpty,
             isPreviewTabMode: isPreviewMode,
@@ -123,11 +123,9 @@ extension MainContentView {
             return
         case .openInPlace:
             coordinator.selectionState.indices = []
-            coordinator.openTableTab(tableName, schema: schema, isView: isView)
-        case .revertAndOpenNewWindow:
-            coordinator.openTableTab(tableName, schema: schema, isView: isView)
-        case .replacePreviewTab, .openNewPreviewTab:
-            coordinator.openTableTab(tableName, schema: schema, isView: isView)
+            coordinator.openTableTab(table)
+        case .revertAndOpenNewWindow, .replacePreviewTab, .openNewPreviewTab:
+            coordinator.openTableTab(table)
         }
     }
 

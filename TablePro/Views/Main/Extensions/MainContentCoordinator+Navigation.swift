@@ -15,6 +15,15 @@ private let navigationLogger = Logger(subsystem: "com.TablePro", category: "Main
 extension MainContentCoordinator {
     // MARK: - Table Tab Opening
 
+    func openTableTab(_ table: TableInfo, showStructure: Bool = false) {
+        openTableTab(
+            table.name,
+            schema: table.schema,
+            showStructure: showStructure,
+            isView: table.type == .view
+        )
+    }
+
     func openTableTab(_ tableName: String, schema: String? = nil, showStructure: Bool = false, isView: Bool = false) {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId

@@ -94,8 +94,8 @@ struct SidebarContextMenu: View {
         }
 
         Button("Show Structure") {
-            if let tableName = clickedTable?.name {
-                coordinator?.openTableTab(tableName, showStructure: true)
+            if let clickedTable {
+                coordinator?.openTableTab(clickedTable, showStructure: true)
             }
         }
         .disabled(clickedTable == nil)
