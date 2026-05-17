@@ -9,9 +9,11 @@ struct SchemaPickerFooter: View {
 
     @Bindable private var schemaService = SchemaService.shared
     @State private var showSystemSchemas = false
+    @State private var schemaVersion = 0
 
     private var currentSchema: String? {
-        DatabaseManager.shared.session(for: connectionId)?.currentSchema
+        _ = schemaVersion
+        return DatabaseManager.shared.session(for: connectionId)?.currentSchema
     }
 
     private var allSchemas: [String] {
@@ -45,6 +47,11 @@ struct SchemaPickerFooter: View {
                 )
                 .padding(8)
             }
+            .onReceive(AppEvents.shared.currentSchemaChanged) { changedId in
+                if changedId == connectionId {
+                    schemaVersion &+= 1
+                }
+            }
         }
     }
 
@@ -71,6 +78,16 @@ private struct SchemaPopUpButton: NSViewRepresentable {
     let onSelect: (String) -> Void
     let onRefresh: () -> Void
 
+    private var fingerprint: MenuFingerprint {
+        MenuFingerprint(
+            title: title,
+            userSchemas: userSchemas,
+            systemSchemas: systemSchemas,
+            showSystemSchemas: showSystemSchemas,
+            currentSchema: currentSchema
+        )
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
@@ -78,14 +95,16 @@ private struct SchemaPopUpButton: NSViewRepresentable {
     func makeNSView(context: Context) -> NSPopUpButton {
         let button = NSPopUpButton(frame: .zero, pullsDown: true)
         button.preferredEdge = .maxY
-        button.target = context.coordinator
-        button.action = #selector(Coordinator.itemSelected(_:))
+        context.coordinator.lastFingerprint = fingerprint
         rebuildMenu(button: button, context: context)
         return button
     }
 
     func updateNSView(_ button: NSPopUpButton, context: Context) {
         context.coordinator.parent = self
+        let next = fingerprint
+        guard context.coordinator.lastFingerprint != next else { return }
+        context.coordinator.lastFingerprint = next
         rebuildMenu(button: button, context: context)
     }
 
@@ -93,8 +112,7 @@ private struct SchemaPopUpButton: NSViewRepresentable {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        let titleItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        menu.addItem(titleItem)
+        menu.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
 
         for schema in userSchemas {
             menu.addItem(schemaItem(schema, coordinator: context.coordinator))
@@ -145,12 +163,11 @@ private struct SchemaPopUpButton: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject {
         var parent: SchemaPopUpButton
+        var lastFingerprint: MenuFingerprint?
 
         init(parent: SchemaPopUpButton) {
             self.parent = parent
         }
-
-        @objc func itemSelected(_ sender: Any?) {}
 
         @objc func schemaSelected(_ sender: NSMenuItem) {
             guard let schema = sender.representedObject as? String else { return }
@@ -164,5 +181,13 @@ private struct SchemaPopUpButton: NSViewRepresentable {
         @objc func refreshTriggered(_ sender: NSMenuItem) {
             parent.onRefresh()
         }
+    }
+
+    struct MenuFingerprint: Equatable {
+        let title: String
+        let userSchemas: [String]
+        let systemSchemas: [String]
+        let showSystemSchemas: Bool
+        let currentSchema: String?
     }
 }

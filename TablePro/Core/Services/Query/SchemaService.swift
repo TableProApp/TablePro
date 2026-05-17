@@ -144,9 +144,8 @@ final class SchemaService {
     ) async {
         states[connectionId] = .loading
 
-        if PluginManager.shared.supportsSchemaSwitching(for: connection.type) {
-            Task { [weak self] in await self?.loadSchemaList(connectionId: connectionId, driver: driver) }
-        } else {
+        let supportsSchemas = PluginManager.shared.supportsSchemaSwitching(for: connection.type)
+        if !supportsSchemas {
             schemasInOrder.removeValue(forKey: connectionId)
         }
 
@@ -168,6 +167,9 @@ final class SchemaService {
 
         let loadedProcedures = await proceduresTask
         let loadedFunctions = await functionsTask
+        if supportsSchemas {
+            await loadSchemaList(connectionId: connectionId, driver: driver)
+        }
 
         do {
             let tables = try await tablesTask
