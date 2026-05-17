@@ -1,0 +1,93 @@
+---
+title: SSL/TLS
+description: Configure encrypted database connections, per-engine defaults, and certificate verification
+---
+
+# SSL/TLS
+
+TablePro supports five SSL modes that map to each driver's native TLS capabilities. New connections start with the mode that matches the driver's documented default.
+
+## Modes
+
+| Mode | Behavior |
+|---|---|
+| Disabled | Plain TCP, no TLS negotiation |
+| Preferred | Try TLS first, fall back to plain if the server doesn't support it (where the driver allows) |
+| Required | Force TLS; fail if the server rejects encryption. No certificate validation. |
+| Verify CA | Force TLS and validate the server certificate against the trust store. Hostname not checked. |
+| Verify Identity | Force TLS, validate the certificate, and require the hostname to match the certificate subject |
+
+## Per-engine defaults
+
+New connections pick the mode that matches each driver's native behavior. Open the SSL tab on any connection to see the engine-specific guidance.
+
+| Engine | Default | Notes |
+|---|---|---|
+| PostgreSQL, Redshift, CockroachDB | Preferred | libpq `sslmode=prefer`. Matches `psql` and DataGrip. |
+| MySQL, MariaDB | Preferred | 2-pass connect: try TLS first, fall back to plain on SSL handshake error |
+| SQL Server | Preferred | FreeTDS `encryption=request`. SQL Server 2022 enforces TLS. |
+| MongoDB, Redis, Cassandra, ClickHouse, Oracle, etcd | Disabled | Drivers have no TLS fallback. Pick Required for hosted services. |
+| SQLite, DuckDB | N/A | No network protocol |
+
+## Required for hosted services
+
+These services require TLS out of the box. Pick Preferred or Required for these:
+
+- AWS RDS (PostgreSQL, MySQL, MariaDB), Aurora
+- Google Cloud SQL (PostgreSQL, MySQL, SQL Server)
+- Azure SQL Database, Azure Database for PostgreSQL/MySQL
+- Heroku Postgres, Supabase, Neon, PlanetScale
+- MongoDB Atlas (uses `mongodb+srv://` which enables TLS automatically)
+- Redis Cloud, Upstash, AWS ElastiCache encrypted endpoints
+- AstraDB / DataStax Astra (Cassandra)
+- Oracle Autonomous Database (TCPS on port 1522/2484)
+- ClickHouse Cloud
+
+## Troubleshooting
+
+### "FATAL: no pg_hba.conf entry for host ... no encryption"
+
+PostgreSQL server requires SSL. Switch SSL Mode to **Preferred** or **Required**.
+
+### "Connections using insecure transport are prohibited"
+
+MySQL server has `require_secure_transport=ON`. Switch SSL Mode to **Preferred** or **Required**.
+
+### "SSL handshake failed" / "tls handshake failed"
+
+Driver and server can't agree on a TLS version or cipher. Update the server, or for development try **Required** instead of **Verify CA**/**Verify Identity** to skip certificate validation.
+
+### "certificate verify failed" / "self-signed certificate"
+
+Server uses a certificate that isn't in your system trust store. Set SSL Mode to **Verify CA** and provide the CA certificate path, or use **Required** to skip certificate validation entirely.
+
+### "hostname does not match certificate"
+
+The certificate's CN/SAN doesn't include the host you're connecting to. Switch from **Verify Identity** to **Verify CA** (validates the chain but skips hostname), or update the host field to match the certificate.
+
+### "client certificate required"
+
+Server requires mutual TLS. Fill in the **Client Certificate** and **Client Key** paths in the SSL tab.
+
+## Preferred fallback behavior
+
+Preferred mode tries TLS first. What happens if the server doesn't support TLS depends on the driver:
+
+- **PostgreSQL, Redshift, CockroachDB**: libpq falls back to plain TCP natively
+- **SQL Server**: FreeTDS `encryption=request` falls back to plain
+- **MySQL, MariaDB**: 2-pass connect tries TLS, then plain on SSL-specific handshake errors (CR_SSL_CONNECTION_ERROR, CR_SERVER_HANDSHAKE_ERR, ER_HANDSHAKE_ERROR). Auth and network errors are not retried.
+- **MongoDB, Redis, Cassandra, ClickHouse, Oracle, etcd**: Drivers have no fallback. Preferred behaves the same as Required. The SSL pane shows a warning when you pick Preferred for these engines.
+
+## Connection failures
+
+When a connection fails because of an SSL handshake problem, TablePro shows a structured message that names the cause and recommends a specific SSL Mode to switch to. The original driver error is shown below the suggestion.
+
+For example, connecting to AWS RDS PostgreSQL with SSL Mode = Disabled produces:
+
+```
+The server requires an encrypted connection but TablePro is configured to connect in plain text.
+
+Open the connection editor, switch to the SSL tab, and set Mode to Required (or stricter).
+
+Server response: FATAL: no pg_hba.conf entry for host "...", user "...", database "...", no encryption
+```

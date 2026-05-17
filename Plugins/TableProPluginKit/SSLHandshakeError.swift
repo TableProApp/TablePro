@@ -41,6 +41,21 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
         }
     }
 
+    public static func formatted(_ error: Error) -> String {
+        guard let sslError = error as? SSLHandshakeError else {
+            return error.localizedDescription
+        }
+        var parts: [String] = []
+        if let description = sslError.errorDescription {
+            parts.append(description)
+        }
+        if let suggestion = sslError.recoverySuggestion {
+            parts.append(suggestion)
+        }
+        parts.append(String(format: String(localized: "Server response: %@"), sslError.serverMessage))
+        return parts.joined(separator: "\n\n")
+    }
+
     public var recoverySuggestion: String? {
         switch self {
         case .serverRejectedPlaintext:

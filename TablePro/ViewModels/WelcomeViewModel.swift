@@ -604,7 +604,7 @@ final class WelcomeViewModel {
 
         Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
         WindowManager.shared.closeWindow(for: connection.id)
-        connectionError = error.localizedDescription
+        connectionError = SSLHandshakeError.formatted(error)
         showConnectionError = true
     }
 }

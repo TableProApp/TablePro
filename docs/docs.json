@@ -132,6 +132,7 @@
                 "pages": [
                   "features/safe-mode",
                   "features/ssh-profiles",
+                  "features/ssl",
                   "features/connection-sharing"
                 ]
               },
