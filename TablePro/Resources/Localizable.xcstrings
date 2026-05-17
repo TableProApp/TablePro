@@ -41784,6 +41784,9 @@
         }
       }
     },
+    "Server response: %@" : {
+
+    },
     "Serverless SQLite at the edge" : {
 
     },

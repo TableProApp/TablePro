@@ -136,7 +136,7 @@ private actor CassandraConnectionActor {
         username: String?,
         password: String?,
         keyspace: String?,
-        sslMode: String,
+        sslMode: SSLMode,
         sslCaCertPath: String?
     ) throws {
         cluster = cass_cluster_new()
@@ -151,34 +151,24 @@ private actor CassandraConnectionActor {
             cass_cluster_set_credentials(cluster, username, password)
         }
 
-        // SSL/TLS
-        if sslMode != "Disabled" {
+        if sslMode != .disabled {
             guard let ssl = cass_ssl_new() else {
                 cass_cluster_free(cluster)
                 self.cluster = nil
                 throw CassandraPluginError.connectionFailed("Failed to create SSL context")
             }
 
-            if sslMode == "Verify CA" || sslMode == "Verify Identity" {
-                if sslMode == "Verify Identity" {
-                    let flags = Int32(CASS_SSL_VERIFY_PEER_CERT.rawValue | CASS_SSL_VERIFY_PEER_IDENTITY.rawValue)
-                    cass_ssl_set_verify_flags(ssl, flags)
-                } else {
-                    cass_ssl_set_verify_flags(ssl, Int32(CASS_SSL_VERIFY_PEER_CERT.rawValue))
-                }
+            cass_ssl_set_verify_flags(ssl, CassandraSSLMapping.verifyFlags(for: sslMode))
 
-                if let caCertPath = sslCaCertPath, !caCertPath.isEmpty,
-                   let certData = FileManager.default.contents(atPath: caCertPath),
-                   let certString = String(data: certData, encoding: .utf8) {
-                    let rc = cass_ssl_add_trusted_cert(ssl, certString)
-                    if rc != CASS_OK {
-                        Self.logger.warning("Failed to add CA certificate, proceeding without verification")
-                        cass_ssl_set_verify_flags(ssl, Int32(CASS_SSL_VERIFY_NONE.rawValue))
-                    }
+            if sslMode == .verifyCa || sslMode == .verifyIdentity,
+               let caCertPath = sslCaCertPath, !caCertPath.isEmpty,
+               let certData = FileManager.default.contents(atPath: caCertPath),
+               let certString = String(data: certData, encoding: .utf8) {
+                let rc = cass_ssl_add_trusted_cert(ssl, certString)
+                if rc != CASS_OK {
+                    Self.logger.warning("Failed to add CA certificate, proceeding without verification")
+                    cass_ssl_set_verify_flags(ssl, Int32(CASS_SSL_VERIFY_NONE.rawValue))
                 }
-            } else {
-                // "Preferred" / "Required" — encrypt but skip cert verification
-                cass_ssl_set_verify_flags(ssl, Int32(CASS_SSL_VERIFY_NONE.rawValue))
             }
 
             cass_cluster_set_ssl(cluster, ssl)
@@ -922,11 +912,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
         try await connectionActor.connect(
             host: config.host,
-            port: Int(config.port) ?? 9042,
+            port: Int(config.port) ?? 9_042,
             username: config.username.isEmpty ? nil : config.username,
             password: config.password.isEmpty ? nil : config.password,
             keyspace: keyspace,
-            sslMode: config.ssl.mode.rawValue,
+            sslMode: config.ssl.mode,
             sslCaCertPath: resolvedCaPath
         )
 

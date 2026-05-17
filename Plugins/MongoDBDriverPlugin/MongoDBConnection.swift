@@ -222,29 +222,7 @@ final class MongoDBConnection: @unchecked Sendable {
             "authSource=\(encodedAuthSource)"
         ]
 
-        if ssl.isEnabled {
-            params.append("tls=true")
-            switch ssl.mode {
-            case .preferred, .required:
-                params.append("tlsAllowInvalidCertificates=true")
-            case .verifyCa:
-                params.append("tlsAllowInvalidHostnames=true")
-            case .disabled, .verifyIdentity:
-                break
-            }
-            if ssl.verifiesCertificate, !ssl.caCertificatePath.isEmpty {
-                let encodedCaPath = ssl.caCertificatePath
-                    .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-                    ?? ssl.caCertificatePath
-                params.append("tlsCAFile=\(encodedCaPath)")
-            }
-            if !ssl.clientCertificatePath.isEmpty {
-                let encodedCertPath = ssl.clientCertificatePath
-                    .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-                    ?? ssl.clientCertificatePath
-                params.append("tlsCertificateKeyFile=\(encodedCertPath)")
-            }
-        }
+        params.append(contentsOf: MongoDBSSLMapping.uriParameters(for: ssl))
 
         if let rp = readPreference, !rp.isEmpty {
             params.append("readPreference=\(rp)")
