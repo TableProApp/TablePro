@@ -1880,6 +1880,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TableProWidgetExtension.entitlements;
 				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 14;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TableProWidget;
@@ -1911,6 +1912,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TableProWidgetExtension.entitlements;
 				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 14;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TableProWidget;

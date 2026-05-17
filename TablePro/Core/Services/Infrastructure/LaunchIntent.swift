@@ -12,6 +12,7 @@ internal enum LaunchIntent: @unchecked Sendable {
     case importConnection(ExportableConnection)
     case openSQLFile(URL)
     case openDatabaseFile(URL, DatabaseType)
+    case openInspectorFile(URL)
     case openConnectionShare(URL)
     case pairIntegration(PairingRequest)
     case startMCPServer
@@ -26,6 +27,7 @@ internal enum LaunchIntent: @unchecked Sendable {
             return id
         case .openDatabaseURL,
              .openDatabaseFile,
+             .openInspectorFile,
              .openSQLFile,
              .importConnection,
              .openConnectionShare,

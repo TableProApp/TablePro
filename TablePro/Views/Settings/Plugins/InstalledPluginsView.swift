@@ -451,6 +451,7 @@ private extension PluginCapability {
         case .databaseDriver: String(localized: "Database Driver")
         case .exportFormat: String(localized: "Export Format")
         case .importFormat: String(localized: "Import Format")
+        case .documentInspector: String(localized: "Document Inspector")
         }
     }
 }

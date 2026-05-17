@@ -26,6 +26,10 @@ internal final class LaunchIntentRouter {
                  .openSQLFile:
                 try await TabRouter.shared.route(intent)
 
+            case .openInspectorFile(let url):
+                Self.logger.debug("LaunchIntentRouter.route(.openInspectorFile(\(url.lastPathComponent, privacy: .public)))")
+                openInspectorDocument(at: url)
+
             case .importConnection(let exportable):
                 WelcomeRouter.shared.routeImport(exportable)
 
@@ -53,6 +57,25 @@ internal final class LaunchIntentRouter {
         }
     }
 
+    private func openInspectorDocument(at url: URL) {
+        Self.logger.debug("LaunchIntentRouter.openInspectorDocument - calling NSDocumentController.shared (\(String(describing: Swift.type(of: NSDocumentController.shared)), privacy: .public)).openDocument for \(url.lastPathComponent, privacy: .public)")
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { document, alreadyOpen, error in
+            Self.logger.debug("LaunchIntentRouter.openInspectorDocument completion - document=\(document == nil ? "nil" : "present", privacy: .public) alreadyOpen=\(alreadyOpen, privacy: .public) error=\(error?.localizedDescription ?? "nil", privacy: .public)")
+            if let error {
+                Self.logger.error("Failed to open inspector document at \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Could Not Open File"),
+                    message: error.localizedDescription,
+                    window: NSApp.keyWindow
+                )
+                return
+            }
+            if document == nil {
+                Self.logger.warning("NSDocumentController returned no document for \(url.lastPathComponent, privacy: .public)")
+            }
+        }
+    }
+
     private func installPlugin(_ url: URL) async throws {
         let entry = try await PluginManager.shared.installPlugin(from: url)
         Self.logger.info("Installed plugin '\(entry.name, privacy: .public)' from Finder")
@@ -68,7 +91,7 @@ internal final class LaunchIntentRouter {
             title = String(localized: "Plugin Installation Failed")
         case .openConnection, .openTable, .openQuery, .openDatabaseURL, .openDatabaseFile:
             title = String(localized: "Connection Failed")
-        case .openSQLFile:
+        case .openSQLFile, .openInspectorFile:
             title = String(localized: "Could Not Open File")
         case .importConnection, .openConnectionShare, .startMCPServer:
             title = String(localized: "Action Failed")

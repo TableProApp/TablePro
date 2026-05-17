@@ -1,0 +1,1 @@
+../../Plugins/CSVInspectorPlugin/CSVTypeInferrer.swift

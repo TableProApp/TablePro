@@ -145,6 +145,10 @@ struct AppMenuCommands: Commands {
         return nil
     }
 
+    private var keyWindowIsInspector: Bool {
+        NSApp.keyWindow?.windowController is InspectorWindowController
+    }
+
     var body: some Commands {
         // Custom About window + Check for Updates + MCP status
         CommandGroup(replacing: .appInfo) {
@@ -241,22 +245,32 @@ struct AppMenuCommands: Commands {
             Divider()
 
             Button("Save Changes") {
-                actions?.saveChanges()
+                if keyWindowIsInspector {
+                    NSApp.sendAction(#selector(InspectorViewController.saveDocument(_:)), to: nil, from: nil)
+                } else {
+                    actions?.saveChanges()
+                }
             }
             .optionalKeyboardShortcut(shortcut(for: .saveChanges))
-            // Match toolbar: also disable when no pending changes — avoids
-            // a no-op Cmd+S when nothing has been edited.
+            // Disable only when a connection tab is focused with nothing to
+            // save. When no SwiftUI content is focused (e.g. a document
+            // inspector window), stay enabled so the action can route through
+            // the responder chain.
             .disabled(
-                !(actions?.isConnected ?? false)
-                    || actions?.isReadOnly ?? false
-                    || !(actions?.hasPendingChanges ?? false)
+                keyWindowIsInspector
+                    ? false
+                    : (actions.map { !$0.isConnected || $0.isReadOnly || !$0.hasPendingChanges } ?? false)
             )
 
             Button(String(localized: "Save As...")) {
-                actions?.saveFileAs()
+                if keyWindowIsInspector {
+                    NSApp.sendAction(#selector(InspectorViewController.saveDocumentAs(_:)), to: nil, from: nil)
+                } else {
+                    actions?.saveFileAs()
+                }
             }
             .optionalKeyboardShortcut(shortcut(for: .saveAs))
-            .disabled(!(actions?.isConnected ?? false))
+            .disabled(keyWindowIsInspector ? false : (actions.map { !$0.isConnected } ?? false))
 
             Button(actions != nil ? "Close Tab" : "Close") {
                 if let resolved = resolvedCloseTabActions {
@@ -420,27 +434,24 @@ struct AppMenuCommands: Commands {
         // Edit menu - Undo/Redo (smart handling for both text editor and data grid)
         CommandGroup(replacing: .undoRedo) {
             Button("Undo") {
-                // Check if first responder is a text view (SQL editor)
-                if let firstResponder = NSApp.keyWindow?.firstResponder,
-                   firstResponder is NSTextView || firstResponder is TextView {
-                    // Send undo: (with colon) through responder chain —
-                    // CodeEditTextView.TextView responds to undo: via @objc func undo(_:)
+                // Inspector windows and text views both handle undo: via the
+                // AppKit responder chain. Data grid tabs route through actions.
+                if keyWindowIsInspector ||
+                    (NSApp.keyWindow?.firstResponder is NSTextView) ||
+                    (NSApp.keyWindow?.firstResponder is TextView) {
                     NSApp.sendAction(#selector(TableProResponderActions.undo(_:)), to: nil, from: nil)
                 } else {
-                    // Data grid undo
                     actions?.undoChange()
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .undo))
 
             Button("Redo") {
-                // Check if first responder is a text view (SQL editor)
-                if let firstResponder = NSApp.keyWindow?.firstResponder,
-                   firstResponder is NSTextView || firstResponder is TextView {
-                    // Send redo: (with colon) through responder chain
+                if keyWindowIsInspector ||
+                    (NSApp.keyWindow?.firstResponder is NSTextView) ||
+                    (NSApp.keyWindow?.firstResponder is TextView) {
                     NSApp.sendAction(#selector(TableProResponderActions.redo(_:)), to: nil, from: nil)
                 } else {
-                    // Data grid redo
                     actions?.redoChange()
                 }
             }
@@ -455,7 +466,11 @@ struct AppMenuCommands: Commands {
             Divider()
 
             Button(String(localized: "Find...")) {
-                EditorEventRouter.shared.showFindPanelForKeyWindow()
+                if keyWindowIsInspector {
+                    NSApp.sendAction(#selector(InspectorViewController.toggleInspectorFilter(_:)), to: nil, from: nil)
+                } else {
+                    EditorEventRouter.shared.showFindPanelForKeyWindow()
+                }
             }
             .keyboardShortcut("f", modifiers: .command)
 

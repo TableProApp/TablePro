@@ -14,6 +14,7 @@ import TableProPluginKit
 final class PluginManager {
     static let shared = PluginManager()
     static let currentPluginKitVersion = 13
+    static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
@@ -77,6 +78,8 @@ final class PluginManager {
 
     internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
 
+    internal(set) var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
+
     internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
 
     var disabledPluginIds: Set<String> {
@@ -91,6 +94,9 @@ final class PluginManager {
     @ObservationIgnored private(set) var lazyDriverURLs: [String: URL] = [:]
     @ObservationIgnored private var lazyExportURLs: [String: URL] = [:]
     @ObservationIgnored private var lazyImportURLs: [String: URL] = [:]
+    @ObservationIgnored internal var lazyInspectorURLs: [String: URL] = [:]
+    @ObservationIgnored internal var lazyInspectorFileExtensions: [String: URL] = [:]
+    @ObservationIgnored internal var lazyInspectorUTIs: [String: URL] = [:]
     @ObservationIgnored private var activatedBundleIds: Set<String> = []
 
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
@@ -264,6 +270,7 @@ final class PluginManager {
         if !manifest.providedDatabaseTypeIds.isEmpty { capabilities.append(.databaseDriver) }
         if !manifest.providedExportFormatIds.isEmpty { capabilities.append(.exportFormat) }
         if !manifest.providedImportFormatIds.isEmpty { capabilities.append(.importFormat) }
+        if !manifest.providedInspectorIds.isEmpty { capabilities.append(.documentInspector) }
 
         let info = bundle.infoDictionary ?? [:]
         let version = (info["CFBundleShortVersionString"] as? String) ?? "0.0.0"
@@ -300,7 +307,16 @@ final class PluginManager {
         for formatId in manifest.providedImportFormatIds {
             lazyImportURLs[formatId] = url
         }
-        Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds)")
+        for inspectorId in manifest.providedInspectorIds {
+            lazyInspectorURLs[inspectorId] = url
+        }
+        for ext in manifest.providedInspectorFileExtensions {
+            lazyInspectorFileExtensions[ext.lowercased()] = url
+        }
+        for uti in manifest.providedInspectorUTIs {
+            lazyInspectorUTIs[uti] = url
+        }
+        Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds), inspectors=\(manifest.providedInspectorIds)")
     }
 
     func activateDriver(databaseTypeId typeId: String) {
@@ -321,6 +337,12 @@ final class PluginManager {
         activateLazyBundle(at: url)
     }
 
+    func activateInspector(id: String) {
+        guard inspectorPlugins[id] == nil else { return }
+        guard let url = lazyInspectorURLs[id] else { return }
+        activateLazyBundle(at: url)
+    }
+
     func allLazyExportFormatIds() -> [String] {
         Array(lazyExportURLs.keys)
     }
@@ -329,7 +351,11 @@ final class PluginManager {
         Array(lazyImportURLs.keys)
     }
 
-    private func activateLazyBundle(at url: URL) {
+    func allLazyInspectorIds() -> [String] {
+        Array(lazyInspectorURLs.keys)
+    }
+
+    func activateLazyBundle(at url: URL) {
         guard let bundle = Bundle(url: url) else { return }
         let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
         guard !activatedBundleIds.contains(bundleId) else { return }
@@ -368,13 +394,44 @@ final class PluginManager {
         source: PluginSource
     ) throws {
         let infoPlist = bundle.infoDictionary ?? [:]
-        let pluginKitVersion = infoPlist["TableProPluginKitVersion"] as? Int ?? 0
+        let declaredPluginKit = infoPlist["TableProPluginKitVersion"] as? Int
+        let declaredInspectorKit = infoPlist["TableProInspectorKitVersion"] as? Int
 
-        if pluginKitVersion > currentPluginKitVersion {
-            throw PluginError.incompatibleVersion(
-                required: pluginKitVersion,
-                current: currentPluginKitVersion
+        if declaredPluginKit == nil && declaredInspectorKit == nil {
+            throw PluginError.pluginOutdated(
+                pluginVersion: 0,
+                requiredVersion: currentPluginKitVersion
             )
+        }
+
+        if let version = declaredPluginKit {
+            if version > currentPluginKitVersion {
+                throw PluginError.incompatibleVersion(
+                    required: version,
+                    current: currentPluginKitVersion
+                )
+            }
+            if version < currentPluginKitVersion {
+                throw PluginError.pluginOutdated(
+                    pluginVersion: version,
+                    requiredVersion: currentPluginKitVersion
+                )
+            }
+        }
+
+        if let version = declaredInspectorKit {
+            if version > currentInspectorKitVersion {
+                throw PluginError.incompatibleVersion(
+                    required: version,
+                    current: currentInspectorKitVersion
+                )
+            }
+            if version < currentInspectorKitVersion {
+                throw PluginError.pluginOutdated(
+                    pluginVersion: version,
+                    requiredVersion: currentInspectorKitVersion
+                )
+            }
         }
 
         if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
@@ -382,13 +439,6 @@ final class PluginManager {
             if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
                 throw PluginError.appVersionTooOld(minimumRequired: minAppVersion, currentApp: appVersion)
             }
-        }
-
-        if pluginKitVersion < currentPluginKitVersion {
-            throw PluginError.pluginOutdated(
-                pluginVersion: pluginKitVersion,
-                requiredVersion: currentPluginKitVersion
-            )
         }
     }
 
@@ -433,7 +483,9 @@ final class PluginManager {
         let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
 
         let rawDriverType = principalClass as? any DriverPlugin.Type
+        let rawInspectorType = principalClass as? any DocumentInspectorPlugin.Type
         let pluginKitVersion = bundle.infoDictionary?["TableProPluginKitVersion"] as? Int ?? 0
+        let inspectorKitVersion = bundle.infoDictionary?["TableProInspectorKitVersion"] as? Int ?? 0
         if rawDriverType != nil, source == .userInstalled, pluginKitVersion != Self.currentPluginKitVersion {
             assertionFailure(
                 "DriverPlugin '\(bundleId)' has TableProPluginKitVersion \(pluginKitVersion) but current is \(Self.currentPluginKitVersion); ABI mismatch would crash on static property access"
@@ -446,6 +498,21 @@ final class PluginManager {
                 name: principalClass.pluginName,
                 reason: String(localized: "Incompatible plugin version"),
                 isOutdated: pluginKitVersion < Self.currentPluginKitVersion
+            ))
+            return nil
+        }
+        if rawInspectorType != nil, source == .userInstalled, inspectorKitVersion != Self.currentInspectorKitVersion {
+            assertionFailure(
+                "DocumentInspectorPlugin '\(bundleId)' has TableProInspectorKitVersion \(inspectorKitVersion) but current is \(Self.currentInspectorKitVersion); ABI mismatch would crash on static property access"
+            )
+            Self.logger.error("Plugin '\(bundleId)' DocumentInspectorPlugin ABI mismatch: plist=\(inspectorKitVersion) current=\(Self.currentInspectorKitVersion). Rejecting to prevent crash.")
+            rejectedPlugins.append(RejectedPlugin(
+                url: url,
+                bundleId: bundleId,
+                registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+                name: principalClass.pluginName,
+                reason: String(localized: "Incompatible plugin version"),
+                isOutdated: inspectorKitVersion < Self.currentInspectorKitVersion
             ))
             return nil
         }
@@ -765,6 +832,11 @@ final class PluginManager {
         if let importClass = entry.bundle.principalClass as? any ImportFormatPlugin.Type {
             let formatId = importClass.formatId
             importPlugins = importPlugins.filter { key, _ in key != formatId }
+        }
+
+        if let inspectorClass = entry.bundle.principalClass as? any DocumentInspectorPlugin.Type {
+            let inspectorId = inspectorClass.inspectorId
+            inspectorPlugins = inspectorPlugins.filter { key, _ in key != inspectorId }
         }
     }
 }

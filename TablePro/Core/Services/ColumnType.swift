@@ -173,5 +173,4 @@ enum ColumnType: Equatable {
             return nil
         }
     }
-
 }

@@ -4,7 +4,10 @@
 //
 
 import AppKit
+import os
 import TableProPluginKit
+
+private let cellCommitLogger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
 
 extension TableViewCoordinator {
     func commitCellEdit(row: Int, columnIndex: Int, newValue: String?) {
@@ -12,6 +15,7 @@ extension TableViewCoordinator {
     }
 
     func commitTypedCellEdit(row: Int, columnIndex: Int, newValue typedNewValue: PluginCellValue) {
+        cellCommitLogger.debug("commitTypedCellEdit(row: \(row, privacy: .public), columnIndex: \(columnIndex, privacy: .public)) isCommitting=\(self.isCommittingCellEdit, privacy: .public) delegate=\(self.delegate == nil ? "nil" : "present", privacy: .public)")
         guard !isCommittingCellEdit else { return }
         guard let tableView else { return }
         let tableRows = tableRowsProvider()
@@ -19,7 +23,10 @@ extension TableViewCoordinator {
         guard let displayRowValues = displayRow(at: row) else { return }
         guard columnIndex < displayRowValues.values.count else { return }
         let oldValue = displayRowValues.values[columnIndex]
-        guard oldValue != typedNewValue else { return }
+        guard oldValue != typedNewValue else {
+            cellCommitLogger.debug("commitTypedCellEdit - value unchanged, guard returned")
+            return
+        }
 
         isCommittingCellEdit = true
         defer { isCommittingCellEdit = false }
@@ -42,6 +49,7 @@ extension TableViewCoordinator {
                 delta = tableRows.edit(row: storageRow, column: columnIndex, value: typedNewValue)
             }
         }
+        cellCommitLogger.debug("commitTypedCellEdit - about to call delegate.dataGridDidEditCell, delegate=\(self.delegate == nil ? "nil" : "present", privacy: .public)")
         delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: typedNewValue.asText)
         invalidateDisplayCache()
         visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)

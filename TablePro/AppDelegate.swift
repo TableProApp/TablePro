@@ -18,7 +18,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - URL & File Open
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        _ = InspectorDocumentController()
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
+        Logger(subsystem: "com.TablePro", category: "CSVInspector")
+            .debug("AppDelegate.application(_:open:) urls=\(urls.map(\.lastPathComponent).joined(separator: ","), privacy: .public)")
         AppLaunchCoordinator.shared.handleOpenURLs(urls)
     }
 
@@ -187,14 +193,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
 
+        let csvLogger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
         if AppLaunchCoordinator.isMainWindow(window) {
             let remaining = NSApp.windows.filter {
                 $0 !== window && AppLaunchCoordinator.isMainWindow($0) && $0.isVisible
             }.count
+            csvLogger.debug("AppDelegate.windowWillClose - main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing, remaining main windows=\(remaining, privacy: .public)")
             if remaining == 0 {
                 AppEvents.shared.mainWindowWillClose.send(())
                 WindowOpener.shared.openWelcome()
             }
+        } else {
+            csvLogger.debug("AppDelegate.windowWillClose - non-main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing")
         }
     }
 

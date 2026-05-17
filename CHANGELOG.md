@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Inline dropdown picker when editing ENUM and SET columns, covering MySQL, MariaDB, PostgreSQL, ClickHouse, DuckDB, and MongoDB JSON-schema enums (#1283)
 - Filter rows show an enum dropdown for `=` and `!=` operators on enum columns (#1283)
+- CSV/TSV inspector: open files from Finder or File > Open, edit cells, multi-condition filter (Cmd+F), multi-column sort (shift-click headers), add/remove/rename columns with type override, copy/paste rows as TSV, undo/redo, auto-reload on external changes. Large files stream from disk without loading into memory. (#1259)
+- iOS: SQL Server (MSSQL) connections via FreeTDS over TDS 7.4. Uses the shared `SSLConfiguration` model from connection settings. Supports connect, query, streaming results, schema browsing (tables, columns, indexes, foreign keys), database and schema switching, and explicit transactions.
+- iOS: data browser, search, filter, and pagination now render correct SQL Server syntax (bracket-quoted identifiers, `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` pagination, `SELECT TOP 1` for cell value fetch).
+- iOS: Settings > Sync now shows last sync time, a Sync Now button, and a Refresh from iCloud action that re-downloads every connection, group, and tag when items are missing on this device but visible on another.
 
 ### Changed
 

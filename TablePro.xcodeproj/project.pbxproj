@@ -41,6 +41,8 @@
 		5A86F000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86F000100000000 /* SQLImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A87A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5ABBED742FB55E1400A78382 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5ABBED802FB55E1400A78382 /* CSVInspectorPlugin.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5ABQR00100000000000000A1 /* BigQueryAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A1 /* BigQueryAuth.swift */; };
 		5ABQR00100000000000000A2 /* BigQueryConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A2 /* BigQueryConnection.swift */; };
 		5ABQR00100000000000000A3 /* BigQueryPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A3 /* BigQueryPlugin.swift */; };
@@ -187,6 +189,13 @@
 			remoteGlobalIDString = 5A86F000000000000;
 			remoteInfo = SQLImport;
 		};
+		5ABBED7E2FB55E1400A78382 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5ABBED712FB55E1400A78382;
+			remoteInfo = CSVInspectorPlugin;
+		};
 		5ABCC5AB2F43856700EAF3FC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
@@ -248,6 +257,7 @@
 				5A86D000D00000000 /* XLSXExport.tableplugin in Copy Plug-Ins (12 items) */,
 				5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins (12 items) */,
 				5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins (12 items) */,
+				5ABBED802FB55E1400A78382 /* CSVInspectorPlugin.tableplugin in Copy Plug-Ins (12 items) */,
 			);
 			name = "Copy Plug-Ins (12 items)";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -286,6 +296,7 @@
 		5A86E000100000000 /* MQLExport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MQLExport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A86F000100000000 /* SQLImport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLImport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A87A000100000000 /* CassandraDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassandraDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVInspectorPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABQR00200000000000000A1 /* BigQueryAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryAuth.swift; sourceTree = "<group>"; };
 		5ABQR00200000000000000A2 /* BigQueryConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryConnection.swift; sourceTree = "<group>"; };
@@ -468,6 +479,13 @@
 			);
 			target = 5A87A000000000000 /* CassandraDriver */;
 		};
+		5ABBED7B2FB55E1500A78382 /* Exceptions for "Plugins/CSVInspectorPlugin" folder in "CSVInspectorPlugin" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */;
+		};
 		5AE4F4802F6BC0640097AC5B /* Exceptions for "Plugins/CloudflareD1DriverPlugin" folder in "CloudflareD1DriverPlugin" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -644,6 +662,14 @@
 				5A87A000900000000 /* Exceptions for "Plugins/CassandraDriverPlugin" folder in "CassandraDriver" target */,
 			);
 			path = Plugins/CassandraDriverPlugin;
+			sourceTree = "<group>";
+		};
+		5ABBED7C2FB55E1400A78382 /* Plugins/CSVInspectorPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5ABBED7B2FB55E1500A78382 /* Exceptions for "Plugins/CSVInspectorPlugin" folder in "CSVInspectorPlugin" target */,
+			);
+			path = Plugins/CSVInspectorPlugin;
 			sourceTree = "<group>";
 		};
 		5ABCC5A82F43856700EAF3FC /* TableProTests */ = {
@@ -829,6 +855,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ABBED732FB55E1400A78382 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5ABBED742FB55E1400A78382 /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5ABCC5A42F43856700EAF3FC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -900,6 +934,7 @@
 				5A869000500000000 /* Plugins/DuckDBDriverPlugin */,
 				5A87A000500000000 /* Plugins/CassandraDriverPlugin */,
 				5A86A000500000000 /* Plugins/CSVExportPlugin */,
+				5ABBED7C2FB55E1400A78382 /* Plugins/CSVInspectorPlugin */,
 				5A86B000500000000 /* Plugins/JSONExportPlugin */,
 				5A86C000500000000 /* Plugins/SQLExportPlugin */,
 				5A86D000500000000 /* Plugins/XLSXExportPlugin */,
@@ -941,6 +976,7 @@
 				5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */,
 				5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */,
 				5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */,
+				5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1037,6 +1073,7 @@
 				5A86D000C00000000 /* PBXTargetDependency */,
 				5A86E000C00000000 /* PBXTargetDependency */,
 				5A86F000C00000000 /* PBXTargetDependency */,
+				5ABBED7F2FB55E1400A78382 /* PBXTargetDependency */,
 				5ADDB00000000000000000C1 /* PBXTargetDependency */,
 				5ABQR00000000000000000C1 /* PBXTargetDependency */,
 			);
@@ -1449,6 +1486,26 @@
 			productReference = 5A87A000100000000 /* CassandraDriver.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
+		5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5ABBED762FB55E1400A78382 /* Build configuration list for PBXNativeTarget "CSVInspectorPlugin" */;
+			buildPhases = (
+				5ABBED722FB55E1400A78382 /* Sources */,
+				5ABBED732FB55E1400A78382 /* Frameworks */,
+				5ABBED752FB55E1400A78382 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5ABBED7C2FB55E1400A78382 /* Plugins/CSVInspectorPlugin */,
+			);
+			name = CSVInspectorPlugin;
+			productName = CSVInspectorPlugin;
+			productReference = 5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
 		5ABCC5A62F43856700EAF3FC /* TableProTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5ABCC5AD2F43856700EAF3FC /* Build configuration list for PBXNativeTarget "TableProTests" */;
@@ -1678,6 +1735,7 @@
 				5ABQR00600000000000000B0 /* BigQueryDriverPlugin */,
 				5A3BE6F72F97DA8100611C1F /* LibSQLDriverPlugin */,
 				5A32BBFF2F9D5F1300BAEB5F /* mcp-server */,
+				5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */,
 			);
 		};
 /* End PBXProject section */
@@ -1810,6 +1868,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A87A000400000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5ABBED752FB55E1400A78382 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1994,6 +2059,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ABBED722FB55E1400A78382 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5ABCC5A32F43856700EAF3FC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2132,6 +2204,11 @@
 			isa = PBXTargetDependency;
 			target = 5A86F000000000000 /* SQLImport */;
 			targetProxy = 5A86F000B00000000 /* PBXContainerItemProxy */;
+		};
+		5ABBED7F2FB55E1400A78382 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5ABBED712FB55E1400A78382 /* CSVInspectorPlugin */;
+			targetProxy = 5ABBED7E2FB55E1400A78382 /* PBXContainerItemProxy */;
 		};
 		5ABCC5AC2F43856700EAF3FC /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -3537,6 +3614,52 @@
 			};
 			name = Release;
 		};
+		5ABBED772FB55E1400A78382 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/CSVInspectorPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).CSVInspectorPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.CSVInspectorPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5ABBED782FB55E1400A78382 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/CSVInspectorPlugin/Info.plist;
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).CSVInspectorPlugin";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.CSVInspectorPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
 		5ABCC5AE2F43856700EAF3FC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -3972,6 +4095,15 @@
 			buildConfigurations = (
 				5A87A000600000000 /* Debug */,
 				5A87A000700000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5ABBED762FB55E1400A78382 /* Build configuration list for PBXNativeTarget "CSVInspectorPlugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5ABBED772FB55E1400A78382 /* Debug */,
+				5ABBED782FB55E1400A78382 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

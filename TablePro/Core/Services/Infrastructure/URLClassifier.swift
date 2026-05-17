@@ -31,6 +31,9 @@ internal enum URLClassifier {
         if ext == "sql" {
             return .success(.openSQLFile(url))
         }
+        if PluginManager.shared.allInspectorFileExtensions.contains(ext) {
+            return .success(.openInspectorFile(url))
+        }
         if let dbType = PluginManager.shared.allRegisteredFileExtensions[ext] {
             return .success(.openDatabaseFile(url, dbType))
         }
