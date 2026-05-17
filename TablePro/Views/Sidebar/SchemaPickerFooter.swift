@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import os
 import SwiftUI
 import TableProPluginKit
@@ -54,7 +53,6 @@ struct SchemaPickerFooter: View {
         Task {
             do {
                 try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
-                AppEvents.shared.currentSchemaChanged.send(connectionId)
             } catch {
                 schemaPickerLogger.error("Schema switch to \(schema, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
             }

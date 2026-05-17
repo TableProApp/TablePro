@@ -20692,6 +20692,7 @@
       }
     },
     "Failed to load schemas" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27501,9 +27502,6 @@
         }
       }
     },
-    "Loading schemas…" : {
-
-    },
     "Loading tables..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -31283,12 +31281,6 @@
         }
       }
     },
-    "No schema" : {
-
-    },
-    "No schemas" : {
-
-    },
     "No schemas found" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -31334,9 +31326,6 @@
           }
         }
       }
-    },
-    "No schemas match “%@”" : {
-
     },
     "No selection" : {
       "localizations" : {
@@ -40745,9 +40734,6 @@
     "Search saved query history. Returns matching entries with execution time, row count, and outcome." : {
 
     },
-    "Search schemas" : {
-
-    },
     "Search schemas..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -41366,6 +41352,9 @@
           }
         }
       }
+    },
+    "Select schema" : {
+
     },
     "Select SQL File..." : {
       "extractionState" : "stale",

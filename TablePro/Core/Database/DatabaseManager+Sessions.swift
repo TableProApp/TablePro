@@ -272,6 +272,7 @@ extension DatabaseManager {
             session.currentSchema = schema
         }
         appSettingsStorage.saveLastSchema(schema, for: connectionId)
+        AppEvents.shared.currentSchemaChanged.send(connectionId)
     }
 
     func switchToSession(_ sessionId: UUID) {
