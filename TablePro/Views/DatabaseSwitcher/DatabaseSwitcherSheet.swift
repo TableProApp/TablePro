@@ -43,9 +43,7 @@ struct DatabaseSwitcherSheet: View {
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,
-                currentSchema: nil,
-                databaseType: databaseType,
-                initialMode: .database
+                databaseType: databaseType
             ))
     }
 

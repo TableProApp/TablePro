@@ -171,9 +171,7 @@ struct MainContentView: View {
             let viewModel = DatabaseSwitcherViewModel(
                 connectionId: connection.id,
                 currentDatabase: nil,
-                currentSchema: nil,
-                databaseType: connection.type,
-                initialMode: .database
+                databaseType: connection.type
             )
             CreateDatabaseSheet(
                 databaseType: connection.type,

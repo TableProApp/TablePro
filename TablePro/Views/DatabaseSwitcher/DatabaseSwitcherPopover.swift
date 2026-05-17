@@ -2,9 +2,6 @@ import AppKit
 import SwiftUI
 import TableProPluginKit
 
-/// Bridges the toolbar's weak coordinator reference to a concrete `DatabaseSwitcherPopover`.
-/// Resolves the current database/schema at presentation time so the popover always reflects
-/// the active session, even after the user switches between tabs.
 struct DatabaseSwitcherPopoverHost: View {
     weak var coordinator: MainContentCoordinator?
 
@@ -13,21 +10,14 @@ struct DatabaseSwitcherPopoverHost: View {
             let connection = coordinator.connection
             let session = DatabaseManager.shared.session(for: connection.id)
             let activeDatabase = session?.currentDatabase ?? connection.database
-            let activeSchema = session?.currentSchema
 
             DatabaseSwitcherPopover(
                 currentDatabase: activeDatabase,
-                currentSchema: activeSchema,
                 databaseType: connection.type,
                 connectionId: connection.id,
                 onSelect: { [weak coordinator] database in
                     Task { await coordinator?.switchDatabase(to: database) }
                 },
-                onSelectSchema: PluginManager.shared.supportsSchemaSwitching(for: connection.type)
-                    ? { [weak coordinator] schema in
-                        Task { await coordinator?.switchSchema(to: schema) }
-                    }
-                    : nil,
                 onRequestCreate: { [weak coordinator] in
                     coordinator?.activeSheet = .createDatabase
                 },
@@ -43,11 +33,9 @@ struct DatabaseSwitcherPopoverHost: View {
 
 struct DatabaseSwitcherPopover: View {
     let currentDatabase: String?
-    let currentSchema: String?
     let databaseType: DatabaseType
     let connectionId: UUID
     let onSelect: (String) -> Void
-    let onSelectSchema: ((String) -> Void)?
     let onRequestCreate: () -> Void
     let onRequestDrop: (String) -> Void
 
@@ -62,58 +50,40 @@ struct DatabaseSwitcherPopover: View {
 
     @FocusState private var focus: FocusField?
 
-    /// Fixed popover dimensions. Matches the native pattern of Emoji Picker,
-    /// Font Panel, and Color Picker — popovers with tabs and search keep stable
-    /// chrome and a stable frame so switching tabs doesn't reflow the surface.
     private static let popoverWidth: CGFloat = 320
     private static let popoverHeight: CGFloat = 360
 
-    private var isSchemaMode: Bool { viewModel.isSchemaMode }
-    private var activeName: String? { isSchemaMode ? currentSchema : currentDatabase }
     private var supportsDropDatabase: Bool {
-        !isSchemaMode && PluginManager.shared.supportsDropDatabase(for: databaseType)
-    }
-    private var supportsSchemaSwitching: Bool {
-        PluginManager.shared.supportsSchemaSwitching(for: databaseType)
+        PluginManager.shared.supportsDropDatabase(for: databaseType)
     }
     private var showsCreateRow: Bool {
-        !isSchemaMode && supportsCreateDatabase
+        supportsCreateDatabase
     }
 
     init(
         currentDatabase: String?,
-        currentSchema: String?,
         databaseType: DatabaseType,
         connectionId: UUID,
         onSelect: @escaping (String) -> Void,
-        onSelectSchema: ((String) -> Void)? = nil,
         onRequestCreate: @escaping () -> Void,
         onRequestDrop: @escaping (String) -> Void
     ) {
         self.currentDatabase = currentDatabase
-        self.currentSchema = currentSchema
         self.databaseType = databaseType
         self.connectionId = connectionId
         self.onSelect = onSelect
-        self.onSelectSchema = onSelectSchema
         self.onRequestCreate = onRequestCreate
         self.onRequestDrop = onRequestDrop
         self._viewModel = State(
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,
-                currentSchema: currentSchema,
                 databaseType: databaseType
             ))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if supportsSchemaSwitching {
-                modePicker
-                Divider()
-            }
-
             searchField
 
             Divider()
@@ -143,32 +113,12 @@ struct DatabaseSwitcherPopover: View {
         }
     }
 
-    /// Hidden ⌘R binding. Native popovers (Mail mailbox switcher, Safari tab group
-    /// picker) don't show a visible refresh button — they auto-refresh on open via
-    /// `.task`. We keep the shortcut for power users.
     private var refreshShortcut: some View {
         Button("") {
             Task { await viewModel.refreshDatabases() }
         }
         .keyboardShortcut("r", modifiers: .command)
         .hidden()
-    }
-
-    private var modePicker: some View {
-        Picker("", selection: $viewModel.mode) {
-            Text(String(localized: "Databases"))
-                .tag(DatabaseSwitcherViewModel.Mode.database)
-            Text(String(localized: "Schemas"))
-                .tag(DatabaseSwitcherViewModel.Mode.schema)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.small)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .onChange(of: viewModel.mode) {
-            Task { await viewModel.fetchDatabases() }
-        }
     }
 
     private var searchField: some View {
@@ -181,7 +131,7 @@ struct DatabaseSwitcherPopover: View {
             TextField(
                 "",
                 text: $viewModel.searchText,
-                prompt: Text(searchPlaceholder)
+                prompt: Text(String(localized: "Search databases"))
                     .foregroundStyle(.tertiary)
             )
             .textFieldStyle(.plain)
@@ -229,12 +179,6 @@ struct DatabaseSwitcherPopover: View {
         .onAppear { focus = .search }
     }
 
-    private var searchPlaceholder: String {
-        isSchemaMode
-            ? String(localized: "Search schemas")
-            : String(localized: "Search databases")
-    }
-
     @ViewBuilder
     private var content: some View {
         if viewModel.isLoading {
@@ -278,7 +222,7 @@ struct DatabaseSwitcherPopover: View {
     }
 
     private func row(for database: DatabaseMetadata) -> some View {
-        let isCurrent = database.name == activeName
+        let isCurrent = database.name == currentDatabase
         return HStack(spacing: 8) {
             Image(systemName: "checkmark")
                 .font(.body.weight(.semibold))
@@ -286,7 +230,7 @@ struct DatabaseSwitcherPopover: View {
                 .opacity(isCurrent ? 1 : 0)
                 .frame(width: 14)
 
-            Image(systemName: rowIcon(for: database))
+            Image(systemName: database.icon)
                 .font(.body)
                 .foregroundStyle(database.isSystemDatabase ? Color.secondary : Color.accentColor)
                 .frame(width: 16)
@@ -306,20 +250,13 @@ struct DatabaseSwitcherPopover: View {
         .tag(database.name)
     }
 
-    private func rowIcon(for database: DatabaseMetadata) -> String {
-        if isSchemaMode {
-            return "folder.fill"
-        }
-        return database.icon
-    }
-
     @ViewBuilder
     private func contextMenuItems(for selection: Set<String>) -> some View {
         if supportsDropDatabase,
            let name = selection.first,
            let database = viewModel.filteredDatabases.first(where: { $0.name == name }),
            !database.isSystemDatabase,
-           database.name != activeName {
+           database.name != currentDatabase {
             Button(role: .destructive) {
                 dismiss()
                 onRequestDrop(database.name)
@@ -332,9 +269,7 @@ struct DatabaseSwitcherPopover: View {
     private var loadingView: some View {
         VStack(spacing: 10) {
             ProgressView().controlSize(.small)
-            Text(isSchemaMode
-                ? String(localized: "Loading schemas…")
-                : String(localized: "Loading databases…"))
+            Text(String(localized: "Loading databases…"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -346,9 +281,7 @@ struct DatabaseSwitcherPopover: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.title3)
                 .foregroundStyle(Color(nsColor: .systemOrange))
-            Text(isSchemaMode
-                ? String(localized: "Failed to load schemas")
-                : String(localized: "Failed to load databases"))
+            Text(String(localized: "Failed to load databases"))
                 .font(.callout.weight(.medium))
             Text(message)
                 .font(.caption)
@@ -387,14 +320,10 @@ struct DatabaseSwitcherPopover: View {
                 .font(.title3)
                 .foregroundStyle(.secondary)
             if viewModel.searchText.isEmpty {
-                Text(isSchemaMode
-                    ? String(localized: "No schemas")
-                    : String(localized: "No databases"))
+                Text(String(localized: "No databases"))
                     .font(.callout.weight(.medium))
             } else {
-                Text(isSchemaMode
-                    ? String(format: String(localized: "No schemas match “%@”"), viewModel.searchText)
-                    : String(format: String(localized: "No databases match “%@”"), viewModel.searchText))
+                Text(String(format: String(localized: "No databases match “%@”"), viewModel.searchText))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -424,15 +353,11 @@ struct DatabaseSwitcherPopover: View {
 
     private func commitSelection() {
         guard let name = viewModel.selectedDatabase else { return }
-        if name == activeName {
+        if name == currentDatabase {
             dismiss()
             return
         }
-        if isSchemaMode, supportsSchemaSwitching, let onSelectSchema {
-            onSelectSchema(name)
-        } else {
-            onSelect(name)
-        }
+        onSelect(name)
         dismiss()
     }
 
