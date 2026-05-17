@@ -109,6 +109,38 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.defaultSSLMode ?? .disabled
     }
 
+    var sslPaneTooltip: String {
+        switch rawValue {
+        case "PostgreSQL", "Redshift", "CockroachDB":
+            return String(localized: """
+                Preferred tries TLS first, falls back to plain. Matches psql and DataGrip defaults. \
+                Required by AWS RDS, Cloud SQL, Heroku, Supabase, Neon.
+                """)
+        case "MySQL", "MariaDB":
+            return String(localized: """
+                Preferred performs a 2-pass connect: tries TLS first, falls back to plain only on \
+                SSL handshake errors. Required by Cloud SQL and Azure MySQL.
+                """)
+        case "SQL Server":
+            return String(localized: "Preferred requests TLS; the server decides. Required by SQL Server 2022 and Azure SQL Database.")
+        case "MongoDB":
+            return String(localized: "MongoDB driver has no TLS fallback. Preferred and Required both force TLS. Use Required for MongoDB Atlas and other hosted instances.")
+        case "Redis":
+            return String(localized: """
+                Redis driver has no TLS fallback. Preferred and Required both force TLS. \
+                Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints.
+                """)
+        case "Oracle":
+            return String(localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database.")
+        case "Cassandra", "ScyllaDB":
+            return String(localized: "Use Required for AstraDB, DataStax Astra, and other hosted Cassandra deployments.")
+        case "ClickHouse":
+            return String(localized: "Use Required for ClickHouse Cloud and other managed instances.")
+        default:
+            return ""
+        }
+    }
+
     var explainVariants: [ExplainVariant] {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.explainVariants ?? []
     }

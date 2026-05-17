@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle SSL mode is now honored: Required, Verify CA, and Verify Identity wire through to OracleNIO TCPS (was silently ignored)
 - Cassandra SSL mode is now honored via the standard SSL pane (was silently ignored because the plugin read from a hidden field that was never set)
 - MySQL and MariaDB Preferred SSL mode now performs a real 2-pass connect: tries TLS first, falls back to plaintext only on SSL handshake errors (CR_SSL_CONNECTION_ERROR, CR_SERVER_HANDSHAKE_ERR, ER_HANDSHAKE_ERROR)
+- SSL pane shows per-engine guidance explaining how that driver handles Preferred, when TLS is required by hosted providers, and any driver-specific quirks
 
 ### Fixed
 

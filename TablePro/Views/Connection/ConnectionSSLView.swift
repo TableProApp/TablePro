@@ -27,11 +27,16 @@ struct ConnectionSSLView: View {
                     }
                 }
             } footer: {
-                if sslMode != .disabled {
-                    Text(sslMode.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    if !databaseType.sslPaneTooltip.isEmpty {
+                        Text(databaseType.sslPaneTooltip)
+                    }
+                    if sslMode != .disabled {
+                        Text(sslMode.description)
+                    }
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if sslMode != .disabled {
