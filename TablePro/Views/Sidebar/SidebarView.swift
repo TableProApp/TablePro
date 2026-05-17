@@ -5,8 +5,11 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
+import os
 import SwiftUI
 import TableProPluginKit
+
+private let logger = Logger(subsystem: "com.TablePro", category: "SidebarView")
 
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
@@ -318,7 +321,21 @@ struct SidebarView: View {
     }
 
     private func handleTableOpen(_ table: TableInfo) {
-        onDoubleClick?(table)
+        guard let targetSchema = table.schema,
+              let switchable = DatabaseManager.shared.driver(for: connectionId) as? SchemaSwitchable,
+              let currentSchema = switchable.currentSchema,
+              targetSchema != currentSchema else {
+            onDoubleClick?(table)
+            return
+        }
+        Task {
+            do {
+                try await switchable.switchSchema(to: targetSchema)
+            } catch {
+                logger.warning("Schema switch to \(targetSchema, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            }
+            onDoubleClick?(table)
+        }
     }
 
     // MARK: - Section View
