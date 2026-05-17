@@ -96,14 +96,6 @@ final class AppSettingsManager {
         }
     }
 
-    var sidebar: SidebarSettings {
-        didSet {
-            storage.saveSidebar(sidebar)
-            appEvents.sidebarSettingsChanged.send(())
-            syncTracker.markDirty(.settings, id: "sidebar")
-        }
-    }
-
     var keyboard: KeyboardSettings {
         didSet {
             storage.saveKeyboard(keyboard)
@@ -211,7 +203,6 @@ final class AppSettingsManager {
         self.dataGrid = storage.loadDataGrid()
         self.history = storage.loadHistory()
         self.tabs = storage.loadTabs()
-        self.sidebar = storage.loadSidebar()
         self.keyboard = storage.loadKeyboard()
         self.ai = Self.migrateAI(storage.loadAI())
         self.sync = storage.loadSync()

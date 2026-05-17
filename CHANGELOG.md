@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Show schemas as collapsible sections in the Tables sidebar (#1296)
+- Schema picker at the bottom of the Tables sidebar to switch the active schema, matching the database switcher pattern (#1296)
 - Inline dropdown picker when editing ENUM and SET columns, covering MySQL, MariaDB, PostgreSQL, ClickHouse, DuckDB, and MongoDB JSON-schema enums (#1283)
 - Filter rows show an enum dropdown for `=` and `!=` operators on enum columns (#1283)
 

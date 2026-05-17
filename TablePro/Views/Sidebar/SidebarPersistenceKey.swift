@@ -19,8 +19,4 @@ enum SidebarPersistenceKey {
     static func expanded(connectionId: UUID, kind: SidebarObjectKind) -> String {
         "sidebar.\(connectionId.uuidString).\(kind.rawValue).expanded"
     }
-
-    static func schemaExpanded(connectionId: UUID, schemaName: String) -> String {
-        "sidebar.\(connectionId.uuidString).schema.\(schemaName).expanded"
-    }
 }

@@ -281,23 +281,6 @@ struct DataGridSettings: Codable, Equatable {
     }
 }
 
-// MARK: - Sidebar Settings
-
-struct SidebarSettings: Codable, Equatable {
-    var displaySchemas: Bool
-
-    static let `default` = SidebarSettings(displaySchemas: false)
-
-    init(displaySchemas: Bool = false) {
-        self.displaySchemas = displaySchemas
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        displaySchemas = try container.decodeIfPresent(Bool.self, forKey: .displaySchemas) ?? false
-    }
-}
-
 // MARK: - History Settings
 
 /// History settings

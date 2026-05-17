@@ -22,16 +22,14 @@ final class SchemaService {
     @ObservationIgnored private let procedureDedup = OnceTask<UUID, [RoutineInfo]>()
     @ObservationIgnored private let functionDedup = OnceTask<UUID, [RoutineInfo]>()
     @ObservationIgnored private let schemasDedup = OnceTask<UUID, [String]>()
-    @ObservationIgnored private var settingsCancellable: AnyCancellable?
-    @ObservationIgnored private var lastDisplaySchemas: Bool = false
+    @ObservationIgnored private var schemaChangeCancellable: AnyCancellable?
     @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
 
     init() {
-        lastDisplaySchemas = AppSettingsManager.shared.sidebar.displaySchemas
-        settingsCancellable = AppEvents.shared.sidebarSettingsChanged
-            .sink { [weak self] in
+        schemaChangeCancellable = AppEvents.shared.currentSchemaChanged
+            .sink { [weak self] connectionId in
                 Task { @MainActor [weak self] in
-                    self?.handleSidebarSettingsChange()
+                    await self?.handleSchemaSwitch(connectionId: connectionId)
                 }
             }
     }
@@ -91,13 +89,9 @@ final class SchemaService {
     }
 
     func reloadProcedures(connectionId: UUID, driver: DatabaseDriver) async {
-        let visibleSchemas = visibleSchemasForGroupedReload(connectionId: connectionId, driver: driver)
         do {
             let routines = try await procedureDedup.execute(key: connectionId) {
-                if let schemas = visibleSchemas {
-                    return try await Self.fetchRoutinesAcrossSchemas(driver: driver, schemas: schemas, kind: .procedure)
-                }
-                return try await driver.fetchProcedures(schema: nil)
+                try await driver.fetchProcedures(schema: nil)
             }
             procedures[connectionId] = routines
         } catch is CancellationError {
@@ -110,13 +104,9 @@ final class SchemaService {
     }
 
     func reloadFunctions(connectionId: UUID, driver: DatabaseDriver) async {
-        let visibleSchemas = visibleSchemasForGroupedReload(connectionId: connectionId, driver: driver)
         do {
             let routines = try await functionDedup.execute(key: connectionId) {
-                if let schemas = visibleSchemas {
-                    return try await Self.fetchRoutinesAcrossSchemas(driver: driver, schemas: schemas, kind: .function)
-                }
-                return try await driver.fetchFunctions(schema: nil)
+                try await driver.fetchFunctions(schema: nil)
             }
             functions[connectionId] = routines
         } catch is CancellationError {
@@ -147,22 +137,11 @@ final class SchemaService {
     ) async {
         states[connectionId] = .loading
 
-        let wantsGrouping = AppSettingsManager.shared.sidebar.displaySchemas
-            && PluginManager.shared.supportsSchemaSwitching(for: connection.type)
-
-        if wantsGrouping {
-            await runSchemaGroupedLoad(connectionId: connectionId, driver: driver, connection: connection)
+        if PluginManager.shared.supportsSchemaSwitching(for: connection.type) {
+            Task { [weak self] in await self?.loadSchemaList(connectionId: connectionId, driver: driver) }
         } else {
-            await runFlatLoad(connectionId: connectionId, driver: driver, connection: connection)
+            schemasInOrder.removeValue(forKey: connectionId)
         }
-    }
-
-    private func runFlatLoad(
-        connectionId: UUID,
-        driver: DatabaseDriver,
-        connection: DatabaseConnection
-    ) async {
-        schemasInOrder.removeValue(forKey: connectionId)
 
         async let tablesTask: [TableInfo] = loadDedup.execute(key: connectionId) {
             try await driver.fetchTables()
@@ -199,102 +178,19 @@ final class SchemaService {
         }
     }
 
-    private func runSchemaGroupedLoad(
-        connectionId: UUID,
-        driver: DatabaseDriver,
-        connection: DatabaseConnection
-    ) async {
-        let dbType = connection.type
-        let allSchemas: [String]
+    private func loadSchemaList(connectionId: UUID, driver: DatabaseDriver) async {
         do {
-            allSchemas = try await schemasDedup.execute(key: connectionId) {
+            let allSchemas = try await schemasDedup.execute(key: connectionId) {
                 try await driver.fetchSchemas()
             }
+            schemasInOrder[connectionId] = allSchemas
         } catch is CancellationError {
             return
         } catch {
             Self.logger.warning(
-                "[schema] fetchSchemas failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public); falling back to flat load"
+                "[schema] fetchSchemas failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            await runFlatLoad(connectionId: connectionId, driver: driver, connection: connection)
-            return
         }
-
-        let systemSchemas = Set(PluginManager.shared.systemSchemaNames(for: dbType))
-        let visibleSchemas = allSchemas.filter { !systemSchemas.contains($0) }
-        schemasInOrder[connectionId] = visibleSchemas
-
-        async let tablesTask: [TableInfo] = loadDedup.execute(key: connectionId) {
-            try await Self.fetchTablesAcrossSchemas(driver: driver, schemas: visibleSchemas)
-        }
-        async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
-            connectionId: connectionId,
-            kind: .procedure,
-            dedup: procedureDedup,
-            fetch: { try await Self.fetchRoutinesAcrossSchemas(driver: driver, schemas: visibleSchemas, kind: .procedure) }
-        )
-        async let functionsTask: [RoutineInfo] = Self.fetchRoutinesSafely(
-            connectionId: connectionId,
-            kind: .function,
-            dedup: functionDedup,
-            fetch: { try await Self.fetchRoutinesAcrossSchemas(driver: driver, schemas: visibleSchemas, kind: .function) }
-        )
-
-        let loadedProcedures = await proceduresTask
-        let loadedFunctions = await functionsTask
-
-        do {
-            let tables = try await tablesTask
-            states[connectionId] = .loaded(tables)
-            procedures[connectionId] = loadedProcedures
-            functions[connectionId] = loadedFunctions
-            lastLoadDates[connectionId] = Date()
-        } catch is CancellationError {
-            return
-        } catch {
-            Self.logger.warning(
-                "[schema] grouped load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
-            )
-            states[connectionId] = .failed(error.localizedDescription)
-        }
-    }
-
-    private func visibleSchemasForGroupedReload(connectionId: UUID, driver: DatabaseDriver) -> [String]? {
-        guard AppSettingsManager.shared.sidebar.displaySchemas else { return nil }
-        let schemas = schemasInOrder[connectionId] ?? []
-        guard !schemas.isEmpty else { return nil }
-        return schemas
-    }
-
-    private static func fetchTablesAcrossSchemas(
-        driver: DatabaseDriver,
-        schemas: [String]
-    ) async throws -> [TableInfo] {
-        var aggregated: [TableInfo] = []
-        for schema in schemas {
-            try Task.checkCancellation()
-            let tables = try await driver.fetchTables(schema: schema)
-            aggregated.append(contentsOf: tables)
-        }
-        return aggregated
-    }
-
-    private static func fetchRoutinesAcrossSchemas(
-        driver: DatabaseDriver,
-        schemas: [String],
-        kind: RoutineInfo.Kind
-    ) async throws -> [RoutineInfo] {
-        var aggregated: [RoutineInfo] = []
-        for schema in schemas {
-            try Task.checkCancellation()
-            let routines: [RoutineInfo]
-            switch kind {
-            case .procedure: routines = try await driver.fetchProcedures(schema: schema)
-            case .function:  routines = try await driver.fetchFunctions(schema: schema)
-            }
-            aggregated.append(contentsOf: routines)
-        }
-        return aggregated
     }
 
     private static func fetchRoutinesSafely(
@@ -315,20 +211,10 @@ final class SchemaService {
         }
     }
 
-    private func handleSidebarSettingsChange() {
-        let now = AppSettingsManager.shared.sidebar.displaySchemas
-        guard now != lastDisplaySchemas else { return }
-        lastDisplaySchemas = now
-
-        let sessions = DatabaseManager.shared.activeSessions
-        for (connectionId, session) in sessions {
-            guard let driver = session.driver else { continue }
-            let connection = session.connection
-            Task { [weak self] in
-                guard let self else { return }
-                await self.invalidate(connectionId: connectionId)
-                await self.reload(connectionId: connectionId, driver: driver, connection: connection)
-            }
-        }
+    private func handleSchemaSwitch(connectionId: UUID) async {
+        guard let session = DatabaseManager.shared.activeSessions[connectionId],
+              let driver = session.driver else { return }
+        await invalidate(connectionId: connectionId)
+        await reload(connectionId: connectionId, driver: driver, connection: session.connection)
     }
 }

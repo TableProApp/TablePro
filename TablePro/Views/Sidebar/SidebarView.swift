@@ -32,21 +32,14 @@ struct SidebarView: View {
         viewModel.capabilities(for: connectionId)
     }
 
-    private var isSchemaGrouped: Bool {
-        AppSettingsManager.shared.sidebar.displaySchemas
-            && !schemaService.schemas(for: connectionId).isEmpty
-    }
-
     private var hasAnyMatch: Bool {
-        if isSchemaGrouped {
-            return schemaService.schemas(for: connectionId).contains { schema in
-                !viewModel.filteredTables(in: schema, from: tables).isEmpty
-                    || !viewModel.filteredRoutines(in: schema, from: routines).isEmpty
-            }
-        }
-        return SidebarObjectKind.allCases.contains { kind in
+        SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0
         }
+    }
+
+    private var supportsSchemaFooter: Bool {
+        PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType)
     }
 
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
@@ -97,7 +90,13 @@ struct SidebarView: View {
         Group {
             switch sidebarState.selectedSidebarTab {
             case .tables:
-                tablesContent
+                VStack(spacing: 0) {
+                    tablesContent
+                    if supportsSchemaFooter {
+                        Divider()
+                        SchemaPickerFooter(connectionId: connectionId, databaseType: viewModel.databaseType)
+                    }
+                }
             case .favorites:
                 if let coordinator {
                     FavoritesTabView(
@@ -196,16 +195,7 @@ struct SidebarView: View {
 
     // MARK: - Table List
 
-    @ViewBuilder
     private var tableList: some View {
-        if isSchemaGrouped {
-            schemaGroupedTableList
-        } else {
-            kindGroupedTableList
-        }
-    }
-
-    private var kindGroupedTableList: some View {
         List(selection: selectedTablesBinding) {
             ForEach(SidebarObjectKind.allCases, id: \.self) { kind in
                 sectionView(for: kind)
@@ -240,81 +230,6 @@ struct SidebarView: View {
         .onExitCommand {
             sidebarState.selectedTables.removeAll()
         }
-    }
-
-    private var schemaGroupedTableList: some View {
-        List(selection: selectedTablesBinding) {
-            ForEach(schemaService.schemas(for: connectionId), id: \.self) { schema in
-                schemaSection(for: schema)
-            }
-        }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .contextMenu(forSelectionType: TableInfo.self) { _ in
-            EmptyView()
-        } primaryAction: { selection in
-            guard let table = selection.first else { return }
-            onDoubleClick?(table)
-        }
-        .onExitCommand {
-            sidebarState.selectedTables.removeAll()
-        }
-    }
-
-    @ViewBuilder
-    private func schemaSection(for schema: String) -> some View {
-        let schemaTables = viewModel.filteredTables(in: schema, from: tables)
-        let schemaRoutines = viewModel.filteredRoutines(in: schema, from: routines)
-        let hasContent = !schemaTables.isEmpty || !schemaRoutines.isEmpty
-        if hasContent {
-            Section(isExpanded: schemaExpandedBinding(for: schema, hasMatches: hasContent)) {
-                ForEach(schemaTables) { table in
-                    TableRow(
-                        table: table,
-                        isPendingTruncate: pendingTruncates.contains(table.name),
-                        isPendingDelete: pendingDeletes.contains(table.name)
-                    )
-                    .tag(table)
-                    .contextMenu {
-                        SidebarContextMenu(
-                            clickedTable: table,
-                            selectedTables: sidebarState.selectedTables,
-                            isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                            onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                            onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                            coordinator: coordinator
-                        )
-                    }
-                }
-                ForEach(schemaRoutines) { routine in
-                    RoutineRowView(routine: routine)
-                        .tag(routine)
-                        .contextMenu {
-                            RoutineContextMenu(routine: routine) { selected in
-                                coordinator?.showRoutineDDL(selected)
-                            }
-                        }
-                }
-            } header: {
-                Text(schema)
-                    .contextMenu {
-                        Button(String(localized: "Refresh")) {
-                            Task {
-                                await coordinator?.refreshTables()
-                                await coordinator?.refreshProcedures()
-                                await coordinator?.refreshFunctions()
-                            }
-                        }
-                    }
-            }
-        }
-    }
-
-    private func schemaExpandedBinding(for schema: String, hasMatches: Bool) -> Binding<Bool> {
-        Binding(
-            get: { viewModel.effectiveSchemaExpanded(schema, hasMatches: hasMatches) },
-            set: { viewModel.schemaExpanded[schema] = $0 }
-        )
     }
 
     // MARK: - Section View

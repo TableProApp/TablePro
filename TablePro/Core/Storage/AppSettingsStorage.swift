@@ -27,7 +27,6 @@ final class AppSettingsStorage {
         static let dataGrid = "com.TablePro.settings.dataGrid"
         static let history = "com.TablePro.settings.history"
         static let tabs = "com.TablePro.settings.tabs"
-        static let sidebar = "com.TablePro.settings.sidebar"
         static let keyboard = "com.TablePro.settings.keyboard"
         static let ai = "com.TablePro.settings.ai"
         static let sync = "com.TablePro.settings.sync"
@@ -99,16 +98,6 @@ final class AppSettingsStorage {
 
     func saveTabs(_ settings: TabSettings) {
         save(settings, key: Keys.tabs)
-    }
-
-    // MARK: - Sidebar Settings
-
-    func loadSidebar() -> SidebarSettings {
-        load(key: Keys.sidebar, default: .default)
-    }
-
-    func saveSidebar(_ settings: SidebarSettings) {
-        save(settings, key: Keys.sidebar)
     }
 
     // MARK: - Keyboard Settings
