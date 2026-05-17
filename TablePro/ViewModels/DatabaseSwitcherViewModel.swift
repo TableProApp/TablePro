@@ -2,9 +2,6 @@
 //  DatabaseSwitcherViewModel.swift
 //  TablePro
 //
-//  ViewModel for DatabaseSwitcherSheet.
-//  Handles database fetching, metadata loading, recent tracking, and switching logic.
-//
 
 import Foundation
 import Observation
@@ -15,15 +12,6 @@ import SwiftUI
 final class DatabaseSwitcherViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseSwitcherViewModel")
 
-    // MARK: - Mode
-
-    enum Mode: Hashable {
-        case database
-        case schema
-    }
-
-    // MARK: - Published State
-
     var databases: [DatabaseMetadata] = []
     var searchText = "" {
         didSet { selectedDatabase = filteredDatabases.first?.name }
@@ -32,20 +20,11 @@ final class DatabaseSwitcherViewModel {
     var isLoading = false
     var errorMessage: String?
     var showPreview = false
-    var mode: Mode
-
-    /// Whether we're switching schemas (Redshift or PostgreSQL in schema mode)
-    var isSchemaMode: Bool { mode == .schema }
-
-    // MARK: - Dependencies
 
     private let connectionId: UUID
     private let currentDatabase: String?
-    private let currentSchema: String?
     private let databaseType: DatabaseType
     @ObservationIgnored private let services: AppServices
-
-    // MARK: - Computed Properties
 
     var filteredDatabases: [DatabaseMetadata] {
         if searchText.isEmpty {
@@ -56,28 +35,18 @@ final class DatabaseSwitcherViewModel {
         }
     }
 
-    // MARK: - Initialization
-
     init(
-        connectionId: UUID, currentDatabase: String?, currentSchema: String?,
-        databaseType: DatabaseType, services: AppServices = .live,
-        initialMode: Mode? = nil
+        connectionId: UUID,
+        currentDatabase: String?,
+        databaseType: DatabaseType,
+        services: AppServices = .live
     ) {
         self.connectionId = connectionId
         self.currentDatabase = currentDatabase
-        self.currentSchema = currentSchema
         self.databaseType = databaseType
         self.services = services
-        if let initialMode {
-            self.mode = initialMode
-        } else {
-            self.mode = services.pluginManager.supportsSchemaSwitching(for: databaseType) ? .schema : .database
-        }
     }
 
-    // MARK: - Public Methods
-
-    /// Fetch databases (or schemas for Redshift) and their metadata
     func fetchDatabases() async {
         isLoading = true
         errorMessage = nil
@@ -89,43 +58,20 @@ final class DatabaseSwitcherViewModel {
                 return
             }
 
-            if isSchemaMode {
-                // Redshift: fetch schemas instead of databases
-                let schemaNames = try await driver.fetchSchemas()
-                databases = schemaNames.map { name in
-                    DatabaseMetadata.minimal(name: name, isSystem: isSystemItem(name))
-                }
-            } else {
-                // MySQL/MariaDB/PostgreSQL: fetch databases with metadata
-                // Show database names immediately, then load metadata
-                let dbNames = try await driver.fetchDatabases()
-                databases = dbNames.sorted().map { name in
-                    DatabaseMetadata.minimal(name: name, isSystem: isSystemItem(name))
-                }
-
-                // Pre-select before metadata loads so the UI is interactive immediately
-                preselectDatabase()
-
-                // Fetch all metadata in a single batched query
-                isLoading = false
-                do {
-                    let metadataList = try await driver.fetchAllDatabaseMetadata()
-                    databases = metadataList.sorted { $0.name < $1.name }
-                    preselectDatabase()
-                } catch {
-                    Self.logger.error("Failed to fetch database metadata: \(error)")
-                }
-                return
+            let dbNames = try await driver.fetchDatabases()
+            databases = dbNames.sorted().map { name in
+                DatabaseMetadata.minimal(name: name, isSystem: isSystemItem(name))
             }
 
-            isLoading = false
+            preselectDatabase()
 
-            // Pre-select current database/schema or first item
-            let current = isSchemaMode ? currentSchema : currentDatabase
-            if let current, databases.contains(where: { $0.name == current }) {
-                selectedDatabase = current
-            } else {
-                selectedDatabase = databases.first?.name
+            isLoading = false
+            do {
+                let metadataList = try await driver.fetchAllDatabaseMetadata()
+                databases = metadataList.sorted { $0.name < $1.name }
+                preselectDatabase()
+            } catch {
+                Self.logger.error("Failed to fetch database metadata: \(error)")
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -133,7 +79,6 @@ final class DatabaseSwitcherViewModel {
         }
     }
 
-    /// Refresh database list
     func refreshDatabases() async {
         await fetchDatabases()
     }
@@ -153,16 +98,12 @@ final class DatabaseSwitcherViewModel {
         try await driver.createDatabase(request)
     }
 
-    /// Drop a database
     func dropDatabase(name: String) async throws {
         guard let driver = services.databaseManager.driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
-
         try await driver.dropDatabase(name: name)
     }
-
-    // MARK: - Keyboard Navigation
 
     func moveUp() {
         let items = filteredDatabases
@@ -187,8 +128,6 @@ final class DatabaseSwitcherViewModel {
         }
     }
 
-    // MARK: - Private Methods
-
     private func preselectDatabase() {
         if let current = currentDatabase, databases.contains(where: { $0.name == current }) {
             selectedDatabase = current
@@ -198,11 +137,6 @@ final class DatabaseSwitcherViewModel {
     }
 
     private func isSystemItem(_ name: String) -> Bool {
-        if isSchemaMode {
-            let schemaNames = services.pluginManager.systemSchemaNames(for: databaseType)
-            return schemaNames.contains(name)
-        }
-        let dbNames = services.pluginManager.systemDatabaseNames(for: databaseType)
-        return dbNames.contains(name)
+        services.pluginManager.systemDatabaseNames(for: databaseType).contains(name)
     }
 }
