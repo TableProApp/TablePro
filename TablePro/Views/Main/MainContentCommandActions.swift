@@ -336,22 +336,13 @@ final class MainContentCommandActions {
     // MARK: - Tab Operations (Group A — Called Directly)
 
     func newTab(initialQuery: String? = nil) {
-        let issue1313 = Logger(subsystem: "com.TablePro", category: "Issue1313")
-        let tabsCount = coordinator?.tabManager.tabs.count ?? -1
-        let selectedTabId = coordinator?.tabManager.selectedTabId?.uuidString ?? "nil"
-        let selectedIsPreview = coordinator?.tabManager.selectedTab?.isPreview ?? false
-        issue1313.info(
-            "[1313] MainContentCommandActions.newTab entry tabsCount=\(tabsCount) selectedTabId=\(selectedTabId, privacy: .public) selectedIsPreview=\(selectedIsPreview)"
-        )
         if let coordinator, coordinator.tabManager.tabs.isEmpty {
-            issue1313.info("[1313] newTab branch=addToEmptyManager (no new window)")
             coordinator.tabManager.addTab(
                 initialQuery: initialQuery,
                 databaseName: coordinator.activeDatabaseName
             )
             return
         }
-        issue1313.info("[1313] newTab branch=openNewWindow via WindowManager.openTab")
         let payload = EditorTabPayload(
             connectionId: connection.id,
             initialQuery: initialQuery,

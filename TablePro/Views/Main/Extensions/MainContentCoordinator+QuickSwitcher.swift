@@ -15,10 +15,10 @@ extension MainContentCoordinator {
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem) {
         switch item.kind {
         case .table, .systemTable:
-            openTableTab(item.name)
+            openTableTab(item.name, redirectToSibling: true)
 
         case .view:
-            openTableTab(item.name, isView: true)
+            openTableTab(item.name, isView: true, redirectToSibling: true)
 
         case .database:
             Task {

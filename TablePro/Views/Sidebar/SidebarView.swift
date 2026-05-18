@@ -13,6 +13,7 @@ struct SidebarView: View {
     @Bindable private var schemaService = SchemaService.shared
 
     var sidebarState: SharedSidebarState
+    var windowState: WindowSidebarState
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
 
@@ -44,13 +45,14 @@ struct SidebarView: View {
 
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
         Binding(
-            get: { sidebarState.selectedTables },
-            set: { sidebarState.selectedTables = $0 }
+            get: { windowState.selectedTables },
+            set: { windowState.selectedTables = $0 }
         )
     }
 
     init(
         sidebarState: SharedSidebarState,
+        windowState: WindowSidebarState,
         onDoubleClick: ((TableInfo) -> Void)? = nil,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -60,12 +62,13 @@ struct SidebarView: View {
         coordinator: MainContentCoordinator? = nil
     ) {
         self.sidebarState = sidebarState
+        self.windowState = windowState
         self.onDoubleClick = onDoubleClick
         _pendingTruncates = pendingTruncates
         _pendingDeletes = pendingDeletes
         let selectedBinding = Binding(
-            get: { sidebarState.selectedTables },
-            set: { sidebarState.selectedTables = $0 }
+            get: { windowState.selectedTables },
+            set: { windowState.selectedTables = $0 }
         )
         let vm = SidebarViewModel(
             selectedTables: selectedBinding,
@@ -228,7 +231,7 @@ struct SidebarView: View {
             onDoubleClick?(table)
         }
         .onExitCommand {
-            sidebarState.selectedTables.removeAll()
+            windowState.selectedTables.removeAll()
         }
     }
 
@@ -277,7 +280,7 @@ struct SidebarView: View {
                 .contextMenu {
                     SidebarContextMenu(
                         clickedTable: table,
-                        selectedTables: sidebarState.selectedTables,
+                        selectedTables: windowState.selectedTables,
                         isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
                         onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
                         onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
@@ -343,6 +346,7 @@ struct SidebarView: View {
 #Preview {
     SidebarView(
         sidebarState: SharedSidebarState(),
+        windowState: WindowSidebarState(),
         pendingTruncates: .constant([]),
         pendingDeletes: .constant([]),
         tableOperationOptions: .constant([:]),

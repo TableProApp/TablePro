@@ -330,6 +330,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     ) -> some View {
         SidebarView(
             sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
+            windowState: sessionState.coordinator.windowSidebarState,
             onDoubleClick: { [weak self] table in
                 guard let coordinator = self?.sessionState?.coordinator else { return }
                 let connectionId = coordinator.connectionId

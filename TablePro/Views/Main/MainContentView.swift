@@ -187,7 +187,7 @@ struct MainContentView: View {
                 mode: .tables(
                     connection: exportConnection,
                     preselectedTables: coordinator.exportPreselectedTableNames
-                        ?? Set(sidebarState.selectedTables.map(\.name))
+                        ?? Set(coordinator.windowSidebarState.selectedTables.map(\.name))
                 ),
                 sidebarTables: tables
             )
@@ -379,9 +379,9 @@ struct MainContentView: View {
                 handleConnectionStatusChange()
             }
 
-            .onChange(of: sidebarState.selectedTables) { oldTables, newTables in
+            .onChange(of: coordinator.windowSidebarState.selectedTables) { oldTables, newTables in
                 guard !coordinator.isTearingDown else {
-                    Self.lifecycleLogger.debug("[switch] sidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
+                    Self.lifecycleLogger.debug("[switch] windowSidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
                     return
                 }
                 handleTableSelectionChange(from: oldTables, to: newTables)
@@ -389,13 +389,13 @@ struct MainContentView: View {
             .onChange(of: tables) { _, newTables in
                 let syncAction = SidebarSyncAction.resolveOnTablesLoad(
                     newTables: newTables,
-                    selectedTables: sidebarState.selectedTables,
+                    selectedTables: coordinator.windowSidebarState.selectedTables,
                     currentTabTableName: tabManager.selectedTab?.tableContext.tableName
                 )
                 if case .select(let tableName) = syncAction,
                     let match = newTables.first(where: { $0.name == tableName })
                 {
-                    sidebarState.selectedTables = [match]
+                    coordinator.windowSidebarState.selectedTables = [match]
                 }
             }
     }

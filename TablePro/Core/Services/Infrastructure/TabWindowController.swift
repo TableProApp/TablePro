@@ -7,8 +7,6 @@ import AppKit
 import os
 import SwiftUI
 
-private let issue1313Logger = Logger(subsystem: "com.TablePro", category: "Issue1313")
-
 @MainActor
 private final class EditorWindow: NSWindow {
     override func performClose(_ sender: Any?) {
@@ -21,17 +19,8 @@ private final class EditorWindow: NSWindow {
     }
 
     override func newWindowForTab(_ sender: Any?) {
-        let winId = ObjectIdentifier(self).hashValue
-        let resolvedCoordinator = MainContentCoordinator.coordinator(forWindow: self)
-        let tabsCount = resolvedCoordinator?.tabManager.tabs.count ?? -1
-        let selectedTabId = resolvedCoordinator?.tabManager.selectedTabId?.uuidString ?? "nil"
-        let selectedIsPreview = resolvedCoordinator?.tabManager.selectedTab?.isPreview ?? false
-        issue1313Logger.info(
-            "[1313] EditorWindow.newWindowForTab fired winId=\(winId) isKey=\(self.isKeyWindow) tabsInCoord=\(tabsCount) selectedTabId=\(selectedTabId, privacy: .public) selectedIsPreview=\(selectedIsPreview)"
-        )
-        guard let coordinator = resolvedCoordinator,
+        guard let coordinator = MainContentCoordinator.coordinator(forWindow: self),
               let actions = coordinator.commandActions else {
-            issue1313Logger.info("[1313] newWindowForTab fallback to super (no coordinator/actions) winId=\(winId)")
             super.newWindowForTab(sender)
             return
         }
@@ -48,8 +37,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     internal let payload: EditorTabPayload
 
     internal let controllerId: UUID
-
-    private let createdAt: Date = Date()
 
     private var activity: NSUserActivity?
 
@@ -130,11 +117,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
-        let winId = ObjectIdentifier(window).hashValue
-        let groupSelectedId = window.tabGroup?.selectedWindow.map { ObjectIdentifier($0).hashValue } ?? 0
-        issue1313Logger.info(
-            "[1313] windowDidBecomeKey seq=\(seq) winId=\(winId) controllerId=\(self.controllerId, privacy: .public) tabbedCount=\(window.tabbedWindows?.count ?? -1) tabGroupSelectedWinId=\(groupSelectedId)"
-        )
         Self.lifecycleLogger.debug(
             "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
         )
@@ -155,19 +137,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
-        let winId = ObjectIdentifier(window).hashValue
-        let groupSelectedId = window.tabGroup?.selectedWindow.map { ObjectIdentifier($0).hashValue } ?? 0
-        let ageMs = Int(Date().timeIntervalSince(self.createdAt) * 1_000)
-        if ageMs < 2_000 {
-            let stack = Thread.callStackSymbols.prefix(15).joined(separator: " | ")
-            issue1313Logger.info(
-                "[1313] windowDidResignKey EARLY seq=\(seq) winId=\(winId) ageMs=\(ageMs) tabGroupSelectedWinId=\(groupSelectedId) stack=\(stack, privacy: .public)"
-            )
-        } else {
-            issue1313Logger.info(
-                "[1313] windowDidResignKey seq=\(seq) winId=\(winId) controllerId=\(self.controllerId, privacy: .public) tabGroupSelectedWinId=\(groupSelectedId)"
-            )
-        }
         Self.lifecycleLogger.debug(
             "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"
         )
@@ -184,9 +153,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let seq = MainContentCoordinator.nextSwitchSeq()
         let t0 = Date()
         guard let window = notification.object as? NSWindow else { return }
-        issue1313Logger.info(
-            "[1313] windowWillClose seq=\(seq) winId=\(ObjectIdentifier(window).hashValue) controllerId=\(self.controllerId, privacy: .public)"
-        )
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
 
         cancelPendingConnectionIfNeeded()

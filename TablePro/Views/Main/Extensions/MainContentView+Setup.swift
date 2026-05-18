@@ -274,8 +274,8 @@ extension MainContentView {
             connection: connection,
             selectionState: coordinator.selectionState,
             selectedTables: Binding(
-                get: { sidebarState.selectedTables },
-                set: { sidebarState.selectedTables = $0 }
+                get: { coordinator.windowSidebarState.selectedTables },
+                set: { coordinator.windowSidebarState.selectedTables = $0 }
             ),
             pendingTruncates: $pendingTruncates,
             pendingDeletes: $pendingDeletes,

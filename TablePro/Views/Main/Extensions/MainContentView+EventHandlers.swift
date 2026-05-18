@@ -133,8 +133,7 @@ extension MainContentView {
     /// Only writes when the value actually changes, preventing spurious onChange triggers.
     /// Navigation safety is guaranteed by `SidebarNavigationResult.resolve` returning `.skip`
     /// when the selected table matches the current tab.
-    /// Reads from DatabaseManager (authoritative source) instead of the `tables` binding,
-    /// and skips background windows to avoid overwriting shared sidebar state.
+    /// Reads from DatabaseManager (authoritative source) instead of the `tables` binding.
     func syncSidebarToCurrentTab() {
         guard coordinator.isKeyWindow else { return }
         let liveTables = DatabaseManager.shared.session(for: connection.id)?.tables ?? []
@@ -146,9 +145,10 @@ extension MainContentView {
         } else {
             target = []
         }
-        if sidebarState.selectedTables != target {
+        let state = coordinator.windowSidebarState
+        if state.selectedTables != target {
             if target.isEmpty && liveTables.isEmpty { return }
-            sidebarState.selectedTables = target
+            state.selectedTables = target
         }
     }
 

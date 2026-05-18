@@ -15,16 +15,23 @@ private let navigationLogger = Logger(subsystem: "com.TablePro", category: "Main
 extension MainContentCoordinator {
     // MARK: - Table Tab Opening
 
-    func openTableTab(_ table: TableInfo, showStructure: Bool = false) {
+    func openTableTab(_ table: TableInfo, showStructure: Bool = false, redirectToSibling: Bool = false) {
         openTableTab(
             table.name,
             schema: table.schema,
             showStructure: showStructure,
-            isView: table.type == .view
+            isView: table.type == .view,
+            redirectToSibling: redirectToSibling
         )
     }
 
-    func openTableTab(_ tableName: String, schema: String? = nil, showStructure: Bool = false, isView: Bool = false) {
+    func openTableTab(
+        _ tableName: String,
+        schema: String? = nil,
+        showStructure: Bool = false,
+        isView: Bool = false,
+        redirectToSibling: Bool = false
+    ) {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
         )?.navigationModel ?? .standard
@@ -71,20 +78,25 @@ extension MainContentCoordinator {
             return
         }
 
-        // Check if another native window tab already has this table open — switch to it
-        for sibling in MainContentCoordinator.allActiveCoordinators()
-            where sibling !== self && sibling.connectionId == connectionId {
-            let hasMatch = sibling.tabManager.tabs.contains { tab in
-                tab.tabType == .table
-                    && tab.tableContext.tableName == tableName
-                    && tab.tableContext.databaseName == currentDatabase
-                    && tab.tableContext.schemaName == resolvedSchema
+        // Opt-in cross-window navigation: if requested (e.g. quick switcher),
+        // and another window already shows this table, focus that window.
+        // Default-off so sidebar clicks and other window-local actions stay
+        // window-local instead of stealing focus to a sibling.
+        if redirectToSibling {
+            for sibling in MainContentCoordinator.allActiveCoordinators()
+                where sibling !== self && sibling.connectionId == connectionId {
+                let hasMatch = sibling.tabManager.tabs.contains { tab in
+                    tab.tabType == .table
+                        && tab.tableContext.tableName == tableName
+                        && tab.tableContext.databaseName == currentDatabase
+                        && tab.tableContext.schemaName == resolvedSchema
+                }
+                guard hasMatch,
+                      let windowId = sibling.windowId,
+                      let window = WindowLifecycleMonitor.shared.window(for: windowId) else { continue }
+                window.makeKeyAndOrderFront(nil)
+                return
             }
-            guard hasMatch,
-                  let windowId = sibling.windowId,
-                  let window = WindowLifecycleMonitor.shared.window(for: windowId) else { continue }
-            window.makeKeyAndOrderFront(nil)
-            return
         }
 
         // If no tabs exist (empty state), add a table tab directly.

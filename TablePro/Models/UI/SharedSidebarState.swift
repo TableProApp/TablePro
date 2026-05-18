@@ -2,8 +2,9 @@
 //  SharedSidebarState.swift
 //  TablePro
 //
-//  Shared sidebar state (selection + search + tab) for cross-tab synchronization.
-//  One instance per connection, shared across all native macOS tabs.
+//  Connection-scoped sidebar state shared across all windows of the same
+//  connection. Window-scoped state (table selection) lives in
+//  `WindowSidebarState`.
 //
 
 import Foundation
@@ -16,7 +17,6 @@ internal enum SidebarTab: String, CaseIterable {
 
 @MainActor @Observable
 final class SharedSidebarState {
-    var selectedTables: Set<TableInfo> = []
     var searchText: String = ""
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
 

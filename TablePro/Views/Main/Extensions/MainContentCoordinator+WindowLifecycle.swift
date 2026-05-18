@@ -22,11 +22,6 @@ extension MainContentCoordinator {
     /// is owned by `MainEditorContentView`'s `.task(id:)` modifier.
     func handleWindowDidBecomeKey() {
         let t0 = Date()
-        let issue1313 = Logger(subsystem: "com.TablePro", category: "Issue1313")
-        let winId = self.contentWindow.map { ObjectIdentifier($0).hashValue } ?? 0
-        issue1313.info(
-            "[1313] coord.handleWindowDidBecomeKey start winId=\(winId) connId=\(self.connectionId, privacy: .public) selectedTabId=\(self.tabManager.selectedTabId?.uuidString ?? "nil", privacy: .public)"
-        )
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey connId=\(self.connectionId, privacy: .public) selectedTabId=\(self.tabManager.selectedTabId?.uuidString ?? "nil", privacy: .public)"
         )
@@ -37,19 +32,11 @@ extension MainContentCoordinator {
         let isConnected =
             DatabaseManager.shared.activeSessions[connectionId]?.isConnected ?? false
         if PluginManager.shared.connectionMode(for: connection.type) == .fileBased && isConnected {
-            issue1313.info("[1313] coord.handleWindowDidBecomeKey scheduled refreshTablesIfStale winId=\(winId)")
-            Task {
-                issue1313.info("[1313] refreshTablesIfStale start winId=\(winId)")
-                await self.refreshTablesIfStale()
-                issue1313.info("[1313] refreshTablesIfStale done winId=\(winId)")
-            }
+            Task { await self.refreshTablesIfStale() }
         }
 
         syncSidebarToSelectedTab()
 
-        issue1313.info(
-            "[1313] coord.handleWindowDidBecomeKey done winId=\(winId) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
-        )
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
@@ -103,11 +90,10 @@ extension MainContentCoordinator {
 
     // MARK: - Sidebar Sync
 
-    /// Update the connection-scoped sidebar selection so the active table tab
+    /// Update the window-scoped sidebar selection so the active table tab
     /// is highlighted. Reads tables fresh from the DatabaseManager because the
     /// schema load is async and may complete after focus changes.
     func syncSidebarToSelectedTab() {
-        let sidebarState = SharedSidebarState.forConnection(connectionId)
         let liveTables = DatabaseManager.shared
             .session(for: connectionId)?.tables ?? []
         let target: Set<TableInfo>
@@ -117,9 +103,9 @@ extension MainContentCoordinator {
         } else {
             target = []
         }
-        if sidebarState.selectedTables != target {
+        if windowSidebarState.selectedTables != target {
             if target.isEmpty && liveTables.isEmpty { return }
-            sidebarState.selectedTables = target
+            windowSidebarState.selectedTables = target
         }
     }
 

@@ -7,8 +7,6 @@ import Foundation
 import Observation
 import os
 
-private let issue1313Logger = Logger(subsystem: "com.TablePro", category: "Issue1313")
-
 /// Manager for query tabs
 @MainActor @Observable
 final class QueryTabManager {
@@ -17,23 +15,12 @@ final class QueryTabManager {
             _tabIndexMapDirty = true
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
-                let oldIds = oldValue.map { String($0.id.uuidString.prefix(8)) }.joined(separator: ",")
-                let newIds = tabs.map { String($0.id.uuidString.prefix(8)) }.joined(separator: ",")
-                issue1313Logger.info("[1313] tabs changed count=\(self.tabs.count) old=[\(oldIds, privacy: .public)] new=[\(newIds, privacy: .public)]")
             }
             syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
         }
     }
 
-    var selectedTabId: UUID? {
-        didSet {
-            if oldValue != selectedTabId {
-                issue1313Logger.info(
-                    "[1313] selectedTabId changed from=\(oldValue?.uuidString ?? "nil", privacy: .public) to=\(self.selectedTabId?.uuidString ?? "nil", privacy: .public)"
-                )
-            }
-        }
-    }
+    var selectedTabId: UUID?
 
     var tabStructureVersion: Int = 0
 
