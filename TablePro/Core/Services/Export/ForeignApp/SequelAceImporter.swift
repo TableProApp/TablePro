@@ -20,10 +20,6 @@ struct SequelAceImporter: ForeignAppImporter {
                 + "Sequel Ace/Data/Favorites.plist"
         )
 
-    func isAvailable() -> Bool {
-        FileManager.default.fileExists(atPath: favoritesFileURL.path)
-    }
-
     func connectionCount() -> Int {
         guard let root = loadRootDict() else { return 0 }
         guard let favoritesRoot = root["Favorites Root"] as? [String: Any],

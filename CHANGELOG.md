@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Import from other apps now detects TablePlus, Sequel Ace, and DBeaver via LaunchServices instead of probing for data files, so newly installed apps are picked up even before they have been opened (#1305)
 - ClickHouse (and any HTTP-based driver) can now connect to plain-HTTP servers addressed by DNS hostname; previously App Transport Security blocked the request because only IP-addressed plain HTTP is exempt by default (#1316)
 - Import from TablePlus now reads passwords from the keychain correctly; previously it queried the wrong service name and silently returned empty passwords without prompting
 - Port numbers in the import preview, welcome screen linked-file list, and plugin details no longer render with a thousand separator (e.g. 3306 instead of 3.306) under Vietnamese, German, and other locales that use a dot as a digit separator

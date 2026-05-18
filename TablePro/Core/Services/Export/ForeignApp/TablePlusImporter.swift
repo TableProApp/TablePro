@@ -21,10 +21,6 @@ struct TablePlusImporter: ForeignAppImporter {
     var groupsFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/com.tinyapp.TablePlus/Data/ConnectionGroups.plist")
 
-    func isAvailable() -> Bool {
-        FileManager.default.fileExists(atPath: connectionsFileURL.path)
-    }
-
     func connectionCount() -> Int {
         guard let data = try? Data(contentsOf: connectionsFileURL),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),

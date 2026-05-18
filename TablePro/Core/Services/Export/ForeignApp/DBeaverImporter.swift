@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import CommonCrypto
 import Foundation
 import os
@@ -16,11 +17,23 @@ struct DBeaverImporter: ForeignAppImporter {
     let symbolName = "bird"
     let appBundleIdentifier = "org.jkiss.dbeaver.core.product"
 
+    /// All known DBeaver Eclipse product identifiers. Community, Enterprise,
+    /// Ultimate, Lite, and CloudBeaver desktop variants each register a
+    /// different bundle ID, but they all write to the same workspace.
+    private static let knownBundleIdentifiers = [
+        "org.jkiss.dbeaver.core.product",
+        "org.jkiss.dbeaver.ee.core.product",
+        "org.jkiss.dbeaver.ue.product",
+        "org.jkiss.dbeaver.lite.product"
+    ]
+
     var workspaceBaseURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/DBeaverData/workspace6")
 
     func isAvailable() -> Bool {
-        findDataSourcesFile() != nil
+        Self.knownBundleIdentifiers.contains { bundleId in
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil
+        }
     }
 
     func connectionCount() -> Int {

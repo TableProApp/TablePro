@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import Foundation
 import os
 import Security
@@ -17,6 +18,16 @@ protocol ForeignAppImporter {
     func isAvailable() -> Bool
     func connectionCount() -> Int
     func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult
+}
+
+extension ForeignAppImporter {
+    /// Default detection via LaunchServices: returns true if any app with the
+    /// declared bundle identifier is installed and registered with macOS,
+    /// regardless of whether the user has opened it or created any data.
+    /// Importers with a sharper notion of "available" can override.
+    func isAvailable() -> Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: appBundleIdentifier) != nil
+    }
 }
 
 // MARK: - Result
