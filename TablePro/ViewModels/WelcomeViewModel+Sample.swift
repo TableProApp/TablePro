@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import Foundation
 import os
+import TableProPluginKit
 
 @MainActor
 internal enum SampleDatabaseLauncher {
