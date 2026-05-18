@@ -49,6 +49,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     internal let controllerId: UUID
 
+    private let createdAt: Date = Date()
+
     private var activity: NSUserActivity?
 
     internal init(payload: EditorTabPayload, sessionState: SessionStateFactory.SessionState? = nil) {
@@ -155,9 +157,17 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         else { return }
         let winId = ObjectIdentifier(window).hashValue
         let groupSelectedId = window.tabGroup?.selectedWindow.map { ObjectIdentifier($0).hashValue } ?? 0
-        issue1313Logger.info(
-            "[1313] windowDidResignKey seq=\(seq) winId=\(winId) controllerId=\(self.controllerId, privacy: .public) tabGroupSelectedWinId=\(groupSelectedId)"
-        )
+        let ageMs = Int(Date().timeIntervalSince(self.createdAt) * 1_000)
+        if ageMs < 2_000 {
+            let stack = Thread.callStackSymbols.prefix(15).joined(separator: " | ")
+            issue1313Logger.info(
+                "[1313] windowDidResignKey EARLY seq=\(seq) winId=\(winId) ageMs=\(ageMs) tabGroupSelectedWinId=\(groupSelectedId) stack=\(stack, privacy: .public)"
+            )
+        } else {
+            issue1313Logger.info(
+                "[1313] windowDidResignKey seq=\(seq) winId=\(winId) controllerId=\(self.controllerId, privacy: .public) tabGroupSelectedWinId=\(groupSelectedId)"
+            )
+        }
         Self.lifecycleLogger.debug(
             "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"
         )

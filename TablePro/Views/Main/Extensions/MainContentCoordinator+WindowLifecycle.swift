@@ -22,6 +22,11 @@ extension MainContentCoordinator {
     /// is owned by `MainEditorContentView`'s `.task(id:)` modifier.
     func handleWindowDidBecomeKey() {
         let t0 = Date()
+        let issue1313 = Logger(subsystem: "com.TablePro", category: "Issue1313")
+        let winId = self.contentWindow.map { ObjectIdentifier($0).hashValue } ?? 0
+        issue1313.info(
+            "[1313] coord.handleWindowDidBecomeKey start winId=\(winId) connId=\(self.connectionId, privacy: .public) selectedTabId=\(self.tabManager.selectedTabId?.uuidString ?? "nil", privacy: .public)"
+        )
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey connId=\(self.connectionId, privacy: .public) selectedTabId=\(self.tabManager.selectedTabId?.uuidString ?? "nil", privacy: .public)"
         )
@@ -32,11 +37,19 @@ extension MainContentCoordinator {
         let isConnected =
             DatabaseManager.shared.activeSessions[connectionId]?.isConnected ?? false
         if PluginManager.shared.connectionMode(for: connection.type) == .fileBased && isConnected {
-            Task { await self.refreshTablesIfStale() }
+            issue1313.info("[1313] coord.handleWindowDidBecomeKey scheduled refreshTablesIfStale winId=\(winId)")
+            Task {
+                issue1313.info("[1313] refreshTablesIfStale start winId=\(winId)")
+                await self.refreshTablesIfStale()
+                issue1313.info("[1313] refreshTablesIfStale done winId=\(winId)")
+            }
         }
 
         syncSidebarToSelectedTab()
 
+        issue1313.info(
+            "[1313] coord.handleWindowDidBecomeKey done winId=\(winId) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
+        )
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )

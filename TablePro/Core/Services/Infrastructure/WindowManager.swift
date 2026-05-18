@@ -84,15 +84,24 @@ internal final class WindowManager {
             Self.issue1313Logger.info(
                 "[1313] WindowManager post-makeKeyAndOrderFront newWinId=\(newWinId) isKey=\(window.isKeyWindow) tabGroupSelectedWinId=\(selectedIdAfterKey)"
             )
-            // Experimental fix: explicitly select Y in the tab group.
-            // Hypothesis: addTabbedWindow + makeKey sets key but does not
-            // sync tabGroup.selectedWindow, so AppKit's tab resolution
-            // re-selects X (the previously selected tab) ~300ms later.
-            if window.tabGroup?.selectedWindow !== window {
-                window.tabGroup?.selectedWindow = window
+            // Experimental fix v2: delayed re-assert. The 300ms mystery flip
+            // happens after window mount. Re-assert key + selectedWindow at
+            // 800ms to test whether late re-focus can hold.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak window] in
+                guard let window else { return }
+                let wasKey = window.isKeyWindow
+                let groupSel = window.tabGroup?.selectedWindow.map { ObjectIdentifier($0).hashValue } ?? 0
+                let nid = ObjectIdentifier(window).hashValue
                 Self.issue1313Logger.info(
-                    "[1313] WindowManager forced tabGroup.selectedWindow=newWinId=\(newWinId)"
+                    "[1313] WindowManager delayed-reassert pre newWinId=\(nid) wasKey=\(wasKey) tabGroupSelectedWinId=\(groupSel)"
                 )
+                if !wasKey || window.tabGroup?.selectedWindow !== window {
+                    window.tabGroup?.selectedWindow = window
+                    window.makeKeyAndOrderFront(nil)
+                    Self.issue1313Logger.info(
+                        "[1313] WindowManager delayed-reassert FIRED newWinId=\(nid)"
+                    )
+                }
             }
             Self.lifecycleLogger.info(
                 "[open] WindowManager joined existing tab group payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
