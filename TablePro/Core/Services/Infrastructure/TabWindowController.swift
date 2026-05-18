@@ -129,8 +129,9 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
         let winId = ObjectIdentifier(window).hashValue
+        let groupSelectedId = window.tabGroup?.selectedWindow.map { ObjectIdentifier($0).hashValue } ?? 0
         issue1313Logger.info(
-            "[1313] windowDidBecomeKey seq=\(seq) winId=\(winId) controllerId=\(self.controllerId, privacy: .public) tabbedCount=\(window.tabbedWindows?.count ?? -1)"
+            "[1313] windowDidBecomeKey seq=\(seq) winId=\(winId) controllerId=\(self.controllerId, privacy: .public) tabbedCount=\(window.tabbedWindows?.count ?? -1) tabGroupSelectedWinId=\(groupSelectedId)"
         )
         Self.lifecycleLogger.debug(
             "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
@@ -153,8 +154,9 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
         let winId = ObjectIdentifier(window).hashValue
+        let groupSelectedId = window.tabGroup?.selectedWindow.map { ObjectIdentifier($0).hashValue } ?? 0
         issue1313Logger.info(
-            "[1313] windowDidResignKey seq=\(seq) winId=\(winId) controllerId=\(self.controllerId, privacy: .public)"
+            "[1313] windowDidResignKey seq=\(seq) winId=\(winId) controllerId=\(self.controllerId, privacy: .public) tabGroupSelectedWinId=\(groupSelectedId)"
         )
         Self.lifecycleLogger.debug(
             "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"

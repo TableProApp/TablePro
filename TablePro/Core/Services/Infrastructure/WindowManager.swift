@@ -75,13 +75,25 @@ internal final class WindowManager {
                 "[1313] WindowManager pre-addTabbedWindow newWinId=\(newWinId) targetWinId=\(targetWinId) targetIsKey=\(target.isKeyWindow) groupSize=\(target.tabbedWindows?.count ?? -1)"
             )
             target.addTabbedWindow(window, ordered: .above)
+            let selectedIdAfterAdd = window.tabGroup?.selectedWindow.map { ObjectIdentifier($0).hashValue } ?? 0
             Self.issue1313Logger.info(
-                "[1313] WindowManager post-addTabbedWindow newWinId=\(newWinId) groupSize=\(window.tabbedWindows?.count ?? -1)"
+                "[1313] WindowManager post-addTabbedWindow newWinId=\(newWinId) groupSize=\(window.tabbedWindows?.count ?? -1) tabGroupSelectedWinId=\(selectedIdAfterAdd)"
             )
             window.makeKeyAndOrderFront(nil)
+            let selectedIdAfterKey = window.tabGroup?.selectedWindow.map { ObjectIdentifier($0).hashValue } ?? 0
             Self.issue1313Logger.info(
-                "[1313] WindowManager post-makeKeyAndOrderFront newWinId=\(newWinId) isKey=\(window.isKeyWindow)"
+                "[1313] WindowManager post-makeKeyAndOrderFront newWinId=\(newWinId) isKey=\(window.isKeyWindow) tabGroupSelectedWinId=\(selectedIdAfterKey)"
             )
+            // Experimental fix: explicitly select Y in the tab group.
+            // Hypothesis: addTabbedWindow + makeKey sets key but does not
+            // sync tabGroup.selectedWindow, so AppKit's tab resolution
+            // re-selects X (the previously selected tab) ~300ms later.
+            if window.tabGroup?.selectedWindow !== window {
+                window.tabGroup?.selectedWindow = window
+                Self.issue1313Logger.info(
+                    "[1313] WindowManager forced tabGroup.selectedWindow=newWinId=\(newWinId)"
+                )
+            }
             Self.lifecycleLogger.info(
                 "[open] WindowManager joined existing tab group payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )
