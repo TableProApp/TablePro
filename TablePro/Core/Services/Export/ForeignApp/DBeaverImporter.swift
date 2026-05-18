@@ -18,8 +18,8 @@ struct DBeaverImporter: ForeignAppImporter {
     let appBundleIdentifier = "org.jkiss.dbeaver.core.product"
 
     /// All known DBeaver Eclipse product identifiers. Community, Enterprise,
-    /// Ultimate, Lite, and CloudBeaver desktop variants each register a
-    /// different bundle ID, but they all write to the same workspace.
+    /// Ultimate, and Lite variants each register a different bundle ID, but
+    /// they all write to the same `~/Library/DBeaverData/workspace*`.
     private static let knownBundleIdentifiers = [
         "org.jkiss.dbeaver.core.product",
         "org.jkiss.dbeaver.ee.core.product",
@@ -27,13 +27,19 @@ struct DBeaverImporter: ForeignAppImporter {
         "org.jkiss.dbeaver.lite.product"
     ]
 
-    var workspaceBaseURL: URL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/DBeaverData/workspace6")
+    /// Root directory containing DBeaver workspace folders. The actual
+    /// workspace path is discovered by scanning for `workspace*` subdirs so
+    /// future versions (workspace7, etc.) keep working without code changes.
+    var dbeaverDataRoot: URL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/DBeaverData")
 
-    func isAvailable() -> Bool {
-        Self.knownBundleIdentifiers.contains { bundleId in
-            NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil
+    func installedAppURL() -> URL? {
+        for bundleId in Self.knownBundleIdentifiers {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                return url
+            }
         }
+        return nil
     }
 
     func connectionCount() -> Int {
@@ -113,18 +119,30 @@ struct DBeaverImporter: ForeignAppImporter {
 
     // MARK: - File Discovery
 
+    /// Scans `~/Library/DBeaverData/workspace*` for a project folder that
+    /// contains `.dbeaver/data-sources.json`. Supports any workspace version
+    /// (workspace6, workspace7, ...) by enumeration rather than hardcoding.
     private func findDataSourcesFile() -> URL? {
         let fm = FileManager.default
-        let basePath = workspaceBaseURL.path
-        guard fm.fileExists(atPath: basePath),
-              let contents = try? fm.contentsOfDirectory(atPath: basePath) else { return nil }
+        guard let workspaceDirs = try? fm.contentsOfDirectory(
+            at: dbeaverDataRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
 
-        for dirName in contents {
-            let candidate = workspaceBaseURL
-                .appendingPathComponent(dirName)
-                .appendingPathComponent(".dbeaver/data-sources.json")
-            if fm.fileExists(atPath: candidate.path) {
-                return candidate
+        let workspaces = workspaceDirs
+            .filter { $0.lastPathComponent.hasPrefix("workspace") }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+
+        for workspace in workspaces {
+            guard let projects = try? fm.contentsOfDirectory(atPath: workspace.path) else { continue }
+            for projectName in projects {
+                let candidate = workspace
+                    .appendingPathComponent(projectName)
+                    .appendingPathComponent(".dbeaver/data-sources.json")
+                if fm.fileExists(atPath: candidate.path) {
+                    return candidate
+                }
             }
         }
         return nil

@@ -96,9 +96,8 @@ struct ImportFromAppSourcePicker: View {
 
     @ViewBuilder
     private func appIcon(for importer: any ForeignAppImporter) -> some View {
-        let icon = resolveAppIcon(bundleId: importer.appBundleIdentifier)
-        if let icon {
-            Image(nsImage: icon)
+        if let appURL = importer.installedAppURL() {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: appURL.path))
                 .resizable()
                 .aspectRatio(contentMode: .fit)
         } else {
@@ -173,8 +172,4 @@ struct ImportFromAppSourcePicker: View {
         onSelect(state.importer, includePasswords)
     }
 
-    private func resolveAppIcon(bundleId: String) -> NSImage? {
-        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return nil }
-        return NSWorkspace.shared.icon(forFile: appURL.path)
-    }
 }
