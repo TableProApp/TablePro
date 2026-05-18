@@ -125,9 +125,6 @@ enum OracleClassifier {
         if lower.contains("ora-28860") {
             return .cipherMismatch(serverMessage: message)
         }
-        if lower.contains("ora-12537") || lower.contains("ora-12606") {
-            return .serverRejectedPlaintext(serverMessage: message)
-        }
         if lower.contains("certificate") && (lower.contains("verify") || lower.contains("untrusted")) {
             return .untrustedCertificate(serverMessage: message)
         }

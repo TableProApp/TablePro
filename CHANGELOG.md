@@ -31,10 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Welcome screen connection errors (single-click connect, sample database launch) also surface the structured SSL handshake message when applicable
 - All driver SSL mapping logic now lives in dedicated `XxxSSLMapping` files (PostgreSQL, MSSQL, Cassandra, MongoDB, Oracle); ClickHouse and Redis keep their existing encapsulated helpers
 
-### Known limitations
-
-- iOS app SSL form still uses a binary Toggle for non-MSSQL engines (mysql, mariadb, postgresql, redshift). Verify CA and Verify Identity are not yet exposed on iOS. macOS users get the full per-engine picker. Will be addressed in a follow-up.
-
 ### Fixed
 
 - PostgreSQL connections to AWS RDS, Cloud SQL, Azure, and other hosted Postgres now succeed out of the box instead of failing with "no pg_hba.conf entry for host" (#1298)

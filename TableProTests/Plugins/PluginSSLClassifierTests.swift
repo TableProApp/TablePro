@@ -169,12 +169,9 @@ struct OracleClassifierTests {
         }
     }
 
-    @Test("ORA-12606 → serverRejectedPlaintext")
-    func testORA12606() {
-        guard case .serverRejectedPlaintext = OracleClassifier.classifySSLError("ORA-12606: TNS: Application timeout occurred") else {
-            Issue.record("Expected serverRejectedPlaintext")
-            return
-        }
+    @Test("Network timeout (ORA-12606) is not classified as SSL")
+    func testTimeoutNotSSL() {
+        #expect(OracleClassifier.classifySSLError("ORA-12606: TNS: Application timeout occurred") == nil)
     }
 
     @Test("ORA-28759 → clientCertRequired")
