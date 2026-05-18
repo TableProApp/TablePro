@@ -13,6 +13,7 @@ import CFreeTDS
 import Foundation
 import os
 import TableProMSSQLCore
+import TableProPluginKit
 
 private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
