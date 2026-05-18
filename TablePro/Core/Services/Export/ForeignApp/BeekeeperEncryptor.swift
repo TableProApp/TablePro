@@ -33,6 +33,12 @@ enum BeekeeperEncryptor {
     /// Decrypts a `simple-encryptor` payload with the given raw key string
     /// and returns the JSON-decoded plaintext as a Swift value. Returns nil
     /// if the payload is malformed or decryption fails.
+    ///
+    /// HMAC verification is intentionally skipped: we read a file the user
+    /// owns, and tampered ciphertext will fail the downstream JSON decode
+    /// and surface as a nil return anyway. Skipping the HMAC keeps this
+    /// helper small and avoids re-implementing `simple-encryptor`'s
+    /// constant-time compare.
     static func decrypt(_ payload: String, key: String) -> Any? {
         guard payload.count > 96 else { return nil }
         let ivHexStart = payload.index(payload.startIndex, offsetBy: 64)
@@ -56,10 +62,14 @@ enum BeekeeperEncryptor {
         )
     }
 
-    /// Convenience wrapper for the common case where the plaintext is a
-    /// single string (e.g. a password).
+    /// Typed wrapper for the common single-string case (e.g. a password).
     static func decryptString(_ payload: String, key: String) -> String? {
         decrypt(payload, key: key) as? String
+    }
+
+    /// Typed wrapper for the dictionary case (e.g. the `.key` file).
+    static func decryptDictionary(_ payload: String, key: String) -> [String: Any]? {
+        decrypt(payload, key: key) as? [String: Any]
     }
 
     // MARK: - Primitives

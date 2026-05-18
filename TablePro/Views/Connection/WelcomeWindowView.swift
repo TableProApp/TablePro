@@ -387,7 +387,7 @@ struct WelcomeWindowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(linked.connection.name)
                     .lineLimit(1)
-                Text(verbatim: connectionSubtitle(for: linked.connection))
+                Text(verbatim: linked.connection.displaySubtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -398,17 +398,6 @@ struct WelcomeWindowView: View {
         .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .contentShape(Rectangle())
         .listRowSeparator(.hidden)
-    }
-
-    /// SQLite and DuckDB are file-based, so show the database path instead
-    /// of the meaningless `localhost:0`.
-    private func connectionSubtitle(for connection: ExportableConnection) -> String {
-        if connection.type == "SQLite" || connection.type == "DuckDB" {
-            return connection.database.isEmpty
-                ? connection.type
-                : (connection.database as NSString).abbreviatingWithTildeInPath
-        }
-        return "\(connection.host):\(connection.port)"
     }
 
     func primaryAction(for ids: Set<UUID>) {

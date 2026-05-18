@@ -70,6 +70,18 @@ struct ExportableConnection: Codable {
             startupCommands: startupCommands, localOnly: localOnly
         )
     }
+
+    /// One-line subtitle for connection rows. File-based databases
+    /// (SQLite, DuckDB) show the database path; everything else shows
+    /// `host:port`.
+    var displaySubtitle: String {
+        if type == "SQLite" || type == "DuckDB" {
+            return database.isEmpty
+                ? type
+                : (database as NSString).abbreviatingWithTildeInPath
+        }
+        return "\(host):\(port)"
+    }
 }
 
 // MARK: - SSH Config

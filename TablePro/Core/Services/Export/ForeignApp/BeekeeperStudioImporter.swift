@@ -34,20 +34,24 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
     private var keyFileURL: URL { dataDirectoryURL.appendingPathComponent(".key") }
 
     func connectionCount() -> Int {
-        (try? readSavedConnections().count) ?? 0
+        guard let db = try? openDatabase() else { return 0 }
+        defer { sqlite3_close(db) }
+        return (try? readSavedConnections(db: db).count) ?? 0
     }
 
     func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
-        let rows: [SavedConnectionRow]
+        let db: OpaquePointer?
         do {
-            rows = try readSavedConnections()
+            db = try openDatabase()
         } catch let error as ForeignAppImportError {
             throw error
         } catch {
             throw ForeignAppImportError.parseError(error.localizedDescription)
         }
+        defer { sqlite3_close(db) }
 
-        let folderMap = (try? readConnectionFolders()) ?? [:]
+        let rows = try readSavedConnections(db: db)
+        let folderMap = (try? readConnectionFolders(db: db)) ?? [:]
         let userKey = includePasswords ? loadUserEncryptionKey() : nil
 
         var exportableConnections: [ExportableConnection] = []
@@ -55,6 +59,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
         var credentials: [String: ExportableCredentials] = [:]
 
         for row in rows {
+            try Task.checkCancellation()
             guard let type = Self.mapDriver(row.connectionType) else {
                 Self.logger.warning("Skipping Beekeeper connection \(row.id) with unsupported driver \(row.connectionType ?? "<nil>", privacy: .public)")
                 continue
@@ -114,6 +119,11 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
 
     // MARK: - Driver Mapping
 
+    /// Beekeeper's `connectionType` strings come from the `ConnectionType`
+    /// enum in
+    /// `beekeeper-studio/apps/studio/src/lib/db/types.ts`. Update this map
+    /// when Beekeeper adds a driver TablePro now supports. Unmapped drivers
+    /// are skipped with a warning at the call site.
     private static func mapDriver(_ raw: String?) -> String? {
         guard let raw, !raw.isEmpty else { return nil }
         switch raw.lowercased() {
@@ -224,7 +234,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
     private func loadUserEncryptionKey() -> String? {
         guard let data = try? Data(contentsOf: keyFileURL),
               let payload = String(data: data, encoding: .utf8),
-              let decoded = BeekeeperEncryptor.decrypt(payload, key: BeekeeperEncryptor.defaultKey) as? [String: Any],
+              let decoded = BeekeeperEncryptor.decryptDictionary(payload, key: BeekeeperEncryptor.defaultKey),
               let key = decoded["encryptionKey"] as? String else {
             return nil
         }
@@ -280,10 +290,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
         let connectionFolderId: Int?
     }
 
-    private func readSavedConnections() throws -> [SavedConnectionRow] {
-        let db = try openDatabase()
-        defer { sqlite3_close(db) }
-
+    private func readSavedConnections(db: OpaquePointer?) throws -> [SavedConnectionRow] {
         // Only personal workspace; cloud-synced rows have positive workspaceId.
         let sql = """
             SELECT id, name, connectionType, host, port, username, defaultDatabase, password,
@@ -339,10 +346,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
         return rows
     }
 
-    private func readConnectionFolders() throws -> [Int: String] {
-        let db = try openDatabase()
-        defer { sqlite3_close(db) }
-
+    private func readConnectionFolders(db: OpaquePointer?) throws -> [Int: String] {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, "SELECT id, name FROM connection_folder", -1, &statement, nil) == SQLITE_OK else {
             return [:]
