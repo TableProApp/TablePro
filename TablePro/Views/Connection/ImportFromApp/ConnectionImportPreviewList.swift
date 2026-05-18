@@ -57,7 +57,7 @@ struct ConnectionImportPreviewList: View {
                     }
                 }
                 HStack(spacing: 0) {
-                    Text(verbatim: "\(item.connection.host):\(item.connection.port)")
+                    Text(verbatim: subtitle(for: item.connection))
                     warningText(for: item.status)
                 }
                 .font(.subheadline)
@@ -110,6 +110,20 @@ struct ConnectionImportPreviewList: View {
         if case .warnings(let messages) = status, let first = messages.first {
             Text(" — \(first)")
                 .foregroundStyle(.orange)
+        }
+    }
+
+    /// File-based databases (SQLite, DuckDB) don't have a meaningful
+    /// host/port. Show the database path instead, abbreviating the home
+    /// directory the same way Finder does.
+    private func subtitle(for connection: ExportableConnection) -> String {
+        switch connection.type {
+        case "SQLite", "DuckDB":
+            return connection.database.isEmpty
+                ? connection.type
+                : (connection.database as NSString).abbreviatingWithTildeInPath
+        default:
+            return "\(connection.host):\(connection.port)"
         }
     }
 }
