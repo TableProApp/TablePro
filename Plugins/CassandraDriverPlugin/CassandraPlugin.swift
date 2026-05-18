@@ -160,14 +160,26 @@ private actor CassandraConnectionActor {
 
             cass_ssl_set_verify_flags(ssl, CassandraSSLMapping.verifyFlags(for: sslMode))
 
-            if sslMode == .verifyCa || sslMode == .verifyIdentity,
-               let caCertPath = sslCaCertPath, !caCertPath.isEmpty,
-               let certData = FileManager.default.contents(atPath: caCertPath),
-               let certString = String(data: certData, encoding: .utf8) {
+            if sslMode == .verifyCa || sslMode == .verifyIdentity {
+                guard let caCertPath = sslCaCertPath, !caCertPath.isEmpty else {
+                    cass_ssl_free(ssl)
+                    cass_cluster_free(cluster)
+                    self.cluster = nil
+                    throw SSLHandshakeError.untrustedCertificate(serverMessage: "Verify CA or Verify Identity requires a CA certificate path")
+                }
+                guard let certData = FileManager.default.contents(atPath: caCertPath),
+                      let certString = String(data: certData, encoding: .utf8) else {
+                    cass_ssl_free(ssl)
+                    cass_cluster_free(cluster)
+                    self.cluster = nil
+                    throw SSLHandshakeError.untrustedCertificate(serverMessage: "Could not read CA certificate at \(caCertPath)")
+                }
                 let rc = cass_ssl_add_trusted_cert(ssl, certString)
                 if rc != CASS_OK {
-                    Self.logger.warning("Failed to add CA certificate, proceeding without verification")
-                    cass_ssl_set_verify_flags(ssl, Int32(CASS_SSL_VERIFY_NONE.rawValue))
+                    cass_ssl_free(ssl)
+                    cass_cluster_free(cluster)
+                    self.cluster = nil
+                    throw SSLHandshakeError.untrustedCertificate(serverMessage: "CA certificate at \(caCertPath) is not a valid PEM")
                 }
             }
 
@@ -845,7 +857,7 @@ private actor CassandraConnectionActor {
             break
         }
         let lower = message.lowercased()
-        if lower.contains("ssl") && (lower.contains("handshake") || lower.contains("verify")) {
+        if lower.contains("ssl handshake") || lower.contains("tls handshake") || lower.contains("ssl_connect") {
             return .cipherMismatch(serverMessage: message)
         }
         return nil

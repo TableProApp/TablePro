@@ -62,7 +62,7 @@ enum FreeTDSClassifier {
         if lower.contains("does not match host") {
             return .hostnameMismatch(serverMessage: message)
         }
-        if lower.contains("ssl handshake") || lower.contains("tls handshake") || lower.contains("openssl") {
+        if lower.contains("ssl handshake") || lower.contains("tls handshake") || lower.contains("openssl error") {
             return .cipherMismatch(serverMessage: message)
         }
         return nil
@@ -84,7 +84,7 @@ enum MongoDBClassifier {
         if lower.contains("tls required") || lower.contains("ssl required") {
             return .serverRejectedPlaintext(serverMessage: message)
         }
-        if lower.contains("client certificate") {
+        if lower.contains("client certificate required") || lower.contains("peer did not return a certificate") {
             return .clientCertRequired(serverMessage: message)
         }
         return nil

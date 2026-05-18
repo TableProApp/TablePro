@@ -18,6 +18,13 @@ struct ConnectionSSLView: View {
 
     private var supportsPerConnectionCertPaths: Bool { databaseType != .mssql }
 
+    private var noOpportunisticTLSWarning: String {
+        if databaseType == .oracle {
+            return String(localized: "Preferred connects in plain TCP for this driver. Use Required to enforce TCPS.")
+        }
+        return String(localized: "This driver has no TLS fallback. Preferred forces TLS, same as Required.")
+    }
+
     var body: some View {
         Form {
             Section {
@@ -27,8 +34,8 @@ struct ConnectionSSLView: View {
                     }
                 }
                 if sslMode == .preferred, !databaseType.supportsOpportunisticTLS {
-                    Label(String(localized: "This driver has no TLS fallback — Preferred behaves the same as Required."), systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                    Label(noOpportunisticTLSWarning, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(databaseType == .oracle ? .red : .orange)
                         .font(.caption)
                 }
             } footer: {

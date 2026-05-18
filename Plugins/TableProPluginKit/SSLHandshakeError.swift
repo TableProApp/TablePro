@@ -52,8 +52,23 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
         if let suggestion = sslError.recoverySuggestion {
             parts.append(suggestion)
         }
-        parts.append(String(format: String(localized: "Server response: %@"), sslError.serverMessage))
+        parts.append(String(format: String(localized: "Server response: %@"), sanitize(sslError.serverMessage)))
         return parts.joined(separator: "\n\n")
+    }
+
+    static func sanitize(_ message: String) -> String {
+        var redacted = message
+        let userInfo = try? NSRegularExpression(pattern: "://[^/@\\s]+:[^/@\\s]+@", options: [])
+        if let userInfo {
+            let range = NSRange(redacted.startIndex..<redacted.endIndex, in: redacted)
+            redacted = userInfo.stringByReplacingMatches(in: redacted, options: [], range: range, withTemplate: "://[redacted]@")
+        }
+        let kvPattern = try? NSRegularExpression(pattern: "(password|passwd|pwd)\\s*=\\s*\\S+", options: [.caseInsensitive])
+        if let kvPattern {
+            let range = NSRange(redacted.startIndex..<redacted.endIndex, in: redacted)
+            redacted = kvPattern.stringByReplacingMatches(in: redacted, options: [], range: range, withTemplate: "$1=[redacted]")
+        }
+        return redacted
     }
 
     public var recoverySuggestion: String? {
@@ -63,7 +78,10 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
         case .serverRequiresPlaintext:
             return String(localized: "Open the connection editor, switch to the SSL tab, and set Mode to Disabled.")
         case .untrustedCertificate:
-            return String(localized: "Switch SSL Mode to Verify CA and provide the server's CA certificate path, or use Required to skip verification.")
+            return String(localized: """
+                Switch SSL Mode to Verify CA and provide the server's CA certificate path. \
+                Required mode also connects, but does not validate the certificate chain.
+                """)
         case .hostnameMismatch:
             return String(localized: "Switch SSL Mode to Verify CA (validates the CA chain but skips hostname check), or update the host field to match the certificate.")
         case .clientCertRequired:

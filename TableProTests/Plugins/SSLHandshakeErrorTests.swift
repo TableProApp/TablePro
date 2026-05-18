@@ -46,6 +46,29 @@ struct SSLHandshakeErrorTests {
         #expect(error.recoverySuggestion != nil)
     }
 
+    @Test("formatted() redacts password from libpq-style conninfo")
+    func testSanitizeKeyValuePassword() {
+        let error = SSLHandshakeError.untrustedCertificate(serverMessage: "host=db.example.com user=root password=Sup3rS3cret port=5432")
+        let formatted = SSLHandshakeError.formatted(error)
+        #expect(!formatted.contains("Sup3rS3cret"))
+        #expect(formatted.contains("password=[redacted]"))
+    }
+
+    @Test("formatted() redacts password from URL userinfo segment")
+    func testSanitizeURLUserInfo() {
+        let error = SSLHandshakeError.serverRejectedPlaintext(serverMessage: "Failed: postgresql://admin:LeakedPass@db.example.com/app")
+        let formatted = SSLHandshakeError.formatted(error)
+        #expect(!formatted.contains("LeakedPass"))
+        #expect(formatted.contains("://[redacted]@"))
+    }
+
+    @Test("formatted() leaves non-credential text untouched")
+    func testSanitizePreservesContent() {
+        let error = SSLHandshakeError.cipherMismatch(serverMessage: "no shared cipher between client and server")
+        let formatted = SSLHandshakeError.formatted(error)
+        #expect(formatted.contains("no shared cipher"))
+    }
+
     @Test("All cases expose the original server message")
     func testServerMessageRoundTrip() {
         let cases: [SSLHandshakeError] = [

@@ -546,7 +546,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         if lower.contains("does not match host") {
             return .hostnameMismatch(serverMessage: message)
         }
-        if lower.contains("ssl handshake") || lower.contains("tls handshake") || lower.contains("openssl") {
+        if lower.contains("ssl handshake") || lower.contains("tls handshake") || lower.contains("openssl error") {
             return .cipherMismatch(serverMessage: message)
         }
         return nil
