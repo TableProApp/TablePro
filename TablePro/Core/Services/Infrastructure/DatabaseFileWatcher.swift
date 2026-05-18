@@ -85,9 +85,11 @@ final class DatabaseFileWatcher {
 
         activeSources[connectionId] = source
         source.resume()
+        Self.logger.info("watching connId=\(connectionId, privacy: .public) path=\(path, privacy: .public)")
     }
 
     private func handleEvent(connectionId: UUID) {
+        Self.logger.info("file event connId=\(connectionId, privacy: .public)")
         // Re-create the watcher to get a fresh file descriptor.
         // SQLite journaling (rename + recreate) can invalidate the old fd.
         startSource(connectionId: connectionId)
