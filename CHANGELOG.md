@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Import connections from Beekeeper Studio. Reads `app.db` from the local workspace, decrypts saved passwords using Beekeeper's two-tier key scheme, and maps SSH bastion hosts to TablePro's jump-host field
 - Schema picker at the bottom of the Tables sidebar to switch the active schema (#1296)
 - Inline dropdown picker when editing ENUM and SET columns, covering MySQL, MariaDB, PostgreSQL, ClickHouse, DuckDB, and MongoDB JSON-schema enums (#1283)
 - Filter rows show an enum dropdown for `=` and `!=` operators on enum columns (#1283)

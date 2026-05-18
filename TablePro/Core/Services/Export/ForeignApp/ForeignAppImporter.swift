@@ -79,7 +79,8 @@ enum ForeignAppImporterRegistry {
     static let all: [any ForeignAppImporter] = [
         TablePlusImporter(),
         SequelAceImporter(),
-        DBeaverImporter()
+        DBeaverImporter(),
+        BeekeeperStudioImporter()
     ]
 }
 

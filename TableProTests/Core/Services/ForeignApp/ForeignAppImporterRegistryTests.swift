@@ -13,12 +13,13 @@ struct ForeignAppImporterRegistryTests {
     @Test("Registry contains all importers")
     func testRegistryContainsAllImporters() {
         let importers = ForeignAppImporterRegistry.all
-        #expect(importers.count == 3)
+        #expect(importers.count == 4)
 
         let ids = importers.map(\.id)
         #expect(ids.contains("tableplus"))
         #expect(ids.contains("sequelace"))
         #expect(ids.contains("dbeaver"))
+        #expect(ids.contains("beekeeperstudio"))
     }
 
     @Test("All importers have unique IDs")
@@ -75,5 +76,13 @@ struct ForeignAppImporterRegistryTests {
         #expect(importer.id == "dbeaver")
         #expect(importer.displayName == "DBeaver")
         #expect(importer.appBundleIdentifier == "org.jkiss.dbeaver.core.product")
+    }
+
+    @Test("Beekeeper Studio importer has correct metadata")
+    func testBeekeeperStudioImporterMetadata() {
+        let importer = BeekeeperStudioImporter()
+        #expect(importer.id == "beekeeperstudio")
+        #expect(importer.displayName == "Beekeeper Studio")
+        #expect(importer.appBundleIdentifier == "io.beekeeperstudio.desktop")
     }
 }

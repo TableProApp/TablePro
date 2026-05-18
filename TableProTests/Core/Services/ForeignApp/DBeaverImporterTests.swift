@@ -19,12 +19,12 @@ struct DBeaverImporterTests {
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("DBeaverImporterTests-\(UUID().uuidString)")
 
-        // DBeaver workspace structure: workspace6/<project>/.dbeaver/data-sources.json
-        projectDir = tempDir.appendingPathComponent("General/.dbeaver")
+        // DBeaver layout: <root>/workspace6/<project>/.dbeaver/data-sources.json
+        projectDir = tempDir.appendingPathComponent("workspace6/General/.dbeaver")
         try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
 
         var imp = DBeaverImporter()
-        imp.workspaceBaseURL = tempDir
+        imp.dbeaverDataRoot = tempDir
         importer = imp
     }
 
