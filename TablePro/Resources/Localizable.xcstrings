@@ -1362,6 +1362,7 @@
       }
     },
     "%@: %lld" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1417,17 +1418,6 @@
           }
         }
       }
-    },
-    "%@:%lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@:%2$lld"
-          }
-        }
-      },
-      "shouldTranslate" : false
     },
     "%@." : {
       "extractionState" : "stale",
@@ -2024,6 +2014,7 @@
       }
     },
     "%lld pt" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -23410,6 +23401,7 @@
       }
     },
     "hostname:%lld" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -35123,6 +35115,9 @@
           }
         }
       }
+    },
+    "Preferred connects in plain TCP for this driver. Use Required to enforce TCPS." : {
+
     },
     "Preferred performs a 2-pass connect: tries TLS first, falls back to plain only on SSL handshake errors. Required by Cloud SQL and Azure MySQL." : {
 
@@ -47403,6 +47398,9 @@
 
     },
     "This driver does not expose routine DDL." : {
+
+    },
+    "This driver has no TLS fallback. Preferred forces TLS, same as Required." : {
 
     },
     "This DROP query will permanently remove database objects. This action cannot be undone." : {

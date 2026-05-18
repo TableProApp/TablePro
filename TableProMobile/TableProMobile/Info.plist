@@ -6,6 +6,11 @@
 	<string>$(ANALYTICS_HMAC_SECRET)</string>
 	<key>AppIdentifierPrefix</key>
 	<string>$(AppIdentifierPrefix)</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>NSFaceIDUsageDescription</key>
 	<string>TablePro uses Face ID to protect your saved database connections and credentials.</string>
 	<key>NSLocalNetworkUsageDescription</key>
