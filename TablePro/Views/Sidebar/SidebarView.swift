@@ -78,7 +78,7 @@ struct SidebarView: View {
             databaseType: databaseType,
             connectionId: connectionId
         )
-        vm.searchText = sidebarState.searchText
+        vm.searchText = windowState.searchText
         if databaseType == .redis, let existingVM = sidebarState.redisKeyTreeViewModel {
             vm.redisKeyTreeViewModel = existingVM
         }
@@ -112,7 +112,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .onChange(of: sidebarState.searchText) { _, newValue in
+        .onChange(of: windowState.searchText) { _, newValue in
             viewModel.searchText = newValue
         }
         .onAppear {

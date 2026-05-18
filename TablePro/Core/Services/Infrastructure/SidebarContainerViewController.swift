@@ -76,8 +76,8 @@ internal final class SidebarContainerViewController: NSViewController {
         generation: Int
     ) {
         withObservationTracking {
-            _ = state.searchText
             _ = state.selectedSidebarTab
+            _ = windowState.searchText
             _ = windowState.favoritesSearchText
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
@@ -96,7 +96,7 @@ internal final class SidebarContainerViewController: NSViewController {
         let placeholder: String
         switch state.selectedSidebarTab {
         case .tables:
-            activeText = state.searchText
+            activeText = windowState.searchText
             placeholder = String(localized: "Filter")
         case .favorites:
             activeText = windowState.favoritesSearchText
@@ -121,12 +121,12 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
     }
 
     private func writeSearchText(_ text: String) {
-        guard let sidebarState else { return }
+        guard let sidebarState, let windowState else { return }
         switch sidebarState.selectedSidebarTab {
         case .tables:
-            sidebarState.searchText = text
+            windowState.searchText = text
         case .favorites:
-            windowState?.favoritesSearchText = text
+            windowState.favoritesSearchText = text
         }
     }
 }

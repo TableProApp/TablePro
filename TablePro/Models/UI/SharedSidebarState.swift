@@ -17,7 +17,6 @@ internal enum SidebarTab: String, CaseIterable {
 
 @MainActor @Observable
 final class SharedSidebarState {
-    var searchText: String = ""
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
 
     var selectedSidebarTab: SidebarTab {

@@ -145,10 +145,9 @@ extension MainContentView {
         } else {
             target = []
         }
-        let state = coordinator.windowSidebarState
-        if state.selectedTables != target {
+        if coordinator.windowSidebarState.selectedTables != target {
             if target.isEmpty && liveTables.isEmpty { return }
-            state.selectedTables = target
+            coordinator.windowSidebarState.selectedTables = target
         }
     }
 
