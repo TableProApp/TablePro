@@ -10,6 +10,7 @@ import SwiftUI
 @MainActor
 internal final class WindowManager {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    private static let issue1313Logger = Logger(subsystem: "com.TablePro", category: "Issue1313")
 
     internal static let shared = WindowManager()
 
@@ -22,6 +23,9 @@ internal final class WindowManager {
 
     internal func openTab(payload: EditorTabPayload) {
         let t0 = Date()
+        Self.issue1313Logger.info(
+            "[1313] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) isPreview=\(payload.isPreview)"
+        )
         Self.lifecycleLogger.info(
             "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute)"
         )
@@ -65,14 +69,28 @@ internal final class WindowManager {
                 }
             }
             let target = sibling.tabbedWindows?.last ?? sibling
+            let newWinId = ObjectIdentifier(window).hashValue
+            let targetWinId = ObjectIdentifier(target).hashValue
+            Self.issue1313Logger.info(
+                "[1313] WindowManager pre-addTabbedWindow newWinId=\(newWinId) targetWinId=\(targetWinId) targetIsKey=\(target.isKeyWindow) groupSize=\(target.tabbedWindows?.count ?? -1)"
+            )
             target.addTabbedWindow(window, ordered: .above)
+            Self.issue1313Logger.info(
+                "[1313] WindowManager post-addTabbedWindow newWinId=\(newWinId) groupSize=\(window.tabbedWindows?.count ?? -1)"
+            )
             window.makeKeyAndOrderFront(nil)
+            Self.issue1313Logger.info(
+                "[1313] WindowManager post-makeKeyAndOrderFront newWinId=\(newWinId) isKey=\(window.isKeyWindow)"
+            )
             Self.lifecycleLogger.info(
                 "[open] WindowManager joined existing tab group payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )
         } else {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            Self.issue1313Logger.info(
+                "[1313] WindowManager standalone window newWinId=\(ObjectIdentifier(window).hashValue) isKey=\(window.isKeyWindow)"
+            )
             Self.lifecycleLogger.info(
                 "[open] WindowManager standalone window payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )
