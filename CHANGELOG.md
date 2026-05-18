@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - New query tab (Cmd+T) no longer jumps focus back to the previous table tab on SQLite and other file-based databases (#1313)
+- File-based databases (SQLite, DuckDB) no longer flash the sidebar table list every time a window becomes key; external file changes are picked up reactively via the file watcher instead of polling on focus
 - PostgreSQL connections to AWS RDS, Cloud SQL, Azure, and other hosted Postgres now succeed out of the box instead of failing with "no pg_hba.conf entry for host" (#1298)
 - Oracle: SSL/TCPS settings from the SSL pane are now respected; previously every Oracle connection was plain TCP regardless of SSL mode
 - Cassandra: SSL settings from the SSL pane are now respected; previously every Cassandra connection was plain TCP because the plugin read from a non-existent "sslMode" field

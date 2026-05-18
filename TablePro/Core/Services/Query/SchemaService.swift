@@ -17,7 +17,6 @@ final class SchemaService {
     private(set) var functions: [UUID: [RoutineInfo]] = [:]
     private(set) var schemasInOrder: [UUID: [String]] = [:]
 
-    @ObservationIgnored private var lastLoadDates: [UUID: Date] = [:]
     @ObservationIgnored private let loadDedup = OnceTask<UUID, [TableInfo]>()
     @ObservationIgnored private let procedureDedup = OnceTask<UUID, [RoutineInfo]>()
     @ObservationIgnored private let functionDedup = OnceTask<UUID, [RoutineInfo]>()
@@ -74,20 +73,6 @@ final class SchemaService {
         await runLoad(connectionId: connectionId, driver: driver, connection: connection)
     }
 
-    func reloadIfStale(
-        connectionId: UUID,
-        driver: DatabaseDriver,
-        connection: DatabaseConnection,
-        staleness: TimeInterval
-    ) async {
-        guard let lastLoad = lastLoadDates[connectionId] else {
-            await reload(connectionId: connectionId, driver: driver, connection: connection)
-            return
-        }
-        guard Date().timeIntervalSince(lastLoad) > staleness else { return }
-        await reload(connectionId: connectionId, driver: driver, connection: connection)
-    }
-
     func reloadProcedures(connectionId: UUID, driver: DatabaseDriver) async {
         do {
             let routines = try await procedureDedup.execute(key: connectionId) {
@@ -127,7 +112,6 @@ final class SchemaService {
         procedures.removeValue(forKey: connectionId)
         functions.removeValue(forKey: connectionId)
         schemasInOrder.removeValue(forKey: connectionId)
-        lastLoadDates.removeValue(forKey: connectionId)
     }
 
     func refresh(connectionId: UUID) async {
@@ -176,7 +160,6 @@ final class SchemaService {
             states[connectionId] = .loaded(tables)
             procedures[connectionId] = loadedProcedures
             functions[connectionId] = loadedFunctions
-            lastLoadDates[connectionId] = Date()
         } catch is CancellationError {
             return
         } catch {

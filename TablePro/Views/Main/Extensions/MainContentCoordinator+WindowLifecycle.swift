@@ -29,12 +29,6 @@ extension MainContentCoordinator {
         evictionTask?.cancel()
         evictionTask = nil
 
-        let isConnected =
-            DatabaseManager.shared.activeSessions[connectionId]?.isConnected ?? false
-        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased && isConnected {
-            Task { await self.refreshTablesIfStale() }
-        }
-
         syncSidebarToSelectedTab()
 
         Self.lifecycleLogger.debug(

@@ -480,19 +480,6 @@ final class MainContentCoordinator {
         fileWatcher = watcher
     }
 
-    /// Refresh schema only if not recently refreshed (avoids redundant work
-    /// when both the file watcher and window focus trigger close together).
-    func refreshTablesIfStale() async {
-        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-        await services.schemaService.reloadIfStale(
-            connectionId: connectionId,
-            driver: driver,
-            connection: connection,
-            staleness: 2
-        )
-        await reconcilePostSchemaLoad()
-    }
-
     func showAIChatPanel() {
         inspectorProxy?.showInspector()
         rightPanelState?.activeTab = .aiChat
