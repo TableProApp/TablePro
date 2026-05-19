@@ -86,6 +86,7 @@ struct TableStructureView: View {
             contentArea
         }
         .task(loadInitialData)
+        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
         .onChange(of: selectedTab) { _, newValue in onSelectedTabChanged(newValue) }
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
@@ -95,10 +96,7 @@ struct TableStructureView: View {
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
-            gridDelegate.onSelectedRowsChanged = { rows in
-                self.selectedRows = rows
-                self.selectionState.indices = rows
-            }
+            gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
             gridDelegate.coordinator = coordinator
             gridDelegate.sortHandler = { [self] column, ascending in
                 structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
