@@ -50,12 +50,12 @@
 		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
-				<string>sqlite</string>
-				<string>sqlite3</string>
 				<string>db</string>
 				<string>db3</string>
 				<string>s3db</string>
 				<string>sl3</string>
+				<string>sqlite</string>
+				<string>sqlite3</string>
 				<string>sqlitedb</string>
 			</array>
 			<key>CFBundleTypeName</key>
@@ -63,7 +63,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Default</string>
+			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.apple.sqlite3</string>
@@ -173,12 +173,12 @@
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
-					<string>sqlite</string>
-					<string>sqlite3</string>
 					<string>db</string>
 					<string>db3</string>
 					<string>s3db</string>
 					<string>sl3</string>
+					<string>sqlite</string>
+					<string>sqlite3</string>
 					<string>sqlitedb</string>
 				</array>
 			</dict>
