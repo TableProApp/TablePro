@@ -40,7 +40,7 @@ internal struct InClauseConverter {
     private func formatScalar(_ value: String, type: ColumnType) -> String {
         switch type {
         case .integer:
-            if let intVal = Int64(value) { return String(intVal) }
+            if RowValueCopyFormatter.isIntegerLiteral(value) { return value }
             return quoted(value)
         case .decimal:
             if Double(value) != nil { return value }

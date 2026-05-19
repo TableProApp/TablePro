@@ -32,20 +32,11 @@ internal struct CsvRowConverter {
                 if idx > 0 { result.append(",") }
                 guard row.indices.contains(idx) else { continue }
 
-                let cell = row[idx]
-                switch cell {
-                case .null:
+                let columnType = columnTypes.indices.contains(idx) ? columnTypes[idx] : nil
+                guard let text = RowValueCopyFormatter.copyText(cell: row[idx], columnType: columnType) else {
                     continue
-                case .text(let value):
-                    let columnType = columnTypes.indices.contains(idx) ? columnTypes[idx] : nil
-                    let formatted = (columnType?.isBlobType ?? false)
-                        ? (value.formattedAsCompactHex() ?? value)
-                        : value
-                    result.append(Self.encode(formatted))
-                case .bytes(let data):
-                    let blob = String(data: data, encoding: .isoLatin1)?.formattedAsCompactHex() ?? ""
-                    result.append(Self.encode(blob))
                 }
+                result.append(Self.encode(text))
             }
             result.append("\n")
         }

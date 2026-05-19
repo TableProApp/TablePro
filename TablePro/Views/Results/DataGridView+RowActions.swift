@@ -191,7 +191,8 @@ extension TableViewCoordinator {
     func copyColumnValues(columnIndex: Int) {
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
-        let rowCount = sortedIDs?.count ?? tableRows.rows.count
+        let totalRows = sortedIDs?.count ?? tableRows.rows.count
+        let rowCount = min(totalRows, PluginRowLimits.emergencyMax)
         guard rowCount > 0 else { return }
 
         let columnType = tableRows.columnTypes.indices.contains(columnIndex)
@@ -203,14 +204,8 @@ extension TableViewCoordinator {
 
         for rowIndex in 0..<rowCount {
             guard let row = displayRow(at: rowIndex), row.values.indices.contains(columnIndex) else { continue }
-            switch row.values[columnIndex] {
-            case .null:
-                lines.append("NULL")
-            case .text(let value):
-                lines.append(BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy))
-            case .bytes(let data):
-                lines.append(BlobFormattingService.shared.format(data, for: .copy) ?? "")
-            }
+            let text = RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType) ?? "NULL"
+            lines.append(text)
         }
 
         ClipboardService.shared.writeText(lines.joined(separator: "\n"))

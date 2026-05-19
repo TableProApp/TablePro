@@ -72,6 +72,15 @@ struct InClauseConverterTests {
         #expect(result == "()")
     }
 
+    @Test("Integer column preserves HUGEINT values beyond Int64 range")
+    func hugeIntInteger() {
+        let converter = makeConverter(columnIndex: 0, columnTypes: [.integer(rawType: nil)])
+        let max = "170141183460469231731687303715884105727"
+        let min = "-170141183460469231731687303715884105728"
+        let result = converter.generateInClause(rows: [[PluginCellValue.text(max)], [PluginCellValue.text(min)]])
+        #expect(result == "(\(max), \(min))")
+    }
+
     @Test("Boolean true variants normalize to TRUE")
     func boolTrue() {
         let converter = makeConverter(columnIndex: 0, columnTypes: [.boolean(rawType: nil)])

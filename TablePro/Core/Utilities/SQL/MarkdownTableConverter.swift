@@ -40,20 +40,9 @@ internal struct MarkdownTableConverter {
                     continue
                 }
 
-                let cell = row[idx]
-                switch cell {
-                case .null:
-                    result.append("NULL")
-                case .text(let value):
-                    let columnType = columnTypes.indices.contains(idx) ? columnTypes[idx] : nil
-                    let formatted = (columnType?.isBlobType ?? false)
-                        ? (value.formattedAsCompactHex() ?? value)
-                        : value
-                    result.append(Self.encode(formatted))
-                case .bytes(let data):
-                    let blob = String(data: data, encoding: .isoLatin1)?.formattedAsCompactHex() ?? ""
-                    result.append(Self.encode(blob))
-                }
+                let columnType = columnTypes.indices.contains(idx) ? columnTypes[idx] : nil
+                let text = RowValueCopyFormatter.copyText(cell: row[idx], columnType: columnType) ?? "NULL"
+                result.append(Self.encode(text))
             }
             result.append(" |\n")
         }
