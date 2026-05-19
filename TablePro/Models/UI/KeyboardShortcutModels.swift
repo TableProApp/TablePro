@@ -499,7 +499,6 @@ struct KeyboardSettings: Codable, Equatable {
         // View
         .toggleTableBrowser: KeyCombo(key: "0", command: true),
         .toggleInspector: KeyCombo(key: "i", command: true, option: true),
-        .toggleFilters: KeyCombo(key: "f", command: true, shift: true),
         .toggleHistory: KeyCombo(key: "y", command: true),
         .toggleResults: KeyCombo(key: "r", command: true, option: true),
         .previousResultTab: KeyCombo(key: "[", command: true, option: true),

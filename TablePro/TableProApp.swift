@@ -481,6 +481,9 @@ struct AppMenuCommands: Commands {
             Button(String(localized: "Find...")) {
                 if keyWindowIsInspector {
                     NSApp.sendAction(#selector(InspectorViewController.toggleInspectorFilter(_:)), to: nil, from: nil)
+                } else if NSApp.keyWindow?.firstResponder is KeyHandlingTableView,
+                          actions?.isTableTab == true {
+                    actions?.toggleFilterPanel()
                 } else {
                     EditorEventRouter.shared.showFindPanelForKeyWindow()
                 }

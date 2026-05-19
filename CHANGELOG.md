@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `Cmd+C` now copies the focused cell value when one row is selected and a cell has focus; with multiple rows selected, or when no cell is focused, it still copies row(s) as TSV. `Cmd+Shift+C` now always copies row(s) as TSV. "Copy with Headers" stays in the Edit menu and row context menu without a default shortcut (#1332)
+- `Cmd+F` toggles the data-grid filter panel when the grid is focused; the SQL editor's Find panel still opens with `Cmd+F` when the editor is focused. The old `Cmd+Shift+F` shortcut for filters is removed
 
 ### Fixed
 
