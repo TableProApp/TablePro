@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Right-click a column header to copy all its values from the loaded rows (#1325)
 - Copy as submenu on the row context menu now offers CSV, CSV with Headers, Markdown table, and IN Clause for SQL `WHERE id IN (...)` lookups (#1325)
 
+### Changed
+
+- `Cmd+C` now copies the focused cell value when one row is selected and a cell has focus; with multiple rows selected, or when no cell is focused, it still copies row(s) as TSV. `Cmd+Shift+C` now always copies row(s) as TSV. "Copy with Headers" stays in the Edit menu and row context menu without a default shortcut (#1332)
+
 ### Fixed
 
 - DuckDB Spatial `GEOMETRY` columns render as WKT, not NULL (#1324)

@@ -118,7 +118,26 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     @objc func copy(_ sender: Any?) {
+        if let cell = focusedDataCell() {
+            coordinator?.copyCellValue(at: cell.row, columnIndex: cell.columnIndex)
+        } else {
+            coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
+        }
+    }
+
+    @objc func copyRowsAsTSV(_ sender: Any?) {
         coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
+    }
+
+    private func focusedDataCell() -> (row: Int, columnIndex: Int)? {
+        guard selectedRowIndexes.count == 1,
+              focusedRow >= 0,
+              DataGridView.isDataTableColumn(focusedColumn),
+              let schema = coordinator?.identitySchema,
+              let dataColumn = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
+            return nil
+        }
+        return (focusedRow, dataColumn)
     }
 
     @objc func paste(_ sender: Any?) {
@@ -137,7 +156,7 @@ final class KeyHandlingTableView: NSTableView {
         switch item.action {
         case #selector(delete(_:)), #selector(deleteBackward(_:)):
             return coordinator?.isEditable == true && !selectedRowIndexes.isEmpty
-        case #selector(copy(_:)):
+        case #selector(copy(_:)), #selector(copyRowsAsTSV(_:)):
             return !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil

@@ -29,13 +29,14 @@ enum PasteboardActionRouter {
         if let responder = firstResponder,
            responder is NSTextView || responder is TextView {
             return .textCopy
-        } else if hasRowSelection {
-            return .copyRows
-        } else if hasTableSelection {
-            return .copyTableNames
-        } else {
-            return .textCopy
         }
+        if hasRowSelection {
+            return .copyRows
+        }
+        if hasTableSelection {
+            return .copyTableNames
+        }
+        return .textCopy
     }
 
     static func resolvePasteAction(

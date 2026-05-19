@@ -18,9 +18,13 @@ import TableProPluginKit
 /// Custom Commands struct for pasteboard operations
 struct PasteboardCommands: Commands {
     var settingsManager: AppSettingsManager
-    @FocusedValue(\.commandActions) var actions: MainContentCommandActions?
+    @FocusedValue(\.commandActions) var focusedActions: MainContentCommandActions?
+    @Bindable var commandRegistry: CommandActionsRegistry
 
-    /// Build a SwiftUI KeyboardShortcut from keyboard settings
+    private var actions: MainContentCommandActions? {
+        focusedActions ?? commandRegistry.current
+    }
+
     private func shortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
@@ -39,15 +43,19 @@ struct PasteboardCommands: Commands {
                     hasTableSelection: actions?.hasTableSelection ?? false
                 )
                 switch action {
-                case .textCopy:
+                case .textCopy, .copyRows:
                     NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
-                case .copyRows:
-                    actions?.copySelectedRows()
                 case .copyTableNames:
                     actions?.copyTableNames()
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .copy))
+
+            Button("Copy Rows") {
+                NSApp.sendAction(#selector(KeyHandlingTableView.copyRowsAsTSV(_:)), to: nil, from: nil)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .copyRowsExplicit))
+            .disabled(!(actions?.hasRowSelection ?? false))
 
             Button("Copy with Headers") {
                 actions?.copySelectedRowsWithHeaders()
@@ -458,8 +466,7 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .redo))
         }
 
-        // Edit menu - pasteboard commands with FocusedValue support
-        PasteboardCommands(settingsManager: settingsManager)
+        PasteboardCommands(settingsManager: settingsManager, commandRegistry: commandRegistry)
 
         // Edit menu - Find + row operations (after pasteboard)
         CommandGroup(after: .pasteboard) {

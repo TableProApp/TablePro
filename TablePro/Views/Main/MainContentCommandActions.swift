@@ -173,9 +173,7 @@ final class MainContentCommandActions {
         observeKeyWindowOnly(AppCommands.shared.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
 
         observeKeyWindowOnly(AppCommands.shared.copySelectedRows) { [weak self] _ in
-            guard let self else { return }
-            let indices = self.selectionState.indices
-            self.coordinator?.copySelectedRowsToClipboard(indices: indices)
+            self?.copySelectedRows()
         }
 
         observeKeyWindowOnly(AppCommands.shared.pasteRows) { [weak self] _ in

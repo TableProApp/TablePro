@@ -64,6 +64,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case redo
     case cut
     case copy
+    case copyRowsExplicit
     case copyWithHeaders
     case copyAsJson
     case paste
@@ -103,7 +104,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .executeQuery, .explainQuery, .formatQuery, .export, .importData, .quickSwitcher,
              .previousPage, .nextPage, .saveAsFavorite, .openTerminal:
             return .file
-        case .undo, .redo, .cut, .copy, .copyWithHeaders, .copyAsJson, .paste,
+        case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .paste,
              .delete, .selectAll, .clearSelection, .addRow,
              .duplicateRow, .truncateTable, .previewFKReference:
             return .edit
@@ -142,6 +143,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .redo: return String(localized: "Redo")
         case .cut: return String(localized: "Cut")
         case .copy: return String(localized: "Copy")
+        case .copyRowsExplicit: return String(localized: "Copy Rows")
         case .copyWithHeaders: return String(localized: "Copy with Headers")
         case .copyAsJson: return String(localized: "Copy as JSON")
         case .paste: return String(localized: "Paste")
@@ -482,7 +484,7 @@ struct KeyboardSettings: Codable, Equatable {
         .redo: KeyCombo(key: "z", command: true, shift: true),
         .cut: KeyCombo(key: "x", command: true),
         .copy: KeyCombo(key: "c", command: true),
-        .copyWithHeaders: KeyCombo(key: "c", command: true, shift: true),
+        .copyRowsExplicit: KeyCombo(key: "c", command: true, shift: true),
         .copyAsJson: KeyCombo(key: "j", command: true, option: true),
         .paste: KeyCombo(key: "v", command: true),
         .delete: KeyCombo(key: "delete", command: true, isSpecialKey: true),
