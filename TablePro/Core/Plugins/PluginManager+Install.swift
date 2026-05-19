@@ -38,7 +38,9 @@ extension PluginManager {
         )
 
         saveRegistryMetadata(pluginId: registryPlugin.id, pluginURL: finalURL)
-        return try await loadPluginAsync(at: finalURL, source: .userInstalled)
+        let entry = try await loadPluginAsync(at: finalURL, source: .userInstalled)
+        refreshRegistryUpdateSet()
+        return entry
     }
 
     func updateFromRegistry(
@@ -124,7 +126,12 @@ extension PluginManager {
             )
         }
         installsInFlight.insert(pluginId)
-        defer { installsInFlight.remove(pluginId) }
+        defer {
+            installsInFlight.remove(pluginId)
+            // Once PluginInstaller.commitStagedUpdate runs the file is moved off the
+            // staged path regardless of what happens after, so this entry must drop.
+            stagedUpdates.removeValue(forKey: pluginId)
+        }
         let finalURL = try await PluginInstaller.shared.commitStagedUpdate(
             pluginId: pluginId,
             into: userPluginsDir
@@ -135,8 +142,8 @@ extension PluginManager {
             source: .userInstalled,
             replacingBundleId: pluginId
         )
-        stagedUpdates.removeValue(forKey: pluginId)
         PluginInstallTracker.shared.completeInstall(pluginId: pluginId)
+        refreshRegistryUpdateSet()
         return entry
     }
 

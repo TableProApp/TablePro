@@ -72,6 +72,7 @@ extension PluginManager {
                 case .installed:
                     removeFromRejected(url: rejected.url)
                     reconciliationAttempts.removeValue(forKey: lookupId)
+                    refreshRegistryUpdateSet()
                     Self.logger.info("Reconciliation: auto-updated '\(rejected.name)'")
                 case .staged:
                     Self.logger.info("Reconciliation: staged update for '\(rejected.name)' (live connections)")

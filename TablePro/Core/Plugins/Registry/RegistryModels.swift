@@ -78,6 +78,10 @@ struct RegistryPlugin: Codable, Sendable, Identifiable {
         if let decodedBinaries = try container.decodeIfPresent([RegistryBinary].self, forKey: .binaries) {
             binaries = decodedBinaries
         } else if let url = legacyDownloadURL, let hash = legacySha256 {
+            // v1 manifests carried a single downloadURL with no architecture.
+            // Historically those ZIPs shipped a universal binary, so we synthesize
+            // entries for both architectures. Code signature verification will
+            // reject mismatched arch at install time.
             binaries = [
                 RegistryBinary(
                     architecture: .arm64,

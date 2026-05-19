@@ -28,7 +28,15 @@ if [ -z "$TEAM_ID" ]; then
 fi
 
 if [ -z "$SIGN_IDENTITY" ]; then
-    SIGN_IDENTITY="Developer ID Application (${TEAM_ID})"
+    # Try the canonical "Developer ID Application: <Name> (<TEAMID>)" pattern.
+    # If your keychain stores the identity differently, set SIGN_IDENTITY explicitly.
+    SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+        | awk -F'"' -v team="$TEAM_ID" '$2 ~ /Developer ID Application/ && $2 ~ team {print $2; exit}')
+    if [ -z "$SIGN_IDENTITY" ]; then
+        echo "ERROR: No Developer ID Application identity found in keychain for team $TEAM_ID." >&2
+        echo "       Either install the cert or set SIGN_IDENTITY explicitly." >&2
+        exit 1
+    fi
 fi
 
 if [ -n "$PLUGIN_VERSION" ]; then

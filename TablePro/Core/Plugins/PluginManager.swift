@@ -238,25 +238,27 @@ final class PluginManager {
     }
 
     private func cleanStaleStagingArtifacts() {
-        let fm = FileManager.default
         let stagingRoot = PluginInstaller.stagingRoot(for: userPluginsDir)
-        if let stagingContents = try? fm.contentsOfDirectory(
-            at: stagingRoot,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) {
-            for item in stagingContents {
-                try? fm.removeItem(at: item)
+        let pluginsDir = userPluginsDir
+        Task.detached(priority: .utility) {
+            let fm = FileManager.default
+            if let stagingContents = try? fm.contentsOfDirectory(
+                at: stagingRoot,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+                for item in stagingContents {
+                    try? fm.removeItem(at: item)
+                }
             }
-        }
-
-        if let pluginContents = try? fm.contentsOfDirectory(
-            at: userPluginsDir,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) {
-            for item in pluginContents where item.pathExtension == "bak" {
-                try? fm.removeItem(at: item)
+            if let pluginContents = try? fm.contentsOfDirectory(
+                at: pluginsDir,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+                for item in pluginContents where item.pathExtension == "bak" {
+                    try? fm.removeItem(at: item)
+                }
             }
         }
     }
