@@ -385,6 +385,7 @@ struct ConnectionFormView: View {
     // MARK: - Helpers
 
     private var sqliteContentTypes: [UTType] {
-        [UTType.database, UTType(filenameExtension: "sqlite3") ?? .data, .data]
+        let extensions = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
+        return [UTType.database] + extensions.compactMap { UTType(filenameExtension: $0) } + [.data]
     }
 }

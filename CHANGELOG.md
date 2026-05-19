@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB schema reads handle apostrophes and concurrent schema switches correctly
 - DuckDB ENUMs in non-`main` schemas resolve correctly
 - DuckDB `DATE` and `TIMESTAMP` BC years use a leading minus
+- `.db`, `.db3`, `.s3db`, `.sl3`, and `.sqlitedb` files now open in TablePro from Finder (#1327)
 
 ## [0.43.0] - 2026-05-18
 

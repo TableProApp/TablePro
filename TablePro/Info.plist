@@ -52,6 +52,7 @@
 			<array>
 				<string>sqlite</string>
 				<string>sqlite3</string>
+				<string>db</string>
 				<string>db3</string>
 				<string>s3db</string>
 				<string>sl3</string>
@@ -174,6 +175,7 @@
 				<array>
 					<string>sqlite</string>
 					<string>sqlite3</string>
+					<string>db</string>
 					<string>db3</string>
 					<string>s3db</string>
 					<string>sl3</string>

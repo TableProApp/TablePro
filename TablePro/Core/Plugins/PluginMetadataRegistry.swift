@@ -709,7 +709,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
-                    fileExtensions: ["db", "sqlite", "sqlite3"],
+                    fileExtensions: ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"],
                     databaseGroupingStrategy: .flat,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
