@@ -240,6 +240,7 @@ private struct SsoProfileSettings {
     let accountId: String
     let roleName: String
     let startUrl: String
+    let region: String
     let ssoSession: String?
 }
 
@@ -301,7 +302,7 @@ internal final class DynamoDBConnection: @unchecked Sendable {
     }
 
     func connect() async throws {
-        let credentials = try resolveCredentials()
+        let credentials = try await resolveCredentials()
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
         sessionConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
@@ -604,7 +605,7 @@ internal final class DynamoDBConnection: @unchecked Sendable {
 
     // MARK: - Credential Resolution
 
-    private func resolveCredentials() throws -> AWSCredentials {
+    private func resolveCredentials() async throws -> AWSCredentials {
         let authMethod = config.additionalFields["awsAuthMethod"] ?? "credentials"
 
         switch authMethod {
@@ -613,7 +614,7 @@ internal final class DynamoDBConnection: @unchecked Sendable {
         case "profile":
             return try resolveProfileCredentials()
         case "sso":
-            return try resolveSsoCredentials()
+            return try await resolveSsoCredentials()
         default:
             return try resolveAccessKeyCredentials()
         }
@@ -686,126 +687,220 @@ internal final class DynamoDBConnection: @unchecked Sendable {
         )
     }
 
-    private func resolveSsoCredentials() throws -> AWSCredentials {
+    private func resolveSsoCredentials() async throws -> AWSCredentials {
         let profileName = config.additionalFields["awsProfileName"] ?? "default"
-        let ssoSettings = try parseSsoProfileSettings(profileName: profileName)
-        let cliCachePath = NSString("~/.aws/cli/cache").expandingTildeInPath
-
-        // Compute the expected cache filename from the profile's SSO settings.
-        // The AWS CLI caches credentials using SHA1 of a minified JSON with sorted keys.
-        let cacheKey: String
-        if let sessionName = ssoSettings.ssoSession {
-            // Session-based SSO: {"accountId":"...","roleName":"...","sessionName":"..."}
-            cacheKey = "{\"accountId\":\"\(ssoSettings.accountId)\",\"roleName\":\"\(ssoSettings.roleName)\",\"sessionName\":\"\(sessionName)\"}"
-        } else {
-            // Legacy SSO: {"accountId":"...","roleName":"...","startUrl":"..."}
-            cacheKey = "{\"accountId\":\"\(ssoSettings.accountId)\",\"roleName\":\"\(ssoSettings.roleName)\",\"startUrl\":\"\(ssoSettings.startUrl)\"}"
-        }
-
-        let cacheFileName = sha1Hex(Data(cacheKey.utf8)) + ".json"
-        let cacheFilePath = (cliCachePath as NSString).appendingPathComponent(cacheFileName)
-
-        guard let data = FileManager.default.contents(atPath: cacheFilePath) else {
-            throw DynamoDBError.authFailed(
-                "SSO cache file not found for profile '\(profileName)' at \(cacheFilePath). Run 'aws sso login --profile \(profileName)' first."
-            )
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw DynamoDBError.authFailed("Invalid SSO cache file for profile '\(profileName)'")
-        }
-
-        guard let accessKeyId = json["AccessKeyId"] as? String,
-              let secretAccessKey = json["SecretAccessKey"] as? String,
-              let sessionToken = json["SessionToken"] as? String
-        else {
-            throw DynamoDBError.authFailed(
-                "SSO cache file for profile '\(profileName)' is missing credential fields. Run 'aws sso login --profile \(profileName)' first."
-            )
-        }
-
-        if let expiresAtStr = json["Expiration"] as? String {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let expiresAt = formatter.date(from: expiresAtStr) ?? ISO8601DateFormatter().date(from: expiresAtStr),
-               expiresAt <= Date()
-            {
-                throw DynamoDBError.authFailed(
-                    "SSO credentials for profile '\(profileName)' have expired. Run 'aws sso login --profile \(profileName)' to refresh."
-                )
-            }
-        }
-
-        return AWSCredentials(
-            accessKeyId: accessKeyId,
-            secretAccessKey: secretAccessKey,
-            sessionToken: sessionToken
+        let settings = try parseSsoProfileSettings(profileName: profileName)
+        let accessToken = try readSsoAccessToken(settings: settings, profileName: profileName)
+        return try await fetchSsoRoleCredentials(
+            accessToken: accessToken,
+            settings: settings,
+            profileName: profileName
         )
     }
 
-    /// Parse SSO settings from ~/.aws/config for the given profile.
+    private func readSsoAccessToken(settings: SsoProfileSettings, profileName: String) throws -> String {
+        let cacheDir = NSString("~/.aws/sso/cache").expandingTildeInPath
+        let cacheKey = settings.ssoSession ?? settings.startUrl
+        let cacheFileName = sha1Hex(Data(cacheKey.utf8)) + ".json"
+        let cacheFilePath = (cacheDir as NSString).appendingPathComponent(cacheFileName)
+
+        guard let data = FileManager.default.contents(atPath: cacheFilePath) else {
+            throw DynamoDBError.authFailed(
+                "SSO token cache not found for profile '\(profileName)'. Run 'aws sso login --profile \(profileName)' first."
+            )
+        }
+
+        struct TokenCache: Decodable {
+            let accessToken: String
+            let expiresAt: String
+        }
+
+        let token: TokenCache
+        do {
+            token = try JSONDecoder().decode(TokenCache.self, from: data)
+        } catch {
+            throw DynamoDBError.authFailed(
+                "SSO token cache for profile '\(profileName)' is malformed. Run 'aws sso login --profile \(profileName)' to refresh."
+            )
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expiresAt = formatter.date(from: token.expiresAt) ?? ISO8601DateFormatter().date(from: token.expiresAt)
+        if let expiresAt, expiresAt <= Date() {
+            throw DynamoDBError.authFailed(
+                "SSO session for profile '\(profileName)' has expired. Run 'aws sso login --profile \(profileName)' to refresh."
+            )
+        }
+
+        return token.accessToken
+    }
+
+    private func fetchSsoRoleCredentials(
+        accessToken: String,
+        settings: SsoProfileSettings,
+        profileName: String
+    ) async throws -> AWSCredentials {
+        var components = URLComponents(string: "https://portal.sso.\(settings.region).amazonaws.com/federation/credentials")
+        components?.queryItems = [
+            URLQueryItem(name: "account_id", value: settings.accountId),
+            URLQueryItem(name: "role_name", value: settings.roleName)
+        ]
+        guard let url = components?.url else {
+            throw DynamoDBError.authFailed("Failed to build SSO portal URL for profile '\(profileName)'")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(accessToken, forHTTPHeaderField: "x-amz-sso_bearer_token")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw DynamoDBError.authFailed(
+                "Failed to reach SSO portal for profile '\(profileName)': \(error.localizedDescription)"
+            )
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw DynamoDBError.authFailed("Unexpected response from SSO portal for profile '\(profileName)'")
+        }
+
+        switch http.statusCode {
+        case 200:
+            break
+        case 401:
+            throw DynamoDBError.authFailed(
+                "SSO session for profile '\(profileName)' has expired. Run 'aws sso login --profile \(profileName)' to refresh."
+            )
+        case 403:
+            throw DynamoDBError.authFailed(
+                "Role '\(settings.roleName)' in account '\(settings.accountId)' is not accessible via SSO. Check role permissions in AWS IAM Identity Center."
+            )
+        default:
+            throw DynamoDBError.authFailed(
+                "SSO portal returned HTTP \(http.statusCode) for profile '\(profileName)'"
+            )
+        }
+
+        struct RoleCredentialsEnvelope: Decodable {
+            struct RoleCredentials: Decodable {
+                let accessKeyId: String
+                let secretAccessKey: String
+                let sessionToken: String
+                let expiration: Int64
+            }
+            let roleCredentials: RoleCredentials
+        }
+
+        let envelope: RoleCredentialsEnvelope
+        do {
+            envelope = try JSONDecoder().decode(RoleCredentialsEnvelope.self, from: data)
+        } catch {
+            throw DynamoDBError.authFailed(
+                "Failed to decode SSO portal response for profile '\(profileName)'"
+            )
+        }
+
+        let expiry = Date(timeIntervalSince1970: TimeInterval(envelope.roleCredentials.expiration) / 1_000)
+        if expiry <= Date() {
+            throw DynamoDBError.authFailed(
+                "SSO role credentials for profile '\(profileName)' were already expired on issue. Run 'aws sso login --profile \(profileName)' to refresh."
+            )
+        }
+
+        return AWSCredentials(
+            accessKeyId: envelope.roleCredentials.accessKeyId,
+            secretAccessKey: envelope.roleCredentials.secretAccessKey,
+            sessionToken: envelope.roleCredentials.sessionToken
+        )
+    }
+
     private func parseSsoProfileSettings(profileName: String) throws -> SsoProfileSettings {
         let configPath = NSString("~/.aws/config").expandingTildeInPath
         guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else {
             throw DynamoDBError.authFailed("Cannot read ~/.aws/config")
         }
 
-        // In ~/.aws/config, the default profile is [default], others are [profile <name>]
-        let targetSection = profileName == "default" ? "default" : "profile \(profileName)"
+        let sections = parseIniSections(content)
+        let profileSection = profileName == "default" ? "default" : "profile \(profileName)"
 
-        var currentSection = ""
-        var accountId: String?
-        var roleName: String?
-        var startUrl: String?
-        var ssoSession: String?
+        guard let profile = sections[profileSection] else {
+            throw DynamoDBError.authFailed("Profile '\(profileName)' not found in ~/.aws/config")
+        }
+
+        guard let accountId = profile["sso_account_id"], let roleName = profile["sso_role_name"] else {
+            throw DynamoDBError.authFailed(
+                "Profile '\(profileName)' in ~/.aws/config is missing sso_account_id or sso_role_name"
+            )
+        }
+
+        let ssoSession = profile["sso_session"]
+        let resolvedStartUrl: String
+        let resolvedRegion: String
+
+        if let sessionName = ssoSession {
+            guard let session = sections["sso-session \(sessionName)"] else {
+                throw DynamoDBError.authFailed(
+                    "SSO session '\(sessionName)' referenced by profile '\(profileName)' not found in ~/.aws/config"
+                )
+            }
+            guard let startUrl = session["sso_start_url"], let region = session["sso_region"] else {
+                throw DynamoDBError.authFailed(
+                    "SSO session '\(sessionName)' in ~/.aws/config is missing sso_start_url or sso_region"
+                )
+            }
+            resolvedStartUrl = startUrl
+            resolvedRegion = region
+        } else {
+            guard let startUrl = profile["sso_start_url"], let region = profile["sso_region"] else {
+                throw DynamoDBError.authFailed(
+                    "Profile '\(profileName)' in ~/.aws/config is missing sso_start_url or sso_region (required for legacy SSO)"
+                )
+            }
+            resolvedStartUrl = startUrl
+            resolvedRegion = region
+        }
+
+        return SsoProfileSettings(
+            accountId: accountId,
+            roleName: roleName,
+            startUrl: resolvedStartUrl,
+            region: resolvedRegion,
+            ssoSession: ssoSession
+        )
+    }
+
+    private func parseIniSections(_ content: String) -> [String: [String: String]] {
+        var sections: [String: [String: String]] = [:]
+        var current = ""
 
         for line in content.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") || trimmed.hasPrefix(";") { continue }
+
             if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
-                currentSection = String(trimmed.dropFirst().dropLast())
+                current = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+                if sections[current] == nil {
+                    sections[current] = [:]
+                }
                 continue
             }
-            guard currentSection == targetSection else { continue }
+
+            guard !current.isEmpty else { continue }
 
             let parts = trimmed.split(separator: "=", maxSplits: 1).map {
                 $0.trimmingCharacters(in: .whitespaces)
             }
             guard parts.count == 2 else { continue }
 
-            switch parts[0] {
-            case "sso_account_id":
-                accountId = parts[1]
-            case "sso_role_name":
-                roleName = parts[1]
-            case "sso_start_url":
-                startUrl = parts[1]
-            case "sso_session":
-                ssoSession = parts[1]
-            default:
-                break
-            }
+            sections[current, default: [:]][parts[0]] = parts[1]
         }
 
-        guard let resolvedAccountId = accountId, let resolvedRoleName = roleName else {
-            throw DynamoDBError.authFailed(
-                "Profile '\(profileName)' in ~/.aws/config is missing sso_account_id or sso_role_name"
-            )
-        }
-
-        // startUrl is required for legacy SSO (when sso_session is not set)
-        let resolvedStartUrl = startUrl ?? ""
-        if ssoSession == nil && resolvedStartUrl.isEmpty {
-            throw DynamoDBError.authFailed(
-                "Profile '\(profileName)' in ~/.aws/config is missing sso_start_url (required for legacy SSO)"
-            )
-        }
-
-        return SsoProfileSettings(
-            accountId: resolvedAccountId,
-            roleName: resolvedRoleName,
-            startUrl: resolvedStartUrl,
-            ssoSession: ssoSession
-        )
+        return sections
     }
 
     private func sha1Hex(_ data: Data) -> String {

@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB ENUMs in non-`main` schemas resolve correctly
 - DuckDB `DATE` and `TIMESTAMP` BC years use a leading minus
 - `.db`, `.db3`, `.s3db`, `.sl3`, and `.sqlitedb` files now open in TablePro from Finder (#1327)
+- DynamoDB SSO connections work with modern `sso-session` profiles immediately after `aws sso login`, without needing to run another AWS CLI command first (#1333)
 
 ## [0.43.0] - 2026-05-18
 
