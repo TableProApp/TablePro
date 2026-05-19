@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- DuckDB Spatial `GEOMETRY` columns now render as WKT instead of NULL in the data grid and streaming results (#1324)
+- DuckDB `HUGEINT` and `UHUGEINT` formatting no longer crashes on negative values and preserves full 128-bit precision
+- DuckDB streaming query results respect the row cap, release resources on cancellation, and pick up `TIMESTAMPTZ`/`TIMETZ` values that previously rendered as NULL
+- DuckDB `information_schema` lookups escape schema names so connections with apostrophes in the schema no longer fail
+- DuckDB ENUM values are now read from the correct schema for ENUMs outside `main`
+- DuckDB `DATE` and `TIMESTAMP` values with BC years render with the canonical ISO leading minus
+- DuckDB schema reads no longer race when concurrent connections switch schemas
+
 ## [0.43.0] - 2026-05-18
 
 ### Added
