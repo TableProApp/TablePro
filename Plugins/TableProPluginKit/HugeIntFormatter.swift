@@ -1,12 +1,12 @@
 //
 //  HugeIntFormatter.swift
-//  DuckDBDriverPlugin
+//  TableProPluginKit
 //
 
 import Foundation
 
-internal enum HugeIntFormatter {
-    static func format(upper: Int64, lower: UInt64) -> String {
+public enum HugeIntFormatter {
+    public static func format(upper: Int64, lower: UInt64) -> String {
         let upperBits = UInt64(bitPattern: upper)
         if upper >= 0 {
             return formatUnsigned(upper: upperBits, lower: lower)
@@ -18,7 +18,7 @@ internal enum HugeIntFormatter {
         return "-\(formatUnsigned(upper: sumUpper, lower: sumLower))"
     }
 
-    static func formatUnsigned(upper: UInt64, lower: UInt64) -> String {
+    public static func formatUnsigned(upper: UInt64, lower: UInt64) -> String {
         if upper == 0 {
             return String(lower)
         }

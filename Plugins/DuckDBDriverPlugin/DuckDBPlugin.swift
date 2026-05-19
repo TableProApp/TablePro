@@ -272,53 +272,53 @@ private actor DuckDBConnectionActor {
             throw DuckDBPluginError.notConnected
         }
 
-        var probeResult = duckdb_result()
-        let probeState = duckdb_query(conn, query, &probeResult)
+        var result = duckdb_result()
+        let state = duckdb_query(conn, query, &result)
 
-        if probeState == DuckDBError {
+        if state == DuckDBError {
             let errorMsg: String
-            if let errPtr = duckdb_result_error(&probeResult) {
+            if let errPtr = duckdb_result_error(&result) {
                 errorMsg = String(cString: errPtr)
             } else {
                 errorMsg = "Unknown DuckDB error"
             }
-            duckdb_destroy_result(&probeResult)
+            duckdb_destroy_result(&result)
             throw DuckDBPluginError.queryFailed(errorMsg)
         }
 
-        let probeColCount = duckdb_column_count(&probeResult)
-        var probeColumns: [String] = []
-        var probeColumnTypeNames: [String] = []
-        for i in 0..<probeColCount {
-            if let namePtr = duckdb_column_name(&probeResult, i) {
-                probeColumns.append(String(cString: namePtr))
+        let colCount = duckdb_column_count(&result)
+        var columns: [String] = []
+        var columnTypeNames: [String] = []
+        var columnTypes: [duckdb_type] = []
+        for i in 0..<colCount {
+            if let namePtr = duckdb_column_name(&result, i) {
+                columns.append(String(cString: namePtr))
             } else {
-                probeColumns.append("column_\(i)")
+                columns.append("column_\(i)")
             }
-            probeColumnTypeNames.append(Self.typeName(for: duckdb_column_type(&probeResult, i)))
+            let colType = duckdb_column_type(&result, i)
+            columnTypes.append(colType)
+            columnTypeNames.append(Self.typeName(for: colType))
         }
 
-        let unrenderable: Set<String> = ["TIMESTAMPTZ", "TIMETZ", "GEOMETRY"]
-        let needsWrap = probeColumnTypeNames.contains { unrenderable.contains($0) }
-
-        if needsWrap {
-            duckdb_destroy_result(&probeResult)
+        if columnTypes.contains(where: Self.isUnrenderable) {
+            duckdb_destroy_result(&result)
             try Self.streamWrappedQuery(
                 query: query,
-                columns: probeColumns,
-                columnTypeNames: probeColumnTypeNames,
+                columns: columns,
+                columnTypeNames: columnTypeNames,
+                columnTypes: columnTypes,
                 connection: conn,
                 continuation: continuation
             )
             return
         }
 
-        var result = probeResult
         defer { duckdb_destroy_result(&result) }
         try Self.streamResultRows(
             &result,
-            columns: probeColumns,
-            columnTypeNames: probeColumnTypeNames,
+            columns: columns,
+            columnTypeNames: columnTypeNames,
             continuation: continuation
         )
     }
@@ -327,32 +327,14 @@ private actor DuckDBConnectionActor {
         query: String,
         columns: [String],
         columnTypeNames: [String],
+        columnTypes: [duckdb_type],
         connection: duckdb_connection,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
-        let unrenderable: Set<String> = ["TIMESTAMPTZ", "TIMETZ", "GEOMETRY"]
-        var castExprs: [String] = []
-        for (i, name) in columns.enumerated() {
-            let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
-            let typeName = columnTypeNames[i]
-            if typeName == "GEOMETRY" {
-                castExprs.append(
-                    "CASE WHEN \"\(escaped)\" IS NULL THEN NULL ELSE ST_AsText(\"\(escaped)\") END AS \"\(escaped)\""
-                )
-            } else if unrenderable.contains(typeName) {
-                castExprs.append(
-                    "CASE WHEN \"\(escaped)\" IS NULL THEN NULL ELSE CAST(\"\(escaped)\" AS VARCHAR) END AS \"\(escaped)\""
-                )
-            } else {
-                castExprs.append("\"\(escaped)\"")
-            }
+        let castExprs = columns.enumerated().map { i, name in
+            castExpression(for: columnTypes[i], column: name)
         }
-
-        var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedQuery.hasSuffix(";") {
-            trimmedQuery = String(trimmedQuery.dropLast())
-        }
-        let wrappedQuery = "SELECT \(castExprs.joined(separator: ", ")) FROM (\(trimmedQuery)) AS _tp_cast"
+        let wrappedQuery = buildWrappedQuery(originalQuery: query, castExprs: castExprs)
 
         var result = duckdb_result()
         let state = duckdb_query(connection, wrappedQuery, &result)
@@ -496,6 +478,7 @@ private actor DuckDBConnectionActor {
         return DuckDBRawResult(
             columns: columns,
             columnTypeNames: columnTypeNames,
+            columnTypes: columnTypes,
             rows: rows,
             rowsAffected: Int(rowsChanged),
             executionTime: executionTime,
@@ -598,40 +581,19 @@ private actor DuckDBConnectionActor {
         }
     }
 
-    /// DuckDB v1.5.0 C API: duckdb_value_varchar returns nil for TIMESTAMPTZ and TIMETZ,
     static func patchTzColumns(
         _ raw: inout DuckDBRawResult, query: String, connection: duckdb_connection
     ) {
-        let tzTypes: Set<String> = ["TIMESTAMPTZ", "TIMETZ"]
-        let geometryTypes: Set<String> = ["GEOMETRY"]
-
-        var patchedColIndices: [Int] = []
-        var castExprs: [String] = []
-        for (i, name) in raw.columns.enumerated() {
-            let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
-            let typeName = raw.columnTypeNames[i]
-            if tzTypes.contains(typeName) {
-                castExprs.append(
-                    "CASE WHEN \"\(escaped)\" IS NULL THEN NULL ELSE CAST(\"\(escaped)\" AS VARCHAR) END AS \"\(escaped)\""
-                )
-                patchedColIndices.append(i)
-            } else if geometryTypes.contains(typeName) {
-                castExprs.append(
-                    "CASE WHEN \"\(escaped)\" IS NULL THEN NULL ELSE ST_AsText(\"\(escaped)\") END AS \"\(escaped)\""
-                )
-                patchedColIndices.append(i)
-            } else {
-                castExprs.append("\"\(escaped)\"")
-            }
+        let patchedColIndices = raw.columnTypes.enumerated().compactMap { idx, type in
+            isUnrenderable(type) ? idx : nil
         }
-
         guard !patchedColIndices.isEmpty, !raw.rows.isEmpty else { return }
 
-        var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedQuery.hasSuffix(";") {
-            trimmedQuery = String(trimmedQuery.dropLast())
+        let castExprs = raw.columns.enumerated().map { i, name in
+            castExpression(for: raw.columnTypes[i], column: name)
         }
-        let wrappedQuery = "SELECT \(castExprs.joined(separator: ", ")) FROM (\(trimmedQuery)) AS _tp_cast"
+        let wrappedQuery = buildWrappedQuery(originalQuery: query, castExprs: castExprs)
+
         var patchResult = duckdb_result()
         guard duckdb_query(connection, wrappedQuery, &patchResult) == DuckDBSuccess else { return }
         defer { duckdb_destroy_result(&patchResult) }
@@ -647,6 +609,39 @@ private actor DuckDBConnectionActor {
                 }
             }
         }
+    }
+
+    static func isUnrenderable(_ type: duckdb_type) -> Bool {
+        switch type {
+        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_GEOMETRY:
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func castExpression(for type: duckdb_type, column: String) -> String {
+        let quoted = quoteIdentifier(column)
+        switch type {
+        case DUCKDB_TYPE_GEOMETRY:
+            return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE ST_AsText(\(quoted)) END AS \(quoted)"
+        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ:
+            return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE CAST(\(quoted) AS VARCHAR) END AS \(quoted)"
+        default:
+            return quoted
+        }
+    }
+
+    static func buildWrappedQuery(originalQuery: String, castExprs: [String]) -> String {
+        var trimmed = originalQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasSuffix(";") {
+            trimmed = String(trimmed.dropLast())
+        }
+        return "SELECT \(castExprs.joined(separator: ", ")) FROM (\(trimmed)) AS _tp_cast"
+    }
+
+    static func quoteIdentifier(_ ident: String) -> String {
+        "\"\(ident.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
     static func formatTimestamp(_ ts: duckdb_timestamp) -> String {
@@ -691,9 +686,10 @@ private actor DuckDBConnectionActor {
     }
 }
 
-private struct DuckDBRawResult: Sendable {
+private struct DuckDBRawResult: @unchecked Sendable {
     let columns: [String]
     let columnTypeNames: [String]
+    let columnTypes: [duckdb_type]
     var rows: [[PluginCellValue]]
     let rowsAffected: Int
     let executionTime: TimeInterval
