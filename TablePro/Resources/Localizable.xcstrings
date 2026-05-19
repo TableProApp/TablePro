@@ -49481,6 +49481,7 @@
       }
     },
     "Truncated — read only" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -49501,6 +49502,9 @@
           }
         }
       }
+    },
+    "Truncated, read only" : {
+
     },
     "Trust" : {
       "localizations" : {

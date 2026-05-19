@@ -10,6 +10,7 @@ import SwiftUI
 
 struct HexEditorContentView: View {
     let initialValue: String?
+    let isEditable: Bool
     let onCommit: (String) -> Void
     let onCommitBytes: ((Data) -> Void)?
     let onDismiss: () -> Void
@@ -23,11 +24,13 @@ struct HexEditorContentView: View {
 
     init(
         initialValue: String?,
-        onCommit: @escaping (String) -> Void,
+        isEditable: Bool = true,
+        onCommit: @escaping (String) -> Void = { _ in },
         onCommitBytes: ((Data) -> Void)? = nil,
         onDismiss: @escaping () -> Void
     ) {
         self.initialValue = initialValue
+        self.isEditable = isEditable
         self.onCommit = onCommit
         self.onCommitBytes = onCommitBytes
         self.onDismiss = onDismiss
@@ -52,51 +55,66 @@ struct HexEditorContentView: View {
         VStack(spacing: 0) {
             HexDumpDisplayView(text: hexDumpText)
 
-            Divider()
+            if isEditable {
+                Divider()
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Editable Hex")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Editable Hex")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                HexInputTextView(text: $editableHex)
-                    .frame(height: 80)
+                    HexInputTextView(text: $editableHex)
+                        .frame(height: 80)
+
+                    HStack(spacing: 4) {
+                        Text("\(byteCount) bytes")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+
+                        if isTruncated {
+                            Text(String(localized: "Truncated, read only"))
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        } else if !isValid, !editableHex.isEmpty {
+                            Text(String(localized: "Invalid hex"))
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                HStack {
+                    Spacer()
+                    Button("Cancel") { onDismiss() }
+                        .keyboardShortcut(.cancelAction)
+                    Button("Save") { saveHex() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!isValid || isTruncated)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            } else {
+                Divider()
 
                 HStack(spacing: 4) {
                     Text("\(byteCount) bytes")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-
-                    if isTruncated {
-                        Text(String(localized: "Truncated — read only"))
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    } else if !isValid, !editableHex.isEmpty {
-                        Text(String(localized: "Invalid hex"))
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-
                     Spacer()
+                    Button("Close") { onDismiss() }
+                        .keyboardShortcut(.cancelAction)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            Divider()
-
-            HStack {
-                Spacer()
-                Button("Cancel") { onDismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Save") { saveHex() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!isValid || isTruncated)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
-        .frame(width: 520, height: 400)
+        .frame(width: 520, height: isEditable ? 400 : 280)
         .onChange(of: editableHex) { _, newValue in
             scheduleValidation(newValue)
         }

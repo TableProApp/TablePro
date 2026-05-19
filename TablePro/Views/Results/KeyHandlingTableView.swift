@@ -4,6 +4,7 @@ final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
 
     private var isRaisingOverlayEditor = false
+    private var isRaisingOverlayViewer = false
 
     override var acceptsFirstResponder: Bool {
         true
@@ -11,16 +12,21 @@ final class KeyHandlingTableView: NSTableView {
 
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
-        guard !isRaisingOverlayEditor else { return }
-        guard let editor = coordinator?.overlayEditor,
-              editor.isActive,
-              let container = editor.containerView,
+        raiseOverlayIfNeeded(coordinator?.overlayEditor, subview: subview, flag: &isRaisingOverlayEditor)
+        raiseOverlayIfNeeded(coordinator?.overlayViewer, subview: subview, flag: &isRaisingOverlayViewer)
+    }
+
+    private func raiseOverlayIfNeeded(_ overlay: CellOverlayBase?, subview: NSView, flag: inout Bool) {
+        guard !flag else { return }
+        guard let overlay,
+              overlay.isActive,
+              let container = overlay.containerView,
               container !== subview,
               container.superview === self,
               subviews.last !== container else { return }
-        isRaisingOverlayEditor = true
-        editor.raiseToFront()
-        isRaisingOverlayEditor = false
+        flag = true
+        overlay.raiseToFront()
+        flag = false
     }
 
     var selection = TableSelection() {
@@ -161,7 +167,7 @@ final class KeyHandlingTableView: NSTableView {
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil
         case #selector(insertNewline(_:)):
-            return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn) && coordinator?.isEditable == true
+            return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn)
         case #selector(cancelOperation(_:)):
             return false
         default:
@@ -233,36 +239,12 @@ final class KeyHandlingTableView: NSTableView {
         let row = selectedRow
         guard row >= 0,
               DataGridView.isDataTableColumn(focusedColumn),
-              coordinator?.isEditable == true,
               let schema = coordinator?.identitySchema,
               let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
               let coordinator else {
             return
         }
-
-        // Dropdown / type-picker columns: Return opens the popup, matching the
-        // chevron and double-click paths. Without this branch, Return on a focused
-        // dropdown cell does nothing because beginCellEdit is blocked by editEligibility.
-        if coordinator.dropdownColumns?.contains(columnIndex) == true ||
-           coordinator.typePickerColumns?.contains(columnIndex) == true {
-            coordinator.handleChevronAction(row: row, columnIndex: columnIndex)
-            return
-        }
-
-        let tableRows = coordinator.tableRowsProvider()
-        if columnIndex < tableRows.columnTypes.count,
-           tableRows.columnTypes[columnIndex].isBlobType {
-            coordinator.showBlobEditorPopover(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex)
-            return
-        }
-
-        if let value = coordinator.cellValue(at: row, column: columnIndex),
-           value.containsLineBreak {
-            coordinator.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
-            return
-        }
-
-        coordinator.beginCellEdit(row: row, tableColumnIndex: focusedColumn)
+        coordinator.handleCellInteraction(row: row, tableColumn: focusedColumn, columnIndex: columnIndex, tableView: self)
     }
 
     @objc override func cancelOperation(_ sender: Any?) {

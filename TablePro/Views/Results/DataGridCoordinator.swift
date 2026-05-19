@@ -95,6 +95,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     let columnPool = DataGridColumnPool()
     let tableRowsController = TableRowsController()
     var overlayEditor: CellOverlayEditor?
+    var overlayViewer: CellOverlayViewer?
 
     var settingsCancellable: AnyCancellable?
     var themeCancellable: AnyCancellable?
@@ -196,6 +197,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         prewarmResumeTask = nil
         detachScrollObservers()
         overlayEditor?.dismiss(commit: false)
+        overlayViewer?.dismiss()
         settingsCancellable?.cancel()
         settingsCancellable = nil
         themeCancellable?.cancel()
@@ -492,17 +494,20 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
+            overlayViewer?.dismiss()
             dismissFKPreviewOnColumnChange()
             appendInsertedIDsToSortedIDs(at: indices)
             applyInsertedRows(indices)
         case .rowsRemoved(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
+            overlayViewer?.dismiss()
             dismissFKPreviewOnColumnChange()
             removeMissingIDsFromSortedIDs()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
             overlayEditor?.dismiss(commit: false)
+            overlayViewer?.dismiss()
             dismissFKPreviewOnColumnChange()
             sortedIDs = nil
             applyFullReplace()
@@ -581,6 +586,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func commitActiveCellEdit() {
         overlayEditor?.dismiss(commit: true)
+        overlayViewer?.dismiss()
         guard let tableView, let window = tableView.window else { return }
         if let firstResponder = window.firstResponder as? NSView,
            firstResponder.isDescendant(of: tableView) {
