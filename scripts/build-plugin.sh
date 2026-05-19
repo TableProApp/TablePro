@@ -16,10 +16,20 @@ PLUGIN_VERSION="${3:-${PLUGIN_VERSION:-}}"
 PROJECT="TablePro.xcodeproj"
 CONFIG="Release"
 BUILD_DIR="build/Plugins"
-SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Dat Ngo Quoc (D7HJ5TFYCU)}"
-TEAM_ID="D7HJ5TFYCU"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+TEAM_ID="${TEAM_ID:-}"
 NOTARIZE="${NOTARIZE:-false}"
-APPLE_ID="${APPLE_ID:-datngoquoc@icloud.com}"
+APPLE_ID="${APPLE_ID:-}"
+
+if [ -z "$TEAM_ID" ]; then
+    echo "ERROR: TEAM_ID is not set. Pass via env or set in your shell profile." >&2
+    echo "       Example: TEAM_ID=ABCDEFGHIJ ./scripts/build-plugin.sh $PLUGIN_TARGET" >&2
+    exit 1
+fi
+
+if [ -z "$SIGN_IDENTITY" ]; then
+    SIGN_IDENTITY="Developer ID Application (${TEAM_ID})"
+fi
 
 if [ -n "$PLUGIN_VERSION" ]; then
     echo "Building plugin: $PLUGIN_TARGET v$PLUGIN_VERSION for $ARCH"
@@ -153,6 +163,12 @@ notarize_zip() {
     if [ "$NOTARIZE" != "true" ]; then
         echo "Skipping notarization (set NOTARIZE=true to enable)"
         return
+    fi
+
+    if [ -z "$APPLE_ID" ]; then
+        echo "ERROR: APPLE_ID is not set but NOTARIZE=true." >&2
+        echo "       Pass APPLE_ID=<your-apple-id> or set notarytool-profile in your keychain." >&2
+        exit 1
     fi
 
     echo "Submitting for notarization..."

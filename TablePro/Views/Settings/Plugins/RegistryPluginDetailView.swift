@@ -123,6 +123,13 @@ struct RegistryPluginDetailView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            case .stagedPendingActivation(let newVersion):
+                Label(
+                    String(format: String(localized: "v%@ ready to activate"), newVersion),
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .foregroundStyle(.orange)
+                .font(.callout)
             case .completed:
                 Label("Installed", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
@@ -162,6 +169,13 @@ struct RegistryPluginDetailView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            case .stagedPendingActivation(let newVersion):
+                Label(
+                    String(format: String(localized: "v%@ ready to activate"), newVersion),
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .foregroundStyle(.orange)
+                .font(.callout)
             case .completed:
                 Label("Updated", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)

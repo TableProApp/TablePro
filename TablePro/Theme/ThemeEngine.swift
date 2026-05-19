@@ -125,14 +125,14 @@ internal final class ThemeEngine {
     // MARK: - Theme Lifecycle
 
     func activateTheme(id: String) {
-        guard let theme = availableThemes.first(where: { $0.id == id })
-            ?? ThemeStorage.loadTheme(id: id)
-        else {
-            Self.logger.warning("Theme not found: \(id)")
+        if let theme = availableThemes.first(where: { $0.id == id })
+            ?? ThemeStorage.loadTheme(id: id) {
+            activateTheme(theme)
             return
         }
 
-        activateTheme(theme)
+        Self.logger.warning("Theme '\(id)' not found; falling back to default")
+        activateTheme(.default)
     }
 
     func activateTheme(_ theme: ThemeDefinition) {

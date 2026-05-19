@@ -36,7 +36,6 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .advanced
         ),
     ]
-    static let additionalDatabaseTypeIds: [String] = []
 
     // MARK: - UI/Capability Metadata
 

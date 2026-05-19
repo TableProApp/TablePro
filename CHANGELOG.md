@@ -11,9 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Right-click a column header to copy all its values from the loaded rows (#1325)
 - Copy as submenu on the row context menu now offers CSV, CSV with Headers, Markdown table, and IN Clause for SQL `WHERE id IN (...)` lookups (#1325)
+- Plugin updates that arrive while a connection is open stage on disk and apply when you close the connection or quit, instead of blocking the update
+- Settings > Plugins shows a badge with the count of rejected plugins plus available updates so you can see at a glance when attention is needed
+- Connections whose driver plugin failed to load show a yellow triangle in the welcome list
+- Rejected driver plugins now show an inline banner with an Update Plugin button inside the connection form
+
+### Changed
+
+- Plugin registry schema bumped to v2 with per-binary `pluginKitVersion`, so the app picks the binary built for its ABI even when newer or older binaries coexist in the registry (#1322)
+- Plugin install pipeline rewritten around a `PluginInstaller` actor with per-plugin coalescing, atomic install via `FileManager.replaceItem`, and `com.apple.quarantine` xattr stripping after extract
+- Auto-update now runs as a reconciliation loop after initial load with backoff (immediate, 30 s, 5 min) instead of a single best-effort pass, and works for every rejected plugin regardless of lazy or eager load path (#1322)
+- Plugin rejection no longer interrupts launch with a modal alert; the app posts a UserNotifications banner and surfaces rejected entries inline in Settings > Plugins with Update Now and Remove buttons
+- CI workflow `build-plugin.yml` accepts `tag:pluginKitVersion` pairs and reads `currentPluginKitVersion` from `PluginManager.swift`, replacing the hardcoded `minPluginKitVersion: 2` that made registry pre-install checks ineffective
+- New `scripts/release-all-plugins.sh` triggers a single workflow run that rebuilds every registry plugin for a given PluginKit version after an ABI bump
 
 ### Fixed
 
+- Resolves the recurring "Plugin was built with PluginKit version N, but version M is required" error after app updates (#1322, #1237, #923, #912, #443). Rejected plugins now auto-update from the registry without manual intervention
 - DuckDB Spatial `GEOMETRY` columns render as WKT, not NULL (#1324)
 - DuckDB `HUGEINT` and `UHUGEINT` keep full precision and no longer crash on negatives
 - DuckDB streaming results honor the row cap and render `TIMESTAMPTZ`/`TIMETZ`/`GEOMETRY` instead of NULL

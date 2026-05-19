@@ -20,6 +20,7 @@ final class RegistryClient {
     }
 
     let session: URLSession
+    static let supportedSchemaVersion = 2
     private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
 
     private static let defaultRegistryURL = URL(string:
@@ -138,6 +139,17 @@ final class RegistryClient {
 
             case 200...299:
                 let decoded = try JSONDecoder().decode(RegistryManifest.self, from: data)
+
+                if decoded.schemaVersion > Self.supportedSchemaVersion {
+                    Self.logger.error(
+                        "Registry schemaVersion \(decoded.schemaVersion) is newer than supported \(Self.supportedSchemaVersion); falling back to cached manifest"
+                    )
+                    fallbackToCacheOrFail(
+                        message: String(localized: "Plugin registry requires a newer app version")
+                    )
+                    return
+                }
+
                 manifest = decoded
 
                 Self.writeCachedManifest(data)

@@ -8,6 +8,7 @@ import SwiftUI
 struct WelcomeConnectionRow: View {
     let connection: DatabaseConnection
     let sshProfile: SSHProfile?
+    private let pluginManager = PluginManager.shared
 
     private var displayTag: ConnectionTag? {
         guard let tagId = connection.tagId else { return nil }
@@ -16,6 +17,13 @@ struct WelcomeConnectionRow: View {
 
     private var showsLocalOnly: Bool {
         connection.localOnly && !connection.isSample
+    }
+
+    private var isDriverRejected: Bool {
+        let typeId = connection.type.pluginTypeId
+        return pluginManager.rejectedPlugins.contains { rejected in
+            rejected.bundleId == typeId || rejected.registryId == typeId
+        }
     }
 
     var body: some View {
@@ -50,6 +58,14 @@ struct WelcomeConnectionRow: View {
     @ViewBuilder
     private var trailingAccessories: some View {
         HStack(spacing: 8) {
+            if isDriverRejected {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.yellow)
+                    .help(String(localized: "Driver plugin not loaded. Open Settings to update."))
+                    .accessibilityLabel(String(localized: "Plugin not loaded"))
+            }
+
             if showsLocalOnly {
                 Image(systemName: "icloud.slash")
                     .imageScale(.small)

@@ -98,11 +98,17 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 
 **PluginKit ABI versioning**: When `DriverPlugin` or `PluginDatabaseDriver` protocol changes (new methods, changed signatures), bump `currentPluginKitVersion` in `PluginManager.swift` AND `TableProPluginKitVersion` in every plugin's `Info.plist`. Stale user-installed plugins with mismatched versions crash on load with `EXC_BAD_INSTRUCTION` (not catchable in Swift). Removing protocol methods that have default `nil` implementations does NOT require a version bump. Adding new `static var` or `func` requirements to `DriverPlugin` DOES require a version bump even with default implementations via protocol extension — Swift protocol witness tables are compiled statically.
 
-**Post-ABI-bump checklist (mandatory)**: After bumping `currentPluginKitVersion`, every registry-published plugin must be re-tagged and republished — otherwise users see "Plugin was built with PluginKit version N, but version M is required" when they try to update. `PluginManager` rejects any user-installed plugin whose `TableProPluginKitVersion` does not match exactly (`PluginManager.swift:387`).
-1. Re-tag every registry plugin with a bumped patch version (MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL). Bundled plugins (Redis, ClickHouse, etc.) are NOT re-tagged; they ship with the next app release. Push tags individually because `build-plugin.yml` only fires once per multi-tag push.
-2. Wait for CI to publish each ZIP to its `plugin-<name>-v<version>` GitHub Release.
-3. Update `plugins.json` in [TableProApp/plugins](https://github.com/TableProApp/plugins): bump `version`, `downloadURL`, and both architecture `sha256` entries for every plugin.
-4. Verify by installing one plugin from registry on the new app build.
+**Post-ABI-bump checklist (mandatory)**: After bumping `currentPluginKitVersion`, every registry-published plugin must be rebuilt against the new ABI. App auto-update reconciliation handles the user-facing recovery, but the registry has to carry binaries for the new PluginKit version first.
+
+1. Commit the bump (updates `PluginManager.swift` and every bundled plugin's `Info.plist`). Bundled plugins ship with the next app release. Do not tag them.
+2. Trigger the bulk re-release:
+   ```bash
+   ./scripts/release-all-plugins.sh <newPluginKitVersion>
+   ```
+   The workflow runs all registry plugins as a parallel matrix, publishes ZIPs to GitHub Releases, and updates `plugins.json` (via `.github/scripts/update-registry.py`, which appends new binaries and prunes per the `--keep-kit-versions 2` policy). No manual `plugins.json` editing.
+3. Verify by installing one plugin from the registry on a build with the new PluginKit version.
+
+**Binary retention policy**: The registry keeps binaries for the two most recent PluginKit versions per plugin (`--keep-kit-versions 2`). Users on the previous app version can still install plugins; users two or more versions behind hit `noCompatibleBinary` and need to update the app.
 
 ### DatabaseType (String-Based Struct)
 
@@ -268,6 +274,6 @@ If anything matches, rewrite before committing.
 
 GitHub Actions (`.github/workflows/build.yml`) triggered by `v*` tags: lint → build arm64 → build x86_64 → release (DMG/ZIP + Sparkle signatures). Release notes auto-extracted from `CHANGELOG.md`.
 
-**Plugin CI** (`.github/workflows/build-plugin.yml`): triggered by `plugin-*-v*` tags. GitHub only fires one workflow per multi-tag `git push` — push tags individually or use `workflow_dispatch` with comma-separated tags for bulk releases.
+**Plugin CI** (`.github/workflows/build-plugin.yml`): triggered by `plugin-*-v*` tags or `workflow_dispatch`. The dispatch input accepts comma-separated `tag:pluginKitVersion` pairs; if `:pluginKitVersion` is omitted, the workflow reads `currentPluginKitVersion` from `PluginManager.swift`. Registry update logic lives in `.github/scripts/update-registry.py` (atomic write, per-binary `pluginKitVersion`, prune-old policy). Use `scripts/release-all-plugins.sh <version>` for bulk re-release after an ABI bump.
 
 **Plugin tag naming**: Tag names must match the CI workflow's `resolve_plugin_info()` mapping. Notable non-obvious mappings: `CloudflareD1DriverPlugin` → `plugin-cloudflare-d1-v*`, `EtcdDriverPlugin` → `plugin-etcd-v*`. Check existing tags with `git tag -l "plugin-*"` before creating new ones.

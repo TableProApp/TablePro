@@ -84,8 +84,7 @@ final class DownloadCountService {
     private func buildTagPrefixMap(from manifest: RegistryManifest) -> [String: String] {
         var map: [String: String] = [:]
         for plugin in manifest.plugins {
-            let url = plugin.binaries?.first?.downloadURL ?? plugin.downloadURL
-            guard let url else { continue }
+            guard let url = plugin.binaries.first?.downloadURL else { continue }
             guard let tagComponent = extractTagComponent(from: url) else { continue }
             let prefix = extractTagPrefix(from: tagComponent)
             map[prefix] = plugin.id

@@ -7,6 +7,8 @@ public struct PluginCapabilities: OptionSet, Sendable {
         self.rawValue = rawValue
     }
 
+    // Bits are ABI-stable: never reuse a bit number for a different meaning.
+    // Bits 4, 5, 7, 8, 10, 11 are declared but not currently read by the app.
     public static let materializedViews     = PluginCapabilities(rawValue: 1 << 0)
     public static let foreignTables         = PluginCapabilities(rawValue: 1 << 1)
     public static let storedProcedures      = PluginCapabilities(rawValue: 1 << 2)

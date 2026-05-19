@@ -944,6 +944,9 @@
         }
       }
     },
+    "%@ could not be loaded" : {
+
+    },
     "%@ does not support switching schemas in TablePro." : {
 
     },
@@ -1674,6 +1677,7 @@
       }
     },
     "%d plugin(s) could not be loaded" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -1694,6 +1698,9 @@
           }
         }
       }
+    },
+    "%d plugins could not be loaded." : {
+
     },
     "%d rows" : {
       "localizations" : {
@@ -2884,6 +2891,9 @@
         }
       }
     },
+    "1 plugin could not be loaded." : {
+
+    },
     "1 year" : {
       "localizations" : {
         "tr" : {
@@ -3878,6 +3888,12 @@
           }
         }
       }
+    },
+    "Activate next time you launch TablePro" : {
+
+    },
+    "Activate Now" : {
+
     },
     "Activation Failed" : {
       "localizations" : {
@@ -6039,6 +6055,9 @@
           }
         }
       }
+    },
+    "Another install is already in progress for this plugin" : {
+
     },
     "Any Column" : {
       "localizations" : {
@@ -9905,6 +9924,9 @@
           }
         }
       }
+    },
+    "Close active connections to apply." : {
+
     },
     "Close Others" : {
       "localizations" : {
@@ -16517,6 +16539,9 @@
           }
         }
       }
+    },
+    "Driver plugin not loaded. Open Settings to update." : {
+
     },
     "Drop" : {
       "localizations" : {
@@ -24481,6 +24506,7 @@
       }
     },
     "Incompatible plugin version" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32468,6 +32494,9 @@
     "On Disk" : {
 
     },
+    "On Quit" : {
+
+    },
     "On Update" : {
       "localizations" : {
         "tr" : {
@@ -33101,6 +33130,9 @@
           }
         }
       }
+    },
+    "Operation Failed" : {
+
     },
     "Operator" : {
       "localizations" : {
@@ -34516,6 +34548,9 @@
         }
       }
     },
+    "Plugin has active connections" : {
+
+    },
     "Plugin Installation Failed" : {
       "localizations" : {
         "tr" : {
@@ -34603,6 +34638,22 @@
           }
         }
       }
+    },
+    "Plugin not loaded" : {
+
+    },
+    "Plugin not loaded: %@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Plugin not loaded: %1$@. %2$@"
+          }
+        }
+      }
+    },
+    "Plugin registry requires a newer app version" : {
+
     },
     "Plugin requires app version %@ or later, but current version is %@" : {
       "localizations" : {
@@ -37954,6 +38005,9 @@
     "Remove “%@”?" : {
 
     },
+    "Remove %@" : {
+
+    },
     "Remove %@?" : {
       "localizations" : {
         "tr" : {
@@ -37999,6 +38053,9 @@
       }
     },
     "Remove attachment" : {
+
+    },
+    "Remove Failed" : {
 
     },
     "Remove filter" : {
@@ -47052,6 +47109,7 @@
       }
     },
     "The following plugins were rejected:\n\n%@\n\nYou can update them from the plugin registry in Settings." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -47272,6 +47330,9 @@
           }
         }
       }
+    },
+    "Theme Update Failed" : {
+
     },
     "Theme:" : {
       "localizations" : {
@@ -50406,6 +50467,18 @@
         }
       }
     },
+    "Update %@" : {
+
+    },
+    "Update %@ plugin" : {
+
+    },
+    "Update Now" : {
+
+    },
+    "Update Plugin" : {
+
+    },
     "UPDATE Statement(s)" : {
       "localizations" : {
         "tr" : {
@@ -50996,6 +51069,9 @@
           }
         }
       }
+    },
+    "v%@ ready to activate" : {
+
     },
     "v%@+" : {
       "localizations" : {

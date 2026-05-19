@@ -19,7 +19,6 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Amazon DynamoDB"
     static let iconName = "dynamodb-icon"
     static let defaultPort = 0
-    static let additionalDatabaseTypeIds: [String] = []
     static let isDownloadable = true
 
     static let connectionMode: ConnectionMode = .apiOnly

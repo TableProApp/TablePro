@@ -18,6 +18,7 @@ struct InstalledPluginsView: View {
     @State private var errorAlertTitle = ""
     @State private var errorAlertMessage = ""
     @State private var dismissedRestartBanner = false
+    @State private var dismissedRejectedBanner = false
 
     private var filteredPlugins: [PluginEntry] {
         if searchText.isEmpty { return pluginManager.plugins }
@@ -26,6 +27,9 @@ struct InstalledPluginsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if !pluginManager.rejectedPlugins.isEmpty && !dismissedRejectedBanner {
+                rejectedPluginsBanner
+            }
             if pluginManager.needsRestart && !dismissedRestartBanner {
                 restartBanner
             }
@@ -84,6 +88,89 @@ struct InstalledPluginsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Rejected Plugins Banner
+
+    private var rejectedPluginsBanner: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.red)
+                Text(pluginManager.rejectedPlugins.count == 1
+                    ? String(localized: "1 plugin could not be loaded.")
+                    : String(format: String(localized: "%d plugins could not be loaded."),
+                             pluginManager.rejectedPlugins.count))
+                    .font(.callout.weight(.medium))
+                Spacer()
+                Button(String(localized: "Dismiss")) { dismissedRejectedBanner = true }
+                    .buttonStyle(.borderless)
+                    .font(.callout)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            ForEach(pluginManager.rejectedPlugins, id: \.url) { plugin in
+                rejectedPluginRow(plugin)
+                Divider().padding(.leading, 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rejectedPluginRow(_ plugin: RejectedPlugin) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "puzzlepiece")
+                .frame(width: 24, height: 24)
+                .foregroundStyle(.tertiary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(plugin.name)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                Text(plugin.reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+            if let registryPlugin = registryEntry(for: plugin) {
+                Button(String(localized: "Update Now")) {
+                    updatePlugin(registryPlugin)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
+            }
+            Button(String(localized: "Remove")) {
+                removeRejectedPlugin(plugin)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityLabel(String(format: String(localized: "Remove %@"), plugin.name))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private func registryEntry(for plugin: RejectedPlugin) -> RegistryPlugin? {
+        pluginManager.registryPlugin(for: plugin)
+    }
+
+    private func removeRejectedPlugin(_ plugin: RejectedPlugin) {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: plugin.url.path) {
+            do {
+                try fm.removeItem(at: plugin.url)
+            } catch CocoaError.fileNoSuchFile {
+                // Already gone, continue.
+            } catch {
+                errorAlertTitle = String(localized: "Remove Failed")
+                errorAlertMessage = error.localizedDescription
+                showErrorAlert = true
+                return
+            }
+        }
+        pluginManager.removeFromRejected(url: plugin.url)
     }
 
     private func relaunchApp() {
@@ -346,6 +433,30 @@ struct InstalledPluginsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            case .stagedPendingActivation(let newVersion):
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(format: String(localized: "v%@ ready to activate"), newVersion))
+                            .font(.callout)
+                        Text(String(localized: "Close active connections to apply."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(String(localized: "Activate Now")) {
+                        activateStagedPlugin(plugin)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    Button(String(localized: "On Quit")) {
+                        installTracker.clearInstall(pluginId: plugin.id)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(String(localized: "Activate next time you launch TablePro"))
+                }
             case .completed:
                 Label(
                     String(format: String(localized: "Updated to v%@"), registryPlugin.version),
@@ -372,18 +483,21 @@ struct InstalledPluginsView: View {
 
     private func updatePlugin(_ registryPlugin: RegistryPlugin) {
         Task {
-            installTracker.beginInstall(pluginId: registryPlugin.id)
-            do {
-                _ = try await pluginManager.updateFromRegistry(registryPlugin) { fraction in
-                    installTracker.updateProgress(pluginId: registryPlugin.id, fraction: fraction)
-                    if fraction >= 1.0 {
-                        installTracker.markInstalling(pluginId: registryPlugin.id)
-                    }
-                }
-                installTracker.completeInstall(pluginId: registryPlugin.id)
-            } catch {
-                installTracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
+            let result = await pluginManager.performRegistryUpdate(registryPlugin)
+            if case .failed(let error) = result {
                 errorAlertTitle = String(localized: "Plugin Update Failed")
+                errorAlertMessage = error.localizedDescription
+                showErrorAlert = true
+            }
+        }
+    }
+
+    private func activateStagedPlugin(_ plugin: PluginEntry) {
+        Task {
+            do {
+                _ = try await pluginManager.commitStagedUpdate(pluginId: plugin.id)
+            } catch {
+                errorAlertTitle = String(localized: "Activation Failed")
                 errorAlertMessage = error.localizedDescription
                 showErrorAlert = true
             }

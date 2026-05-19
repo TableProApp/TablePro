@@ -6,7 +6,10 @@ on:
   workflow_dispatch:
     inputs:
       tags:
-        description: "Plugin tags, comma-separated (e.g., plugin-oracle-v1.0.1,plugin-sqlite-v1.0.1)"
+        description: >
+          Comma-separated plugin tag:pluginKitVersion pairs.
+          pluginKitVersion defaults to currentPluginKitVersion from PluginManager.swift.
+          Examples: plugin-mongodb-v1.0.25, plugin-mongodb-v1.0.25:13
         required: true
         type: string
 
@@ -22,27 +25,52 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.tags.outputs.matrix }}
+      currentPluginKitVersion: ${{ steps.pkv.outputs.version }}
     steps:
-      - id: tags
+      - uses: actions/checkout@v4
+
+      - name: Read currentPluginKitVersion
+        id: pkv
+        run: |
+          VERSION=$(grep -E 'static let currentPluginKitVersion\s*=\s*[0-9]+' \
+            TablePro/Core/Plugins/PluginManager.swift \
+            | grep -oE '[0-9]+$' | head -1)
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not parse currentPluginKitVersion from PluginManager.swift"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "currentPluginKitVersion=$VERSION"
+
+      - name: Build matrix
+        id: tags
+        env:
+          DEFAULT_PKV: ${{ steps.pkv.outputs.version }}
         run: |
           if [ -n "${{ inputs.tags }}" ]; then
-            IFS=',' read -ra TAGS <<< "${{ inputs.tags }}"
+            IFS=',' read -ra RAW_TAGS <<< "${{ inputs.tags }}"
           else
-            TAGS=("${{ github.ref_name }}")
+            RAW_TAGS=("${{ github.ref_name }}")
           fi
+
           JSON='{"include":['
           FIRST=true
-          for TAG in "${TAGS[@]}"; do
-            TAG=$(echo "$TAG" | xargs)
+          for ITEM in "${RAW_TAGS[@]}"; do
+            ITEM=$(echo "$ITEM" | xargs)
+            TAG=$(echo "$ITEM" | cut -d: -f1)
+            PKV=$(echo "$ITEM" | cut -d: -f2 -s)
+            if [ -z "$PKV" ]; then
+              PKV="$DEFAULT_PKV"
+            fi
             if [ "$FIRST" = true ]; then FIRST=false; else JSON+=','; fi
-            JSON+="{\"tag\":\"$TAG\"}"
+            JSON+="{\"tag\":\"$TAG\",\"pluginKitVersion\":$PKV}"
           done
           JSON+=']}'
           echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
           echo "Matrix: $JSON"
 
   build-plugin:
-    name: "Build ${{ matrix.tag }}"
+    name: "Build ${{ matrix.tag }} (PluginKit ${{ matrix.pluginKitVersion }})"
     needs: resolve-tags
     runs-on: macos-26
     timeout-minutes: 30
@@ -95,148 +123,168 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --password "$NOTARY_PASSWORD"
 
-      - name: Build and release plugin
-        env:
-          REGISTRY_DEPLOY_KEY: ${{ secrets.REGISTRY_DEPLOY_KEY }}
-          GH_TOKEN: ${{ github.token }}
+      - name: Resolve plugin info
+        id: plugin
         run: |
           TAG="${{ matrix.tag }}"
-          echo "Processing: $TAG"
-
-          # Get current app version for minAppVersion
-          MIN_APP_VERSION=$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' \
-            TablePro.xcodeproj/project.pbxproj | head -1 | tr -d ' ')
-
-          resolve_plugin_info() {
-            local plugin_name=$1
-            case "$plugin_name" in
-              oracle)
-                TARGET="OracleDriver"; BUNDLE_ID="com.TablePro.OracleDriver"
-                DISPLAY_NAME="Oracle Driver"; SUMMARY="Oracle Database 12c+ driver via OracleNIO"
-                DB_TYPE_IDS='["Oracle"]'; ICON="server.rack"; BUNDLE_NAME="OracleDriver"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/oracle" ;;
-              clickhouse)
-                TARGET="ClickHouseDriver"; BUNDLE_ID="com.TablePro.ClickHouseDriver"
-                DISPLAY_NAME="ClickHouse Driver"; SUMMARY="ClickHouse OLAP database driver via HTTP interface"
-                DB_TYPE_IDS='["ClickHouse"]'; ICON="chart.bar.xaxis"; BUNDLE_NAME="ClickHouseDriver"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/clickhouse" ;;
-              sqlite)
-                TARGET="SQLiteDriver"; BUNDLE_ID="com.TablePro.SQLiteDriver"
-                DISPLAY_NAME="SQLite Driver"; SUMMARY="SQLite embedded database driver"
-                DB_TYPE_IDS='["SQLite"]'; ICON="internaldrive"; BUNDLE_NAME="SQLiteDriver"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/sqlite" ;;
-              duckdb)
-                TARGET="DuckDBDriver"; BUNDLE_ID="com.TablePro.DuckDBDriver"
-                DISPLAY_NAME="DuckDB Driver"; SUMMARY="DuckDB analytical database driver"
-                DB_TYPE_IDS='["DuckDB"]'; ICON="bird"; BUNDLE_NAME="DuckDBDriver"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/duckdb" ;;
-              cassandra)
-                TARGET="CassandraDriver"; BUNDLE_ID="com.TablePro.CassandraDriver"
-                DISPLAY_NAME="Cassandra Driver"; SUMMARY="Apache Cassandra and ScyllaDB driver via DataStax C driver"
-                DB_TYPE_IDS='["Cassandra", "ScyllaDB"]'; ICON="cassandra-icon"; BUNDLE_NAME="CassandraDriver"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cassandra" ;;
-              etcd)
-                TARGET="EtcdDriverPlugin"; BUNDLE_ID="com.TablePro.EtcdDriverPlugin"
-                DISPLAY_NAME="etcd Driver"; SUMMARY="etcd v3 key-value store driver with prefix-tree browsing and lease management"
-                DB_TYPE_IDS='["etcd"]'; ICON="etcd-icon"; BUNDLE_NAME="EtcdDriverPlugin"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/etcd" ;;
-              mssql)
-                TARGET="MSSQLDriver"; BUNDLE_ID="com.TablePro.MSSQLDriver"
-                DISPLAY_NAME="MSSQL Driver"; SUMMARY="Microsoft SQL Server driver via FreeTDS"
-                DB_TYPE_IDS='["SQL Server"]'; ICON="mssql-icon"; BUNDLE_NAME="MSSQLDriver"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/mssql" ;;
-              mongodb)
-                TARGET="MongoDBDriver"; BUNDLE_ID="com.TablePro.MongoDBDriver"
-                DISPLAY_NAME="MongoDB Driver"; SUMMARY="MongoDB document database driver via libmongoc"
-                DB_TYPE_IDS='["MongoDB"]'; ICON="mongodb-icon"; BUNDLE_NAME="MongoDBDriver"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/mongodb" ;;
-              redis)
-                TARGET="RedisDriver"; BUNDLE_ID="com.TablePro.RedisDriver"
-                DISPLAY_NAME="Redis Driver"; SUMMARY="Redis in-memory data store driver via hiredis"
-                DB_TYPE_IDS='["Redis"]'; ICON="redis-icon"; BUNDLE_NAME="RedisDriver"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/redis" ;;
-              cloudflare-d1)
-                TARGET="CloudflareD1DriverPlugin"; BUNDLE_ID="com.TablePro.CloudflareD1DriverPlugin"
-                DISPLAY_NAME="Cloudflare D1 Driver"; SUMMARY="Cloudflare D1 serverless SQLite-compatible database driver via REST API"
-                DB_TYPE_IDS='["Cloudflare D1"]'; ICON="cloudflare-d1-icon"; BUNDLE_NAME="CloudflareD1DriverPlugin"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cloudflare-d1" ;;
-              libsql)
-                TARGET="LibSQLDriverPlugin"; BUNDLE_ID="com.TablePro.LibSQLDriverPlugin"
-                DISPLAY_NAME="libSQL / Turso Driver"; SUMMARY="libSQL and Turso database support via Hrana HTTP protocol"
-                DB_TYPE_IDS='["libSQL","Turso"]'; ICON="libsql-icon"; BUNDLE_NAME="LibSQLDriverPlugin"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/libsql" ;;
-              dynamodb)
-                TARGET="DynamoDBDriverPlugin"; BUNDLE_ID="com.TablePro.DynamoDBDriverPlugin"
-                DISPLAY_NAME="DynamoDB Driver"; SUMMARY="Amazon DynamoDB driver with PartiQL queries and AWS IAM/Profile/SSO authentication"
-                DB_TYPE_IDS='["DynamoDB"]'; ICON="dynamodb-icon"; BUNDLE_NAME="DynamoDBDriverPlugin"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/dynamodb" ;;
-              bigquery)
-                TARGET="BigQueryDriverPlugin"; BUNDLE_ID="com.TablePro.BigQueryDriverPlugin"
-                DISPLAY_NAME="BigQuery Driver"; SUMMARY="Google BigQuery analytics database driver via REST API"
-                DB_TYPE_IDS='["BigQuery"]'; ICON="bigquery-icon"; BUNDLE_NAME="BigQueryDriverPlugin"
-                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/bigquery" ;;
-              xlsx)
-                TARGET="XLSXExport"; BUNDLE_ID="com.TablePro.XLSXExportPlugin"
-                DISPLAY_NAME="XLSX Export"; SUMMARY="Export data to Microsoft Excel XLSX format"
-                DB_TYPE_IDS='null'; ICON="doc.richtext"; BUNDLE_NAME="XLSXExport"
-                CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/export" ;;
-              mql)
-                TARGET="MQLExport"; BUNDLE_ID="com.TablePro.MQLExportPlugin"
-                DISPLAY_NAME="MQL Export"; SUMMARY="Export MongoDB data as MQL statements"
-                DB_TYPE_IDS='null'; ICON="doc.text"; BUNDLE_NAME="MQLExport"
-                CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/export" ;;
-              sqlimport)
-                TARGET="SQLImport"; BUNDLE_ID="com.TablePro.SQLImportPlugin"
-                DISPLAY_NAME="SQL Import"; SUMMARY="Import data from SQL dump files"
-                DB_TYPE_IDS='null'; ICON="square.and.arrow.down"; BUNDLE_NAME="SQLImport"
-                CATEGORY="import-format"; HOMEPAGE="https://docs.tablepro.app/features/import" ;;
-              *) echo "Unknown plugin: $plugin_name"; return 1 ;;
-            esac
-          }
-
           PLUGIN_NAME=$(echo "$TAG" | sed -E 's/^plugin-([a-z0-9-]+)-v([0-9].*)$/\1/')
           VERSION=$(echo "$TAG" | sed -E 's/^plugin-([a-z0-9-]+)-v([0-9].*)$/\2/')
 
-          resolve_plugin_info "$PLUGIN_NAME"
+          case "$PLUGIN_NAME" in
+            oracle)
+              TARGET="OracleDriver"; BUNDLE_ID="com.TablePro.OracleDriver"
+              DISPLAY_NAME="Oracle Driver"; SUMMARY="Oracle Database 12c+ driver via OracleNIO"
+              DB_TYPE_IDS='["Oracle"]'; ICON="server.rack"; BUNDLE_NAME="OracleDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/oracle" ;;
+            clickhouse)
+              TARGET="ClickHouseDriver"; BUNDLE_ID="com.TablePro.ClickHouseDriver"
+              DISPLAY_NAME="ClickHouse Driver"; SUMMARY="ClickHouse OLAP database driver via HTTP interface"
+              DB_TYPE_IDS='["ClickHouse"]'; ICON="chart.bar.xaxis"; BUNDLE_NAME="ClickHouseDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/clickhouse" ;;
+            sqlite)
+              TARGET="SQLiteDriver"; BUNDLE_ID="com.TablePro.SQLiteDriver"
+              DISPLAY_NAME="SQLite Driver"; SUMMARY="SQLite embedded database driver"
+              DB_TYPE_IDS='["SQLite"]'; ICON="internaldrive"; BUNDLE_NAME="SQLiteDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/sqlite" ;;
+            duckdb)
+              TARGET="DuckDBDriver"; BUNDLE_ID="com.TablePro.DuckDBDriver"
+              DISPLAY_NAME="DuckDB Driver"; SUMMARY="DuckDB analytical database driver"
+              DB_TYPE_IDS='["DuckDB"]'; ICON="bird"; BUNDLE_NAME="DuckDBDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/duckdb" ;;
+            cassandra)
+              TARGET="CassandraDriver"; BUNDLE_ID="com.TablePro.CassandraDriver"
+              DISPLAY_NAME="Cassandra Driver"; SUMMARY="Apache Cassandra and ScyllaDB driver via DataStax C driver"
+              DB_TYPE_IDS='["Cassandra","ScyllaDB"]'; ICON="cassandra-icon"; BUNDLE_NAME="CassandraDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cassandra" ;;
+            etcd)
+              TARGET="EtcdDriverPlugin"; BUNDLE_ID="com.TablePro.EtcdDriverPlugin"
+              DISPLAY_NAME="etcd Driver"; SUMMARY="etcd v3 key-value store driver with prefix-tree browsing and lease management"
+              DB_TYPE_IDS='["etcd"]'; ICON="etcd-icon"; BUNDLE_NAME="EtcdDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/etcd" ;;
+            mssql)
+              TARGET="MSSQLDriver"; BUNDLE_ID="com.TablePro.MSSQLDriver"
+              DISPLAY_NAME="MSSQL Driver"; SUMMARY="Microsoft SQL Server driver via FreeTDS"
+              DB_TYPE_IDS='["SQL Server"]'; ICON="mssql-icon"; BUNDLE_NAME="MSSQLDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/mssql" ;;
+            mongodb)
+              TARGET="MongoDBDriver"; BUNDLE_ID="com.TablePro.MongoDBDriver"
+              DISPLAY_NAME="MongoDB Driver"; SUMMARY="MongoDB document database driver via libmongoc"
+              DB_TYPE_IDS='["MongoDB"]'; ICON="mongodb-icon"; BUNDLE_NAME="MongoDBDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/mongodb" ;;
+            redis)
+              TARGET="RedisDriver"; BUNDLE_ID="com.TablePro.RedisDriver"
+              DISPLAY_NAME="Redis Driver"; SUMMARY="Redis in-memory data store driver via hiredis"
+              DB_TYPE_IDS='["Redis"]'; ICON="redis-icon"; BUNDLE_NAME="RedisDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/redis" ;;
+            cloudflare-d1)
+              TARGET="CloudflareD1DriverPlugin"; BUNDLE_ID="com.TablePro.CloudflareD1DriverPlugin"
+              DISPLAY_NAME="Cloudflare D1 Driver"; SUMMARY="Cloudflare D1 serverless SQLite-compatible database driver via REST API"
+              DB_TYPE_IDS='["Cloudflare D1"]'; ICON="cloudflare-d1-icon"; BUNDLE_NAME="CloudflareD1DriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cloudflare-d1" ;;
+            libsql)
+              TARGET="LibSQLDriverPlugin"; BUNDLE_ID="com.TablePro.LibSQLDriverPlugin"
+              DISPLAY_NAME="libSQL / Turso Driver"; SUMMARY="libSQL and Turso database support via Hrana HTTP protocol"
+              DB_TYPE_IDS='["libSQL","Turso"]'; ICON="libsql-icon"; BUNDLE_NAME="LibSQLDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/libsql" ;;
+            dynamodb)
+              TARGET="DynamoDBDriverPlugin"; BUNDLE_ID="com.TablePro.DynamoDBDriverPlugin"
+              DISPLAY_NAME="DynamoDB Driver"; SUMMARY="Amazon DynamoDB driver with PartiQL queries and AWS IAM/Profile/SSO authentication"
+              DB_TYPE_IDS='["DynamoDB"]'; ICON="dynamodb-icon"; BUNDLE_NAME="DynamoDBDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/dynamodb" ;;
+            bigquery)
+              TARGET="BigQueryDriverPlugin"; BUNDLE_ID="com.TablePro.BigQueryDriverPlugin"
+              DISPLAY_NAME="BigQuery Driver"; SUMMARY="Google BigQuery analytics database driver via REST API"
+              DB_TYPE_IDS='["BigQuery"]'; ICON="bigquery-icon"; BUNDLE_NAME="BigQueryDriverPlugin"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/bigquery" ;;
+            xlsx)
+              TARGET="XLSXExport"; BUNDLE_ID="com.TablePro.XLSXExportPlugin"
+              DISPLAY_NAME="XLSX Export"; SUMMARY="Export data to Microsoft Excel XLSX format"
+              DB_TYPE_IDS='null'; ICON="doc.richtext"; BUNDLE_NAME="XLSXExport"
+              CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/export" ;;
+            mql)
+              TARGET="MQLExport"; BUNDLE_ID="com.TablePro.MQLExportPlugin"
+              DISPLAY_NAME="MQL Export"; SUMMARY="Export MongoDB data as MQL statements"
+              DB_TYPE_IDS='null'; ICON="doc.text"; BUNDLE_NAME="MQLExport"
+              CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/export" ;;
+            sqlimport)
+              TARGET="SQLImport"; BUNDLE_ID="com.TablePro.SQLImportPlugin"
+              DISPLAY_NAME="SQL Import"; SUMMARY="Import data from SQL dump files"
+              DB_TYPE_IDS='null'; ICON="square.and.arrow.down"; BUNDLE_NAME="SQLImport"
+              CATEGORY="import-format"; HOMEPAGE="https://docs.tablepro.app/features/import" ;;
+            *)
+              echo "::error::Unknown plugin name: $PLUGIN_NAME"
+              exit 1 ;;
+          esac
 
-          echo "Building $TARGET v$VERSION"
+          MIN_APP_VERSION=$(grep -E 'MARKETING_VERSION\s*=\s*[0-9]' \
+            TablePro.xcodeproj/project.pbxproj | head -1 \
+            | sed 's/.*MARKETING_VERSION = \(.*\);/\1/' | tr -d ' ')
 
-          # Build Cassandra dependencies if needed
-          if [ "$PLUGIN_NAME" = "cassandra" ]; then
-            ./scripts/build-cassandra.sh both
-          fi
+          {
+            echo "target=$TARGET"
+            echo "bundleId=$BUNDLE_ID"
+            echo "displayName=$DISPLAY_NAME"
+            echo "summary=$SUMMARY"
+            echo "dbTypeIds=$DB_TYPE_IDS"
+            echo "icon=$ICON"
+            echo "bundleName=$BUNDLE_NAME"
+            echo "category=$CATEGORY"
+            echo "homepage=$HOMEPAGE"
+            echo "version=$VERSION"
+            echo "minAppVersion=$MIN_APP_VERSION"
+          } >> "$GITHUB_OUTPUT"
 
-          # Build both architectures (pass VERSION so the built bundle's
-          # CFBundleShortVersionString matches the registry version)
-          ./scripts/build-plugin.sh "$TARGET" arm64 "$VERSION"
-          ./scripts/build-plugin.sh "$TARGET" x86_64 "$VERSION"
+      - name: Build Cassandra dependencies
+        if: ${{ contains(matrix.tag, 'plugin-cassandra-') }}
+        run: ./scripts/build-cassandra.sh both
 
-          # Capture SHA-256
+      - name: Build plugin binaries
+        run: |
+          ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" arm64 "${{ steps.plugin.outputs.version }}"
+          ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" x86_64 "${{ steps.plugin.outputs.version }}"
+
+      - name: Read checksums
+        id: sha
+        run: |
+          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
           ARM64_SHA=$(cat "build/Plugins/${BUNDLE_NAME}-arm64.zip.sha256")
           X86_SHA=$(cat "build/Plugins/${BUNDLE_NAME}-x86_64.zip.sha256")
+          {
+            echo "arm64=$ARM64_SHA"
+            echo "x86_64=$X86_SHA"
+          } >> "$GITHUB_OUTPUT"
 
-          # Notarize if enabled
-          if [ "${NOTARIZE_PLUGINS:-}" = "true" ]; then
-            for zip in build/Plugins/${BUNDLE_NAME}-*.zip; do
-              xcrun notarytool submit "$zip" \
-                --keychain-profile "TablePro" \
-                --wait
-            done
-          fi
+      - name: Notarize
+        if: ${{ env.NOTARIZE_PLUGINS == 'true' }}
+        run: |
+          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
+          for zip in build/Plugins/${BUNDLE_NAME}-*.zip; do
+            xcrun notarytool submit "$zip" --keychain-profile "TablePro" --wait
+          done
 
-          # Create GitHub Release
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ matrix.tag }}"
+          DISPLAY_NAME="${{ steps.plugin.outputs.displayName }}"
+          VERSION="${{ steps.plugin.outputs.version }}"
+          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
+          ARM64_SHA="${{ steps.sha.outputs.arm64 }}"
+          X86_SHA="${{ steps.sha.outputs.x86_64 }}"
+          PKV="${{ matrix.pluginKitVersion }}"
+
           RELEASE_BODY="## $DISPLAY_NAME v$VERSION
 
-          Plugin release for TablePro.
+Plugin release for TablePro (PluginKit $PKV).
 
-          ### Installation
-          TablePro will prompt you to install this plugin automatically when you select the database type. You can also install manually via **Settings > Plugins > Browse**.
+### Installation
+TablePro will prompt you to install this plugin automatically when you select the database type. You can also install manually via Settings > Plugins > Browse.
 
-          ### SHA-256
-          - ARM64: \`$ARM64_SHA\`
-          - x86_64: \`$X86_SHA\`"
+### SHA-256
+- ARM64: \`$ARM64_SHA\`
+- x86_64: \`$X86_SHA\`"
 
-          # Delete existing release if any, then create
           gh release delete "$TAG" --yes 2>/dev/null || true
           gh release create "$TAG" \
             --title "$DISPLAY_NAME v$VERSION" \
@@ -244,94 +292,82 @@ jobs:
             build/Plugins/${BUNDLE_NAME}-arm64.zip \
             build/Plugins/${BUNDLE_NAME}-x86_64.zip
 
-          # Update plugin registry (with retry to handle parallel pushes)
-          if [ -n "${REGISTRY_DEPLOY_KEY:-}" ]; then
-            ARM64_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${BUNDLE_NAME}-arm64.zip"
-            X86_64_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${BUNDLE_NAME}-x86_64.zip"
+      - name: Update plugin registry
+        if: ${{ env.REGISTRY_DEPLOY_KEY != '' }}
+        env:
+          REGISTRY_DEPLOY_KEY: ${{ secrets.REGISTRY_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ matrix.tag }}"
+          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
+          BUNDLE_ID="${{ steps.plugin.outputs.bundleId }}"
+          DISPLAY_NAME="${{ steps.plugin.outputs.displayName }}"
+          VERSION="${{ steps.plugin.outputs.version }}"
+          SUMMARY="${{ steps.plugin.outputs.summary }}"
+          DB_TYPE_IDS='${{ steps.plugin.outputs.dbTypeIds }}'
+          MIN_APP_VERSION="${{ steps.plugin.outputs.minAppVersion }}"
+          ICON="${{ steps.plugin.outputs.icon }}"
+          HOMEPAGE="${{ steps.plugin.outputs.homepage }}"
+          CATEGORY="${{ steps.plugin.outputs.category }}"
+          ARM64_SHA="${{ steps.sha.outputs.arm64 }}"
+          X86_SHA="${{ steps.sha.outputs.x86_64 }}"
+          PKV="${{ matrix.pluginKitVersion }}"
+          REPO="${{ github.repository }}"
+          ARM64_URL="https://github.com/${REPO}/releases/download/${TAG}/${BUNDLE_NAME}-arm64.zip"
+          X86_64_URL="https://github.com/${REPO}/releases/download/${TAG}/${BUNDLE_NAME}-x86_64.zip"
 
-            WORK=$(mktemp -d)
-            eval "$(ssh-agent -s)"
-            echo "$REGISTRY_DEPLOY_KEY" | ssh-add -
+          SCRIPT_PATH="$(pwd)/.github/scripts/update-registry.py"
 
-            git clone git@github.com:TableProApp/plugins.git "$WORK/registry"
-            cd "$WORK/registry"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
+          WORK=$(mktemp -d)
+          eval "$(ssh-agent -s)"
+          trap 'ssh-add -D 2>/dev/null || true; eval "$(ssh-agent -k)" 2>/dev/null || true' EXIT
+          echo "$REGISTRY_DEPLOY_KEY" | ssh-add -
 
-            # Retry loop: pull latest, apply update, push — retry if another job pushed first
-            MAX_RETRIES=10
-            for attempt in $(seq 1 $MAX_RETRIES); do
-              echo "Registry update attempt $attempt/$MAX_RETRIES"
+          git clone git@github.com:TableProApp/plugins.git "$WORK/registry"
+          cd "$WORK/registry"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-              # Reset any previous commit and pull latest
-              git reset --hard origin/main
-              git pull --rebase origin main
+          MAX_RETRIES=10
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "Registry update attempt $attempt/$MAX_RETRIES"
+            git reset --hard origin/main
+            git pull --rebase origin main
 
-              python3 - \
-                "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$SUMMARY" \
-                "$DB_TYPE_IDS" "$ARM64_URL" "$ARM64_SHA" \
-                "$X86_64_URL" "$X86_SHA" "$MIN_APP_VERSION" \
-                "$ICON" "$HOMEPAGE" "$CATEGORY" \
-                <<'PYTHON_SCRIPT'
-          import json, sys
+            python3 "$SCRIPT_PATH" \
+              --manifest plugins.json \
+              --id "$BUNDLE_ID" \
+              --name "$DISPLAY_NAME" \
+              --version "$VERSION" \
+              --summary "$SUMMARY" \
+              --db-type-ids "$DB_TYPE_IDS" \
+              --arm64-url "$ARM64_URL" \
+              --arm64-sha "$ARM64_SHA" \
+              --x86_64-url "$X86_64_URL" \
+              --x86_64-sha "$X86_SHA" \
+              --min-app-version "$MIN_APP_VERSION" \
+              --icon "$ICON" \
+              --homepage "$HOMEPAGE" \
+              --category "$CATEGORY" \
+              --plugin-kit-version "$PKV" \
+              --keep-kit-versions 2
 
-          bundle_id, name, version, summary = sys.argv[1:5]
-          db_type_ids = json.loads(sys.argv[5])
-          arm64_url, arm64_sha = sys.argv[6], sys.argv[7]
-          x86_64_url, x86_64_sha = sys.argv[8], sys.argv[9]
-          min_app_version, icon, homepage = sys.argv[10], sys.argv[11], sys.argv[12]
-          category = sys.argv[13] if len(sys.argv) > 13 else "database-driver"
+            git add plugins.json
+            git commit -m "Update $DISPLAY_NAME to v$VERSION (PluginKit $PKV)"
 
-          with open("plugins.json", "r") as f:
-              manifest = json.load(f)
+            if git push; then
+              echo "Registry updated on attempt $attempt"
+              break
+            fi
 
-          entry = {
-              "id": bundle_id, "name": name, "version": version,
-              "summary": summary,
-              "author": {"name": "TablePro", "url": "https://tablepro.app"},
-              "homepage": homepage, "category": category,
-              "databaseTypeIds": db_type_ids,
-              "downloadURL": arm64_url, "sha256": arm64_sha,
-              "binaries": [
-                  {"architecture": "arm64", "downloadURL": arm64_url, "sha256": arm64_sha},
-                  {"architecture": "x86_64", "downloadURL": x86_64_url, "sha256": x86_64_sha}
-              ],
-              "minAppVersion": min_app_version,
-              "minPluginKitVersion": 2,
-              "iconName": icon, "isVerified": True
-          }
+            if [ "$attempt" -eq "$MAX_RETRIES" ]; then
+              echo "::error::Failed to push registry update after $MAX_RETRIES attempts"
+              exit 1
+            fi
 
-          manifest["plugins"] = [p for p in manifest["plugins"] if p["id"] != bundle_id]
-          manifest["plugins"].append(entry)
+            DELAY=$((2 + RANDOM % 4))
+            echo "Push rejected (concurrent update), retrying in ${DELAY}s..."
+            sleep "$DELAY"
+          done
 
-          with open("plugins.json", "w") as f:
-              json.dump(manifest, f, indent=2)
-              f.write("\n")
-          PYTHON_SCRIPT
-
-              git add plugins.json
-              git commit -m "Update $DISPLAY_NAME to v$VERSION"
-
-              if git push; then
-                echo "Registry updated successfully on attempt $attempt"
-                break
-              fi
-
-              if [ "$attempt" -eq "$MAX_RETRIES" ]; then
-                echo "::error::Failed to push registry update after $MAX_RETRIES attempts"
-                exit 1
-              fi
-
-              # Jittered backoff: 2-5s base + random to spread parallel retries
-              DELAY=$((2 + RANDOM % 4))
-              echo "Push rejected (concurrent update), retrying in ${DELAY}s..."
-              sleep "$DELAY"
-            done
-
-            ssh-add -D
-            eval "$(ssh-agent -k)"
-            cd -
-            rm -rf "$WORK"
-          fi
-
-          echo "$DISPLAY_NAME v$VERSION released"
+          echo "$DISPLAY_NAME v$VERSION released (PluginKit $PKV)"

@@ -2,11 +2,6 @@
 //  PluginMetadataRegistry.swift
 //  TablePro
 //
-//  Thread-safe, non-actor metadata cache populated at compile time.
-//  All static plugin metadata is served from here, eliminating metatype
-//  dispatch on dynamically loaded bundles (which can crash due to
-//  missing witness table entries).
-//
 
 import Foundation
 import TableProPluginKit
@@ -734,7 +729,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             }
         }
 
-        // Built-in type aliases: multi-type plugins where an alias maps to a primary plugin type ID
         reverseTypeIndex["MariaDB"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
         reverseTypeIndex["CockroachDB"] = "PostgreSQL"

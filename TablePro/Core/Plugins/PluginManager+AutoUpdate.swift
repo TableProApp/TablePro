@@ -3,67 +3,123 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
+private enum ReconciliationConfig {
+    static let maxAttempts = 3
+    static let firstRetryDelay: Duration = .seconds(30)
+    static let secondRetryDelay: Duration = .seconds(300)
+}
+
 extension PluginManager {
-    func autoUpdateRejectedPlugins() async {
+    func scheduleReconciliation() {
+        reconciliationTask?.cancel()
+        reconciliationTask = Task { [weak self] in
+            await self?.runReconciliationLoop()
+        }
+    }
+
+    func runReconciliationLoop() async {
         let outdated = rejectedPlugins.filter(\.isOutdated)
-        guard !outdated.isEmpty else { return }
-
-        Self.logger.info("Attempting auto-update for \(outdated.count) outdated plugin(s)")
-
-        let registryClient = RegistryClient.shared
-        await registryClient.fetchManifest()
-
-        guard let manifest = registryClient.manifest else {
-            Self.logger.warning("Auto-update skipped: registry manifest unavailable")
+        guard !outdated.isEmpty else {
+            AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+            refreshRegistryUpdateSet()
             return
         }
 
-        var stillFailed: [RejectedPlugin] = []
+        await RegistryClient.shared.fetchManifest()
+        refreshRegistryUpdateSet()
+        guard let manifest = RegistryClient.shared.manifest else {
+            Self.logger.warning("Reconciliation skipped: registry manifest unavailable")
+            AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+            return
+        }
 
-        for plugin in outdated {
-            let lookupId = plugin.registryId ?? plugin.bundleId
+        for rejected in outdated {
+            guard !Task.isCancelled else { return }
 
-            guard let lookupId,
+            guard let lookupId = resolveRegistryId(for: rejected, manifest: manifest),
                   let registryPlugin = manifest.plugins.first(where: { $0.id == lookupId }) else {
-                Self.logger.warning("Auto-update skipped for '\(plugin.name)': no matching registry plugin")
-                stillFailed.append(plugin)
+                Self.logger.warning("Reconciliation: no registry entry for '\(rejected.name)'")
                 continue
             }
 
+            let attempts = reconciliationAttempts[lookupId, default: 0]
+            guard attempts < ReconciliationConfig.maxAttempts else {
+                Self.logger.warning("Reconciliation: max attempts reached for '\(rejected.name)'")
+                continue
+            }
+
+            if attempts > 0 {
+                let delay = attempts == 1
+                    ? ReconciliationConfig.firstRetryDelay
+                    : ReconciliationConfig.secondRetryDelay
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled else { return }
+            }
+
+            reconciliationAttempts[lookupId] = attempts + 1
+
             do {
-                _ = try await updateFromRegistry(registryPlugin, existingPluginLoaded: false) { _ in }
-                Self.logger.info("Auto-updated plugin '\(plugin.name)' to v\(registryPlugin.version)")
+                let outcome = try await updateFromRegistry(
+                    registryPlugin,
+                    existingPluginLoaded: false,
+                    progress: { _ in }
+                )
+                switch outcome {
+                case .installed:
+                    removeFromRejected(url: rejected.url)
+                    reconciliationAttempts.removeValue(forKey: lookupId)
+                    Self.logger.info("Reconciliation: auto-updated '\(rejected.name)'")
+                case .staged:
+                    Self.logger.info("Reconciliation: staged update for '\(rejected.name)' (live connections)")
+                }
             } catch {
-                Self.logger.error("Auto-update failed for '\(plugin.name)': \(error.localizedDescription)")
-                stillFailed.append(RejectedPlugin(
-                    url: plugin.url,
-                    bundleId: plugin.bundleId,
-                    registryId: plugin.registryId,
-                    name: plugin.name,
-                    reason: error.localizedDescription,
-                    isOutdated: plugin.isOutdated
-                ))
+                Self.logger.error("Reconciliation: update failed for '\(rejected.name)': \(error.localizedDescription)")
             }
         }
 
-        let updatedCount = outdated.count - stillFailed.count
-        if updatedCount > 0 {
-            Self.logger.info("Auto-updated \(updatedCount) plugin(s) from registry")
-        }
+        AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+    }
 
-        let processedURLs = Set(outdated.map(\.url))
-        rejectedPlugins = rejectedPlugins.filter { !processedURLs.contains($0.url) } + stillFailed
+    func resolveRegistryId(for rejected: RejectedPlugin, manifest: RegistryManifest) -> String? {
+        if let id = rejected.registryId { return id }
+        if let bundleId = rejected.bundleId,
+           manifest.plugins.contains(where: { $0.id == bundleId }) {
+            return bundleId
+        }
+        return nil
+    }
+
+    func removeFromRejected(url: URL) {
+        rejectedPlugins.removeAll { $0.url == url }
     }
 
     func registryUpdate(for pluginId: String) -> RegistryPlugin? {
         guard let manifest = RegistryClient.shared.manifest else { return nil }
         guard let installed = plugins.first(where: { $0.id == pluginId }) else { return nil }
+        guard installed.source == .userInstalled else { return nil }
         guard let registryPlugin = manifest.plugins.first(where: { $0.id == pluginId }) else { return nil }
         guard registryPlugin.category != .theme else { return nil }
         return registryPlugin.version.compare(installed.version, options: .numeric) == .orderedDescending
             ? registryPlugin : nil
+    }
+
+    func refreshRegistryUpdateSet() {
+        var available: Set<String> = []
+        for plugin in plugins where registryUpdate(for: plugin.id) != nil {
+            available.insert(plugin.id)
+        }
+        if available != pluginsWithRegistryUpdate {
+            pluginsWithRegistryUpdate = available
+        }
+    }
+
+    func registryPlugin(for rejected: RejectedPlugin) -> RegistryPlugin? {
+        guard let manifest = RegistryClient.shared.manifest else { return nil }
+        guard let id = resolveRegistryId(for: rejected, manifest: manifest) else { return nil }
+        return manifest.plugins.first(where: { $0.id == id })
     }
 }

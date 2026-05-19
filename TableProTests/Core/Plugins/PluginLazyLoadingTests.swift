@@ -14,34 +14,34 @@ import Testing
 @MainActor
 struct PluginLazyLoadingTests {
     @Test("loadPendingPlugins is idempotent when called multiple times")
-    func loadPendingPluginsIdempotent() {
+    func loadPendingPluginsIdempotent() async {
         // loadPendingPlugins should not crash or duplicate when called multiple times
         let manager = PluginManager.shared
-        manager.loadPendingPlugins()
+        await manager.loadPendingPluginsAsync()
         let countAfterFirst = manager.plugins.count
-        manager.loadPendingPlugins()
+        await manager.loadPendingPluginsAsync()
         let countAfterSecond = manager.plugins.count
         #expect(countAfterFirst == countAfterSecond)
     }
 
     @Test("loadPendingPlugins populates driverPlugins")
-    func loadPendingPopulatesDrivers() {
+    func loadPendingPopulatesDrivers() async {
         let manager = PluginManager.shared
-        manager.loadPendingPlugins()
+        await manager.loadPendingPluginsAsync()
         // After loading, at least some driver plugins should be registered
         // (the built-in plugins are always available in the test bundle)
         #expect(manager.driverPlugins.isEmpty == false || manager.plugins.isEmpty)
     }
 
     @Test("loadPendingPlugins with no pending is no-op")
-    func loadPendingNoPendingIsNoOp() {
+    func loadPendingNoPendingIsNoOp() async {
         let manager = PluginManager.shared
         // Ensure all pending are loaded first
-        manager.loadPendingPlugins()
+        await manager.loadPendingPluginsAsync()
         let driverCount = manager.driverPlugins.count
         let pluginCount = manager.plugins.count
         // Call again - should be no-op
-        manager.loadPendingPlugins()
+        await manager.loadPendingPluginsAsync()
         #expect(manager.driverPlugins.count == driverCount)
         #expect(manager.plugins.count == pluginCount)
     }

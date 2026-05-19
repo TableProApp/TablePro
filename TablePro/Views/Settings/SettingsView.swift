@@ -13,6 +13,11 @@ struct SettingsView: View {
     @Bindable private var settingsManager = AppSettingsManager.shared
     @Environment(UpdaterBridge.self) var updaterBridge
     @AppStorage("selectedSettingsTab") private var selectedTab: String = SettingsTab.general.rawValue
+    private let pluginManager = PluginManager.shared
+
+    private var pluginAttentionCount: Int {
+        pluginManager.rejectedPlugins.count + pluginManager.pluginsWithRegistryUpdate.count
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -55,6 +60,7 @@ struct SettingsView: View {
 
             PluginsSettingsView()
                 .tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
+                .badge(pluginAttentionCount)
                 .tag(SettingsTab.plugins.rawValue)
 
             AccountSettingsView()

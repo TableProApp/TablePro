@@ -281,13 +281,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             dataSize: pluginMeta.dataSize,
             indexSize: pluginMeta.indexSize,
             totalSize: pluginMeta.totalSize,
-            avgRowLength: nil,
+            avgRowLength: pluginMeta.avgRowLength,
             rowCount: pluginMeta.rowCount,
             comment: pluginMeta.comment,
             engine: pluginMeta.engine,
-            collation: nil,
-            createTime: nil,
-            updateTime: nil
+            collation: pluginMeta.collation,
+            createTime: pluginMeta.createTime,
+            updateTime: pluginMeta.updateTime
         )
     }
 

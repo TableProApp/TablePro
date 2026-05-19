@@ -21,6 +21,10 @@ struct PluginEntry: Identifiable {
     let additionalTypeIds: [String]
     let pluginIconName: String
     let defaultPort: Int?
+
+    let exportFormatId: String?
+    let importFormatId: String?
+    let inspectorId: String?
 }
 
 enum PluginSource {

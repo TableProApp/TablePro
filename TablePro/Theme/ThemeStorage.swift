@@ -64,23 +64,29 @@ internal struct ThemeStorage {
     // MARK: - Load Single Theme
 
     static func loadTheme(id: String) -> ThemeDefinition? {
-        guard let userFile = try? themeFileURL(in: userThemesDirectory, id: id) else { return nil }
-        if let theme = loadTheme(from: userFile) {
+        let fm = FileManager.default
+
+        if let userFile = try? themeFileURL(in: userThemesDirectory, id: id),
+           fm.fileExists(atPath: userFile.path),
+           let theme = loadTheme(from: userFile) {
             return theme
         }
 
         if let registryFile = try? themeFileURL(in: registryThemesDirectory, id: id),
+           fm.fileExists(atPath: registryFile.path),
            let theme = loadTheme(from: registryFile) {
             return theme
         }
 
-        if let bundleDir = bundledThemesDirectory,
+        // User themes are never bundled; skip the bundle search for them.
+        if !id.hasPrefix("user."),
+           let bundleDir = bundledThemesDirectory,
            let bundleFile = try? themeFileURL(in: bundleDir, id: id),
+           fm.fileExists(atPath: bundleFile.path),
            let theme = loadTheme(from: bundleFile) {
             return theme
         }
 
-        // Fallback to compiled presets
         return id == ThemeDefinition.default.id ? .default : nil
     }
 
@@ -249,6 +255,8 @@ internal struct ThemeStorage {
         do {
             let data = try Data(contentsOf: url)
             return try JSONDecoder().decode(ThemeDefinition.self, from: data)
+        } catch CocoaError.fileNoSuchFile, CocoaError.fileReadNoSuchFile {
+            return nil
         } catch {
             logger.error("Failed to load theme from \(url.lastPathComponent): \(error)")
             return nil

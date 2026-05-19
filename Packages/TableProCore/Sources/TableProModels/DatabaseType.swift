@@ -57,8 +57,6 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         }
     }
 
-    /// Plugin type ID for plugin lookup.
-    /// Multi-type plugins share a single driver: MariaDB -> "MySQL", Redshift -> "PostgreSQL"
     public var pluginTypeId: String {
         switch self {
         case .mariadb: return DatabaseType.mysql.rawValue

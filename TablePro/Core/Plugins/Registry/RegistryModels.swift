@@ -22,6 +22,7 @@ struct RegistryBinary: Codable, Sendable {
     let architecture: PluginArchitecture
     let downloadURL: String
     let sha256: String
+    let pluginKitVersion: Int?
 }
 
 struct RegistryManifest: Codable, Sendable {
@@ -38,24 +39,76 @@ struct RegistryPlugin: Codable, Sendable, Identifiable {
     let homepage: String?
     let category: RegistryCategory
     let databaseTypeIds: [String]?
-    let downloadURL: String?
-    let sha256: String?
-    let binaries: [RegistryBinary]?
+    let binaries: [RegistryBinary]
     let minAppVersion: String?
-    let minPluginKitVersion: Int?
     let iconName: String?
     let isVerified: Bool
     let metadata: RegistryPluginMetadata?
+
+    private let legacyDownloadURL: String?
+    private let legacySha256: String?
+    private let legacyMinPluginKitVersion: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, version, summary, author, homepage, category
+        case databaseTypeIds, binaries, minAppVersion, iconName, isVerified, metadata
+        case legacyDownloadURL = "downloadURL"
+        case legacySha256 = "sha256"
+        case legacyMinPluginKitVersion = "minPluginKitVersion"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        version = try container.decode(String.self, forKey: .version)
+        summary = try container.decode(String.self, forKey: .summary)
+        author = try container.decode(RegistryAuthor.self, forKey: .author)
+        homepage = try container.decodeIfPresent(String.self, forKey: .homepage)
+        category = try container.decode(RegistryCategory.self, forKey: .category)
+        databaseTypeIds = try container.decodeIfPresent([String].self, forKey: .databaseTypeIds)
+        minAppVersion = try container.decodeIfPresent(String.self, forKey: .minAppVersion)
+        iconName = try container.decodeIfPresent(String.self, forKey: .iconName)
+        isVerified = try container.decodeIfPresent(Bool.self, forKey: .isVerified) ?? false
+        metadata = try container.decodeIfPresent(RegistryPluginMetadata.self, forKey: .metadata)
+        legacyDownloadURL = try container.decodeIfPresent(String.self, forKey: .legacyDownloadURL)
+        legacySha256 = try container.decodeIfPresent(String.self, forKey: .legacySha256)
+        legacyMinPluginKitVersion = try container.decodeIfPresent(Int.self, forKey: .legacyMinPluginKitVersion)
+
+        if let decodedBinaries = try container.decodeIfPresent([RegistryBinary].self, forKey: .binaries) {
+            binaries = decodedBinaries
+        } else if let url = legacyDownloadURL, let hash = legacySha256 {
+            binaries = [
+                RegistryBinary(
+                    architecture: .arm64,
+                    downloadURL: url,
+                    sha256: hash,
+                    pluginKitVersion: legacyMinPluginKitVersion
+                ),
+                RegistryBinary(
+                    architecture: .x86_64,
+                    downloadURL: url,
+                    sha256: hash,
+                    pluginKitVersion: legacyMinPluginKitVersion
+                )
+            ]
+        } else {
+            binaries = []
+        }
+    }
 }
 
 extension RegistryPlugin {
-    func resolvedBinary(for arch: PluginArchitecture = .current) throws -> (url: String, sha256: String) {
-        if let binaries, let match = binaries.first(where: { $0.architecture == arch }) {
-            return (match.downloadURL, match.sha256)
+    func resolvedBinary(
+        for arch: PluginArchitecture = .current,
+        pluginKitVersion: Int
+    ) throws -> RegistryBinary {
+        let archMatches = binaries.filter { $0.architecture == arch }
+
+        if let exact = archMatches.first(where: { $0.pluginKitVersion == pluginKitVersion }) {
+            return exact
         }
-        if let url = downloadURL, let hash = sha256 {
-            return (url, hash)
-        }
+
         throw PluginError.noCompatibleBinary
     }
 }
