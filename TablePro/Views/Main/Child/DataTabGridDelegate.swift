@@ -69,10 +69,6 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         AppCommands.shared.exportQueryResults.send(())
     }
 
-    func dataGridUndo() {}
-
-    func dataGridRedo() {}
-
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {
         coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo)
     }

@@ -158,27 +158,8 @@ final class MainContentCommandActions {
         setupFileOpenObservers()
     }
 
-    /// Observers for notifications still posted by non-menu views (DataGrid, SidebarView,
-    /// context menus, QueryEditorView, ConnectionStatusView). These bridge AppKit/non-menu
-    /// notification posts to the same command action methods used by @FocusedValue callers.
     private func setupNonMenuNotificationObservers() {
-        observeKeyWindowOnly(AppCommands.shared.addNewRow) { [weak self] _ in self?.addNewRow() }
-
-        observeKeyWindowOnly(AppCommands.shared.deleteSelectedRows) { [weak self] _ in
-            self?.deleteSelectedRows()
-        }
-
-        observeKeyWindowOnly(AppCommands.shared.duplicateRow) { [weak self] _ in self?.duplicateRow() }
-
         observeKeyWindowOnly(AppCommands.shared.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
-
-        observeKeyWindowOnly(AppCommands.shared.copySelectedRows) { [weak self] _ in
-            self?.copySelectedRows()
-        }
-
-        observeKeyWindowOnly(AppCommands.shared.pasteRows) { [weak self] _ in
-            self?.coordinator?.pasteRows()
-        }
     }
 
     // MARK: - Row Operations (Group A — Called Directly)

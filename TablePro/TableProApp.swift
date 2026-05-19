@@ -5,7 +5,6 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
-import CodeEditTextView
 import Combine
 import Observation
 import os
@@ -37,26 +36,19 @@ struct PasteboardCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .cut))
 
             Button("Copy") {
-                let action = PasteboardActionRouter.resolveCopyAction(
-                    firstResponder: NSApp.keyWindow?.firstResponder,
-                    hasRowSelection: actions?.hasRowSelection ?? false,
-                    hasTableSelection: actions?.hasTableSelection ?? false
-                )
-                switch action {
-                case .textCopy:
-                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
-                case .copyRows:
-                    if !NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
-                        actions?.copySelectedRows()
-                    }
-                case .copyTableNames:
+                if NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
+                    return
+                }
+                if actions?.hasRowSelection == true {
+                    actions?.copySelectedRows()
+                } else if actions?.hasTableSelection == true {
                     actions?.copyTableNames()
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .copy))
 
             Button("Copy Rows") {
-                if !NSApp.sendAction(#selector(KeyHandlingTableView.copyRowsAsTSV(_:)), to: nil, from: nil) {
+                if !NSApp.sendAction(#selector(TableProResponderActions.copyRowsAsTSV(_:)), to: nil, from: nil) {
                     actions?.copySelectedRows()
                 }
             }
@@ -76,14 +68,10 @@ struct PasteboardCommands: Commands {
             .disabled(!(actions?.hasRowSelection ?? false))
 
             Button("Paste") {
-                let action = PasteboardActionRouter.resolvePasteAction(
-                    firstResponder: NSApp.keyWindow?.firstResponder,
-                    isCurrentTabEditable: actions?.isCurrentTabEditable ?? false
-                )
-                switch action {
-                case .textPaste:
-                    NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
-                case .pasteRows:
+                if NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) {
+                    return
+                }
+                if actions?.isCurrentTabEditable == true {
                     actions?.pasteRows()
                 }
             }
