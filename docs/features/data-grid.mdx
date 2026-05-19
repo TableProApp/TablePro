@@ -321,7 +321,23 @@ Use arrow keys to move between cells. Press `Enter` to edit, `Escape` to cancel.
 
 Click a cell to select it. Drag or Shift+click to select a range. Click row numbers for entire rows; Cmd+click for non-contiguous rows.
 
-Select cells and press `Cmd+C` for TSV, `Cmd+Shift+C` for CSV, or `Cmd+Option+J` for JSON.
+Select rows and press `Cmd+C` for TSV, `Cmd+Shift+C` for TSV with headers, or `Cmd+Option+J` for JSON.
+
+Right-click a row and choose **Copy as** for additional formats:
+
+| Format | Description |
+|--------|-------------|
+| Cell Value | The clicked cell's content |
+| With Headers | TSV with the column names as the first line |
+| JSON | A JSON array of row objects |
+| CSV | RFC 4180 CSV; empty fields for NULL |
+| CSV with Headers | Same as CSV with the header row prepended |
+| Markdown | GitHub-flavored Markdown table |
+| IN Clause | `('a', 'b', 'c')` from the clicked column across selected rows, ready for `WHERE col IN (...)` |
+| INSERT Statement(s) | SQL INSERT for each row (SQL databases only) |
+| UPDATE Statement(s) | SQL UPDATE for each row by primary key (SQL databases only) |
+
+Right-click a column header and choose **Copy Column Values** to copy every loaded value in that column, one per line.
 
 {/* Screenshot: Copy options in context menu */}
 <Frame caption="Copy options in context menu">

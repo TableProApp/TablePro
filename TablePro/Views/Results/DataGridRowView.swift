@@ -106,7 +106,7 @@ class DataGridRowView: NSTableRowView {
         let locationInTable = tableView.convert(locationInRow, from: self)
         let clickedColumn = tableView.column(at: locationInTable)
 
-        let dataColumnIndex: Int = clickedColumn > 0
+        let dataColumnIndex: Int = clickedColumn >= 0
             ? DataGridView.dataColumnIndex(for: clickedColumn, in: tableView, schema: coordinator.identitySchema) ?? -1
             : -1
 
@@ -148,6 +148,37 @@ class DataGridRowView: NSTableRowView {
             keyEquivalent: "")
         jsonItem.target = self
         copyAsMenu.addItem(jsonItem)
+
+        let csvItem = NSMenuItem(
+            title: String(localized: "CSV"),
+            action: #selector(copyAsCsv),
+            keyEquivalent: "")
+        csvItem.target = self
+        copyAsMenu.addItem(csvItem)
+
+        let csvHeadersItem = NSMenuItem(
+            title: String(localized: "CSV with Headers"),
+            action: #selector(copyAsCsvWithHeaders),
+            keyEquivalent: "")
+        csvHeadersItem.target = self
+        copyAsMenu.addItem(csvHeadersItem)
+
+        let markdownItem = NSMenuItem(
+            title: String(localized: "Markdown"),
+            action: #selector(copyAsMarkdown),
+            keyEquivalent: "")
+        markdownItem.target = self
+        copyAsMenu.addItem(markdownItem)
+
+        if dataColumnIndex >= 0 {
+            let inClauseItem = NSMenuItem(
+                title: String(localized: "IN Clause"),
+                action: #selector(copyAsInClause(_:)),
+                keyEquivalent: "")
+            inClauseItem.representedObject = dataColumnIndex
+            inClauseItem.target = self
+            copyAsMenu.addItem(inClauseItem)
+        }
 
         if let dbType = coordinator.databaseType,
            dbType != .mongodb && dbType != .redis,
@@ -311,20 +342,18 @@ class DataGridRowView: NSTableRowView {
         coordinator?.undoDeleteRow(at: rowIndex)
     }
 
+    private func selectedOrCurrentIndices(in coordinator: TableViewCoordinator) -> Set<Int> {
+        coordinator.selectedRowIndices.isEmpty ? [rowIndex] : coordinator.selectedRowIndices
+    }
+
     @objc private func copySelectedOrCurrentRowWithHeaders() {
-        guard let coordinator = coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.copyRowsWithHeaders(at: indices)
+        guard let coordinator else { return }
+        coordinator.copyRowsWithHeaders(at: selectedOrCurrentIndices(in: coordinator))
     }
 
     @objc private func copySelectedOrCurrentRow() {
-        guard let coordinator = coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.delegate?.dataGridCopyRows(indices)
+        guard let coordinator else { return }
+        coordinator.delegate?.dataGridCopyRows(selectedOrCurrentIndices(in: coordinator))
     }
 
     @objc private func pasteRows() {
@@ -371,18 +400,12 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func copyAsInsert() {
         guard let coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.copyRowsAsInsert(at: indices)
+        coordinator.copyRowsAsInsert(at: selectedOrCurrentIndices(in: coordinator))
     }
 
     @objc private func copyAsUpdate() {
         guard let coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.copyRowsAsUpdate(at: indices)
+        coordinator.copyRowsAsUpdate(at: selectedOrCurrentIndices(in: coordinator))
     }
 
     @objc private func exportResults() {
@@ -391,10 +414,27 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func copyAsJson() {
         guard let coordinator else { return }
-        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
-            ? coordinator.selectedRowIndices
-            : [rowIndex]
-        coordinator.copyRowsAsJson(at: indices)
+        coordinator.copyRowsAsJson(at: selectedOrCurrentIndices(in: coordinator))
+    }
+
+    @objc private func copyAsCsv() {
+        guard let coordinator else { return }
+        coordinator.copyRowsAsCsv(at: selectedOrCurrentIndices(in: coordinator), includeHeaders: false)
+    }
+
+    @objc private func copyAsCsvWithHeaders() {
+        guard let coordinator else { return }
+        coordinator.copyRowsAsCsv(at: selectedOrCurrentIndices(in: coordinator), includeHeaders: true)
+    }
+
+    @objc private func copyAsMarkdown() {
+        guard let coordinator else { return }
+        coordinator.copyRowsAsMarkdown(at: selectedOrCurrentIndices(in: coordinator))
+    }
+
+    @objc private func copyAsInClause(_ sender: NSMenuItem) {
+        guard let coordinator, let columnIndex = sender.representedObject as? Int else { return }
+        coordinator.copyRowsAsInClause(at: selectedOrCurrentIndices(in: coordinator), columnIndex: columnIndex)
     }
 
     @objc private func previewForeignKey(_ sender: NSMenuItem) {

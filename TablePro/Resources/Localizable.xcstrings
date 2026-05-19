@@ -12255,6 +12255,9 @@
         }
       }
     },
+    "Copy Column Values" : {
+
+    },
     "Copy Connection ID" : {
 
     },
@@ -13443,6 +13446,12 @@
           }
         }
       }
+    },
+    "CSV" : {
+
+    },
+    "CSV with Headers" : {
+
     },
     "CURDATE()" : {
       "extractionState" : "stale",
@@ -24239,6 +24248,9 @@
         }
       }
     },
+    "IN Clause" : {
+
+    },
     "in list" : {
       "localizations" : {
         "tr" : {
@@ -27986,6 +27998,9 @@
           }
         }
       }
+    },
+    "Markdown" : {
+
     },
     "Massive" : {
       "extractionState" : "stale",

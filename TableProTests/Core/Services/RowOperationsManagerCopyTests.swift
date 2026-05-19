@@ -15,6 +15,11 @@ private final class MockClipboardProvider: ClipboardProvider {
         lastWasGridRows = false
     }
 
+    func writeCsv(_ csv: String) {
+        lastWrittenText = csv
+        lastWasGridRows = false
+    }
+
     func writeRows(tsv: String, html: String?) {
         lastWrittenText = tsv
         lastWasGridRows = true

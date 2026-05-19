@@ -2,8 +2,6 @@
 //  DataGridView+RowActions.swift
 //  TablePro
 //
-//  Row action methods extracted from DataGridView for maintainability.
-//
 
 import AppKit
 import os
@@ -158,6 +156,64 @@ extension TableViewCoordinator {
         let columnTypes = tableRows.columnTypes
         let converter = JsonRowConverter(columns: tableRows.columns, columnTypes: columnTypes)
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
+    }
+
+    func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
+        let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+        guard !rows.isEmpty else { return }
+        let tableRows = tableRowsProvider()
+        let converter = CsvRowConverter(columns: tableRows.columns, columnTypes: tableRows.columnTypes)
+        ClipboardService.shared.writeCsv(converter.generateCsv(rows: rows, includeHeaders: includeHeaders))
+    }
+
+    func copyRowsAsMarkdown(at indices: Set<Int>) {
+        let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+        guard !rows.isEmpty else { return }
+        let tableRows = tableRowsProvider()
+        let converter = MarkdownTableConverter(columns: tableRows.columns, columnTypes: tableRows.columnTypes)
+        ClipboardService.shared.writeText(converter.generateMarkdown(rows: rows))
+    }
+
+    func copyRowsAsInClause(at indices: Set<Int>, columnIndex: Int) {
+        let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+        guard !rows.isEmpty else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let driver = resolveDriver()
+        let converter = InClauseConverter(
+            columnIndex: columnIndex,
+            columnTypes: tableRows.columnTypes,
+            escapeStringLiteral: driver?.escapeStringLiteral
+        )
+        ClipboardService.shared.writeText(converter.generateInClause(rows: rows))
+    }
+
+    func copyColumnValues(columnIndex: Int) {
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let rowCount = sortedIDs?.count ?? tableRows.rows.count
+        guard rowCount > 0 else { return }
+
+        let columnType = tableRows.columnTypes.indices.contains(columnIndex)
+            ? tableRows.columnTypes[columnIndex]
+            : nil
+
+        var lines: [String] = []
+        lines.reserveCapacity(rowCount)
+
+        for rowIndex in 0..<rowCount {
+            guard let row = displayRow(at: rowIndex), row.values.indices.contains(columnIndex) else { continue }
+            switch row.values[columnIndex] {
+            case .null:
+                lines.append("NULL")
+            case .text(let value):
+                lines.append(BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy))
+            case .bytes(let data):
+                lines.append(BlobFormattingService.shared.format(data, for: .copy) ?? "")
+            }
+        }
+
+        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
     }
 
     private func formatRowValues(values: [PluginCellValue], columnTypes: [ColumnType]?) -> [String] {

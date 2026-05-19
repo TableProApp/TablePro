@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Right-click a column header to copy all its values from the loaded rows (#1325)
+- Copy as submenu on the row context menu now offers CSV, CSV with Headers, Markdown table, and IN Clause for SQL `WHERE id IN (...)` lookups (#1325)
+
 ### Fixed
 
 - DuckDB Spatial `GEOMETRY` columns render as WKT, not NULL (#1324)
