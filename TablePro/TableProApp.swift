@@ -43,8 +43,12 @@ struct PasteboardCommands: Commands {
                     hasTableSelection: actions?.hasTableSelection ?? false
                 )
                 switch action {
-                case .textCopy, .copyRows:
+                case .textCopy:
                     NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+                case .copyRows:
+                    if !NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
+                        actions?.copySelectedRows()
+                    }
                 case .copyTableNames:
                     actions?.copyTableNames()
                 }
@@ -52,7 +56,9 @@ struct PasteboardCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .copy))
 
             Button("Copy Rows") {
-                NSApp.sendAction(#selector(KeyHandlingTableView.copyRowsAsTSV(_:)), to: nil, from: nil)
+                if !NSApp.sendAction(#selector(KeyHandlingTableView.copyRowsAsTSV(_:)), to: nil, from: nil) {
+                    actions?.copySelectedRows()
+                }
             }
             .optionalKeyboardShortcut(shortcut(for: .copyRowsExplicit))
             .disabled(!(actions?.hasRowSelection ?? false))

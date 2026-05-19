@@ -209,7 +209,8 @@ struct MainEditorContentView: View {
         case .createTable:
             CreateTableView(
                 connection: connection,
-                coordinator: coordinator
+                coordinator: coordinator,
+                selectionState: selectionState
             )
         case .erDiagram:
             erDiagramContent(tab: tab)

@@ -33,6 +33,7 @@ struct CreateTableView: View {
 
     let connection: DatabaseConnection
     var coordinator: MainContentCoordinator?
+    let selectionState: GridSelectionState
 
     @State private var structureChangeManager: StructureChangeManager
     @State private var wrappedChangeManager: AnyChangeManager
@@ -50,9 +51,14 @@ struct CreateTableView: View {
     @State private var sortState = SortState()
     @State private var columnLayout = ColumnLayoutState()
 
-    init(connection: DatabaseConnection, coordinator: MainContentCoordinator?) {
+    init(
+        connection: DatabaseConnection,
+        coordinator: MainContentCoordinator?,
+        selectionState: GridSelectionState
+    ) {
         self.connection = connection
         self.coordinator = coordinator
+        self.selectionState = selectionState
 
         let manager = StructureChangeManager()
         _structureChangeManager = State(wrappedValue: manager)
@@ -80,6 +86,8 @@ struct CreateTableView: View {
                 structureChangeManager.addNewColumn()
             }
         }
+        .onDisappear { selectionState.indices = [] }
+        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
         .onChange(of: selectedTab) { updateGridDelegate() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
