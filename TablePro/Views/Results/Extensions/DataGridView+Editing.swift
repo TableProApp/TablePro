@@ -22,9 +22,6 @@ extension TableViewCoordinator {
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
         if immutable.contains(tableRows.columns[columnIndex]) { return .blocked }
 
-        let columnName = tableRows.columns[columnIndex]
-        if tableRows.columnForeignKeys[columnName] != nil { return .blocked }
-
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]
             if ct.isJsonType || ct.isBlobType {
