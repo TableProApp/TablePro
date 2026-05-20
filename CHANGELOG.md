@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Right-click a column header to copy all its values from the loaded rows (#1325)
 - Copy as submenu on the row context menu now offers CSV, CSV with Headers, Markdown table, and IN Clause for SQL `WHERE id IN (...)` lookups (#1325)
 - Double-click or press Return on a query result cell to open a selectable text viewer in the cell. JSON columns open the JSON viewer in a popover, BLOB columns open the hex viewer. The value is selectable and copyable (#1336)
+- Double-click or press Return on a boolean, enum, or set cell in an editable table now opens the value picker, matching the chevron button (#1336)
 
 ### Changed
 

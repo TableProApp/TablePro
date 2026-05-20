@@ -55,8 +55,11 @@ internal struct CellInteractionResolver {
         if context.isDropdownColumn { return .editDropdown }
         if context.isTypePickerColumn { return .editTypePicker }
 
-        if let columnType = context.columnType, context.hasEnumValues {
-            return columnType.isSetType ? .editSet : .editEnum
+        if let columnType = context.columnType {
+            if columnType.isBooleanType { return .editDropdown }
+            if context.hasEnumValues {
+                return columnType.isSetType ? .editSet : .editEnum
+            }
         }
 
         if let foreignKeyInfo = context.foreignKeyInfo {

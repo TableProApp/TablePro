@@ -79,45 +79,13 @@ extension TableViewCoordinator {
     // MARK: - Chevron Click
 
     func handleChevronAction(row: Int, columnIndex: Int) {
-        guard isEditable else { return }
-        guard row >= 0, columnIndex >= 0 else { return }
-        guard !changeManager.isRowDeleted(row) else { return }
         guard let tableView else { return }
         guard let column = DataGridView.tableColumnIndex(
             for: columnIndex,
             in: tableView,
             schema: identitySchema
         ) else { return }
-
-        if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
-            showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-        if let typePickerCols = typePickerColumns, typePickerCols.contains(columnIndex) {
-            showTypePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        let tableRows = tableRowsProvider()
-        guard columnIndex < tableRows.columnTypes.count,
-              columnIndex < tableRows.columns.count else { return }
-
-        let ct = tableRows.columnTypes[columnIndex]
-        let columnName = tableRows.columns[columnIndex]
-
-        if ct.isBooleanType {
-            showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-        } else if let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
-            if ct.isSetType {
-                showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-            } else {
-                showEnumPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-            }
-        } else if ct.isJsonType {
-            showJSONEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-        } else if ct.isBlobType {
-            showBlobEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
-        }
+        handleCellInteraction(row: row, tableColumn: column, columnIndex: columnIndex, tableView: tableView)
     }
 
     // MARK: - FK Navigation

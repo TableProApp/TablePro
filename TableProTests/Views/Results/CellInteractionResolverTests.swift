@@ -154,6 +154,18 @@ struct CellInteractionResolverEditableTests {
         #expect(resolver.resolve(context) == .editDropdown)
     }
 
+    @Test("editable boolean column returns editDropdown")
+    func editableBooleanColumnReturnsEditDropdown() {
+        let context = ContextFactory.make(value: "true", columnType: .boolean(rawType: "BOOL"), isTableEditable: true)
+        #expect(resolver.resolve(context) == .editDropdown)
+    }
+
+    @Test("read-only boolean column returns viewInline")
+    func readOnlyBooleanColumnReturnsViewInline() {
+        let context = ContextFactory.make(value: "true", columnType: .boolean(rawType: "BOOL"), isTableEditable: false)
+        #expect(resolver.resolve(context) == .viewInline(value: "true"))
+    }
+
     @Test("editable type-picker column returns editTypePicker")
     func editableTypePickerColumnReturnsEditTypePicker() {
         let context = ContextFactory.make(value: "TEXT", isTableEditable: true, isTypePickerColumn: true)
