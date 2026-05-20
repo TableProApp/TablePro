@@ -24,31 +24,6 @@ extension TableViewCoordinator {
         return displayRow.values[columnIndex]
     }
 
-    func showForeignKeyPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, fkInfo: ForeignKeyInfo) {
-        let currentValue = cellValue(at: row, column: columnIndex)
-
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
-        guard let databaseType, let connectionId else { return }
-
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
-            relativeTo: cellRect,
-            of: tableView,
-            contentSize: NSSize(width: 420, height: 320)
-        ) { [weak self] dismiss in
-            ForeignKeyPopoverContentView(
-                currentValue: currentValue,
-                fkInfo: fkInfo,
-                connectionId: connectionId,
-                databaseType: databaseType,
-                onCommit: { newValue in
-                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-                },
-                onDismiss: dismiss
-            )
-        }
-    }
-
     func toggleForeignKeyPreview(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         if let popover = activeFKPreviewPopover, popover.isShown {
             popover.close()
@@ -178,13 +153,7 @@ extension TableViewCoordinator {
     }
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let typed = cellTypedValue(at: row, column: columnIndex)
-        let currentValue: String?
-        switch typed {
-        case .null: currentValue = nil
-        case .text(let s): currentValue = s
-        case .bytes(let data): currentValue = String(data: data, encoding: .isoLatin1)
-        }
+        let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
@@ -315,6 +284,64 @@ extension TableViewCoordinator {
 
     func commitBinaryEdit(row: Int, columnIndex: Int, data: Data) {
         commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: .bytes(data))
+    }
+
+    func showJSONViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: nil
+        ) { dismiss in
+            JSONViewerContentView(
+                initialValue: currentValue,
+                columnName: columnName,
+                onDismiss: dismiss,
+                onPopOut: { currentText in
+                    dismiss()
+                    JSONViewerWindowController.open(
+                        text: currentText,
+                        columnName: columnName,
+                        isEditable: false,
+                        onCommit: nil
+                    )
+                }
+            )
+        }
+    }
+
+    func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
+
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: nil
+        ) { dismiss in
+            HexEditorContentView(
+                initialValue: currentValue,
+                isEditable: false,
+                onDismiss: dismiss
+            )
+        }
+    }
+
+    private func blobStringValue(at row: Int, columnIndex: Int) -> String? {
+        switch cellTypedValue(at: row, column: columnIndex) {
+        case .null: return nil
+        case .text(let text): return text
+        case .bytes(let data): return String(data: data, encoding: .isoLatin1)
+        }
     }
 }
 

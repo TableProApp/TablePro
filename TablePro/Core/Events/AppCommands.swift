@@ -10,14 +10,6 @@ import Foundation
 final class AppCommands {
     static let shared = AppCommands()
 
-    // MARK: - Row Commands
-
-    let deleteSelectedRows = PassthroughSubject<Void, Never>()
-    let addNewRow = PassthroughSubject<Void, Never>()
-    let duplicateRow = PassthroughSubject<Void, Never>()
-    let copySelectedRows = PassthroughSubject<Void, Never>()
-    let pasteRows = PassthroughSubject<Void, Never>()
-
     // MARK: - Refresh
 
     let refreshData = PassthroughSubject<UUID?, Never>()

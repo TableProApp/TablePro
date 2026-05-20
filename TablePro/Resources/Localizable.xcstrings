@@ -12534,6 +12534,9 @@
         }
       }
     },
+    "Copy Rows" : {
+
+    },
     "Copy SQL" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -49539,6 +49542,7 @@
       }
     },
     "Truncated — read only" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -49559,6 +49563,9 @@
           }
         }
       }
+    },
+    "Truncated, read only" : {
+
     },
     "Trust" : {
       "localizations" : {

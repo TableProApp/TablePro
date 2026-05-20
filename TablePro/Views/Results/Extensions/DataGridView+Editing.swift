@@ -22,9 +22,6 @@ extension TableViewCoordinator {
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
         if immutable.contains(tableRows.columns[columnIndex]) { return .blocked }
 
-        let columnName = tableRows.columns[columnIndex]
-        if tableRows.columnForeignKeys[columnName] != nil { return .blocked }
-
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]
             if ct.isJsonType || ct.isBlobType {
@@ -84,7 +81,17 @@ extension TableViewCoordinator {
         editor.onTabNavigation = { [weak self] row, column, forward in
             self?.handleOverlayTabNavigation(row: row, column: column, forward: forward)
         }
+        overlayViewer?.dismiss()
         editor.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
+    }
+
+    func showOverlayViewer(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, value: String) {
+        if overlayViewer == nil {
+            overlayViewer = CellOverlayViewer()
+        }
+        guard let viewer = overlayViewer else { return }
+        overlayEditor?.dismiss(commit: false)
+        viewer.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
     }
 
     func handleOverlayTabNavigation(row: Int, column: Int, forward: Bool) {

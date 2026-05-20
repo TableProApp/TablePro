@@ -21,6 +21,7 @@ struct TableStructureView: View {
     let connection: DatabaseConnection
     let toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
+    let selectionState: GridSelectionState
 
     @State var selectedTab: StructureTab = .columns
     @State var columns: [ColumnInfo] = []
@@ -53,11 +54,18 @@ struct TableStructureView: View {
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
 
-    init(tableName: String, connection: DatabaseConnection, toolbarState: ConnectionToolbarState, coordinator: MainContentCoordinator?) {
+    init(
+        tableName: String,
+        connection: DatabaseConnection,
+        toolbarState: ConnectionToolbarState,
+        coordinator: MainContentCoordinator?,
+        selectionState: GridSelectionState
+    ) {
         self.tableName = tableName
         self.connection = connection
         self.toolbarState = toolbarState
         self.coordinator = coordinator
+        self.selectionState = selectionState
 
         let manager = StructureChangeManager()
         _structureChangeManager = State(wrappedValue: manager)
@@ -78,6 +86,7 @@ struct TableStructureView: View {
             contentArea
         }
         .task(loadInitialData)
+        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
         .onChange(of: selectedTab) { _, newValue in onSelectedTabChanged(newValue) }
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
@@ -114,6 +123,7 @@ struct TableStructureView: View {
         .onDisappear {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
+            selectionState.indices = []
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
@@ -360,7 +370,8 @@ struct TableStructureView: View {
             type: .mysql
         ),
         toolbarState: ConnectionToolbarState(),
-        coordinator: nil
+        coordinator: nil,
+        selectionState: GridSelectionState()
     )
     .frame(width: 800, height: 600)
 }

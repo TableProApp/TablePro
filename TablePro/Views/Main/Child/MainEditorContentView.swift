@@ -209,7 +209,8 @@ struct MainEditorContentView: View {
         case .createTable:
             CreateTableView(
                 connection: connection,
-                coordinator: coordinator
+                coordinator: coordinator,
+                selectionState: selectionState
             )
         case .erDiagram:
             erDiagramContent(tab: tab)
@@ -433,8 +434,11 @@ struct MainEditorContentView: View {
             case .structure:
                 if let tableName = tab.tableContext.tableName {
                     TableStructureView(
-                        tableName: tableName, connection: connection,
-                        toolbarState: coordinator.toolbarState, coordinator: coordinator
+                        tableName: tableName,
+                        connection: connection,
+                        toolbarState: coordinator.toolbarState,
+                        coordinator: coordinator,
+                        selectionState: selectionState
                     )
                     .id(tableName)
                     .frame(maxHeight: .infinity)

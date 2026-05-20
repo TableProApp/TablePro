@@ -65,6 +65,7 @@
 		5ADDB00100000000000000A6 /* DynamoDBQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */; };
 		5ADDB00100000000000000A7 /* DynamoDBStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */; };
 		5ADDB00100000000000000A8 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5ADDB00100000000000000F0 /* DynamoDBSsoCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000F0 /* DynamoDBSsoCredentials.swift */; };
 		5AE4F4902F6BC0640097AC5B /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5AEA8B422F6808CA0040461A /* EtcdStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B402F6808CA0040461A /* EtcdStatementGenerator.swift */; };
 		5AEA8B432F6808CA0040461A /* EtcdPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3D2F6808CA0040461A /* EtcdPlugin.swift */; };
@@ -314,6 +315,7 @@
 		5ADDB00200000000000000A5 /* DynamoDBPluginDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBPluginDriver.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBQueryBuilder.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBStatementGenerator.swift; sourceTree = "<group>"; };
+		5ADDB00200000000000000F0 /* DynamoDBSsoCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBSsoCredentials.swift; sourceTree = "<group>"; };
 		5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DynamoDBDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CloudflareD1DriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EtcdDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1006,6 +1008,7 @@
 				5ADDB00200000000000000A5 /* DynamoDBPluginDriver.swift */,
 				5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */,
 				5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */,
+				5ADDB00200000000000000F0 /* DynamoDBSsoCredentials.swift */,
 			);
 			path = Plugins/DynamoDBDriverPlugin;
 			sourceTree = "<group>";
@@ -2099,6 +2102,7 @@
 				5ADDB00100000000000000A5 /* DynamoDBPluginDriver.swift in Sources */,
 				5ADDB00100000000000000A6 /* DynamoDBQueryBuilder.swift in Sources */,
 				5ADDB00100000000000000A7 /* DynamoDBStatementGenerator.swift in Sources */,
+				5ADDB00100000000000000F0 /* DynamoDBSsoCredentials.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

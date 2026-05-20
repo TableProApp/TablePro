@@ -18,9 +18,13 @@ import TableProPluginKit
 /// Custom Commands struct for pasteboard operations
 struct PasteboardCommands: Commands {
     var settingsManager: AppSettingsManager
-    @FocusedValue(\.commandActions) var actions: MainContentCommandActions?
+    @FocusedValue(\.commandActions) var focusedActions: MainContentCommandActions?
+    @Bindable var commandRegistry: CommandActionsRegistry
 
-    /// Build a SwiftUI KeyboardShortcut from keyboard settings
+    private var actions: MainContentCommandActions? {
+        focusedActions ?? commandRegistry.current
+    }
+
     private func shortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
@@ -33,21 +37,24 @@ struct PasteboardCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .cut))
 
             Button("Copy") {
-                let action = PasteboardActionRouter.resolveCopyAction(
-                    firstResponder: NSApp.keyWindow?.firstResponder,
-                    hasRowSelection: actions?.hasRowSelection ?? false,
-                    hasTableSelection: actions?.hasTableSelection ?? false
-                )
-                switch action {
-                case .textCopy:
-                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
-                case .copyRows:
+                if NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
+                    return
+                }
+                if actions?.hasRowSelection == true {
                     actions?.copySelectedRows()
-                case .copyTableNames:
+                } else if actions?.hasTableSelection == true {
                     actions?.copyTableNames()
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .copy))
+
+            Button("Copy Rows") {
+                if !NSApp.sendAction(#selector(TableProResponderActions.copyRowsAsTSV(_:)), to: nil, from: nil) {
+                    actions?.copySelectedRows()
+                }
+            }
+            .optionalKeyboardShortcut(shortcut(for: .copyRowsExplicit))
+            .disabled(!(actions?.hasRowSelection ?? false))
 
             Button("Copy with Headers") {
                 actions?.copySelectedRowsWithHeaders()
@@ -62,14 +69,10 @@ struct PasteboardCommands: Commands {
             .disabled(!(actions?.hasRowSelection ?? false))
 
             Button("Paste") {
-                let action = PasteboardActionRouter.resolvePasteAction(
-                    firstResponder: NSApp.keyWindow?.firstResponder,
-                    isCurrentTabEditable: actions?.isCurrentTabEditable ?? false
-                )
-                switch action {
-                case .textPaste:
-                    NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
-                case .pasteRows:
+                if NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) {
+                    return
+                }
+                if actions?.isCurrentTabEditable == true {
                     actions?.pasteRows()
                 }
             }
@@ -102,6 +105,23 @@ struct PasteboardCommands: Commands {
 }
 
 // MARK: - App Menu Commands
+
+/// Where `Cmd+F` resolves in the current context. The data-grid filter lives in
+/// the View menu and the editor's Find lives in the Edit menu. Only the item
+/// matching the current route binds `Cmd+F`; the other drops it. Two items
+/// sharing one key equivalent makes SwiftUI dedupe the shortcut and AppKit bind
+/// it to the disabled item, so the live owner must be unique.
+enum CommandFRoute {
+    case inspectorFilter
+    case tableFilter
+    case editorFind
+
+    static func resolve(isInspector: Bool, isTableTab: Bool) -> CommandFRoute {
+        if isInspector { return .inspectorFilter }
+        if isTableTab { return .tableFilter }
+        return .editorFind
+    }
+}
 
 /// All menu commands extracted into a separate Commands struct so that AppState
 /// changes only re-evaluate the menu items — NOT the Scene body / WindowGroups.
@@ -147,6 +167,10 @@ struct AppMenuCommands: Commands {
 
     private var keyWindowIsInspector: Bool {
         NSApp.keyWindow?.windowController is InspectorWindowController
+    }
+
+    private var commandFRoute: CommandFRoute {
+        CommandFRoute.resolve(isInspector: keyWindowIsInspector, isTableTab: actions?.isTableTab == true)
     }
 
     var body: some Commands {
@@ -458,21 +482,24 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .redo))
         }
 
-        // Edit menu - pasteboard commands with FocusedValue support
-        PasteboardCommands(settingsManager: settingsManager)
+        PasteboardCommands(settingsManager: settingsManager, commandRegistry: commandRegistry)
 
         // Edit menu - Find + row operations (after pasteboard)
         CommandGroup(after: .pasteboard) {
             Divider()
 
             Button(String(localized: "Find...")) {
-                if keyWindowIsInspector {
+                switch commandFRoute {
+                case .inspectorFilter:
                     NSApp.sendAction(#selector(InspectorViewController.toggleInspectorFilter(_:)), to: nil, from: nil)
-                } else {
+                case .editorFind:
                     EditorEventRouter.shared.showFindPanelForKeyWindow()
+                case .tableFilter:
+                    break
                 }
             }
-            .keyboardShortcut("f", modifiers: .command)
+            .optionalKeyboardShortcut(commandFRoute == .tableFilter ? nil : KeyboardShortcut("f", modifiers: .command))
+            .disabled(commandFRoute == .tableFilter)
 
             Divider()
 
@@ -516,8 +543,8 @@ struct AppMenuCommands: Commands {
             Button("Toggle Filters") {
                 actions?.toggleFilterPanel()
             }
-            .optionalKeyboardShortcut(shortcut(for: .toggleFilters))
-            .disabled(!(actions?.isConnected ?? false) || !(actions?.isTableTab ?? false))
+            .optionalKeyboardShortcut(commandFRoute == .tableFilter ? shortcut(for: .toggleFilters) : nil)
+            .disabled(commandFRoute != .tableFilter || !(actions?.isConnected ?? false))
 
             Button("Toggle History") {
                 actions?.toggleHistoryPanel()

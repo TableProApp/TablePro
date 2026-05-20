@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin rejection no longer interrupts launch with a modal alert; the app posts a UserNotifications banner and surfaces rejected entries inline in Settings > Plugins with Update Now and Remove buttons
 - CI workflow `build-plugin.yml` accepts `tag:pluginKitVersion` pairs and reads `currentPluginKitVersion` from `PluginManager.swift`, replacing the hardcoded `minPluginKitVersion: 2` that made registry pre-install checks ineffective
 - New `scripts/release-all-plugins.sh` triggers a single workflow run that rebuilds every registry plugin for a given PluginKit version after an ABI bump
+- Double-click or press Return on a read-only query result cell to open a selectable text viewer in the cell. JSON columns open the JSON viewer in a popover, BLOB columns open the hex viewer. The value is selectable and copyable (#1336)
+
+### Changed
+
+- `Cmd+C` now copies the focused cell value when one row is selected and a cell has focus; with multiple rows selected, or when no cell is focused, it still copies row(s) as TSV. `Cmd+Shift+C` now always copies row(s) as TSV. "Copy with Headers" stays in the Edit menu and row context menu without a default shortcut (#1332)
+- `Cmd+F` toggles the filter panel when viewing a table, and opens the Find panel in the SQL editor. The old `Cmd+Shift+F` shortcut for filters is removed
 
 ### Fixed
 
@@ -35,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB ENUMs in non-`main` schemas resolve correctly
 - DuckDB `DATE` and `TIMESTAMP` BC years use a leading minus
 - `.db`, `.db3`, `.s3db`, `.sl3`, and `.sqlitedb` files now open in TablePro from Finder (#1327)
+- DynamoDB SSO connections work with modern `sso-session` profiles immediately after `aws sso login`, without needing to run another AWS CLI command first (#1333)
 
 ## [0.43.0] - 2026-05-18
 

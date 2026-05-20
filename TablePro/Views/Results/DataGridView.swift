@@ -142,6 +142,7 @@ struct DataGridView: NSViewRepresentable {
 
         if tableView.editedRow >= 0 { return }
         if let editor = coordinator.overlayEditor, editor.isActive { return }
+        if let viewer = coordinator.overlayViewer, viewer.isActive { return }
 
         coordinator.tableRowsProvider = tableRowsProvider
         coordinator.tableRowsMutator = tableRowsMutator
