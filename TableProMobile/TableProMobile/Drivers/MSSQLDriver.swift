@@ -275,8 +275,8 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             return ConnectionError.notConnected
         case .connectionFailed(let msg):
             return DatabaseError(message: msg)
-        case .tlsHandshakeFailed(let msg):
-            return DatabaseError(message: "TLS handshake failed: \(msg)")
+        case .tlsHandshakeFailed(_, let serverMessage):
+            return DatabaseError(message: "TLS handshake failed: \(serverMessage)")
         case .queryFailed(let msg):
             return DatabaseError(message: msg)
         case .cancelled:

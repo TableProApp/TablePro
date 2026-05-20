@@ -44,8 +44,21 @@ private extension MSSQLPluginError {
             self = .queryFailed(m)
         case .cancelled:
             self = .queryFailed(String(localized: "Query was cancelled"))
-        case .tlsHandshakeFailed(let m):
-            self = .connectionFailed(String(format: String(localized: "TLS: %@"), m))
+        case .tlsHandshakeFailed(_, let serverMessage):
+            self = .connectionFailed(String(format: String(localized: "TLS: %@"), serverMessage))
+        }
+    }
+}
+
+private extension MSSQLTLSFailureKind {
+    func sslHandshakeError(serverMessage: String) -> SSLHandshakeError {
+        switch self {
+        case .serverRejectedPlaintext: return .serverRejectedPlaintext(serverMessage: serverMessage)
+        case .serverRequiresPlaintext: return .serverRequiresPlaintext(serverMessage: serverMessage)
+        case .untrustedCertificate: return .untrustedCertificate(serverMessage: serverMessage)
+        case .hostnameMismatch: return .hostnameMismatch(serverMessage: serverMessage)
+        case .clientCertRequired: return .clientCertRequired(serverMessage: serverMessage)
+        case .cipherMismatch: return .cipherMismatch(serverMessage: serverMessage)
         }
     }
 }
@@ -229,6 +242,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             try await conn.connect()
         } catch let error as MSSQLCoreError {
+            if case let .tlsHandshakeFailed(kind, serverMessage) = error {
+                throw kind.sslHandshakeError(serverMessage: serverMessage)
+            }
             throw MSSQLPluginError(coreError: error)
         }
         self.freeTDSConn = conn

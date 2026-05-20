@@ -1,11 +1,20 @@
 import Foundation
 
+public enum MSSQLTLSFailureKind: Sendable {
+    case serverRejectedPlaintext
+    case serverRequiresPlaintext
+    case untrustedCertificate
+    case hostnameMismatch
+    case clientCertRequired
+    case cipherMismatch
+}
+
 public enum MSSQLCoreError: LocalizedError, Sendable {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
     case cancelled
-    case tlsHandshakeFailed(String)
+    case tlsHandshakeFailed(kind: MSSQLTLSFailureKind, serverMessage: String)
 
     public var errorDescription: String? {
         switch self {
@@ -17,8 +26,8 @@ public enum MSSQLCoreError: LocalizedError, Sendable {
             return String(format: String(localized: "Query failed: %@"), detail)
         case .cancelled:
             return String(localized: "Query was cancelled")
-        case .tlsHandshakeFailed(let detail):
-            return String(format: String(localized: "TLS handshake failed: %@"), detail)
+        case .tlsHandshakeFailed(_, let serverMessage):
+            return String(format: String(localized: "TLS handshake failed: %@"), serverMessage)
         }
     }
 }
