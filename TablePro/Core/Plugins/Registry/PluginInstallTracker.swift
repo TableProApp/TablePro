@@ -27,20 +27,20 @@ final class PluginInstallTracker {
 
     func completeInstall(pluginId: String) {
         activeInstalls[pluginId]?.phase = .completed
-        Task {
+        Task { [weak self] in
             try? await Task.sleep(for: .seconds(3))
-            if case .completed = self.activeInstalls[pluginId]?.phase {
-                self.activeInstalls.removeValue(forKey: pluginId)
+            if case .completed = self?.activeInstalls[pluginId]?.phase {
+                self?.activeInstalls.removeValue(forKey: pluginId)
             }
         }
     }
 
     func failInstall(pluginId: String, error: String) {
         activeInstalls[pluginId]?.phase = .failed(error)
-        Task {
+        Task { [weak self] in
             try? await Task.sleep(for: .seconds(30))
-            if case .failed = self.activeInstalls[pluginId]?.phase {
-                self.activeInstalls.removeValue(forKey: pluginId)
+            if case .failed = self?.activeInstalls[pluginId]?.phase {
+                self?.activeInstalls.removeValue(forKey: pluginId)
             }
         }
     }
