@@ -36,7 +36,7 @@ extension PluginManager {
         Self.logger.info("Plugin '\(pluginId)' \(enabled ? "enabled" : "disabled")")
     }
 
-    func uninstallPlugin(id: String) throws {
+    func uninstallPlugin(id: String) async throws {
         guard let index = plugins.firstIndex(where: { $0.id == id }) else {
             throw PluginError.notFound
         }
@@ -65,7 +65,7 @@ extension PluginManager {
         disabledPluginIds = disabled
 
         if stagedUpdates[id] != nil {
-            discardStagedUpdate(pluginId: id)
+            await discardStagedUpdate(pluginId: id)
         }
 
         queryBuildingDriverCache.removeAll()

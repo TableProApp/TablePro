@@ -11,7 +11,6 @@ import Testing
 struct RegistryBinarySelectionTests {
 
     private func makePlugin(binaries: [RegistryBinary]) -> RegistryPlugin {
-        let encoder = JSONEncoder()
         let payload: [String: Any] = [
             "id": "com.example.driver",
             "name": "Example",
@@ -31,7 +30,6 @@ struct RegistryBinarySelectionTests {
         ]
         let data = try! JSONSerialization.data(withJSONObject: payload)
         return try! JSONDecoder().decode(RegistryPlugin.self, from: data)
-        _ = encoder
     }
 
     @Test("exact pluginKitVersion + arch match wins")

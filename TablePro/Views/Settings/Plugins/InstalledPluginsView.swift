@@ -162,7 +162,6 @@ struct InstalledPluginsView: View {
             do {
                 try fm.removeItem(at: plugin.url)
             } catch CocoaError.fileNoSuchFile {
-                // Already gone, continue.
             } catch {
                 errorAlertTitle = String(localized: "Remove Failed")
                 errorAlertMessage = error.localizedDescription
@@ -546,7 +545,7 @@ struct InstalledPluginsView: View {
             guard confirmed else { return }
 
             do {
-                try pluginManager.uninstallPlugin(id: plugin.id)
+                try await pluginManager.uninstallPlugin(id: plugin.id)
                 selectedPluginId = nil
             } catch {
                 errorAlertTitle = String(localized: "Uninstall Failed")

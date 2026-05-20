@@ -186,10 +186,7 @@ internal final class ThemeRegistryInstaller {
             }
         }
 
-        let resolved = try plugin.resolvedBinary(
-            for: .current,
-            pluginKitVersion: PluginManager.currentPluginKitVersion
-        )
+        let resolved = try plugin.resolvedThemeBinary(for: .current)
 
         guard let downloadURL = URL(string: resolved.downloadURL) else {
             throw PluginError.downloadFailed("Invalid download URL")

@@ -147,10 +147,8 @@ extension PluginManager {
         return entry
     }
 
-    func discardStagedUpdate(pluginId: String) {
-        Task {
-            await PluginInstaller.shared.discardStagedUpdate(pluginId: pluginId)
-        }
+    func discardStagedUpdate(pluginId: String) async {
+        await PluginInstaller.shared.discardStagedUpdate(pluginId: pluginId)
         stagedUpdates.removeValue(forKey: pluginId)
         PluginInstallTracker.shared.clearInstall(pluginId: pluginId)
     }

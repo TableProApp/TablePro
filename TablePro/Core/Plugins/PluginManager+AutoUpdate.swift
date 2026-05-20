@@ -52,14 +52,6 @@ extension PluginManager {
                 continue
             }
 
-            if attempts > 0 {
-                let delay = attempts == 1
-                    ? ReconciliationConfig.firstRetryDelay
-                    : ReconciliationConfig.secondRetryDelay
-                try? await Task.sleep(for: delay)
-                guard !Task.isCancelled else { return }
-            }
-
             reconciliationAttempts[lookupId] = attempts + 1
 
             do {
@@ -83,6 +75,23 @@ extension PluginManager {
         }
 
         AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+        scheduleReconciliationRetryIfNeeded(manifest: manifest)
+    }
+
+    private func scheduleReconciliationRetryIfNeeded(manifest: RegistryManifest) {
+        let retryable = rejectedPlugins.filter(\.isOutdated).contains { rejected in
+            guard let id = resolveRegistryId(for: rejected, manifest: manifest) else { return false }
+            return reconciliationAttempts[id, default: 0] < ReconciliationConfig.maxAttempts
+        }
+        guard retryable else { return }
+
+        let round = reconciliationAttempts.values.max() ?? 1
+        let delay = round <= 1 ? ReconciliationConfig.firstRetryDelay : ReconciliationConfig.secondRetryDelay
+        reconciliationTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.runReconciliationLoop()
+        }
     }
 
     func resolveRegistryId(for rejected: RejectedPlugin, manifest: RegistryManifest) -> String? {

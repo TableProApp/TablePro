@@ -478,7 +478,7 @@ extension PluginManager {
             Self.logger.warning("Plugin '\(existingEntry.id)' exists but driver not registered, reinstalling")
             if existingEntry.source == .userInstalled {
                 do {
-                    try uninstallPlugin(id: existingEntry.id)
+                    try await uninstallPlugin(id: existingEntry.id)
                 } catch {
                     Self.logger.warning("Failed to uninstall plugin '\(existingEntry.id)' before reinstall: \(error.localizedDescription)")
                 }

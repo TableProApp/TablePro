@@ -14,7 +14,6 @@ final class PluginInstallTracker {
     private init() {}
 
     func beginInstall(pluginId: String) {
-        // Replace any stale .failed or .stagedPendingActivation state from a prior attempt.
         activeInstalls[pluginId] = InstallProgress(phase: .downloading(fraction: 0))
     }
 

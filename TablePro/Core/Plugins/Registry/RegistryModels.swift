@@ -115,6 +115,17 @@ extension RegistryPlugin {
 
         throw PluginError.noCompatibleBinary
     }
+
+    // Themes carry no native code, so PluginKit ABI does not apply; match on architecture only.
+    func resolvedThemeBinary(for arch: PluginArchitecture = .current) throws -> RegistryBinary {
+        if let match = binaries.first(where: { $0.architecture == arch }) {
+            return match
+        }
+        if let any = binaries.first {
+            return any
+        }
+        throw PluginError.noCompatibleBinary
+    }
 }
 
 struct RegistryAuthor: Codable, Sendable {
