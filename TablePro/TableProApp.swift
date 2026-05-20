@@ -152,6 +152,23 @@ struct AppMenuCommands: Commands {
         NSApp.keyWindow?.windowController is InspectorWindowController
     }
 
+    /// Where `Cmd+F` resolves in the current context. The data-grid filter lives
+    /// in the View menu and the editor's Find lives in the Edit menu. Only the
+    /// item matching the current route binds `Cmd+F`; the other drops it. Two
+    /// items sharing one key equivalent makes SwiftUI dedupe the shortcut and
+    /// AppKit bind it to the disabled item, so the live owner must be unique.
+    private enum CommandFRoute {
+        case inspectorFilter
+        case tableFilter
+        case editorFind
+    }
+
+    private var commandFRoute: CommandFRoute {
+        if keyWindowIsInspector { return .inspectorFilter }
+        if actions?.isTableTab == true { return .tableFilter }
+        return .editorFind
+    }
+
     var body: some Commands {
         // Custom About window + Check for Updates + MCP status
         CommandGroup(replacing: .appInfo) {
@@ -468,16 +485,17 @@ struct AppMenuCommands: Commands {
             Divider()
 
             Button(String(localized: "Find...")) {
-                if keyWindowIsInspector {
+                switch commandFRoute {
+                case .inspectorFilter:
                     NSApp.sendAction(#selector(InspectorViewController.toggleInspectorFilter(_:)), to: nil, from: nil)
-                } else if NSApp.keyWindow?.firstResponder is KeyHandlingTableView,
-                          actions?.isTableTab == true {
-                    actions?.toggleFilterPanel()
-                } else {
+                case .editorFind:
                     EditorEventRouter.shared.showFindPanelForKeyWindow()
+                case .tableFilter:
+                    break
                 }
             }
-            .keyboardShortcut("f", modifiers: .command)
+            .optionalKeyboardShortcut(commandFRoute == .tableFilter ? nil : KeyboardShortcut("f", modifiers: .command))
+            .disabled(commandFRoute == .tableFilter)
 
             Divider()
 
@@ -521,8 +539,8 @@ struct AppMenuCommands: Commands {
             Button("Toggle Filters") {
                 actions?.toggleFilterPanel()
             }
-            .optionalKeyboardShortcut(shortcut(for: .toggleFilters))
-            .disabled(!(actions?.isConnected ?? false) || !(actions?.isTableTab ?? false))
+            .optionalKeyboardShortcut(commandFRoute == .tableFilter ? shortcut(for: .toggleFilters) : nil)
+            .disabled(commandFRoute != .tableFilter || !(actions?.isConnected ?? false))
 
             Button("Toggle History") {
                 actions?.toggleHistoryPanel()
