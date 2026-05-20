@@ -14,6 +14,8 @@ internal final class SidebarContainerViewController: NSViewController {
     private var windowState: WindowSidebarState?
     private var observationGeneration = 0
 
+    var onOpenTable: ((TableInfo) -> Void)?
+
     var rootView: AnyView {
         get { hostingController.rootView }
         set { hostingController.rootView = newValue }
@@ -118,6 +120,51 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
 
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
         writeSearchText("")
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard let sidebarState, sidebarState.selectedSidebarTab == .tables else { return false }
+
+        if commandSelector == #selector(NSResponder.moveUp(_:)) {
+            navigateSelection(direction: -1)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.moveDown(_:)) {
+            navigateSelection(direction: 1)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            if let selected = sidebarState.selectedTables.first {
+                onOpenTable?(selected)
+            }
+            return true
+        }
+        return false
+    }
+
+    private func navigateSelection(direction: Int) {
+        guard let sidebarState, let windowState else { return }
+        let allTables = SchemaService.shared.tables(for: sidebarState.connectionId)
+        let query = windowState.searchText
+        let filtered: [TableInfo]
+        if query.isEmpty {
+            filtered = allTables
+        } else {
+            filtered = allTables.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        }
+        guard !filtered.isEmpty else { return }
+
+        let currentIndex: Int
+        if let selected = sidebarState.selectedTables.first,
+           let idx = filtered.firstIndex(of: selected) {
+            currentIndex = idx
+        } else {
+            currentIndex = direction > 0 ? -1 : filtered.count
+        }
+
+        let nextIndex = currentIndex + direction
+        guard nextIndex >= 0, nextIndex < filtered.count else { return }
+        sidebarState.selectedTables = [filtered[nextIndex]]
     }
 
     private func writeSearchText(_ text: String) {

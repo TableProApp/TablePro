@@ -127,6 +127,22 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         splitView.autosaveName = "com.TablePro.mainSplit"
 
         sidebarContainer = SidebarContainerViewController(rootView: AnyView(buildSidebarView()))
+        sidebarContainer.onOpenTable = { [weak self] table in
+            guard let coordinator = self?.sessionState?.coordinator else { return }
+            let connectionId = coordinator.connectionId
+            if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId),
+               let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
+                if previewCoordinator.tabManager.selectedTab?.tableContext.tableName == table.name {
+                    previewCoordinator.promotePreviewTab()
+                } else {
+                    previewCoordinator.promotePreviewTab()
+                    coordinator.openTableTab(table)
+                }
+            } else {
+                coordinator.promotePreviewTab()
+                coordinator.openTableTab(table)
+            }
+        }
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarContainer)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = 280
