@@ -14,7 +14,6 @@ internal struct CellContext: Equatable {
     let isTableEditable: Bool
     let isRowDeleted: Bool
     let isImmutableColumn: Bool
-    let foreignKeyInfo: ForeignKeyInfo?
 }
 
 internal enum CellInteractionMode: Equatable {
@@ -26,7 +25,6 @@ internal enum CellInteractionMode: Equatable {
     case editOverlay(value: String)
     case editJson
     case editBlob
-    case editForeignKey(ForeignKeyInfo)
 
     case blocked
 }
@@ -43,10 +41,6 @@ internal struct CellInteractionResolver {
                 if columnType.isJsonType { return .viewJson }
             }
             return .viewInline(value: context.value ?? "NULL")
-        }
-
-        if let foreignKeyInfo = context.foreignKeyInfo {
-            return .editForeignKey(foreignKeyInfo)
         }
 
         if let columnType = context.columnType {

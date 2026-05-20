@@ -71,18 +71,6 @@ struct CellInteractionResolverReadOnlyTests {
         #expect(resolver.resolve(context) == .viewJson)
     }
 
-    @Test("read-only FK column falls through to viewInline")
-    func readOnlyForeignKeyReturnsViewInline() {
-        let fkInfo = ForeignKeyInfo(name: "fk", column: "uid", referencedTable: "u", referencedColumn: "id")
-        let context = ContextFactory.make(
-            value: "42",
-            columnType: .integer(rawType: "INT"),
-            isTableEditable: false,
-            foreignKeyInfo: fkInfo
-        )
-        #expect(resolver.resolve(context) == .viewInline(value: "42"))
-    }
-
     @Test("read-only JSON-looking plain text without columnType returns viewInline, not viewJson")
     func readOnlyJsonLikeTextWithoutTypeReturnsViewInline() {
         let context = ContextFactory.make(value: #"{"k":1}"#, columnType: nil, isTableEditable: false)
@@ -124,28 +112,10 @@ struct CellInteractionResolverEditableTests {
         #expect(resolver.resolve(context) == .editBlob)
     }
 
-    @Test("editable foreign key column returns editForeignKey")
-    func editableForeignKeyReturnsEditForeignKey() {
-        let fkInfo = ForeignKeyInfo(name: "fk_users", column: "user_id", referencedTable: "users", referencedColumn: "id")
-        let context = ContextFactory.make(
-            value: "1",
-            columnType: .integer(rawType: "INT"),
-            isTableEditable: true,
-            foreignKeyInfo: fkInfo
-        )
-        #expect(resolver.resolve(context) == .editForeignKey(fkInfo))
-    }
-
-    @Test("editable FK column with nil columnType still returns editForeignKey")
-    func editableForeignKeyNilColumnTypeReturnsEditForeignKey() {
-        let fkInfo = ForeignKeyInfo(name: "fk", column: "uid", referencedTable: "u", referencedColumn: "id")
-        let context = ContextFactory.make(
-            value: "1",
-            columnType: nil,
-            isTableEditable: true,
-            foreignKeyInfo: fkInfo
-        )
-        #expect(resolver.resolve(context) == .editForeignKey(fkInfo))
+    @Test("editable foreign key column returns editInline (FK popover is not opened by double-click)")
+    func editableForeignKeyReturnsEditInline() {
+        let context = ContextFactory.make(value: "1", columnType: .integer(rawType: "INT"), isTableEditable: true)
+        #expect(resolver.resolve(context) == .editInline(value: "1"))
     }
 
     @Test("editable boolean column returns editInline, not a picker (pickers are chevron-only)")
@@ -177,8 +147,7 @@ private enum ContextFactory {
         columnType: ColumnType? = nil,
         isTableEditable: Bool = false,
         isRowDeleted: Bool = false,
-        isImmutableColumn: Bool = false,
-        foreignKeyInfo: ForeignKeyInfo? = nil
+        isImmutableColumn: Bool = false
     ) -> CellContext {
         CellContext(
             row: 0,
@@ -188,8 +157,7 @@ private enum ContextFactory {
             value: value,
             isTableEditable: isTableEditable,
             isRowDeleted: isRowDeleted,
-            isImmutableColumn: isImmutableColumn,
-            foreignKeyInfo: foreignKeyInfo
+            isImmutableColumn: isImmutableColumn
         )
     }
 }

@@ -24,31 +24,6 @@ extension TableViewCoordinator {
         return displayRow.values[columnIndex]
     }
 
-    func showForeignKeyPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, fkInfo: ForeignKeyInfo) {
-        let currentValue = cellValue(at: row, column: columnIndex)
-
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
-        guard let databaseType, let connectionId else { return }
-
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
-            relativeTo: cellRect,
-            of: tableView,
-            contentSize: NSSize(width: 420, height: 320)
-        ) { [weak self] dismiss in
-            ForeignKeyPopoverContentView(
-                currentValue: currentValue,
-                fkInfo: fkInfo,
-                connectionId: connectionId,
-                databaseType: databaseType,
-                onCommit: { newValue in
-                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-                },
-                onDismiss: dismiss
-            )
-        }
-    }
-
     func toggleForeignKeyPreview(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         if let popover = activeFKPreviewPopover, popover.isShown {
             popover.close()

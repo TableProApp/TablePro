@@ -38,8 +38,6 @@ extension TableViewCoordinator {
             showJSONEditorPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editBlob:
             showBlobEditorPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
-        case .editForeignKey(let fkInfo):
-            showForeignKeyPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex, fkInfo: fkInfo)
         }
     }
 
@@ -59,8 +57,7 @@ extension TableViewCoordinator {
             value: cellValue(at: row, column: columnIndex),
             isTableEditable: isEditable,
             isRowDeleted: changeManager.isRowDeleted(row),
-            isImmutableColumn: immutable.contains(columnName),
-            foreignKeyInfo: tableRows.columnForeignKeys[columnName]
+            isImmutableColumn: immutable.contains(columnName)
         )
     }
 
