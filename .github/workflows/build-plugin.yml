@@ -276,14 +276,14 @@ jobs:
 
           RELEASE_BODY="## $DISPLAY_NAME v$VERSION
 
-Plugin release for TablePro (PluginKit $PKV).
+          Plugin release for TablePro (PluginKit $PKV).
 
-### Installation
-TablePro will prompt you to install this plugin automatically when you select the database type. You can also install manually via Settings > Plugins > Browse.
+          ### Installation
+          TablePro will prompt you to install this plugin automatically when you select the database type. You can also install manually via Settings > Plugins > Browse.
 
-### SHA-256
-- ARM64: \`$ARM64_SHA\`
-- x86_64: \`$X86_SHA\`"
+          ### SHA-256
+          - ARM64: \`$ARM64_SHA\`
+          - x86_64: \`$X86_SHA\`"
 
           gh release delete "$TAG" --yes 2>/dev/null || true
           gh release create "$TAG" \
