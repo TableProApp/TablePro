@@ -106,6 +106,23 @@ struct PasteboardCommands: Commands {
 
 // MARK: - App Menu Commands
 
+/// Where `Cmd+F` resolves in the current context. The data-grid filter lives in
+/// the View menu and the editor's Find lives in the Edit menu. Only the item
+/// matching the current route binds `Cmd+F`; the other drops it. Two items
+/// sharing one key equivalent makes SwiftUI dedupe the shortcut and AppKit bind
+/// it to the disabled item, so the live owner must be unique.
+enum CommandFRoute {
+    case inspectorFilter
+    case tableFilter
+    case editorFind
+
+    static func resolve(isInspector: Bool, isTableTab: Bool) -> CommandFRoute {
+        if isInspector { return .inspectorFilter }
+        if isTableTab { return .tableFilter }
+        return .editorFind
+    }
+}
+
 /// All menu commands extracted into a separate Commands struct so that AppState
 /// changes only re-evaluate the menu items — NOT the Scene body / WindowGroups.
 struct AppMenuCommands: Commands {
@@ -152,21 +169,8 @@ struct AppMenuCommands: Commands {
         NSApp.keyWindow?.windowController is InspectorWindowController
     }
 
-    /// Where `Cmd+F` resolves in the current context. The data-grid filter lives
-    /// in the View menu and the editor's Find lives in the Edit menu. Only the
-    /// item matching the current route binds `Cmd+F`; the other drops it. Two
-    /// items sharing one key equivalent makes SwiftUI dedupe the shortcut and
-    /// AppKit bind it to the disabled item, so the live owner must be unique.
-    private enum CommandFRoute {
-        case inspectorFilter
-        case tableFilter
-        case editorFind
-    }
-
     private var commandFRoute: CommandFRoute {
-        if keyWindowIsInspector { return .inspectorFilter }
-        if actions?.isTableTab == true { return .tableFilter }
-        return .editorFind
+        CommandFRoute.resolve(isInspector: keyWindowIsInspector, isTableTab: actions?.isTableTab == true)
     }
 
     var body: some Commands {
