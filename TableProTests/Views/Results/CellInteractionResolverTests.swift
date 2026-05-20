@@ -150,9 +150,6 @@ private enum ContextFactory {
         isImmutableColumn: Bool = false
     ) -> CellContext {
         CellContext(
-            row: 0,
-            columnIndex: 0,
-            columnName: "col",
             columnType: columnType,
             value: value,
             isTableEditable: isTableEditable,

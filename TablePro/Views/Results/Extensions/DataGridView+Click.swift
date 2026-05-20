@@ -50,9 +50,6 @@ extension TableViewCoordinator {
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
 
         return CellContext(
-            row: row,
-            columnIndex: columnIndex,
-            columnName: columnName,
             columnType: columnType,
             value: cellValue(at: row, column: columnIndex),
             isTableEditable: isEditable,

@@ -6,9 +6,6 @@
 import Foundation
 
 internal struct CellContext: Equatable {
-    let row: Int
-    let columnIndex: Int
-    let columnName: String
     let columnType: ColumnType?
     let value: String?
     let isTableEditable: Bool
