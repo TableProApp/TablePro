@@ -40,14 +40,6 @@ extension TableViewCoordinator {
             showBlobEditorPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editForeignKey(let fkInfo):
             showForeignKeyPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex, fkInfo: fkInfo)
-        case .editDropdown:
-            showDropdownMenu(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
-        case .editEnum:
-            showEnumPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
-        case .editSet:
-            showSetPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
-        case .editTypePicker:
-            showTypePickerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         }
     }
 
@@ -58,7 +50,6 @@ extension TableViewCoordinator {
         let columnName = tableRows.columns[columnIndex]
         let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        let hasEnumValues = (tableRows.columnEnumValues[columnName]?.isEmpty == false)
 
         return CellContext(
             row: row,
@@ -69,23 +60,52 @@ extension TableViewCoordinator {
             isTableEditable: isEditable,
             isRowDeleted: changeManager.isRowDeleted(row),
             isImmutableColumn: immutable.contains(columnName),
-            foreignKeyInfo: tableRows.columnForeignKeys[columnName],
-            isDropdownColumn: dropdownColumns?.contains(columnIndex) == true,
-            isTypePickerColumn: typePickerColumns?.contains(columnIndex) == true,
-            hasEnumValues: hasEnumValues
+            foreignKeyInfo: tableRows.columnForeignKeys[columnName]
         )
     }
 
     // MARK: - Chevron Click
 
     func handleChevronAction(row: Int, columnIndex: Int) {
+        guard isEditable else { return }
+        guard row >= 0, columnIndex >= 0 else { return }
+        guard !changeManager.isRowDeleted(row) else { return }
         guard let tableView else { return }
         guard let column = DataGridView.tableColumnIndex(
             for: columnIndex,
             in: tableView,
             schema: identitySchema
         ) else { return }
-        handleCellInteraction(row: row, tableColumn: column, columnIndex: columnIndex, tableView: tableView)
+
+        if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
+            showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            return
+        }
+        if let typePickerCols = typePickerColumns, typePickerCols.contains(columnIndex) {
+            showTypePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            return
+        }
+
+        let tableRows = tableRowsProvider()
+        guard columnIndex < tableRows.columnTypes.count,
+              columnIndex < tableRows.columns.count else { return }
+
+        let columnType = tableRows.columnTypes[columnIndex]
+        let columnName = tableRows.columns[columnIndex]
+
+        if columnType.isBooleanType {
+            showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
+            if columnType.isSetType {
+                showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            } else {
+                showEnumPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            }
+        } else if columnType.isJsonType {
+            showJSONEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.isBlobType {
+            showBlobEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        }
     }
 
     // MARK: - FK Navigation

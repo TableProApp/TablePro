@@ -148,61 +148,26 @@ struct CellInteractionResolverEditableTests {
         #expect(resolver.resolve(context) == .editForeignKey(fkInfo))
     }
 
-    @Test("editable dropdown column returns editDropdown")
-    func editableDropdownColumnReturnsEditDropdown() {
-        let context = ContextFactory.make(value: "true", isTableEditable: true, isDropdownColumn: true)
-        #expect(resolver.resolve(context) == .editDropdown)
+    @Test("editable boolean column returns editInline, not a picker (pickers are chevron-only)")
+    func editableBooleanColumnReturnsEditInline() {
+        let context = ContextFactory.make(value: "true", columnType: .boolean(rawType: "BOOL"), isTableEditable: true)
+        #expect(resolver.resolve(context) == .editInline(value: "true"))
     }
 
-    @Test("editable boolean column returns editDropdown")
-    func editableBooleanColumnReturnsEditDropdown() {
-        let context = ContextFactory.make(value: "true", columnType: .boolean(rawType: "BOOL"), isTableEditable: true)
-        #expect(resolver.resolve(context) == .editDropdown)
+    @Test("editable enum column returns editInline, not a picker")
+    func editableEnumColumnReturnsEditInline() {
+        let context = ContextFactory.make(
+            value: "small",
+            columnType: .enumType(rawType: "ENUM", values: ["small", "medium", "large"]),
+            isTableEditable: true
+        )
+        #expect(resolver.resolve(context) == .editInline(value: "small"))
     }
 
     @Test("read-only boolean column returns viewInline")
     func readOnlyBooleanColumnReturnsViewInline() {
         let context = ContextFactory.make(value: "true", columnType: .boolean(rawType: "BOOL"), isTableEditable: false)
         #expect(resolver.resolve(context) == .viewInline(value: "true"))
-    }
-
-    @Test("editable type-picker column returns editTypePicker")
-    func editableTypePickerColumnReturnsEditTypePicker() {
-        let context = ContextFactory.make(value: "TEXT", isTableEditable: true, isTypePickerColumn: true)
-        #expect(resolver.resolve(context) == .editTypePicker)
-    }
-
-    @Test("editable enum column returns editEnum")
-    func editableEnumColumnReturnsEditEnum() {
-        let context = ContextFactory.make(
-            value: "small",
-            columnType: .enumType(rawType: "ENUM", values: ["small", "medium", "large"]),
-            isTableEditable: true,
-            hasEnumValues: true
-        )
-        #expect(resolver.resolve(context) == .editEnum)
-    }
-
-    @Test("editable set column returns editSet")
-    func editableSetColumnReturnsEditSet() {
-        let context = ContextFactory.make(
-            value: "a,b",
-            columnType: .set(rawType: "SET", values: ["a", "b", "c"]),
-            isTableEditable: true,
-            hasEnumValues: true
-        )
-        #expect(resolver.resolve(context) == .editSet)
-    }
-
-    @Test("dropdown column takes priority over column type")
-    func dropdownColumnPriorityOverType() {
-        let context = ContextFactory.make(
-            value: nil,
-            columnType: .json(rawType: "JSON"),
-            isTableEditable: true,
-            isDropdownColumn: true
-        )
-        #expect(resolver.resolve(context) == .editDropdown)
     }
 }
 
@@ -213,10 +178,7 @@ private enum ContextFactory {
         isTableEditable: Bool = false,
         isRowDeleted: Bool = false,
         isImmutableColumn: Bool = false,
-        foreignKeyInfo: ForeignKeyInfo? = nil,
-        isDropdownColumn: Bool = false,
-        isTypePickerColumn: Bool = false,
-        hasEnumValues: Bool = false
+        foreignKeyInfo: ForeignKeyInfo? = nil
     ) -> CellContext {
         CellContext(
             row: 0,
@@ -227,10 +189,7 @@ private enum ContextFactory {
             isTableEditable: isTableEditable,
             isRowDeleted: isRowDeleted,
             isImmutableColumn: isImmutableColumn,
-            foreignKeyInfo: foreignKeyInfo,
-            isDropdownColumn: isDropdownColumn,
-            isTypePickerColumn: isTypePickerColumn,
-            hasEnumValues: hasEnumValues
+            foreignKeyInfo: foreignKeyInfo
         )
     }
 }

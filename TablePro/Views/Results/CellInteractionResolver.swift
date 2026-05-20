@@ -15,9 +15,6 @@ internal struct CellContext: Equatable {
     let isRowDeleted: Bool
     let isImmutableColumn: Bool
     let foreignKeyInfo: ForeignKeyInfo?
-    let isDropdownColumn: Bool
-    let isTypePickerColumn: Bool
-    let hasEnumValues: Bool
 }
 
 internal enum CellInteractionMode: Equatable {
@@ -30,10 +27,6 @@ internal enum CellInteractionMode: Equatable {
     case editJson
     case editBlob
     case editForeignKey(ForeignKeyInfo)
-    case editDropdown
-    case editEnum
-    case editSet
-    case editTypePicker
 
     case blocked
 }
@@ -50,16 +43,6 @@ internal struct CellInteractionResolver {
                 if columnType.isJsonType { return .viewJson }
             }
             return .viewInline(value: context.value ?? "NULL")
-        }
-
-        if context.isDropdownColumn { return .editDropdown }
-        if context.isTypePickerColumn { return .editTypePicker }
-
-        if let columnType = context.columnType {
-            if columnType.isBooleanType { return .editDropdown }
-            if context.hasEnumValues {
-                return columnType.isSetType ? .editSet : .editEnum
-            }
         }
 
         if let foreignKeyInfo = context.foreignKeyInfo {
