@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Cancelling a pending connection no longer lets the abandoned attempt overwrite or drop a later successful connection to the same database (#1358)
+- Importing connections from DBeaver now brings over the username (#1355)
 
 ## [0.43.1] - 2026-05-20
 
