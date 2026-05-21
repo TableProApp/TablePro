@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Importing connections from DBeaver now brings over the username (#1355)
+
 ## [0.43.1] - 2026-05-20
 
 ### Added
