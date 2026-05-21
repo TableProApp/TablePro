@@ -13,8 +13,6 @@ internal struct FieldDetailView: View {
     let isPendingNull: Bool
     let isPendingDefault: Bool
     let isModified: Bool
-    let isTruncated: Bool
-    let isLoadingFullValue: Bool
     let databaseType: DatabaseType
     let onSetNull: () -> Void
     let onSetDefault: () -> Void
@@ -50,8 +48,6 @@ internal struct FieldDetailView: View {
                 PendingStateOverlay(
                     isPendingNull: isPendingNull,
                     isPendingDefault: isPendingDefault,
-                    isLoadingFullValue: isLoadingFullValue,
-                    isTruncated: isTruncated,
                     minHeight: editorMinHeight(for: kind)
                 ) {
                     resolvedEditor(for: kind)
@@ -106,16 +102,6 @@ internal struct FieldDetailView: View {
             Spacer()
 
             TypeBadge(context.columnType.badgeLabel)
-
-            if isTruncated && !isLoadingFullValue {
-                Text("truncated")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(.orange.opacity(0.15))
-                    .clipShape(Capsule())
-            }
         }
     }
 

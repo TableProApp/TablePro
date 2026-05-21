@@ -67,16 +67,13 @@ extension MainContentView {
 
     // MARK: - Inspector Context
 
-    func scheduleInspectorUpdate(lazyLoadExcludedColumns: Bool = false) {
+    func scheduleInspectorUpdate() {
         inspectorUpdateTask?.cancel()
         inspectorUpdateTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled else { return }
             updateSidebarEditState()
             updateInspectorContext()
-            if lazyLoadExcludedColumns {
-                lazyLoadExcludedColumnsIfNeeded()
-            }
         }
     }
 

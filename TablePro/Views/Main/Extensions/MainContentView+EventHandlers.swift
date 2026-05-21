@@ -192,13 +192,6 @@ extension MainContentView {
             modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(rowIndex))
         }
 
-        let excludedNames: Set<String>
-        if let tableName = tab.tableContext.tableName {
-            excludedNames = Set(coordinator.columnExclusions(for: tableName).map(\.columnName))
-        } else {
-            excludedNames = []
-        }
-
         let pkColumns = Set(tab.tableContext.primaryKeyColumns)
         let fkColumns = Set(tableRows.columnForeignKeys.keys)
 
@@ -217,7 +210,6 @@ extension MainContentView {
             columns: tableRows.columns,
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
-            excludedColumnNames: excludedNames,
             primaryKeyColumns: pkColumns,
             foreignKeyColumns: fkColumns
         )
@@ -240,9 +232,7 @@ extension MainContentView {
                 let originalRow = Array(tableRows.rows[rowIndex].values)
 
                 let oldValue: PluginCellValue
-                if columnIndex < capturedEditState.fields.count,
-                    !capturedEditState.fields[columnIndex].isTruncated
-                {
+                if columnIndex < capturedEditState.fields.count {
                     oldValue = PluginCellValue.fromOptional(capturedEditState.fields[columnIndex].originalValue)
                 } else if columnIndex < originalRow.count {
                     oldValue = originalRow[columnIndex]
@@ -258,66 +248,6 @@ extension MainContentView {
                     newValue: newValue,
                     originalRow: originalRow
                 )
-            }
-        }
-    }
-
-    func lazyLoadExcludedColumnsIfNeeded() {
-        guard let tab = coordinator.tabManager.selectedTab else { return }
-        let selectedIndices = coordinator.selectionState.indices
-
-        let excludedNames: Set<String>
-        if let tableName = tab.tableContext.tableName {
-            excludedNames = Set(coordinator.columnExclusions(for: tableName).map(\.columnName))
-        } else {
-            excludedNames = []
-        }
-
-        let capturedCoordinator = coordinator
-        let capturedEditState = rightPanelState.editState
-
-        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
-        if !excludedNames.isEmpty,
-            selectedIndices.count == 1,
-            let tableName = tab.tableContext.tableName,
-            let pkColumn = tab.tableContext.primaryKeyColumn,
-            let rowIndex = selectedIndices.first,
-            rowIndex < tableRows.rows.count
-        {
-            let row = tableRows.rows[rowIndex].values
-            if let pkColIndex = tableRows.columns.firstIndex(of: pkColumn),
-                pkColIndex < row.count,
-                let pkValue = row[pkColIndex].asText
-            {
-                let excludedList = Array(excludedNames)
-
-                lazyLoadTask?.cancel()
-                lazyLoadTask = Task { @MainActor in
-                    let expectedRowIndex = rowIndex
-                    do {
-                        let fullValues =
-                            try await capturedCoordinator.fetchFullValuesForExcludedColumns(
-                                tableName: tableName,
-                                primaryKeyColumn: pkColumn,
-                                primaryKeyValue: pkValue,
-                                excludedColumnNames: excludedList
-                            )
-                        guard !Task.isCancelled,
-                            capturedEditState.selectedRowIndices.count == 1,
-                            capturedEditState.selectedRowIndices.first == expectedRowIndex
-                        else { return }
-                        capturedEditState.applyFullValues(fullValues)
-                    } catch {
-                        guard !Task.isCancelled,
-                            capturedEditState.selectedRowIndices.count == 1,
-                            capturedEditState.selectedRowIndices.first == expectedRowIndex
-                        else { return }
-                        for i in 0..<capturedEditState.fields.count
-                        where capturedEditState.fields[i].isLoadingFullValue {
-                            capturedEditState.fields[i].isLoadingFullValue = false
-                        }
-                    }
-                }
             }
         }
     }

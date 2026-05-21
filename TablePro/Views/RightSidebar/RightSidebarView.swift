@@ -270,8 +270,6 @@ struct RightSidebarView: View {
             isPendingNull: field.isPendingNull,
             isPendingDefault: field.isPendingDefault,
             isModified: field.hasEdit,
-            isTruncated: field.isTruncated,
-            isLoadingFullValue: field.isLoadingFullValue,
             databaseType: databaseType,
             onSetNull: { editState.setFieldToNull(at: index) },
             onSetDefault: { editState.setFieldToDefault(at: index) },

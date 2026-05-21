@@ -167,11 +167,6 @@ final class MainContentCoordinator {
 
     // MARK: - Internal State
 
-    /// Cached column types per table for selective queries (avoids refetching schema).
-    /// Key: "connectionId:databaseName:tableName"
-    @ObservationIgnored var cachedTableColumnTypes: [String: [ColumnType]] = [:]
-    @ObservationIgnored var cachedTableColumnNames: [String: [String]] = [:]
-
     @ObservationIgnored internal var queryGeneration: Int = 0
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
@@ -622,8 +617,6 @@ final class MainContentCoordinator {
         tabSessionRegistry.removeAll()
         querySortCache.removeAll()
         displayFormatsCache.removeAll()
-        cachedTableColumnTypes.removeAll()
-        cachedTableColumnNames.removeAll()
 
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil

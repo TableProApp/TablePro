@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cancelling a pending SSH connection now closes its tunnel instead of leaving the local forward port open (#1369)
 - Importing connections from DBeaver now brings over the username (#1355)
 - Copying rows now includes only the visible columns, in their current order, instead of every column (#1354)
+- The query shown in the editor when you open a table now matches the query that actually runs, instead of showing `SELECT *` and then running a different one
+- Large text columns are no longer truncated to 256 characters when browsing a table. The full value is loaded, the same way BLOB columns already worked, so editing such a cell no longer risks saving a shortened value
 
 ## [0.43.1] - 2026-05-20
 

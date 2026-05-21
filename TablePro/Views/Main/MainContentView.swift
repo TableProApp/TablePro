@@ -53,7 +53,6 @@ struct MainContentView: View {
     @State var commandActions: MainContentCommandActions?
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
-    @State var lazyLoadTask: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
     @State var hasInitialized = false
@@ -433,7 +432,7 @@ struct MainContentView: View {
                 {
                     coordinator.inspectorProxy?.showInspector()
                 }
-                scheduleInspectorUpdate(lazyLoadExcludedColumns: true)
+                scheduleInspectorUpdate()
             },
             onFilterColumn: { columnName in
                 coordinator.addFilterForColumn(columnName)

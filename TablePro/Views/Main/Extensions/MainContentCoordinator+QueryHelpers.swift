@@ -112,8 +112,4 @@ extension MainContentCoordinator {
     func restoreSchemaAndRunQuery(_ schema: String) async {
         await queryExecutionCoordinator.restoreSchemaAndRunQuery(schema)
     }
-
-    func columnExclusions(for tableName: String) -> [ColumnExclusion] {
-        queryExecutionCoordinator.columnExclusions(for: tableName)
-    }
 }

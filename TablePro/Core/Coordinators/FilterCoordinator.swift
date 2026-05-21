@@ -34,16 +34,15 @@ final class FilterCoordinator {
 
             let tab = parent.tabManager.tabs[capturedTabIndex]
             let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
-            let exclusions = parent.columnExclusions(for: capturedTableName)
             let newQuery = parent.queryBuilder.buildFilteredQuery(
                 tableName: capturedTableName,
+                schemaName: tab.tableContext.schemaName,
                 filters: capturedFilters,
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: buffer.columns,
                 limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset,
-                columnExclusions: exclusions
+                offset: tab.pagination.currentOffset
             )
 
             parent.tabManager.mutate(at: capturedTabIndex) { $0.content.query = newQuery }
@@ -68,14 +67,13 @@ final class FilterCoordinator {
 
             let tab = parent.tabManager.tabs[capturedTabIndex]
             let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
-            let exclusions = parent.columnExclusions(for: capturedTableName)
             let newQuery = parent.queryBuilder.buildBaseQuery(
                 tableName: capturedTableName,
+                schemaName: tab.tableContext.schemaName,
                 sortState: tab.sortState,
                 columns: buffer.columns,
                 limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset,
-                columnExclusions: exclusions
+                offset: tab.pagination.currentOffset
             )
 
             parent.tabManager.mutate(at: capturedTabIndex) { $0.content.query = newQuery }
@@ -98,28 +96,27 @@ final class FilterCoordinator {
         let tab = parent.tabManager.tabs[tabIndex]
         let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
         let hasFilters = tab.filterState.hasAppliedFilters
-        let exclusions = parent.columnExclusions(for: tableName)
 
         let newQuery: String
         if hasFilters {
             newQuery = parent.queryBuilder.buildFilteredQuery(
                 tableName: tableName,
+                schemaName: tab.tableContext.schemaName,
                 filters: tab.filterState.appliedFilters,
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: buffer.columns,
                 limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset,
-                columnExclusions: exclusions
+                offset: tab.pagination.currentOffset
             )
         } else {
             newQuery = parent.queryBuilder.buildBaseQuery(
                 tableName: tableName,
+                schemaName: tab.tableContext.schemaName,
                 sortState: tab.sortState,
                 columns: buffer.columns,
                 limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset,
-                columnExclusions: exclusions
+                offset: tab.pagination.currentOffset
             )
         }
 
