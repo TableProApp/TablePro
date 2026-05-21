@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect, and the Query menu shows the new keys (#1357)
 - Custom shortcuts now require a modifier key, so a plain key like Space is no longer accepted and then silently ignored (#1357)
 - Cancelling a pending connection no longer lets the abandoned attempt overwrite or drop a later successful connection to the same database (#1358)
+- Cancelling a pending SSH connection now closes its tunnel instead of leaving the local forward port open (#1369)
 - Importing connections from DBeaver now brings over the username (#1355)
 
 ## [0.43.1] - 2026-05-20
