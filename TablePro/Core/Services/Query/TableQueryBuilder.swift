@@ -64,6 +64,7 @@ struct TableQueryBuilder {
         schemaName: String? = nil,
         sortState: SortState? = nil,
         columns: [String] = [],
+        selectColumns: [String]? = nil,
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
@@ -71,14 +72,14 @@ struct TableQueryBuilder {
             let sortCols = sortColumnsAsTuples(sortState)
             if let result = pluginDriver.buildBrowseQuery(
                 table: tableName, sortColumns: sortCols,
-                columns: columns, limit: limit, offset: offset
+                columns: selectColumns ?? columns, limit: limit, offset: offset
             ) {
                 return result
             }
         }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
-        var query = "SELECT * FROM \(quotedTable)"
+        var query = "SELECT \(selectClause(selectColumns)) FROM \(quotedTable)"
 
         if let orderBy = orderByOrOffsetFetchDefault(sortState: sortState, columns: columns) {
             query += " \(orderBy)"
@@ -95,6 +96,7 @@ struct TableQueryBuilder {
         logicMode: FilterLogicMode = .and,
         sortState: SortState? = nil,
         columns: [String] = [],
+        selectColumns: [String]? = nil,
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
@@ -114,14 +116,14 @@ struct TableQueryBuilder {
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, filters: filterTuples,
                 logicMode: logicMode == .and ? "and" : "or",
-                sortColumns: sortCols, columns: columns, limit: limit, offset: offset
+                sortColumns: sortCols, columns: selectColumns ?? columns, limit: limit, offset: offset
             ) {
                 return result
             }
         }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
-        var query = "SELECT * FROM \(quotedTable)"
+        var query = "SELECT \(selectClause(selectColumns)) FROM \(quotedTable)"
 
         if let dialect {
             let activeFilters = filters.filter { $0.isEnabled }
@@ -200,6 +202,11 @@ struct TableQueryBuilder {
     }
 
     // MARK: - Private Helpers
+
+    private func selectClause(_ selectColumns: [String]?) -> String {
+        guard let selectColumns, !selectColumns.isEmpty else { return "*" }
+        return selectColumns.map { quote($0) }.joined(separator: ", ")
+    }
 
     private func buildPaginationClause(limit: Int, offset: Int) -> String {
         if let dialect, dialect.paginationStyle == .offsetFetch {
