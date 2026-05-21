@@ -77,4 +77,29 @@ struct CancelledConnectionCleanupTests {
 
         #expect(DatabaseManager.shared.currentSessionId != id)
     }
+
+    @Test("Genuine failure moves currentSessionId to a remaining session")
+    func genuineFailureSwitchesToRemainingSession() {
+        let failedId = UUID()
+        let otherId = UUID()
+        DatabaseManager.shared.injectSession(
+            ConnectionSession(connection: TestFixtures.makeConnection(id: failedId, name: "Failed")),
+            for: failedId
+        )
+        DatabaseManager.shared.injectSession(
+            ConnectionSession(connection: TestFixtures.makeConnection(id: otherId, name: "Other")),
+            for: otherId
+        )
+        DatabaseManager.shared.currentSessionId = failedId
+        defer {
+            DatabaseManager.shared.removeSession(for: failedId)
+            DatabaseManager.shared.removeSession(for: otherId)
+            DatabaseManager.shared.currentSessionId = nil
+        }
+
+        DatabaseManager.shared.finalizeConnectionFailure(for: failedId, cancelled: false)
+
+        #expect(DatabaseManager.shared.currentSessionId == otherId)
+        #expect(DatabaseManager.shared.activeSessions[otherId] != nil)
+    }
 }

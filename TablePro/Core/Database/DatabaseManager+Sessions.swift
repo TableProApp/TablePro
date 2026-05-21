@@ -161,7 +161,7 @@ extension DatabaseManager {
         }
     }
 
-    func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
+    internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
         guard !cancelled else { return }
         removeSessionEntry(for: connectionId)
         if currentSessionId == connectionId {
