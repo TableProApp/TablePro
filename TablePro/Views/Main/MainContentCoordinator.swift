@@ -163,6 +163,9 @@ final class MainContentCoordinator {
 
     @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
 
+    @ObservationIgnored var schemaColumnsCache: [String: (columns: [String], primaryKeys: [String])] = [:]
+    @ObservationIgnored var columnScopeRequeryTask: Task<Void, Never>?
+
     @ObservationIgnored var pendingScrollToTopAfterReplace: Set<UUID> = []
 
     // MARK: - Internal State
@@ -498,6 +501,7 @@ final class MainContentCoordinator {
 
     func refreshTables() async {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        schemaColumnsCache.removeAll()
         await services.schemaService.reload(
             connectionId: connectionId,
             driver: driver,
@@ -617,6 +621,8 @@ final class MainContentCoordinator {
         tabSessionRegistry.removeAll()
         querySortCache.removeAll()
         displayFormatsCache.removeAll()
+        schemaColumnsCache.removeAll()
+        columnScopeRequeryTask?.cancel()
 
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil

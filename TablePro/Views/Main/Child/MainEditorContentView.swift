@@ -758,7 +758,7 @@ struct MainEditorContentView: View {
             snapshot: StatusBarSnapshot(tab: tab, tableRows: resolvedRows),
             filterState: tab.filterState,
             hiddenColumns: tab.columnLayout.hiddenColumns,
-            allColumns: resolvedRows.columns,
+            allColumns: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resolvedRows.columns),
             selectedRowIndices: selectionState.indices,
             viewMode: resultsViewModeBinding(for: tab),
             onFirstPage: onFirstPage,

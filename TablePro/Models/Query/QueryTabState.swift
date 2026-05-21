@@ -232,7 +232,6 @@ struct ColumnLayoutState: Equatable {
     var columnWidths: [String: CGFloat] = [:]
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
-    var unfetchedColumns: Set<String> = []
 }
 
 struct TabExecutionState: Equatable {

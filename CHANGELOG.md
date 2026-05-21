@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Hiding a column now also leaves it out of the query, so a table with one heavy column loads faster. Toggling a column re-runs the query, and the primary key is always fetched so editing keeps working
+
 ### Fixed
 
 - Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect, and the Query menu shows the new keys (#1357)

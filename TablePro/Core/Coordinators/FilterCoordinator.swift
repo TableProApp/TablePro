@@ -41,6 +41,7 @@ final class FilterCoordinator {
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: buffer.columns,
+                selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
@@ -72,6 +73,7 @@ final class FilterCoordinator {
                 schemaName: tab.tableContext.schemaName,
                 sortState: tab.sortState,
                 columns: buffer.columns,
+                selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
@@ -106,6 +108,7 @@ final class FilterCoordinator {
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: buffer.columns,
+                selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
@@ -115,6 +118,7 @@ final class FilterCoordinator {
                 schemaName: tab.tableContext.schemaName,
                 sortState: tab.sortState,
                 columns: buffer.columns,
+                selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
