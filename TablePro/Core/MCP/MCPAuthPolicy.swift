@@ -298,7 +298,7 @@ public actor MCPAuthPolicy {
                     externalAccess: conn.externalAccess,
                     name: conn.name,
                     databaseType: conn.type.rawValue,
-                    safeModeLevel: conn.safeModeLevel
+                    safeModeLevel: session.safeModeLevel
                 )
             case .stored(let conn):
                 return ConnectionSnapshot(
