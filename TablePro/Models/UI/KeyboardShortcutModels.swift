@@ -47,6 +47,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case closeTab
     case refresh
     case executeQuery
+    case executeAllStatements
+    case cancelQuery
     case explainQuery
     case formatQuery
     case export
@@ -101,7 +103,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .manageConnections, .newTab, .openDatabase, .openFile, .switchConnection,
              .saveChanges, .saveAs, .previewSQL, .closeTab, .refresh,
-             .executeQuery, .explainQuery, .formatQuery, .export, .importData, .quickSwitcher,
+             .executeQuery, .executeAllStatements, .cancelQuery, .explainQuery, .formatQuery,
+             .export, .importData, .quickSwitcher,
              .previousPage, .nextPage, .saveAsFavorite, .openTerminal:
             return .file
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .paste,
@@ -118,10 +121,21 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    var allowsBareKey: Bool {
+        switch self {
+        case .previewFKReference, .clearSelection, .delete:
+            return true
+        default:
+            return false
+        }
+    }
+
     var displayName: String {
         switch self {
         case .manageConnections: return String(localized: "Manage Connections")
         case .executeQuery: return String(localized: "Execute Query")
+        case .executeAllStatements: return String(localized: "Execute All Statements")
+        case .cancelQuery: return String(localized: "Cancel Query")
         case .newTab: return String(localized: "New Tab")
         case .openDatabase: return String(localized: "Open Database")
         case .openFile: return String(localized: "Open File")
@@ -280,6 +294,10 @@ struct KeyCombo: Codable, Equatable, Hashable {
         if option { modifiers.insert(.option) }
         if control { modifiers.insert(.control) }
         return modifiers
+    }
+
+    var hasModifier: Bool {
+        command || shift || option || control
     }
 
     /// Human-readable display string (e.g. "⌘S", "⇧⌘P")
@@ -445,6 +463,19 @@ struct KeyboardSettings: Codable, Equatable {
         shortcuts.removeValue(forKey: action.rawValue)
     }
 
+    /// Drop overrides that can never dispatch (bare keys on menu-driven actions),
+    /// reverting them to their default. Cleared and unknown overrides are kept.
+    func sanitized() -> KeyboardSettings {
+        var cleaned = shortcuts
+        for (rawValue, combo) in shortcuts {
+            guard let action = ShortcutAction(rawValue: rawValue), !combo.isCleared else { continue }
+            if !combo.hasModifier, !action.allowsBareKey {
+                cleaned.removeValue(forKey: rawValue)
+            }
+        }
+        return KeyboardSettings(shortcuts: cleaned)
+    }
+
     /// Build a SwiftUI KeyboardShortcut for the given action.
     /// Returns nil if the user has cleared (unassigned) the shortcut.
     func keyboardShortcut(for action: ShortcutAction) -> KeyboardShortcut? {
@@ -461,6 +492,8 @@ struct KeyboardSettings: Codable, Equatable {
         // File
         .manageConnections: KeyCombo(key: "n", command: true),
         .executeQuery: KeyCombo(key: "return", command: true, isSpecialKey: true),
+        .executeAllStatements: KeyCombo(key: "return", command: true, shift: true, isSpecialKey: true),
+        .cancelQuery: KeyCombo(key: ".", command: true),
         .newTab: KeyCombo(key: "t", command: true),
         .openDatabase: KeyCombo(key: "k", command: true),
         .openFile: KeyCombo(key: "o", command: true),

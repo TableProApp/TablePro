@@ -362,13 +362,13 @@ struct AppMenuCommands: Commands {
             Button("Execute Query") {
                 actions?.runQuery()
             }
-            .keyboardShortcut(.return, modifiers: .command)
+            .optionalKeyboardShortcut(shortcut(for: .executeQuery))
             .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
 
             Button(String(localized: "Execute All Statements")) {
                 actions?.runAllStatements()
             }
-            .keyboardShortcut(.return, modifiers: [.command, .shift])
+            .optionalKeyboardShortcut(shortcut(for: .executeAllStatements))
             .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
 
             Button("Explain Query") {
@@ -403,7 +403,7 @@ struct AppMenuCommands: Commands {
             Button(String(localized: "Cancel Query")) {
                 actions?.cancelCurrentQuery()
             }
-            .keyboardShortcut(".", modifiers: .command)
+            .optionalKeyboardShortcut(shortcut(for: .cancelQuery))
             .disabled(!(actions?.isQueryExecuting ?? false))
 
             Button("Refresh") {

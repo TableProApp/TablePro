@@ -120,7 +120,7 @@ struct QueryEditorView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .keyboardShortcut(.return, modifiers: .command)
+            .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQuery))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

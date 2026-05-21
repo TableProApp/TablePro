@@ -103,7 +103,7 @@ final class AppSettingsStorage {
     // MARK: - Keyboard Settings
 
     func loadKeyboard() -> KeyboardSettings {
-        load(key: Keys.keyboard, default: .default)
+        load(key: Keys.keyboard, default: KeyboardSettings.default).sanitized()
     }
 
     func saveKeyboard(_ settings: KeyboardSettings) {

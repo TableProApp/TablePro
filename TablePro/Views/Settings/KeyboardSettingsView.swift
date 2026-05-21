@@ -15,6 +15,7 @@ struct KeyboardSettingsView: View {
     @State private var searchText = ""
     @State private var conflictAlert: ConflictAlertState?
     @State private var systemReservedAlert: ShortcutAction?
+    @State private var needsModifierAlert: ShortcutAction?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,6 +91,19 @@ struct KeyboardSettingsView: View {
         } message: {
             Text(String(localized: "This shortcut is reserved by macOS and cannot be assigned."))
         }
+        .alert(
+            String(localized: "Modifier Key Required"),
+            isPresented: Binding(
+                get: { needsModifierAlert != nil },
+                set: { if !$0 { needsModifierAlert = nil } }
+            )
+        ) {
+            Button(String(localized: "OK"), role: .cancel) {
+                needsModifierAlert = nil
+            }
+        } message: {
+            Text(String(localized: "This action needs a modifier key like ⌘ or ⌥. A plain key won't reach the menu reliably."))
+        }
     }
 
     // MARK: - Shortcut Row
@@ -128,13 +142,16 @@ struct KeyboardSettingsView: View {
     }
 
     private func handleRecord(_ combo: KeyCombo, for action: ShortcutAction) {
-        // Check system-reserved shortcuts
         if combo.isSystemReserved {
             systemReservedAlert = action
             return
         }
 
-        // Check for conflicts
+        if !combo.hasModifier, !action.allowsBareKey {
+            needsModifierAlert = action
+            return
+        }
+
         if let conflict = settings.findConflict(for: combo, excluding: action) {
             conflictAlert = ConflictAlertState(
                 action: action,
@@ -144,7 +161,6 @@ struct KeyboardSettingsView: View {
             return
         }
 
-        // No conflict — assign directly
         settings.setShortcut(combo, for: action)
     }
 }
