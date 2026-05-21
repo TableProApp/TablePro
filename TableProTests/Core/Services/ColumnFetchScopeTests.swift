@@ -45,4 +45,36 @@ struct ColumnFetchScopeTests {
     func hiddenColumnsNotInSchema() {
         #expect(ColumnFetchScope.selectColumns(schemaColumns: columns, hiddenColumns: ["ghost"], primaryKeyColumns: ["id"]) == nil)
     }
+
+    // MARK: - prunedHiddenColumns
+
+    @Test("Prune keeps a hidden column that is still in the schema but absent from the scoped result")
+    func pruneKeepsSchemaColumnAbsentFromResult() {
+        let pruned = ColumnFetchScope.prunedHiddenColumns(
+            ["payload"],
+            schemaColumns: columns,
+            resultColumns: ["id", "name", "email"]
+        )
+        #expect(pruned == ["payload"])
+    }
+
+    @Test("Prune drops a hidden column that no longer exists in the schema")
+    func pruneDropsColumnGoneFromSchema() {
+        let pruned = ColumnFetchScope.prunedHiddenColumns(
+            ["payload", "ghost"],
+            schemaColumns: columns,
+            resultColumns: ["id", "name", "email"]
+        )
+        #expect(pruned == ["payload"])
+    }
+
+    @Test("Prune without a known schema keeps both hidden and result columns")
+    func pruneWithoutSchemaKeepsHiddenAndResult() {
+        let pruned = ColumnFetchScope.prunedHiddenColumns(
+            ["payload"],
+            schemaColumns: nil,
+            resultColumns: ["id", "name"]
+        )
+        #expect(pruned == ["payload"])
+    }
 }

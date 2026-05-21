@@ -17,4 +17,22 @@ enum ColumnFetchScope {
         guard !kept.isEmpty, kept.count < schemaColumns.count else { return nil }
         return kept
     }
+
+    /// Drops hidden-column entries for columns that no longer exist. A hidden
+    /// column is intentionally absent from the (scoped) result, so prune against
+    /// the full schema when known; fall back to the result plus the current
+    /// hidden set so a still-hidden column is never dropped just for being omitted.
+    static func prunedHiddenColumns(
+        _ hiddenColumns: Set<String>,
+        schemaColumns: [String]?,
+        resultColumns: [String]
+    ) -> Set<String> {
+        let valid: Set<String>
+        if let schemaColumns, !schemaColumns.isEmpty {
+            valid = Set(schemaColumns)
+        } else {
+            valid = Set(resultColumns).union(hiddenColumns)
+        }
+        return hiddenColumns.intersection(valid)
+    }
 }

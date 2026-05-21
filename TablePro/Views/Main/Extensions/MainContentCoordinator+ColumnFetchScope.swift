@@ -13,7 +13,7 @@ extension MainContentCoordinator {
         guard tab.tabType == .table,
               let tableName = tab.tableContext.tableName,
               !tab.columnLayout.hiddenColumns.isEmpty,
-              let schema = schemaColumnsCache[schemaColumnsKey(tableName)] else { return nil }
+              let schema = schemaColumnsCache[schemaColumnsKey(tableName, schema: tab.tableContext.schemaName)] else { return nil }
 
         return ColumnFetchScope.selectColumns(
             schemaColumns: schema.columns,
@@ -33,49 +33,52 @@ extension MainContentCoordinator {
             guard let (tab, tabIndex) = self.tabManager.selectedTabAndIndex,
                   tab.tabType == .table,
                   let tableName = tab.tableContext.tableName else { return }
-            await self.loadSchemaColumns(for: tableName)
+            await self.loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
             guard !Task.isCancelled, tabIndex < self.tabManager.tabs.count else { return }
             self.filterCoordinator.rebuildTableQuery(at: tabIndex)
             self.runQuery()
         }
     }
 
-    func loadSchemaColumns(for tableName: String) async {
-        let key = schemaColumnsKey(tableName)
+    func loadSchemaColumns(for tableName: String, schema: String?) async {
+        let key = schemaColumnsKey(tableName, schema: schema)
         guard schemaColumnsCache[key] == nil else { return }
-        guard let provider = services.schemaProviderRegistry.provider(for: connectionId) else {
-            columnScopeLog.error("loadSchemaColumns: no schema provider for connection; cannot scope columns for table=\(tableName, privacy: .public)")
+        guard let driver = services.databaseManager.driver(for: connectionId) else {
+            columnScopeLog.error("loadSchemaColumns: no driver for connection; cannot scope columns for table=\(tableName, privacy: .public)")
             return
         }
-        let columns = await provider.getColumns(for: tableName)
-        guard !columns.isEmpty else {
-            columnScopeLog.error("loadSchemaColumns: provider returned 0 columns for table=\(tableName, privacy: .public); cannot scope")
-            return
+        do {
+            let columns = try await driver.fetchColumns(table: tableName, schema: schema)
+            guard !columns.isEmpty else {
+                columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .public); cannot scope")
+                return
+            }
+            schemaColumnsCache[key] = (columns.map(\.name), columns.filter(\.isPrimaryKey).map(\.name))
+        } catch {
+            columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
-        schemaColumnsCache[key] = (columns.map(\.name), columns.filter(\.isPrimaryKey).map(\.name))
     }
 
     func columnsForVisibilityPicker(for tab: QueryTab, resultColumns: [String]) -> [String] {
         guard tab.tabType == .table, let tableName = tab.tableContext.tableName else { return resultColumns }
-        if let schema = schemaColumnsCache[schemaColumnsKey(tableName)], !schema.columns.isEmpty {
+        if let schema = schemaColumnsCache[schemaColumnsKey(tableName, schema: tab.tableContext.schemaName)], !schema.columns.isEmpty {
             return schema.columns
         }
         let missingHidden = tab.columnLayout.hiddenColumns.subtracting(resultColumns)
         return missingHidden.isEmpty ? resultColumns : resultColumns + missingHidden.sorted()
     }
 
-    /// Columns that count as "still part of the table" when pruning stale hidden
-    /// entries. Hidden columns are intentionally absent from the (scoped) result,
-    /// so prune against the full schema, never the fetched result.
-    func validColumnsForPruning(currentColumns: [String]) -> Set<String> {
-        if let tableName = tabManager.selectedTab?.tableContext.tableName,
-           let schema = schemaColumnsCache[schemaColumnsKey(tableName)], !schema.columns.isEmpty {
-            return Set(schema.columns)
-        }
-        return Set(currentColumns).union(selectedTabHiddenColumns)
+    /// Full schema columns for the selected table, if loaded. Used to prune stale
+    /// hidden entries against the schema rather than the scoped result.
+    func selectedTabSchemaColumns() -> [String]? {
+        guard let tab = tabManager.selectedTab,
+              let tableName = tab.tableContext.tableName,
+              let schema = schemaColumnsCache[schemaColumnsKey(tableName, schema: tab.tableContext.schemaName)],
+              !schema.columns.isEmpty else { return nil }
+        return schema.columns
     }
 
-    private func schemaColumnsKey(_ tableName: String) -> String {
-        "\(connectionId):\(activeDatabaseName):\(tableName)"
+    private func schemaColumnsKey(_ tableName: String, schema: String?) -> String {
+        "\(connectionId):\(activeDatabaseName):\(schema ?? ""):\(tableName)"
     }
 }

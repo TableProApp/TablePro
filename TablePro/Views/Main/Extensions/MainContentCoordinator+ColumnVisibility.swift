@@ -43,9 +43,12 @@ extension MainContentCoordinator {
     }
 
     func pruneHiddenColumns(currentColumns: [String]) {
-        let valid = validColumnsForPruning(currentColumns: currentColumns)
         let current = selectedTabHiddenColumns
-        let pruned = current.intersection(valid)
+        let pruned = ColumnFetchScope.prunedHiddenColumns(
+            current,
+            schemaColumns: selectedTabSchemaColumns(),
+            resultColumns: currentColumns
+        )
         guard pruned != current else { return }
         mutateSelectedTabHiddenColumns { $0 = pruned }
     }
