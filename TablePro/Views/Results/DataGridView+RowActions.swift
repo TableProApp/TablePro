@@ -40,7 +40,7 @@ extension TableViewCoordinator {
     func copyRows(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
         let tableRows = tableRowsProvider()
-        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let projection = visibleColumnProjection
         let columnTypes = projection.columnTypes(tableRows.columnTypes)
         var tsvRows: [String] = []
         var htmlRows: [[String]] = []
@@ -60,7 +60,7 @@ extension TableViewCoordinator {
     func copyRowsWithHeaders(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
         let tableRows = tableRowsProvider()
-        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let projection = visibleColumnProjection
         let columnTypes = projection.columnTypes(tableRows.columnTypes)
         let columns = projection.columns(tableRows.columns)
         var tsvRows: [String] = [columns.joined(separator: "\t")]
@@ -112,7 +112,7 @@ extension TableViewCoordinator {
     func copyRowsAsInsert(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
-        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let projection = visibleColumnProjection
         let driver = resolveDriver()
         do {
             let converter = try SQLRowToStatementConverter(
@@ -134,7 +134,8 @@ extension TableViewCoordinator {
     func copyRowsAsUpdate(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
-        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let pkIndex = primaryKeyColumn.flatMap { tableRows.columns.firstIndex(of: $0) }
+        let projection = visibleColumnProjection.including(pkIndex)
         let driver = resolveDriver()
         do {
             let converter = try SQLRowToStatementConverter(
@@ -154,7 +155,7 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let projection = visibleColumnProjection
         let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
@@ -166,7 +167,7 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
-        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let projection = visibleColumnProjection
         let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
@@ -178,7 +179,7 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsMarkdown(at indices: Set<Int>) {
-        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let projection = visibleColumnProjection
         let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
@@ -240,6 +241,10 @@ extension TableViewCoordinator {
         }
     }
 
+    private var visibleColumnProjection: VisibleColumnProjection {
+        VisibleColumnProjection(indices: visibleColumnDataIndices())
+    }
+
     private func resolveDriver() -> (any DatabaseDriver)? {
         guard let connectionId else { return nil }
         return DatabaseManager.shared.driver(for: connectionId)
@@ -256,7 +261,7 @@ extension TableViewCoordinator {
 
         if let values = displayRow(at: row)?.values {
             let tableRows = tableRowsProvider()
-            let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+            let projection = visibleColumnProjection
             let formatted = formatRowValues(
                 values: projection.values(Array(values)),
                 columnTypes: projection.columnTypes(tableRows.columnTypes)

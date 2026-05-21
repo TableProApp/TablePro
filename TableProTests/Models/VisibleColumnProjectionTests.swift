@@ -48,4 +48,44 @@ struct VisibleColumnProjectionTests {
         #expect(projection.columns(columns).isEmpty)
         #expect(projection.values(values).isEmpty)
     }
+
+    @Test("including(nil) leaves the projection unchanged")
+    func includingNilIndexUnchanged() {
+        let projection = VisibleColumnProjection(indices: [0, 2]).including(nil)
+        #expect(projection.columns(columns) == ["id", "email"])
+    }
+
+    @Test("including on the identity projection stays identity")
+    func includingOnIdentityStaysIdentity() {
+        #expect(VisibleColumnProjection.identity.including(1).columns(columns) == columns)
+    }
+
+    @Test("including an already-present index does not duplicate it")
+    func includingPresentIndexNoDuplicate() {
+        let projection = VisibleColumnProjection(indices: [0, 2]).including(0)
+        #expect(projection.columns(columns) == ["id", "email"])
+    }
+
+    @Test("including a missing index appends it")
+    func includingMissingIndexAppends() {
+        let projection = VisibleColumnProjection(indices: [1, 2]).including(0)
+        #expect(projection.columns(columns) == ["name", "email", "id"])
+        #expect(projection.values(values) == [.text("Alice"), .text("alice@test.com"), .text("1")])
+    }
+
+    @Test("UPDATE keeps the primary key in WHERE even when its column is hidden")
+    @MainActor
+    func updateRetainsHiddenPrimaryKey() throws {
+        let projection = VisibleColumnProjection(indices: [1, 2]).including(0)
+        let dialect = SQLDialectDescriptor(identifierQuote: "`", keywords: [], functions: [], dataTypes: [])
+        let converter = try SQLRowToStatementConverter(
+            tableName: "users",
+            columns: projection.columns(columns),
+            primaryKeyColumn: "id",
+            databaseType: .mysql,
+            dialect: dialect
+        )
+        let result = converter.generateUpdates(rows: [projection.values(values)])
+        #expect(result == "UPDATE `users` SET `name` = 'Alice', `email` = 'alice@test.com' WHERE `id` = '1';")
+    }
 }
