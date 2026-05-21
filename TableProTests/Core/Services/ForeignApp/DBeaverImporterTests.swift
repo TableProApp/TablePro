@@ -444,7 +444,6 @@ struct DBeaverImporterTests {
             "pg-1": makeConnection(name: "PG")
         ]
         try writeDataSources(makeDataSourcesJSON(connections: connections))
-        // Passwords must not be exposed without includePasswords (the username still imports).
         try writeCredentials(["pg-1": ["#connection": ["password": "secret"]]])
 
         let result = try importer.importConnections(includePasswords: false)
@@ -499,6 +498,18 @@ struct DBeaverImporterTests {
 
         let result = try importer.importConnections(includePasswords: true)
         #expect(result.envelope.connections[0].username == "creduser")
+    }
+
+    @Test("Empty credentials username falls back to configuration.user")
+    func testImportConnections_emptyCredentialsUsernameFallsBack() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "PG", user: "configuser")
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+        try writeCredentials(["pg-1": ["#connection": ["user": ""]]])
+
+        let result = try importer.importConnections(includePasswords: true)
+        #expect(result.envelope.connections[0].username == "configuser")
     }
 
     @Test("importConnections invalid JSON throws parse error")
