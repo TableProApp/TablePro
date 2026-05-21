@@ -104,4 +104,11 @@ struct KeyboardSettingsSanitizeTests {
         let settings = KeyboardSettings(shortcuts: [ShortcutAction.toggleInspector.rawValue: combo])
         #expect(settings.sanitized().shortcut(for: .toggleInspector) == combo)
     }
+
+    @Test("Unknown action raw value survives sanitization")
+    func keepsUnknownRawValue() {
+        let combo = KeyCombo(key: "x", command: true)
+        let settings = KeyboardSettings(shortcuts: ["future.unknown.action": combo])
+        #expect(settings.sanitized().shortcuts["future.unknown.action"] == combo)
+    }
 }
