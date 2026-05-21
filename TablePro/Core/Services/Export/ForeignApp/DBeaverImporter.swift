@@ -64,12 +64,9 @@ struct DBeaverImporter: ForeignAppImporter {
 
         let foldersDict = json["folders"] as? [String: [String: Any]] ?? [:]
 
-        var credentialsMap: [String: [String: Any]] = [:]
-        if includePasswords {
-            let credentialsURL = dataSourcesURL.deletingLastPathComponent()
-                .appendingPathComponent("credentials-config.json")
-            credentialsMap = loadCredentials(from: credentialsURL)
-        }
+        let credentialsURL = dataSourcesURL.deletingLastPathComponent()
+            .appendingPathComponent("credentials-config.json")
+        let credentialsMap = loadCredentials(from: credentialsURL)
 
         var exportableConnections: [ExportableConnection] = []
         var groupNames: Set<String> = []
@@ -77,7 +74,10 @@ struct DBeaverImporter: ForeignAppImporter {
 
         for (connId, connDict) in connectionsDict {
             do {
-                let conn = try parseConnection(connId, dict: connDict, folders: foldersDict)
+                let credentialUsername = (credentialsMap[connId]?["#connection"] as? [String: Any])?["user"] as? String
+                let conn = try parseConnection(
+                    connId, dict: connDict, folders: foldersDict, credentialUsername: credentialUsername
+                )
                 let index = exportableConnections.count
                 exportableConnections.append(conn)
 
@@ -159,7 +159,8 @@ struct DBeaverImporter: ForeignAppImporter {
     private func parseConnection(
         _ connId: String,
         dict: [String: Any],
-        folders: [String: [String: Any]]
+        folders: [String: [String: Any]],
+        credentialUsername: String?
     ) throws -> ExportableConnection {
         let name = dict["name"] as? String ?? connId
         let provider = dict["provider"] as? String ?? ""
@@ -176,7 +177,9 @@ struct DBeaverImporter: ForeignAppImporter {
             port = defaultPort(for: dbType)
         }
         let database = config["database"] as? String ?? config["url"] as? String ?? ""
-        let username = config["user"] as? String ?? ""
+        let username = [credentialUsername, config["user"] as? String]
+            .compactMap { $0 }
+            .first { !$0.isEmpty } ?? ""
 
         let folderPath = dict["folder"] as? String
         let groupName: String?

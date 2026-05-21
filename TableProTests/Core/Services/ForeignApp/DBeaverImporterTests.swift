@@ -77,7 +77,7 @@ struct DBeaverImporterTests {
         provider: String = "postgresql",
         host: String = "db.example.com",
         port: Any? = 5432,
-        user: String = "admin",
+        user: String? = "admin",
         database: String = "mydb",
         folder: String? = nil,
         sshEnabled: Bool = false,
@@ -95,9 +95,11 @@ struct DBeaverImporterTests {
     ) -> [String: Any] {
         var config: [String: Any] = [
             "host": host,
-            "user": user,
             "database": database
         ]
+        if let user = user {
+            config["user"] = user
+        }
         if let port = port {
             config["port"] = port
         }
@@ -442,11 +444,72 @@ struct DBeaverImporterTests {
             "pg-1": makeConnection(name: "PG")
         ]
         try writeDataSources(makeDataSourcesJSON(connections: connections))
-        // Even if credentials file exists, it should not be read
         try writeCredentials(["pg-1": ["#connection": ["password": "secret"]]])
 
         let result = try importer.importConnections(includePasswords: false)
         #expect(result.envelope.credentials == nil)
+    }
+
+    // MARK: - Username (credentials-config.json)
+
+    @Test("Username imports from credentials-config.json")
+    func testImportConnections_usernameFromCredentials() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "PG", user: nil)
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+        try writeCredentials(["pg-1": ["#connection": ["user": "sameer", "password": "p"]]])
+
+        let result = try importer.importConnections(includePasswords: true)
+        #expect(result.envelope.connections[0].username == "sameer")
+    }
+
+    @Test("Username imports even when passwords are excluded")
+    func testImportConnections_usernameImportsWithoutPasswords() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "PG", user: nil)
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+        try writeCredentials(["pg-1": ["#connection": ["user": "sameer", "password": "p"]]])
+
+        let result = try importer.importConnections(includePasswords: false)
+        #expect(result.envelope.connections[0].username == "sameer")
+        #expect(result.envelope.credentials == nil)
+    }
+
+    @Test("Username falls back to data-sources configuration.user")
+    func testImportConnections_usernameFallsBackToConfig() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "PG", user: "configuser")
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+
+        let result = try importer.importConnections(includePasswords: true)
+        #expect(result.envelope.connections[0].username == "configuser")
+    }
+
+    @Test("Credentials username takes precedence over configuration.user")
+    func testImportConnections_credentialsUsernameWins() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "PG", user: "configuser")
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+        try writeCredentials(["pg-1": ["#connection": ["user": "creduser"]]])
+
+        let result = try importer.importConnections(includePasswords: true)
+        #expect(result.envelope.connections[0].username == "creduser")
+    }
+
+    @Test("Empty credentials username falls back to configuration.user")
+    func testImportConnections_emptyCredentialsUsernameFallsBack() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "PG", user: "configuser")
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+        try writeCredentials(["pg-1": ["#connection": ["user": ""]]])
+
+        let result = try importer.importConnections(includePasswords: true)
+        #expect(result.envelope.connections[0].username == "configuser")
     }
 
     @Test("importConnections invalid JSON throws parse error")

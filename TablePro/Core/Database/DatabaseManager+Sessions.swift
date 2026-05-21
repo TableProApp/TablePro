@@ -40,8 +40,7 @@ extension DatabaseManager {
         do {
             effectiveConnection = try await buildEffectiveConnection(for: resolvedConnection)
         } catch {
-            removeSessionEntry(for: connection.id)
-            currentSessionId = nil
+            finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
             throw error
         }
 
@@ -51,8 +50,7 @@ extension DatabaseManager {
             do {
                 try await PreConnectHookRunner.run(script: script)
             } catch {
-                removeSessionEntry(for: connection.id)
-                currentSessionId = nil
+                finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
                 throw error
             }
         }
@@ -68,8 +66,7 @@ extension DatabaseManager {
                     isAPIToken: isApiOnly,
                     window: NSApp.keyWindow
                 ) else {
-                    removeSessionEntry(for: connection.id)
-                    currentSessionId = nil
+                    finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
                     throw CancellationError()
                 }
                 passwordOverride = prompted
@@ -84,7 +81,7 @@ extension DatabaseManager {
                 awaitPlugins: true
             )
         } catch {
-            if connection.resolvedSSHConfig.enabled {
+            if !Task.isCancelled, connection.resolvedSSHConfig.enabled {
                 Task {
                     do {
                         try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
@@ -93,13 +90,13 @@ extension DatabaseManager {
                     }
                 }
             }
-            removeSessionEntry(for: connection.id)
-            currentSessionId = nil
+            finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
             throw error
         }
 
         do {
             try await driver.connect()
+            try Task.checkCancellation()
 
             let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
             do {
@@ -121,6 +118,8 @@ extension DatabaseManager {
             await executePostConnectActions(
                 for: connection, resolvedConnection: resolvedConnection, driver: driver
             )
+
+            try Task.checkCancellation()
 
             // Batch all session mutations into a single write to fire objectWillChange once.
             if var session = activeSessions[connection.id] {
@@ -144,7 +143,10 @@ extension DatabaseManager {
                 await startHealthMonitor(for: connection.id)
             }
         } catch {
-            if connection.resolvedSSHConfig.enabled {
+            let cancelled = Task.isCancelled
+            if cancelled {
+                driver.disconnect()
+            } else if connection.resolvedSSHConfig.enabled {
                 Task {
                     do {
                         try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
@@ -154,18 +156,16 @@ extension DatabaseManager {
                 }
             }
 
-            // Remove failed session completely so UI returns to Welcome window.
-            removeSessionEntry(for: connection.id)
-
-            if currentSessionId == connection.id {
-                if let nextSessionId = activeSessions.keys.first {
-                    currentSessionId = nextSessionId
-                } else {
-                    currentSessionId = nil
-                }
-            }
-
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
             throw error
+        }
+    }
+
+    internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
+        guard !cancelled else { return }
+        removeSessionEntry(for: connectionId)
+        if currentSessionId == connectionId {
+            currentSessionId = activeSessions.keys.first
         }
     }
 

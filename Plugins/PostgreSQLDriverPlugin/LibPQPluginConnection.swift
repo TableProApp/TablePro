@@ -153,7 +153,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // MARK: - Connection Management
 
     func connect() async throws {
-        try await pluginDispatchAsync(on: queue) { [self] in
+        try await pluginDispatchAsyncCancellable(on: queue) { [self] in
             func escapeConnParam(_ value: String) -> String {
                 value.replacingOccurrences(of: "\\", with: "\\\\")
                      .replacingOccurrences(of: "'", with: "\\'")
