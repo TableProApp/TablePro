@@ -91,6 +91,10 @@ final class MainContentCoordinator {
         services.databaseManager.activeDatabaseName(for: connection)
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
+    func setSafeModeLevel(_ level: SafeModeLevel) {
+        toolbarState.safeModeLevel = level
+        services.databaseManager.setSafeModeLevel(level, for: connectionId)
+    }
     let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager

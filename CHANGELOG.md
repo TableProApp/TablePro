@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Safe mode no longer turns off when you open another table; it stays set for the whole connection until you change it (#1351)
 - Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect, and the Query menu shows the new keys (#1357)
 - Custom shortcuts now require a modifier key, so a plain key like Space is no longer accepted and then silently ignored (#1357)
 - Cancelling a pending connection no longer lets the abandoned attempt overwrite or drop a later successful connection to the same database (#1358)
