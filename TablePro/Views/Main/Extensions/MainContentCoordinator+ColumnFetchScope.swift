@@ -4,6 +4,9 @@
 //
 
 import Foundation
+import os
+
+private let columnScopeLog = Logger(subsystem: "com.TablePro", category: "ColumnFetchScope")
 
 extension MainContentCoordinator {
     func selectColumns(for tab: QueryTab) -> [String]? {
@@ -40,9 +43,15 @@ extension MainContentCoordinator {
     func loadSchemaColumns(for tableName: String) async {
         let key = schemaColumnsKey(tableName)
         guard schemaColumnsCache[key] == nil else { return }
-        guard let provider = services.schemaProviderRegistry.provider(for: connectionId) else { return }
+        guard let provider = services.schemaProviderRegistry.provider(for: connectionId) else {
+            columnScopeLog.error("loadSchemaColumns: no schema provider for connection; cannot scope columns for table=\(tableName, privacy: .public)")
+            return
+        }
         let columns = await provider.getColumns(for: tableName)
-        guard !columns.isEmpty else { return }
+        guard !columns.isEmpty else {
+            columnScopeLog.error("loadSchemaColumns: provider returned 0 columns for table=\(tableName, privacy: .public); cannot scope")
+            return
+        }
         schemaColumnsCache[key] = (columns.map(\.name), columns.filter(\.isPrimaryKey).map(\.name))
     }
 
@@ -53,6 +62,17 @@ extension MainContentCoordinator {
         }
         let missingHidden = tab.columnLayout.hiddenColumns.subtracting(resultColumns)
         return missingHidden.isEmpty ? resultColumns : resultColumns + missingHidden.sorted()
+    }
+
+    /// Columns that count as "still part of the table" when pruning stale hidden
+    /// entries. Hidden columns are intentionally absent from the (scoped) result,
+    /// so prune against the full schema, never the fetched result.
+    func validColumnsForPruning(currentColumns: [String]) -> Set<String> {
+        if let tableName = tabManager.selectedTab?.tableContext.tableName,
+           let schema = schemaColumnsCache[schemaColumnsKey(tableName)], !schema.columns.isEmpty {
+            return Set(schema.columns)
+        }
+        return Set(currentColumns).union(selectedTabHiddenColumns)
     }
 
     private func schemaColumnsKey(_ tableName: String) -> String {
