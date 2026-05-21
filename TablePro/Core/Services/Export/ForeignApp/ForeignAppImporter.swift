@@ -80,6 +80,7 @@ enum ForeignAppImporterRegistry {
         TablePlusImporter(),
         SequelAceImporter(),
         DBeaverImporter(),
+        DataGripImporter(),
         BeekeeperStudioImporter()
     ]
 }
