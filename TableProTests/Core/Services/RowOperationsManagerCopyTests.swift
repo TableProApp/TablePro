@@ -1,6 +1,6 @@
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 private final class MockClipboardProvider: ClipboardProvider {
@@ -57,7 +57,8 @@ struct RowOperationsManagerCopyTests {
         indices: Set<Int>,
         rows: [[String?]],
         columns: [String]? = nil,
-        includeHeaders: Bool = false
+        includeHeaders: Bool = false,
+        visibleColumnIndices: [Int]? = nil
     ) -> String? {
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
@@ -65,7 +66,8 @@ struct RowOperationsManagerCopyTests {
         manager.copySelectedRowsToClipboard(
             selectedIndices: indices,
             tableRows: tableRows,
-            includeHeaders: includeHeaders
+            includeHeaders: includeHeaders,
+            visibleColumnIndices: visibleColumnIndices
         )
         return clipboard.lastWrittenText
     }
@@ -206,5 +208,62 @@ struct RowOperationsManagerCopyTests {
         let result = copyAndCapture(manager: manager, indices: [0], rows: rows)
 
         #expect(result == "NULL\tNULL\tNULL")
+    }
+
+    @Test("Hidden columns are excluded from copied values")
+    func hiddenColumnsExcluded() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+
+        let result = copyAndCapture(manager: manager, indices: [0], rows: rows, visibleColumnIndices: [0, 2])
+
+        #expect(result == "1\talice@test.com")
+    }
+
+    @Test("Hidden columns are excluded from headers too")
+    func hiddenColumnsExcludedFromHeaders() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+
+        let result = copyAndCapture(
+            manager: manager,
+            indices: [0],
+            rows: rows,
+            includeHeaders: true,
+            visibleColumnIndices: [0, 2]
+        )
+
+        let lines = result?.components(separatedBy: "\n") ?? []
+        #expect(lines.count == 2)
+        #expect(lines[0] == "id\temail")
+        #expect(lines[1] == "1\talice@test.com")
+    }
+
+    @Test("Copy follows visual column order")
+    func copyFollowsVisualOrder() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+
+        let result = copyAndCapture(
+            manager: manager,
+            indices: [0],
+            rows: rows,
+            includeHeaders: true,
+            visibleColumnIndices: [2, 0, 1]
+        )
+
+        let lines = result?.components(separatedBy: "\n") ?? []
+        #expect(lines[0] == "email\tid\tname")
+        #expect(lines[1] == "alice@test.com\t1\tAlice")
+    }
+
+    @Test("Nil visible indices copies every column unchanged")
+    func nilIndicesCopiesAllColumns() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+
+        let result = copyAndCapture(manager: manager, indices: [0], rows: rows, visibleColumnIndices: nil)
+
+        #expect(result == "1\tAlice\talice@test.com")
     }
 }

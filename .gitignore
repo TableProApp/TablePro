@@ -151,3 +151,6 @@ Libs/.downloaded
 Libs/dylibs/
 Libs/ios/
 fix-1322-plugin-abi-and-registry-overhaul.diff
+
+# Issue analysis blueprints (local only)
+.analysis/

@@ -43,6 +43,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         identitySchema.dataIndex(from: identifier)
     }
 
+    func visibleColumnDataIndices() -> [Int]? {
+        guard let tableView else { return nil }
+        return tableView.tableColumns
+            .filter { !$0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }
+            .compactMap { dataColumnIndex(from: $0.identifier) }
+    }
+
     func savedColumnLayout(binding: ColumnLayoutState) -> ColumnLayoutState? {
         if tabType == .table,
            let connectionId,

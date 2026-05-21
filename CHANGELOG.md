@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cancelling a pending connection no longer lets the abandoned attempt overwrite or drop a later successful connection to the same database (#1358)
 - Cancelling a pending SSH connection now closes its tunnel instead of leaving the local forward port open (#1369)
 - Importing connections from DBeaver now brings over the username (#1355)
+- Copying rows now includes only the visible columns, in their current order, instead of every column (#1354)
 
 ## [0.43.1] - 2026-05-20
 

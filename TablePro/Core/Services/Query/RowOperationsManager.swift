@@ -231,7 +231,8 @@ final class RowOperationsManager {
     func copySelectedRowsToClipboard(
         selectedIndices: Set<Int>,
         tableRows: TableRows,
-        includeHeaders: Bool = false
+        includeHeaders: Bool = false,
+        visibleColumnIndices: [Int]? = nil
     ) {
         guard !selectedIndices.isEmpty else { return }
 
@@ -247,13 +248,14 @@ final class RowOperationsManager {
 
         let indicesToCopy = isTruncated ? Array(sortedIndices.prefix(Self.maxClipboardRows)) : sortedIndices
 
-        let columnCount = tableRows.rows.first?.values.count ?? 1
-        let estimatedRowLength = columnCount * 12
+        let projection = VisibleColumnProjection(indices: visibleColumnIndices)
+        let columns = projection.columns(tableRows.columns)
+        let estimatedRowLength = max(columns.count, 1) * 12
         var result = ""
         result.reserveCapacity(indicesToCopy.count * estimatedRowLength)
 
-        if includeHeaders, !tableRows.columns.isEmpty {
-            for (colIdx, col) in tableRows.columns.enumerated() {
+        if includeHeaders, !columns.isEmpty {
+            for (colIdx, col) in columns.enumerated() {
                 if colIdx > 0 { result.append("\t") }
                 result.append(col)
             }
@@ -262,7 +264,8 @@ final class RowOperationsManager {
         for rowIndex in indicesToCopy {
             guard rowIndex < tableRows.count else { continue }
             if !result.isEmpty { result.append("\n") }
-            for (colIdx, cell) in tableRows.rows[rowIndex].values.enumerated() {
+            let cells = projection.values(Array(tableRows.rows[rowIndex].values))
+            for (colIdx, cell) in cells.enumerated() {
                 if colIdx > 0 { result.append("\t") }
                 switch cell {
                 case .null:

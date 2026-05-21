@@ -169,7 +169,8 @@ final class RowEditingCoordinator {
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
         parent.rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
-            tableRows: tableRows
+            tableRows: tableRows,
+            visibleColumnIndices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
         )
     }
 
@@ -179,21 +180,25 @@ final class RowEditingCoordinator {
         parent.rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
             tableRows: tableRows,
-            includeHeaders: true
+            includeHeaders: true,
+            visibleColumnIndices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
         )
     }
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
+        let projection = VisibleColumnProjection(
+            indices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
+        )
         let rows = indices.sorted().compactMap { idx -> [PluginCellValue]? in
             guard idx >= 0, idx < tableRows.count else { return nil }
-            return Array(tableRows.rows[idx].values)
+            return projection.values(Array(tableRows.rows[idx].values))
         }
         guard !rows.isEmpty else { return }
         let converter = JsonRowConverter(
-            columns: tableRows.columns,
-            columnTypes: tableRows.columnTypes
+            columns: projection.columns(tableRows.columns),
+            columnTypes: projection.columnTypes(tableRows.columnTypes)
         )
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }

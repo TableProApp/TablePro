@@ -40,13 +40,14 @@ extension TableViewCoordinator {
     func copyRows(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
         let tableRows = tableRowsProvider()
-        let columnTypes = tableRows.columnTypes
+        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let columnTypes = projection.columnTypes(tableRows.columnTypes)
         var tsvRows: [String] = []
         var htmlRows: [[String]] = []
 
         for index in sortedIndices {
             guard let values = displayRow(at: index)?.values else { continue }
-            let formatted = formatRowValues(values: Array(values), columnTypes: columnTypes)
+            let formatted = formatRowValues(values: projection.values(Array(values)), columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
         }
@@ -59,14 +60,15 @@ extension TableViewCoordinator {
     func copyRowsWithHeaders(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
         let tableRows = tableRowsProvider()
-        let columnTypes = tableRows.columnTypes
-        let columns = tableRows.columns
+        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let columnTypes = projection.columnTypes(tableRows.columnTypes)
+        let columns = projection.columns(tableRows.columns)
         var tsvRows: [String] = [columns.joined(separator: "\t")]
         var htmlRows: [[String]] = []
 
         for index in sortedIndices {
             guard let values = displayRow(at: index)?.values else { continue }
-            let formatted = formatRowValues(values: Array(values), columnTypes: columnTypes)
+            let formatted = formatRowValues(values: projection.values(Array(values)), columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
         }
@@ -110,17 +112,18 @@ extension TableViewCoordinator {
     func copyRowsAsInsert(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
+        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
         let driver = resolveDriver()
         do {
             let converter = try SQLRowToStatementConverter(
                 tableName: tableName,
-                columns: tableRows.columns,
+                columns: projection.columns(tableRows.columns),
                 primaryKeyColumn: primaryKeyColumn,
                 databaseType: databaseType,
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let typedRows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+            let typedRows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
             guard !typedRows.isEmpty else { return }
             ClipboardService.shared.writeText(converter.generateInserts(rows: typedRows))
         } catch {
@@ -131,17 +134,18 @@ extension TableViewCoordinator {
     func copyRowsAsUpdate(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
+        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
         let driver = resolveDriver()
         do {
             let converter = try SQLRowToStatementConverter(
                 tableName: tableName,
-                columns: tableRows.columns,
+                columns: projection.columns(tableRows.columns),
                 primaryKeyColumn: primaryKeyColumn,
                 databaseType: databaseType,
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let typedRows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+            let typedRows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
             guard !typedRows.isEmpty else { return }
             ClipboardService.shared.writeText(converter.generateUpdates(rows: typedRows))
         } catch {
@@ -150,27 +154,38 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
-        let columnTypes = tableRows.columnTypes
-        let converter = JsonRowConverter(columns: tableRows.columns, columnTypes: columnTypes)
+        let converter = JsonRowConverter(
+            columns: projection.columns(tableRows.columns),
+            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        )
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
 
     func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
-        let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
-        let converter = CsvRowConverter(columns: tableRows.columns, columnTypes: tableRows.columnTypes)
+        let converter = CsvRowConverter(
+            columns: projection.columns(tableRows.columns),
+            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        )
         ClipboardService.shared.writeCsv(converter.generateCsv(rows: rows, includeHeaders: includeHeaders))
     }
 
     func copyRowsAsMarkdown(at indices: Set<Int>) {
-        let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
+        let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
-        let converter = MarkdownTableConverter(columns: tableRows.columns, columnTypes: tableRows.columnTypes)
+        let converter = MarkdownTableConverter(
+            columns: projection.columns(tableRows.columns),
+            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        )
         ClipboardService.shared.writeText(converter.generateMarkdown(rows: rows))
     }
 
@@ -241,10 +256,14 @@ extension TableViewCoordinator {
 
         if let values = displayRow(at: row)?.values {
             let tableRows = tableRowsProvider()
-            let formatted = formatRowValues(values: Array(values), columnTypes: tableRows.columnTypes)
+            let projection = VisibleColumnProjection(indices: visibleColumnDataIndices())
+            let formatted = formatRowValues(
+                values: projection.values(Array(values)),
+                columnTypes: projection.columnTypes(tableRows.columnTypes)
+            )
             item.setString(formatted.joined(separator: "\t"), forType: .string)
             item.setString(
-                HtmlTableEncoder.encode(rows: [formatted], headers: tableRows.columns),
+                HtmlTableEncoder.encode(rows: [formatted], headers: projection.columns(tableRows.columns)),
                 forType: .html
             )
         }
