@@ -65,4 +65,30 @@ struct JetBrainsCredentialStoreTests {
             return
         }
     }
+
+    @Test("ssh password service name matches DataGrip's keychain format")
+    func sshPasswordServiceName() {
+        #expect(JetBrainsCredentialStore.sshPasswordServiceName(host: "localhost", port: 22, configId: "cfg")
+            == "IntelliJ Platform SshConfigPassword \u{2014} localhost:22 cfg")
+        #expect(JetBrainsCredentialStore.sshPassphraseServiceName(host: "h", port: 2_222, configId: "cfg")
+            == "IntelliJ Platform SshConfigPassphrase \u{2014} h:2222 cfg")
+    }
+
+    @Test("reads ssh password from c.kdbx")
+    func sshPasswordFromKdbx() throws {
+        let mainKey = KdbxTestFixture.randomBytes(64)
+        let service = JetBrainsCredentialStore.sshPasswordServiceName(host: "h", port: 2_222, configId: "cfg")
+
+        try KdbxTestFixture.makeKdbx(mainKey: mainKey, title: service, userName: "", password: "ssh-secret")
+            .write(to: configDir.appendingPathComponent("c.kdbx"))
+        try KdbxTestFixture.makeMainKeyFile(mainKey: mainKey)
+            .write(to: configDir.appendingPathComponent("c.pwd"), atomically: true, encoding: .utf8)
+
+        let store = JetBrainsCredentialStore(configDir: configDir)
+        guard case .found(let password) = store.sshPassword(host: "h", port: 2_222, configId: "cfg") else {
+            Issue.record("Expected SSH password to be found in KDBX")
+            return
+        }
+        #expect(password == "ssh-secret")
+    }
 }

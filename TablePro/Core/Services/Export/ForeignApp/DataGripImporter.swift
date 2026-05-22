@@ -72,20 +72,11 @@ struct DataGripImporter: ForeignAppImporter {
                 }
 
                 if let store = credentialStore, !credentialsAborted {
-                    switch store.password(forDataSourceUUID: source.uuid) {
-                    case .found(let password):
-                        credentials[String(index)] = ExportableCredentials(
-                            password: password,
-                            sshPassword: nil,
-                            keyPassphrase: nil,
-                            totpSecret: nil,
-                            pluginSecureFields: nil
-                        )
-                    case .cancelled:
-                        credentialsAborted = true
-                    case .notFound:
-                        break
+                    let collected = collectCredentials(for: source, sshConfigs: sshConfigs, store: store)
+                    if let resolved = collected.credentials {
+                        credentials[String(index)] = resolved
                     }
+                    credentialsAborted = collected.aborted
                 }
             }
         }
@@ -112,6 +103,62 @@ struct DataGripImporter: ForeignAppImporter {
             envelope: envelope,
             sourceName: displayName,
             credentialsAborted: credentialsAborted
+        )
+    }
+
+    // MARK: - Credentials
+
+    private struct CollectedCredentials {
+        var credentials: ExportableCredentials?
+        var aborted: Bool
+    }
+
+    /// Reads the data-source password plus, when the connection tunnels over an
+    /// SSH config, its saved secret: a key passphrase for key auth or a password
+    /// otherwise. The SSH secret is keyed by `<host>:<port> <configId>`. `aborted`
+    /// is set when the user denies Keychain access so the caller stops prompting.
+    private func collectCredentials(
+        for source: DataGripDataSource,
+        sshConfigs: [String: DataGripSSHConfig],
+        store: JetBrainsCredentialStore
+    ) -> CollectedCredentials {
+        var password: String?
+        var sshPassword: String?
+        var keyPassphrase: String?
+        var aborted = false
+
+        switch store.password(forDataSourceUUID: source.uuid) {
+        case .found(let value): password = value
+        case .cancelled: aborted = true
+        case .notFound: break
+        }
+
+        if !aborted, let configId = source.ssh?.configId, let config = sshConfigs[configId] {
+            let host = config.host
+            let port = config.port ?? 22
+            let usesKey = usesKeyAuthentication(authType: config.authType, keyPath: config.keyPath ?? "")
+            switch usesKey
+                ? store.sshKeyPassphrase(host: host, port: port, configId: configId)
+                : store.sshPassword(host: host, port: port, configId: configId) {
+            case .found(let value):
+                if usesKey { keyPassphrase = value } else { sshPassword = value }
+            case .cancelled: aborted = true
+            case .notFound: break
+            }
+        }
+
+        guard password != nil || sshPassword != nil || keyPassphrase != nil else {
+            return CollectedCredentials(credentials: nil, aborted: aborted)
+        }
+        return CollectedCredentials(
+            credentials: ExportableCredentials(
+                password: password,
+                sshPassword: sshPassword,
+                keyPassphrase: keyPassphrase,
+                totpSecret: nil,
+                pluginSecureFields: nil
+            ),
+            aborted: aborted
         )
     }
 

@@ -8,15 +8,16 @@ import Foundation
 import os
 import Security
 
-/// Resolves a JetBrains data-source password. The IDE names it with
-/// `generateServiceName("DB", uuid)`, which formats as
-/// `IntelliJ Platform DB \u{2014} <data-source uuid>`. On macOS the secret lives
-/// in the native Keychain; only the "In KeePass" mode writes the encrypted
-/// `c.kdbx`, so the Keychain is tried first and the KDBX is a fallback.
+/// Resolves JetBrains credentials. The IDE names each secret with
+/// `generateServiceName(subsystem, key)`, formatted
+/// `IntelliJ Platform <subsystem> \u{2014} <key>`:
+/// - DB password: subsystem `DB`, key `<data-source uuid>`.
+/// - SSH tunnel password: subsystem `SshConfigPassword`, key `<host>:<port> <ssh-config-id>`.
+/// - SSH key passphrase: subsystem `SshConfigPassphrase`, same key shape.
 ///
-/// SSH tunnel passwords are not recoverable: DataGrip does not persist them to
-/// the Keychain (verified against a saved password-auth tunnel), so the importer
-/// brings over the tunnel settings and the user re-enters the password.
+/// SSH secrets only exist once a connection authenticated and saved them. On macOS
+/// the secret lives in the native Keychain; only the "In KeePass" mode writes the
+/// encrypted `c.kdbx`, so the Keychain is tried first and the KDBX is a fallback.
 final class JetBrainsCredentialStore {
     enum Lookup {
         case found(String)
@@ -43,8 +44,24 @@ final class JetBrainsCredentialStore {
         "IntelliJ Platform DB \u{2014} \(uuid)"
     }
 
+    static func sshPasswordServiceName(host: String, port: Int, configId: String) -> String {
+        "IntelliJ Platform SshConfigPassword \u{2014} \(host):\(port) \(configId)"
+    }
+
+    static func sshPassphraseServiceName(host: String, port: Int, configId: String) -> String {
+        "IntelliJ Platform SshConfigPassphrase \u{2014} \(host):\(port) \(configId)"
+    }
+
     func password(forDataSourceUUID uuid: String) -> Lookup {
         secret(service: Self.serviceName(forDataSourceUUID: uuid))
+    }
+
+    func sshPassword(host: String, port: Int, configId: String) -> Lookup {
+        secret(service: Self.sshPasswordServiceName(host: host, port: port, configId: configId))
+    }
+
+    func sshKeyPassphrase(host: String, port: Int, configId: String) -> Lookup {
+        secret(service: Self.sshPassphraseServiceName(host: host, port: port, configId: configId))
     }
 
     private func secret(service: String) -> Lookup {

@@ -233,6 +233,34 @@ struct DataGripImporterTests {
         #expect(connection.sshConfig == nil)
     }
 
+    @Test("imports SSH password from c.kdbx end to end")
+    func sshPasswordImported() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a")
+        ])
+        try writeLocalDataSources([
+            localSource(
+                uuid: "1",
+                extra: "<ssh-properties><enabled>true</enabled><ssh-config-id>SSH1</ssh-config-id></ssh-properties>"
+            )
+        ])
+        try writeSSHConfigs([
+            "<sshConfig authType=\"PASSWORD\" host=\"localhost\" id=\"SSH1\" port=\"22\" username=\"u\" useOpenSSHConfig=\"false\"/>"
+        ])
+
+        let configDir = optionsDir.deletingLastPathComponent()
+        let mainKey = KdbxTestFixture.randomBytes(64)
+        let service = JetBrainsCredentialStore.sshPasswordServiceName(host: "localhost", port: 22, configId: "SSH1")
+        try KdbxTestFixture.makeKdbx(mainKey: mainKey, title: service, userName: "", password: "ssh-pw")
+            .write(to: configDir.appendingPathComponent("c.kdbx"))
+        try KdbxTestFixture.makeMainKeyFile(mainKey: mainKey)
+            .write(to: configDir.appendingPathComponent("c.pwd"), atomically: true, encoding: .utf8)
+
+        let result = try importer.importConnections(includePasswords: true)
+        let credentials = try #require(result.envelope.credentials?["0"])
+        #expect(credentials.sshPassword == "ssh-pw")
+    }
+
     @Test("merges user-name from local file when shared file omits it")
     func usernameFromLocalFile() throws {
         try writeDataSources([
