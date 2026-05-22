@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Import connections and passwords from DataGrip, including SSH tunnels and SSL settings. The source app doesn't need to be running. (#1374)
 
+### Changed
+
+- Active Connections is now a searchable popover anchored to the toolbar that closes on Escape or clicking outside, instead of a modal dialog. (#1350)
+
 ### Fixed
 
 - Raw SQL filter now suggests columns and keywords at every position in the expression, including after AND and OR, instead of only the first column. (#1346)
