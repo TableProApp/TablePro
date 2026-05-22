@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed a crash when adding a row while a cell editor or value viewer was open (#1378)
+
 ## [0.43.2] - 2026-05-22
 
 ### Changed
