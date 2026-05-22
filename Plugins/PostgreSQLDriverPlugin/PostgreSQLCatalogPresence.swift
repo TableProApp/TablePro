@@ -6,9 +6,9 @@
 import Foundation
 
 struct PostgreSQLCatalogPresence: Sendable, Equatable {
-    var hasMaterializedViews: Bool
-    var hasForeignTables: Bool
-    var hasSequences: Bool
+    let hasMaterializedViews: Bool
+    let hasForeignTables: Bool
+    let hasSequences: Bool
 
     static let probeQuery = """
         SELECT c.relname
@@ -17,12 +17,6 @@ struct PostgreSQLCatalogPresence: Sendable, Equatable {
         WHERE n.nspname = 'pg_catalog'
           AND c.relname IN ('pg_matviews', 'pg_foreign_table', 'pg_sequences')
         """
-
-    init(hasMaterializedViews: Bool, hasForeignTables: Bool, hasSequences: Bool) {
-        self.hasMaterializedViews = hasMaterializedViews
-        self.hasForeignTables = hasForeignTables
-        self.hasSequences = hasSequences
-    }
 
     init(relationNames: [String]) {
         let names = Set(relationNames)

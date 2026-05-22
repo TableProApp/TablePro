@@ -51,11 +51,13 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     private func probeCatalogPresence() async {
-        guard let result = try? await core.execute(query: PostgreSQLCatalogPresence.probeQuery) else {
-            return
+        do {
+            let result = try await core.execute(query: PostgreSQLCatalogPresence.probeQuery)
+            let relationNames = result.rows.compactMap { $0.first?.asText }
+            catalogPresence = PostgreSQLCatalogPresence(relationNames: relationNames)
+        } catch {
+            Self.logger.debug("Catalog presence probe failed; using version-based capabilities: \(error.localizedDescription)")
         }
-        let relationNames = result.rows.compactMap { $0.first?.asText }
-        catalogPresence = PostgreSQLCatalogPresence(relationNames: relationNames)
     }
 
     private func includesMaterializedViews() -> Bool {
