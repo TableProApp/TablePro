@@ -33,7 +33,6 @@ struct ConnectionSwitcherPopover: View {
     @State private var savedConnections: [DatabaseConnection] = []
     @State private var selectedConnectionId: UUID?
     @State private var searchText = ""
-    @FocusState private var searchFocused: Bool
 
     private static let popoverWidth: CGFloat = 400
     private static let popoverHeight: CGFloat = 460
@@ -84,72 +83,25 @@ struct ConnectionSwitcherPopover: View {
             if selectedConnectionId == nil {
                 selectedConnectionId = currentSessionId ?? orderedIds.first
             }
-            searchFocused = true
         }
         .onChange(of: searchText) { _, _ in
             let ids = orderedIds
             if let id = selectedConnectionId, ids.contains(id) { return }
             selectedConnectionId = ids.first
         }
-        .onKeyPress(.return) {
-            activateSelected()
-            return .handled
-        }
     }
 
     private var searchField: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "magnifyingglass")
-                .imageScale(.small)
-                .foregroundStyle(.secondary)
-                .frame(width: 14)
-
-            TextField(
-                "",
-                text: $searchText,
-                prompt: Text(String(localized: "Search connections"))
-                    .foregroundStyle(.tertiary)
-            )
-            .textFieldStyle(.plain)
-            .font(.body)
-            .focused($searchFocused)
-            .onKeyPress(.downArrow) {
-                moveSelection(by: 1)
-                return .handled
-            }
-            .onKeyPress(.upArrow) {
-                moveSelection(by: -1)
-                return .handled
-            }
-            .onKeyPress(.return) {
-                activateSelected()
-                return .handled
-            }
-            .onKeyPress(.escape) {
-                if searchText.isEmpty { return .ignored }
-                searchText = ""
-                return .handled
-            }
-
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .imageScale(.small)
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.35))
+        NativeSearchField(
+            text: $searchText,
+            placeholder: String(localized: "Search connections"),
+            onMoveUp: { moveSelection(by: -1) },
+            onMoveDown: { moveSelection(by: 1) },
+            onSubmit: { activateSelected() },
+            focusOnAppear: true
         )
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
