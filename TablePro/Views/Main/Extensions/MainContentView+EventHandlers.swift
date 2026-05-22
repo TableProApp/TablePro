@@ -107,24 +107,20 @@ extension MainContentView {
             return
         }
 
-        let isPreviewMode = AppSettingsManager.shared.tabs.enablePreviewTabs
-        let hasPreview = WindowLifecycleMonitor.shared.previewWindow(for: connection.id) != nil
-
         let result = SidebarNavigationResult.resolve(
             clickedTableName: table.name,
             currentTabTableName: tabManager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !tabManager.tabs.isEmpty,
-            isPreviewTabMode: isPreviewMode,
-            hasPreviewTab: hasPreview
+            isActiveTabReusable: coordinator.isActiveTabReusable
         )
 
         switch result {
         case .skip:
             return
-        case .openInPlace:
+        case .reuseActiveTab:
             coordinator.selectionState.indices = []
             coordinator.openTableTab(table)
-        case .revertAndOpenNewWindow, .replacePreviewTab, .openNewPreviewTab:
+        case .openNewTab:
             coordinator.openTableTab(table)
         }
     }

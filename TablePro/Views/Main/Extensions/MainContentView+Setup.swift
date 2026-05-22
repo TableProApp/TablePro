@@ -209,7 +209,7 @@ extension MainContentView {
         )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
         if isPreview {
-            window.subtitle = String(format: String(localized: "%@ — Preview"), connection.name)
+            window.subtitle = String(format: String(localized: "%@ - Preview"), connection.name)
         } else {
             window.subtitle = connection.name
         }
@@ -222,8 +222,7 @@ extension MainContentView {
         WindowLifecycleMonitor.shared.register(
             window: window,
             connectionId: connection.id,
-            windowId: windowId,
-            isPreview: isPreview
+            windowId: windowId
         )
         viewWindow = window
         coordinator.contentWindow = window
