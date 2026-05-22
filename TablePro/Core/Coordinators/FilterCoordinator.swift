@@ -47,11 +47,7 @@ final class FilterCoordinator {
             )
 
             parent.tabManager.mutate(at: capturedTabIndex) { $0.content.query = newQuery }
-
-            if !capturedFilters.isEmpty {
-                saveLastFilters(for: capturedTableName)
-            }
-
+            saveLastFilters(for: capturedTableName)
             parent.runQuery()
         }
     }
@@ -213,6 +209,18 @@ final class FilterCoordinator {
         mutateSelectedTabFilterState { state in
             state.filters.removeAll { $0.id == filter.id }
             state.appliedFilters.removeAll { $0.id == filter.id }
+        }
+    }
+
+    func removeFilterAndReload(_ filter: TableFilter) {
+        let wasApplied = selectedTabFilterState.appliedFilters.contains { $0.id == filter.id }
+        removeFilter(filter)
+        guard wasApplied else { return }
+        let remaining = selectedTabFilterState.appliedFilters
+        if remaining.isEmpty {
+            clearFiltersAndReload()
+        } else {
+            applyFilters(remaining)
         }
     }
 

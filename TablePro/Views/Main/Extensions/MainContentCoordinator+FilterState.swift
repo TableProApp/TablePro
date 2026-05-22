@@ -36,6 +36,10 @@ extension MainContentCoordinator {
         filterCoordinator.removeFilter(filter)
     }
 
+    func removeFilterAndReload(_ filter: TableFilter) {
+        filterCoordinator.removeFilterAndReload(filter)
+    }
+
     func updateFilter(_ filter: TableFilter) {
         filterCoordinator.updateFilter(filter)
     }

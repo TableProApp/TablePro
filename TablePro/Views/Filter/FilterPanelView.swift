@@ -199,15 +199,9 @@ struct FilterPanelView: View {
                         focusedFilterId = filterState.filters.last?.id
                     },
                     onRemove: {
-                        let hadAppliedFilters = filterState.hasAppliedFilters
-                        coordinator.removeFilter(filter)
+                        coordinator.removeFilterAndReload(filter)
                         if filterState.filters.isEmpty {
-                            if hadAppliedFilters {
-                                coordinator.clearFilterState()
-                                onUnset()
-                            } else {
-                                coordinator.closeFilterPanel()
-                            }
+                            coordinator.closeFilterPanel()
                         }
                     },
                     onSubmit: { applyAllValidFilters() },
