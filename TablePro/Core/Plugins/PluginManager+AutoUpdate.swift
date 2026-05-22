@@ -35,6 +35,7 @@ extension PluginManager {
             reconciliationManifestAttempts += 1
             guard reconciliationManifestAttempts < ReconciliationConfig.maxAttempts else {
                 Self.logger.error("Reconciliation gave up: registry manifest unavailable")
+                applyReason(registryUnreachableReason(), to: outdated)
                 emitReconciliationOutcome()
                 return
             }
@@ -44,50 +45,19 @@ extension PluginManager {
         }
         reconciliationManifestAttempts = 0
 
-        var sawRetryableFailure = false
-
+        var sawTransientFailure = false
+        var retryRemaining = false
         for rejected in outdated {
             guard !Task.isCancelled else { return }
-
-            guard let lookupId = resolveRegistryId(for: rejected, manifest: manifest),
-                  let registryPlugin = manifest.plugins.first(where: { $0.id == lookupId }) else {
-                Self.logger.warning("Reconciliation: no registry entry for '\(rejected.name)'")
-                updateRejectedReason(url: rejected.url, reason: missingFromRegistryReason())
-                continue
-            }
-
-            let attempts = reconciliationAttempts[lookupId, default: 0]
-            guard attempts < ReconciliationConfig.maxAttempts else { continue }
-            reconciliationAttempts[lookupId] = attempts + 1
-
-            do {
-                let outcome = try await updateFromRegistry(
-                    registryPlugin,
-                    existingPluginLoaded: false,
-                    progress: { _ in }
-                )
-                switch outcome {
-                case .installed:
-                    removeFromRejected(url: rejected.url)
-                    reconciliationAttempts.removeValue(forKey: lookupId)
-                    refreshRegistryUpdateSet()
-                    Self.logger.info("Reconciliation: auto-updated '\(rejected.name)'")
-                case .staged:
-                    removeFromRejected(url: rejected.url)
-                    reconciliationAttempts.removeValue(forKey: lookupId)
-                    Self.logger.info("Reconciliation: staged '\(rejected.name)', will activate on disconnect")
+            if case .transient(let id) = await reconcile(rejected, manifest: manifest) {
+                sawTransientFailure = true
+                if reconciliationAttempts[id, default: 0] < ReconciliationConfig.maxAttempts {
+                    retryRemaining = true
                 }
-            } catch let error as PluginError where error.isPermanentReconciliationFailure {
-                reconciliationAttempts[lookupId] = ReconciliationConfig.maxAttempts
-                updateRejectedReason(url: rejected.url, reason: incompatibleBuildReason(for: registryPlugin))
-                Self.logger.error("Reconciliation: no compatible build for '\(rejected.name)'")
-            } catch {
-                sawRetryableFailure = true
-                Self.logger.error("Reconciliation: transient failure for '\(rejected.name)': \(error.localizedDescription)")
             }
         }
 
-        if sawRetryableFailure, hasReconciliationRetryRemaining(manifest: manifest) {
+        if Self.reconciliationShouldRetry(sawTransientFailure: sawTransientFailure, retryRemaining: retryRemaining) {
             scheduleReconciliationRetry()
             return
         }
@@ -95,10 +65,56 @@ extension PluginManager {
         emitReconciliationOutcome()
     }
 
-    private func hasReconciliationRetryRemaining(manifest: RegistryManifest) -> Bool {
-        rejectedPlugins.filter(\.isOutdated).contains { rejected in
-            guard let id = resolveRegistryId(for: rejected, manifest: manifest) else { return false }
-            return reconciliationAttempts[id, default: 0] < ReconciliationConfig.maxAttempts
+    static func reconciliationShouldRetry(sawTransientFailure: Bool, retryRemaining: Bool) -> Bool {
+        sawTransientFailure && retryRemaining
+    }
+
+    private enum ReconcileOutcome {
+        case resolved
+        case permanent
+        case missing
+        case transient(id: String)
+    }
+
+    private func reconcile(_ rejected: RejectedPlugin, manifest: RegistryManifest) async -> ReconcileOutcome {
+        guard let lookupId = resolveRegistryId(for: rejected, manifest: manifest),
+              let registryPlugin = manifest.plugins.first(where: { $0.id == lookupId }) else {
+            Self.logger.warning("Reconciliation: no registry entry for '\(rejected.name)'")
+            updateRejectedReason(url: rejected.url, reason: missingFromRegistryReason())
+            return .missing
+        }
+
+        let attempts = reconciliationAttempts[lookupId, default: 0]
+        guard attempts < ReconciliationConfig.maxAttempts else { return .permanent }
+        reconciliationAttempts[lookupId] = attempts + 1
+
+        do {
+            let outcome = try await updateFromRegistry(
+                registryPlugin,
+                existingPluginLoaded: false,
+                progress: { _ in }
+            )
+            switch outcome {
+            case .installed:
+                refreshRegistryUpdateSet()
+                Self.logger.info("Reconciliation: auto-updated '\(rejected.name)'")
+            case .staged:
+                Self.logger.info("Reconciliation: staged '\(rejected.name)', will activate on disconnect")
+            }
+            removeFromRejected(url: rejected.url)
+            reconciliationAttempts.removeValue(forKey: lookupId)
+            return .resolved
+        } catch let error as PluginError where error.isPermanentReconciliationFailure {
+            reconciliationAttempts[lookupId] = ReconciliationConfig.maxAttempts
+            updateRejectedReason(url: rejected.url, reason: incompatibleBuildReason(for: registryPlugin))
+            Self.logger.error("Reconciliation: no compatible build for '\(rejected.name)'")
+            return .permanent
+        } catch {
+            Self.logger.error("Reconciliation: transient failure for '\(rejected.name)': \(error.localizedDescription)")
+            if reconciliationAttempts[lookupId, default: 0] >= ReconciliationConfig.maxAttempts {
+                updateRejectedReason(url: rejected.url, reason: temporaryFailureReason())
+            }
+            return .transient(id: lookupId)
         }
     }
 
@@ -141,6 +157,20 @@ extension PluginManager {
 
     private func missingFromRegistryReason() -> String {
         String(localized: "This plugin is not in the registry, so it can't be updated automatically.")
+    }
+
+    private func registryUnreachableReason() -> String {
+        String(localized: "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro.")
+    }
+
+    private func temporaryFailureReason() -> String {
+        String(localized: "Updating this plugin didn't finish. TablePro will try again the next time it launches.")
+    }
+
+    private func applyReason(_ reason: String, to plugins: [RejectedPlugin]) {
+        for plugin in plugins {
+            updateRejectedReason(url: plugin.url, reason: reason)
+        }
     }
 
     func resolveRegistryId(for rejected: RejectedPlugin, manifest: RegistryManifest) -> String? {

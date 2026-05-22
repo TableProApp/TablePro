@@ -97,4 +97,12 @@ struct PluginManagerReconciliationTests {
         #expect(!PluginError.checksumMismatch.isPermanentReconciliationFailure)
         #expect(!PluginError.installFailed("io error").isPermanentReconciliationFailure)
     }
+
+    @Test("reconciliation retries only when a transient failure still has attempts left")
+    func reconciliationRetryDecision() {
+        #expect(PluginManager.reconciliationShouldRetry(sawTransientFailure: true, retryRemaining: true))
+        #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: true, retryRemaining: false))
+        #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: false, retryRemaining: true))
+        #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: false, retryRemaining: false))
+    }
 }
