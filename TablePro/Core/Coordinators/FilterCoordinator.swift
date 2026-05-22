@@ -212,14 +212,33 @@ final class FilterCoordinator {
         }
     }
 
+    enum RemoveFilterOutcome: Equatable {
+        case noChange
+        case clear
+        case reapply([TableFilter])
+    }
+
+    static func removeFilterOutcome(
+        removing filter: TableFilter,
+        from appliedFilters: [TableFilter]
+    ) -> RemoveFilterOutcome {
+        guard appliedFilters.contains(where: { $0.id == filter.id }) else { return .noChange }
+        let remaining = appliedFilters.filter { $0.id != filter.id }
+        return remaining.isEmpty ? .clear : .reapply(remaining)
+    }
+
     func removeFilterAndReload(_ filter: TableFilter) {
-        let wasApplied = selectedTabFilterState.appliedFilters.contains { $0.id == filter.id }
+        let outcome = Self.removeFilterOutcome(
+            removing: filter,
+            from: selectedTabFilterState.appliedFilters
+        )
         removeFilter(filter)
-        guard wasApplied else { return }
-        let remaining = selectedTabFilterState.appliedFilters
-        if remaining.isEmpty {
+        switch outcome {
+        case .noChange:
+            break
+        case .clear:
             clearFiltersAndReload()
-        } else {
+        case .reapply(let remaining):
             applyFilters(remaining)
         }
     }

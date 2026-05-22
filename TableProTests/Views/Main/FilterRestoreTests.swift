@@ -63,4 +63,26 @@ struct FilterRestoreTests {
         #expect(result.appliedFilters.isEmpty)
         #expect(!result.isVisible)
     }
+
+    @Test("Removing a filter that isn't applied changes nothing")
+    func removeUnappliedFilterIsNoChange() {
+        let applied = TestFixtures.makeTableFilter(column: "email")
+        let other = TestFixtures.makeTableFilter(column: "name")
+        #expect(FilterCoordinator.removeFilterOutcome(removing: other, from: [applied]) == .noChange)
+    }
+
+    @Test("Removing the only applied filter clears")
+    func removeOnlyAppliedFilterClears() {
+        let only = TestFixtures.makeTableFilter(column: "email")
+        #expect(FilterCoordinator.removeFilterOutcome(removing: only, from: [only]) == .clear)
+    }
+
+    @Test("Removing one of several applied filters reapplies the rest")
+    func removeOneOfSeveralReappliesRemainder() {
+        let first = TestFixtures.makeTableFilter(column: "email")
+        let second = TestFixtures.makeTableFilter(column: "name")
+        #expect(
+            FilterCoordinator.removeFilterOutcome(removing: first, from: [first, second]) == .reapply([second])
+        )
+    }
 }
