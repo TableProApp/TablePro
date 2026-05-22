@@ -3,6 +3,33 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.43.3</title>
+            <pubDate>Fri, 22 May 2026 08:28:56 +0000</pubDate>
+            <sparkle:version>89</sparkle:version>
+            <sparkle:shortVersionString>0.43.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Fixed</h3>
+<ul>
+<li>Fixed a crash when adding a row while a cell editor or value viewer was open (#1378)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.43.3/TablePro-0.43.3-arm64.zip" length="18067071" type="application/octet-stream" sparkle:edSignature="IUr2nMUqpRT2yaifFxRaQQfe1owlHUzbUiE0W88EG5God8FFK9wnJEEVRPHJnentpDUHQZhPZBqmiT7tDJRRBA=="/>
+        </item>
+        <item>
+            <title>0.43.3</title>
+            <pubDate>Fri, 22 May 2026 08:28:56 +0000</pubDate>
+            <sparkle:version>89</sparkle:version>
+            <sparkle:shortVersionString>0.43.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Fixed</h3>
+<ul>
+<li>Fixed a crash when adding a row while a cell editor or value viewer was open (#1378)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.43.3/TablePro-0.43.3-x86_64.zip" length="19044179" type="application/octet-stream" sparkle:edSignature="g3Y6MKhJ/nZBj+Gb1tK1OKqOZhpAdiTfEh/adS4m+q6deSdqtDTLLhFxTpHNNt54+B0XjrpKgNKi54ruAQLsDg=="/>
+        </item>
+        <item>
             <title>0.43.2</title>
             <pubDate>Fri, 22 May 2026 03:54:07 +0000</pubDate>
             <sparkle:version>88</sparkle:version>

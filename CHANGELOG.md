@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Import connections and passwords from DataGrip, including SSH tunnels and SSL settings. The source app doesn't need to be running. (#1374)
 
+## [0.43.3] - 2026-05-22
+
+### Fixed
+
+- Fixed a crash when adding a row while a cell editor or value viewer was open (#1378)
+
 ## [0.43.2] - 2026-05-22
 
 ### Changed
@@ -1947,7 +1953,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.43.2...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.43.3...HEAD
+[0.43.3]: https://github.com/TableProApp/TablePro/compare/v0.43.2...v0.43.3
 [0.43.2]: https://github.com/TableProApp/TablePro/compare/v0.43.1...v0.43.2
 [0.43.1]: https://github.com/TableProApp/TablePro/compare/v0.43.0...v0.43.1
 [0.43.0]: https://github.com/TableProApp/TablePro/compare/v0.42.0...v0.43.0

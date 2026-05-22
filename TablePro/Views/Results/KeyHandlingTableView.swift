@@ -3,8 +3,7 @@ import AppKit
 final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
 
-    private var isRaisingOverlayEditor = false
-    private var isRaisingOverlayViewer = false
+    private var isRaisingOverlay = false
 
     override var acceptsFirstResponder: Bool {
         true
@@ -12,21 +11,21 @@ final class KeyHandlingTableView: NSTableView {
 
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
-        raiseOverlayIfNeeded(coordinator?.overlayEditor, subview: subview, flag: &isRaisingOverlayEditor)
-        raiseOverlayIfNeeded(coordinator?.overlayViewer, subview: subview, flag: &isRaisingOverlayViewer)
+        guard !isRaisingOverlay else { return }
+        isRaisingOverlay = true
+        defer { isRaisingOverlay = false }
+        raiseOverlayIfNeeded(coordinator?.overlayEditor, subview: subview)
+        raiseOverlayIfNeeded(coordinator?.overlayViewer, subview: subview)
     }
 
-    private func raiseOverlayIfNeeded(_ overlay: CellOverlayBase?, subview: NSView, flag: inout Bool) {
-        guard !flag else { return }
+    private func raiseOverlayIfNeeded(_ overlay: CellOverlayBase?, subview: NSView) {
         guard let overlay,
               overlay.isActive,
               let container = overlay.containerView,
               container !== subview,
               container.superview === self,
               subviews.last !== container else { return }
-        flag = true
         overlay.raiseToFront()
-        flag = false
     }
 
     var selection = TableSelection() {
