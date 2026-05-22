@@ -29,6 +29,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate registry update script
+        run: python3 .github/scripts/test_update_registry.py
+
       - name: Read currentPluginKitVersion
         id: pkv
         run: |
