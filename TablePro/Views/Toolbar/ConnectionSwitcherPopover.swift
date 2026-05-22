@@ -18,6 +18,15 @@ enum ConnectionSwitcherFilter {
     }
 }
 
+enum ConnectionSwitcherSelection {
+    static func moved(in ids: [UUID], from current: UUID?, by offset: Int) -> UUID? {
+        guard !ids.isEmpty else { return nil }
+        let currentIndex = current.flatMap { ids.firstIndex(of: $0) } ?? 0
+        let newIndex = max(0, min(ids.count - 1, currentIndex + offset))
+        return ids[newIndex]
+    }
+}
+
 struct ConnectionSwitcherPopover: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -81,6 +90,10 @@ struct ConnectionSwitcherPopover: View {
             let ids = orderedIds
             if let id = selectedConnectionId, ids.contains(id) { return }
             selectedConnectionId = ids.first
+        }
+        .onKeyPress(.return) {
+            activateSelected()
+            return .handled
         }
     }
 
@@ -281,11 +294,9 @@ struct ConnectionSwitcherPopover: View {
     // MARK: - Selection
 
     private func moveSelection(by offset: Int) {
-        let ids = orderedIds
-        guard !ids.isEmpty else { return }
-        let currentIndex = selectedConnectionId.flatMap { ids.firstIndex(of: $0) } ?? 0
-        let newIndex = max(0, min(ids.count - 1, currentIndex + offset))
-        selectedConnectionId = ids[newIndex]
+        if let next = ConnectionSwitcherSelection.moved(in: orderedIds, from: selectedConnectionId, by: offset) {
+            selectedConnectionId = next
+        }
     }
 
     private func activateSelected() {
