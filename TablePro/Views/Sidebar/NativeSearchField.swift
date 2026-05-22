@@ -8,6 +8,13 @@
 import AppKit
 import SwiftUI
 
+private final class IntrinsicHeightSearchField: NSSearchField {
+    override var intrinsicContentSize: NSSize {
+        let cellHeight = cell?.cellSize.height ?? super.intrinsicContentSize.height
+        return NSSize(width: NSView.noIntrinsicMetric, height: cellHeight)
+    }
+}
+
 struct NativeSearchField: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
@@ -20,7 +27,7 @@ struct NativeSearchField: NSViewRepresentable {
     var maxWidth: CGFloat?
 
     func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField()
+        let field = IntrinsicHeightSearchField()
         field.placeholderString = placeholder
         field.delegate = context.coordinator
         field.controlSize = controlSize
@@ -43,6 +50,10 @@ struct NativeSearchField: NSViewRepresentable {
     func updateNSView(_ field: NSSearchField, context: Context) {
         if field.stringValue != text {
             field.stringValue = text
+        }
+        if field.controlSize != controlSize {
+            field.controlSize = controlSize
+            field.invalidateIntrinsicContentSize()
         }
         field.placeholderString = placeholder
         context.coordinator.onMoveUp = onMoveUp
