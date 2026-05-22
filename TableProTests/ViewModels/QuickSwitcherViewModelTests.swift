@@ -221,11 +221,29 @@ struct QuickSwitcherViewModelTests {
         let connectionId = UUID()
         let items = sampleItems()
         let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
-        let baseline = vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9)
+        let baseline = vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100)
         vm.recordSelection(items[0])
 
         let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
         vm2.allItems = items
-        #expect(vm2.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == baseline + 28)
+        #expect(vm2.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100) == baseline + 28)
+    }
+
+    @Test("listHeight clamps to the cap when sections and rows overflow")
+    func listHeightClampsWithHeaders() {
+        var items: [QuickSwitcherItem] = []
+        for index in 0..<30 {
+            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
+            items.append(QuickSwitcherItem(id: "v\(index)", name: "view_\(index)", kind: .view, subtitle: "View"))
+        }
+        let vm = makeViewModel(items: items)
+        #expect(vm.groups.filter { $0.header != nil }.count >= 2)
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
+    }
+
+    @Test("isLoading is true until the first load finishes")
+    func isLoadingStartsTrue() {
+        let vm = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: makeDefaults())
+        #expect(vm.isLoading)
     }
 }
