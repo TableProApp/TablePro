@@ -40,6 +40,17 @@ extension MainContentView {
 
         switch payload.intent {
         case .openContent:
+            if let selectedTab = tabManager.selectedTab,
+                selectedTab.tabType == .table,
+                let tableName = selectedTab.tableContext.tableName
+            {
+                coordinator.restoreLastHiddenColumnsForTable(tableName)
+                if selectedTab.filterState.appliedFilters.isEmpty {
+                    coordinator.restoreFiltersForTable(tableName)
+                } else if let tabIndex = tabManager.selectedTabIndex {
+                    coordinator.rebuildTableQuery(at: tabIndex)
+                }
+            }
             if payload.skipAutoExecute {
                 _ = await schemaLoad
                 return
@@ -56,22 +67,6 @@ extension MainContentView {
                     {
                         await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
                     } else {
-                        if !selectedTab.filterState.appliedFilters.isEmpty,
-                            let tableName = selectedTab.tableContext.tableName,
-                            let tabIndex = tabManager.selectedTabIndex
-                        {
-                            let filteredQuery = coordinator.queryBuilder.buildFilteredQuery(
-                                tableName: tableName,
-                                filters: selectedTab.filterState.appliedFilters,
-                                columns: [],
-                                limit: selectedTab.pagination.pageSize,
-                                offset: selectedTab.pagination.currentOffset
-                            )
-                            tabManager.mutate(at: tabIndex) { $0.content.query = filteredQuery }
-                        }
-                        if let tableName = selectedTab.tableContext.tableName {
-                            coordinator.restoreLastHiddenColumnsForTable(tableName)
-                        }
                         coordinator.executeTableTabQueryDirectly()
                     }
                 } else {
@@ -150,6 +145,10 @@ extension MainContentView {
             if firstTab.tabType == .table,
                 !firstTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
+                if let tableName = firstTab.tableContext.tableName {
+                    coordinator.restoreLastHiddenColumnsForTable(tableName)
+                    coordinator.restoreFiltersForTable(tableName)
+                }
                 if let session = DatabaseManager.shared.activeSessions[connection.id],
                     session.isConnected
                 {
@@ -158,9 +157,6 @@ extension MainContentView {
                     {
                         Task { await coordinator.switchDatabase(to: firstTab.tableContext.databaseName) }
                     } else {
-                        if let tableName = firstTab.tableContext.tableName {
-                            coordinator.restoreLastHiddenColumnsForTable(tableName)
-                        }
                         coordinator.executeTableTabQueryDirectly()
                     }
                 } else {

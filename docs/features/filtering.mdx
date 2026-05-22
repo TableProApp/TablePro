@@ -9,7 +9,7 @@ Press `Cmd+F` while viewing a table to open the filter panel. Type a raw SQL WHE
 
 Each row has a column picker, operator, value field, and **+**/**−** buttons. Multiple rows combine with **AND** or **OR** (toggle in the header). Click **Apply** or press `Enter` to activate. Click **Unset** to clear all.
 
-Filters are per-tab. Tables with active filters open in a new tab when you click another table.
+When you reopen a table, TablePro restores the filter you last applied to it, including after you quit and relaunch. Filters are remembered per connection. Tables with active filters open in a new tab when you click another table.
 
 ## Operators
 
@@ -60,3 +60,5 @@ Save and load filter configurations via the **⋯** menu in the header.
 | Default Column | Raw SQL, Primary Key, Any Column |
 | Default Operator | Equal, Contains |
 | Panel State | Always Hide, Always Show, Restore Last Filter |
+
+**Panel State** controls what happens when you reopen a table. **Restore Last Filter** (the default) brings back the filter you last applied. **Always Hide** reopens tables unfiltered with the panel closed. **Always Show** keeps the filter panel visible even when no filter is set.

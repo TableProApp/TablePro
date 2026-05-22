@@ -66,7 +66,7 @@ struct FilterSettings: Codable, Equatable {
     init(
         defaultColumn: FilterDefaultColumn = .rawSQL,
         defaultOperator: FilterDefaultOperator = .equal,
-        panelState: FilterPanelDefaultState = .alwaysHide
+        panelState: FilterPanelDefaultState = .restoreLast
     ) {
         self.defaultColumn = defaultColumn
         self.defaultOperator = defaultOperator
@@ -82,9 +82,10 @@ final class FilterSettingsStorage {
     private static let legacyLastFiltersKeyPrefix = "com.TablePro.filter.lastFilters."
     private static let legacyKnownFilterKeysKey = "com.TablePro.filter.knownFilterKeys"
     private static let migrationCompleteKey = "com.TablePro.filterStateMigrationComplete"
+    private static let compositeKeyMigrationKey = "com.TablePro.filterStateCompositeKeyMigrationComplete"
+    private static let settingsKey = "com.TablePro.filter.settings"
 
-    private let settingsKey = "com.TablePro.filter.settings"
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
 
     private let filterStateDirectory: URL
     private let encoder = JSONEncoder()
@@ -93,8 +94,13 @@ final class FilterSettingsStorage {
     private var cachedSettings: FilterSettings?
     private var lastFiltersCache: [String: [TableFilter]] = [:]
 
-    private init() {
-        filterStateDirectory = Self.resolvedFilterStateDirectory()
+    private convenience init() {
+        self.init(filterStateDirectory: Self.resolvedFilterStateDirectory(), defaults: .standard)
+    }
+
+    init(filterStateDirectory: URL, defaults: UserDefaults) {
+        self.filterStateDirectory = filterStateDirectory
+        self.defaults = defaults
 
         do {
             try FileManager.default.createDirectory(
@@ -105,13 +111,14 @@ final class FilterSettingsStorage {
             Self.logger.error("Failed to create filter state directory: \(error.localizedDescription)")
         }
 
-        Self.performMigrationIfNeeded(filterStateDirectory: filterStateDirectory)
+        Self.performMigrationIfNeeded(filterStateDirectory: filterStateDirectory, defaults: defaults)
+        Self.performCompositeKeyMigrationIfNeeded(filterStateDirectory: filterStateDirectory, defaults: defaults)
     }
 
     func loadSettings() -> FilterSettings {
         if let cached = cachedSettings { return cached }
 
-        guard let data = defaults.data(forKey: settingsKey) else {
+        guard let data = defaults.data(forKey: Self.settingsKey) else {
             let defaultSettings = FilterSettings()
             cachedSettings = defaultSettings
             return defaultSettings
@@ -133,58 +140,89 @@ final class FilterSettingsStorage {
         cachedSettings = settings
         do {
             let data = try encoder.encode(settings)
-            defaults.set(data, forKey: settingsKey)
+            defaults.set(data, forKey: Self.settingsKey)
         } catch {
             Self.logger.error("Failed to encode filter settings: \(error)")
         }
     }
 
-    func loadLastFilters(for tableName: String) -> [TableFilter] {
-        let sanitized = sanitizeTableName(tableName)
-        if let cached = lastFiltersCache[sanitized] { return cached }
+    func loadLastFilters(
+        for tableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) -> [TableFilter] {
+        let key = compositeKey(
+            tableName: tableName,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName
+        )
+        if let cached = lastFiltersCache[key] { return cached }
 
-        let fileURL = fileURL(forSanitizedName: sanitized)
+        let fileURL = fileURL(forKey: key)
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            lastFiltersCache[sanitized] = []
+            lastFiltersCache[key] = []
             return []
         }
 
         do {
             let data = try Data(contentsOf: fileURL)
             let filters = try decoder.decode([TableFilter].self, from: data)
-            lastFiltersCache[sanitized] = filters
+            lastFiltersCache[key] = filters
             return filters
         } catch {
             Self.logger.error("Failed to load last filters for \(tableName): \(error)")
-            lastFiltersCache[sanitized] = []
+            lastFiltersCache[key] = []
             return []
         }
     }
 
-    func saveLastFilters(_ filters: [TableFilter], for tableName: String) {
-        let sanitized = sanitizeTableName(tableName)
-        let fileURL = fileURL(forSanitizedName: sanitized)
+    func saveLastFilters(
+        _ filters: [TableFilter],
+        for tableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) {
+        let key = compositeKey(
+            tableName: tableName,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName
+        )
+        let fileURL = fileURL(forKey: key)
 
         guard !filters.isEmpty else {
             removeFile(at: fileURL, label: tableName)
-            lastFiltersCache.removeValue(forKey: sanitized)
+            lastFiltersCache.removeValue(forKey: key)
             return
         }
 
         do {
             let data = try encoder.encode(filters)
             try data.write(to: fileURL, options: .atomic)
-            lastFiltersCache[sanitized] = filters
+            lastFiltersCache[key] = filters
         } catch {
             Self.logger.error("Failed to save last filters for \(tableName): \(error)")
         }
     }
 
-    func clearLastFilters(for tableName: String) {
-        let sanitized = sanitizeTableName(tableName)
-        let fileURL = fileURL(forSanitizedName: sanitized)
+    func clearLastFilters(
+        for tableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) {
+        let key = compositeKey(
+            tableName: tableName,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            schemaName: schemaName
+        )
+        let fileURL = fileURL(forKey: key)
         removeFile(at: fileURL, label: tableName)
-        lastFiltersCache.removeValue(forKey: sanitized)
+        lastFiltersCache.removeValue(forKey: key)
     }
 
     func clearAllLastFilters() {
@@ -200,8 +238,8 @@ final class FilterSettingsStorage {
         lastFiltersCache.removeAll()
     }
 
-    private func fileURL(forSanitizedName sanitized: String) -> URL {
-        filterStateDirectory.appendingPathComponent("\(sanitized).json")
+    private func fileURL(forKey key: String) -> URL {
+        filterStateDirectory.appendingPathComponent("\(key).json")
     }
 
     private func removeFile(at fileURL: URL, label: String) {
@@ -213,8 +251,15 @@ final class FilterSettingsStorage {
         }
     }
 
-    private func sanitizeTableName(_ tableName: String) -> String {
-        tableName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? tableName
+    private func compositeKey(
+        tableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) -> String {
+        [connectionId.uuidString, databaseName, schemaName ?? "", tableName]
+            .map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0 }
+            .joined(separator: ".")
     }
 
     private static func resolvedFilterStateDirectory() -> URL {
@@ -227,8 +272,7 @@ final class FilterSettingsStorage {
             .appendingPathComponent("FilterState", isDirectory: true)
     }
 
-    private static func performMigrationIfNeeded(filterStateDirectory: URL) {
-        let defaults = UserDefaults.standard
+    private static func performMigrationIfNeeded(filterStateDirectory: URL, defaults: UserDefaults) {
         guard !defaults.bool(forKey: migrationCompleteKey) else { return }
 
         let allKeys = defaults.dictionaryRepresentation().keys
@@ -259,5 +303,30 @@ final class FilterSettingsStorage {
         if migrated > 0 {
             logger.trace("Migrated \(migrated) per-table filter entries to file storage")
         }
+    }
+
+    private static func performCompositeKeyMigrationIfNeeded(filterStateDirectory: URL, defaults: UserDefaults) {
+        guard !defaults.bool(forKey: compositeKeyMigrationKey) else { return }
+
+        let fileManager = FileManager.default
+        if let files = try? fileManager.contentsOfDirectory(
+            at: filterStateDirectory,
+            includingPropertiesForKeys: nil
+        ) {
+            for file in files where file.pathExtension == "json" {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+
+        if let data = defaults.data(forKey: settingsKey),
+           var settings = try? JSONDecoder().decode(FilterSettings.self, from: data),
+           settings.panelState == .alwaysHide {
+            settings.panelState = .restoreLast
+            if let upgraded = try? JSONEncoder().encode(settings) {
+                defaults.set(upgraded, forKey: settingsKey)
+            }
+        }
+
+        defaults.set(true, forKey: compositeKeyMigrationKey)
     }
 }

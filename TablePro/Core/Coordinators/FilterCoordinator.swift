@@ -323,7 +323,10 @@ final class FilterCoordinator {
               let tableName = tab.tableContext.tableName else { return }
         FilterSettingsStorage.shared.saveLastFilters(
             tab.filterState.appliedFilters,
-            for: tableName
+            for: tableName,
+            connectionId: parent.connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName
         )
     }
 
@@ -331,24 +334,44 @@ final class FilterCoordinator {
         guard let tab = parent.tabManager.selectedTab else { return }
         FilterSettingsStorage.shared.saveLastFilters(
             tab.filterState.appliedFilters,
-            for: tableName
+            for: tableName,
+            connectionId: parent.connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName
         )
     }
 
     func restoreLastFilters(for tableName: String) {
         let settings = FilterSettingsStorage.shared.loadSettings()
+        guard settings.panelState != .alwaysHide,
+              let tab = parent.tabManager.selectedTab else { return }
+
+        let restored = FilterSettingsStorage.shared.loadLastFilters(
+            for: tableName,
+            connectionId: parent.connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName
+        )
         mutateSelectedTabFilterState { state in
-            if settings.panelState == .restoreLast {
-                let restored = FilterSettingsStorage.shared.loadLastFilters(for: tableName)
-                if !restored.isEmpty {
-                    state.filters = restored
-                    state.appliedFilters = restored
-                }
-            }
-            if settings.panelState == .alwaysShow {
-                state.isVisible = true
-            }
+            state = Self.resolvedRestoredState(panelState: settings.panelState, saved: restored, current: state)
         }
+    }
+
+    static func resolvedRestoredState(
+        panelState: FilterPanelDefaultState,
+        saved: [TableFilter],
+        current: TabFilterState
+    ) -> TabFilterState {
+        guard panelState != .alwaysHide else { return current }
+        var state = current
+        if !saved.isEmpty {
+            state.filters = saved
+            state.appliedFilters = saved
+            state.isVisible = true
+        } else if panelState == .alwaysShow {
+            state.isVisible = true
+        }
+        return state
     }
 
     func clearFilterState() {
