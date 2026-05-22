@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Filtering a table now updates the row count and page count in the bottom-right to match the filtered result, instead of showing the whole-table totals.
 - Importing connections from TablePlus brings over saved passwords again. A recent release looked under the wrong keychain name, so connections imported with no passwords and no warning.
 - Importing an SSH connection from TablePlus no longer fills in a fake private key path such as `~/.ssh/Import a private key...` when no key was selected. Empty TLS certificate paths are skipped too.
 - Importing from DBeaver no longer shows an unnecessary keychain permission warning. DBeaver stores passwords in its own file, so macOS never prompts.

@@ -291,6 +291,20 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return Int(count)
     }
 
+    func fetchFilteredRowCount(
+        table: String,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String
+    ) async throws -> Int? {
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+
+        let filterJson = MongoDBQueryBuilder().buildFilterDocument(from: filters, logicMode: logicMode)
+        let count = try await conn.countDocuments(database: currentDb, collection: table, filter: filterJson)
+        return Int(count)
+    }
+
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected

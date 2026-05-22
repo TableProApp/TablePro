@@ -66,6 +66,8 @@ final class FilterCoordinator {
             guard let self, confirmed else { return }
             guard capturedTabIndex < parent.tabManager.tabs.count else { return }
 
+            parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
+
             let tab = parent.tabManager.tabs[capturedTabIndex]
             let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
             let newQuery = parent.queryBuilder.buildBaseQuery(

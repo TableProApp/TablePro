@@ -112,6 +112,12 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
         limit: Int,
         offset: Int
     ) -> String?
+    // Filtered row count (optional, for NoSQL plugins; SQL plugins use COUNT(*) WHERE)
+    func fetchFilteredRowCount(
+        table: String,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String
+    ) async throws -> Int?
 
     // Statement generation (optional, for NoSQL plugins)
     func generateStatements(
@@ -299,6 +305,11 @@ public extension PluginDatabaseDriver {
         limit: Int,
         offset: Int
     ) -> String? { nil }
+    func fetchFilteredRowCount(
+        table: String,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String
+    ) async throws -> Int? { nil }
 
     func generateStatements(
         table: String,
