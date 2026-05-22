@@ -194,11 +194,14 @@ extension PluginManager {
         let destURL = userPluginsDir.appendingPathComponent(url.lastPathComponent)
         let replaceId: String? = plugins.contains(where: { $0.id == bundleId }) ? bundleId : nil
 
+        let loadURL: URL
         if url.standardizedFileURL != destURL.standardizedFileURL {
-            let finalURL = try PluginInstaller.atomicReplace(stagedBundleURL: url, destURL: destURL)
-            return try await loadPluginAsync(at: finalURL, source: .userInstalled, replacingBundleId: replaceId)
+            loadURL = try PluginInstaller.atomicReplace(stagedBundleURL: url, destURL: destURL)
+        } else {
+            loadURL = destURL
         }
-        return try await loadPluginAsync(at: destURL, source: .userInstalled, replacingBundleId: replaceId)
+        PluginInstaller.stripQuarantine(at: loadURL)
+        return try await loadPluginAsync(at: loadURL, source: .userInstalled, replacingBundleId: replaceId)
     }
 
     private func installLocalZip(from url: URL) async throws -> PluginEntry {

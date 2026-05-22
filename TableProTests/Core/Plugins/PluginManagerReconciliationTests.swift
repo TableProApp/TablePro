@@ -82,4 +82,19 @@ struct PluginManagerReconciliationTests {
         pm.removeFromRejected(url: url)
         #expect(!pm.rejectedPlugins.contains { $0.url == url })
     }
+
+    @Test("incompatible-build errors are permanent reconciliation failures")
+    func permanentFailuresClassified() {
+        #expect(PluginError.noCompatibleBinary.isPermanentReconciliationFailure)
+        #expect(PluginError.incompatibleVersion(required: 15, current: 14).isPermanentReconciliationFailure)
+        #expect(PluginError.incompatibleWithCurrentApp(minimumRequired: "0.44.0").isPermanentReconciliationFailure)
+        #expect(PluginError.appVersionTooOld(minimumRequired: "0.44.0", currentApp: "0.43.3").isPermanentReconciliationFailure)
+    }
+
+    @Test("transient errors are retried, not surfaced as permanent failures")
+    func transientFailuresNotPermanent() {
+        #expect(!PluginError.downloadFailed("timeout").isPermanentReconciliationFailure)
+        #expect(!PluginError.checksumMismatch.isPermanentReconciliationFailure)
+        #expect(!PluginError.installFailed("io error").isPermanentReconciliationFailure)
+    }
 }

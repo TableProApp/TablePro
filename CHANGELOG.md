@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Import connections and passwords from DataGrip, including SSH tunnels and SSL settings. The source app doesn't need to be running. (#1374)
 
+### Fixed
+
+- Plugins left incompatible after a TablePro update now update quietly in the background instead of showing a premature "could not be loaded" alert. You are only notified when no compatible version exists yet, and the message tells you what to do. (#1322)
+- A plugin you download and install by hand is no longer blocked by macOS Gatekeeper once its signature is verified. (#1322)
+
 ## [0.43.3] - 2026-05-22
 
 ### Fixed

@@ -24,7 +24,7 @@ extension PluginManager {
     func runReconciliationLoop() async {
         let outdated = rejectedPlugins.filter(\.isOutdated)
         guard !outdated.isEmpty else {
-            AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+            emitReconciliationOutcome()
             refreshRegistryUpdateSet()
             return
         }
@@ -32,10 +32,19 @@ extension PluginManager {
         await RegistryClient.shared.fetchManifest()
         refreshRegistryUpdateSet()
         guard let manifest = RegistryClient.shared.manifest else {
-            Self.logger.warning("Reconciliation skipped: registry manifest unavailable")
-            AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+            reconciliationManifestAttempts += 1
+            guard reconciliationManifestAttempts < ReconciliationConfig.maxAttempts else {
+                Self.logger.error("Reconciliation gave up: registry manifest unavailable")
+                emitReconciliationOutcome()
+                return
+            }
+            Self.logger.warning("Reconciliation deferred: registry manifest unavailable, will retry")
+            scheduleReconciliationRetry()
             return
         }
+        reconciliationManifestAttempts = 0
+
+        var sawRetryableFailure = false
 
         for rejected in outdated {
             guard !Task.isCancelled else { return }
@@ -43,15 +52,12 @@ extension PluginManager {
             guard let lookupId = resolveRegistryId(for: rejected, manifest: manifest),
                   let registryPlugin = manifest.plugins.first(where: { $0.id == lookupId }) else {
                 Self.logger.warning("Reconciliation: no registry entry for '\(rejected.name)'")
+                updateRejectedReason(url: rejected.url, reason: missingFromRegistryReason())
                 continue
             }
 
             let attempts = reconciliationAttempts[lookupId, default: 0]
-            guard attempts < ReconciliationConfig.maxAttempts else {
-                Self.logger.warning("Reconciliation: max attempts reached for '\(rejected.name)'")
-                continue
-            }
-
+            guard attempts < ReconciliationConfig.maxAttempts else { continue }
             reconciliationAttempts[lookupId] = attempts + 1
 
             do {
@@ -67,31 +73,74 @@ extension PluginManager {
                     refreshRegistryUpdateSet()
                     Self.logger.info("Reconciliation: auto-updated '\(rejected.name)'")
                 case .staged:
-                    Self.logger.info("Reconciliation: staged update for '\(rejected.name)' (live connections)")
+                    removeFromRejected(url: rejected.url)
+                    reconciliationAttempts.removeValue(forKey: lookupId)
+                    Self.logger.info("Reconciliation: staged '\(rejected.name)', will activate on disconnect")
                 }
+            } catch let error as PluginError where error.isPermanentReconciliationFailure {
+                reconciliationAttempts[lookupId] = ReconciliationConfig.maxAttempts
+                updateRejectedReason(url: rejected.url, reason: incompatibleBuildReason(for: registryPlugin))
+                Self.logger.error("Reconciliation: no compatible build for '\(rejected.name)'")
             } catch {
-                Self.logger.error("Reconciliation: update failed for '\(rejected.name)': \(error.localizedDescription)")
+                sawRetryableFailure = true
+                Self.logger.error("Reconciliation: transient failure for '\(rejected.name)': \(error.localizedDescription)")
             }
         }
 
-        AppEvents.shared.pluginsRejected.send(rejectedPlugins)
-        scheduleReconciliationRetryIfNeeded(manifest: manifest)
+        if sawRetryableFailure, hasReconciliationRetryRemaining(manifest: manifest) {
+            scheduleReconciliationRetry()
+            return
+        }
+
+        emitReconciliationOutcome()
     }
 
-    private func scheduleReconciliationRetryIfNeeded(manifest: RegistryManifest) {
-        let retryable = rejectedPlugins.filter(\.isOutdated).contains { rejected in
+    private func hasReconciliationRetryRemaining(manifest: RegistryManifest) -> Bool {
+        rejectedPlugins.filter(\.isOutdated).contains { rejected in
             guard let id = resolveRegistryId(for: rejected, manifest: manifest) else { return false }
             return reconciliationAttempts[id, default: 0] < ReconciliationConfig.maxAttempts
         }
-        guard retryable else { return }
+    }
 
-        let round = reconciliationAttempts.values.max() ?? 1
+    private func scheduleReconciliationRetry() {
+        let round = max(reconciliationAttempts.values.max() ?? 0, reconciliationManifestAttempts)
         let delay = round <= 1 ? ReconciliationConfig.firstRetryDelay : ReconciliationConfig.secondRetryDelay
         reconciliationTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             await self?.runReconciliationLoop()
         }
+    }
+
+    private func emitReconciliationOutcome() {
+        AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+    }
+
+    private func updateRejectedReason(url: URL, reason: String) {
+        guard let index = rejectedPlugins.firstIndex(where: { $0.url == url }) else { return }
+        let existing = rejectedPlugins[index]
+        rejectedPlugins[index] = RejectedPlugin(
+            url: existing.url,
+            bundleId: existing.bundleId,
+            registryId: existing.registryId,
+            name: existing.name,
+            reason: reason,
+            isOutdated: existing.isOutdated
+        )
+    }
+
+    private func incompatibleBuildReason(for registryPlugin: RegistryPlugin) -> String {
+        let availableKits = registryPlugin.binaries
+            .filter { $0.architecture == .current }
+            .compactMap(\.pluginKitVersion)
+        if availableKits.contains(where: { $0 > Self.currentPluginKitVersion }) {
+            return String(localized: "A newer version of TablePro is required for this plugin. Update TablePro to keep using it.")
+        }
+        return String(localized: "No compatible build is available yet. This plugin will update automatically once one is published.")
+    }
+
+    private func missingFromRegistryReason() -> String {
+        String(localized: "This plugin is not in the registry, so it can't be updated automatically.")
     }
 
     func resolveRegistryId(for rejected: RejectedPlugin, manifest: RegistryManifest) -> String? {

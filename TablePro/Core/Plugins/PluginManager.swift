@@ -112,6 +112,7 @@ final class PluginManager {
 
     @ObservationIgnored internal var reconciliationTask: Task<Void, Never>?
     @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
+    @ObservationIgnored internal var reconciliationManifestAttempts = 0
     @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
     @ObservationIgnored internal var installsInFlight: Set<String> = []
 
