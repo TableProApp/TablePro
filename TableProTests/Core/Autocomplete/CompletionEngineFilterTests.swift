@@ -92,7 +92,8 @@ struct CompletionEngineFilterTests {
             "users": [
                 TestFixtures.makeColumnInfo(name: "id"),
                 TestFixtures.makeColumnInfo(name: "email"),
-                TestFixtures.makeColumnInfo(name: "created_at")
+                TestFixtures.makeColumnInfo(name: "created_at"),
+                TestFixtures.makeColumnInfo(name: "title")
             ],
             "orders": [TestFixtures.makeColumnInfo(name: "total")]
         ]
@@ -147,13 +148,14 @@ struct CompletionEngineFilterTests {
     @Test("Scopes columns to the given table only")
     func scopesToTableOnly() async {
         let engine = await makeEngine()
-        let fragment = "id = 1 AND to"
+        let fragment = "id = 1 AND t"
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
             tableName: "users"
         )
         let labels = result?.items.map(\.label) ?? []
+        #expect(labels.contains("title"))
         #expect(!labels.contains("total"))
     }
 

@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("Filter Value Text Field Suggestions")
@@ -71,5 +71,46 @@ struct FilterValueTextFieldTests {
             in: ["name"]
         )
         #expect(result == ["name"])
+    }
+
+    @Test("Splice replaces only the token range and preserves surrounding text")
+    func testSplice_replacesOnlyTokenRange() {
+        let result = FilterValueTextField.splice(
+            into: "id = 1 AND cre",
+            range: NSRange(location: 11, length: 3),
+            insertText: "created_at"
+        )
+        #expect(result?.text == "id = 1 AND created_at")
+    }
+
+    @Test("Splice places the caret after the inserted text")
+    func testSplice_caretAfterInsertedText() {
+        let result = FilterValueTextField.splice(
+            into: "id = 1 AND cre",
+            range: NSRange(location: 11, length: 3),
+            insertText: "created_at"
+        )
+        #expect(result?.caret == 21)
+    }
+
+    @Test("Splice into the middle of an expression keeps the trailing text")
+    func testSplice_keepsTrailingText() {
+        let result = FilterValueTextField.splice(
+            into: "sta AND id = 1",
+            range: NSRange(location: 0, length: 3),
+            insertText: "status"
+        )
+        #expect(result?.text == "status AND id = 1")
+        #expect(result?.caret == 6)
+    }
+
+    @Test("Splice rejects an out-of-bounds range")
+    func testSplice_outOfBoundsReturnsNil() {
+        let result = FilterValueTextField.splice(
+            into: "abc",
+            range: NSRange(location: 5, length: 2),
+            insertText: "x"
+        )
+        #expect(result == nil)
     }
 }

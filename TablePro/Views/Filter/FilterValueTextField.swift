@@ -31,6 +31,13 @@ struct FilterValueTextField: NSViewRepresentable {
         return matches
     }
 
+    static func splice(into current: String, range: NSRange, insertText: String) -> (text: String, caret: Int)? {
+        let ns = current as NSString
+        guard range.location >= 0, range.location + range.length <= ns.length else { return nil }
+        let caret = range.location + (insertText as NSString).length
+        return (ns.replacingCharacters(in: range, with: insertText), caret)
+    }
+
     func makeNSView(context: Context) -> NSTextField {
         let textField = SubstitutionDisabledTextField()
         textField.bezelStyle = .roundedBezel
@@ -114,6 +121,7 @@ struct FilterValueTextField: NSViewRepresentable {
         private var keyMonitor: Any?
         private var latestReplacementRange: NSRange?
         private var completionGeneration = 0
+        private static let completionDebounce: UInt64 = 50_000_000
 
         private var submitsOnAccept: Bool {
             if case .staticValues = completionSource { return true }
@@ -216,7 +224,8 @@ struct FilterValueTextField: NSViewRepresentable {
             completionGeneration &+= 1
             let generation = completionGeneration
             Task { [weak self] in
-                guard let self else { return }
+                try? await Task.sleep(nanoseconds: Self.completionDebounce)
+                guard let self, self.completionGeneration == generation else { return }
                 let result = await provider.completions(fieldText: fieldText, cursor: cursor)
                 guard self.completionGeneration == generation else { return }
                 guard let result else {
@@ -345,17 +354,15 @@ struct FilterValueTextField: NSViewRepresentable {
         }
 
         private func spliceTokenCompletion(_ insertText: String) {
-            guard let textField, let range = latestReplacementRange else { return }
-            let current = textField.stringValue as NSString
-            guard range.location >= 0,
-                  range.location + range.length <= current.length else { return }
+            guard let textField, let range = latestReplacementRange,
+                  let spliced = FilterValueTextField.splice(
+                      into: textField.stringValue, range: range, insertText: insertText
+                  )
+            else { return }
 
-            let newText = current.replacingCharacters(in: range, with: insertText)
-            text.wrappedValue = newText
-            textField.stringValue = newText
-
-            let caret = range.location + (insertText as NSString).length
-            (textField.currentEditor() as? NSTextView)?.selectedRange = NSRange(location: caret, length: 0)
+            text.wrappedValue = spliced.text
+            textField.stringValue = spliced.text
+            (textField.currentEditor() as? NSTextView)?.selectedRange = NSRange(location: spliced.caret, length: 0)
         }
 
         func dismissSuggestions() {
