@@ -38,7 +38,10 @@ extension MainContentCoordinator {
             if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
                 FilterSettingsStorage.shared.saveLastFilters(
                     tabManager.tabs[oldIndex].filterState.appliedFilters,
-                    for: tableName
+                    for: tableName,
+                    connectionId: connectionId,
+                    databaseName: tabManager.tabs[oldIndex].tableContext.databaseName,
+                    schemaName: tabManager.tabs[oldIndex].tableContext.schemaName
                 )
             }
             persistOutgoingTabHiddenColumns(oldIndex: oldIndex)
