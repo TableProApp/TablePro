@@ -81,6 +81,7 @@ final class FilterCoordinator {
             )
 
             parent.tabManager.mutate(at: capturedTabIndex) { $0.content.query = newQuery }
+            clearLastFilters(for: capturedTableName)
             parent.runQuery()
         }
     }
@@ -336,6 +337,16 @@ final class FilterCoordinator {
         guard let tab = parent.tabManager.selectedTab else { return }
         FilterSettingsStorage.shared.saveLastFilters(
             tab.filterState.appliedFilters,
+            for: tableName,
+            connectionId: parent.connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName
+        )
+    }
+
+    func clearLastFilters(for tableName: String) {
+        guard let tab = parent.tabManager.selectedTab else { return }
+        FilterSettingsStorage.shared.clearLastFilters(
             for: tableName,
             connectionId: parent.connectionId,
             databaseName: tab.tableContext.databaseName,

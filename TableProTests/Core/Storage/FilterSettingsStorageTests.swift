@@ -150,4 +150,19 @@ struct FilterSettingsStorageTests {
             reader.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil) == filters
         )
     }
+
+    @Test("Clearing removes the stored filters so a reopen restores nothing")
+    func clearRemovesStoredFilters() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.clearLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        #expect(
+            storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil).isEmpty
+        )
+    }
 }
