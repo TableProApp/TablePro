@@ -11,6 +11,11 @@ extension MainContentCoordinator {
         filterCoordinator.selectedTabFilterState
     }
 
+    var currentTableName: String? {
+        guard let tab = tabManager.selectedTab, tab.tabType == .table else { return nil }
+        return tab.tableContext.tableName
+    }
+
     func addFilter(columns: [String] = [], primaryKeyColumn: String? = nil) {
         filterCoordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
     }

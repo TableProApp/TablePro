@@ -20,6 +20,7 @@ struct FilterPanelView: View {
     @State private var showSavePresetAlert = false
     @State private var newPresetName = ""
     @State private var focusedFilterId: UUID?
+    @State private var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
 
     private let estimatedFilterRowHeight: CGFloat = 32
     private let maxFilterListHeight: CGFloat = 200
@@ -44,12 +45,17 @@ struct FilterPanelView: View {
                 coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
             }
             focusedFilterId = filterState.filters.last?.id
+            refreshRawSQLCompletionProvider()
         }
         .onChange(of: columns) { _, newColumns in
             if filterState.filters.isEmpty && !newColumns.isEmpty && filterState.isVisible {
                 coordinator.addFilter(columns: newColumns, primaryKeyColumn: primaryKeyColumn)
                 focusedFilterId = filterState.filters.last?.id
             }
+            refreshRawSQLCompletionProvider()
+        }
+        .onChange(of: coordinator.currentTableName) { _, _ in
+            refreshRawSQLCompletionProvider()
         }
         .sheet(isPresented: $showSQLSheet) {
             SQLPreviewSheet(sql: generatedSQL)
@@ -183,6 +189,7 @@ struct FilterPanelView: View {
                     columns: columns,
                     completions: completionItems(),
                     enumValuesByColumn: enumValuesByColumn,
+                    rawSQLCompletionProvider: rawSQLCompletionProvider,
                     onAdd: {
                         coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
                         focusedFilterId = filterState.filters.last?.id
@@ -238,14 +245,30 @@ struct FilterPanelView: View {
         onApply(coordinator.selectedTabFilterState.appliedFilters)
     }
 
-    private func completionItems() -> [String] {
+    private var isSQLDialect: Bool {
         let langName = PluginManager.shared.queryLanguageName(for: databaseType)
-        let isSQLDialect = langName == "SQL" || langName == "CQL" || langName == "PartiQL"
+        return langName == "SQL" || langName == "CQL" || langName == "PartiQL"
+    }
+
+    private func completionItems() -> [String] {
         let sqlKeywords = [
             "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN",
             "IS NULL", "IS NOT NULL", "EXISTS",
             "CASE", "WHEN", "THEN", "ELSE", "END",
         ]
         return isSQLDialect ? columns + sqlKeywords : columns
+    }
+
+    private func refreshRawSQLCompletionProvider() {
+        guard isSQLDialect, let tableName = coordinator.currentTableName else {
+            rawSQLCompletionProvider = nil
+            return
+        }
+        let schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id)
+        rawSQLCompletionProvider = RawSQLFilterCompletionProvider(
+            schemaProvider: schemaProvider,
+            databaseType: databaseType,
+            tableName: tableName
+        )
     }
 }
