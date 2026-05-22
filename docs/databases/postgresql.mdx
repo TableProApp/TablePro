@@ -107,6 +107,8 @@ Supports `jsonb` (formatted JSON), `array`, `uuid`, `inet` (IP), `timestamp with
 
 **SSL/TLS**: New connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Works for both local Postgres and hosted providers (AWS RDS, Cloud SQL, Heroku, Supabase, Neon). Pick **Verify CA** when you need to validate the server certificate. See [SSL/TLS](/features/ssl) for details.
 
+**Postgres-compatible engines**: Connect wire-compatible engines (such as db9.ai) using the PostgreSQL type. TablePro checks which system catalogs each server actually provides, so engines that omit catalogs like `pg_matviews` still load their tables; materialized views or foreign tables just won't appear if the server doesn't expose them.
+
 ## Advanced Configuration
 
 **Startup Commands** (Advanced tab): Set session variables like `SET timezone = 'UTC'; SET search_path TO myschema, public;` to apply automatically on connect.
