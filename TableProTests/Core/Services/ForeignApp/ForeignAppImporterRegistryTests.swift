@@ -94,4 +94,11 @@ struct ForeignAppImporterRegistryTests {
         #expect(DBeaverImporter().readsPasswordsFromKeychain == false)
         #expect(BeekeeperStudioImporter().readsPasswordsFromKeychain == false)
     }
+
+    @Test("Keychain confirmation applies only to keychain-based importers when importing passwords")
+    func testRequiresKeychainConfirmation() {
+        #expect(ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: true, importer: TablePlusImporter()))
+        #expect(!ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: true, importer: DBeaverImporter()))
+        #expect(!ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: false, importer: TablePlusImporter()))
+    }
 }

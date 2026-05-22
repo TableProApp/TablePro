@@ -19,6 +19,7 @@ struct TablePlusImporter: ForeignAppImporter {
     static let keychainService = "com.tableplus.TablePlus"
 
     var readKeychain: ForeignKeychainRead = ForeignKeychainReader.readPassword
+    var keyFileExists: (_ path: String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
 
     var connectionsFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/com.tinyapp.TablePlus/Data/Connections.plist")
@@ -187,7 +188,7 @@ struct TablePlusImporter: ForeignAppImporter {
         let port = (entry["ServerPort"] as? String).flatMap(Int.init)
         let username = entry["ServerUser"] as? String ?? ""
         let useKey = entry["isUsePrivateKey"] as? Bool ?? false
-        let keyPath = useKey ? existingKeyPath(entry["ServerPrivateKeyName"] as? String ?? "") : ""
+        let keyPath = useKey ? importedKeyPath(entry["ServerPrivateKeyName"] as? String ?? "") : ""
 
         return ExportableSSHConfig(
             enabled: true,
@@ -205,10 +206,12 @@ struct TablePlusImporter: ForeignAppImporter {
         )
     }
 
-    private func existingKeyPath(_ rawName: String) -> String {
-        let resolved = ForeignAppPathHelper.resolveKeyPath(rawName)
+    private func importedKeyPath(_ rawName: String) -> String {
+        let trimmed = rawName.trimmingCharacters(in: .whitespaces)
+        let resolved = ForeignAppPathHelper.resolveKeyPath(trimmed)
         guard !resolved.isEmpty else { return "" }
-        return FileManager.default.fileExists(atPath: PathPortability.expandHome(resolved)) ? resolved : ""
+        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~/") { return resolved }
+        return keyFileExists(PathPortability.expandHome(resolved)) ? resolved : ""
     }
 
     private func parseSSLConfig(_ entry: [String: Any]) -> ExportableSSLConfig? {

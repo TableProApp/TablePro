@@ -168,11 +168,8 @@ struct TablePlusImporterTests {
         }
     }
 
-    @Test("importConnections parses SSH config and keeps a key path that exists on disk")
+    @Test("importConnections parses SSH config and keeps an explicit key path even when the file is missing")
     func testImportConnections_parsesSSHConfig() throws {
-        let keyFile = tempDir.appendingPathComponent("id_rsa")
-        try Data("key".utf8).write(to: keyFile)
-
         try writeConnections([
             makeConnection(
                 name: "SSH DB",
@@ -182,21 +179,23 @@ struct TablePlusImporterTests {
                 sshPort: "2222",
                 sshUser: "deploy",
                 usePrivateKey: true,
-                privateKeyPath: keyFile.path
+                privateKeyPath: "/Users/test/.ssh/id_rsa"
             )
         ])
 
-        let result = try importer.importConnections(includePasswords: false)
-        let conn = result.envelope.connections[0]
-        let ssh = conn.sshConfig
+        var imp = importer
+        imp.keyFileExists = { _ in false }
+
+        let result = try imp.importConnections(includePasswords: false)
+        let ssh = result.envelope.connections[0].sshConfig
 
         #expect(ssh != nil)
         #expect(ssh?.enabled == true)
         #expect(ssh?.host == "bastion.example.com")
-        #expect(ssh?.port == 2222)
+        #expect(ssh?.port == 2_222)
         #expect(ssh?.username == "deploy")
         #expect(ssh?.authMethod == "Private Key")
-        #expect(ssh?.privateKeyPath == keyFile.path)
+        #expect(ssh?.privateKeyPath == "/Users/test/.ssh/id_rsa")
     }
 
     @Test("importConnections drops the empty-key placeholder instead of building a fake path")
@@ -213,11 +212,35 @@ struct TablePlusImporterTests {
             )
         ])
 
-        let result = try importer.importConnections(includePasswords: false)
+        var imp = importer
+        imp.keyFileExists = { _ in false }
+
+        let result = try imp.importConnections(includePasswords: false)
         let ssh = result.envelope.connections[0].sshConfig
 
         #expect(ssh?.authMethod == "Private Key")
         #expect(ssh?.privateKeyPath == "")
+    }
+
+    @Test("importConnections keeps a bare key name when the file exists in ~/.ssh")
+    func testImportConnections_bareKeyName_keptWhenFileExists() throws {
+        try writeConnections([
+            makeConnection(
+                name: "SSH Bare Key",
+                id: "ssh-bare",
+                isOverSSH: true,
+                sshHost: "bastion.example.com",
+                sshUser: "deploy",
+                usePrivateKey: true,
+                privateKeyPath: "id_rsa"
+            )
+        ])
+
+        var imp = importer
+        imp.keyFileExists = { _ in true }
+
+        let result = try imp.importConnections(includePasswords: false)
+        #expect(result.envelope.connections[0].sshConfig?.privateKeyPath == "~/.ssh/id_rsa")
     }
 
     @Test("importConnections parses SSH config with password auth")
