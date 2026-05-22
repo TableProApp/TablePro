@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Raw SQL filter now suggests columns and keywords at every position in the expression, including after AND and OR, instead of only the first column. (#1346)
 - Plugins left incompatible after a TablePro update now update quietly in the background instead of showing a premature "could not be loaded" alert. You are only notified when no compatible version exists yet, and the message tells you what to do. (#1322)
 - A plugin you download and install by hand is no longer blocked by macOS Gatekeeper once its signature is verified. (#1322)
+- Clicking a table now reliably replaces the active tab instead of opening a new tab once you have more than one tab open. A new tab still opens when the current tab has unsaved edits, an applied filter, or sorting. Double-click to open a table in its own tab. (#1348)
 
 ## [0.43.3] - 2026-05-22
 
