@@ -129,4 +129,25 @@ struct FilterSettingsStorageTests {
 
         #expect(storage.loadSettings().panelState == .restoreLast)
     }
+
+    @Test("Saved filters decode from disk in a fresh storage instance")
+    func persistsAcrossInstances() {
+        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Failed to create UserDefaults suite for tests")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+
+        let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        writer.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            reader.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil) == filters
+        )
+    }
 }
