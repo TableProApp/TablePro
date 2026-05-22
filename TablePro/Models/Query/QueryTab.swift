@@ -115,20 +115,18 @@ struct QueryTab: Identifiable, Equatable {
             return "SCAN 0 MATCH * COUNT \(pageSize)"
         default:
             let dialect = try resolveSQLDialect(for: databaseType)
-            let quote = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
-            let qualifiedName: String
-            if let schema = schemaName, !schema.isEmpty {
-                qualifiedName = "\(quote(schema)).\(quote(tableName))"
-            } else {
-                qualifiedName = quote(tableName)
-            }
-            switch PluginManager.shared.paginationStyle(for: databaseType) {
-            case .offsetFetch:
-                let orderBy = PluginManager.shared.offsetFetchOrderBy(for: databaseType)
-                return "SELECT * FROM \(qualifiedName) \(orderBy) OFFSET 0 ROWS FETCH NEXT \(pageSize) ROWS ONLY;"
-            case .limit:
-                return "SELECT * FROM \(qualifiedName) LIMIT \(pageSize);"
-            }
+            let builder = TableQueryBuilder(
+                databaseType: databaseType,
+                pluginDriver: nil,
+                dialect: dialect,
+                dialectQuote: quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
+            )
+            return builder.buildBaseQuery(
+                tableName: tableName,
+                schemaName: schemaName,
+                limit: pageSize,
+                offset: 0
+            )
         }
     }
 

@@ -130,7 +130,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                 content: ToolbarPrincipalContent(
                     state: coordinator.toolbarState,
                     onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
-                    onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() }
+                    onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() },
+                    onSafeModeChange: { [weak coordinator] level in coordinator?.setSafeModeLevel(level) }
                 )
             )
             item.visibilityPriority = .high

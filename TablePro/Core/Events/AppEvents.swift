@@ -26,8 +26,6 @@ final class AppEvents {
 
     let aiSettingsChanged = PassthroughSubject<Void, Never>()
 
-    let terminalSettingsChanged = PassthroughSubject<Void, Never>()
-
     // MARK: - Connections
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()

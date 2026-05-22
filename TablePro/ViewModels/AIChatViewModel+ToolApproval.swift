@@ -89,7 +89,7 @@ extension AIChatViewModel {
         // Safe-mode level and "Always Allow" cannot bypass them — the AI must not
         // be able to drop tables, truncate, or alter-drop without an explicit click.
         if toolMode == .agentOnly {
-            if let connection, connection.safeModeLevel.blocksAllWrites {
+            if let connection, liveSafeModeLevel(for: connection).blocksAllWrites {
                 return .denied(reason: String(
                     localized: "Connection is read-only. Destructive operations are not permitted."
                 ))
@@ -101,16 +101,22 @@ extension AIChatViewModel {
             return .approved
         }
         if let connection {
-            if connection.safeModeLevel.blocksAllWrites {
+            let safeModeLevel = liveSafeModeLevel(for: connection)
+            if safeModeLevel.blocksAllWrites {
                 return .denied(reason: String(
                     localized: "Connection is read-only. Set safe mode to Confirm Writes or higher to allow this tool."
                 ))
             }
-            if !connection.safeModeLevel.requiresConfirmation {
+            if !safeModeLevel.requiresConfirmation {
                 return .approved
             }
         }
         return .pending
+    }
+
+    @MainActor
+    private func liveSafeModeLevel(for connection: DatabaseConnection) -> SafeModeLevel {
+        DatabaseManager.shared.session(for: connection.id)?.safeModeLevel ?? connection.safeModeLevel
     }
 
     @MainActor

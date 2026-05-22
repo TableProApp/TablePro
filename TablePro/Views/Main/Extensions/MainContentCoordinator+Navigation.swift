@@ -141,6 +141,8 @@ extension MainContentCoordinator {
             restoreFiltersForTable(tableName)
             if navigationModel == .inPlace, let dbIndex = Int(currentDatabase) {
                 selectRedisDatabaseAndQuery(dbIndex)
+            } else if !selectedTabHiddenColumns.isEmpty {
+                requeryWithColumnScope()
             } else {
                 runQuery()
             }

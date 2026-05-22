@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>13</integer>
+	<integer>14</integer>
 	<key>TableProProvidesExportFormatIds</key>
 	<array>
 		<string>sql</string>

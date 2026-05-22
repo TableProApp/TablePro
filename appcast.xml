@@ -3,6 +3,67 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.43.2</title>
+            <pubDate>Fri, 22 May 2026 03:54:07 +0000</pubDate>
+            <sparkle:version>88</sparkle:version>
+            <sparkle:shortVersionString>0.43.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Changed</h3>
+<ul>
+<li>Hiding a column now also drops it from the query, so tables with one heavy column load faster. The primary key is always fetched so editing still works</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>Removed the embedded database CLI terminal. Use your system terminal for command-line access to your databases.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Opening a connection no longer crashes when its database plugin is older than the app; outdated plugins now update automatically (#1371)</li>
+<li>Safe mode no longer resets when you open another table; it stays set for the connection until you change it (#1351)</li>
+<li>Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect and shows in the Query menu (#1357)</li>
+<li>Custom shortcuts now require a modifier key, so a plain key like Space is no longer silently ignored (#1357)</li>
+<li>Cancelling a pending connection no longer lets the abandoned attempt overwrite a later successful one to the same database (#1358)</li>
+<li>Cancelling a pending SSH connection now closes its tunnel instead of leaving the port open (#1369)</li>
+<li>Importing connections from DBeaver now brings over the username (#1355)</li>
+<li>Copying rows now includes only the visible columns, in their current order (#1354)</li>
+<li>The query shown in the editor when you open a table now matches the query that actually runs</li>
+<li>Large text columns are no longer truncated to 256 characters when browsing a table, so editing a cell can't save a shortened value</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.43.2/TablePro-0.43.2-arm64.zip" length="18067387" type="application/octet-stream" sparkle:edSignature="fPQsiMESe00NDoRV6IPCL2pNqFKVsuPOiL4Tzm9DHcSzz4rNHaQ/Z/k/i5ZAxKtVeNRU3z4tuCwIV2ibG3t0DQ=="/>
+        </item>
+        <item>
+            <title>0.43.2</title>
+            <pubDate>Fri, 22 May 2026 03:54:08 +0000</pubDate>
+            <sparkle:version>88</sparkle:version>
+            <sparkle:shortVersionString>0.43.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Changed</h3>
+<ul>
+<li>Hiding a column now also drops it from the query, so tables with one heavy column load faster. The primary key is always fetched so editing still works</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>Removed the embedded database CLI terminal. Use your system terminal for command-line access to your databases.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Opening a connection no longer crashes when its database plugin is older than the app; outdated plugins now update automatically (#1371)</li>
+<li>Safe mode no longer resets when you open another table; it stays set for the connection until you change it (#1351)</li>
+<li>Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect and shows in the Query menu (#1357)</li>
+<li>Custom shortcuts now require a modifier key, so a plain key like Space is no longer silently ignored (#1357)</li>
+<li>Cancelling a pending connection no longer lets the abandoned attempt overwrite a later successful one to the same database (#1358)</li>
+<li>Cancelling a pending SSH connection now closes its tunnel instead of leaving the port open (#1369)</li>
+<li>Importing connections from DBeaver now brings over the username (#1355)</li>
+<li>Copying rows now includes only the visible columns, in their current order (#1354)</li>
+<li>The query shown in the editor when you open a table now matches the query that actually runs</li>
+<li>Large text columns are no longer truncated to 256 characters when browsing a table, so editing a cell can't save a shortened value</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.43.2/TablePro-0.43.2-x86_64.zip" length="19044053" type="application/octet-stream" sparkle:edSignature="ddiAMRY5NTNDnXhz+0ZVpZ0fTWOPVY5WxlrkWuLRek63sdQyF5JM8I1yXR6EJvSBMkKHjLiWW08wVGLXVS5uAw=="/>
+        </item>
+        <item>
             <title>0.43.1</title>
             <pubDate>Wed, 20 May 2026 16:44:05 +0000</pubDate>
             <sparkle:version>87</sparkle:version>

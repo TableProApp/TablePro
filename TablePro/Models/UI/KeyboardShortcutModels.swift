@@ -55,8 +55,6 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case importData
     case quickSwitcher
 
-    case openTerminal
-
     // Navigation
     case previousPage
     case nextPage
@@ -105,7 +103,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .saveChanges, .saveAs, .previewSQL, .closeTab, .refresh,
              .executeQuery, .executeAllStatements, .cancelQuery, .explainQuery, .formatQuery,
              .export, .importData, .quickSwitcher,
-             .previousPage, .nextPage, .saveAsFavorite, .openTerminal:
+             .previousPage, .nextPage, .saveAsFavorite:
             return .file
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .paste,
              .delete, .selectAll, .clearSelection, .addRow,
@@ -150,7 +148,6 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .export: return String(localized: "Export")
         case .importData: return String(localized: "Import")
         case .quickSwitcher: return String(localized: "Quick Switcher")
-        case .openTerminal: return String(localized: "Open Terminal")
         case .previousPage: return String(localized: "Previous Page")
         case .nextPage: return String(localized: "Next Page")
         case .undo: return String(localized: "Undo")
@@ -508,7 +505,6 @@ struct KeyboardSettings: Codable, Equatable {
         .export: KeyCombo(key: "e", command: true, shift: true),
         .importData: KeyCombo(key: "i", command: true, shift: true),
         .quickSwitcher: KeyCombo(key: "o", command: true, shift: true),
-        .openTerminal: KeyCombo(key: "`", command: true, control: true),
         .previousPage: KeyCombo(key: "[", command: true),
         .nextPage: KeyCombo(key: "]", command: true),
 

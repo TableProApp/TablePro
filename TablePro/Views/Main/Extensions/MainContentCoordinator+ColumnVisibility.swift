@@ -13,10 +13,12 @@ extension MainContentCoordinator {
 
     func hideColumn(_ columnName: String) {
         mutateSelectedTabHiddenColumns { $0.insert(columnName) }
+        requeryWithColumnScope(debounced: true)
     }
 
     func showColumn(_ columnName: String) {
         mutateSelectedTabHiddenColumns { $0.remove(columnName) }
+        requeryWithColumnScope(debounced: true)
     }
 
     func toggleColumnVisibility(_ columnName: String) {
@@ -27,19 +29,28 @@ extension MainContentCoordinator {
                 hidden.insert(columnName)
             }
         }
+        requeryWithColumnScope(debounced: true)
     }
 
     func showAllColumns() {
         mutateSelectedTabHiddenColumns { $0.removeAll() }
+        requeryWithColumnScope(debounced: true)
     }
 
     func hideAllColumns(_ columns: [String]) {
         mutateSelectedTabHiddenColumns { $0 = Set(columns) }
+        requeryWithColumnScope(debounced: true)
     }
 
     func pruneHiddenColumns(currentColumns: [String]) {
-        let currentSet = Set(currentColumns)
-        mutateSelectedTabHiddenColumns { $0 = $0.intersection(currentSet) }
+        let current = selectedTabHiddenColumns
+        let pruned = ColumnFetchScope.prunedHiddenColumns(
+            current,
+            schemaColumns: selectedTabSchemaColumns(),
+            resultColumns: currentColumns
+        )
+        guard pruned != current else { return }
+        mutateSelectedTabHiddenColumns { $0 = pruned }
     }
 
     func restoreLastHiddenColumnsForTable(_ tableName: String) {

@@ -20,6 +20,7 @@ struct ToolbarPrincipalContent: View {
     var state: ConnectionToolbarState
     var onSwitchDatabase: (() -> Void)?
     var onCancelQuery: (() -> Void)?
+    var onSafeModeChange: ((SafeModeLevel) -> Void)?
 
     var body: some View {
         let tag = state.tagId.flatMap { TagStorage.shared.tag(for: $0) }
@@ -40,7 +41,10 @@ struct ToolbarPrincipalContent: View {
                 onSwitchDatabase: onSwitchDatabase
             )
 
-            SafeModeBadgeView(safeModeLevel: Bindable(state).safeModeLevel)
+            SafeModeBadgeView(safeModeLevel: Binding(
+                get: { state.safeModeLevel },
+                set: { onSafeModeChange?($0) }
+            ))
 
             ExecutionIndicatorView(
                 isExecuting: state.isExecuting,

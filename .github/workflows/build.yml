@@ -42,7 +42,7 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.5-beta'
+          xcode-version: '26.4.1'
 
       - name: Download static libraries
         env:
@@ -154,7 +154,7 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.5-beta'
+          xcode-version: '26.4.1'
 
       - name: Download static libraries
         env:
@@ -283,7 +283,7 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.5-beta'
+          xcode-version: '26.4.1'
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4

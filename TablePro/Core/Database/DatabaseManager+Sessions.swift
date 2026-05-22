@@ -362,6 +362,12 @@ extension DatabaseManager {
         setSession(session, for: sessionId)
     }
 
+    func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
+        guard var session = activeSessions[connectionId], session.safeModeLevel != level else { return }
+        session.safeModeLevel = level
+        setSession(session, for: connectionId)
+    }
+
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1

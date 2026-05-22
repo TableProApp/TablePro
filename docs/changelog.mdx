@@ -4,6 +4,27 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="May 22, 2026" description="v0.43.2">
+  ### Improvements
+
+  - **Skip Heavy Columns**: Hiding a column now also drops it from the query, so tables with one heavy column load faster. The primary key is always fetched so editing still works
+
+  ### Removed
+
+  - **Embedded Terminal**: The built-in database CLI terminal has been removed. Use your system terminal for command-line access to your databases.
+
+  ### Bug Fixes
+
+  - **Plugin Crash on Open**: Opening a connection no longer crashes when its database plugin is older than the app; outdated plugins update automatically (#1371)
+  - **Safe Mode Sticks**: Safe mode stays set for the connection and no longer resets when you open another table (#1351)
+  - **Shortcut Reassignment**: Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect and shows in the Query menu, and custom shortcuts require a modifier key (#1357)
+  - **Connection Cancellation**: Cancelling a pending connection no longer lets the abandoned attempt overwrite a later successful one, and cancelling a pending SSH connection now closes its tunnel (#1358, #1369)
+  - **DBeaver Import**: Importing connections from DBeaver now brings over the username (#1355)
+  - **Copy Visible Columns**: Copying rows includes only the visible columns, in their current order (#1354)
+  - **Accurate Table Query**: The query shown in the editor when you open a table now matches the query that actually runs
+  - **Full Text Cells**: Large text columns are no longer truncated to 256 characters when browsing a table, so editing a cell can't save a shortened value
+</Update>
+
 <Update label="May 20, 2026" description="v0.43.1">
   ### New Features
 

@@ -9,8 +9,6 @@
 /* Begin PBXBuildFile section */
 		5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 5A32BBFA2F9D5EAB00BAEB5F /* X509 */; };
 		5A32BC0B2F9D659100BAEB5F /* tablepro-mcp in Copy Files */ = {isa = PBXBuildFile; fileRef = 5A32BC002F9D5F1300BAEB5F /* tablepro-mcp */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */; };
-		5A3A69BA2F976F38000AC5B2 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B92F976F38000AC5B2 /* GhosttyTheme */; };
 		5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A7E78A02F95F02A00EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000010 /* TableProAnalytics */; };
 		5A860000A00000000 /* TableProPluginKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -694,10 +692,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5A3A69BA2F976F38000AC5B2 /* GhosttyTheme in Frameworks */,
 				5A7E78A02F95F02A00EEF236 /* TableProAnalytics in Frameworks */,
 				5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */,
-				5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */,
 				5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */,
 				5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */,
 				5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */,
@@ -1089,8 +1085,6 @@
 				5ACE00012F4F000000000003 /* CodeEditLanguages */,
 				5ACE00012F4F000000000007 /* CodeEditTextView */,
 				5ACE00012F4F000000000009 /* Sparkle */,
-				5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */,
-				5A3A69B92F976F38000AC5B2 /* GhosttyTheme */,
 				5ACE00012F4F000000000010 /* TableProAnalytics */,
 				5A32BBFA2F9D5EAB00BAEB5F /* X509 */,
 			);
@@ -1704,7 +1698,6 @@
 				5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */,
 				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
-				5A3A69B62F976F38000AC5B2 /* XCRemoteSwiftPackageReference "libghostty-spm" */,
 				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */,
 				5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */,
 			);
@@ -2368,7 +2361,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 87;
+				CURRENT_PROJECT_VERSION = 88;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_APP_SANDBOX = NO;
@@ -2400,7 +2393,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.43.1;
+				MARKETING_VERSION = 0.43.2;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -2445,7 +2438,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 87;
+				CURRENT_PROJECT_VERSION = 88;
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
@@ -2478,7 +2471,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.43.1;
+				MARKETING_VERSION = 0.43.2;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
@@ -4183,14 +4176,6 @@
 				minimumVersion = 1.19.0;
 			};
 		};
-		5A3A69B62F976F38000AC5B2 /* XCRemoteSwiftPackageReference "libghostty-spm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Lakr233/libghostty-spm.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.1775374806;
-			};
-		};
 		5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -4214,16 +4199,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */;
 			productName = X509;
-		};
-		5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 5A3A69B62F976F38000AC5B2 /* XCRemoteSwiftPackageReference "libghostty-spm" */;
-			productName = GhosttyTerminal;
-		};
-		5A3A69B92F976F38000AC5B2 /* GhosttyTheme */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 5A3A69B62F976F38000AC5B2 /* XCRemoteSwiftPackageReference "libghostty-spm" */;
-			productName = GhosttyTheme;
 		};
 		5ACE00012F4F000000000002 /* CodeEditSourceEditor */ = {
 			isa = XCSwiftPackageProductDependency;

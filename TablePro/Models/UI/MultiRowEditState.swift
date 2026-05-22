@@ -31,10 +31,6 @@ struct FieldEditState: Identifiable {
 
     var isPendingDefault: Bool
 
-    var isTruncated: Bool = false
-
-    var isLoadingFullValue: Bool = false
-
     var hasEdit: Bool {
         pendingValue != nil || isPendingNull || isPendingDefault
     }
@@ -73,7 +69,6 @@ final class MultiRowEditState {
         columns: [String],
         columnTypes: [ColumnType],
         externallyModifiedColumns: Set<Int> = [],
-        excludedColumnNames: Set<String> = [],
         primaryKeyColumns: Set<String> = [],
         foreignKeyColumns: Set<String> = []
     ) {
@@ -118,11 +113,6 @@ final class MultiRowEditState {
             var isPendingNull = false
             var isPendingDefault = false
 
-            let isExcluded = excludedColumnNames.contains(columnName)
-            var preservedOriginalValue: String? = originalValue
-            var preservedIsTruncated = isExcluded
-            var preservedIsLoadingFullValue = isExcluded
-
             if !columnsChanged, !selectionChanged, colIndex < fields.count {
                 let oldField = fields[colIndex]
                 // Preserve pending edits when original data matches
@@ -131,12 +121,6 @@ final class MultiRowEditState {
                     pendingValue = oldField.pendingValue
                     isPendingNull = oldField.isPendingNull
                     isPendingDefault = oldField.isPendingDefault
-                }
-                // Preserve resolved truncation state — don't reset already-fetched full values
-                if isExcluded && !oldField.isTruncated && oldField.columnName == columnName {
-                    preservedOriginalValue = oldField.originalValue
-                    preservedIsTruncated = false
-                    preservedIsLoadingFullValue = false
                 }
             }
 
@@ -152,13 +136,11 @@ final class MultiRowEditState {
                 isLongText: isLongText,
                 isPrimaryKey: primaryKeyColumns.contains(columnName),
                 isForeignKey: foreignKeyColumns.contains(columnName),
-                originalValue: preservedOriginalValue,
+                originalValue: originalValue,
                 hasMultipleValues: hasMultipleValues,
                 pendingValue: pendingValue,
                 isPendingNull: isPendingNull,
-                isPendingDefault: isPendingDefault,
-                isTruncated: preservedIsTruncated,
-                isLoadingFullValue: preservedIsLoadingFullValue
+                isPendingDefault: isPendingDefault
             )
             if let preservedId {
                 newField.id = preservedId
@@ -234,28 +216,6 @@ final class MultiRowEditState {
         }
     }
 
-    /// Apply lazy-loaded full values for previously truncated columns
-    func applyFullValues(_ fullValues: [String: String?]) {
-        for i in 0..<fields.count {
-            guard let fullValue = fullValues[fields[i].columnName] else { continue }
-            fields[i] = FieldEditState(
-                columnIndex: fields[i].columnIndex,
-                columnName: fields[i].columnName,
-                columnTypeEnum: fields[i].columnTypeEnum,
-                isLongText: fields[i].isLongText,
-                isPrimaryKey: fields[i].isPrimaryKey,
-                isForeignKey: fields[i].isForeignKey,
-                originalValue: fullValue,
-                hasMultipleValues: fields[i].hasMultipleValues,
-                pendingValue: fields[i].pendingValue,
-                isPendingNull: fields[i].isPendingNull,
-                isPendingDefault: fields[i].isPendingDefault,
-                isTruncated: false,
-                isLoadingFullValue: false
-            )
-        }
-    }
-
     /// Clear all pending edits
     func clearEdits() {
         for i in 0..<fields.count {
@@ -278,7 +238,7 @@ final class MultiRowEditState {
     /// Get all edited fields with their new values
     func getEditedFields() -> [(columnIndex: Int, columnName: String, newValue: String?)] {
         fields.compactMap { field in
-            guard field.hasEdit, !field.isTruncated else { return nil }
+            guard field.hasEdit else { return nil }
             return (field.columnIndex, field.columnName, field.effectiveValue)
         }
     }

@@ -129,14 +129,6 @@ final class AppSettingsManager {
         }
     }
 
-    var terminal: TerminalSettings {
-        didSet {
-            storage.saveTerminal(terminal)
-            appEvents.terminalSettingsChanged.send(())
-            syncTracker.markDirty(.settings, id: "terminal")
-        }
-    }
-
     var mcp: MCPSettings {
         didSet {
             guard !isValidating else { return }
@@ -206,7 +198,6 @@ final class AppSettingsManager {
         self.keyboard = storage.loadKeyboard()
         self.ai = Self.migrateAI(storage.loadAI())
         self.sync = storage.loadSync()
-        self.terminal = storage.loadTerminal()
         self.mcp = storage.loadMCP()
 
         general.language.apply()
@@ -281,7 +272,6 @@ final class AppSettingsManager {
         keyboard = .default
         ai = .default
         sync = .default
-        terminal = .default
         mcp = .default
         storage.resetToDefaults()
     }

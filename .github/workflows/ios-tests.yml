@@ -24,7 +24,7 @@ concurrency:
 env:
   XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
   XCODE_SCHEME: TableProMobile
-  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5"
+  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
 
 jobs:
   test:
@@ -38,7 +38,7 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.5-beta'
+          xcode-version: '26.4.1'
 
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify

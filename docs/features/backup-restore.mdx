@@ -20,7 +20,7 @@ brew install libpq
 brew link --force libpq
 ```
 
-If a custom path is set under **Settings > Terminal > CLI Paths > pg_dump** or **pg_restore**, TablePro uses it. Otherwise it looks on `PATH` and the standard Homebrew locations.
+TablePro finds `pg_dump` and `pg_restore` on `PATH` and the standard Homebrew and Postgres.app locations.
 
 ## Backup Dump
 
@@ -71,6 +71,6 @@ Cancel asks for confirmation, then sends `SIGTERM`.
 
 A non-zero exit shows the last 64 KB of `pg_dump` or `pg_restore` stderr in a scrollable monospaced view. Common causes:
 
-- **Binary not found**: install `libpq`, or set a custom path under **Settings > Terminal > CLI Paths**.
+- **Binary not found**: install `libpq` and link it so `pg_dump` and `pg_restore` are on your `PATH`.
 - **Authentication failed**: TablePro passes the connection password via `PGPASSWORD` and runs the tools with `--no-password` to avoid a TTY prompt. If the role lacks `LOGIN` or the database is wrong, the failure surfaces here.
 - **Restore conflict**: the target database has objects that conflict with the dump. Restore into a fresh database or drop the conflicting objects first.

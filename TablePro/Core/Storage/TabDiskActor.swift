@@ -13,6 +13,30 @@ import os
 internal struct TabDiskState: Codable {
     let tabs: [PersistedTab]
     let selectedTabId: UUID?
+
+    init(tabs: [PersistedTab], selectedTabId: UUID?) {
+        self.tabs = tabs
+        self.selectedTabId = selectedTabId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tabs
+        case selectedTabId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tabs = try container.decode([LossyTab].self, forKey: .tabs).compactMap(\.value)
+        selectedTabId = try container.decodeIfPresent(UUID.self, forKey: .selectedTabId)
+    }
+}
+
+private struct LossyTab: Decodable {
+    let value: PersistedTab?
+
+    init(from decoder: Decoder) throws {
+        value = try? PersistedTab(from: decoder)
+    }
 }
 
 internal actor TabDiskActor {

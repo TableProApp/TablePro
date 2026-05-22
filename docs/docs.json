@@ -104,8 +104,7 @@
                   "features/er-diagram",
                   "features/explain-visualization",
                   "features/json-viewer",
-                  "features/server-dashboard",
-                  "features/terminal"
+                  "features/server-dashboard"
                 ]
               },
               {

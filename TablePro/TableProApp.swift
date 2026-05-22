@@ -590,12 +590,6 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsServerDashboard ?? false))
 
-            Button(String(localized: "Open Terminal")) {
-                actions?.openTerminal()
-            }
-            .optionalKeyboardShortcut(shortcut(for: .openTerminal))
-            .disabled(!(actions?.isConnected ?? false))
-
             Divider()
 
             Button("Increase Text Size") {

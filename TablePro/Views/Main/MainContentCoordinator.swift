@@ -91,6 +91,10 @@ final class MainContentCoordinator {
         services.databaseManager.activeDatabaseName(for: connection)
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
+    func setSafeModeLevel(_ level: SafeModeLevel) {
+        toolbarState.safeModeLevel = level
+        services.databaseManager.setSafeModeLevel(level, for: connectionId)
+    }
     let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
@@ -163,14 +167,12 @@ final class MainContentCoordinator {
 
     @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
 
+    @ObservationIgnored var schemaColumnsCache: [String: (columns: [String], primaryKeys: [String])] = [:]
+    @ObservationIgnored var columnScopeRequeryTask: Task<Void, Never>?
+
     @ObservationIgnored var pendingScrollToTopAfterReplace: Set<UUID> = []
 
     // MARK: - Internal State
-
-    /// Cached column types per table for selective queries (avoids refetching schema).
-    /// Key: "connectionId:databaseName:tableName"
-    @ObservationIgnored var cachedTableColumnTypes: [String: [ColumnType]] = [:]
-    @ObservationIgnored var cachedTableColumnNames: [String: [String]] = [:]
 
     @ObservationIgnored internal var queryGeneration: Int = 0
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
@@ -503,6 +505,7 @@ final class MainContentCoordinator {
 
     func refreshTables() async {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        schemaColumnsCache.removeAll()
         await services.schemaService.reload(
             connectionId: connectionId,
             driver: driver,
@@ -622,8 +625,8 @@ final class MainContentCoordinator {
         tabSessionRegistry.removeAll()
         querySortCache.removeAll()
         displayFormatsCache.removeAll()
-        cachedTableColumnTypes.removeAll()
-        cachedTableColumnNames.removeAll()
+        schemaColumnsCache.removeAll()
+        columnScopeRequeryTask?.cancel()
 
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil

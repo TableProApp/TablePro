@@ -217,20 +217,6 @@ final class QueryTabManager {
         selectedTabId = newTab.id
     }
 
-    func addTerminalTab(databaseName: String = "") {
-        if let existing = tabs.first(where: { $0.tabType == .terminal }) {
-            selectedTabId = existing.id
-            return
-        }
-        let tabTitle = String(localized: "Terminal")
-        var newTab = QueryTab(title: tabTitle, tabType: .terminal)
-        newTab.tableContext.databaseName = databaseName
-        newTab.tableContext.isEditable = false
-        newTab.hasUserInteraction = true
-        tabs.append(newTab)
-        selectedTabId = newTab.id
-    }
-
     func addPreviewTableTab(
         tableName: String,
         databaseType: DatabaseType = .mysql,

@@ -7,14 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.2] - 2026-05-22
+
+### Changed
+
+- Hiding a column now also drops it from the query, so tables with one heavy column load faster. The primary key is always fetched so editing still works
+
+### Removed
+
+- Removed the embedded database CLI terminal. Use your system terminal for command-line access to your databases.
+
 ### Fixed
 
-- Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect, and the Query menu shows the new keys (#1357)
-- Custom shortcuts now require a modifier key, so a plain key like Space is no longer accepted and then silently ignored (#1357)
-- Cancelling a pending connection no longer lets the abandoned attempt overwrite or drop a later successful connection to the same database (#1358)
-- Cancelling a pending SSH connection now closes its tunnel instead of leaving the local forward port open (#1369)
+- Opening a connection no longer crashes when its database plugin is older than the app; outdated plugins now update automatically (#1371)
+- Safe mode no longer resets when you open another table; it stays set for the connection until you change it (#1351)
+- Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect and shows in the Query menu (#1357)
+- Custom shortcuts now require a modifier key, so a plain key like Space is no longer silently ignored (#1357)
+- Cancelling a pending connection no longer lets the abandoned attempt overwrite a later successful one to the same database (#1358)
+- Cancelling a pending SSH connection now closes its tunnel instead of leaving the port open (#1369)
 - Importing connections from DBeaver now brings over the username (#1355)
-- Copying rows now includes only the visible columns, in their current order, instead of every column (#1354)
+- Copying rows now includes only the visible columns, in their current order (#1354)
+- The query shown in the editor when you open a table now matches the query that actually runs
+- Large text columns are no longer truncated to 256 characters when browsing a table, so editing a cell can't save a shortened value
 
 ## [0.43.1] - 2026-05-20
 
@@ -1929,7 +1943,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.43.1...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.43.2...HEAD
+[0.43.2]: https://github.com/TableProApp/TablePro/compare/v0.43.1...v0.43.2
 [0.43.1]: https://github.com/TableProApp/TablePro/compare/v0.43.0...v0.43.1
 [0.43.0]: https://github.com/TableProApp/TablePro/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/TableProApp/TablePro/compare/v0.41.0...v0.42.0

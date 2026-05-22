@@ -18,7 +18,6 @@ enum TabType: Equatable, Codable, Hashable {
     case createTable      // Create new table tab
     case erDiagram        // ER diagram tab
     case serverDashboard  // Server dashboard tab
-    case terminal         // Embedded database CLI terminal tab
 }
 
 /// Minimal representation of a tab for persistence

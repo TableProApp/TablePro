@@ -69,6 +69,12 @@ Sort applies to the full result. TablePro re-runs the query with `ORDER BY` appe
   />
 </Frame>
 
+### Hiding Columns
+
+Toggle columns on or off from the columns button in the status bar, or a column header's right-click menu. Hidden columns are remembered per table.
+
+A hidden column is also left out of the query, so it isn't fetched. If a table is slow to open because one column holds a lot of data, hide that column and the table loads faster. Showing it again re-runs the query to load it. The primary key is always fetched, so editing and saving keep working even if you hide it.
+
 
 ## Data Editing
 

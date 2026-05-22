@@ -273,7 +273,6 @@ final class ConnectionToolbarState {
         databaseType = connection.type
         displayColor = connection.displayColor
         tagId = connection.tagId
-        safeModeLevel = connection.safeModeLevel
         databaseGroupingStrategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
         syncFromSession(for: connection)
     }
@@ -298,6 +297,12 @@ final class ConnectionToolbarState {
         let resolvedSchema = DatabaseManager.shared.session(for: connection.id)?.currentSchema
         if currentSchema != resolvedSchema {
             currentSchema = resolvedSchema
+        }
+
+        let resolvedSafeMode = DatabaseManager.shared.session(for: connection.id)?.safeModeLevel
+            ?? connection.safeModeLevel
+        if safeModeLevel != resolvedSafeMode {
+            safeModeLevel = resolvedSafeMode
         }
     }
 

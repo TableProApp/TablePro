@@ -240,7 +240,7 @@ final class MainContentCommandActions {
     var isConnected: Bool { coordinator != nil }
     var isQueryExecuting: Bool { coordinator?.toolbarState.isExecuting ?? false }
 
-    var safeModeLevel: SafeModeLevel { connection.safeModeLevel }
+    var safeModeLevel: SafeModeLevel { coordinator?.toolbarState.safeModeLevel ?? connection.safeModeLevel }
 
     var isReadOnly: Bool { safeModeLevel.blocksAllWrites }
 
@@ -526,10 +526,6 @@ final class MainContentCommandActions {
 
     func showServerDashboard() {
         coordinator?.showServerDashboard()
-    }
-
-    func openTerminal() {
-        coordinator?.openTerminal()
     }
 
     var supportsServerDashboard: Bool {

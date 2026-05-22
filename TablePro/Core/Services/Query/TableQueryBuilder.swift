@@ -64,25 +64,24 @@ struct TableQueryBuilder {
         schemaName: String? = nil,
         sortState: SortState? = nil,
         columns: [String] = [],
+        selectColumns: [String]? = nil,
         limit: Int = 200,
-        offset: Int = 0,
-        columnExclusions: [ColumnExclusion] = []
+        offset: Int = 0
     ) -> String {
         if let pluginDriver {
             let sortCols = sortColumnsAsTuples(sortState)
             if let result = pluginDriver.buildBrowseQuery(
                 table: tableName, sortColumns: sortCols,
-                columns: columns, limit: limit, offset: offset
+                columns: selectColumns ?? columns, limit: limit, offset: offset
             ) {
                 return result
             }
         }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
-        let selectClause = buildSelectClause(columns: columns, exclusions: columnExclusions)
-        var query = "SELECT \(selectClause) FROM \(quotedTable)"
+        var query = "SELECT \(selectClause(selectColumns)) FROM \(quotedTable)"
 
-        if let orderBy = buildOrderByClause(sortState: sortState, columns: columns) {
+        if let orderBy = orderByOrOffsetFetchDefault(sortState: sortState, columns: columns) {
             query += " \(orderBy)"
         }
 
@@ -97,9 +96,9 @@ struct TableQueryBuilder {
         logicMode: FilterLogicMode = .and,
         sortState: SortState? = nil,
         columns: [String] = [],
+        selectColumns: [String]? = nil,
         limit: Int = 200,
-        offset: Int = 0,
-        columnExclusions: [ColumnExclusion] = []
+        offset: Int = 0
     ) -> String {
         if let pluginDriver {
             let sortCols = sortColumnsAsTuples(sortState)
@@ -117,15 +116,14 @@ struct TableQueryBuilder {
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, filters: filterTuples,
                 logicMode: logicMode == .and ? "and" : "or",
-                sortColumns: sortCols, columns: columns, limit: limit, offset: offset
+                sortColumns: sortCols, columns: selectColumns ?? columns, limit: limit, offset: offset
             ) {
                 return result
             }
         }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
-        let selectClause = buildSelectClause(columns: columns, exclusions: columnExclusions)
-        var query = "SELECT \(selectClause) FROM \(quotedTable)"
+        var query = "SELECT \(selectClause(selectColumns)) FROM \(quotedTable)"
 
         if let dialect {
             let activeFilters = filters.filter { $0.isEnabled }
@@ -136,7 +134,7 @@ struct TableQueryBuilder {
             }
         }
 
-        if let orderBy = buildOrderByClause(sortState: sortState, columns: columns) {
+        if let orderBy = orderByOrOffsetFetchDefault(sortState: sortState, columns: columns) {
             query += " \(orderBy)"
         }
 
@@ -205,17 +203,9 @@ struct TableQueryBuilder {
 
     // MARK: - Private Helpers
 
-    private func buildSelectClause(columns: [String], exclusions: [ColumnExclusion]) -> String {
-        guard !exclusions.isEmpty, !columns.isEmpty else { return "*" }
-
-        let exclusionMap = Dictionary(exclusions.map { ($0.columnName, $0.placeholderExpression) }) { _, last in last }
-
-        return columns.map { col in
-            if let placeholder = exclusionMap[col] {
-                return "\(placeholder) AS \(quote(col))"
-            }
-            return quote(col)
-        }.joined(separator: ", ")
+    private func selectClause(_ selectColumns: [String]?) -> String {
+        guard let selectColumns, !selectColumns.isEmpty else { return "*" }
+        return selectColumns.map { quote($0) }.joined(separator: ", ")
     }
 
     private func buildPaginationClause(limit: Int, offset: Int) -> String {
@@ -230,6 +220,14 @@ struct TableQueryBuilder {
             guard sortCol.columnIndex >= 0 else { return nil }
             return (sortCol.columnIndex, sortCol.direction == .ascending)
         } ?? []
+    }
+
+    private func orderByOrOffsetFetchDefault(sortState: SortState?, columns: [String]) -> String? {
+        if let orderBy = buildOrderByClause(sortState: sortState, columns: columns) {
+            return orderBy
+        }
+        guard dialect?.paginationStyle == .offsetFetch else { return nil }
+        return dialect?.offsetFetchOrderBy ?? "ORDER BY (SELECT NULL)"
     }
 
     private func buildOrderByClause(sortState: SortState?, columns: [String]) -> String? {

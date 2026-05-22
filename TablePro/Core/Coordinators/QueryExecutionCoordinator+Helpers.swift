@@ -155,12 +155,6 @@ extension QueryExecutionCoordinator {
         }
         parent.toolbarState.isResultsCollapsed = false
 
-        if let tbl = tableName, !tbl.isEmpty, hasSchema {
-            let cacheKey = "\(conn.id):\(parent.activeDatabaseName):\(tbl)"
-            parent.cachedTableColumnTypes[cacheKey] = columnTypes
-            parent.cachedTableColumnNames[cacheKey] = columns
-        }
-
         let resolvedPKs: [String]
         if let pks = metadata?.primaryKeyColumns, !pks.isEmpty {
             resolvedPKs = pks
@@ -485,19 +479,5 @@ extension QueryExecutionCoordinator {
             return
         }
         parent.runQuery()
-    }
-
-    func columnExclusions(for tableName: String) -> [ColumnExclusion] {
-        let cacheKey = "\(parent.connectionId):\(parent.activeDatabaseName):\(tableName)"
-        guard let cachedTypes = parent.cachedTableColumnTypes[cacheKey],
-              let cachedCols = parent.cachedTableColumnNames[cacheKey] else {
-            return []
-        }
-        return ColumnExclusionPolicy.exclusions(
-            columns: cachedCols,
-            columnTypes: cachedTypes,
-            databaseType: parent.connection.type,
-            quoteIdentifier: parent.queryBuilder.quoteIdentifier
-        )
     }
 }

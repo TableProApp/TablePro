@@ -135,7 +135,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
-        TerminalProcessManager.registry.terminateAllSync()
         SSHTunnelManager.shared.terminateAllProcessesSync()
     }
 
