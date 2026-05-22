@@ -10,10 +10,50 @@ struct DataGripDataSource {
     let name: String
     let driverRef: String
     let jdbcURL: String
-    var username: String
+    let username: String
     let groupName: String?
     let ssh: DataGripSSHReference?
     let ssl: DataGripSSLProperties?
+}
+
+/// A single `<data-source>` element. DataGrip splits one logical data source
+/// across the shared `dataSources.xml` (driver, jdbc-url, group) and the
+/// machine-local `dataSources.local.xml` (user name, ssh-properties,
+/// ssl-properties). Fragments from both files merge by uuid before resolving.
+struct DataGripDataSourceFragment {
+    let uuid: String
+    var name: String?
+    var driverRef: String?
+    var jdbcURL: String?
+    var username: String?
+    var groupName: String?
+    var ssh: DataGripSSHReference?
+    var ssl: DataGripSSLProperties?
+
+    mutating func merge(_ other: DataGripDataSourceFragment) {
+        name = other.name ?? name
+        driverRef = other.driverRef ?? driverRef
+        jdbcURL = other.jdbcURL ?? jdbcURL
+        username = other.username ?? username
+        groupName = other.groupName ?? groupName
+        ssh = other.ssh ?? ssh
+        ssl = other.ssl ?? ssl
+    }
+
+    func resolved() -> DataGripDataSource? {
+        guard let driverRef, !driverRef.isEmpty,
+              let jdbcURL, !jdbcURL.isEmpty else { return nil }
+        return DataGripDataSource(
+            uuid: uuid,
+            name: name ?? uuid,
+            driverRef: driverRef,
+            jdbcURL: jdbcURL,
+            username: username ?? "",
+            groupName: groupName,
+            ssh: ssh,
+            ssl: ssl
+        )
+    }
 }
 
 struct DataGripSSHReference {
@@ -36,18 +76,18 @@ struct DataGripSSHConfig {
     let host: String
     let port: Int?
     let username: String
-    let authType: String
+    let authType: String?
     let keyPath: String?
 }
 
 enum DataGripDataSourceParser {
-    static func parseDataSources(_ data: Data) -> [DataGripDataSource] {
+    static func parseFragments(_ data: Data) -> [DataGripDataSourceFragment] {
         guard let document = try? XMLDocument(data: data),
               let nodes = try? document.nodes(forXPath: "//data-source") else { return [] }
 
         return nodes.compactMap { node in
-            guard let element = node as? XMLElement else { return nil }
-            return parseDataSource(element)
+            guard let element = node as? XMLElement, let uuid = element.attr("uuid") else { return nil }
+            return parseFragment(element, uuid: uuid)
         }
     }
 
@@ -64,51 +104,26 @@ enum DataGripDataSourceParser {
                 host: element.attr("host") ?? "",
                 port: element.attr("port").flatMap { Int($0) },
                 username: element.attr("username") ?? "",
-                authType: element.attr("authType") ?? "PASSWORD",
-                keyPath: element.attr("keyPath")
+                authType: element.attr("authType"),
+                keyPath: element.attr("keyPath").map { JetBrainsPathMacros.expand($0) }
             )
             result[id] = config
         }
         return result
     }
 
-    /// `dataSources.local.xml` holds the user name and per-user secrets metadata
-    /// that the shared `dataSources.xml` omits. Returns user names keyed by data-source UUID.
-    static func parseLocalUserNames(_ data: Data) -> [String: String] {
-        guard let document = try? XMLDocument(data: data),
-              let nodes = try? document.nodes(forXPath: "//data-source") else { return [:] }
-
-        var result: [String: String] = [:]
-        for node in nodes {
-            guard let element = node as? XMLElement,
-                  let uuid = element.attr("uuid"),
-                  let user = element.childText("user-name"), !user.isEmpty else { continue }
-            result[uuid] = user
-        }
-        return result
-    }
-
     // MARK: - Private
 
-    private static func parseDataSource(_ element: XMLElement) -> DataGripDataSource? {
-        guard let uuid = element.attr("uuid"),
-              let driverRef = element.childText("driver-ref"),
-              let jdbcURL = element.childText("jdbc-url"), !jdbcURL.isEmpty else { return nil }
-
-        let name = element.attr("name") ?? uuid
-        let username = element.childText("user-name") ?? ""
-        let groupName = element.attr("group-name").flatMap { $0.isEmpty ? nil : $0 }
-
-        return DataGripDataSource(
-            uuid: uuid,
-            name: name,
-            driverRef: driverRef,
-            jdbcURL: jdbcURL,
-            username: username,
-            groupName: groupName,
-            ssh: parseSSHReference(element),
-            ssl: parseSSLProperties(element)
-        )
+    private static func parseFragment(_ element: XMLElement, uuid: String) -> DataGripDataSourceFragment {
+        var fragment = DataGripDataSourceFragment(uuid: uuid)
+        fragment.name = element.attr("name").flatMap { $0.isEmpty ? nil : $0 }
+        fragment.driverRef = element.childText("driver-ref")
+        fragment.jdbcURL = element.childText("jdbc-url").flatMap { $0.isEmpty ? nil : $0 }
+        fragment.username = element.childText("user-name").flatMap { $0.isEmpty ? nil : $0 }
+        fragment.groupName = element.attr("group-name").flatMap { $0.isEmpty ? nil : $0 }
+        fragment.ssh = parseSSHReference(element)
+        fragment.ssl = parseSSLProperties(element)
+        return fragment
     }
 
     private static func parseSSHReference(_ element: XMLElement) -> DataGripSSHReference? {
@@ -128,16 +143,14 @@ enum DataGripDataSourceParser {
     }
 
     private static func parseSSLProperties(_ element: XMLElement) -> DataGripSSLProperties? {
-        guard let ssl = element.elements(forName: "ssl-properties").first else { return nil }
-
-        let enabled = (ssl.childText("enabled") ?? ssl.attr("enabled")) == "true"
-        guard enabled else { return nil }
+        guard let ssl = element.elements(forName: "ssl-config").first,
+              ssl.childText("enabled") == "true" else { return nil }
 
         return DataGripSSLProperties(
-            mode: ssl.childText("ssl-mode") ?? ssl.childText("mode") ?? ssl.attr("ssl-mode"),
-            caCertPath: ssl.childText("ca-file") ?? ssl.childText("ca-cert"),
-            clientCertPath: ssl.childText("client-cert-file") ?? ssl.childText("client-cert"),
-            clientKeyPath: ssl.childText("client-key-file") ?? ssl.childText("client-key")
+            mode: ssl.childText("mode"),
+            caCertPath: ssl.certPath("ca-cert"),
+            clientCertPath: ssl.certPath("client-cert"),
+            clientKeyPath: ssl.certPath("client-key")
         )
     }
 }
@@ -149,5 +162,9 @@ private extension XMLElement {
 
     func attr(_ name: String) -> String? {
         attribute(forName: name)?.stringValue
+    }
+
+    func certPath(_ name: String) -> String? {
+        childText(name).flatMap { $0.isEmpty ? nil : JetBrainsPathMacros.expand($0) }
     }
 }

@@ -38,7 +38,19 @@ struct DataGripImporterTests {
         try xml.write(to: optionsDir.appendingPathComponent("dataSources.xml"), atomically: true, encoding: .utf8)
     }
 
-    private func writeSSHConfig(_ configs: [String]) throws {
+    private func writeLocalDataSources(_ elements: [String]) throws {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <project version="4">
+          <component name="dataSourceStorageLocal">
+          \(elements.joined(separator: "\n"))
+          </component>
+        </project>
+        """
+        try xml.write(to: optionsDir.appendingPathComponent("dataSources.local.xml"), atomically: true, encoding: .utf8)
+    }
+
+    private func writeSSHConfigs(_ configs: [String]) throws {
         let xml = """
         <application>
           <component name="SshConfigs">
@@ -48,7 +60,7 @@ struct DataGripImporterTests {
           </component>
         </application>
         """
-        try xml.write(to: optionsDir.appendingPathComponent("ssh-config.xml"), atomically: true, encoding: .utf8)
+        try xml.write(to: optionsDir.appendingPathComponent("sshConfigs.xml"), atomically: true, encoding: .utf8)
     }
 
     private func source(
@@ -66,6 +78,17 @@ struct DataGripImporterTests {
         <data-source source="LOCAL" name="\(name)" uuid="\(uuid)"\(groupAttr)>
           <driver-ref>\(driverRef)</driver-ref>
           <jdbc-url>\(jdbcURL)</jdbc-url>
+          \(userElement)
+          \(extra)
+        </data-source>
+        """
+    }
+
+    private func localSource(uuid: String, name: String = "", userName: String = "", extra: String = "") -> String {
+        let nameAttr = name.isEmpty ? "" : " name=\"\(name)\""
+        let userElement = userName.isEmpty ? "" : "<user-name>\(userName)</user-name>"
+        return """
+        <data-source\(nameAttr) uuid="\(uuid)">
           \(userElement)
           \(extra)
         </data-source>
@@ -148,70 +171,106 @@ struct DataGripImporterTests {
 
     // MARK: - SSH
 
-    @Test("joins SSH config by ssh-config-id")
+    @Test("joins SSH config from local file, infers key auth, expands $USER_HOME$")
     func sshJoin() throws {
         try writeDataSources([
-            source(
+            source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a")
+        ])
+        try writeLocalDataSources([
+            localSource(
                 uuid: "1",
-                name: "A",
-                driverRef: "mysql.8",
-                jdbcURL: "jdbc:mysql://h:3306/a",
+                userName: "appuser",
                 extra: "<ssh-properties><enabled>true</enabled><ssh-config-id>SSH1</ssh-config-id></ssh-properties>"
             )
         ])
-        try writeSSHConfig([
-            "<sshConfig host=\"bastion.example.com\" id=\"SSH1\" keyPath=\"/Users/me/.ssh/id_rsa\" port=\"2222\" username=\"deploy\" authType=\"KEY_PAIR\"/>"
+        try writeSSHConfigs([
+            """
+            <sshConfig host="bastion.example.com" id="SSH1" keyPath="$USER_HOME$/.ssh/id_ed25519" \
+            port="2222" username="deploy" useOpenSSHConfig="true"/>
+            """
         ])
 
         let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        #expect(connection.username == "appuser")
         let ssh = try #require(connection.sshConfig)
         #expect(ssh.host == "bastion.example.com")
         #expect(ssh.port == 2_222)
         #expect(ssh.username == "deploy")
         #expect(ssh.authMethod == "Private Key")
-        #expect(ssh.privateKeyPath == "/Users/me/.ssh/id_rsa")
+        #expect(ssh.privateKeyPath == "\(NSHomeDirectory())/.ssh/id_ed25519")
     }
 
-    @Test("no SSH when properties disabled")
+    @Test("respects explicit password auth even with a key path")
+    func sshPasswordAuth() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a")
+        ])
+        try writeLocalDataSources([
+            localSource(
+                uuid: "1",
+                extra: "<ssh-properties><enabled>true</enabled><ssh-config-id>SSH1</ssh-config-id></ssh-properties>"
+            )
+        ])
+        try writeSSHConfigs([
+            "<sshConfig host=\"h\" id=\"SSH1\" port=\"22\" username=\"u\" authType=\"PASSWORD\"/>"
+        ])
+
+        let ssh = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first?.sshConfig)
+        #expect(ssh.authMethod == "Password")
+        #expect(ssh.privateKeyPath == "")
+    }
+
+    @Test("no SSH when properties disabled in local file")
     func sshDisabled() throws {
         try writeDataSources([
-            source(
-                uuid: "1",
-                name: "A",
-                driverRef: "mysql.8",
-                jdbcURL: "jdbc:mysql://h:3306/a",
-                extra: "<ssh-properties><enabled>false</enabled></ssh-properties>"
-            )
+            source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a")
+        ])
+        try writeLocalDataSources([
+            localSource(uuid: "1", extra: "<ssh-properties><enabled>false</enabled></ssh-properties>")
         ])
 
         let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
         #expect(connection.sshConfig == nil)
     }
 
+    @Test("merges user-name from local file when shared file omits it")
+    func usernameFromLocalFile() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "A", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://h:5432/db")
+        ])
+        try writeLocalDataSources([
+            localSource(uuid: "1", userName: "postgres")
+        ])
+
+        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        #expect(connection.username == "postgres")
+    }
+
     // MARK: - SSL
 
-    @Test("parses SSL mode and certificate paths")
+    @Test("parses SSL config from local file and expands $USER_HOME$")
     func sslParsing() throws {
         try writeDataSources([
-            source(
-                uuid: "1",
-                name: "A",
-                driverRef: "postgresql",
-                jdbcURL: "jdbc:postgresql://h:5432/a",
-                extra: """
-                <ssl-properties>
-                  <enabled>true</enabled>
-                  <ssl-mode>verify-full</ssl-mode>
-                  <ca-file>/certs/ca.pem</ca-file>
-                </ssl-properties>
-                """
-            )
+            source(uuid: "1", name: "A", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://h:5432/a")
+        ])
+        try writeLocalDataSources([
+            localSource(uuid: "1", extra: """
+            <ssl-config use-ide-store="true">
+              <ca-cert>$USER_HOME$/certs/ca.pem</ca-cert>
+              <client-cert>$USER_HOME$/certs/client.crt</client-cert>
+              <client-key>$USER_HOME$/certs/client.key</client-key>
+              <enabled>true</enabled>
+              <mode>VERIFY_FULL</mode>
+            </ssl-config>
+            """)
         ])
 
         let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
         let ssl = try #require(connection.sslConfig)
         #expect(ssl.mode == "Verify Identity")
-        #expect(ssl.caCertificatePath == "/certs/ca.pem")
+        #expect(ssl.caCertificatePath == "\(NSHomeDirectory())/certs/ca.pem")
+        #expect(ssl.clientCertificatePath == "\(NSHomeDirectory())/certs/client.crt")
+        #expect(ssl.clientKeyPath == "\(NSHomeDirectory())/certs/client.key")
     }
 
     // MARK: - Groups & Dedup

@@ -23,7 +23,6 @@ struct DataGripImporter: ForeignAppImporter {
     private struct Location {
         let dataSourcesURL: URL
         let localURL: URL?
-        let sshConfigURL: URL
         let configDir: URL
     }
 
@@ -34,8 +33,7 @@ struct DataGripImporter: ForeignAppImporter {
     func connectionCount() -> Int {
         var seen = Set<String>()
         for location in locations() {
-            guard let data = try? Data(contentsOf: location.dataSourcesURL) else { continue }
-            for source in DataGripDataSourceParser.parseDataSources(data) {
+            for source in dataSources(at: location) {
                 seen.insert(source.uuid)
             }
         }
@@ -53,16 +51,17 @@ struct DataGripImporter: ForeignAppImporter {
         var groupNames = Set<String>()
         var credentials: [String: ExportableCredentials] = [:]
         var credentialsAborted = false
+        var sshConfigsByDir: [URL: [String: DataGripSSHConfig]] = [:]
 
         for location in locations {
-            guard let data = try? Data(contentsOf: location.dataSourcesURL) else { continue }
-            var sources = DataGripDataSourceParser.parseDataSources(data)
-            mergeLocalUserNames(into: &sources, localURL: location.localURL)
-
-            let sshConfigs = loadSSHConfigs(location)
+            let sshConfigs = sshConfigsByDir[location.configDir] ?? {
+                let loaded = loadSSHConfigs(configDir: location.configDir)
+                sshConfigsByDir[location.configDir] = loaded
+                return loaded
+            }()
             let credentialStore = includePasswords ? JetBrainsCredentialStore(configDir: location.configDir) : nil
 
-            for source in sources {
+            for source in dataSources(at: location) {
                 guard seenUUIDs.insert(source.uuid).inserted,
                       let connection = makeConnection(source, sshConfigs: sshConfigs) else { continue }
 
@@ -162,7 +161,6 @@ struct DataGripImporter: ForeignAppImporter {
         result.append(Location(
             dataSourcesURL: dataSources,
             localURL: FileManager.default.fileExists(atPath: local.path) ? local : nil,
-            sshConfigURL: directory.appendingPathComponent("ssh-config.xml"),
             configDir: configDir
         ))
     }
@@ -174,31 +172,39 @@ struct DataGripImporter: ForeignAppImporter {
               let nodes = try? document.nodes(forXPath: "//entry/@key") else { return [] }
 
         return nodes.compactMap { node in
-            node.stringValue.map { $0.replacingOccurrences(of: "$USER_HOME$", with: NSHomeDirectory()) }
+            node.stringValue.map { JetBrainsPathMacros.expand($0) }
         }
     }
 
-    private func loadSSHConfigs(_ location: Location) -> [String: DataGripSSHConfig] {
-        var merged: [String: DataGripSSHConfig] = [:]
-        let urls = [
-            location.configDir.appendingPathComponent("options/ssh-config.xml"),
-            location.sshConfigURL
-        ]
-        for url in urls {
+    /// DataGrip stores SSH connection details once per IDE under
+    /// `options/sshConfigs.xml`, keyed by id and referenced from each data
+    /// source's `<ssh-properties><ssh-config-id>`.
+    private func loadSSHConfigs(configDir: URL) -> [String: DataGripSSHConfig] {
+        let url = configDir.appendingPathComponent("options/sshConfigs.xml")
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        return DataGripDataSourceParser.parseSSHConfigs(data)
+    }
+
+    /// Merges the shared `dataSources.xml` with the machine-local
+    /// `dataSources.local.xml`. The shared file carries the driver and JDBC URL;
+    /// the local file carries the user name, SSH and SSL properties. Fragments
+    /// join by uuid with the local file overriding the fields it provides.
+    private func dataSources(at location: Location) -> [DataGripDataSource] {
+        var fragments: [String: DataGripDataSourceFragment] = [:]
+        var order: [String] = []
+
+        for url in [location.dataSourcesURL, location.localURL].compactMap({ $0 }) {
             guard let data = try? Data(contentsOf: url) else { continue }
-            merged.merge(DataGripDataSourceParser.parseSSHConfigs(data)) { _, new in new }
-        }
-        return merged
-    }
-
-    private func mergeLocalUserNames(into sources: inout [DataGripDataSource], localURL: URL?) {
-        guard let localURL, let data = try? Data(contentsOf: localURL) else { return }
-        let userNames = DataGripDataSourceParser.parseLocalUserNames(data)
-        for index in sources.indices where sources[index].username.isEmpty {
-            if let user = userNames[sources[index].uuid] {
-                sources[index].username = user
+            for fragment in DataGripDataSourceParser.parseFragments(data) {
+                if fragments[fragment.uuid] == nil {
+                    order.append(fragment.uuid)
+                    fragments[fragment.uuid] = fragment
+                } else {
+                    fragments[fragment.uuid]?.merge(fragment)
+                }
             }
         }
+        return order.compactMap { fragments[$0]?.resolved() }
     }
 
     // MARK: - Mapping
@@ -247,9 +253,8 @@ struct DataGripImporter: ForeignAppImporter {
         let host = config?.host ?? reference.inlineHost ?? ""
         guard !host.isEmpty else { return nil }
 
-        let authType = (config?.authType ?? "PASSWORD").uppercased()
-        let usesKey = authType == "KEY_PAIR" || authType == "PUBLIC_KEY"
         let keyPath = config?.keyPath ?? ""
+        let usesKey = usesKeyAuthentication(authType: config?.authType, keyPath: keyPath)
 
         return ExportableSSHConfig(
             enabled: true,
@@ -265,6 +270,19 @@ struct DataGripImporter: ForeignAppImporter {
             totpDigits: nil,
             totpPeriod: nil
         )
+    }
+
+    /// DataGrip omits `authType` when the connection relies on the OpenSSH
+    /// config, so a present key path is the reliable signal for key auth.
+    private func usesKeyAuthentication(authType: String?, keyPath: String) -> Bool {
+        switch (authType ?? "").uppercased() {
+        case "KEY_PAIR", "PUBLIC_KEY", "OPEN_SSH":
+            return true
+        case "PASSWORD":
+            return false
+        default:
+            return !keyPath.isEmpty
+        }
     }
 
     private func makeSSLConfig(_ ssl: DataGripSSLProperties?) -> ExportableSSLConfig? {

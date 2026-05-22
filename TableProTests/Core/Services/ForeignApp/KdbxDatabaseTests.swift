@@ -28,6 +28,25 @@ struct KdbxDatabaseTests {
         #expect(entry?.password == "p@ssw0rd!")
     }
 
+    @Test("reads gzip-compressed KDBX payload")
+    func compressedRoundTrip() throws {
+        let mainKey: [UInt8] = Array("compressed-main-key".utf8)
+        let title = "IntelliJ Platform DB \u{2014} gz"
+        let fileData = KdbxTestFixture.makeKdbx(
+            mainKey: mainKey,
+            title: title,
+            userName: "dbuser",
+            password: "p@ssw0rd!",
+            compressed: true
+        )
+
+        let entries = try KdbxDatabase.read(fileData: fileData, mainKey: mainKey)
+        let entry = entries.first { $0.title == title }
+
+        #expect(entry?.userName == "dbuser")
+        #expect(entry?.password == "p@ssw0rd!")
+    }
+
     @Test("wrong main key is rejected by stream-start check")
     func wrongKeyThrows() {
         let fileData = KdbxTestFixture.makeKdbx(

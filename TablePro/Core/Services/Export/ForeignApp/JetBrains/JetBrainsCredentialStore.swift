@@ -8,10 +8,15 @@ import Foundation
 import os
 import Security
 
-/// Resolves a JetBrains data-source password. On macOS the IDE defaults to the
-/// native Keychain (service `IntelliJ Platform DB — <uuid>`); only the "In
-/// KeePass" mode writes the encrypted `c.kdbx`, so the Keychain path is tried
-/// first and the KDBX file is a fallback.
+/// Resolves a JetBrains data-source password. The IDE names it with
+/// `generateServiceName("DB", uuid)`, which formats as
+/// `IntelliJ Platform DB \u{2014} <data-source uuid>`. On macOS the secret lives
+/// in the native Keychain; only the "In KeePass" mode writes the encrypted
+/// `c.kdbx`, so the Keychain is tried first and the KDBX is a fallback.
+///
+/// SSH tunnel passwords are not recoverable: DataGrip does not persist them to
+/// the Keychain (verified against a saved password-auth tunnel), so the importer
+/// brings over the tunnel settings and the user re-enters the password.
 final class JetBrainsCredentialStore {
     enum Lookup {
         case found(String)
@@ -28,6 +33,7 @@ final class JetBrainsCredentialStore {
     private let configDir: URL
     private var kdbxEntriesByTitle: [String: KdbxEntry]?
     private var kdbxLoaded = false
+    private var storeLocked = false
 
     init(configDir: URL) {
         self.configDir = configDir
@@ -38,8 +44,10 @@ final class JetBrainsCredentialStore {
     }
 
     func password(forDataSourceUUID uuid: String) -> Lookup {
-        let service = Self.serviceName(forDataSourceUUID: uuid)
+        secret(service: Self.serviceName(forDataSourceUUID: uuid))
+    }
 
+    private func secret(service: String) -> Lookup {
         switch readKeychain(service: service) {
         case .found(let value): return .found(value)
         case .cancelled: return .cancelled
@@ -49,7 +57,7 @@ final class JetBrainsCredentialStore {
         if let entry = loadKdbxEntries()?[service], !entry.password.isEmpty {
             return .found(entry.password)
         }
-        return .notFound
+        return storeLocked ? .cancelled : .notFound
     }
 
     // MARK: - Keychain
@@ -105,6 +113,7 @@ final class JetBrainsCredentialStore {
                   let parsed = parseMainKeyFile(text) else { continue }
             guard parsed.encryption == "BUILT_IN" else {
                 Self.logger.warning("Unsupported c.pwd encryption: \(parsed.encryption)")
+                storeLocked = true
                 continue
             }
             if let key = decryptBuiltIn(parsed.value) {

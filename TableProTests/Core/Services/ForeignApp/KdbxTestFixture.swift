@@ -4,19 +4,22 @@
 //
 
 import CommonCrypto
+import Compression
 import Foundation
 @testable import TablePro
 
 /// Builds a synthetic KDBX 3.1 file matching JetBrains' layout so the reader can
-/// be exercised end to end without a real `c.kdbx`. Uncompressed payload,
-/// ChaCha20 inner stream, AES-256-CBC body, AES-KDF key transform.
+/// be exercised end to end without a real `c.kdbx`. ChaCha20 inner stream,
+/// AES-256-CBC body, AES-KDF key transform, with an optional gzip payload to
+/// cover the compressed form real files use.
 enum KdbxTestFixture {
     static func makeKdbx(
         mainKey: [UInt8],
         title: String,
         userName: String,
         password: String,
-        rounds: UInt64 = 60
+        rounds: UInt64 = 60,
+        compressed: Bool = false
     ) -> Data {
         let mainSeed = randomBytes(32)
         let transformSeed = randomBytes(32)
@@ -37,13 +40,13 @@ enum KdbxTestFixture {
         <String><Key>Password</Key><Value Protected="True">\(protectedPassword)</Value></String>
         </Entry></Group></Root></KeePassFile>
         """
-        let xmlBytes = Array(xml.utf8)
+        let payload = compressed ? gzip(Array(xml.utf8)) : Array(xml.utf8)
 
         var framed: [UInt8] = []
         framed += le32(0)
-        framed += sha256(xmlBytes)
-        framed += le32(UInt32(xmlBytes.count))
-        framed += xmlBytes
+        framed += sha256(payload)
+        framed += le32(UInt32(payload.count))
+        framed += payload
         framed += le32(1)
         framed += [UInt8](repeating: 0, count: 32)
         framed += le32(0)
@@ -57,7 +60,7 @@ enum KdbxTestFixture {
         header += le32(0x9AA2_D903)
         header += le32(0xB54B_FB67)
         header += le32(0x0003_0001)
-        appendField(&header, 3, le32(0))
+        appendField(&header, 3, le32(compressed ? 1 : 0))
         appendField(&header, 4, mainSeed)
         appendField(&header, 5, transformSeed)
         appendField(&header, 6, le64(rounds))
@@ -172,5 +175,63 @@ enum KdbxTestFixture {
             UInt8((value >> 8) & 0xff),
             UInt8(value & 0xff)
         ]
+    }
+
+    // MARK: - GZIP
+
+    private static func gzip(_ data: [UInt8]) -> [UInt8] {
+        var output: [UInt8] = [0x1f, 0x8b, 0x08, 0x00, 0, 0, 0, 0, 0x00, 0xff]
+        output += rawDeflate(data)
+        output += le32(crc32(data))
+        output += le32(UInt32(data.count & 0xffff_ffff))
+        return output
+    }
+
+    private static func rawDeflate(_ input: [UInt8]) -> [UInt8] {
+        let bufferSize = 65_536
+        let destination = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer { destination.deallocate() }
+
+        var stream = compression_stream(dst_ptr: destination, dst_size: bufferSize, src_ptr: destination, src_size: 0, state: nil)
+        guard compression_stream_init(&stream, COMPRESSION_STREAM_ENCODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK else {
+            return input
+        }
+        defer { compression_stream_destroy(&stream) }
+
+        return input.withUnsafeBufferPointer { source -> [UInt8] in
+            guard let base = source.baseAddress else { return input }
+            stream.src_ptr = base
+            stream.src_size = source.count
+            stream.dst_ptr = destination
+            stream.dst_size = bufferSize
+
+            var output: [UInt8] = []
+            while true {
+                switch compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue)) {
+                case COMPRESSION_STATUS_OK:
+                    if stream.dst_size == 0 {
+                        output.append(contentsOf: UnsafeBufferPointer(start: destination, count: bufferSize))
+                        stream.dst_ptr = destination
+                        stream.dst_size = bufferSize
+                    }
+                case COMPRESSION_STATUS_END:
+                    output.append(contentsOf: UnsafeBufferPointer(start: destination, count: bufferSize - stream.dst_size))
+                    return output
+                default:
+                    return input
+                }
+            }
+        }
+    }
+
+    private static func crc32(_ data: [UInt8]) -> UInt32 {
+        var crc: UInt32 = 0xffff_ffff
+        for byte in data {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 {
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xedb8_8320 : crc >> 1
+            }
+        }
+        return crc ^ 0xffff_ffff
     }
 }
