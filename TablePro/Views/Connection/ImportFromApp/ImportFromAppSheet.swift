@@ -102,7 +102,7 @@ struct ImportFromAppSheet: View {
     // MARK: - Actions
 
     private func beginImport(importer: any ForeignAppImporter, includePasswords: Bool) {
-        if includePasswords, !confirmKeychainPrompts(for: importer) {
+        if includePasswords, importer.readsPasswordsFromKeychain, !confirmKeychainPrompts(for: importer) {
             return
         }
         startImport(importer: importer, includePasswords: includePasswords)

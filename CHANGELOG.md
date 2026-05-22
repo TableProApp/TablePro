@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Importing connections from TablePlus brings over saved passwords again. A recent release looked under the wrong keychain name, so connections imported with no passwords and no warning.
+- Importing an SSH connection from TablePlus no longer fills in a fake private key path such as `~/.ssh/Import a private key...` when no key was selected. Empty TLS certificate paths are skipped too.
+- Importing from DBeaver no longer shows an unnecessary keychain permission warning. DBeaver stores passwords in its own file, so macOS never prompts.
 - Raw SQL filter now suggests columns and keywords at every position in the expression, including after AND and OR, instead of only the first column. (#1346)
 - Plugins left incompatible after a TablePro update now update quietly in the background instead of showing a premature "could not be loaded" alert. You are only notified when no compatible version exists yet, and the message tells you what to do. (#1322)
 - A plugin you download and install by hand is no longer blocked by macOS Gatekeeper once its signature is verified. (#1322)

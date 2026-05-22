@@ -85,4 +85,13 @@ struct ForeignAppImporterRegistryTests {
         #expect(importer.displayName == "Beekeeper Studio")
         #expect(importer.appBundleIdentifier == "io.beekeeperstudio.desktop")
     }
+
+    @Test("Importers declare whether passwords are read from the keychain")
+    func testReadsPasswordsFromKeychainFlags() {
+        #expect(TablePlusImporter().readsPasswordsFromKeychain == true)
+        #expect(SequelAceImporter().readsPasswordsFromKeychain == true)
+        #expect(DataGripImporter().readsPasswordsFromKeychain == true)
+        #expect(DBeaverImporter().readsPasswordsFromKeychain == false)
+        #expect(BeekeeperStudioImporter().readsPasswordsFromKeychain == false)
+    }
 }

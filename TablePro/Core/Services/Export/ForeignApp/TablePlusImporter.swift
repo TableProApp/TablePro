@@ -14,6 +14,11 @@ struct TablePlusImporter: ForeignAppImporter {
     let displayName = "TablePlus"
     let symbolName = "rectangle.stack"
     let appBundleIdentifier = "com.tinyapp.TablePlus"
+    let readsPasswordsFromKeychain = true
+
+    static let keychainService = "com.tableplus.TablePlus"
+
+    var readKeychain: ForeignKeychainRead = ForeignKeychainReader.readPassword
 
     var connectionsFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/com.tinyapp.TablePlus/Data/Connections.plist")
@@ -182,8 +187,7 @@ struct TablePlusImporter: ForeignAppImporter {
         let port = (entry["ServerPort"] as? String).flatMap(Int.init)
         let username = entry["ServerUser"] as? String ?? ""
         let useKey = entry["isUsePrivateKey"] as? Bool ?? false
-        let rawKeyPath = entry["ServerPrivateKeyName"] as? String ?? ""
-        let keyPath = ForeignAppPathHelper.resolveKeyPath(rawKeyPath)
+        let keyPath = useKey ? existingKeyPath(entry["ServerPrivateKeyName"] as? String ?? "") : ""
 
         return ExportableSSHConfig(
             enabled: true,
@@ -191,7 +195,7 @@ struct TablePlusImporter: ForeignAppImporter {
             port: port,
             username: username,
             authMethod: useKey ? "Private Key" : "Password",
-            privateKeyPath: useKey ? keyPath : "",
+            privateKeyPath: keyPath,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,
@@ -199,6 +203,12 @@ struct TablePlusImporter: ForeignAppImporter {
             totpDigits: nil,
             totpPeriod: nil
         )
+    }
+
+    private func existingKeyPath(_ rawName: String) -> String {
+        let resolved = ForeignAppPathHelper.resolveKeyPath(rawName)
+        guard !resolved.isEmpty else { return "" }
+        return FileManager.default.fileExists(atPath: PathPortability.expandHome(resolved)) ? resolved : ""
     }
 
     private func parseSSLConfig(_ entry: [String: Any]) -> ExportableSSLConfig? {
@@ -215,18 +225,22 @@ struct TablePlusImporter: ForeignAppImporter {
         }
 
         let paths = entry["TlsKeyPaths"] as? [String] ?? []
+        func certPath(_ index: Int) -> String? {
+            guard index < paths.count, !paths[index].isEmpty else { return nil }
+            return paths[index]
+        }
         return ExportableSSLConfig(
             mode: mode,
-            caCertificatePath: !paths.isEmpty ? paths[0] : nil,
-            clientCertificatePath: paths.count > 1 ? paths[1] : nil,
-            clientKeyPath: paths.count > 2 ? paths[2] : nil
+            caCertificatePath: certPath(0),
+            clientCertificatePath: certPath(1),
+            clientKeyPath: certPath(2)
         )
     }
 
     private func readCredentials(for connectionId: String, abortFlag: inout Bool) -> ExportableCredentials {
         func read(_ account: String) -> String? {
             guard !abortFlag else { return nil }
-            switch ForeignKeychainReader.readPassword(service: "com.tinyapp.TablePlus", account: account) {
+            switch readKeychain(Self.keychainService, account) {
             case .found(let value):
                 return value
             case .notFound:

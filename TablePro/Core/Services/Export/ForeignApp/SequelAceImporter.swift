@@ -13,6 +13,7 @@ struct SequelAceImporter: ForeignAppImporter {
     let displayName = "Sequel Ace"
     let symbolName = "cylinder.split.1x2"
     let appBundleIdentifier = "com.sequel-ace.sequel-ace"
+    let readsPasswordsFromKeychain = true
 
     var favoritesFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(
