@@ -257,8 +257,6 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 onSelect: coordinator.handleQuickSwitcherSelection
             )
-        case .connectionSwitcher:
-            ConnectionSwitcherSheet(isPresented: dismissBinding)
         case .sqlPreview:
             SQLReviewSheet(
                 isPresented: dismissBinding,

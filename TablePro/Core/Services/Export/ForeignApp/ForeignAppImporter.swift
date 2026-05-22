@@ -18,6 +18,10 @@ protocol ForeignAppImporter {
     /// app ships in multiple editions (e.g. DBeaver Community / Enterprise)
     /// should override `installedAppURL()` to look those up as well.
     var appBundleIdentifier: String { get }
+    /// True when importing passwords reads the macOS keychain, which makes the
+    /// system show a per-item access prompt. Importers that read passwords from
+    /// a file (DBeaver, Beekeeper Studio) return false so no prompt is promised.
+    var readsPasswordsFromKeychain: Bool { get }
     func installedAppURL() -> URL?
     func connectionCount() -> Int
     func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult
@@ -102,6 +106,8 @@ enum KeychainReadResult {
     case notFound
     case cancelled
 }
+
+typealias ForeignKeychainRead = (_ service: String, _ account: String) -> KeychainReadResult
 
 enum ForeignKeychainReader {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ForeignKeychainReader")

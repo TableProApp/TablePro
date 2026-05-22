@@ -168,7 +168,7 @@ struct TablePlusImporterTests {
         }
     }
 
-    @Test("importConnections parses SSH config")
+    @Test("importConnections parses SSH config and keeps an explicit key path even when the file is missing")
     func testImportConnections_parsesSSHConfig() throws {
         try writeConnections([
             makeConnection(
@@ -179,21 +179,68 @@ struct TablePlusImporterTests {
                 sshPort: "2222",
                 sshUser: "deploy",
                 usePrivateKey: true,
-                privateKeyPath: "~/.ssh/id_rsa"
+                privateKeyPath: "/Users/test/.ssh/id_rsa"
             )
         ])
 
-        let result = try importer.importConnections(includePasswords: false)
-        let conn = result.envelope.connections[0]
-        let ssh = conn.sshConfig
+        var imp = importer
+        imp.keyFileExists = { _ in false }
+
+        let result = try imp.importConnections(includePasswords: false)
+        let ssh = result.envelope.connections[0].sshConfig
 
         #expect(ssh != nil)
         #expect(ssh?.enabled == true)
         #expect(ssh?.host == "bastion.example.com")
-        #expect(ssh?.port == 2222)
+        #expect(ssh?.port == 2_222)
         #expect(ssh?.username == "deploy")
         #expect(ssh?.authMethod == "Private Key")
-        #expect(ssh?.privateKeyPath == "~/.ssh/id_rsa")
+        #expect(ssh?.privateKeyPath == "/Users/test/.ssh/id_rsa")
+    }
+
+    @Test("importConnections drops the empty-key placeholder instead of building a fake path")
+    func testImportConnections_placeholderPrivateKey_producesNoPath() throws {
+        try writeConnections([
+            makeConnection(
+                name: "SSH Placeholder",
+                id: "ssh-placeholder",
+                isOverSSH: true,
+                sshHost: "bastion.example.com",
+                sshUser: "deploy",
+                usePrivateKey: true,
+                privateKeyPath: "Import a private key..."
+            )
+        ])
+
+        var imp = importer
+        imp.keyFileExists = { _ in false }
+
+        let result = try imp.importConnections(includePasswords: false)
+        let ssh = result.envelope.connections[0].sshConfig
+
+        #expect(ssh?.authMethod == "Private Key")
+        #expect(ssh?.privateKeyPath == "")
+    }
+
+    @Test("importConnections keeps a bare key name when the file exists in ~/.ssh")
+    func testImportConnections_bareKeyName_keptWhenFileExists() throws {
+        try writeConnections([
+            makeConnection(
+                name: "SSH Bare Key",
+                id: "ssh-bare",
+                isOverSSH: true,
+                sshHost: "bastion.example.com",
+                sshUser: "deploy",
+                usePrivateKey: true,
+                privateKeyPath: "id_rsa"
+            )
+        ])
+
+        var imp = importer
+        imp.keyFileExists = { _ in true }
+
+        let result = try imp.importConnections(includePasswords: false)
+        #expect(result.envelope.connections[0].sshConfig?.privateKeyPath == "~/.ssh/id_rsa")
     }
 
     @Test("importConnections parses SSH config with password auth")
@@ -294,6 +341,21 @@ struct TablePlusImporterTests {
 
         let result = try importer.importConnections(includePasswords: false)
         #expect(result.envelope.connections[0].sslConfig == nil)
+    }
+
+    @Test("importConnections treats empty TablePlus TLS paths as none")
+    func testImportConnections_emptyTLSPaths_areNil() throws {
+        var entry = makeConnection(name: "Empty TLS", id: "tls-empty", tlsMode: 1)
+        entry["TlsKeyPaths"] = ["", "", ""]
+        try writeConnections([entry])
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+
+        #expect(ssl != nil)
+        #expect(ssl?.caCertificatePath == nil)
+        #expect(ssl?.clientCertificatePath == nil)
+        #expect(ssl?.clientKeyPath == nil)
     }
 
     @Test("importConnections preserves groups")
@@ -443,5 +505,81 @@ struct TablePlusImporterTests {
         #expect(result.envelope.formatVersion == 1)
         #expect(result.envelope.appVersion == "TablePlus Import")
         #expect(result.envelope.tags == nil)
+    }
+
+    // MARK: - Password Import
+
+    @Test("importConnections reads the database password from the correct keychain service")
+    func testImportConnections_readsCorrectKeychainServiceAndAccount() throws {
+        try writeConnections([makeConnection(name: "DB", id: "conn-1")])
+        let spy = KeychainSpy()
+        spy.responses["conn-1_database"] = .found("s3cret")
+
+        var imp = importer
+        imp.readKeychain = spy.read
+
+        let result = try imp.importConnections(includePasswords: true)
+
+        #expect(spy.calls.contains { $0.service == "com.tableplus.TablePlus" && $0.account == "conn-1_database" })
+        #expect(result.envelope.credentials?["0"]?.password == "s3cret")
+        #expect(result.credentialsAborted == false)
+    }
+
+    @Test("importConnections queries database, SSH, and key-passphrase accounts")
+    func testImportConnections_queriesAllCredentialAccounts() throws {
+        try writeConnections([makeConnection(name: "DB", id: "conn-1")])
+        let spy = KeychainSpy()
+
+        var imp = importer
+        imp.readKeychain = spy.read
+
+        _ = try imp.importConnections(includePasswords: true)
+
+        let accounts = Set(spy.calls.map(\.account))
+        #expect(accounts == ["conn-1_database", "conn-1_server", "conn-1_server_key"])
+        #expect(spy.calls.allSatisfy { $0.service == "com.tableplus.TablePlus" })
+    }
+
+    @Test("importConnections leaves credentials empty and does not abort when nothing is stored")
+    func testImportConnections_noStoredPasswords_emptyCredentialsNoAbort() throws {
+        try writeConnections([makeConnection(name: "DB", id: "conn-1")])
+        let spy = KeychainSpy()
+
+        var imp = importer
+        imp.readKeychain = spy.read
+
+        let result = try imp.importConnections(includePasswords: true)
+
+        #expect(result.envelope.credentials == nil)
+        #expect(result.credentialsAborted == false)
+    }
+
+    @Test("importConnections aborts and stops reading after a cancelled keychain prompt")
+    func testImportConnections_cancelledPrompt_abortsAndStops() throws {
+        try writeConnections([
+            makeConnection(name: "A", id: "c1"),
+            makeConnection(name: "B", id: "c2")
+        ])
+        let spy = KeychainSpy()
+        spy.responses["c1_database"] = .cancelled
+
+        var imp = importer
+        imp.readKeychain = spy.read
+
+        let result = try imp.importConnections(includePasswords: true)
+
+        #expect(result.credentialsAborted == true)
+        #expect(spy.calls.count == 1)
+        #expect(spy.calls.first?.account == "c1_database")
+    }
+}
+
+private final class KeychainSpy {
+    var calls: [(service: String, account: String)] = []
+    var responses: [String: KeychainReadResult] = [:]
+
+    func read(_ service: String, _ account: String) -> KeychainReadResult {
+        calls.append((service: service, account: account))
+        return responses[account] ?? .notFound
     }
 }
