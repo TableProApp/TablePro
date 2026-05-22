@@ -47,6 +47,12 @@ internal final class QuickSwitcherViewModel {
         groups.flatMap(\.items)
     }
 
+    func listHeight(rowHeight: CGFloat, headerHeight: CGFloat, maxVisibleRows: Int) -> CGFloat {
+        let headerCount = groups.filter { $0.header != nil }.count
+        let visibleRows = min(flatItems.count, maxVisibleRows)
+        return CGFloat(visibleRows) * rowHeight + CGFloat(headerCount) * headerHeight
+    }
+
     init(connectionId: UUID, services: AppServices, defaults: UserDefaults = .standard) {
         self.connectionId = connectionId
         self.services = services
