@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>TableProPluginKitVersion</key>
-	<integer>14</integer>
 	<key>TableProMinAppVersion</key>
 	<string>0.42.0</string>
+	<key>TableProPluginKitVersion</key>
+	<integer>15</integer>
 </dict>
 </plist>

@@ -255,6 +255,17 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)
     }
 
+    func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        let tuples = filters
+            .filter { $0.isEnabled && !$0.columnName.isEmpty }
+            .map(\.asPluginFilterTuple)
+        return try await pluginDriver.fetchFilteredRowCount(
+            table: table,
+            filters: tuples,
+            logicMode: logicMode == .and ? "and" : "or"
+        )
+    }
+
     func fetchTableDDL(table: String) async throws -> String {
         try await pluginDriver.fetchTableDDL(table: table, schema: pluginDriver.currentSchema)
     }

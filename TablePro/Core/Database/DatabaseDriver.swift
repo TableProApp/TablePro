@@ -95,6 +95,10 @@ protocol DatabaseDriver: AnyObject {
     /// Returns nil if not available (e.g., SQLite). Used for instant pagination display.
     func fetchApproximateRowCount(table: String) async throws -> Int?
 
+    /// Fetch an exact row count for the table filtered by `filters`.
+    /// Returns nil when the driver can't count a filtered set, so the caller falls back.
+    func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
+
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
 
@@ -354,6 +358,7 @@ extension DatabaseDriver {
     }
 
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? { nil }
 
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? { nil }

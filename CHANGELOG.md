@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Connecting to a PostgreSQL-compatible engine that doesn't implement the pg_matviews catalog (such as db9.ai) no longer fails to load tables. (#1383)
+- Filtering a table now updates the row count and page count in the bottom-right to match the filtered result, instead of showing the whole-table totals.
 - Reopening a table now restores the filter you had applied, instead of clearing it. Filters are remembered per connection. (#1347)
 - Importing connections from TablePlus brings over saved passwords again. A recent release looked under the wrong keychain name, so connections imported with no passwords and no warning.
 - Importing an SSH connection from TablePlus no longer fills in a fake private key path such as `~/.ssh/Import a private key...` when no key was selected. Empty TLS certificate paths are skipped too.
