@@ -341,33 +341,30 @@ extension QueryExecutionCoordinator {
             guard !parent.isTearingDown else { return }
             guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
 
-            let unfilteredSQL = "SELECT COUNT(*) FROM \(driver.quoteIdentifier(tableName))"
-            let plan: RowCountPlan = await MainActor.run {
-                guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return .skip }
-                let filterState = tab.filterState
-                if isNonSQL {
-                    return filterState.hasAppliedFilters
-                        ? .filteredNonSQL(filters: filterState.appliedFilters, logicMode: filterState.filterLogicMode)
-                        : .approximate
-                }
-                if filterState.hasAppliedFilters {
-                    let sql = parent.queryBuilder.buildFilteredCountQuery(
-                        tableName: tableName,
-                        schemaName: tab.tableContext.schemaName,
-                        filters: filterState.appliedFilters,
-                        logicMode: filterState.filterLogicMode
-                    )
-                    return .exactSQL(sql ?? unfilteredSQL)
-                }
-                let threshold = AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
-                if let approx = tab.pagination.totalRowCount, approx >= threshold { return .skip }
-                return .exactSQL(unfilteredSQL)
+            let prepared: (plan: RowCountPlan, sql: String?) = await MainActor.run {
+                guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return (.skip, nil) }
+                let plan = Self.rowCountPlan(
+                    isNonSQL: isNonSQL,
+                    filterState: tab.filterState,
+                    approximateRowCount: tab.pagination.totalRowCount,
+                    threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
+                )
+                guard case let .exactCount(filtered) = plan else { return (plan, nil) }
+                let sql = parent.queryBuilder.buildFilteredCountQuery(
+                    tableName: tableName,
+                    schemaName: tab.tableContext.schemaName,
+                    filters: filtered ? tab.filterState.appliedFilters : [],
+                    logicMode: tab.filterState.filterLogicMode
+                )
+                return (plan, sql)
             }
 
             let outcome: RowCountOutcome
-            switch plan {
+            switch prepared.plan {
             case .skip:
                 return
+            case .clear:
+                outcome = .clear
             case .approximate:
                 guard let count = try? await driver.fetchApproximateRowCount(table: tableName) else { return }
                 outcome = .count(count, isApproximate: true)
@@ -377,7 +374,8 @@ extension QueryExecutionCoordinator {
                 } else {
                     outcome = .clear
                 }
-            case let .exactSQL(sql):
+            case .exactCount:
+                guard let sql = prepared.sql else { return }
                 do {
                     let result = try await driver.execute(query: sql)
                     guard let countStr = result.rows.first?.first?.asText, let count = Int(countStr) else { return }
@@ -402,6 +400,24 @@ extension QueryExecutionCoordinator {
                 }
             }
         }
+    }
+
+    static func rowCountPlan(
+        isNonSQL: Bool,
+        filterState: TabFilterState,
+        approximateRowCount: Int?,
+        threshold: Int
+    ) -> RowCountPlan {
+        if isNonSQL {
+            return filterState.hasAppliedFilters
+                ? .filteredNonSQL(filters: filterState.appliedFilters, logicMode: filterState.filterLogicMode)
+                : .approximate
+        }
+        let exceedsThreshold = (approximateRowCount ?? 0) >= threshold
+        if filterState.hasAppliedFilters {
+            return exceedsThreshold ? .clear : .exactCount(filtered: true)
+        }
+        return exceedsThreshold ? .skip : .exactCount(filtered: false)
     }
 
     func handleQueryExecutionError(
@@ -474,10 +490,11 @@ extension QueryExecutionCoordinator {
     }
 }
 
-private enum RowCountPlan {
+enum RowCountPlan: Equatable {
     case skip
+    case clear
     case approximate
-    case exactSQL(String)
+    case exactCount(filtered: Bool)
     case filteredNonSQL(filters: [TableFilter], logicMode: FilterLogicMode)
 }
 
