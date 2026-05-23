@@ -63,15 +63,14 @@ for PLUGIN in "${PLUGINS[@]}"; do
     done
 done
 
-git fetch --tags --quiet origin 2>/dev/null || true
-
 TAG_LIST=""
 FIRST=true
 echo "Resolving next release version for each plugin (PluginKit $PKV):"
 for PLUGIN in "${PLUGINS[@]}"; do
-    LATEST_TAG=$(git tag -l "plugin-${PLUGIN}-v*" | sort -V | tail -1)
+    LATEST_TAG=$(git ls-remote --tags --refs origin "plugin-${PLUGIN}-v*" \
+        | sed 's#.*/##' | sort -V | tail -1)
     if [ -z "$LATEST_TAG" ]; then
-        echo "  WARNING: No tag found for plugin-${PLUGIN}-v*. Skipping."
+        echo "  WARNING: No remote tag found for plugin-${PLUGIN}-v*. Skipping."
         continue
     fi
     LATEST_VER="${LATEST_TAG#plugin-${PLUGIN}-v}"

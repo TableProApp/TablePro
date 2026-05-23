@@ -252,19 +252,21 @@ jobs:
         run: |
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
           EXPECTED="${{ matrix.pluginKitVersion }}"
-          WORK=$(mktemp -d)
-          unzip -oq "build/Plugins/${BUNDLE_NAME}-arm64.zip" -d "$WORK"
-          PLIST=$(find "$WORK" -path '*.tableplugin/Contents/Info.plist' | head -1)
-          if [ -z "$PLIST" ]; then
-            echo "::error::Could not find Info.plist in the built ${BUNDLE_NAME} bundle."
-            exit 1
-          fi
-          ACTUAL=$(plutil -extract TableProPluginKitVersion raw "$PLIST")
-          if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "::error::${BUNDLE_NAME} was built for PluginKit $ACTUAL but this release is labeled PluginKit $EXPECTED. Refusing to publish a mislabeled binary. Re-release from a commit whose plugin Info.plist matches the target PluginKit version."
-            exit 1
-          fi
-          echo "Verified ${BUNDLE_NAME}: built PluginKit $ACTUAL matches the release label."
+          for ARCH in arm64 x86_64; do
+            WORK=$(mktemp -d)
+            unzip -oq "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip" -d "$WORK"
+            PLIST=$(find "$WORK" -path '*.tableplugin/Contents/Info.plist' | head -1)
+            if [ -z "$PLIST" ]; then
+              echo "::error::Could not find Info.plist in the built ${BUNDLE_NAME}-${ARCH} bundle."
+              exit 1
+            fi
+            ACTUAL=$(plutil -extract TableProPluginKitVersion raw "$PLIST")
+            if [ "$ACTUAL" != "$EXPECTED" ]; then
+              echo "::error::${BUNDLE_NAME}-${ARCH} was built for PluginKit $ACTUAL but this release is labeled PluginKit $EXPECTED. Refusing to publish a mislabeled binary. Re-release from a commit whose plugin Info.plist matches the target PluginKit version."
+              exit 1
+            fi
+            echo "Verified ${BUNDLE_NAME}-${ARCH}: built PluginKit $ACTUAL matches the release label."
+          done
 
       - name: Read checksums
         id: sha
@@ -307,6 +309,13 @@ jobs:
           ### SHA-256
           - ARM64: \`$ARM64_SHA\`
           - x86_64: \`$X86_SHA\`"
+
+          EXISTING_PKV=$(gh release view "$TAG" --json body --jq .body 2>/dev/null \
+            | grep -oiE 'PluginKit [0-9]+' | grep -oE '[0-9]+' | head -1 || true)
+          if [ -n "$EXISTING_PKV" ] && [ "$EXISTING_PKV" != "$PKV" ]; then
+            echo "::error::Release $TAG already exists for PluginKit $EXISTING_PKV. Refusing to overwrite it with PluginKit $PKV; publish the new ABI under a new plugin version."
+            exit 1
+          fi
 
           gh release delete "$TAG" --yes 2>/dev/null || true
           gh release create "$TAG" \
