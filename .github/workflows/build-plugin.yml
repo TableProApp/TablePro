@@ -248,6 +248,24 @@ jobs:
           ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" arm64 "${{ steps.plugin.outputs.version }}"
           ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" x86_64 "${{ steps.plugin.outputs.version }}"
 
+      - name: Verify built PluginKit version matches the release label
+        run: |
+          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
+          EXPECTED="${{ matrix.pluginKitVersion }}"
+          WORK=$(mktemp -d)
+          unzip -oq "build/Plugins/${BUNDLE_NAME}-arm64.zip" -d "$WORK"
+          PLIST=$(find "$WORK" -path '*.tableplugin/Contents/Info.plist' | head -1)
+          if [ -z "$PLIST" ]; then
+            echo "::error::Could not find Info.plist in the built ${BUNDLE_NAME} bundle."
+            exit 1
+          fi
+          ACTUAL=$(plutil -extract TableProPluginKitVersion raw "$PLIST")
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::${BUNDLE_NAME} was built for PluginKit $ACTUAL but this release is labeled PluginKit $EXPECTED. Refusing to publish a mislabeled binary. Re-release from a commit whose plugin Info.plist matches the target PluginKit version."
+            exit 1
+          fi
+          echo "Verified ${BUNDLE_NAME}: built PluginKit $ACTUAL matches the release label."
+
       - name: Read checksums
         id: sha
         run: |
