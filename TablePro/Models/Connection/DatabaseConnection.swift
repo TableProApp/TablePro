@@ -383,6 +383,11 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["promptForPassword"] = newValue ? "true" : "" }
     }
 
+    var usesAWSIAM: Bool {
+        let value = additionalFields["awsAuth"] ?? "off"
+        return value != "off" && !value.isEmpty
+    }
+
     var preConnectScript: String? {
         get { additionalFields["preConnectScript"]?.nilIfEmpty }
         set { additionalFields["preConnectScript"] = newValue ?? "" }

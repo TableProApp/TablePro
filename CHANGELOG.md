@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Fill Column: right-click a column header and choose Fill Column to set one value across all loaded rows. The change is staged like a normal edit, so you review it and Save before it applies, and one undo reverts the whole fill. Not available on primary key columns. (#1304)
+- AWS IAM authentication for PostgreSQL and MySQL connections to RDS and Aurora. Pick AWS IAM in the connection's Authentication field and use an access key, a named AWS profile, or SSO. TablePro generates a fresh login token on every connect and reconnect, so you never paste an expiring token, and SSL is required automatically. (#1291)
 
 ## [0.44.0] - 2026-05-23
 
