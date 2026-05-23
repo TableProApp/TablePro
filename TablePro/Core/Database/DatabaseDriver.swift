@@ -426,29 +426,30 @@ enum DatabaseDriverFactory {
         if connection.usesAWSIAM, ssl.mode == .disabled || ssl.mode == .preferred {
             ssl.mode = .required
         }
+        let additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
             username: connection.username,
-            password: try await resolvePassword(for: connection, override: passwordOverride),
+            password: try await resolvePassword(for: connection, fields: additionalFields, override: passwordOverride),
             database: connection.database,
             ssl: ssl,
-            additionalFields: buildAdditionalFields(for: connection, plugin: plugin)
+            additionalFields: additionalFields
         )
         let pluginDriver = plugin.createDriver(config: config)
         return PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
     }
 
-    private static func resolveIAMPassword(for connection: DatabaseConnection) async throws -> String {
-        let source = connection.additionalFields["awsAuth"] ?? "accessKey"
-        let explicitRegion = connection.additionalFields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
+    private static func resolveIAMPassword(
+        for connection: DatabaseConnection,
+        fields: [String: String]
+    ) async throws -> String {
+        let source = fields["awsAuth"] ?? "accessKey"
+        let explicitRegion = fields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
         guard let region = explicitRegion ?? RDSEndpoint.region(forHost: connection.host) else {
             throw AWSAuthError.regionUnknown(host: connection.host)
         }
-        let credentials = try await AWSCredentialResolver.resolve(
-            source: source,
-            fields: connection.additionalFields
-        )
+        let credentials = try await AWSCredentialResolver.resolve(source: source, fields: fields)
         return RDSAuthTokenGenerator.generateToken(
             host: connection.host,
             port: connection.port,
@@ -460,10 +461,11 @@ enum DatabaseDriverFactory {
 
     private static func resolvePassword(
         for connection: DatabaseConnection,
+        fields: [String: String],
         override: String? = nil
     ) async throws -> String {
         if connection.usesAWSIAM {
-            return try await resolveIAMPassword(for: connection)
+            return try await resolveIAMPassword(for: connection, fields: fields)
         }
         if let override { return override }
         if connection.usePgpass {
