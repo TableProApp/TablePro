@@ -418,6 +418,59 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             section: .advanced
         )
 
+        let awsIAMFields: [ConnectionField] = [
+            ConnectionField(
+                id: "awsAuth",
+                label: String(localized: "Authentication"),
+                defaultValue: "off",
+                fieldType: .dropdown(options: [
+                    .init(value: "off", label: String(localized: "Password")),
+                    .init(value: "accessKey", label: String(localized: "AWS IAM (Access Key)")),
+                    .init(value: "profile", label: String(localized: "AWS IAM (Profile)")),
+                    .init(value: "sso", label: String(localized: "AWS IAM (SSO)"))
+                ]),
+                section: .authentication,
+                hidesPassword: true
+            ),
+            ConnectionField(
+                id: "awsRegion",
+                label: String(localized: "AWS Region"),
+                placeholder: "us-east-1",
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["accessKey", "profile", "sso"])
+            ),
+            ConnectionField(
+                id: "awsAccessKeyId",
+                label: String(localized: "Access Key ID"),
+                placeholder: "AKIA...",
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["accessKey"])
+            ),
+            ConnectionField(
+                id: "awsSecretAccessKey",
+                label: String(localized: "Secret Access Key"),
+                placeholder: "wJalr...",
+                fieldType: .secure,
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["accessKey"])
+            ),
+            ConnectionField(
+                id: "awsSessionToken",
+                label: String(localized: "Session Token"),
+                placeholder: String(localized: "Optional, for temporary credentials"),
+                fieldType: .secure,
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["accessKey"])
+            ),
+            ConnectionField(
+                id: "awsProfileName",
+                label: String(localized: "Profile Name"),
+                placeholder: "default",
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["profile", "sso"])
+            )
+        ]
+
         let defaults: [(typeId: String, snapshot: PluginMetadataSnapshot)] = [
             ("MySQL", PluginMetadataSnapshot(
                 displayName: "MySQL", iconName: "mysql-icon", defaultPort: 3_306,
@@ -462,6 +515,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: awsIAMFields,
                     category: .relational,
                     tagline: String(localized: "Most popular open-source SQL database")
                 )
@@ -509,6 +563,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: awsIAMFields,
                     category: .relational,
                     tagline: String(localized: "Open-source fork of MySQL")
                 )
@@ -557,7 +612,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField, connectionOptionsField],
+                    additionalConnectionFields: [pgpassField, connectionOptionsField] + awsIAMFields,
                     category: .relational,
                     tagline: String(localized: "Advanced object-relational SQL")
                 )

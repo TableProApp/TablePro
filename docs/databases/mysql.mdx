@@ -50,7 +50,24 @@ Open URLs like `mysql://user:pass@host/db` from your browser to connect directly
 **Local**: host `localhost:3306`, user `root`
 **Docker**: host `localhost:3306` (or mapped port), password from `MYSQL_ROOT_PASSWORD` env
 **MAMP Pro**: host `localhost:8889`, user/pass `root:root`
+**AWS RDS**: Use the endpoint hostname with a password or AWS IAM (see below)
 **Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production servers
+
+## AWS IAM Authentication
+
+Connect to RDS or Aurora with IAM database authentication instead of a static password. Set **Authentication** in the connection form to one of the AWS IAM options:
+
+- **AWS IAM (Access Key)**: enter an access key ID, secret access key, and optional session token.
+- **AWS IAM (Profile)**: use a named profile from `~/.aws/credentials`.
+- **AWS IAM (SSO)**: use a profile backed by IAM Identity Center. Run `aws sso login --profile <name>` first.
+
+Set **Username** to a database user created with the AWS authentication plugin. The **AWS Region** is detected from the RDS hostname and can be overridden.
+
+TablePro generates a fresh 15-minute login token on every connect and reconnect, so you never paste an expiring token. SSL is required for IAM and is turned on automatically.
+
+<Warning>
+The database user must be created for IAM auth (`IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS'`). Connecting fails if the user only has a password.
+</Warning>
 
 ## MySQL vs MariaDB
 

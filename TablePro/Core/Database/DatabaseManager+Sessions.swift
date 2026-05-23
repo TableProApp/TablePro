@@ -126,7 +126,7 @@ extension DatabaseManager {
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
-                if let passwordOverride {
+                if let passwordOverride, !connection.usesAWSIAM {
                     session.cachedPassword = passwordOverride
                 }
                 setSession(session, for: connection.id)

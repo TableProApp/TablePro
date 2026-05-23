@@ -49,9 +49,25 @@ Open URLs like `postgresql://user:pass@host/db` directly to connect. See [Connec
 
 **Local**: host `localhost:5432`, user `postgres`, "trust" auth (no password) with Homebrew
 **Docker**: host `localhost:5432`, password from `POSTGRES_PASSWORD` env
-**AWS RDS**: Use endpoint hostname, standard credentials
+**AWS RDS**: Use the endpoint hostname with a password or AWS IAM (see below)
 **Heroku**: Parse `DATABASE_URL` for credentials
 **Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for secure access
+
+## AWS IAM Authentication
+
+Connect to RDS or Aurora with IAM database authentication instead of a static password. Set **Authentication** in the connection form to one of the AWS IAM options:
+
+- **AWS IAM (Access Key)**: enter an access key ID, secret access key, and optional session token.
+- **AWS IAM (Profile)**: use a named profile from `~/.aws/credentials`.
+- **AWS IAM (SSO)**: use a profile backed by IAM Identity Center. Run `aws sso login --profile <name>` first.
+
+Set **Username** to a database role granted `rds_iam`. The **AWS Region** is detected from the RDS hostname and can be overridden.
+
+TablePro generates a fresh 15-minute login token on every connect and reconnect, so you never paste an expiring token. SSL is required for IAM and is turned on automatically.
+
+<Warning>
+The database role must be set up for IAM auth (`GRANT rds_iam TO "user"`). Connecting fails if the role only has a password.
+</Warning>
 
 ## Features
 

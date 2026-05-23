@@ -2884,6 +2884,7 @@
 					"-lssl.3",
 					"-lcrypto.3",
 					"-liconv",
+					"-lz",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MySQLDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2923,6 +2924,7 @@
 					"-lssl.3",
 					"-lcrypto.3",
 					"-liconv",
+					"-lz",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MySQLDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
