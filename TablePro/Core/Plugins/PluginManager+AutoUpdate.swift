@@ -29,7 +29,7 @@ extension PluginManager {
             return
         }
 
-        await RegistryClient.shared.fetchManifest()
+        await RegistryClient.shared.fetchManifest(forceRefresh: true)
         refreshRegistryUpdateSet()
         guard let manifest = RegistryClient.shared.manifest else {
             reconciliationManifestAttempts += 1
@@ -92,6 +92,7 @@ extension PluginManager {
             let outcome = try await updateFromRegistry(
                 registryPlugin,
                 existingPluginLoaded: false,
+                refreshManifest: false,
                 progress: { _ in }
             )
             switch outcome {

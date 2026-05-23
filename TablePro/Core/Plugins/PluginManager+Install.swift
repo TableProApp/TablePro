@@ -11,8 +11,6 @@ extension PluginManager {
         _ registryPlugin: RegistryPlugin,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginEntry {
-        let registryPlugin = await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
-        let binary = try validateRegistryCompatibility(registryPlugin)
         if plugins.contains(where: { $0.id == registryPlugin.id }) {
             throw PluginError.pluginConflict(existingName: registryPlugin.name)
         }
@@ -23,6 +21,9 @@ extension PluginManager {
         }
         installsInFlight.insert(registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
+
+        let registryPlugin = await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
+        let binary = try validateRegistryCompatibility(registryPlugin)
 
         let userPluginsDir = self.userPluginsDir
         let stateHandler: @Sendable (StagedInstallState) async -> Void = { state in
@@ -47,11 +48,9 @@ extension PluginManager {
     func updateFromRegistry(
         _ registryPlugin: RegistryPlugin,
         existingPluginLoaded: Bool = true,
+        refreshManifest: Bool = true,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginUpdateOutcome {
-        let registryPlugin = await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
-        let binary = try validateRegistryCompatibility(registryPlugin)
-
         if let existing = plugins.first(where: { $0.id == registryPlugin.id }),
            existing.source == .builtIn {
             throw PluginError.pluginConflict(existingName: existing.name)
@@ -64,6 +63,11 @@ extension PluginManager {
         }
         installsInFlight.insert(registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
+
+        let registryPlugin = refreshManifest
+            ? await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
+            : registryPlugin
+        let binary = try validateRegistryCompatibility(registryPlugin)
 
         let hasLive = pluginHasLiveConnections(registryPlugin)
         let userPluginsDir = self.userPluginsDir
