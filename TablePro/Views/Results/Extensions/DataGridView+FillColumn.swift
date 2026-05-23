@@ -58,11 +58,15 @@ extension TableViewCoordinator {
         undoManager?.beginUndoGrouping()
         undoManager?.setActionName(String(localized: "Fill Column"))
 
-        for row in targetRows {
-            commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: value)
+        var didEdit = false
+        for row in targetRows where recordCellEdit(row: row, columnIndex: columnIndex, newValue: value) != nil {
+            didEdit = true
         }
 
         undoManager?.endUndoGrouping()
+
+        guard didEdit else { return }
+        invalidateAllDisplayCaches()
         tableView?.reloadData()
     }
 

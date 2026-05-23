@@ -15,17 +15,39 @@ extension TableViewCoordinator {
     }
 
     func commitTypedCellEdit(row: Int, columnIndex: Int, newValue typedNewValue: PluginCellValue) {
-        cellCommitLogger.debug("commitTypedCellEdit(row: \(row, privacy: .public), columnIndex: \(columnIndex, privacy: .public)) isCommitting=\(self.isCommittingCellEdit, privacy: .public) delegate=\(self.delegate == nil ? "nil" : "present", privacy: .public)")
-        guard !isCommittingCellEdit else { return }
         guard let tableView else { return }
+        guard let delta = recordCellEdit(row: row, columnIndex: columnIndex, newValue: typedNewValue) else { return }
+
+        invalidateDisplayCache()
+        visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
+
+        guard let tableColumnIndex = DataGridView.tableColumnIndex(
+            for: columnIndex,
+            in: tableView,
+            schema: identitySchema
+        ) else { return }
+        if case .cellChanged = delta {
+            tableRowsController.apply(.cellChanged(row: row, column: tableColumnIndex))
+        } else {
+            tableView.reloadData(
+                forRowIndexes: IndexSet(integer: row),
+                columnIndexes: IndexSet(integer: tableColumnIndex)
+            )
+        }
+    }
+
+    @discardableResult
+    func recordCellEdit(row: Int, columnIndex: Int, newValue typedNewValue: PluginCellValue) -> Delta? {
+        cellCommitLogger.debug("recordCellEdit(row: \(row, privacy: .public), columnIndex: \(columnIndex, privacy: .public)) isCommitting=\(self.isCommittingCellEdit, privacy: .public) delegate=\(self.delegate == nil ? "nil" : "present", privacy: .public)")
+        guard !isCommittingCellEdit else { return nil }
         let tableRows = tableRowsProvider()
-        guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
-        guard let displayRowValues = displayRow(at: row) else { return }
-        guard columnIndex < displayRowValues.values.count else { return }
+        guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return nil }
+        guard let displayRowValues = displayRow(at: row) else { return nil }
+        guard columnIndex < displayRowValues.values.count else { return nil }
         let oldValue = displayRowValues.values[columnIndex]
         guard oldValue != typedNewValue else {
-            cellCommitLogger.debug("commitTypedCellEdit - value unchanged, guard returned")
-            return
+            cellCommitLogger.debug("recordCellEdit - value unchanged, guard returned")
+            return nil
         }
 
         isCommittingCellEdit = true
@@ -49,23 +71,8 @@ extension TableViewCoordinator {
                 delta = tableRows.edit(row: storageRow, column: columnIndex, value: typedNewValue)
             }
         }
-        cellCommitLogger.debug("commitTypedCellEdit - about to call delegate.dataGridDidEditCell, delegate=\(self.delegate == nil ? "nil" : "present", privacy: .public)")
+        cellCommitLogger.debug("recordCellEdit - about to call delegate.dataGridDidEditCell, delegate=\(self.delegate == nil ? "nil" : "present", privacy: .public)")
         delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: typedNewValue.asText)
-        invalidateDisplayCache()
-        visualIndex.updateRow(row, from: changeManager, sortedIDs: sortedIDs)
-
-        guard let tableColumnIndex = DataGridView.tableColumnIndex(
-            for: columnIndex,
-            in: tableView,
-            schema: identitySchema
-        ) else { return }
-        if storageRow != nil, case .cellChanged = delta {
-            tableRowsController.apply(.cellChanged(row: row, column: tableColumnIndex))
-        } else {
-            tableView.reloadData(
-                forRowIndexes: IndexSet(integer: row),
-                columnIndexes: IndexSet(integer: tableColumnIndex)
-            )
-        }
+        return delta
     }
 }
