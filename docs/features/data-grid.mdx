@@ -255,6 +255,12 @@ Select multiple rows with `Cmd+click` (non-contiguous) or `Shift+click` (range) 
   />
 </Frame>
 
+### Fill Column
+
+Right-click a column header and choose **Fill Column** to set one value across all loaded rows at once. Enter the value in the dialog, or check **Set to NULL** for nullable columns. The dialog shows how many rows it will set.
+
+Fill stages the change like any other edit, so review it with **Preview SQL** and **Commit** (`Cmd+S`) to apply, or **Discard** to drop it. `Cmd+Z` reverses the whole fill in one step. It only affects the rows currently loaded in the grid, not rows on other pages, and is not available on primary key columns.
+
 ### Saving Changes
 
 Changes are queued, not applied immediately. Manage pending changes with:
