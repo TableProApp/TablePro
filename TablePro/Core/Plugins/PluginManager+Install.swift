@@ -11,6 +11,7 @@ extension PluginManager {
         _ registryPlugin: RegistryPlugin,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginEntry {
+        let registryPlugin = await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
         let binary = try validateRegistryCompatibility(registryPlugin)
         if plugins.contains(where: { $0.id == registryPlugin.id }) {
             throw PluginError.pluginConflict(existingName: registryPlugin.name)
@@ -48,6 +49,7 @@ extension PluginManager {
         existingPluginLoaded: Bool = true,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginUpdateOutcome {
+        let registryPlugin = await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
         let binary = try validateRegistryCompatibility(registryPlugin)
 
         if let existing = plugins.first(where: { $0.id == registryPlugin.id }),

@@ -105,4 +105,11 @@ struct PluginManagerReconciliationTests {
         #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: false, retryRemaining: true))
         #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: false, retryRemaining: false))
     }
+
+    @Test("forceRefresh manifest request bypasses the local cache and sends no If-None-Match")
+    func forceRefreshRequestBypassesCache() {
+        let request = RegistryClient.shared.makeManifestRequest(forceRefresh: true)
+        #expect(request.cachePolicy == .reloadIgnoringLocalCacheData)
+        #expect(request.value(forHTTPHeaderField: "If-None-Match") == nil)
+    }
 }
