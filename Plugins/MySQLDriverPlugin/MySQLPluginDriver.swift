@@ -68,8 +68,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         let sslConfig = config.ssl
-        let awsAuth = config.additionalFields["awsAuth"] ?? "off"
-        let usesAWSIAM = awsAuth != "off" && !awsAuth.isEmpty
 
         let conn = MariaDBPluginConnection(
             host: config.host,
@@ -78,7 +76,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             password: config.password,
             database: _activeDatabase,
             sslConfig: sslConfig,
-            enableCleartextPlugin: usesAWSIAM
+            enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true"
         )
 
         try await conn.connect()

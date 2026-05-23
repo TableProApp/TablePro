@@ -423,10 +423,13 @@ enum DatabaseDriverFactory {
             )
         }
         var ssl = connection.sslConfig
-        if connection.usesAWSIAM, ssl.mode == .disabled || ssl.mode == .preferred {
-            ssl.mode = .required
+        var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
+        if connection.usesAWSIAM {
+            if ssl.mode == .disabled || ssl.mode == .preferred {
+                ssl.mode = .required
+            }
+            additionalFields["enableCleartextPlugin"] = "true"
         }
-        let additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,

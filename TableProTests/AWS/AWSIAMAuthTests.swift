@@ -192,3 +192,37 @@ struct AWSSSOParsingTests {
         }
     }
 }
+
+@Suite("AWS IAM connection fields in the plugin metadata registry")
+@MainActor
+struct RegistryAWSIAMFieldsTests {
+    private func fieldIds(forTypeId typeId: String) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?
+            .connection.additionalConnectionFields.map(\.id) ?? []
+    }
+
+    @Test("MySQL, MariaDB, and PostgreSQL expose the AWS IAM auth fields")
+    func iamFieldsPresent() {
+        for typeId in ["MySQL", "MariaDB", "PostgreSQL"] {
+            let ids = fieldIds(forTypeId: typeId)
+            #expect(ids.contains("awsAuth"), "\(typeId) is missing the awsAuth field")
+            #expect(ids.contains("awsRegion"), "\(typeId) is missing awsRegion")
+            #expect(ids.contains("awsAccessKeyId"), "\(typeId) is missing awsAccessKeyId")
+            #expect(ids.contains("awsSecretAccessKey"), "\(typeId) is missing awsSecretAccessKey")
+            #expect(ids.contains("awsProfileName"), "\(typeId) is missing awsProfileName")
+        }
+    }
+
+    @Test("The secret access key field is Keychain-backed (secure)")
+    func secretFieldIsSecure() {
+        let field = PluginMetadataRegistry.shared.snapshot(forTypeId: "MySQL")?
+            .connection.additionalConnectionFields.first { $0.id == "awsSecretAccessKey" }
+        #expect(field?.isSecure == true)
+    }
+
+    @Test("Redshift and CockroachDB do not offer AWS IAM auth")
+    func excludedTypesHaveNoIAM() {
+        #expect(!fieldIds(forTypeId: "Redshift").contains("awsAuth"))
+        #expect(!fieldIds(forTypeId: "CockroachDB").contains("awsAuth"))
+    }
+}
