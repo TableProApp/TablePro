@@ -171,43 +171,37 @@ struct PaginationState: Equatable {
 
     // MARK: - Navigation Methods
 
-    /// Navigate to next page
+    private mutating func setPage(_ page: Int) {
+        currentPage = page
+        currentOffset = (page - 1) * pageSize
+    }
+
     mutating func goToNextPage() {
         guard hasNextPage else { return }
-        currentPage += 1
-        currentOffset = (currentPage - 1) * pageSize
+        setPage(currentPage + 1)
     }
 
     mutating func goToNextPage(loadedRowCount: Int) {
         guard canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
-        currentPage += 1
-        currentOffset = (currentPage - 1) * pageSize
+        setPage(currentPage + 1)
     }
 
-    /// Navigate to previous page
     mutating func goToPreviousPage() {
         guard hasPreviousPage else { return }
-        currentPage -= 1
-        currentOffset = (currentPage - 1) * pageSize
+        setPage(currentPage - 1)
     }
 
-    /// Navigate to first page
     mutating func goToFirstPage() {
-        currentPage = 1
-        currentOffset = 0
+        setPage(1)
     }
 
-    /// Navigate to last page
     mutating func goToLastPage() {
-        currentPage = totalPages
-        currentOffset = (totalPages - 1) * pageSize
+        setPage(totalPages)
     }
 
-    /// Navigate to specific page
     mutating func goToPage(_ page: Int) {
         guard page > 0 && page <= totalPages else { return }
-        currentPage = page
-        currentOffset = (page - 1) * pageSize
+        setPage(page)
     }
 
     /// Reset pagination to first page

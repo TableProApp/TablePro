@@ -53,17 +53,14 @@ final class PaginationCoordinator {
               let total = tab.pagination.totalRowCount, total > 0 else { return }
 
         let tabId = tab.id
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Show All Rows")
-        alert.informativeText = String(
-            format: String(localized: "This will load all %@ rows on a single page. Large result sets use significant memory. Continue?"),
-            total.formatted()
-        )
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Show All"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-
-        let apply: () -> Void = { [weak self] in
+        confirmLargeFetch(
+            messageText: String(localized: "Show All Rows"),
+            informativeText: String(
+                format: String(localized: "This will load all %@ rows on a single page. Large result sets use significant memory. Continue?"),
+                total.formatted()
+            ),
+            confirmTitle: String(localized: "Show All")
+        ) { [weak self] in
             guard let self,
                   let tabIndex = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
             paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
@@ -71,14 +68,28 @@ final class PaginationCoordinator {
                 pagination.goToFirstPage()
             }
         }
+    }
+
+    private func confirmLargeFetch(
+        messageText: String,
+        informativeText: String,
+        confirmTitle: String,
+        onConfirm: @escaping () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = messageText
+        alert.informativeText = informativeText
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: confirmTitle)
+        alert.addButton(withTitle: String(localized: "Cancel"))
 
         if let window = parent.contentWindow ?? NSApp.keyWindow {
             alert.beginSheetModal(for: window) { response in
                 guard response == .alertFirstButtonReturn else { return }
-                apply()
+                onConfirm()
             }
         } else if alert.runModal() == .alertFirstButtonReturn {
-            apply()
+            onConfirm()
         }
     }
 
@@ -159,22 +170,12 @@ final class PaginationCoordinator {
             message = String(localized: "This will fetch all remaining rows. Large result sets use significant memory. Continue?")
         }
 
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Fetch All Rows")
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Fetch All"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-
-        let window = parent.contentWindow ?? NSApp.keyWindow
-        if let window {
-            alert.beginSheetModal(for: window) { [weak self] response in
-                guard let self, response == .alertFirstButtonReturn else { return }
-                performFetchAll(tabId: tab.id, baseQuery: baseQuery)
-            }
-        } else {
-            let response = alert.runModal()
-            guard response == .alertFirstButtonReturn else { return }
+        confirmLargeFetch(
+            messageText: String(localized: "Fetch All Rows"),
+            informativeText: message,
+            confirmTitle: String(localized: "Fetch All")
+        ) { [weak self] in
+            guard let self else { return }
             performFetchAll(tabId: tab.id, baseQuery: baseQuery)
         }
     }

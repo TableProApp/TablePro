@@ -49,6 +49,7 @@ struct PaginationControlsView: View {
             Divider()
 
             Button(String(localized: "All rows…")) { onShowAll() }
+                .disabled(!pagination.isLastPageKnown)
             Button(String(localized: "Custom…")) {
                 customText = "\(pagination.pageSize)"
                 showCustomPopover = true
@@ -167,39 +168,54 @@ struct PaginationControlsView: View {
     // MARK: - Popovers
 
     private var jumpPopover: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Go to page")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            HStack {
-                TextField("", text: $jumpText)
-                    .frame(width: 70)
-                    .focused($isJumpFocused)
-                    .onSubmit(submitJump)
-                Button("Go", action: submitJump)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(12)
-        .onAppear { isJumpFocused = true }
+        submitPopover(
+            caption: "Go to page",
+            text: $jumpText,
+            fieldWidth: 70,
+            isFocused: $isJumpFocused,
+            fieldAccessibilityLabel: String(localized: "Page number"),
+            buttonTitle: "Go",
+            action: submitJump
+        )
     }
 
     private var customPageSizePopover: some View {
+        submitPopover(
+            caption: "Rows per page",
+            text: $customText,
+            fieldWidth: 80,
+            isFocused: $isCustomFocused,
+            fieldAccessibilityLabel: String(localized: "Rows per page"),
+            buttonTitle: "Apply",
+            action: submitCustom
+        )
+    }
+
+    private func submitPopover(
+        caption: LocalizedStringKey,
+        text: Binding<String>,
+        fieldWidth: CGFloat,
+        isFocused: FocusState<Bool>.Binding,
+        fieldAccessibilityLabel: String,
+        buttonTitle: LocalizedStringKey,
+        action: @escaping () -> Void
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Rows per page")
+            Text(caption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack {
-                TextField("", text: $customText)
-                    .frame(width: 80)
-                    .focused($isCustomFocused)
-                    .onSubmit(submitCustom)
-                Button("Apply", action: submitCustom)
+                TextField("", text: text)
+                    .frame(width: fieldWidth)
+                    .focused(isFocused)
+                    .onSubmit(action)
+                    .accessibilityLabel(fieldAccessibilityLabel)
+                Button(buttonTitle, action: action)
                     .keyboardShortcut(.defaultAction)
             }
         }
         .padding(12)
-        .onAppear { isCustomFocused = true }
+        .onAppear { isFocused.wrappedValue = true }
     }
 
     // MARK: - Actions

@@ -185,7 +185,6 @@ struct MainStatusBarView: View {
                     .help(String(localized: "Toggle Filters (⇧⌘F)"))
                 }
 
-                // Pagination controls for table tabs
                 if snapshot.tabType == .table, snapshot.hasTableName, showsPaginationControls {
                     PaginationControlsView(
                         pagination: snapshot.pagination,
@@ -210,12 +209,15 @@ struct MainStatusBarView: View {
     }
 
     private var showsPaginationControls: Bool {
+        if let total = snapshot.pagination.totalRowCount, total > 0 { return true }
+        return isPagedWithUnknownTotal
+    }
+
+    private var isPagedWithUnknownTotal: Bool {
         let pagination = snapshot.pagination
-        if let total = pagination.totalRowCount, total > 0 { return true }
         return pagination.currentPage > 1 || snapshot.rowCount >= pagination.pageSize
     }
 
-    /// Generate row info text based on selection and pagination state
     private var rowInfoText: String {
         let loadedCount = snapshot.rowCount
         let selectedCount = selectedRowIndices.count
@@ -236,7 +238,7 @@ struct MainStatusBarView: View {
             let prefix = pagination.isApproximateRowCount ? "~" : ""
 
             return String(format: String(localized: "%d-%d of %@%@ rows"), pagination.rangeStart, pagination.rangeEnd, prefix, formattedTotal)
-        } else if snapshot.tabType == .table, pagination.currentPage > 1 || loadedCount >= pagination.pageSize {
+        } else if snapshot.tabType == .table, isPagedWithUnknownTotal {
             let rangeEnd = pagination.currentOffset + loadedCount
             return String(format: String(localized: "%d-%d of ? rows"), pagination.rangeStart, rangeEnd)
         } else if loadedCount > 0 {
