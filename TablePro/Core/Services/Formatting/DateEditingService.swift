@@ -92,7 +92,8 @@ enum DateEditingService {
     static func string(from date: Date, like parsed: ParsedTemporalValue) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = parsed.timeZone
-        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        components.second = calendar.component(.second, from: parsed.date)
         let layout = parsed.layout
 
         let datePart = dateString(from: components)

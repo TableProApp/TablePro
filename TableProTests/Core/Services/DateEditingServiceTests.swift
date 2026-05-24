@@ -84,6 +84,13 @@ struct DateEditingServiceTests {
         #expect(DateEditingService.string(from: nextDay, like: parsed) == "2024-03-16 09:30:00.123456")
     }
 
+    @Test("editing to the minute keeps the original seconds")
+    func editKeepsSeconds() throws {
+        let original = try #require(DateEditingService.parse("2024-03-15 09:30:45"))
+        let editedToMinute = try #require(DateEditingService.parse("2024-03-15 09:35:00"))
+        #expect(DateEditingService.string(from: editedToMinute.date, like: original) == "2024-03-15 09:35:45")
+    }
+
     @Test("null, empty, and whitespace parse to nil")
     func nullParsesToNil() {
         #expect(DateEditingService.parse(nil) == nil)

@@ -63,10 +63,10 @@ struct DateTimePickerContentView: View {
             DatePicker("", selection: $date, displayedComponents: [.date])
                 .datePickerStyle(.graphical)
         case .timeOnly:
-            DatePicker("", selection: $date, displayedComponents: [.hourMinuteAndSecond])
+            DatePicker("", selection: $date, displayedComponents: [.hourAndMinute])
                 .datePickerStyle(.stepperField)
         case .dateAndTime:
-            DatePicker("", selection: $date, displayedComponents: [.date, .hourMinuteAndSecond])
+            DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
                 .datePickerStyle(.graphical)
         }
     }
