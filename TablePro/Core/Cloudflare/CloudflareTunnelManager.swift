@@ -191,6 +191,9 @@ actor CloudflareTunnelManager {
         }
         defer { stderrTask.cancel() }
 
+        // The stderr scan is load-bearing: cloudflared may accept the local port
+        // before it has authenticated, so a passing TCP probe alone can't tell a
+        // ready tunnel from one waiting on browser sign-in. Keep checking both.
         let deadline = Date().addingTimeInterval(Self.readinessTimeout)
         while Date() < deadline {
             if let url = await monitor.browserAuthURL {

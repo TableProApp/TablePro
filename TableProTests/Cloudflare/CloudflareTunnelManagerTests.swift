@@ -186,6 +186,9 @@ struct CloudflareTunnelManagerTests {
 
         manager.terminateAllProcessesSync()
         #expect(fake.stopCallCount >= 1)
+
+        await manager.closeAllTunnels()
+        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
     }
 
     @Test("sweepStalePidsIfNeeded clears the persisted records")

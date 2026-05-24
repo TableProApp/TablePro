@@ -74,9 +74,15 @@ struct CloudflareTunnelPaneView: View {
                     viewModel.signInWithBrowser()
                 }
                 .disabled(coordinator.cloudflareTunnel.state.accessHostname.trimmingCharacters(in: .whitespaces).isEmpty)
-                Text("Signs in to Cloudflare Access once and caches the token, so connecting doesn't open a browser.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let signInError = viewModel.signInError {
+                    Label(signInError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Signs in to Cloudflare Access once and caches the token, so connecting doesn't open a browser.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             case .serviceToken:
                 SecureField(String(localized: "Client ID"), text: $coordinator.cloudflareTunnel.state.serviceTokenId)
                 SecureField(String(localized: "Client Secret"), text: $coordinator.cloudflareTunnel.state.serviceTokenSecret)

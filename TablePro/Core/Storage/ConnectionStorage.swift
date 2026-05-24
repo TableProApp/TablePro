@@ -188,6 +188,8 @@ final class ConnectionStorage {
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
         deleteTOTPSecret(for: connection.id)
+        deleteCloudflareTokenId(for: connection.id)
+        deleteCloudflareTokenSecret(for: connection.id)
 
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
@@ -214,6 +216,8 @@ final class ConnectionStorage {
             deleteSSHPassword(for: conn.id)
             deleteKeyPassphrase(for: conn.id)
             deleteTOTPSecret(for: conn.id)
+            deleteCloudflareTokenId(for: conn.id)
+            deleteCloudflareTokenSecret(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
             let appSettings = appSettingsProvider()

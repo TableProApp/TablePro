@@ -4,16 +4,22 @@
 //
 
 import Foundation
+import os
 
 @Observable
 @MainActor
 final class CloudflareTunnelPaneViewModel {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelPane")
+
     var state = CloudflareTunnelFormState()
 
     var coordinator: WeakCoordinatorRef?
 
     var resolvedBinaryPath: String?
     var didResolveBinary: Bool = false
+    var signInError: String?
+
+    @ObservationIgnored private var loginProcess: Process?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }
@@ -70,14 +76,29 @@ final class CloudflareTunnelPaneViewModel {
     }
 
     func signInWithBrowser() {
+        signInError = nil
+        guard loginProcess?.isRunning != true else { return }
+
         let hostname = state.accessHostname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !hostname.isEmpty else { return }
-        let binaryPath = state.binaryPath.isEmpty ? resolvedBinaryPath : state.binaryPath
-        guard let binaryPath, FileManager.default.isExecutableFile(atPath: binaryPath) else { return }
+
+        let rawPath = state.binaryPath.isEmpty ? resolvedBinaryPath : state.binaryPath
+        guard let resolvedPath = rawPath.map({ ($0 as NSString).expandingTildeInPath }),
+              FileManager.default.isExecutableFile(atPath: resolvedPath) else {
+            signInError = String(localized: "cloudflared was not found. Set its path below first.")
+            return
+        }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: binaryPath)
+        process.executableURL = URL(fileURLWithPath: resolvedPath)
         process.arguments = ["access", "login", hostname]
-        try? process.run()
+        do {
+            try process.run()
+            loginProcess = process
+            Self.logger.info("Started cloudflared access login for \(hostname, privacy: .public)")
+        } catch {
+            signInError = error.localizedDescription
+            Self.logger.error("cloudflared access login failed to start: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
