@@ -165,6 +165,20 @@ actor HttpConnectionContext {
         await writePlainJsonResponse(status: status, body: payload)
     }
 
+    func writePlainJsonError(status: HttpStatus, error: String, errorDescription: String) async {
+        struct ErrorBody: Encodable {
+            let error: String
+            let errorDescription: String
+            enum CodingKeys: String, CodingKey {
+                case error
+                case errorDescription = "error_description"
+            }
+        }
+        let body = ErrorBody(error: error, errorDescription: errorDescription)
+        let payload = (try? JSONEncoder().encode(body)) ?? Data()
+        await writePlainJsonResponse(status: status, body: payload)
+    }
+
     func writeOptions204() async {
         if cancelled { return }
         var headers: [(String, String)] = [("Connection", "close")]
