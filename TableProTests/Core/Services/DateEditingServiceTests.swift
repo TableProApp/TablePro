@@ -117,4 +117,24 @@ struct DateEditingServiceTests {
         let value = DateEditingService.defaultString(from: parsed.date, columnType: .timestamp(rawType: "TIME"))
         #expect(value == "09:30:45")
     }
+
+    @Test("date column edits date components only")
+    func componentsForDate() {
+        #expect(DateEditingService.components(for: .date(rawType: "DATE")) == .dateOnly)
+    }
+
+    @Test("time column edits time components only")
+    func componentsForTime() {
+        #expect(DateEditingService.components(for: .timestamp(rawType: "TIME")) == .timeOnly)
+    }
+
+    @Test("time column with precision edits time components only")
+    func componentsForTimeWithPrecision() {
+        #expect(DateEditingService.components(for: .timestamp(rawType: "TIME(6)")) == .timeOnly)
+    }
+
+    @Test("timestamp column edits date and time components")
+    func componentsForTimestamp() {
+        #expect(DateEditingService.components(for: .timestamp(rawType: "TIMESTAMP")) == .dateAndTime)
+    }
 }

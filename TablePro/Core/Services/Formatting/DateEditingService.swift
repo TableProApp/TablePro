@@ -23,6 +23,12 @@ struct ParsedTemporalValue: Equatable {
     let layout: TemporalLayout
 }
 
+enum TemporalComponents: Equatable {
+    case dateOnly
+    case timeOnly
+    case dateAndTime
+}
+
 enum DateEditingService {
     private static let pattern =
         #"^(?:(\d{4})-(\d{2})-(\d{2}))?(?:([ T])?(\d{2}):(\d{2}):(\d{2})(\.\d+)?)?(Z|[+-]\d{2}(?::?\d{2})?)?$"#
@@ -118,6 +124,12 @@ enum DateEditingService {
             return timeString(from: components)
         }
         return dateString(from: components) + " " + timeString(from: components)
+    }
+
+    static func components(for columnType: ColumnType) -> TemporalComponents {
+        if case .date = columnType { return .dateOnly }
+        if columnType.isTimeOnly { return .timeOnly }
+        return .dateAndTime
     }
 
     private static func dateString(from components: DateComponents) -> String {

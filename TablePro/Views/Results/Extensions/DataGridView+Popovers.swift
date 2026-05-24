@@ -207,9 +207,11 @@ extension TableViewCoordinator {
     }
 
     private func datePickerElements(for columnType: ColumnType) -> NSDatePicker.ElementFlags {
-        if case .date = columnType { return .yearMonthDay }
-        if columnType.isTimeOnly { return .hourMinuteSecond }
-        return [.yearMonthDay, .hourMinuteSecond]
+        switch DateEditingService.components(for: columnType) {
+        case .dateOnly: return .yearMonthDay
+        case .timeOnly: return .hourMinuteSecond
+        case .dateAndTime: return [.yearMonthDay, .hourMinuteSecond]
+        }
     }
 
     func showEnumPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
