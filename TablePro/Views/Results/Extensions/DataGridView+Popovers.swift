@@ -185,7 +185,7 @@ extension TableViewCoordinator {
         let parsed = DateEditingService.parse(cellValue(at: row, column: columnIndex))
         let initialDate = parsed?.date ?? Date()
         let timeZone = parsed?.timeZone ?? .gmt
-        let elements = datePickerElements(for: columnType)
+        let components = DateEditingService.components(for: columnType)
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         PopoverPresenter.show(
@@ -194,7 +194,7 @@ extension TableViewCoordinator {
         ) { [weak self] dismiss in
             DateTimePickerContentView(
                 initialDate: initialDate,
-                elements: elements,
+                components: components,
                 timeZone: timeZone,
                 onCommit: { picked in
                     let newValue = parsed.map { DateEditingService.string(from: picked, like: $0) }
@@ -203,14 +203,6 @@ extension TableViewCoordinator {
                 },
                 onDismiss: dismiss
             )
-        }
-    }
-
-    private func datePickerElements(for columnType: ColumnType) -> NSDatePicker.ElementFlags {
-        switch DateEditingService.components(for: columnType) {
-        case .dateOnly: return .yearMonthDay
-        case .timeOnly: return .hourMinuteSecond
-        case .dateAndTime: return [.yearMonthDay, .hourMinuteSecond]
         }
     }
 

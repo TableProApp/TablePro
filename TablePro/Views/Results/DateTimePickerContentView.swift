@@ -2,16 +2,14 @@
 //  DateTimePickerContentView.swift
 //  TablePro
 //
-//  Graphical calendar/clock popover for editing date, datetime, timestamp,
+//  Native SwiftUI date picker popover for editing date, datetime, timestamp,
 //  and time columns in the data grid.
 //
 
-import AppKit
 import SwiftUI
 
 struct DateTimePickerContentView: View {
-    let initialDate: Date
-    let elements: NSDatePicker.ElementFlags
+    let components: TemporalComponents
     let timeZone: TimeZone
     let onCommit: (Date) -> Void
     let onDismiss: () -> Void
@@ -20,13 +18,12 @@ struct DateTimePickerContentView: View {
 
     init(
         initialDate: Date,
-        elements: NSDatePicker.ElementFlags,
+        components: TemporalComponents,
         timeZone: TimeZone,
         onCommit: @escaping (Date) -> Void,
         onDismiss: @escaping () -> Void
     ) {
-        self.initialDate = initialDate
-        self.elements = elements
+        self.components = components
         self.timeZone = timeZone
         self.onCommit = onCommit
         self.onDismiss = onDismiss
@@ -35,8 +32,10 @@ struct DateTimePickerContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GraphicalDatePicker(date: $date, elements: elements, timeZone: timeZone)
-                .fixedSize()
+            picker
+                .labelsHidden()
+                .environment(\.calendar, Calendar(identifier: .gregorian))
+                .environment(\.timeZone, timeZone)
                 .padding(12)
 
             Divider()
@@ -56,49 +55,19 @@ struct DateTimePickerContentView: View {
         }
         .fixedSize()
     }
-}
 
-private struct GraphicalDatePicker: NSViewRepresentable {
-    @Binding var date: Date
-    let elements: NSDatePicker.ElementFlags
-    let timeZone: TimeZone
-
-    func makeNSView(context: Context) -> NSDatePicker {
-        let picker = NSDatePicker()
-        picker.datePickerStyle = .clockAndCalendar
-        picker.datePickerMode = .single
-        picker.datePickerElements = elements
-        picker.calendar = Calendar(identifier: .gregorian)
-        picker.timeZone = timeZone
-        picker.target = context.coordinator
-        picker.action = #selector(Coordinator.dateChanged(_:))
-        picker.dateValue = date
-        picker.sizeToFit()
-        return picker
-    }
-
-    func updateNSView(_ picker: NSDatePicker, context: Context) {
-        context.coordinator.date = $date
-        picker.timeZone = timeZone
-        if picker.dateValue != date {
-            picker.dateValue = date
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(date: $date)
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var date: Binding<Date>
-
-        init(date: Binding<Date>) {
-            self.date = date
-        }
-
-        @objc func dateChanged(_ sender: NSDatePicker) {
-            date.wrappedValue = sender.dateValue
+    @ViewBuilder
+    private var picker: some View {
+        switch components {
+        case .dateOnly:
+            DatePicker("", selection: $date, displayedComponents: [.date])
+                .datePickerStyle(.graphical)
+        case .timeOnly:
+            DatePicker("", selection: $date, displayedComponents: [.hourMinuteAndSecond])
+                .datePickerStyle(.stepperField)
+        case .dateAndTime:
+            DatePicker("", selection: $date, displayedComponents: [.date, .hourMinuteAndSecond])
+                .datePickerStyle(.graphical)
         }
     }
 }
