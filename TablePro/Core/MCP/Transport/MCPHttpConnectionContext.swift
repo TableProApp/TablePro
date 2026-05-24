@@ -147,12 +147,13 @@ actor HttpConnectionContext {
         await send(payload)
     }
 
-    func writePlainJsonResponse(status: HttpStatus, body: Data) async {
+    func writePlainJsonResponse(status: HttpStatus, body: Data, extraHeaders: [(String, String)] = []) async {
         if cancelled { return }
         var headers: [(String, String)] = [
             ("Content-Type", "application/json"),
             ("Connection", "close")
         ]
+        headers.append(contentsOf: extraHeaders)
         headers.append(contentsOf: self.corsHeaders())
         let head = HttpResponseHead(status: status, headers: HttpHeaders(headers))
         let payload = HttpResponseEncoder.encode(head, body: body)
@@ -165,7 +166,12 @@ actor HttpConnectionContext {
         await writePlainJsonResponse(status: status, body: payload)
     }
 
-    func writePlainJsonError(status: HttpStatus, error: String, errorDescription: String) async {
+    func writePlainJsonError(
+        status: HttpStatus,
+        error: String,
+        errorDescription: String,
+        extraHeaders: [(String, String)] = []
+    ) async {
         struct ErrorBody: Encodable {
             let error: String
             let errorDescription: String
@@ -176,7 +182,7 @@ actor HttpConnectionContext {
         }
         let body = ErrorBody(error: error, errorDescription: errorDescription)
         let payload = (try? JSONEncoder().encode(body)) ?? Data()
-        await writePlainJsonResponse(status: status, body: payload)
+        await writePlainJsonResponse(status: status, body: payload, extraHeaders: extraHeaders)
     }
 
     func writeOptions204() async {

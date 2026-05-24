@@ -386,6 +386,7 @@ struct MCPHttpServerTransportTests {
             ("/foo", "GET", nil),
             ("/foo", "POST", Data("{}".utf8)),
             ("/foo", "DELETE", nil),
+            ("/foo", "PUT", Data("{}".utf8)),
             ("/.well-known/oauth-protected-resource", "GET", nil),
             ("/.well-known/oauth-authorization-server", "GET", nil),
             ("/register", "POST", Data("{}".utf8))
@@ -423,6 +424,10 @@ struct MCPHttpServerTransportTests {
             error: "method_not_allowed",
             label: "PUT /mcp"
         )
+        let http = try #require(response as? HTTPURLResponse)
+        let allow = http.value(forHTTPHeaderField: "Allow")
+        #expect(allow?.contains("POST") == true)
+        #expect(allow?.contains("GET") == true)
     }
 
     @Test("OPTIONS request returns 204 with CORS headers reflecting allowed origin")

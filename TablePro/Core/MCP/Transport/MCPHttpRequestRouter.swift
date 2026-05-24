@@ -42,7 +42,11 @@ struct MCPHttpRequestRouter: Sendable {
         case .delete:
             await handleDeleteMcp(head: head, context: context, clientAddress: clientAddress)
         default:
-            await respondHttpMethodNotAllowed(context: context)
+            if pathMatchesMcp(head.path) {
+                await respondHttpMethodNotAllowed(context: context)
+            } else {
+                await respondHttpNotFound(context: context)
+            }
         }
     }
 
@@ -428,7 +432,8 @@ struct MCPHttpRequestRouter: Sendable {
         await context.writePlainJsonError(
             status: .methodNotAllowed,
             error: "method_not_allowed",
-            errorDescription: "This HTTP method is not supported."
+            errorDescription: "This HTTP method is not supported.",
+            extraHeaders: [("Allow", "GET, POST, DELETE, OPTIONS")]
         )
         await context.cancel()
     }
