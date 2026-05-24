@@ -292,7 +292,7 @@ final class DataGridCellView: NSView {
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
             let y = (bounds.height - size.height) / 2
             return NSRect(x: x, y: y, width: size.width, height: size.height)
-        case .dropdown, .boolean, .json, .blob:
+        case .dropdown, .boolean, .json, .blob, .date:
             guard isEditableCell else { return .zero }
             let size = NSSize(width: 12, height: 14)
             let minRequired = size.width + 2 * DataGridMetrics.cellHorizontalInset
@@ -311,7 +311,7 @@ final class DataGridCellView: NSView {
             return
         case .foreignKey:
             image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
-        case .dropdown, .boolean, .json, .blob:
+        case .dropdown, .boolean, .json, .blob, .date:
             if visualState.isDeleted {
                 image = Self.chevronDisabled
             } else if onEmphasizedSelection {
@@ -342,7 +342,7 @@ final class DataGridCellView: NSView {
             case .foreignKey:
                 accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
                 return
-            case .dropdown, .boolean, .json, .blob:
+            case .dropdown, .boolean, .json, .blob, .date:
                 guard !visualState.isDeleted else {
                     super.mouseDown(with: event)
                     return

@@ -99,6 +99,8 @@ extension TableViewCoordinator {
             showJSONEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if columnType.isBlobType {
             showBlobEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.isDateType {
+            showDateTimePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         }
     }
 

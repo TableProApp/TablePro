@@ -12,4 +12,5 @@ enum DataGridCellKind: Equatable {
     case boolean
     case json
     case blob
+    case date
 }
