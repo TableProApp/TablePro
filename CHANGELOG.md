@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Click the page indicator in the pagination bar to jump to a specific page. (#1364)
 - Pagination now appears for filtered tables whose total row count is unknown, so you can page through them instead of seeing only the first page. (#1364)
 - First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)
+- JSON and JSONB cells now display pretty-printed by default, keeping your original key order and exact numbers. Viewing or reformatting a value no longer marks the row as changed, and saving no longer reorders keys or rounds large integers.
 
 ### Fixed
 
