@@ -84,11 +84,11 @@ struct DateEditingServiceTests {
         #expect(DateEditingService.string(from: nextDay, like: parsed) == "2024-03-16 09:30:00.123456")
     }
 
-    @Test("editing to the minute keeps the original seconds")
-    func editKeepsSeconds() throws {
+    @Test("editing the time updates hour, minute, and second")
+    func editUpdatesTime() throws {
         let original = try #require(DateEditingService.parse("2024-03-15 09:30:45"))
-        let editedToMinute = try #require(DateEditingService.parse("2024-03-15 09:35:00"))
-        #expect(DateEditingService.string(from: editedToMinute.date, like: original) == "2024-03-15 09:35:45")
+        let edited = try #require(DateEditingService.parse("2024-03-15 10:15:05"))
+        #expect(DateEditingService.string(from: edited.date, like: original) == "2024-03-15 10:15:05")
     }
 
     @Test("null, empty, and whitespace parse to nil")
