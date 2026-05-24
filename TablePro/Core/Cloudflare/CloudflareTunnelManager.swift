@@ -243,10 +243,11 @@ actor CloudflareTunnelManager {
 
     private func resolveBinaryPath(config: CloudflareConfiguration) throws -> String {
         if !config.binaryPath.isEmpty {
-            guard FileManager.default.isExecutableFile(atPath: config.binaryPath) else {
+            let expandedPath = (config.binaryPath as NSString).expandingTildeInPath
+            guard FileManager.default.isExecutableFile(atPath: expandedPath) else {
                 throw CloudflareTunnelError.binaryNotFound
             }
-            return config.binaryPath
+            return expandedPath
         }
         guard let resolved = CLIExecutableFinder.findExecutable("cloudflared") else {
             throw CloudflareTunnelError.binaryNotFound
@@ -312,8 +313,9 @@ actor CloudflareTunnelManager {
 
     private static func isLiveCloudflared(_ record: CloudflaredPidRecord) -> Bool {
         guard record.pid > 0 else { return false }
-        var buffer = [CChar](repeating: 0, count: Int(PROC_PIDPATHINFO_MAXSIZE))
-        let length = proc_pidpath(record.pid, &buffer, UInt32(buffer.count))
+        let pathBufferSize = 4 * Int(PATH_MAX)
+        var buffer = [CChar](repeating: 0, count: pathBufferSize)
+        let length = proc_pidpath(record.pid, &buffer, UInt32(pathBufferSize))
         guard length > 0 else { return false }
         let path = String(cString: buffer)
         if !record.binaryPath.isEmpty, path == record.binaryPath { return true }
