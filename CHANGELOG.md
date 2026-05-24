@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Installing or updating a plugin right after updating TablePro now refetches the current plugin list first, so it no longer fails against a stale cached list (the error a restart used to clear). (#1380)
+- Pressing Esc to close the Raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen. (#1403)
 
 ## [0.44.0] - 2026-05-23
 

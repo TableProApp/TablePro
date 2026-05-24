@@ -98,9 +98,8 @@ struct NativeSearchField: NSViewRepresentable {
                 if !field.stringValue.isEmpty {
                     field.stringValue = ""
                     text.wrappedValue = ""
-                    return true
                 }
-                return false
+                return true
             }
             if commandSelector == #selector(NSResponder.moveUp(_:)), let onMoveUp {
                 onMoveUp()
