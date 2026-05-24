@@ -456,14 +456,14 @@ struct MainContentView: View {
             onLastPage: {
                 coordinator.goToLastPage()
             },
-            onLimitChange: { newLimit in
-                coordinator.updatePageSize(newLimit)
+            onPageSizeChange: { newSize in
+                coordinator.updatePageSize(newSize)
             },
-            onOffsetChange: { newOffset in
-                coordinator.updateOffset(newOffset)
+            onShowAll: {
+                coordinator.showAllRows()
             },
-            onPaginationGo: {
-                coordinator.applyPaginationSettings()
+            onGoToPage: { page in
+                coordinator.goToPage(page)
             }
         )
     }

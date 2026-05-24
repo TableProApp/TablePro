@@ -197,4 +197,70 @@ struct PaginationStateTests {
         #expect(state.rangeStart == 1)
         #expect(state.rangeEnd == 5)
     }
+
+    @Test("Last page is known when total row count is set")
+    func isLastPageKnownWithTotal() {
+        let state = PaginationState(totalRowCount: 100, pageSize: 10)
+        #expect(state.isLastPageKnown == true)
+    }
+
+    @Test("Last page is unknown when total row count is nil")
+    func isLastPageUnknownWithNilTotal() {
+        let state = PaginationState(totalRowCount: nil, pageSize: 10)
+        #expect(state.isLastPageKnown == false)
+    }
+
+    @Test("Range end with unknown total uses offset plus page size")
+    func rangeEndWithNilTotal() {
+        let state = PaginationState(totalRowCount: nil, pageSize: 10, currentPage: 2, currentOffset: 10)
+        #expect(state.rangeEnd == 20)
+    }
+
+    @Test("Can go to next page with a known total mid-range")
+    func canGoToNextPageKnownTotal() {
+        let state = PaginationState(totalRowCount: 100, pageSize: 10, currentPage: 1)
+        #expect(state.canGoToNextPage(loadedRowCount: 10) == true)
+    }
+
+    @Test("Cannot go to next page on the last known page")
+    func cannotGoToNextPageOnLastKnownPage() {
+        let state = PaginationState(totalRowCount: 100, pageSize: 10, currentPage: 10)
+        #expect(state.canGoToNextPage(loadedRowCount: 10) == false)
+    }
+
+    @Test("Can go to next page with unknown total and a full page loaded")
+    func canGoToNextPageUnknownTotalFullPage() {
+        let state = PaginationState(totalRowCount: nil, pageSize: 10, currentPage: 1)
+        #expect(state.canGoToNextPage(loadedRowCount: 10) == true)
+    }
+
+    @Test("Cannot go to next page with unknown total and a partial page loaded")
+    func cannotGoToNextPageUnknownTotalPartialPage() {
+        let state = PaginationState(totalRowCount: nil, pageSize: 10, currentPage: 1)
+        #expect(state.canGoToNextPage(loadedRowCount: 7) == false)
+    }
+
+    @Test("Go to next page with loaded count advances when total is unknown")
+    func goToNextPageLoadedCountAdvancesUnknownTotal() {
+        var state = PaginationState(totalRowCount: nil, pageSize: 10, currentPage: 1)
+        state.goToNextPage(loadedRowCount: 10)
+        #expect(state.currentPage == 2)
+        #expect(state.currentOffset == 10)
+    }
+
+    @Test("Go to next page with loaded count does nothing on a partial unknown-total page")
+    func goToNextPageLoadedCountNoOpOnPartialPage() {
+        var state = PaginationState(totalRowCount: nil, pageSize: 10, currentPage: 1)
+        state.goToNextPage(loadedRowCount: 4)
+        #expect(state.currentPage == 1)
+        #expect(state.currentOffset == 0)
+    }
+
+    @Test("Go to page does nothing when total is unknown")
+    func goToPageNoOpWithNilTotal() {
+        var state = PaginationState(totalRowCount: nil, pageSize: 10, currentPage: 1)
+        state.goToPage(3)
+        #expect(state.currentPage == 1)
+        #expect(state.currentOffset == 0)
+    }
 }
