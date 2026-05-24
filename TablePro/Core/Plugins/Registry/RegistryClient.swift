@@ -114,10 +114,7 @@ final class RegistryClient {
             UserDefaults.standard.set(currentURL, forKey: Self.lastRegistryURLKey)
         }
 
-        var request = URLRequest(url: registryURL)
-        if !forceRefresh, let etag = cachedETag {
-            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
-        }
+        let request = makeManifestRequest(forceRefresh: forceRefresh)
 
         do {
             let (data, response) = try await session.data(for: request)
@@ -172,6 +169,21 @@ final class RegistryClient {
             Self.logger.error("Registry fetch failed: \(error.localizedDescription)")
             fallbackToCacheOrFail(message: error.localizedDescription)
         }
+    }
+
+    func makeManifestRequest(forceRefresh: Bool) -> URLRequest {
+        var request = URLRequest(url: registryURL)
+        if forceRefresh {
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+        } else if let etag = cachedETag {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        return request
+    }
+
+    func refreshedPlugin(matching plugin: RegistryPlugin) async -> RegistryPlugin {
+        await fetchManifest(forceRefresh: true)
+        return manifest?.plugins.first { $0.id == plugin.id } ?? plugin
     }
 
     private func fallbackToCacheOrFail(message: String) {

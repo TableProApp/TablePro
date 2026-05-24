@@ -144,6 +144,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let password: String?
     private let database: String
     private let sslConfig: SSLConfiguration
+    private let enableCleartextPlugin: Bool
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -176,7 +177,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
-        sslConfig: SSLConfiguration
+        sslConfig: SSLConfiguration,
+        enableCleartextPlugin: Bool = false
     ) {
         self.host = host
         self.port = UInt32(port)
@@ -184,6 +186,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.password = password
         self.database = database
         self.sslConfig = sslConfig
+        self.enableCleartextPlugin = enableCleartextPlugin
     }
 
     deinit {
@@ -290,6 +293,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4")
+
+        if enableCleartextPlugin {
+            var enableCleartext: my_bool = 1
+            mysql_options(mysql, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &enableCleartext)
+        }
 
         let dbToUse = database.isEmpty ? nil : database
         let passToUse = password

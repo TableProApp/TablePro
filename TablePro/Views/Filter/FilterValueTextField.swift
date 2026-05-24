@@ -38,6 +38,24 @@ struct FilterValueTextField: NSViewRepresentable {
         return (ns.replacingCharacters(in: range, with: insertText), caret)
     }
 
+    enum SuggestionKeyOutcome: Equatable {
+        case moveSelection(Int)
+        case accept(submitting: Bool)
+        case dismiss
+        case passThrough
+    }
+
+    static func suggestionKeyOutcome(for key: KeyCode?, submitsOnAccept: Bool) -> SuggestionKeyOutcome {
+        switch key {
+        case .downArrow: return .moveSelection(1)
+        case .upArrow: return .moveSelection(-1)
+        case .return: return .accept(submitting: submitsOnAccept)
+        case .tab: return .accept(submitting: false)
+        case .escape: return .dismiss
+        default: return .passThrough
+        }
+    }
+
     func makeNSView(context: Context) -> NSTextField {
         let textField = SubstitutionDisabledTextField()
         textField.bezelStyle = .roundedBezel
@@ -176,6 +194,10 @@ struct FilterValueTextField: NSViewRepresentable {
                 text.wrappedValue = textView.string
                 return true
             }
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                dismissSuggestions()
+                return true
+            }
             return false
         }
 
@@ -291,25 +313,20 @@ struct FilterValueTextField: NSViewRepresentable {
                           nsEvent.window?.firstResponder === textField.currentEditor()
                     else { return nsEvent }
 
-                    switch nsEvent.semanticKeyCode {
-                    case .downArrow:
-                        self.moveSelection(by: 1)
-                        return nil
-                    case .upArrow:
-                        self.moveSelection(by: -1)
-                        return nil
-                    case .return:
-                        self.acceptCurrentSelection(submitting: self.submitsOnAccept)
-                        return nil
-                    case .tab:
-                        self.acceptCurrentSelection(submitting: false)
-                        return nil
-                    case .escape:
+                    switch FilterValueTextField.suggestionKeyOutcome(
+                        for: nsEvent.semanticKeyCode,
+                        submitsOnAccept: self.submitsOnAccept
+                    ) {
+                    case .moveSelection(let delta):
+                        self.moveSelection(by: delta)
+                    case .accept(let submitting):
+                        self.acceptCurrentSelection(submitting: submitting)
+                    case .dismiss:
                         self.dismissSuggestions()
-                        return nsEvent
-                    default:
+                    case .passThrough:
                         return nsEvent
                     }
+                    return nil
                 }
             }
         }
