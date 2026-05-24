@@ -51,9 +51,9 @@ struct MainEditorContentView: View {
     let onPreviousPage: () -> Void
     let onNextPage: () -> Void
     let onLastPage: () -> Void
-    let onLimitChange: (Int) -> Void
-    let onOffsetChange: (Int) -> Void
-    let onPaginationGo: () -> Void
+    let onPageSizeChange: (Int) -> Void
+    let onShowAll: () -> Void
+    let onGoToPage: (Int) -> Void
 
     @State private var cachedChangeManager: AnyChangeManager?
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
@@ -751,9 +751,9 @@ struct MainEditorContentView: View {
             onPreviousPage: onPreviousPage,
             onNextPage: onNextPage,
             onLastPage: onLastPage,
-            onLimitChange: onLimitChange,
-            onOffsetChange: onOffsetChange,
-            onPaginationGo: onPaginationGo,
+            onPageSizeChange: onPageSizeChange,
+            onShowAll: onShowAll,
+            onGoToPage: onGoToPage,
             onToggleColumn: { coordinator.toggleColumnVisibility($0) },
             onShowAllColumns: { coordinator.showAllColumns() },
             onHideAllColumns: { coordinator.hideAllColumns($0) },

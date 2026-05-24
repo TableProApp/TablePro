@@ -21,7 +21,10 @@ final class PaginationCoordinator {
     // MARK: - Pagination
 
     func goToNextPage() {
-        paginateIfPossible(where: \.hasNextPage) { $0.goToNextPage() }
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
+        let loadedRowCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
+        guard tab.pagination.canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
+        paginateAfterConfirmation(tabIndex: tabIndex) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
     }
 
     func goToPreviousPage() {
@@ -33,7 +36,11 @@ final class PaginationCoordinator {
     }
 
     func goToLastPage() {
-        paginateIfPossible(where: { $0.currentPage != $0.totalPages }) { $0.goToLastPage() }
+        paginateIfPossible(where: { $0.isLastPageKnown && $0.currentPage != $0.totalPages }) { $0.goToLastPage() }
+    }
+
+    func goToPage(_ page: Int) {
+        paginateIfPossible(where: { $0.isLastPageKnown && page > 0 && page <= $0.totalPages }) { $0.goToPage(page) }
     }
 
     func updatePageSize(_ newSize: Int) {
@@ -41,13 +48,38 @@ final class PaginationCoordinator {
         paginateIfPossible { $0.updatePageSize(newSize) }
     }
 
-    func updateOffset(_ newOffset: Int) {
-        guard newOffset >= 0 else { return }
-        paginateIfPossible { $0.updateOffset(newOffset) }
-    }
+    func showAllRows() {
+        guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
+              let total = tab.pagination.totalRowCount, total > 0 else { return }
 
-    func applyPaginationSettings() {
-        reloadCurrentPage()
+        let tabId = tab.id
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Show All Rows")
+        alert.informativeText = String(
+            format: String(localized: "This will load all %@ rows on a single page. Large result sets use significant memory. Continue?"),
+            total.formatted()
+        )
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "Show All"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+
+        let apply: () -> Void = { [weak self] in
+            guard let self,
+                  let tabIndex = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+            paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+                pagination.updatePageSize(max(total, 1))
+                pagination.goToFirstPage()
+            }
+        }
+
+        if let window = parent.contentWindow ?? NSApp.keyWindow {
+            alert.beginSheetModal(for: window) { response in
+                guard response == .alertFirstButtonReturn else { return }
+                apply()
+            }
+        } else if alert.runModal() == .alertFirstButtonReturn {
+            apply()
+        }
     }
 
     private func paginateIfPossible(

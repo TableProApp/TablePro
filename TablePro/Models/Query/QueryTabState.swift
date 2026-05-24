@@ -142,6 +142,15 @@ struct PaginationState: Equatable {
         currentPage < totalPages
     }
 
+    var isLastPageKnown: Bool {
+        totalRowCount != nil
+    }
+
+    func canGoToNextPage(loadedRowCount: Int) -> Bool {
+        if hasNextPage { return true }
+        return totalRowCount == nil && loadedRowCount >= pageSize
+    }
+
     /// Whether there is a previous page available
     var hasPreviousPage: Bool {
         currentPage > 1
@@ -165,6 +174,12 @@ struct PaginationState: Equatable {
     /// Navigate to next page
     mutating func goToNextPage() {
         guard hasNextPage else { return }
+        currentPage += 1
+        currentOffset = (currentPage - 1) * pageSize
+    }
+
+    mutating func goToNextPage(loadedRowCount: Int) {
+        guard canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
         currentPage += 1
         currentOffset = (currentPage - 1) * pageSize
     }

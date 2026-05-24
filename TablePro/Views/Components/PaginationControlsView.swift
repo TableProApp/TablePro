@@ -2,208 +2,237 @@
 //  PaginationControlsView.swift
 //  TablePro
 //
-//  Pagination controls for navigating large datasets (TablePlus-style)
-//
 
 import SwiftUI
 
-/// Pagination controls displayed in the status bar (TablePlus design)
 struct PaginationControlsView: View {
     let pagination: PaginationState
+    let loadedRowCount: Int
     let onFirst: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onLast: () -> Void
-    let onLimitChange: (Int) -> Void
-    let onOffsetChange: (Int) -> Void
-    let onGo: () -> Void
+    let onPageSizeChange: (Int) -> Void
+    let onShowAll: () -> Void
+    let onGoToPage: (Int) -> Void
 
-    @State private var limitText: String = ""
-    @State private var offsetText: String = ""
-    @State private var showSettings = false
-    @FocusState private var isLimitFocused: Bool
-    @FocusState private var isOffsetFocused: Bool
+    @State private var showJumpPopover = false
+    @State private var showCustomPopover = false
+    @State private var jumpText = ""
+    @State private var customText = ""
+    @FocusState private var isJumpFocused: Bool
+    @FocusState private var isCustomFocused: Bool
+
+    private static let pageSizePresets = [5, 10, 20, 100, 500, 1_000]
 
     var body: some View {
         HStack(spacing: 8) {
-            // Navigation buttons
-            navigationButtons
-
-            // Settings button (gear icon) - opens popover
-            Button(action: { showSettings.toggle() }) {
-                Image(systemName: "gearshape")
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Pagination Settings"))
-            .popover(isPresented: $showSettings, arrowEdge: .top) {
-                settingsPopover
-            }
+            pageSizeMenu
+            navigationCluster
         }
-        .onAppear {
-            limitText = "\(pagination.pageSize)"
-            offsetText = "\(pagination.currentOffset)"
-        }
-        .onChange(of: pagination.pageSize) { _, newValue in
-            limitText = "\(newValue)"
-        }
-        .onChange(of: pagination.currentOffset) { _, newValue in
-            offsetText = "\(newValue)"
+        .popover(isPresented: $showCustomPopover, arrowEdge: .top) {
+            customPageSizePopover
         }
     }
 
-    // MARK: - Navigation Buttons
+    // MARK: - Page Size Menu
 
-    private var navigationButtons: some View {
-        HStack(spacing: 4) {
-            // Previous page button
-            Button(action: onPrevious) {
-                Image(systemName: "chevron.left")
-                    .imageScale(.small)
-                    .frame(width: 24, height: 24)
+    private var pageSizeMenu: some View {
+        Menu {
+            Picker(String(localized: "Rows per page"), selection: pageSizeBinding) {
+                ForEach(Self.pageSizePresets, id: \.self) { size in
+                    Text(size.formatted()).tag(size)
+                }
             }
-            .buttonStyle(.borderless)
-            .disabled(!pagination.hasPreviousPage || pagination.isLoading)
-            .help(String(localized: "Previous Page (⌘[)"))
-            .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .previousPage))
+            .pickerStyle(.inline)
 
-            // Page indicator: "1 of 25"
-            Text("\(pagination.currentPage) of \(pagination.totalPages)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 60)
+            Divider()
+
+            Button(String(localized: "All rows…")) { onShowAll() }
+            Button(String(localized: "Custom…")) {
+                customText = "\(pagination.pageSize)"
+                showCustomPopover = true
+            }
+        } label: {
+            Text(pageSizeLabel)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .controlSize(.small)
+        .help(String(localized: "Rows per page"))
+        .accessibilityLabel(String(localized: "Rows per page"))
+    }
+
+    private var pageSizeBinding: Binding<Int> {
+        Binding(get: { pagination.pageSize }, set: { onPageSizeChange($0) })
+    }
+
+    private var pageSizeLabel: String {
+        pagination.pageSize.formatted()
+    }
+
+    // MARK: - Navigation
+
+    private var navigationCluster: some View {
+        HStack(spacing: 2) {
+            navButton(
+                "chevron.backward.to.line",
+                label: String(localized: "First page"),
+                enabled: pagination.hasPreviousPage,
+                action: onFirst,
+                shortcut: .firstPage
+            )
+            navButton(
+                "chevron.backward",
+                label: String(localized: "Previous page"),
+                enabled: pagination.hasPreviousPage,
+                action: onPrevious,
+                shortcut: .previousPage
+            )
+
+            pageIndicator
 
             if pagination.isLoading {
                 ProgressView()
                     .controlSize(.small)
             }
 
-            // Next page button
-            Button(action: onNext) {
-                Image(systemName: "chevron.right")
-                    .imageScale(.small)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.borderless)
-            .disabled(!pagination.hasNextPage || pagination.isLoading)
-            .help(String(localized: "Next Page (⌘])"))
-            .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .nextPage))
+            navButton(
+                "chevron.forward",
+                label: String(localized: "Next page"),
+                enabled: pagination.canGoToNextPage(loadedRowCount: loadedRowCount),
+                action: onNext,
+                shortcut: .nextPage
+            )
+            navButton(
+                "chevron.forward.to.line",
+                label: String(localized: "Last page"),
+                enabled: pagination.isLastPageKnown && pagination.currentPage != pagination.totalPages,
+                action: onLast,
+                shortcut: .lastPage
+            )
         }
     }
 
-    // MARK: - Settings Popover
-
-    private var settingsPopover: some View {
-        VStack(spacing: 0) {
-            Form {
-                Section {
-                    LabeledContent(String(localized: "Limit")) {
-                        TextField("", text: $limitText)
-                            .multilineTextAlignment(.trailing)
-                            .focused($isLimitFocused)
-                            .onSubmit { applyLimitChange() }
-                    }
-                    LabeledContent(String(localized: "Offset")) {
-                        TextField("", text: $offsetText)
-                            .multilineTextAlignment(.trailing)
-                            .focused($isOffsetFocused)
-                            .onSubmit { applyOffsetChange() }
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-
-            Divider()
-
-            Button {
-                applyLimitChange()
-                applyOffsetChange()
-                showSettings = false
-            } label: {
-                Text("Go").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .keyboardShortcut(.defaultAction)
-            .padding(12)
+    private func navButton(
+        _ symbol: String,
+        label: String,
+        enabled: Bool,
+        action: @escaping () -> Void,
+        shortcut: ShortcutAction
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .imageScale(.small)
+                .frame(width: 22, height: 22)
         }
-        .frame(width: 220)
+        .buttonStyle(.borderless)
+        .disabled(!enabled || pagination.isLoading)
+        .help(label)
+        .accessibilityLabel(label)
+        .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: shortcut))
     }
 
-    // MARK: - Helpers
-
-    private func applyLimitChange() {
-        if let limit = Int(limitText), limit > 0 {
-            onLimitChange(limit)
-        } else {
-            limitText = "\(pagination.pageSize)"
+    private var pageIndicator: some View {
+        Button {
+            jumpText = "\(pagination.currentPage)"
+            showJumpPopover = true
+        } label: {
+            Text(pageIndicatorText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 44)
+        }
+        .buttonStyle(.plain)
+        .disabled(!pagination.isLastPageKnown)
+        .help(String(localized: "Go to page"))
+        .accessibilityLabel(pageIndicatorAccessibilityLabel)
+        .popover(isPresented: $showJumpPopover, arrowEdge: .top) {
+            jumpPopover
         }
     }
 
-    private func applyOffsetChange() {
-        if let offset = Int(offsetText), offset >= 0 {
-            onOffsetChange(offset)
-        } else {
-            offsetText = "\(pagination.currentOffset)"
+    private var pageIndicatorText: String {
+        guard pagination.isLastPageKnown else { return "\(pagination.currentPage)" }
+        return "\(pagination.currentPage) / \(pagination.totalPages)"
+    }
+
+    private var pageIndicatorAccessibilityLabel: String {
+        guard pagination.isLastPageKnown else {
+            return String(format: String(localized: "Page %d"), pagination.currentPage)
         }
+        return String(format: String(localized: "Page %d of %d"), pagination.currentPage, pagination.totalPages)
+    }
+
+    // MARK: - Popovers
+
+    private var jumpPopover: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Go to page")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                TextField("", text: $jumpText)
+                    .frame(width: 70)
+                    .focused($isJumpFocused)
+                    .onSubmit(submitJump)
+                Button("Go", action: submitJump)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(12)
+        .onAppear { isJumpFocused = true }
+    }
+
+    private var customPageSizePopover: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Rows per page")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                TextField("", text: $customText)
+                    .frame(width: 80)
+                    .focused($isCustomFocused)
+                    .onSubmit(submitCustom)
+                Button("Apply", action: submitCustom)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(12)
+        .onAppear { isCustomFocused = true }
+    }
+
+    // MARK: - Actions
+
+    private func submitJump() {
+        if let page = Int(jumpText), page > 0, page <= pagination.totalPages {
+            onGoToPage(page)
+        }
+        showJumpPopover = false
+    }
+
+    private func submitCustom() {
+        if let size = Int(customText), size > 0 {
+            onPageSizeChange(size)
+        }
+        showCustomPopover = false
     }
 }
 
 #Preview {
     VStack(spacing: 20) {
-        // Preview with multiple pages
         PaginationControlsView(
-            pagination: PaginationState(
-                totalRowCount: 5_000,
-                pageSize: 200,
-                currentPage: 3,
-                currentOffset: 400,
-                isLoading: false
-            ),
-            onFirst: {},
-            onPrevious: {},
-            onNext: {},
-            onLast: {},
-            onLimitChange: { _ in },
-            onOffsetChange: { _ in },
-            onGo: {}
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000, currentPage: 3, currentOffset: 2_000),
+            loadedRowCount: 1_000,
+            onFirst: {}, onPrevious: {}, onNext: {}, onLast: {},
+            onPageSizeChange: { _ in }, onShowAll: {}, onGoToPage: { _ in }
         )
 
-        // Preview on first page
         PaginationControlsView(
-            pagination: PaginationState(
-                totalRowCount: 1_000,
-                pageSize: 200,
-                currentPage: 1,
-                currentOffset: 0,
-                isLoading: false
-            ),
-            onFirst: {},
-            onPrevious: {},
-            onNext: {},
-            onLast: {},
-            onLimitChange: { _ in },
-            onOffsetChange: { _ in },
-            onGo: {}
-        )
-
-        // Preview loading state
-        PaginationControlsView(
-            pagination: PaginationState(
-                totalRowCount: 5_000,
-                pageSize: 200,
-                currentPage: 2,
-                currentOffset: 200,
-                isLoading: true
-            ),
-            onFirst: {},
-            onPrevious: {},
-            onNext: {},
-            onLast: {},
-            onLimitChange: { _ in },
-            onOffsetChange: { _ in },
-            onGo: {}
+            pagination: PaginationState(totalRowCount: nil, pageSize: 1_000, currentPage: 2, currentOffset: 1_000),
+            loadedRowCount: 1_000,
+            onFirst: {}, onPrevious: {}, onNext: {}, onLast: {},
+            onPageSizeChange: { _ in }, onShowAll: {}, onGoToPage: { _ in }
         )
     }
     .padding()

@@ -369,7 +369,13 @@ Copying rows reflects the grid as shown: hidden columns are left out and the col
 
 ## Pagination
 
-Table tabs paginate large result sets. Set page size in **Settings** > **Editor** (Small: 100, Medium: 500, Large: 1,000, Custom: any value from 10 to 100,000). Smaller pages load faster.
+Table tabs paginate large result sets. The status bar shows a rows-per-page menu and First / Previous / Next / Last buttons, with a page indicator between them.
+
+- **Rows per page**: pick a preset (5, 10, 20, 100, 500, 1,000), enter a custom size, or choose **All rows** to load the whole table on one page. Loading all rows asks for confirmation first, since large tables use a lot of memory.
+- **Page navigation**: jump to the first or last page, step one page at a time, or click the page indicator to go to a specific page.
+- The bar also appears for filtered tables whose total row count is unknown. There the Next button stays available while a full page keeps loading, and the indicator shows the page number without a total.
+
+Set the default page size in **Settings** > **Editor** (Small: 100, Medium: 500, Large: 1,000, Custom: any value from 10 to 100,000). Smaller pages load faster.
 
 {/* Screenshot: Pagination controls with page navigation */}
 <Frame caption="Pagination controls with page navigation">

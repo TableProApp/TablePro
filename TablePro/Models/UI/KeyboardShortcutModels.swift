@@ -58,6 +58,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     // Navigation
     case previousPage
     case nextPage
+    case firstPage
+    case lastPage
 
     // Edit
     case undo
@@ -103,7 +105,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .saveChanges, .saveAs, .previewSQL, .closeTab, .refresh,
              .executeQuery, .executeAllStatements, .cancelQuery, .explainQuery, .formatQuery,
              .export, .importData, .quickSwitcher,
-             .previousPage, .nextPage, .saveAsFavorite:
+             .previousPage, .nextPage, .firstPage, .lastPage, .saveAsFavorite:
             return .file
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .paste,
              .delete, .selectAll, .clearSelection, .addRow,
@@ -150,6 +152,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .quickSwitcher: return String(localized: "Quick Switcher")
         case .previousPage: return String(localized: "Previous Page")
         case .nextPage: return String(localized: "Next Page")
+        case .firstPage: return String(localized: "First Page")
+        case .lastPage: return String(localized: "Last Page")
         case .undo: return String(localized: "Undo")
         case .redo: return String(localized: "Redo")
         case .cut: return String(localized: "Cut")

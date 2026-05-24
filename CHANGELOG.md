@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fill Column: right-click a column header and choose Fill Column to set one value across all loaded rows. The change is staged like a normal edit, so you review it and Save before it applies, and one undo reverts the whole fill. Not available on primary key columns. (#1304)
 - AWS IAM authentication for PostgreSQL and MySQL connections to RDS and Aurora. Pick AWS IAM in the connection's Authentication field and use an access key, a named AWS profile, or SSO. TablePro generates a fresh login token on every connect and reconnect, so you never paste an expiring token, and SSL is required automatically. (#1291)
+- Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or a custom size) and First, Previous, Next, and Last page buttons. (#1364)
+- Click the page indicator in the pagination bar to jump to a specific page. (#1364)
+- Pagination now appears for filtered tables whose total row count is unknown, so you can page through them instead of seeing only the first page. (#1364)
+- First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)
 
 ## [0.44.0] - 2026-05-23
 

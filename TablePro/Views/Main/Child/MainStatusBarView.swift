@@ -44,9 +44,9 @@ struct MainStatusBarView: View {
     let onPreviousPage: () -> Void
     let onNextPage: () -> Void
     let onLastPage: () -> Void
-    let onLimitChange: (Int) -> Void
-    let onOffsetChange: (Int) -> Void
-    let onPaginationGo: () -> Void
+    let onPageSizeChange: (Int) -> Void
+    let onShowAll: () -> Void
+    let onGoToPage: (Int) -> Void
 
     // Column visibility callbacks
     let onToggleColumn: (String) -> Void
@@ -186,17 +186,17 @@ struct MainStatusBarView: View {
                 }
 
                 // Pagination controls for table tabs
-                if snapshot.tabType == .table, snapshot.hasTableName,
-                   let total = snapshot.pagination.totalRowCount, total > 0 {
+                if snapshot.tabType == .table, snapshot.hasTableName, showsPaginationControls {
                     PaginationControlsView(
                         pagination: snapshot.pagination,
+                        loadedRowCount: snapshot.rowCount,
                         onFirst: onFirstPage,
                         onPrevious: onPreviousPage,
                         onNext: onNextPage,
                         onLast: onLastPage,
-                        onLimitChange: onLimitChange,
-                        onOffsetChange: onOffsetChange,
-                        onGo: onPaginationGo
+                        onPageSizeChange: onPageSizeChange,
+                        onShowAll: onShowAll,
+                        onGoToPage: onGoToPage
                     )
                 }
             }
@@ -207,6 +207,12 @@ struct MainStatusBarView: View {
         .onChange(of: snapshot.tabId) { _, _ in
             showColumnPopover = false
         }
+    }
+
+    private var showsPaginationControls: Bool {
+        let pagination = snapshot.pagination
+        if let total = pagination.totalRowCount, total > 0 { return true }
+        return pagination.currentPage > 1 || snapshot.rowCount >= pagination.pageSize
     }
 
     /// Generate row info text based on selection and pagination state
@@ -230,6 +236,9 @@ struct MainStatusBarView: View {
             let prefix = pagination.isApproximateRowCount ? "~" : ""
 
             return String(format: String(localized: "%d-%d of %@%@ rows"), pagination.rangeStart, pagination.rangeEnd, prefix, formattedTotal)
+        } else if snapshot.tabType == .table, pagination.currentPage > 1 || loadedCount >= pagination.pageSize {
+            let rangeEnd = pagination.currentOffset + loadedCount
+            return String(format: String(localized: "%d-%d of ? rows"), pagination.rangeStart, rangeEnd)
         } else if loadedCount > 0 {
             let formattedCount = loadedCount.formatted(.number.grouping(.automatic))
             return String(format: String(localized: "%@ rows"), formattedCount)
