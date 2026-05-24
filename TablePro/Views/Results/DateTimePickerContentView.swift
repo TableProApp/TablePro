@@ -72,25 +72,34 @@ private struct CalendarMonthView: View {
 
     private let cellSize: CGFloat = 30
     private let columns = Array(repeating: GridItem(.fixed(30), spacing: 3), count: 7)
+    private let monthTitleFormatter: DateFormatter
+    private let dayLabelFormatter: DateFormatter
 
     init(date: Binding<Date>, calendar: Calendar) {
         self._date = date
         self.calendar = calendar
         self._visibleMonth = State(initialValue: date.wrappedValue)
+        self.monthTitleFormatter = Self.makeFormatter(calendar: calendar) { $0.dateFormat = "MMMM yyyy" }
+        self.dayLabelFormatter = Self.makeFormatter(calendar: calendar) {
+            $0.dateStyle = .long
+            $0.timeStyle = .none
+        }
     }
 
     var body: some View {
         VStack(spacing: 6) {
             header
-            LazyVGrid(columns: columns, spacing: 3) {
-                ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
-                    Text(symbol)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .frame(width: cellSize, height: 18)
-                }
-                ForEach(dayCells) { cell in
-                    dayCell(cell)
+            if let month = CalendarMonth(containing: visibleMonth, calendar: calendar) {
+                LazyVGrid(columns: columns, spacing: 3) {
+                    ForEach(Array(month.weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
+                        Text(symbol)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: cellSize, height: 18)
+                    }
+                    ForEach(Array(month.days.enumerated()), id: \.offset) { _, day in
+                        dayCell(day)
+                    }
                 }
             }
         }
@@ -105,7 +114,7 @@ private struct CalendarMonthView: View {
 
             Spacer()
 
-            Text(monthTitle)
+            Text(monthTitleFormatter.string(from: visibleMonth))
                 .font(.headline)
 
             Spacer()
@@ -118,8 +127,8 @@ private struct CalendarMonthView: View {
     }
 
     @ViewBuilder
-    private func dayCell(_ cell: DayCell) -> some View {
-        if let day = cell.date {
+    private func dayCell(_ day: Date?) -> some View {
+        if let day {
             let isSelected = calendar.isDate(day, inSameDayAs: date)
             let isToday = calendar.isDateInToday(day)
             Button {
@@ -138,6 +147,7 @@ private struct CalendarMonthView: View {
                     .foregroundStyle(dayColor(isSelected: isSelected, isToday: isToday))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(dayLabelFormatter.string(from: day))
         } else {
             Color.clear.frame(width: cellSize, height: cellSize)
         }
@@ -147,38 +157,6 @@ private struct CalendarMonthView: View {
         if isSelected { return .white }
         if isToday { return .accentColor }
         return .primary
-    }
-
-    private var dayCells: [DayCell] {
-        guard let monthInterval = calendar.dateInterval(of: .month, for: visibleMonth),
-              let dayCount = calendar.range(of: .day, in: .month, for: visibleMonth)?.count else {
-            return []
-        }
-        let firstWeekday = calendar.component(.weekday, from: monthInterval.start)
-        let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
-
-        var cells: [DayCell] = (0..<leadingBlanks).map { DayCell(id: -($0 + 1), date: nil) }
-        for offset in 0..<dayCount {
-            if let day = calendar.date(byAdding: .day, value: offset, to: monthInterval.start) {
-                cells.append(DayCell(id: offset + 1, date: day))
-            }
-        }
-        return cells
-    }
-
-    private var weekdaySymbols: [String] {
-        let symbols = calendar.veryShortWeekdaySymbols
-        let offset = calendar.firstWeekday - 1
-        return Array(symbols[offset...] + symbols[..<offset])
-    }
-
-    private var monthTitle: String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = .current
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: visibleMonth)
     }
 
     private func shiftMonth(_ delta: Int) {
@@ -198,9 +176,13 @@ private struct CalendarMonthView: View {
         }
     }
 
-    private struct DayCell: Identifiable {
-        let id: Int
-        let date: Date?
+    private static func makeFormatter(calendar: Calendar, configure: (DateFormatter) -> Void) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = .current
+        configure(formatter)
+        return formatter
     }
 }
 
