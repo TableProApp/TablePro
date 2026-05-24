@@ -176,6 +176,36 @@ extension TableViewCoordinator {
         }
     }
 
+    func showDateTimePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let columnType = tableRows.columnTypes[columnIndex]
+        let parsed = DateEditingService.parse(cellValue(at: row, column: columnIndex))
+        let initialDate = parsed?.date ?? Date()
+        let timeZone = parsed?.timeZone ?? .gmt
+        let components = DateEditingService.components(for: columnType)
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView
+        ) { [weak self] dismiss in
+            DateTimePickerContentView(
+                initialDate: initialDate,
+                components: components,
+                timeZone: timeZone,
+                onCommit: { picked in
+                    let newValue = parsed.map { DateEditingService.string(from: picked, like: $0) }
+                        ?? DateEditingService.defaultString(from: picked, columnType: columnType)
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
     func showEnumPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
         let tableRows = tableRowsProvider()

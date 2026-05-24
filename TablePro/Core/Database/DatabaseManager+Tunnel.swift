@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 // MARK: - Shared Tunnel Helpers
 

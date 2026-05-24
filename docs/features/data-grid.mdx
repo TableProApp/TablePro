@@ -103,7 +103,7 @@ To edit a cell:
 
 ### Date/Time Picker
 
-Date, datetime, timestamp, and time columns open a native date picker instead of a text field. The picker adapts to the column type (`DATE`: year/month/day, `DATETIME`/`TIMESTAMP`: adds hour/minute/second, `TIME`: hour/minute/second only). Outputs in `YYYY-MM-DD HH:MM:SS` format. If the existing value cannot be parsed, it defaults to now.
+Date, datetime, timestamp, and time columns have a date picker. Double-click the cell to edit the value as text, or click the chevron button to open the picker, which shows a calendar for the date and hour, minute, and second fields for the time. `DATE` shows the calendar only; `TIME` shows the time fields only; `DATETIME` and `TIMESTAMP` show both. The picker keeps the value's existing format, fractional seconds, and timezone offset. An empty or unparseable cell starts at the current date and time. To set the current timestamp or `NULL`, right-click the cell and use Set Value.
 
 {/* Screenshot: Date picker for editing date columns */}
 <Frame caption="Date picker for editing date columns">
