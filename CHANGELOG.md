@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Cloudflare Tunnel: connect to a database behind Cloudflare Access by letting TablePro start and stop `cloudflared access tcp` for you, the same way it manages SSH tunnels. Configure it per connection with browser sign-in or a service token. Needs cloudflared installed (`brew install cloudflared`). (#1285)
 - Fill Column: right-click a column header and choose Fill Column to set one value across all loaded rows. The change is staged like a normal edit, so you review it and Save before it applies, and one undo reverts the whole fill. Not available on primary key columns. (#1304)
 
 ## [0.44.0] - 2026-05-23

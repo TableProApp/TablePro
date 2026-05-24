@@ -90,6 +90,15 @@ extension DatabaseManager {
                     }
                 }
             }
+            if !Task.isCancelled, connection.isCloudflareEnabled {
+                Task {
+                    do {
+                        try await CloudflareTunnelManager.shared.closeTunnel(connectionId: connection.id)
+                    } catch {
+                        Self.logger.warning("Cloudflare tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
+                    }
+                }
+            }
             finalizeConnectionFailure(for: connection.id, cancelled: Task.isCancelled)
             throw error
         }
@@ -152,6 +161,14 @@ extension DatabaseManager {
                         try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
                     } catch {
                         Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
+                    }
+                }
+            } else if connection.isCloudflareEnabled {
+                Task {
+                    do {
+                        try await CloudflareTunnelManager.shared.closeTunnel(connectionId: connection.id)
+                    } catch {
+                        Self.logger.warning("Cloudflare tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
                     }
                 }
             }
@@ -306,6 +323,14 @@ extension DatabaseManager {
             lifecycleLogger.info(
                 "[close] disconnectSession SSH tunnel close done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(sshStart) * 1_000))"
             )
+        }
+
+        if session.connection.isCloudflareEnabled {
+            do {
+                try await CloudflareTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
+            } catch {
+                Self.logger.warning("Cloudflare tunnel cleanup failed for \(session.connection.name): \(error.localizedDescription)")
+            }
         }
 
         let hmStart = Date()

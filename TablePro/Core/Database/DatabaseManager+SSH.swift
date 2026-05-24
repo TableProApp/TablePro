@@ -24,6 +24,13 @@ extension DatabaseManager {
         for connection: DatabaseConnection,
         sshPasswordOverride: String? = nil
     ) async throws -> DatabaseConnection {
+        if connection.isCloudflareEnabled {
+            guard !connection.resolvedSSHConfig.enabled else {
+                throw CloudflareTunnelError.mutualExclusivityViolation
+            }
+            return try await buildCloudflareEffectiveConnection(for: connection)
+        }
+
         let sshConfig = connection.resolvedSSHConfig
         guard sshConfig.enabled else { return connection }
 

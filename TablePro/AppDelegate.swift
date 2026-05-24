@@ -59,6 +59,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
         DatabaseManager.shared.startObservingSystemEvents()
 
+        Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
+
         MemoryPressureAdvisor.startMonitoring()
         PluginManager.shared.loadPlugins()
         UNUserNotificationCenter.current().delegate = self
@@ -136,6 +138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
         SSHTunnelManager.shared.terminateAllProcessesSync()
+        CloudflareTunnelManager.shared.terminateAllProcessesSync()
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {
