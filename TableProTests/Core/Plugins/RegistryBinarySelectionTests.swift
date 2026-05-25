@@ -52,6 +52,16 @@ struct RegistryBinarySelectionTests {
         }
     }
 
+    @Test("valid binary is still selected when a nil-kit binary is also present (#1322 DynamoDB)")
+    func validBinaryFoundAlongsideNilKit() throws {
+        let plugin = makePlugin(binaries: [
+            RegistryBinary(architecture: .arm64, downloadURL: "https://legacy", sha256: "abc", pluginKitVersion: nil),
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/14", sha256: "def", pluginKitVersion: 14)
+        ])
+        let resolved = try plugin.resolvedBinary(for: .arm64, pluginKitVersion: 14)
+        #expect(resolved.downloadURL == "https://a/14")
+    }
+
     @Test("throws noCompatibleBinary when no arch match")
     func noArchitectureMatch() {
         let plugin = makePlugin(binaries: [

@@ -9,7 +9,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct ConnectionToolbarButton: View {
-    let coordinator: MainContentCoordinator
+    @Bindable var coordinator: MainContentCoordinator
 
     var body: some View {
         Button {
@@ -18,6 +18,9 @@ struct ConnectionToolbarButton: View {
             Label("Connection", systemImage: "network")
         }
         .help(String(localized: "Switch Connection (⌘⌥C)"))
+        .popover(isPresented: $coordinator.isConnectionSwitcherShown, arrowEdge: .bottom) {
+            ConnectionSwitcherPopover()
+        }
     }
 }
 

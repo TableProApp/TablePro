@@ -55,11 +55,45 @@ final class CompletionEngine {
         await provider.retrySchemaIfNeeded()
     }
 
+    /// Completions for a single-table filter expression (a bare WHERE-clause
+    /// fragment such as `id = 1 AND na`). The fragment is completed as the WHERE
+    /// clause it denotes and columns are scoped to `tableName`, so suggestions
+    /// fire at every clause position. Returned ranges are relative to `fragment`.
+    func filterCompletions(
+        fragment: String,
+        cursorPosition: Int,
+        tableName: String
+    ) async -> CompletionContext? {
+        let clausePrefix = "WHERE "
+        let prefixLength = (clausePrefix as NSString).length
+        let analysisText = clausePrefix + fragment
+        let references = [TableReference(tableName: tableName, alias: nil)]
+
+        guard let context = await getCompletions(
+            text: analysisText,
+            cursorPosition: cursorPosition + prefixLength,
+            forcedTableReferences: references
+        ) else {
+            return nil
+        }
+
+        let mappedLocation = context.replacementRange.location - prefixLength
+        guard mappedLocation >= 0 else { return nil }
+        let mappedRange = NSRange(location: mappedLocation, length: context.replacementRange.length)
+
+        return CompletionContext(
+            items: context.items,
+            replacementRange: mappedRange,
+            sqlContext: context.sqlContext
+        )
+    }
+
     /// Get completions for the given text and cursor position
     /// This is a pure function - no side effects
     func getCompletions(
         text: String,
-        cursorPosition: Int
+        cursorPosition: Int,
+        forcedTableReferences: [TableReference]? = nil
     ) async -> CompletionContext? {
         let nsText = text as NSString
         let textLength = nsText.length
@@ -85,7 +119,8 @@ final class CompletionEngine {
         // Get completions from provider (uses the potentially windowed text)
         let (items, context) = await provider.getCompletions(
             text: analysisText,
-            cursorPosition: adjustedCursor
+            cursorPosition: adjustedCursor,
+            forcedTableReferences: forcedTableReferences
         )
 
         // Don't return empty results

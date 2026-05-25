@@ -8,6 +8,7 @@ import Foundation
 enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
     case general
     case ssh
+    case cloudflareTunnel
     case ssl
     case customization
     case advanced
@@ -19,6 +20,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .general: return String(localized: "General")
         case .ssh: return String(localized: "SSH Tunnel")
+        case .cloudflareTunnel: return String(localized: "Cloudflare Tunnel")
         case .ssl: return String(localized: "SSL/TLS")
         case .customization: return String(localized: "Customization")
         case .advanced: return String(localized: "Advanced")
@@ -30,6 +32,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .general: return "network"
         case .ssh: return "lock.shield"
+        case .cloudflareTunnel: return "cloud"
         case .ssl: return "lock.fill"
         case .customization: return "paintbrush"
         case .advanced: return "gearshape.2"
@@ -45,6 +48,8 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
             issues = coordinator.network.validationIssues + coordinator.auth.validationIssues
         case .ssh:
             issues = coordinator.ssh.validationIssues
+        case .cloudflareTunnel:
+            issues = coordinator.cloudflareTunnel.validationIssues
         case .ssl:
             issues = coordinator.ssl.validationIssues
         case .customization:

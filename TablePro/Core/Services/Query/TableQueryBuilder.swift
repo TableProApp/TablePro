@@ -104,15 +104,7 @@ struct TableQueryBuilder {
             let sortCols = sortColumnsAsTuples(sortState)
             let filterTuples = filters
                 .filter { $0.isEnabled && !$0.columnName.isEmpty }
-                .map { filter in
-                    let value: String
-                    if filter.filterOperator == .between, let second = filter.secondValue {
-                        value = "\(filter.value),\(second)"
-                    } else {
-                        value = filter.value
-                    }
-                    return (filter.columnName, filter.filterOperator.rawValue, value)
-                }
+                .map(\.asPluginFilterTuple)
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, filters: filterTuples,
                 logicMode: logicMode == .and ? "and" : "or",
@@ -140,6 +132,25 @@ struct TableQueryBuilder {
 
         query += " \(buildPaginationClause(limit: limit, offset: offset))"
         return query
+    }
+
+    func buildFilteredCountQuery(
+        tableName: String,
+        schemaName: String? = nil,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode = .and
+    ) -> String? {
+        guard let dialect else { return nil }
+
+        let quotedTable = qualifiedTable(tableName, schema: schemaName)
+        let activeFilters = filters.filter { $0.isEnabled }
+        let filterGen = FilterSQLGenerator(dialect: dialect, quoteIdentifier: dialectQuote)
+        let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
+
+        guard !whereClause.isEmpty else {
+            return "SELECT COUNT(*) FROM \(quotedTable)"
+        }
+        return "SELECT COUNT(*) FROM \(quotedTable) \(whereClause)"
     }
 
     func buildSortedQuery(

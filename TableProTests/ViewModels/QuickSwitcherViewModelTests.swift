@@ -165,4 +165,85 @@ struct QuickSwitcherViewModelTests {
         #expect(vm.flatItems.contains(where: { $0.id == "d1" }) == false)
         #expect(vm.selectedItemId == vm.flatItems.first?.id)
     }
+
+    @Test("listHeight is zero when there are no items")
+    func listHeightZeroWhenEmpty() {
+        let vm = makeViewModel(items: [])
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 0)
+    }
+
+    @Test("listHeight for a single filtered result is one row")
+    func listHeightSingleFilteredRow() async throws {
+        let vm = makeViewModel(items: [QuickSwitcherItem(id: "t1", name: "users", kind: .table, subtitle: "")])
+        vm.searchText = "users"
+        try await Task.sleep(nanoseconds: 80_000_000)
+        #expect(vm.groups.first?.header == nil)
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 30)
+    }
+
+    @Test("listHeight at the row cap shows every row")
+    func listHeightAtCap() async throws {
+        var items: [QuickSwitcherItem] = []
+        for index in 0..<9 {
+            items.append(QuickSwitcherItem(id: "t\(index)", name: "tbl_\(index)", kind: .table, subtitle: ""))
+        }
+        let vm = makeViewModel(items: items)
+        vm.searchText = "tbl"
+        try await Task.sleep(nanoseconds: 80_000_000)
+        #expect(vm.flatItems.count == 9)
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
+    }
+
+    @Test("listHeight caps at maxVisibleRows when results overflow")
+    func listHeightCapsWhenOverflowing() async throws {
+        var items: [QuickSwitcherItem] = []
+        for index in 0..<20 {
+            items.append(QuickSwitcherItem(id: "t\(index)", name: "tbl_\(index)", kind: .table, subtitle: ""))
+        }
+        let vm = makeViewModel(items: items)
+        vm.searchText = "tbl"
+        try await Task.sleep(nanoseconds: 80_000_000)
+        #expect(vm.flatItems.count == 20)
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
+    }
+
+    @Test("listHeight for the empty-query view counts section headers")
+    func listHeightCountsSectionHeaders() {
+        let vm = makeViewModel(items: sampleItems())
+        #expect(vm.groups.filter { $0.header != nil }.count == 4)
+        #expect(vm.flatItems.count == 5)
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 262)
+    }
+
+    @Test("listHeight grows by one header when a Recent group appears")
+    func listHeightIncludesRecentHeader() {
+        let suite = makeDefaults()
+        let connectionId = UUID()
+        let items = sampleItems()
+        let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
+        let baseline = vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100)
+        vm.recordSelection(items[0])
+
+        let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
+        vm2.allItems = items
+        #expect(vm2.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100) == baseline + 28)
+    }
+
+    @Test("listHeight clamps to the cap when sections and rows overflow")
+    func listHeightClampsWithHeaders() {
+        var items: [QuickSwitcherItem] = []
+        for index in 0..<30 {
+            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
+            items.append(QuickSwitcherItem(id: "v\(index)", name: "view_\(index)", kind: .view, subtitle: "View"))
+        }
+        let vm = makeViewModel(items: items)
+        #expect(vm.groups.filter { $0.header != nil }.count >= 2)
+        #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
+    }
+
+    @Test("isLoading is true until the first load finishes")
+    func isLoadingStartsTrue() {
+        let vm = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: makeDefaults())
+        #expect(vm.isLoading)
+    }
 }

@@ -11,7 +11,6 @@ extension PluginManager {
         _ registryPlugin: RegistryPlugin,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginEntry {
-        let binary = try validateRegistryCompatibility(registryPlugin)
         if plugins.contains(where: { $0.id == registryPlugin.id }) {
             throw PluginError.pluginConflict(existingName: registryPlugin.name)
         }
@@ -22,6 +21,9 @@ extension PluginManager {
         }
         installsInFlight.insert(registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
+
+        let registryPlugin = await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
+        let binary = try validateRegistryCompatibility(registryPlugin)
 
         let userPluginsDir = self.userPluginsDir
         let stateHandler: @Sendable (StagedInstallState) async -> Void = { state in
@@ -46,10 +48,9 @@ extension PluginManager {
     func updateFromRegistry(
         _ registryPlugin: RegistryPlugin,
         existingPluginLoaded: Bool = true,
+        refreshManifest: Bool = true,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginUpdateOutcome {
-        let binary = try validateRegistryCompatibility(registryPlugin)
-
         if let existing = plugins.first(where: { $0.id == registryPlugin.id }),
            existing.source == .builtIn {
             throw PluginError.pluginConflict(existingName: existing.name)
@@ -62,6 +63,11 @@ extension PluginManager {
         }
         installsInFlight.insert(registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
+
+        let registryPlugin = refreshManifest
+            ? await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
+            : registryPlugin
+        let binary = try validateRegistryCompatibility(registryPlugin)
 
         let hasLive = pluginHasLiveConnections(registryPlugin)
         let userPluginsDir = self.userPluginsDir
@@ -194,11 +200,14 @@ extension PluginManager {
         let destURL = userPluginsDir.appendingPathComponent(url.lastPathComponent)
         let replaceId: String? = plugins.contains(where: { $0.id == bundleId }) ? bundleId : nil
 
+        let loadURL: URL
         if url.standardizedFileURL != destURL.standardizedFileURL {
-            let finalURL = try PluginInstaller.atomicReplace(stagedBundleURL: url, destURL: destURL)
-            return try await loadPluginAsync(at: finalURL, source: .userInstalled, replacingBundleId: replaceId)
+            loadURL = try PluginInstaller.atomicReplace(stagedBundleURL: url, destURL: destURL)
+        } else {
+            loadURL = destURL
         }
-        return try await loadPluginAsync(at: destURL, source: .userInstalled, replacingBundleId: replaceId)
+        PluginInstaller.stripQuarantine(at: loadURL)
+        return try await loadPluginAsync(at: loadURL, source: .userInstalled, replacingBundleId: replaceId)
     }
 
     private func installLocalZip(from url: URL) async throws -> PluginEntry {

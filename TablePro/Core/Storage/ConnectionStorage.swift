@@ -188,6 +188,8 @@ final class ConnectionStorage {
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
         deleteTOTPSecret(for: connection.id)
+        deleteCloudflareTokenId(for: connection.id)
+        deleteCloudflareTokenSecret(for: connection.id)
 
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
@@ -214,6 +216,8 @@ final class ConnectionStorage {
             deleteSSHPassword(for: conn.id)
             deleteKeyPassphrase(for: conn.id)
             deleteTOTPSecret(for: conn.id)
+            deleteCloudflareTokenId(for: conn.id)
+            deleteCloudflareTokenSecret(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
             let appSettings = appSettingsProvider()
@@ -380,6 +384,38 @@ final class ConnectionStorage {
         keychain.delete(forKey: key)
     }
 
+    // MARK: - Cloudflare Service Token Storage
+
+    func saveCloudflareTokenId(_ tokenId: String, for connectionId: UUID) {
+        let key = "com.TablePro.cloudflaretokenid.\(connectionId.uuidString)"
+        keychain.writeString(tokenId, forKey: key)
+    }
+
+    func loadCloudflareTokenId(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.cloudflaretokenid.\(connectionId.uuidString)"
+        return resolveString(.init(label: "Cloudflare token ID", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteCloudflareTokenId(for connectionId: UUID) {
+        let key = "com.TablePro.cloudflaretokenid.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
+    }
+
+    func saveCloudflareTokenSecret(_ tokenSecret: String, for connectionId: UUID) {
+        let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
+        keychain.writeString(tokenSecret, forKey: key)
+    }
+
+    func loadCloudflareTokenSecret(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
+        return resolveString(.init(label: "Cloudflare token secret", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteCloudflareTokenSecret(for connectionId: UUID) {
+        let key = "com.TablePro.cloudflaretokensecret.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
+    }
+
     private struct SecretContext {
         let label: String
         let connectionId: UUID
@@ -524,6 +560,9 @@ private struct StoredConnection: Codable {
     // SSH tunnel mode (v2 JSON blob preserving jump hosts + profile links)
     let sshTunnelModeJson: Data?
 
+    // Cloudflare Access TCP tunnel mode (JSON blob)
+    let cloudflareTunnelModeJson: Data?
+
     // Plugin-driven additional fields
     let additionalFields: [String: String]?
 
@@ -602,6 +641,11 @@ private struct StoredConnection: Codable {
         // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
         self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
 
+        // Cloudflare tunnel mode (only persisted when enabled)
+        self.cloudflareTunnelModeJson = connection.isCloudflareEnabled
+            ? (try? JSONEncoder().encode(connection.cloudflareTunnelMode))
+            : nil
+
         // Plugin-driven additional fields
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
     }
@@ -621,6 +665,7 @@ private struct StoredConnection: Codable {
         case mongoAuthSource, mongoReadPreference, mongoWriteConcern, redisDatabase
         case mssqlSchema, oracleServiceName, startupCommands, sortOrder
         case sshTunnelModeJson
+        case cloudflareTunnelModeJson
         case additionalFields
         case localOnly
         case isSample
@@ -662,6 +707,7 @@ private struct StoredConnection: Codable {
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encodeIfPresent(sshTunnelModeJson, forKey: .sshTunnelModeJson)
+        try container.encodeIfPresent(cloudflareTunnelModeJson, forKey: .cloudflareTunnelModeJson)
         try container.encodeIfPresent(additionalFields, forKey: .additionalFields)
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
@@ -729,6 +775,7 @@ private struct StoredConnection: Codable {
         startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
+        cloudflareTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudflareTunnelModeJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
@@ -764,6 +811,14 @@ private struct StoredConnection: Codable {
             }
         } else {
             resolvedTunnelMode = .disabled
+        }
+
+        let resolvedCloudflareMode: CloudflareTunnelMode
+        if let json = cloudflareTunnelModeJson,
+           let decoded = try? JSONDecoder().decode(CloudflareTunnelMode.self, from: json) {
+            resolvedCloudflareMode = decoded
+        } else {
+            resolvedCloudflareMode = .disabled
         }
 
         var resolvedSSLCaPath = sslCaCertificatePath
@@ -817,6 +872,7 @@ private struct StoredConnection: Codable {
             groupId: parsedGroupId,
             sshProfileId: parsedSSHProfileId,
             sshTunnelMode: resolvedTunnelMode,
+            cloudflareTunnelMode: resolvedCloudflareMode,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevel) ?? .silent,
             aiPolicy: parsedAIPolicy,
             aiRules: aiRules,

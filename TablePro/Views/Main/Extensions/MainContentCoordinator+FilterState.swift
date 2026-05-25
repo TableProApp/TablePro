@@ -11,6 +11,11 @@ extension MainContentCoordinator {
         filterCoordinator.selectedTabFilterState
     }
 
+    var currentTableName: String? {
+        guard let tab = tabManager.selectedTab, tab.tabType == .table else { return nil }
+        return tab.tableContext.tableName
+    }
+
     func addFilter(columns: [String] = [], primaryKeyColumn: String? = nil) {
         filterCoordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
     }
@@ -29,6 +34,10 @@ extension MainContentCoordinator {
 
     func removeFilter(_ filter: TableFilter) {
         filterCoordinator.removeFilter(filter)
+    }
+
+    func removeFilterAndReload(_ filter: TableFilter) {
+        filterCoordinator.removeFilterAndReload(filter)
     }
 
     func updateFilter(_ filter: TableFilter) {

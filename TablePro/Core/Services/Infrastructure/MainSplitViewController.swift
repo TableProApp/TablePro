@@ -331,18 +331,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             windowState: sessionState.coordinator.windowSidebarState,
             onDoubleClick: { [weak self] table in
                 guard let coordinator = self?.sessionState?.coordinator else { return }
-                let connectionId = coordinator.connectionId
-                if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId),
-                   let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
-                    if previewCoordinator.tabManager.selectedTab?.tableContext.tableName == table.name {
-                        previewCoordinator.promotePreviewTab()
-                    } else {
-                        previewCoordinator.promotePreviewTab()
-                        coordinator.openTableTab(table)
-                    }
-                } else {
+                let activeTab = coordinator.tabManager.selectedTab
+                if activeTab?.tabType == .table, activeTab?.tableContext.tableName == table.name {
                     coordinator.promotePreviewTab()
-                    coordinator.openTableTab(table)
+                } else {
+                    coordinator.openTableTab(table, forceNonPreview: true)
                 }
             },
             pendingTruncates: sessionPendingTruncatesBinding,

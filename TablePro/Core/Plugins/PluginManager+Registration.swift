@@ -406,6 +406,11 @@ extension PluginManager {
             .capabilities.supportsSSL ?? true
     }
 
+    func supportsCloudflareTunnel(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsCloudflareTunnel ?? true
+    }
+
     func supportsColumnReorder(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .supportsColumnReorder ?? false

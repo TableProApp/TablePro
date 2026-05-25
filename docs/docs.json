@@ -32,6 +32,7 @@
               "databases/overview",
               "databases/connection-urls",
               "databases/ssh-tunneling",
+              "databases/cloudflare-tunnel",
               {
                 "group": "SQL",
                 "pages": [

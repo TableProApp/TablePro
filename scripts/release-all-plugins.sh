@@ -4,9 +4,13 @@
 # Usage: ./scripts/release-all-plugins.sh <pluginKitVersion>
 # Example: ./scripts/release-all-plugins.sh 14
 #
-# Reads the latest tag for each plugin from git, pairs it with the given
-# pluginKitVersion, and fires one workflow_dispatch on build-plugin.yml so all
-# plugins build in parallel as a single matrix run.
+# Reads the latest tag for each plugin, bumps the patch version, and pairs the
+# NEW version with the given pluginKitVersion, then fires one workflow_dispatch
+# on build-plugin.yml so all plugins build in parallel as a single matrix run.
+#
+# An ABI bump must publish fresh binaries at a NEW release tag. Reusing the
+# existing tag overwrites that release's assets, which breaks the previous ABI's
+# consumers and serves stale copies from the GitHub release CDN.
 #
 # Prerequisites: gh CLI authenticated, run from repo root.
 
@@ -61,14 +65,17 @@ done
 
 TAG_LIST=""
 FIRST=true
-echo "Resolving latest tag for each plugin:"
+echo "Resolving next release version for each plugin (PluginKit $PKV):"
 for PLUGIN in "${PLUGINS[@]}"; do
-    LATEST_TAG=$(git tag -l "plugin-${PLUGIN}-v*" | sort -V | tail -1)
+    LATEST_TAG=$(git ls-remote --tags --refs origin "plugin-${PLUGIN}-v*" \
+        | sed 's#.*/##' | sort -V | tail -1)
     if [ -z "$LATEST_TAG" ]; then
-        echo "  WARNING: No tag found for plugin-${PLUGIN}-v*. Skipping."
+        echo "  WARNING: No remote tag found for plugin-${PLUGIN}-v*. Skipping."
         continue
     fi
-    PAIR="${LATEST_TAG}:${PKV}"
+    LATEST_VER="${LATEST_TAG#plugin-${PLUGIN}-v}"
+    NEW_TAG="plugin-${PLUGIN}-v${LATEST_VER%.*}.$(( ${LATEST_VER##*.} + 1 ))"
+    PAIR="${NEW_TAG}:${PKV}"
     if [ "$FIRST" = true ]; then
         TAG_LIST="$PAIR"
         FIRST=false

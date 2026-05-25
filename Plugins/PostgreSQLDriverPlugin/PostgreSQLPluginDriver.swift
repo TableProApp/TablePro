@@ -15,6 +15,10 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "PostgreSQLPluginDriver")
 
+    private static let undefinedTableSQLState = "42P01"
+
+    private var catalogPresence: PostgreSQLCatalogPresence?
+
     var serverVersionNumber: Int32 { core.serverVersionNumber }
     var versionedCapabilities: PostgreSQLCapabilities {
         PostgreSQLCapabilities(serverVersion: core.serverVersionNumber)
@@ -37,6 +41,35 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.core = LibPQDriverCore(config: config)
+    }
+
+    // MARK: - Connection
+
+    func connect() async throws {
+        try await core.connect()
+        await probeCatalogPresence()
+    }
+
+    private func probeCatalogPresence() async {
+        do {
+            let result = try await core.execute(query: PostgreSQLCatalogPresence.probeQuery)
+            let relationNames = result.rows.compactMap { $0.first?.asText }
+            catalogPresence = PostgreSQLCatalogPresence(relationNames: relationNames)
+        } catch {
+            Self.logger.debug("Catalog presence probe failed; using version-based capabilities: \(error.localizedDescription)")
+        }
+    }
+
+    private func includesMaterializedViews() -> Bool {
+        catalogPresence?.hasMaterializedViews ?? versionedCapabilities.hasMaterializedViewsCatalog
+    }
+
+    private func includesForeignTables() -> Bool {
+        catalogPresence?.hasForeignTables ?? versionedCapabilities.hasForeignTablesCatalog
+    }
+
+    private func includesSequencesCatalog() -> Bool {
+        catalogPresence?.hasSequences ?? versionedCapabilities.hasSequencesCatalog
     }
 
     // MARK: - EXPLAIN
@@ -101,40 +134,24 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let caps = versionedCapabilities
+        let query = PostgreSQLSchemaQueries.fetchTables(
+            schemaLiteral: schemaLiteral,
+            includeMaterializedViews: includesMaterializedViews(),
+            includeForeignTables: includesForeignTables()
+        )
 
-        var unions: [String] = [
-            """
-            SELECT table_name, table_type FROM information_schema.tables
-            WHERE table_schema = '\(schemaLiteral)'
-              AND table_type IN ('BASE TABLE', 'VIEW')
-            """
-        ]
-
-        if caps.hasMaterializedViewsCatalog {
-            unions.append(
-                """
-                SELECT matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type
-                FROM pg_matviews
-                WHERE schemaname = '\(schemaLiteral)'
-                """
+        let result: PluginQueryResult
+        do {
+            result = try await execute(query: query)
+        } catch let error as LibPQPluginError where error.sqlState == Self.undefinedTableSQLState {
+            let baseQuery = PostgreSQLSchemaQueries.fetchTables(
+                schemaLiteral: schemaLiteral,
+                includeMaterializedViews: false,
+                includeForeignTables: false
             )
+            result = try await execute(query: baseQuery)
         }
 
-        if caps.hasForeignTablesCatalog {
-            unions.append(
-                """
-                SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type
-                FROM pg_foreign_table ft
-                JOIN pg_class c ON c.oid = ft.ftrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = '\(schemaLiteral)'
-                """
-            )
-        }
-
-        let query = unions.joined(separator: "\nUNION ALL\n") + "\nORDER BY table_name"
-        let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[0].asText else { return nil }
             let typeStr = row[1].asText ?? "BASE TABLE"
@@ -533,7 +550,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)] {
-        guard versionedCapabilities.hasSequencesCatalog else { return [] }
+        guard includesSequencesCatalog() else { return [] }
         let safeTable = escapeLiteral(table)
         let query = """
             SELECT s.sequencename,

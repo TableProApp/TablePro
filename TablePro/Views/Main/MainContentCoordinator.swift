@@ -43,7 +43,6 @@ struct DisplayFormatsCacheEntry {
 /// Uses a single `.sheet(item:)` modifier instead of multiple `.sheet(isPresented:)`.
 enum ActiveSheet: Identifiable {
     case quickSwitcher
-    case connectionSwitcher
     case sqlPreview
     case exportDialog
     case importDialog
@@ -56,7 +55,6 @@ enum ActiveSheet: Identifiable {
     var id: String {
         switch self {
         case .quickSwitcher: "quickSwitcher"
-        case .connectionSwitcher: "connectionSwitcher"
         case .sqlPreview: "sqlPreview"
         case .exportDialog: "exportDialog"
         case .importDialog: "importDialog"
@@ -157,6 +155,7 @@ final class MainContentCoordinator {
     var tableMetadata: TableMetadata?
     var activeSheet: ActiveSheet?
     var isDatabaseSwitcherShown = false
+    var isConnectionSwitcherShown = false
     var databaseToDrop: String?
     var importFileURL: URL?
     var exportPreselectedTableNames: Set<String>?

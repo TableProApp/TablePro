@@ -815,7 +815,7 @@ final class MainContentCommandActions {
     }
 
     func openConnectionSwitcher() {
-        coordinator?.activeSheet = .connectionSwitcher
+        coordinator?.isConnectionSwitcherShown = true
     }
 
     // MARK: - Undo/Redo (Group A — Called Directly)

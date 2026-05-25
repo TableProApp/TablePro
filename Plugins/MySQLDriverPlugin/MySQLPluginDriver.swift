@@ -75,7 +75,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             user: config.username,
             password: config.password,
             database: _activeDatabase,
-            sslConfig: sslConfig
+            sslConfig: sslConfig,
+            enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true"
         )
 
         try await conn.connect()

@@ -13,7 +13,7 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    static let currentPluginKitVersion = 14
+    static let currentPluginKitVersion = 15
     static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
@@ -112,6 +112,7 @@ final class PluginManager {
 
     @ObservationIgnored internal var reconciliationTask: Task<Void, Never>?
     @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
+    @ObservationIgnored internal var reconciliationManifestAttempts = 0
     @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
     @ObservationIgnored internal var installsInFlight: Set<String> = []
 

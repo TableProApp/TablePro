@@ -102,6 +102,20 @@ extension TableViewCoordinator {
             menu.addItem(copyValuesItem)
         }
 
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier),
+           isEditable,
+           cachedRowCount > 0,
+           !primaryKeyColumns.contains(baseName) {
+            let fillItem = NSMenuItem(
+                title: String(localized: "Fill Column…"),
+                action: #selector(fillColumn(_:)),
+                keyEquivalent: ""
+            )
+            fillItem.representedObject = dataColumnIndex
+            fillItem.target = self
+            menu.addItem(fillItem)
+        }
+
         let filterItem = NSMenuItem(title: String(localized: "Filter with column"), action: #selector(filterWithColumn(_:)), keyEquivalent: "")
         filterItem.representedObject = baseName
         filterItem.target = self

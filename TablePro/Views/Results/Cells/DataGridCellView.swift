@@ -283,35 +283,28 @@ final class DataGridCellView: NSView {
     }
 
     private func computeAccessoryRect() -> NSRect {
-        switch kind {
-        case .text:
-            return .zero
-        case .foreignKey:
+        if kind == .foreignKey {
             guard let raw = rawValue, !raw.isEmpty else { return .zero }
             let size = NSSize(width: 16, height: 16)
             let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
             let y = (bounds.height - size.height) / 2
             return NSRect(x: x, y: y, width: size.width, height: size.height)
-        case .dropdown, .boolean, .json, .blob:
-            guard isEditableCell else { return .zero }
-            let size = NSSize(width: 12, height: 14)
-            let minRequired = size.width + 2 * DataGridMetrics.cellHorizontalInset
-            guard bounds.width >= minRequired else { return .zero }
-            let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
-            let y = (bounds.height - size.height) / 2
-            return NSRect(x: x, y: y, width: size.width, height: size.height)
         }
+        guard kind.showsChevron, isEditableCell else { return .zero }
+        let size = NSSize(width: 12, height: 14)
+        let minRequired = size.width + 2 * DataGridMetrics.cellHorizontalInset
+        guard bounds.width >= minRequired else { return .zero }
+        let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
+        let y = (bounds.height - size.height) / 2
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
 
     private func drawAccessory(in rect: NSRect) {
         guard !rect.isEmpty else { return }
         let image: CGImage?
-        switch kind {
-        case .text:
-            return
-        case .foreignKey:
+        if kind == .foreignKey {
             image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
-        case .dropdown, .boolean, .json, .blob:
+        } else if kind.showsChevron {
             if visualState.isDeleted {
                 image = Self.chevronDisabled
             } else if onEmphasizedSelection {
@@ -319,6 +312,8 @@ final class DataGridCellView: NSView {
             } else {
                 image = Self.chevronNormal
             }
+        } else {
+            return
         }
         guard let cgImage = image, let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
@@ -337,21 +332,17 @@ final class DataGridCellView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if !accessoryHitRect.isEmpty && accessoryHitRect.contains(point) {
-            switch kind {
-            case .foreignKey:
-                accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
-                return
-            case .dropdown, .boolean, .json, .blob:
-                guard !visualState.isDeleted else {
-                    super.mouseDown(with: event)
-                    return
-                }
-                accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
-                return
-            case .text:
-                break
-            }
+        guard !accessoryHitRect.isEmpty, accessoryHitRect.contains(point) else {
+            super.mouseDown(with: event)
+            return
+        }
+        if kind == .foreignKey {
+            accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
+            return
+        }
+        if kind.showsChevron, !visualState.isDeleted {
+            accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
+            return
         }
         super.mouseDown(with: event)
     }

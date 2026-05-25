@@ -43,13 +43,6 @@ struct DatabaseSwitcherPopover: View {
     @State private var viewModel: DatabaseSwitcherViewModel
     @State private var supportsCreateDatabase = false
 
-    private enum FocusField {
-        case search
-        case list
-    }
-
-    @FocusState private var focus: FocusField?
-
     private static let popoverWidth: CGFloat = 320
     private static let popoverHeight: CGFloat = 360
 
@@ -99,18 +92,6 @@ struct DatabaseSwitcherPopover: View {
         .background(refreshShortcut)
         .task { await viewModel.fetchDatabases() }
         .task { await refreshCreateSupport() }
-        .onKeyPress(.return) {
-            commitSelection()
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            viewModel.moveUp()
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            viewModel.moveDown()
-            return .handled
-        }
     }
 
     private var refreshShortcut: some View {
@@ -122,61 +103,16 @@ struct DatabaseSwitcherPopover: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "magnifyingglass")
-                .imageScale(.small)
-                .foregroundStyle(.secondary)
-                .frame(width: 14)
-
-            TextField(
-                "",
-                text: $viewModel.searchText,
-                prompt: Text(String(localized: "Search databases"))
-                    .foregroundStyle(.tertiary)
-            )
-            .textFieldStyle(.plain)
-            .font(.body)
-            .focused($focus, equals: .search)
-            .onKeyPress(.downArrow) {
-                viewModel.moveDown()
-                return .handled
-            }
-            .onKeyPress(.upArrow) {
-                viewModel.moveUp()
-                return .handled
-            }
-            .onKeyPress(.return) {
-                commitSelection()
-                return .handled
-            }
-            .onKeyPress(.escape) {
-                if viewModel.searchText.isEmpty {
-                    return .ignored
-                }
-                viewModel.searchText = ""
-                return .handled
-            }
-
-            if !viewModel.searchText.isEmpty {
-                Button {
-                    viewModel.searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .imageScale(.small)
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.35))
+        NativeSearchField(
+            text: $viewModel.searchText,
+            placeholder: String(localized: "Search databases"),
+            onMoveUp: { viewModel.moveUp() },
+            onMoveDown: { viewModel.moveDown() },
+            onSubmit: { commitSelection() },
+            focusOnAppear: true
         )
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .onAppear { focus = .search }
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
@@ -203,7 +139,6 @@ struct DatabaseSwitcherPopover: View {
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
-            .focused($focus, equals: .list)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contextMenu(forSelectionType: String.self) { selection in
                 contextMenuItems(for: selection)

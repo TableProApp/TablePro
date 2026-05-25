@@ -65,13 +65,20 @@ final class SQLCompletionProvider {
 
     // MARK: - Public API
 
-    /// Get completion suggestions for the current cursor position
+    /// Get completion suggestions for the current cursor position.
+    /// `forcedTableReferences` overrides the tables in scope, used when the caller
+    /// already knows the table (e.g. a single-table filter expression) rather than
+    /// relying on a FROM clause in the analyzed text.
     func getCompletions(
         text: String,
-        cursorPosition: Int
+        cursorPosition: Int,
+        forcedTableReferences: [TableReference]? = nil
     ) async -> (items: [SQLCompletionItem], context: SQLContext) {
         // Analyze context
-        let context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
+        var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
+        if let forcedTableReferences {
+            context = context.replacingTableReferences(forcedTableReferences)
+        }
 
         // Don't complete inside strings or comments
         if context.isInsideString || context.isInsideComment {

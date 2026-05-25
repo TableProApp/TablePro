@@ -10,6 +10,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, instead of resetting and leaving orphan custom themes behind (#1381)
+### Added
+
+- Cloudflare Tunnel: connect to a database behind Cloudflare Access by letting TablePro start and stop `cloudflared access tcp` for you, the same way it manages SSH tunnels. Configure it per connection with browser sign-in or a service token. Needs cloudflared installed (`brew install cloudflared`). (#1285)
+- Fill Column: right-click a column header and choose Fill Column to set one value across all loaded rows. The change is staged like a normal edit, so you review it and Save before it applies, and one undo reverts the whole fill. Not available on primary key columns. (#1304)
+- AWS IAM authentication for PostgreSQL and MySQL connections to RDS and Aurora. Pick AWS IAM in the connection's Authentication field and use an access key, a named AWS profile, or SSO. TablePro generates a fresh login token on every connect and reconnect, so you never paste an expiring token, and SSL is required automatically. (#1291)
+- Date, datetime, timestamp, and time cells show a date picker from the chevron button, so you can choose a value visually. Double-clicking still edits the cell as text, and the picker keeps the value's existing format, fractional seconds, and timezone offset. (#1405)
+- Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or a custom size) and First, Previous, Next, and Last page buttons. (#1364)
+- Click the page indicator in the pagination bar to jump to a specific page. (#1364)
+- Pagination now appears for filtered tables whose total row count is unknown, so you can page through them instead of seeing only the first page. (#1364)
+- First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)
+
+### Fixed
+
+- Installing or updating a plugin right after updating TablePro now refetches the current plugin list first, so it no longer fails against a stale cached list (the error a restart used to clear). (#1380)
+- Pressing Esc to close the Raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen. (#1403)
+- Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of a confusing "Invalid OAuth error response". (#1409)
+
+## [0.44.0] - 2026-05-23
+
+### Added
+
+- Import connections and passwords from DataGrip, including SSH tunnels and SSL settings. The source app doesn't need to be running. (#1374)
+
+### Changed
+
+- Active Connections is now a searchable toolbar popover instead of a modal dialog. (#1350)
+
+### Fixed
+
+- Connecting to a PostgreSQL-compatible engine without the pg_matviews catalog (such as db9.ai) no longer fails to load tables. (#1383)
+- Filtering a table now updates the row and page counts to match the filtered result, instead of the whole-table totals.
+- Reopening a table restores the filter you had applied, per connection. Removing or clearing a filter is remembered too, so an unfiltered table reopens with no filter. (#1347)
+- Quick switcher panel height now fits its results instead of leaving empty space below short lists. (#1349)
+- Importing connections from TablePlus brings over saved passwords again, after a recent release looked under the wrong keychain name.
+- Importing an SSH connection from TablePlus no longer fills in a fake private key path when no key was selected, and skips empty TLS certificate paths.
+- Importing from DBeaver no longer shows an unnecessary keychain permission warning, since DBeaver stores passwords in its own file.
+- Raw SQL filter now suggests columns and keywords at every position, including after AND and OR, instead of only the first. (#1346)
+- Plugins left incompatible after a TablePro update now update quietly in the background instead of showing a premature "could not be loaded" alert. You are notified only when no compatible version exists yet. (#1322)
+- A plugin you download and install by hand is no longer blocked by macOS Gatekeeper once its signature is verified. (#1322)
+- Clicking a table now replaces the active tab instead of opening a new one when you have multiple tabs open. A new tab still opens for unsaved edits, an applied filter, or sorting; double-click always opens a new tab. (#1348)
 
 ## [0.43.3] - 2026-05-22
 
@@ -1953,7 +1993,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.43.3...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.44.0...HEAD
+[0.44.0]: https://github.com/TableProApp/TablePro/compare/v0.43.3...v0.44.0
 [0.43.3]: https://github.com/TableProApp/TablePro/compare/v0.43.2...v0.43.3
 [0.43.2]: https://github.com/TableProApp/TablePro/compare/v0.43.1...v0.43.2
 [0.43.1]: https://github.com/TableProApp/TablePro/compare/v0.43.0...v0.43.1

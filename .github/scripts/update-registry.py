@@ -65,17 +65,27 @@ def write_manifest_atomic(path, manifest):
         raise
 
 
+def kit_version(binary):
+    value = binary.get("pluginKitVersion")
+    return value if isinstance(value, int) else None
+
+
 def prune_old_kit_versions(binaries, keep_count):
+    # Drop binaries without a concrete integer PluginKit version. The app matches
+    # binaries on an exact integer, so a null/missing version can never resolve and
+    # only shadows valid binaries (the cause of the DynamoDB noCompatibleBinary in #1322).
+    typed = [b for b in binaries if kit_version(b) is not None]
+
     versions_seen = []
-    for binary in binaries:
-        pkv = binary.get("pluginKitVersion", 0)
+    for binary in typed:
+        pkv = kit_version(binary)
         if pkv not in versions_seen:
             versions_seen.append(pkv)
 
     versions_seen.sort(reverse=True)
     versions_to_keep = set(versions_seen[:keep_count])
 
-    return [b for b in binaries if b.get("pluginKitVersion", 0) in versions_to_keep]
+    return [b for b in typed if kit_version(b) in versions_to_keep]
 
 
 def update_plugin_entry(manifest, args):
@@ -104,7 +114,7 @@ def update_plugin_entry(manifest, args):
     if existing_entry is not None:
         surviving = [
             b for b in existing_entry.get("binaries", [])
-            if b.get("pluginKitVersion", 0) != pkv
+            if kit_version(b) is not None and kit_version(b) != pkv
         ]
         merged_binaries = surviving + new_binaries
     else:

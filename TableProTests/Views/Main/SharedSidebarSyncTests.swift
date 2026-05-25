@@ -10,11 +10,11 @@
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 @Suite("Shared Sidebar Sync Invariants")
 struct SharedSidebarSyncTests {
-
     // MARK: - Helpers
 
     private func makeTable(_ name: String, type: TableInfo.TableType = .table) -> TableInfo {
@@ -41,7 +41,8 @@ struct SharedSidebarSyncTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: "users",  // <-- current tab IS "users"
-            hasExistingTabs: true
+            hasExistingTabs: true,
+            isActiveTabReusable: false
         )
         #expect(result == .skip, "syncSidebarToCurrentTab must not trigger navigation")
     }
@@ -111,7 +112,8 @@ struct SharedSidebarSyncTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: "users",
-            hasExistingTabs: true
+            hasExistingTabs: true,
+            isActiveTabReusable: false
         )
         #expect(result == .skip, "Even with stale previous, skip when table matches current tab")
     }
@@ -140,9 +142,10 @@ struct SharedSidebarSyncTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
             currentTabTableName: "users",
-            hasExistingTabs: true
+            hasExistingTabs: true,
+            isActiveTabReusable: false
         )
-        #expect(result == .revertAndOpenNewWindow)
+        #expect(result == .openNewTab)
     }
 
     @Test("Click table with no existing tabs — opens in place")
@@ -156,9 +159,10 @@ struct SharedSidebarSyncTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
     @Test("Click same table as current tab — skip")
@@ -173,7 +177,8 @@ struct SharedSidebarSyncTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: "users",
-            hasExistingTabs: true
+            hasExistingTabs: true,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }

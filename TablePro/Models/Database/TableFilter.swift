@@ -172,6 +172,18 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
     }
 }
 
+extension TableFilter {
+    var asPluginFilterTuple: (column: String, op: String, value: String) {
+        let resolvedValue: String
+        if filterOperator == .between, let second = secondValue {
+            resolvedValue = "\(value),\(second)"
+        } else {
+            resolvedValue = value
+        }
+        return (columnName, filterOperator.rawValue, resolvedValue)
+    }
+}
+
 /// Stores per-tab filter state (preserves filters when switching tabs)
 struct TabFilterState: Equatable, Hashable, Codable {
     var filters: [TableFilter]

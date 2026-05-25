@@ -4,6 +4,30 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="May 23, 2026" description="v0.44.0">
+  ### New Features
+
+  - **DataGrip Import**: Import connections and passwords from DataGrip, including SSH tunnels and SSL settings. The source app doesn't need to be running (#1374)
+
+  ### Improvements
+
+  - **Active Connections Popover**: Active Connections is now a searchable toolbar popover instead of a modal dialog (#1350)
+  - **Filter Suggestions Everywhere**: The raw SQL filter suggests columns and keywords at every position, including after AND and OR, instead of only the first (#1346)
+  - **Quieter Plugin Updates**: Plugins left incompatible after a TablePro update now update in the background instead of showing a premature "could not be loaded" alert. You are notified only when no compatible version exists yet (#1322)
+
+  ### Bug Fixes
+
+  - **Remembered Filters**: Reopening a table restores the filter you had applied, per connection. Removing or clearing a filter is remembered too, so an unfiltered table reopens with no filter (#1347)
+  - **Filtered Row Counts**: Filtering a table updates the row and page counts to match the filtered result, instead of the whole-table totals
+  - **PostgreSQL Without pg_matviews**: Connecting to a PostgreSQL-compatible engine without the pg_matviews catalog (such as db9.ai) no longer fails to load tables (#1383)
+  - **Quick Switcher Height**: The quick switcher panel fits its results instead of leaving empty space below short lists (#1349)
+  - **TablePlus Passwords**: Importing connections from TablePlus brings over saved passwords again, after a recent release looked under the wrong keychain name
+  - **TablePlus SSH Import**: Importing an SSH connection from TablePlus no longer fills in a fake private key path when no key was selected, and skips empty TLS certificate paths
+  - **DBeaver Keychain Prompt**: Importing from DBeaver no longer shows an unnecessary keychain permission warning, since DBeaver stores passwords in its own file
+  - **Manual Plugin Install**: A plugin you download and install by hand is no longer blocked by macOS Gatekeeper once its signature is verified (#1322)
+  - **Reliable Tab Reuse**: Clicking a table replaces the active tab instead of opening a new one when you have multiple tabs open. A new tab still opens for unsaved edits, an applied filter, or sorting; double-click always opens a new tab (#1348)
+</Update>
+
 <Update label="May 22, 2026" description="v0.43.3">
   ### Bug Fixes
 
