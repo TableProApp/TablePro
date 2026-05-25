@@ -26,8 +26,6 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
 
         textView.isEditable = isEditable
         textView.isSelectable = true
-        textView.isRichText = false
-        textView.usesFindBar = true
         textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.textContainerInset = NSSize(width: 4, height: 4)
         textView.backgroundColor = .textBackgroundColor
