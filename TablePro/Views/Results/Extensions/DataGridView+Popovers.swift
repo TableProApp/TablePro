@@ -122,14 +122,34 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        JSONViewerWindowController.open(
-            text: currentValue,
-            columnName: columnName,
-            isEditable: true,
-            onCommit: { [weak self] newValue in
-                self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-            }
-        )
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 560, height: 420)
+        ) { [weak self] dismiss in
+            JSONEditorContentView(
+                initialValue: currentValue,
+                columnName: columnName,
+                onCommit: { newValue in
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: dismiss,
+                onPopOut: { currentText in
+                    dismiss()
+                    JSONViewerWindowController.open(
+                        text: currentText,
+                        columnName: columnName,
+                        isEditable: true,
+                        onCommit: { newValue in
+                            self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                        }
+                    )
+                }
+            )
+        }
     }
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
@@ -302,12 +322,29 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        JSONViewerWindowController.open(
-            text: currentValue,
-            columnName: columnName,
-            isEditable: false,
-            onCommit: nil
-        )
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 560, height: 360)
+        ) { dismiss in
+            JSONViewerContentView(
+                initialValue: currentValue,
+                columnName: columnName,
+                onDismiss: dismiss,
+                onPopOut: { currentText in
+                    dismiss()
+                    JSONViewerWindowController.open(
+                        text: currentText,
+                        columnName: columnName,
+                        isEditable: false,
+                        onCommit: nil
+                    )
+                }
+            )
+        }
     }
 
     func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
