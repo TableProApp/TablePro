@@ -5,8 +5,13 @@
 
 import Foundation
 
-internal indirect enum JsonSyntaxNode {
-    case object([(key: String, value: JsonSyntaxNode)])
+internal struct JsonObjectMember {
+    let key: String
+    let value: JsonSyntaxNode
+}
+
+internal enum JsonSyntaxNode {
+    case object([JsonObjectMember])
     case array([JsonSyntaxNode])
     case string(String)
     case number(String)
@@ -123,7 +128,7 @@ internal enum JsonSyntaxParser {
 
         mutating func parseObject() -> JsonSyntaxNode? {
             index += 1
-            var pairs: [(key: String, value: JsonSyntaxNode)] = []
+            var pairs: [JsonObjectMember] = []
             skipWhitespace()
             if index < scalars.count, scalars[index] == "}" {
                 index += 1
@@ -137,7 +142,7 @@ internal enum JsonSyntaxParser {
                 index += 1
                 skipWhitespace()
                 guard let value = parseValue() else { return nil }
-                pairs.append((key, value))
+                pairs.append(JsonObjectMember(key: key, value: value))
                 skipWhitespace()
                 guard index < scalars.count else { return nil }
                 if scalars[index] == "," {
