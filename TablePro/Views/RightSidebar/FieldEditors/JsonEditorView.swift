@@ -13,7 +13,7 @@ internal struct JsonEditorView: View {
     @State private var displayText = ""
 
     var body: some View {
-        JSONSyntaxTextView(text: $displayText, isEditable: !context.isReadOnly, wordWrap: true)
+        JSONCodeEditor(text: $displayText, isEditable: !context.isReadOnly)
             .frame(minHeight: context.isReadOnly ? 60 : 80, maxHeight: 120)
             .clipShape(RoundedRectangle(cornerRadius: 5))
             .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))

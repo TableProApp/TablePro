@@ -91,7 +91,7 @@ internal struct JSONViewerView: View {
     private var viewerContent: some View {
         switch viewMode {
         case .text:
-            JSONSyntaxTextView(text: $displayText, isEditable: isEditable, wordWrap: true)
+            JSONCodeEditor(text: $displayText, isEditable: isEditable)
         case .tree:
             if let tree = parsedTree {
                 JSONTreeView(rootNode: tree, searchText: $treeSearchText)
