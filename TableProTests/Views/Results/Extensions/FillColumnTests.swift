@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftUI
 import TableProPluginKit
 import Testing
 
