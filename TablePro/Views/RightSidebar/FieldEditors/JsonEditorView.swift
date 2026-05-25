@@ -10,7 +10,14 @@ internal struct JsonEditorView: View {
     var onExpand: (() -> Void)?
     var onPopOut: ((String) -> Void)?
 
-    @State private var displayText = ""
+    @State private var displayText: String
+
+    init(context: FieldEditorContext, onExpand: (() -> Void)? = nil, onPopOut: ((String) -> Void)? = nil) {
+        self.context = context
+        self.onExpand = onExpand
+        self.onPopOut = onPopOut
+        self._displayText = State(wrappedValue: JsonReindenter.reindent(context.value.wrappedValue))
+    }
 
     var body: some View {
         JSONCodeEditor(text: $displayText, isEditable: !context.isReadOnly)
@@ -42,7 +49,6 @@ internal struct JsonEditorView: View {
                 }
                 .padding(4)
             }
-            .onAppear { displayText = JsonReindenter.reindent(context.value.wrappedValue) }
             .onChange(of: displayText) { propagateEdit() }
             .onChange(of: context.value.wrappedValue) { syncFromBinding() }
     }

@@ -16,7 +16,7 @@ internal struct JSONViewerView: View {
     @State private var treeSearchText = ""
     @State private var parsedTree: JSONTreeNode?
     @State private var parseError: JSONTreeParseError?
-    @State private var displayText = ""
+    @State private var displayText: String
     @State private var showInvalidAlert = false
 
     init(
@@ -31,6 +31,7 @@ internal struct JSONViewerView: View {
         self.onDismiss = onDismiss
         self.onCommit = onCommit
         self.onPopOut = onPopOut
+        self._displayText = State(wrappedValue: JsonReindenter.reindent(text.wrappedValue))
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
     }
 

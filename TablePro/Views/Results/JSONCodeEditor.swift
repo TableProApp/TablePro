@@ -32,6 +32,7 @@ internal struct JSONCodeEditor: View {
             configuration: configuration,
             state: $editorState
         )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: colorScheme) {
             configuration = Self.makeConfiguration(isEditable: isEditable)
         }
