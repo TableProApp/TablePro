@@ -103,6 +103,8 @@ internal enum JsonSyntaxParser {
     private struct Parser {
         let scalars: [Unicode.Scalar]
         var index = 0
+        var depth = 0
+        let maxDepth = 512
 
         var isAtEnd: Bool { index >= scalars.count }
 
@@ -127,6 +129,9 @@ internal enum JsonSyntaxParser {
         }
 
         mutating func parseObject() -> JsonSyntaxNode? {
+            guard depth < maxDepth else { return nil }
+            depth += 1
+            defer { depth -= 1 }
             index += 1
             var pairs: [JsonObjectMember] = []
             skipWhitespace()
@@ -158,6 +163,9 @@ internal enum JsonSyntaxParser {
         }
 
         mutating func parseArray() -> JsonSyntaxNode? {
+            guard depth < maxDepth else { return nil }
+            depth += 1
+            defer { depth -= 1 }
             index += 1
             var elements: [JsonSyntaxNode] = []
             skipWhitespace()

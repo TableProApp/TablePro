@@ -132,4 +132,13 @@ struct JsonReindenterTests {
         #expect(JsonSyntaxParser.decodeStringLiteral("\"\\u0041\"") == "A")
         #expect(JsonSyntaxParser.decodeStringLiteral("\"\\uD83D\\uDE00\"") == "😀")
     }
+
+    @Test("Deeply nested JSON is rejected instead of overflowing the stack")
+    func deepNestingDoesNotCrash() {
+        let depth = 20_000
+        let deep = String(repeating: "[", count: depth) + String(repeating: "]", count: depth)
+        #expect(JsonReindenter.reindentIfValid(deep) == nil)
+        #expect(JsonReindenter.reindent(deep) == deep)
+        #expect(JsonReindenter.normalize(deep) == deep)
+    }
 }
