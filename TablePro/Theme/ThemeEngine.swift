@@ -150,9 +150,14 @@ internal final class ThemeEngine {
 
     func saveUserTheme(_ theme: ThemeDefinition) throws {
         try ThemeStorage.saveUserTheme(theme)
+
+        if let index = availableThemes.firstIndex(where: { $0.id == theme.id }) {
+            availableThemes[index] = theme
+        } else {
+            availableThemes.append(theme)
+        }
         reloadAvailableThemes()
 
-        // If editing the active theme, re-activate to apply changes
         if theme.id == activeTheme.id {
             activateTheme(theme)
         }

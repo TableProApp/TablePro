@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, instead of resetting and leaving orphan custom themes behind (#1381)
+
 ## [0.43.3] - 2026-05-22
 
 ### Fixed
