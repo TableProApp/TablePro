@@ -362,7 +362,7 @@ struct BsonDocumentFlattenerTests {
         func capsAtTenThousandChars() {
             // Build a large dictionary that serializes to >10k chars
             var largeDict: [String: Any] = [:]
-            for i in 0 ..< 2000 {
+            for i in 0 ..< 2_000 {
                 largeDict["key_\(String(format: "%04d", i))"] = String(repeating: "x", count: 10)
             }
             let result = BsonDocumentFlattener.serializeToJson(largeDict)
@@ -462,25 +462,9 @@ private struct BsonDocumentFlattener {
         case let str as String:
             return str
         case let num as NSNumber:
-            if CFBooleanGetTypeID() == CFGetTypeID(num) {
-                return num.boolValue ? "true" : "false"
-            }
-            if isFloatingPoint(num), !num.doubleValue.isFinite {
-                return nonFiniteToken(num.doubleValue)
-            }
-            return num.stringValue
-        case let int as Int:
-            return String(int)
-        case let int32 as Int32:
-            return String(int32)
-        case let int64 as Int64:
-            return String(int64)
-        case let double as Double:
-            return double.isFinite ? String(double) : nonFiniteToken(double)
-        case let bool as Bool:
-            return bool ? "true" : "false"
+            return displayString(for: num)
         case let date as Date:
-            return ISO8601DateFormatter().string(from: date)
+            return iso8601Formatter.string(from: date)
         case let data as Data:
             return formatBinaryData(data)
         case let dict as [String: Any]:
@@ -528,7 +512,7 @@ private struct BsonDocumentFlattener {
         case let data as Data:
             return formatBinaryData(data)
         case let date as Date:
-            return ISO8601DateFormatter().string(from: date)
+            return iso8601Formatter.string(from: date)
         case is NSNull:
             return value
         case let str as String:
@@ -540,10 +524,26 @@ private struct BsonDocumentFlattener {
         }
     }
 
+    private static let iso8601Formatter = ISO8601DateFormatter()
+
+    private static func displayString(for num: NSNumber) -> String {
+        if isBoolean(num) {
+            return num.boolValue ? "true" : "false"
+        }
+        if isFloatingPoint(num), !num.doubleValue.isFinite {
+            return nonFiniteToken(num.doubleValue)
+        }
+        return num.stringValue
+    }
+
     private static func sanitizeNumber(_ num: NSNumber) -> Any {
-        guard CFBooleanGetTypeID() != CFGetTypeID(num) else { return num }
+        guard !isBoolean(num) else { return num }
         guard isFloatingPoint(num), !num.doubleValue.isFinite else { return num }
         return nonFiniteToken(num.doubleValue)
+    }
+
+    private static func isBoolean(_ num: NSNumber) -> Bool {
+        CFBooleanGetTypeID() == CFGetTypeID(num)
     }
 
     private static func isFloatingPoint(_ num: NSNumber) -> Bool {
@@ -588,27 +588,16 @@ private struct BsonDocumentFlattener {
 
         switch value {
         case let num as NSNumber:
-            if CFBooleanGetTypeID() == CFGetTypeID(num) {
+            if isBoolean(num) {
                 return 8
             }
-            let objCType = String(cString: num.objCType)
-            if objCType == "d" || objCType == "f" {
+            if isFloatingPoint(num) {
                 return 1
             }
-            if objCType == "q" || objCType == "l" {
-                return 18
-            }
-            return 16
+            let objCType = String(cString: num.objCType)
+            return objCType == "q" || objCType == "l" ? 18 : 16
         case is String:
             return 2
-        case is Bool:
-            return 8
-        case is Int, is Int32:
-            return 16
-        case is Int64:
-            return 18
-        case is Double, is Float:
-            return 1
         case is Date:
             return 9
         case is Data:
