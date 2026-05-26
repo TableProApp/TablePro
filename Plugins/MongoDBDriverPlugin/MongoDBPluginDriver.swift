@@ -908,7 +908,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func prettyJson(_ value: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .prettyPrinted]),
+        let sanitized = BsonDocumentFlattener.sanitizeForJson(value)
+        guard JSONSerialization.isValidJSONObject(sanitized),
+              let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys, .prettyPrinted]),
               let json = String(data: data, encoding: .utf8) else {
             return String(describing: value)
         }

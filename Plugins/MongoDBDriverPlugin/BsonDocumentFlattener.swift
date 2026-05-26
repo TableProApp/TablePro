@@ -77,6 +77,9 @@ struct BsonDocumentFlattener {
             if CFBooleanGetTypeID() == CFGetTypeID(num) {
                 return num.boolValue ? "true" : "false"
             }
+            if isFloatingPoint(num), !num.doubleValue.isFinite {
+                return nonFiniteToken(num.doubleValue)
+            }
             return num.stringValue
         case let int as Int:
             return String(int)
@@ -85,7 +88,7 @@ struct BsonDocumentFlattener {
         case let int64 as Int64:
             return String(int64)
         case let double as Double:
-            return String(double)
+            return double.isFinite ? String(double) : nonFiniteToken(double)
         case let bool as Bool:
             return bool ? "true" : "false"
         case let date as Date:
@@ -121,24 +124,20 @@ struct BsonDocumentFlattener {
     /// Serialize a dictionary or array to compact JSON string
     static func serializeToJson(_ value: Any) -> String {
         let sanitized = sanitizeForJson(value)
-        do {
-            let data = try JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys])
-            if let json = String(data: data, encoding: .utf8) {
-                // Cap at 10k chars to prevent mega-document display issues
-                let nsJson = json as NSString
-                if nsJson.length > 10_000 {
-                    return String(json.prefix(10_000)) + "..."
-                }
-                return json
-            }
-        } catch {
-            // Fall through to description
+        guard JSONSerialization.isValidJSONObject(sanitized),
+              let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else {
+            return String(describing: value)
         }
-        return String(describing: value)
+        let nsJson = json as NSString
+        if nsJson.length > 10_000 {
+            return String(json.prefix(10_000)) + "..."
+        }
+        return json
     }
 
-    /// Recursively convert non-JSON-safe types (Data, Date, etc.) to JSON-safe representations
-    private static func sanitizeForJson(_ value: Any) -> Any {
+    /// Recursively convert every value into a JSON-safe representation
+    static func sanitizeForJson(_ value: Any) -> Any {
         switch value {
         case let dict as [String: Any]:
             return dict.mapValues { sanitizeForJson($0) }
@@ -148,9 +147,31 @@ struct BsonDocumentFlattener {
             return formatBinaryData(data)
         case let date as Date:
             return ISO8601DateFormatter().string(from: date)
-        default:
+        case is NSNull:
             return value
+        case let str as String:
+            return str
+        case let num as NSNumber:
+            return sanitizeNumber(num)
+        default:
+            return String(describing: value)
         }
+    }
+
+    private static func sanitizeNumber(_ num: NSNumber) -> Any {
+        guard CFBooleanGetTypeID() != CFGetTypeID(num) else { return num }
+        guard isFloatingPoint(num), !num.doubleValue.isFinite else { return num }
+        return nonFiniteToken(num.doubleValue)
+    }
+
+    private static func isFloatingPoint(_ num: NSNumber) -> Bool {
+        let objCType = String(cString: num.objCType)
+        return objCType == "d" || objCType == "f"
+    }
+
+    private static func nonFiniteToken(_ value: Double) -> String {
+        if value.isNaN { return "NaN" }
+        return value > 0 ? "Infinity" : "-Infinity"
     }
 
     /// Format binary data: 16-byte values as UUID, otherwise as hex string

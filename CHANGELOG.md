@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Custom and OpenAI-compatible AI providers now work when the base URL already ends in `/v1`, instead of building a doubled `/v1/v1/` path that failed. (#1400)
+- MongoDB: opening a collection no longer crashes when a document contains a NaN or infinite number. (#1418)
 
 ## [0.45.0] - 2026-05-26
 

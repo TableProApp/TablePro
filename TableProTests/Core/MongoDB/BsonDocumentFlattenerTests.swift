@@ -125,6 +125,15 @@ struct BsonDocumentFlattenerTests {
             let expected = ISO8601DateFormatter().string(from: date)
             #expect(result[0][1] == expected)
         }
+
+        @Test("Nested non-finite double does not crash and renders as a token")
+        func nestedNonFiniteDouble() {
+            let metrics: [String: Any] = ["score": Double.nan, "ratio": Double.infinity]
+            let doc: [String: Any] = ["_id": "1", "metrics": metrics]
+            let columns = ["_id", "metrics"]
+            let result = BsonDocumentFlattener.flatten(documents: [doc], columns: columns)
+            #expect(result[0][1] == "{\"ratio\":\"Infinity\",\"score\":\"NaN\"}")
+        }
     }
 
     // MARK: - columnTypes(for:documents:)
@@ -261,6 +270,24 @@ struct BsonDocumentFlattenerTests {
             #expect(result == "3.14")
         }
 
+        @Test("NaN double returns NaN token")
+        func nanValue() {
+            let result = BsonDocumentFlattener.stringValue(for: Double.nan)
+            #expect(result == "NaN")
+        }
+
+        @Test("Positive infinity returns Infinity token")
+        func positiveInfinityValue() {
+            let result = BsonDocumentFlattener.stringValue(for: Double.infinity)
+            #expect(result == "Infinity")
+        }
+
+        @Test("Negative infinity returns -Infinity token")
+        func negativeInfinityValue() {
+            let result = BsonDocumentFlattener.stringValue(for: -Double.infinity)
+            #expect(result == "-Infinity")
+        }
+
         @Test("Bool true via NSNumber returns true")
         func boolTrueValue() {
             let result = BsonDocumentFlattener.stringValue(for: NSNumber(value: true))
@@ -343,6 +370,42 @@ struct BsonDocumentFlattenerTests {
             #expect(nsResult.length <= 10_003) // 10000 + "..."
             #expect(result.hasSuffix("..."))
         }
+
+        @Test("NaN double in a dictionary serializes to NaN token instead of crashing")
+        func nanInDictionary() {
+            let dict: [String: Any] = ["v": Double.nan]
+            let result = BsonDocumentFlattener.serializeToJson(dict)
+            #expect(result == "{\"v\":\"NaN\"}")
+        }
+
+        @Test("Positive infinity in a dictionary serializes to Infinity token")
+        func positiveInfinityInDictionary() {
+            let dict: [String: Any] = ["v": Double.infinity]
+            let result = BsonDocumentFlattener.serializeToJson(dict)
+            #expect(result == "{\"v\":\"Infinity\"}")
+        }
+
+        @Test("Negative infinity in a dictionary serializes to -Infinity token")
+        func negativeInfinityInDictionary() {
+            let dict: [String: Any] = ["v": -Double.infinity]
+            let result = BsonDocumentFlattener.serializeToJson(dict)
+            #expect(result == "{\"v\":\"-Infinity\"}")
+        }
+
+        @Test("Non-finite double in an array keeps finite siblings as numbers")
+        func nonFiniteInArray() {
+            let array: [Any] = [Double.nan, 1.5, Double.infinity]
+            let result = BsonDocumentFlattener.serializeToJson(array)
+            #expect(result == "[\"NaN\",1.5,\"Infinity\"]")
+        }
+
+        @Test("Unsupported nested type is stringified instead of crashing")
+        func unsupportedTypeStringified() {
+            struct Custom: CustomStringConvertible { var description: String { "custom" } }
+            let dict: [String: Any] = ["v": Custom()]
+            let result = BsonDocumentFlattener.serializeToJson(dict)
+            #expect(result == "{\"v\":\"custom\"}")
+        }
     }
 }
 
@@ -402,6 +465,9 @@ private struct BsonDocumentFlattener {
             if CFBooleanGetTypeID() == CFGetTypeID(num) {
                 return num.boolValue ? "true" : "false"
             }
+            if isFloatingPoint(num), !num.doubleValue.isFinite {
+                return nonFiniteToken(num.doubleValue)
+            }
             return num.stringValue
         case let int as Int:
             return String(int)
@@ -410,7 +476,7 @@ private struct BsonDocumentFlattener {
         case let int64 as Int64:
             return String(int64)
         case let double as Double:
-            return String(double)
+            return double.isFinite ? String(double) : nonFiniteToken(double)
         case let bool as Bool:
             return bool ? "true" : "false"
         case let date as Date:
@@ -441,22 +507,19 @@ private struct BsonDocumentFlattener {
 
     static func serializeToJson(_ value: Any) -> String {
         let sanitized = sanitizeForJson(value)
-        do {
-            let data = try JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys])
-            if let json = String(data: data, encoding: .utf8) {
-                let nsJson = json as NSString
-                if nsJson.length > 10_000 {
-                    return String(json.prefix(10_000)) + "..."
-                }
-                return json
-            }
-        } catch {
-            // Fall through to description
+        guard JSONSerialization.isValidJSONObject(sanitized),
+              let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else {
+            return String(describing: value)
         }
-        return String(describing: value)
+        let nsJson = json as NSString
+        if nsJson.length > 10_000 {
+            return String(json.prefix(10_000)) + "..."
+        }
+        return json
     }
 
-    private static func sanitizeForJson(_ value: Any) -> Any {
+    static func sanitizeForJson(_ value: Any) -> Any {
         switch value {
         case let dict as [String: Any]:
             return dict.mapValues { sanitizeForJson($0) }
@@ -466,9 +529,31 @@ private struct BsonDocumentFlattener {
             return formatBinaryData(data)
         case let date as Date:
             return ISO8601DateFormatter().string(from: date)
-        default:
+        case is NSNull:
             return value
+        case let str as String:
+            return str
+        case let num as NSNumber:
+            return sanitizeNumber(num)
+        default:
+            return String(describing: value)
         }
+    }
+
+    private static func sanitizeNumber(_ num: NSNumber) -> Any {
+        guard CFBooleanGetTypeID() != CFGetTypeID(num) else { return num }
+        guard isFloatingPoint(num), !num.doubleValue.isFinite else { return num }
+        return nonFiniteToken(num.doubleValue)
+    }
+
+    private static func isFloatingPoint(_ num: NSNumber) -> Bool {
+        let objCType = String(cString: num.objCType)
+        return objCType == "d" || objCType == "f"
+    }
+
+    private static func nonFiniteToken(_ value: Double) -> String {
+        if value.isNaN { return "NaN" }
+        return value > 0 ? "Infinity" : "-Infinity"
     }
 
     private static func formatBinaryData(_ data: Data) -> String {
