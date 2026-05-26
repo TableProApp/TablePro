@@ -4,6 +4,24 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="May 26, 2026" description="v0.45.0">
+  ### New Features
+
+  - **Cloudflare Tunnel**: Connect to a database behind Cloudflare Access. TablePro starts and stops `cloudflared access tcp` per connection, the same way it manages SSH tunnels, with browser sign-in or a service token. Needs cloudflared (`brew install cloudflared`) (#1285)
+  - **AWS IAM Authentication**: Authenticate PostgreSQL and MySQL connections to RDS and Aurora with AWS IAM, using an access key, named profile, or SSO. TablePro generates a fresh token on every connect and requires SSL (#1291)
+  - **Fill Column**: Right-click a column header to set one value across all loaded rows. The fill is staged like a normal edit, and one undo reverts it. Not available on primary key columns (#1304)
+  - **Date Picker**: Date, datetime, timestamp, and time cells show a date picker from the chevron button. Double-clicking still edits the cell as text, and the picker keeps the value's format, fractional seconds, and timezone offset (#1405)
+  - **Pagination Bar**: Table tabs gain a pagination bar with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or custom) and First, Previous, Next, and Last buttons. Click the page indicator to jump to a page, and page through filtered tables even when the total row count is unknown. First Page and Last Page are assignable keyboard actions in Settings > Keyboard (#1364)
+  - **Pretty JSON Cells**: JSON and JSONB cells display pretty-printed by default, keeping your key order and exact numbers. Viewing or reformatting no longer marks the row changed, and saving no longer reorders keys or rounds large integers
+
+  ### Bug Fixes
+
+  - **Font Size Persists**: Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, with no orphan custom themes left behind (#1381)
+  - **Plugin Install After Update**: Installing or updating a plugin right after updating TablePro now refetches the plugin list first, so it no longer fails against a stale cached list (#1380)
+  - **Esc Keeps Fullscreen**: Pressing Esc to close the raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen (#1403)
+  - **Clear MCP OAuth Error**: Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of "Invalid OAuth error response" (#1409)
+</Update>
+
 <Update label="May 23, 2026" description="v0.44.0">
   ### New Features
 

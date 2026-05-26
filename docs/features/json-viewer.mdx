@@ -18,8 +18,10 @@ The viewer opens as a popover anchored to the cell.
 
 Switch with the segmented control in the viewer toolbar.
 
-- **Text**: syntax-highlighted JSON. Editable when the cell is editable. Use the `{}` button to format (pretty-print).
+- **Text**: syntax-highlighted JSON, pretty-printed by default. Editable when the cell is editable. Press `Cmd+F` to find within the value.
 - **Tree**: collapsible tree with a search field. Read-only navigation.
+
+Both modes keep your original key order and exact number values, including integers larger than JavaScript can represent. Formatting is display only: it never reorders keys or changes the stored value.
 
 The default mode is set in Settings (`Cmd+,`) > Editor > **JSON Viewer** > **Default view**.
 
@@ -31,7 +33,9 @@ Click the pop-out button in the toolbar to detach the viewer into its own resiza
 
 ## Editing
 
-In Text mode, edits are live in the binding. Click **Save** to commit the change through the standard change-tracking flow: the edit becomes a pending change in the data grid, previewed and applied via Save Changes. Click **Cancel** to drop the edit.
+Opening a value and viewing it pretty-printed is not an edit. The row is marked changed only when you alter the content. Reindented whitespace and a different layout on screen do not count, so browsing JSONB row by row stays clean.
+
+In the pop-out and cell editors, click **Save** to commit through the standard change-tracking flow: the edit becomes a pending change in the data grid, previewed and applied via Save Changes. Click **Cancel** to drop the edit. The saved value is compact, with your key order and numbers preserved.
 
 If the edited text is not valid JSON when you save, the viewer prompts for confirmation before committing.
 

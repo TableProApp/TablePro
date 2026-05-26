@@ -7,27 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, instead of resetting and leaving orphan custom themes behind (#1381)
-- Custom and OpenAI-compatible AI providers now work when the base URL already ends in `/v1`, instead of building a doubled `/v1/v1/` path that failed. (#1400)
 ### Added
 
 - OpenCode Zen as an AI provider. Add it from the provider list and paste an OpenCode key, or leave the key blank to use the free models; the model list loads automatically, covering the Claude, GPT, Gemini, and open models Zen serves. (#1400)
-- Cloudflare Tunnel: connect to a database behind Cloudflare Access by letting TablePro start and stop `cloudflared access tcp` for you, the same way it manages SSH tunnels. Configure it per connection with browser sign-in or a service token. Needs cloudflared installed (`brew install cloudflared`). (#1285)
-- Fill Column: right-click a column header and choose Fill Column to set one value across all loaded rows. The change is staged like a normal edit, so you review it and Save before it applies, and one undo reverts the whole fill. Not available on primary key columns. (#1304)
-- AWS IAM authentication for PostgreSQL and MySQL connections to RDS and Aurora. Pick AWS IAM in the connection's Authentication field and use an access key, a named AWS profile, or SSO. TablePro generates a fresh login token on every connect and reconnect, so you never paste an expiring token, and SSL is required automatically. (#1291)
-- Date, datetime, timestamp, and time cells show a date picker from the chevron button, so you can choose a value visually. Double-clicking still edits the cell as text, and the picker keeps the value's existing format, fractional seconds, and timezone offset. (#1405)
-- Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or a custom size) and First, Previous, Next, and Last page buttons. (#1364)
-- Click the page indicator in the pagination bar to jump to a specific page. (#1364)
-- Pagination now appears for filtered tables whose total row count is unknown, so you can page through them instead of seeing only the first page. (#1364)
-- First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)
 
 ### Fixed
 
-- Installing or updating a plugin right after updating TablePro now refetches the current plugin list first, so it no longer fails against a stale cached list (the error a restart used to clear). (#1380)
+- Custom and OpenAI-compatible AI providers now work when the base URL already ends in `/v1`, instead of building a doubled `/v1/v1/` path that failed. (#1400)
+
+## [0.45.0] - 2026-05-26
+
+### Added
+
+- Cloudflare Tunnel: connect to a database behind Cloudflare Access. TablePro starts and stops `cloudflared access tcp` per connection, the same way it manages SSH tunnels, with browser sign-in or a service token. Needs cloudflared (`brew install cloudflared`). (#1285)
+- Fill Column: right-click a column header to set one value across all loaded rows. The fill is staged like a normal edit, and one undo reverts it. Not available on primary key columns. (#1304)
+- AWS IAM authentication for PostgreSQL and MySQL on RDS and Aurora. Pick AWS IAM in the connection's Authentication field with an access key, named profile, or SSO. TablePro generates a fresh token on every connect and requires SSL. (#1291)
+- Date picker for date, datetime, timestamp, and time cells, from the chevron button. Double-clicking still edits the cell as text, and the picker keeps the value's format, fractional seconds, and timezone offset. (#1405)
+- Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or custom) and First, Previous, Next, and Last buttons. (#1364)
+- Click the page indicator in the pagination bar to jump to a specific page. (#1364)
+- Pagination now appears for filtered tables with an unknown total row count, instead of showing only the first page. (#1364)
+- First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)
+- JSON and JSONB cells display pretty-printed by default, keeping your key order and exact numbers. Viewing or reformatting no longer marks the row changed, and saving no longer reorders keys or rounds large integers.
+
+### Fixed
+
+- Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, with no orphan custom themes left behind. (#1381)
+- Installing or updating a plugin right after updating TablePro now refetches the plugin list first, so it no longer fails against a stale cached list. (#1380)
 - Pressing Esc to close the Raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen. (#1403)
-- Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of a confusing "Invalid OAuth error response". (#1409)
+- Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of "Invalid OAuth error response". (#1409)
 
 ## [0.44.0] - 2026-05-23
 
@@ -1995,7 +2002,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.44.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.45.0...HEAD
+[0.45.0]: https://github.com/TableProApp/TablePro/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/TableProApp/TablePro/compare/v0.43.3...v0.44.0
 [0.43.3]: https://github.com/TableProApp/TablePro/compare/v0.43.2...v0.43.3
 [0.43.2]: https://github.com/TableProApp/TablePro/compare/v0.43.1...v0.43.2

@@ -62,97 +62,82 @@ internal enum JSONTreeParser {
         guard (jsonString as NSString).length <= maxInputLength else {
             return .failure(.tooLarge)
         }
-        guard let data = jsonString.data(using: .utf8),
-              let jsonObject = try? JSONSerialization.jsonObject(with: data) else {
+        guard let node = JsonSyntaxParser.parse(jsonString) else {
             return .failure(.invalidJSON)
         }
         var nodeCount = 0
-        let root = buildNode(key: nil, keyPath: "$", value: jsonObject, nodeCount: &nodeCount)
+        let root = buildNode(key: nil, keyPath: "$", node: node, nodeCount: &nodeCount)
         return .success(root)
     }
 
-    private static func buildNode(key: String?, keyPath: String, value: Any, nodeCount: inout Int) -> JSONTreeNode {
+    private static func buildNode(key: String?, keyPath: String, node: JsonSyntaxNode, nodeCount: inout Int) -> JSONTreeNode {
         nodeCount += 1
 
-        if let dict = value as? [String: Any] {
-            let sortedKeys = dict.keys.sorted()
+        switch node {
+        case .object(let pairs):
             var children: [JSONTreeNode] = []
-            for k in sortedKeys {
+            for pair in pairs {
                 guard nodeCount < maxNodes else {
-                    children.append(truncationNode(remaining: dict.count - children.count))
+                    children.append(truncationNode(remaining: pairs.count - children.count))
                     break
                 }
-                let childPath = keyPath + "." + k
-                if let childValue = dict[k] {
-                    children.append(buildNode(key: k, keyPath: childPath, value: childValue, nodeCount: &nodeCount))
-                }
+                let decodedKey = JsonSyntaxParser.decodeStringLiteral(pair.key)
+                let childPath = keyPath + "." + decodedKey
+                children.append(buildNode(key: decodedKey, keyPath: childPath, node: pair.value, nodeCount: &nodeCount))
             }
             return JSONTreeNode(
                 key: key, keyPath: keyPath, valueType: .object,
-                displayValue: "{\(dict.count) keys}", rawValue: nil, children: children
+                displayValue: "{\(pairs.count) keys}", rawValue: nil, children: children
             )
-        }
 
-        if let arr = value as? [Any] {
+        case .array(let elements):
             var children: [JSONTreeNode] = []
-            for (i, item) in arr.enumerated() {
+            for (index, element) in elements.enumerated() {
                 guard nodeCount < maxNodes else {
-                    children.append(truncationNode(remaining: arr.count - i))
+                    children.append(truncationNode(remaining: elements.count - index))
                     break
                 }
-                let childPath = keyPath + "[\(i)]"
-                children.append(buildNode(key: "[\(i)]", keyPath: childPath, value: item, nodeCount: &nodeCount))
+                let childPath = keyPath + "[\(index)]"
+                children.append(buildNode(key: "[\(index)]", keyPath: childPath, node: element, nodeCount: &nodeCount))
             }
             return JSONTreeNode(
                 key: key, keyPath: keyPath, valueType: .array,
-                displayValue: "[\(arr.count) items]", rawValue: nil, children: children
+                displayValue: "[\(elements.count) items]", rawValue: nil, children: children
             )
-        }
 
-        if let str = value as? String {
-            let escaped = str.replacingOccurrences(of: "\"", with: "\\\"")
+        case .string(let raw):
+            let decoded = JsonSyntaxParser.decodeStringLiteral(raw)
+            let escaped = decoded.replacingOccurrences(of: "\"", with: "\\\"")
             let display: String
             let nsLen = (escaped as NSString).length
             if nsLen > 80 {
-                let truncated = (escaped as NSString).substring(to: 80)
-                display = "\"\(truncated)...\""
+                display = "\"\((escaped as NSString).substring(to: 80))...\""
             } else {
                 display = "\"\(escaped)\""
             }
             return JSONTreeNode(
                 key: key, keyPath: keyPath, valueType: .string,
-                displayValue: display, rawValue: str, children: []
+                displayValue: display, rawValue: decoded, children: []
             )
-        }
 
-        if let num = value as? NSNumber {
-            if CFBooleanGetTypeID() == CFGetTypeID(num) {
-                let boolVal = num.boolValue
-                return JSONTreeNode(
-                    key: key, keyPath: keyPath, valueType: .boolean,
-                    displayValue: boolVal ? "true" : "false",
-                    rawValue: boolVal ? "true" : "false", children: []
-                )
-            }
-            let numStr = "\(num)"
+        case .number(let raw):
             return JSONTreeNode(
                 key: key, keyPath: keyPath, valueType: .number,
-                displayValue: numStr, rawValue: numStr, children: []
+                displayValue: raw, rawValue: raw, children: []
             )
-        }
 
-        if value is NSNull {
+        case .literal(let raw):
+            if raw == "null" {
+                return JSONTreeNode(
+                    key: key, keyPath: keyPath, valueType: .null,
+                    displayValue: "null", rawValue: nil, children: []
+                )
+            }
             return JSONTreeNode(
-                key: key, keyPath: keyPath, valueType: .null,
-                displayValue: "null", rawValue: nil, children: []
+                key: key, keyPath: keyPath, valueType: .boolean,
+                displayValue: raw, rawValue: raw, children: []
             )
         }
-
-        let fallback = "\(value)"
-        return JSONTreeNode(
-            key: key, keyPath: keyPath, valueType: .string,
-            displayValue: fallback, rawValue: fallback, children: []
-        )
     }
 
     private static func truncationNode(remaining: Int) -> JSONTreeNode {

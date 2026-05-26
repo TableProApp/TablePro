@@ -13,27 +13,20 @@ import Testing
 
 @Suite("String+JSON")
 struct StringJsonTests {
-    @Test("Valid JSON object is pretty-printed with sorted keys")
-    func validJsonObject() {
+    @Test("Valid JSON object is pretty-printed preserving key order")
+    func validJsonObject() throws {
         let input = "{\"name\":\"Alice\",\"age\":30}"
-        let result = input.prettyPrintedAsJson()
+        let result = try #require(input.prettyPrintedAsJson())
 
-        #expect(result != nil)
-        #expect(result!.contains("\n"))
-        let ageRange = result!.range(of: "age")!
-        let nameRange = result!.range(of: "name")!
-        #expect(ageRange.lowerBound < nameRange.lowerBound)
+        #expect(result.contains("\n"))
+        let nameRange = try #require(result.range(of: "name"))
+        let ageRange = try #require(result.range(of: "age"))
+        #expect(nameRange.lowerBound < ageRange.lowerBound)
     }
 
     @Test("Valid JSON array is pretty-printed")
-    func validJsonArray() {
-        let input = "[1,2,3]"
-        let result = input.prettyPrintedAsJson()
-
-        #expect(result != nil)
-        #expect(result!.contains("\n"))
-        #expect(result!.contains("["))
-        #expect(result!.contains("]"))
+    func validJsonArray() throws {
+        let result = try #require("[1,2,3]".prettyPrintedAsJson())
         let expected = """
         [
           1,
@@ -61,16 +54,15 @@ struct StringJsonTests {
     }
 
     @Test("Nested objects are correctly indented")
-    func nestedObjects() {
+    func nestedObjects() throws {
         let input = "{\"user\":{\"address\":{\"city\":\"Hanoi\"}}}"
-        let result = input.prettyPrintedAsJson()
+        let result = try #require(input.prettyPrintedAsJson())
 
-        #expect(result != nil)
         let expected = """
         {
-          "user" : {
-            "address" : {
-              "city" : "Hanoi"
+          "user": {
+            "address": {
+              "city": "Hanoi"
             }
           }
         }
@@ -78,13 +70,12 @@ struct StringJsonTests {
         #expect(result == expected)
     }
 
-    @Test("URLs are not escaped due to withoutEscapingSlashes")
-    func urlsNotEscaped() {
+    @Test("Slashes are preserved as written")
+    func slashesPreserved() throws {
         let input = "{\"url\":\"https://example.com/path/to/resource\"}"
-        let result = input.prettyPrintedAsJson()
+        let result = try #require(input.prettyPrintedAsJson())
 
-        #expect(result != nil)
-        #expect(result!.contains("https://example.com/path/to/resource"))
-        #expect(!result!.contains("\\/"))
+        #expect(result.contains("https://example.com/path/to/resource"))
+        #expect(!result.contains("\\/"))
     }
 }

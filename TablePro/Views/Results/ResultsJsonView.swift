@@ -111,11 +111,7 @@ internal struct ResultsJsonView: View {
         } else {
             switch viewMode {
             case .text:
-                JSONSyntaxTextView(
-                    text: $prettyText,
-                    isEditable: false,
-                    wordWrap: true
-                )
+                JSONCodeEditor(text: $prettyText, isEditable: false)
             case .tree:
                 if let tree = parsedTree {
                     JSONTreeView(rootNode: tree, searchText: $treeSearchText)

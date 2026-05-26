@@ -3,6 +3,63 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.45.0</title>
+            <pubDate>Tue, 26 May 2026 01:02:36 +0000</pubDate>
+            <sparkle:version>91</sparkle:version>
+            <sparkle:shortVersionString>0.45.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Cloudflare Tunnel: connect to a database behind Cloudflare Access. TablePro starts and stops `cloudflared access tcp` per connection, the same way it manages SSH tunnels, with browser sign-in or a service token. Needs cloudflared (`brew install cloudflared`). (#1285)</li>
+<li>Fill Column: right-click a column header to set one value across all loaded rows. The fill is staged like a normal edit, and one undo reverts it. Not available on primary key columns. (#1304)</li>
+<li>AWS IAM authentication for PostgreSQL and MySQL on RDS and Aurora. Pick AWS IAM in the connection's Authentication field with an access key, named profile, or SSO. TablePro generates a fresh token on every connect and requires SSL. (#1291)</li>
+<li>Date picker for date, datetime, timestamp, and time cells, from the chevron button. Double-clicking still edits the cell as text, and the picker keeps the value's format, fractional seconds, and timezone offset. (#1405)</li>
+<li>Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or custom) and First, Previous, Next, and Last buttons. (#1364)</li>
+<li>Click the page indicator in the pagination bar to jump to a specific page. (#1364)</li>
+<li>Pagination now appears for filtered tables with an unknown total row count, instead of showing only the first page. (#1364)</li>
+<li>First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)</li>
+<li>JSON and JSONB cells display pretty-printed by default, keeping your key order and exact numbers. Viewing or reformatting no longer marks the row changed, and saving no longer reorders keys or rounds large integers.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, with no orphan custom themes left behind. (#1381)</li>
+<li>Installing or updating a plugin right after updating TablePro now refetches the plugin list first, so it no longer fails against a stale cached list. (#1380)</li>
+<li>Pressing Esc to close the Raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen. (#1403)</li>
+<li>Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of "Invalid OAuth error response". (#1409)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.45.0/TablePro-0.45.0-arm64.zip" length="18214729" type="application/octet-stream" sparkle:edSignature="5Umo2HWkq0Xl55S0hjlDPUCGBScG8ckgPDBtNOCg109frVmaruWbjq4Y4R0lnT7HrscQYC2BDUQrWm4cPzSOAQ=="/>
+        </item>
+        <item>
+            <title>0.45.0</title>
+            <pubDate>Tue, 26 May 2026 01:02:36 +0000</pubDate>
+            <sparkle:version>91</sparkle:version>
+            <sparkle:shortVersionString>0.45.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Cloudflare Tunnel: connect to a database behind Cloudflare Access. TablePro starts and stops `cloudflared access tcp` per connection, the same way it manages SSH tunnels, with browser sign-in or a service token. Needs cloudflared (`brew install cloudflared`). (#1285)</li>
+<li>Fill Column: right-click a column header to set one value across all loaded rows. The fill is staged like a normal edit, and one undo reverts it. Not available on primary key columns. (#1304)</li>
+<li>AWS IAM authentication for PostgreSQL and MySQL on RDS and Aurora. Pick AWS IAM in the connection's Authentication field with an access key, named profile, or SSO. TablePro generates a fresh token on every connect and requires SSL. (#1291)</li>
+<li>Date picker for date, datetime, timestamp, and time cells, from the chevron button. Double-clicking still edits the cell as text, and the picker keeps the value's format, fractional seconds, and timezone offset. (#1405)</li>
+<li>Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or custom) and First, Previous, Next, and Last buttons. (#1364)</li>
+<li>Click the page indicator in the pagination bar to jump to a specific page. (#1364)</li>
+<li>Pagination now appears for filtered tables with an unknown total row count, instead of showing only the first page. (#1364)</li>
+<li>First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)</li>
+<li>JSON and JSONB cells display pretty-printed by default, keeping your key order and exact numbers. Viewing or reformatting no longer marks the row changed, and saving no longer reorders keys or rounds large integers.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, with no orphan custom themes left behind. (#1381)</li>
+<li>Installing or updating a plugin right after updating TablePro now refetches the plugin list first, so it no longer fails against a stale cached list. (#1380)</li>
+<li>Pressing Esc to close the Raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen. (#1403)</li>
+<li>Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of "Invalid OAuth error response". (#1409)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.45.0/TablePro-0.45.0-x86_64.zip" length="19201117" type="application/octet-stream" sparkle:edSignature="TD7ArKWPvhDL2UC05+rWhh+Rg7R0lBWpuaPRWlFqrdKIcLf/Oj4wzrBVReBXKsxhly2IAXRABoMPH6zf6x5TAg=="/>
+        </item>
+        <item>
             <title>0.44.0</title>
             <pubDate>Fri, 22 May 2026 17:58:29 +0000</pubDate>
             <sparkle:version>90</sparkle:version>

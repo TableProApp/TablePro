@@ -17,6 +17,7 @@ struct FieldEditState: Identifiable {
     let columnName: String
     let columnTypeEnum: ColumnType
     let isLongText: Bool
+    let isJson: Bool
 
     var isPrimaryKey: Bool = false
     var isForeignKey: Bool = false
@@ -129,11 +130,14 @@ final class MultiRowEditState {
                 pendingValue = originalValue ?? ""
             }
 
+            let isJson = columnTypeEnum.isJsonType || (originalValue ?? "").looksLikeJson
+
             var newField = FieldEditState(
                 columnIndex: colIndex,
                 columnName: columnName,
                 columnTypeEnum: columnTypeEnum,
                 isLongText: isLongText,
+                isJson: isJson,
                 isPrimaryKey: primaryKeyColumns.contains(columnName),
                 isForeignKey: foreignKeyColumns.contains(columnName),
                 originalValue: originalValue,
@@ -156,16 +160,27 @@ final class MultiRowEditState {
         guard index < fields.count else { return }
         let hadPendingEdit = fields[index].hasEdit
         let original = fields[index].originalValue
-        if value == original || (original == nil && value == "") {
-            fields[index].pendingValue = nil
-        } else {
-            fields[index].pendingValue = value
-        }
+        let pending = Self.resolvePendingValue(value, original: original, isJson: fields[index].isJson)
+        fields[index].pendingValue = pending
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        if fields[index].pendingValue != nil || hadPendingEdit {
-            onFieldChanged?(index, PluginCellValue.fromOptional(value))
+        if pending != nil || hadPendingEdit {
+            onFieldChanged?(index, PluginCellValue.fromOptional(pending ?? original))
         }
+    }
+
+    private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
+        if isJson, let value, !value.isEmpty {
+            let normalized = JsonReindenter.normalize(value)
+            if let original, JsonReindenter.normalize(original) == normalized {
+                return nil
+            }
+            return normalized
+        }
+        if value == original || (original == nil && value == "") {
+            return nil
+        }
+        return value
     }
 
     func setFieldToBytes(at index: Int, data: Data) {
