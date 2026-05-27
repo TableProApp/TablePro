@@ -263,7 +263,11 @@ extension MainContentCoordinator {
         updatePreviewSubtitle(isPreview: createAsPreview)
         restoreLastHiddenColumnsForTable(tableName)
         restoreFiltersForTable(tableName)
-        runQuery()
+        if selectedTabHiddenColumns.isEmpty {
+            runQuery()
+        } else {
+            requeryWithColumnScope()
+        }
     }
 
     // MARK: - Preview Tabs

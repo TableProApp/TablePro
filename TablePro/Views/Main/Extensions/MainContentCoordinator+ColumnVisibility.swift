@@ -61,6 +61,18 @@ extension MainContentCoordinator {
         mutateSelectedTabHiddenColumns { $0 = restored }
     }
 
+    func rebuildSelectedTableQueryForHiddenColumnsIfNeeded() async {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
+              let tableName = tab.tableContext.tableName,
+              tab.tableContext.databaseName.isEmpty || tab.tableContext.databaseName == activeDatabaseName,
+              !tab.columnLayout.hiddenColumns.isEmpty else { return }
+
+        await loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
+        guard tabIndex < tabManager.tabs.count else { return }
+        filterCoordinator.rebuildTableQuery(at: tabIndex)
+    }
+
     func saveColumnVisibilityForActiveTable() {
         guard let tab = tabManager.selectedTab else { return }
         persistTabHiddenColumns(tab)

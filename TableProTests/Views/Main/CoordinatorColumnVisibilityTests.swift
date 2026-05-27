@@ -5,8 +5,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("MainContentCoordinator column visibility helpers")
 @MainActor
@@ -126,5 +127,51 @@ struct CoordinatorColumnVisibilityTests {
 
         let session = coordinator.tabSessionRegistry.session(for: tabId)
         #expect(session?.columnLayout.hiddenColumns == ["name"])
+    }
+
+    @Test("Payload-created table tabs rebuild their query after restoring hidden columns")
+    func payloadCreatedTableTabsRebuildQueryAfterRestoringHiddenColumns() async {
+        let connection = TestFixtures.makeConnection(database: "db")
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .table,
+            tableName: "users",
+            databaseName: "db"
+        )
+        let state = SessionStateFactory.create(connection: connection, payload: payload)
+        let coordinator = state.coordinator
+        let storageKey = ColumnVisibilityPersistence.key(
+            tableName: "users",
+            connectionId: connection.id
+        )
+
+        defer {
+            UserDefaults.standard.removeObject(forKey: storageKey)
+            coordinator.teardown()
+        }
+
+        ColumnVisibilityPersistence.saveHiddenColumns(
+            ["email"],
+            for: "users",
+            connectionId: connection.id
+        )
+        coordinator.schemaColumnsCache["\(connection.id):db::users"] = (
+            columns: ["id", "name", "email"],
+            primaryKeys: ["id"]
+        )
+
+        coordinator.restoreLastHiddenColumnsForTable("users")
+        await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
+
+        guard let tab = state.tabManager.selectedTab else {
+            Issue.record("Expected payload-created table tab")
+            return
+        }
+
+        #expect(tab.columnLayout.hiddenColumns == ["email"])
+        #expect(tab.content.query.contains("SELECT *") == false)
+        #expect(tab.content.query.contains("\"id\""))
+        #expect(tab.content.query.contains("\"name\""))
+        #expect(tab.content.query.contains("\"email\"") == false)
     }
 }

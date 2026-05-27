@@ -22,9 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The query trash button now clears results too, and a Clear Results item on the right-click menu clears results alone. (#1256)
 - Inserting SQL from AI Chat opens a new query tab, or fills an empty editor in place. (#1257)
-
-### Changed
-
 - Table tabs now open with the filter bar visible by default, while filter restore settings like Always Hide still override that default.
 
 ### Fixed
@@ -48,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Double-clicking a CSV or TSV file when TablePro is closed opens the file directly. (#1443)
 - Opening a `.sql` file names the tab after the file instead of showing "SQL Query". (#1220)
 - Data grid row context menus now copy the clicked or focused cell value for Copy, while Copy Rows still keeps the full-row TSV action.
+- Opening a table in a new tab now restores saved hidden columns before the first load, so the initial query matches the visible column set.
 
 ## [0.45.0] - 2026-05-26
 
