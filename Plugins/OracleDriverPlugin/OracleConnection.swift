@@ -186,7 +186,8 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                 current.isConnected = true
             }
 
-            osLogger.debug("Connected to Oracle \(self.host):\(self.port)/\(service)")
+            let target = useSID ? "\(self.host):\(self.port):\(identifier)" : "\(self.host):\(self.port)/\(identifier)"
+            osLogger.debug("Connected to Oracle \(target)")
         } catch let sqlError as OracleSQLError {
             let detail = sqlError.serverInfo?.message ?? sqlError.description
             osLogger.error("Oracle connection failed: \(detail)")
