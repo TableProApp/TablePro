@@ -53,8 +53,8 @@ struct QueryEditorViewModelTests {
         }
     }
 
-    @Test("handlePressure marks results truncated when rows are present")
-    func pressureMarksTruncated() async {
+    @Test("memory pressure after a clean finish does not relabel the result")
+    func pressureDoesNotRelabelFinishedResult() async {
         let driver = MockDatabaseDriver()
         driver.scriptedExecuteResults = [
             .success(QueryResult(columns: makeColumns(), rows: [["1"], ["2"]], rowsAffected: 0, executionTime: 0))
@@ -67,8 +67,10 @@ struct QueryEditorViewModelTests {
         await vm.handlePressure(.warning)
 
         #expect(vm.legacyRows.count == 2)
-        if case .memoryPressure = vm.truncationReason {} else {
-            Issue.record("expected memoryPressure truncation")
+        #expect(vm.truncationReason == nil)
+        #expect(vm.truncationMessage == nil)
+        if case .finished = vm.phase {} else {
+            Issue.record("a completed result must stay finished after a memory warning")
         }
     }
 

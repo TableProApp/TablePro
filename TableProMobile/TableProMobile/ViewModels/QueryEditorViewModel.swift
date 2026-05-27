@@ -121,20 +121,18 @@ final class QueryEditorViewModel {
             case .normal:
                 return
             case .warning, .critical:
+                guard case .running = self.phase else { return }
                 Self.logger.warning("Memory pressure: stopping query stream to stay within limits")
                 self.fetchTask?.cancel()
                 guard !self.buffer.isEmpty else { return }
                 self.buffer.markTruncated(.memoryPressure)
-                if case .running = self.phase {
-                    self.phase = .truncated(reason: .memoryPressure)
-                }
+                self.phase = .truncated(reason: .memoryPressure)
             }
         }
     }
 
     private func isMemoryConstrained() -> Bool {
-        if MemoryPressureMonitor.shared.currentLevel != .normal { return true }
-        return !MemoryPressureMonitor.shared.hasHeadroom(forBytes: Self.memorySafetyMarginBytes)
+        !MemoryPressureMonitor.shared.hasHeadroom(forBytes: Self.memorySafetyMarginBytes)
     }
 
     private func resolvePhase() {
