@@ -18,7 +18,27 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let iconName = "oracle-icon"
     static let defaultPort = 1_521
     static let additionalConnectionFields: [ConnectionField] = [
-        ConnectionField(id: "oracleServiceName", label: "Service Name", placeholder: "ORCL")
+        ConnectionField(
+            id: "oracleConnectionType",
+            label: "Connection Type",
+            defaultValue: "service",
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(value: "service", label: "Service Name"),
+                ConnectionField.DropdownOption(value: "sid", label: "SID")
+            ])
+        ),
+        ConnectionField(
+            id: "oracleServiceName",
+            label: "Service Name",
+            placeholder: "ORCL",
+            visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["service"])
+        ),
+        ConnectionField(
+            id: "oracleSID",
+            label: "SID",
+            placeholder: "XE",
+            visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["sid"])
+        )
     ]
 
     // MARK: - UI/Capability Metadata
@@ -185,14 +205,18 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let serviceName = config.additionalFields["oracleServiceName"] ?? ""
+        let useSID = config.additionalFields["oracleConnectionType"] == "sid"
+        let identifier = useSID
+            ? config.additionalFields["oracleSID"] ?? ""
+            : config.additionalFields["oracleServiceName"] ?? ""
         let conn = OracleConnectionWrapper(
             host: config.host,
             port: config.port,
             user: config.username,
             password: config.password,
             database: config.database,
-            serviceName: serviceName,
+            serviceName: identifier,
+            useSID: useSID,
             sslConfig: config.ssl
         )
         try await conn.connect()
