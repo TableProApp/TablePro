@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Generate Token sheet focuses the Token Name field on first open. (#1093)
 - Double-clicking a CSV or TSV file when TablePro is closed opens the file directly. (#1443)
 - Opening a `.sql` file names the tab after the file instead of showing "SQL Query". (#1220)
+- Data grid row context menus now copy the clicked or focused cell value for Copy, while Copy Rows still keeps the full-row TSV action.
 
 ## [0.45.0] - 2026-05-26
 
