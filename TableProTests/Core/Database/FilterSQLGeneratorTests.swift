@@ -1008,7 +1008,7 @@ struct FilterSQLGeneratorTests {
         #expect(result == "\"active\" = FALSE")
     }
 
-    @Test("Redshift LIKE uses ESCAPE clause")
+    @Test("Redshift LIKE uses a non-backslash ESCAPE clause")
     func testRedshiftLikeEscape() {
         let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
@@ -1022,7 +1022,25 @@ struct FilterSQLGeneratorTests {
             rawSQL: nil
         )
         let result = generator.generateCondition(from: filter)
-        #expect(result?.contains("ESCAPE") == true)
+        #expect(result?.contains("ESCAPE '!'") == true)
+        #expect(result?.contains("ESCAPE '\\'") == false)
+    }
+
+    @Test("Explicit-dialect LIKE escapes a literal exclamation mark in the value")
+    func testExplicitLikeEscapesExclamation() {
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
+        let filter = TableFilter(
+            id: UUID(),
+            columnName: "name",
+            filterOperator: .contains,
+            value: "a!b",
+            secondValue: nil,
+            isSelected: true,
+            isEnabled: true,
+            rawSQL: nil
+        )
+        let result = generator.generateCondition(from: filter)
+        #expect(result?.contains("a!!b") == true)
     }
 
     @Test("Redshift AND mode with 2 filters generates AND clause")

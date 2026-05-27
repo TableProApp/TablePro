@@ -103,6 +103,39 @@ struct FilterSQLGeneratorTests {
         #expect(result.contains("LIKE '%test%'"))
     }
 
+    @Test("Explicit dialect LIKE uses a non-backslash ESCAPE clause")
+    func explicitLikeEscapeIsNotBackslash() {
+        let generator = FilterSQLGenerator(dialect: dialect)
+        let filter = TableFilter(columnName: "name", filterOperator: .contains, value: "50%")
+        let result = generator.generateWhereClause(from: [filter], logicMode: .and)
+        #expect(result.contains("ESCAPE '!'"))
+        #expect(!result.contains("ESCAPE '\\'"))
+    }
+
+    @Test("Explicit dialect LIKE escapes a literal exclamation mark in the value")
+    func explicitLikeEscapesExclamation() {
+        let generator = FilterSQLGenerator(dialect: dialect)
+        let filter = TableFilter(columnName: "name", filterOperator: .contains, value: "a!b")
+        let result = generator.generateWhereClause(from: [filter], logicMode: .and)
+        #expect(result.contains("a!!b"))
+    }
+
+    @Test("Implicit dialect LIKE keeps backslash escaping and no ESCAPE clause")
+    func implicitLikeUsesBackslash() {
+        let implicit = SQLDialectDescriptor(
+            identifierQuote: "`",
+            keywords: [],
+            functions: [],
+            dataTypes: [],
+            likeEscapeStyle: .implicit
+        )
+        let generator = FilterSQLGenerator(dialect: implicit)
+        let filter = TableFilter(columnName: "name", filterOperator: .contains, value: "a_b")
+        let result = generator.generateWhereClause(from: [filter], logicMode: .and)
+        #expect(result.contains("a\\_b"))
+        #expect(!result.contains("ESCAPE"))
+    }
+
     @Test("Raw SQL filter passes through")
     func rawSQLFilter() {
         let generator = FilterSQLGenerator(dialect: dialect)
