@@ -72,6 +72,12 @@ struct QueryEditorView: View {
                 coordinator.pendingQuery = nil
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            Task { await viewModel.handlePressure(.warning) }
+        }
+        .onChange(of: MemoryPressureMonitor.shared.currentLevel) { _, level in
+            Task { await viewModel.handlePressure(level) }
+        }
         .alert(String(localized: "Write Query Blocked"), isPresented: $showWriteBlockedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -215,7 +221,13 @@ struct QueryEditorView: View {
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    resultList
+                    VStack(spacing: 0) {
+                        if let message = viewModel.truncationMessage {
+                            truncationBanner(message)
+                            Divider()
+                        }
+                        resultList
+                    }
                 }
             } else {
                 ContentUnavailableView {
@@ -226,6 +238,20 @@ struct QueryEditorView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+
+    private func truncationBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(verbatim: message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.thinMaterial)
     }
 
     private var resultList: some View {

@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle connection errors no longer surface the driver's raw internal message; failures now explain the cause in plain language. (#483)
 - AWS IAM authentication with a named profile now reads `~/.aws/config` (not just `~/.aws/credentials`) and supports `credential_process`, so profiles backed by SSO, IAM Identity Center, or assume-role work through `aws configure export-credentials`. (#1291)
 - iOS: a connection's Safe Mode setting now survives relaunch. iCloud sync no longer drops the value, so a connection set to Confirm Writes or Read-Only no longer reverts to Off after reopening the app.
+- iOS: running a query that returns a very large result no longer crashes the app. The query editor keeps the first rows it loads, stops before memory runs low, and tells you to add LIMIT to fetch more.
 
 ## [0.45.0] - 2026-05-26
 
