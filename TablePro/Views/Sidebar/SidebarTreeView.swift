@@ -83,20 +83,27 @@ struct SidebarTreeView: View {
     private func datasetContent(for schema: String) -> some View {
         switch schemaService.schemaState(for: connectionId, schema: schema) {
         case .idle, .loading:
-            ProgressView()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, alignment: .center)
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Loading tables\u{2026}")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+                .padding(.vertical, 4)
         case .loaded:
             let tables = tablesToShow(for: schema)
             if tables.isEmpty {
                 Text("No tables")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
             } else {
                 ForEach(tables) { table in
                     tableRow(table)
@@ -125,7 +132,7 @@ struct SidebarTreeView: View {
     }
 
     private func datasetHeader(_ schema: String) -> some View {
-        Label(schema, systemImage: "tablecells.badge.ellipsis")
+        Text(schema)
             .contextMenu {
                 Button(String(localized: "Refresh")) {
                     reloadTables(for: schema)
