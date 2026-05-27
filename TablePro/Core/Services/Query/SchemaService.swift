@@ -256,6 +256,9 @@ final class SchemaService {
             return
         } catch {
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "tables-failed") else {
+                if case .loading = states[connectionId] {
+                    states[connectionId] = .idle
+                }
                 return
             }
             Self.logger.warning(

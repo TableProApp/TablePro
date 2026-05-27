@@ -189,6 +189,7 @@ private final class BlockingAuxiliaryDriver: DatabaseDriver, @unchecked Sendable
     var functionsToReturn: [RoutineInfo] = []
     var schemasToReturn: [String] = []
 
+    let tablesGate = AsyncGate()
     let routinesGate = AsyncGate()
     let schemasGate = AsyncGate()
 
@@ -214,7 +215,8 @@ private final class BlockingAuxiliaryDriver: DatabaseDriver, @unchecked Sendable
     }
 
     func fetchTables() async throws -> [TableInfo] {
-        tablesToReturn
+        await tablesGate.wait()
+        return tablesToReturn
     }
 
     func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
@@ -368,16 +370,10 @@ struct SchemaServiceRoutinesTests {
             await service.load(connectionId: connectionId, driver: driver, connection: connection)
         }
 
-        var loadedTables: [TableInfo] = []
-        for _ in 0..<100 {
-            if case .loaded(let tables) = service.state(for: connectionId) {
-                loadedTables = tables
-                break
-            }
-            await Task.yield()
-        }
+        await driver.tablesGate.open()
+        await waitForLoadedState(service, connectionId: connectionId)
 
-        #expect(loadedTables.map(\.name) == ["users"])
+        #expect(service.tables(for: connectionId).map(\.name) == ["users"])
         #expect(service.procedures(for: connectionId).isEmpty)
         #expect(service.functions(for: connectionId).isEmpty)
         #expect(service.schemas(for: connectionId).isEmpty)
@@ -389,6 +385,15 @@ struct SchemaServiceRoutinesTests {
         #expect(service.procedures(for: connectionId).map(\.name) == ["add_user"])
         #expect(service.functions(for: connectionId).map(\.name) == ["user_count"])
         #expect(service.schemas(for: connectionId) == ["public"])
+    }
+
+    private func waitForLoadedState(_ service: SchemaService, connectionId: UUID) async {
+        while true {
+            if case .loaded = service.state(for: connectionId) {
+                return
+            }
+            await Task.yield()
+        }
     }
 
     @Test("reloadProcedures refreshes only procedures")
