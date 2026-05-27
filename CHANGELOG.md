@@ -9,12 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- BigQuery: the sidebar now shows every dataset as an expandable node, with each dataset's tables loading when you open it, instead of showing one dataset at a time behind a picker.
 - OpenCode Zen as an AI provider. Add it from the provider list and paste an OpenCode key, or leave the key blank to use the free models; the model list loads automatically, covering the Claude, GPT, Gemini, and open models Zen serves. (#1400)
+- Oracle Database 11g (11.1 and 11.2) now connects. Previously only 12c and later worked, so 11g servers failed with a "Server Version Not Supported" error. (#1425)
 
 ### Fixed
 
 - Custom and OpenAI-compatible AI providers now work when the base URL already ends in `/v1`, instead of building a doubled `/v1/v1/` path that failed. (#1400)
 - MongoDB: opening a collection no longer crashes when a document contains a NaN or infinite number. (#1418)
+- Opening a saved connection that fails now shows the detailed troubleshooting dialog with suggested fixes, the same one Test Connection shows, instead of a generic error alert. (#1425, #483)
+- Oracle connection errors no longer surface the driver's raw internal message; failures now explain the cause in plain language. (#483)
 
 ## [0.45.0] - 2026-05-26
 

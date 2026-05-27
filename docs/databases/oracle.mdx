@@ -5,11 +5,11 @@ description: Connect to Oracle Database with TablePro
 
 # Oracle Database Connections
 
-TablePro supports Oracle Database 12c and later via Oracle Call Interface (OCI). This covers Oracle Database instances running on-premises, in Docker, or Oracle Cloud.
+TablePro supports Oracle Database 11.1 and later. It speaks the Oracle TNS wire protocol directly in Swift, so no Oracle Instant Client or other external library is required. This covers Oracle Database instances running on-premises, in Docker, or Oracle Cloud.
 
-<Warning>
-Oracle Instant Client must be installed before connecting to Oracle Database. Download it from [Oracle's website](https://www.oracle.com/database/technologies/instant-client.html) and ensure the libraries are accessible.
-</Warning>
+<Note>
+Oracle 10g and earlier are not supported: they use the older O3LOGON handshake that the pure-Swift driver does not implement. Servers that require Native Network Encryption also need Oracle's OCI client (use TLS instead).
+</Note>
 
 ## Install Plugin
 
@@ -116,7 +116,7 @@ ALTER USER <USER> IDENTIFIED BY <new-secure-password>;
 SELECT username, password_versions FROM dba_users WHERE username = '<USER>';
 ```
 
-If the connection fails with the dialog "Server Version Not Supported" or "Unsupported Password Verifier", check `password_versions` first.
+If the connection fails with "Unsupported Password Verifier", check `password_versions` first. "Server Version Not Supported" means the database is older than 11.1 (10g or earlier), which the driver cannot connect to.
 
 ## Column Type Support
 
