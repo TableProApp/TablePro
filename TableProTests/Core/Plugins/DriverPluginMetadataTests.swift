@@ -125,11 +125,12 @@ struct GroupingStrategyTests {
         #expect(GroupingStrategy.byDatabase.rawValue == "byDatabase")
         #expect(GroupingStrategy.bySchema.rawValue == "bySchema")
         #expect(GroupingStrategy.flat.rawValue == "flat")
+        #expect(GroupingStrategy.hierarchicalSchema.rawValue == "hierarchicalSchema")
     }
 
     @Test("Codable round-trip")
     func codable() throws {
-        for strategy in [GroupingStrategy.byDatabase, .bySchema, .flat] {
+        for strategy in [GroupingStrategy.byDatabase, .bySchema, .flat, .hierarchicalSchema] {
             let data = try JSONEncoder().encode(strategy)
             let decoded = try JSONDecoder().decode(GroupingStrategy.self, from: data)
             #expect(decoded == strategy)

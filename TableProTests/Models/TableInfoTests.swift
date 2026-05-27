@@ -47,6 +47,22 @@ struct TableInfoTests {
         #expect(table.id != view.id)
     }
 
+    @Test("Schema-qualified id includes the schema")
+    func testSchemaQualifiedId() {
+        let info = TableInfo(name: "events", type: .table, rowCount: nil, schema: "analytics")
+        #expect(info.id == "analytics.events_TABLE")
+    }
+
+    @Test("Same table name in different schemas has distinct id, equality, and hash")
+    func testCrossSchemaDistinctIdentity() {
+        let a = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "dataset_a")
+        let b = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "dataset_b")
+        #expect(a.id != b.id)
+        #expect(a != b)
+        let set: Set<TableInfo> = [a, b]
+        #expect(set.count == 2)
+    }
+
     // MARK: - Equatable
 
     @Test("Same name and type are equal even with different rowCount")

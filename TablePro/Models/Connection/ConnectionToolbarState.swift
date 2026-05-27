@@ -234,7 +234,7 @@ final class ConnectionToolbarState {
                 return schema
             }
             return currentDatabase
-        case .byDatabase, .flat:
+        case .byDatabase, .flat, .hierarchicalSchema:
             return currentDatabase
         }
     }

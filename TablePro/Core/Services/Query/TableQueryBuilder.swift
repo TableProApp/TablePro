@@ -71,7 +71,7 @@ struct TableQueryBuilder {
         if let pluginDriver {
             let sortCols = sortColumnsAsTuples(sortState)
             if let result = pluginDriver.buildBrowseQuery(
-                table: tableName, sortColumns: sortCols,
+                table: tableName, schema: schemaName, sortColumns: sortCols,
                 columns: selectColumns ?? columns, limit: limit, offset: offset
             ) {
                 return result
@@ -106,7 +106,7 @@ struct TableQueryBuilder {
                 .filter { $0.isEnabled && !$0.columnName.isEmpty }
                 .map(\.asPluginFilterTuple)
             if let result = pluginDriver.buildFilteredQuery(
-                table: tableName, filters: filterTuples,
+                table: tableName, schema: schemaName, filters: filterTuples,
                 logicMode: logicMode == .and ? "and" : "or",
                 sortColumns: sortCols, columns: selectColumns ?? columns, limit: limit, offset: offset
             ) {

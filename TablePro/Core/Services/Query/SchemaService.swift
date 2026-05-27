@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProPluginKit
 
 @MainActor
 @Observable
@@ -16,11 +17,18 @@ final class SchemaService {
     private(set) var procedures: [UUID: [RoutineInfo]] = [:]
     private(set) var functions: [UUID: [RoutineInfo]] = [:]
     private(set) var schemasInOrder: [UUID: [String]] = [:]
+    private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
 
     @ObservationIgnored private let loadDedup = OnceTask<UUID, [TableInfo]>()
     @ObservationIgnored private let procedureDedup = OnceTask<UUID, [RoutineInfo]>()
     @ObservationIgnored private let functionDedup = OnceTask<UUID, [RoutineInfo]>()
     @ObservationIgnored private let schemasDedup = OnceTask<UUID, [String]>()
+    @ObservationIgnored private let perSchemaDedup = OnceTask<SchemaKey, [TableInfo]>()
+
+    struct SchemaKey: Hashable, Sendable {
+        let connectionId: UUID
+        let schema: String
+    }
     @ObservationIgnored private var schemaChangeCancellable: AnyCancellable?
     @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
 
@@ -58,6 +66,53 @@ final class SchemaService {
 
     func schemas(for connectionId: UUID) -> [String] {
         schemasInOrder[connectionId] ?? []
+    }
+
+    func schemaState(for connectionId: UUID, schema: String) -> SchemaState {
+        perSchemaStates[connectionId]?[schema] ?? .idle
+    }
+
+    func tables(for connectionId: UUID, schema: String) -> [TableInfo] {
+        if case .loaded(let tables) = schemaState(for: connectionId, schema: schema) {
+            return tables
+        }
+        return []
+    }
+
+    func loadSchemaTables(connectionId: UUID, schema: String, driver: DatabaseDriver) async {
+        if case .loaded = schemaState(for: connectionId, schema: schema) { return }
+        setPerSchemaState(.loading, connectionId: connectionId, schema: schema)
+        do {
+            let tables = try await perSchemaDedup.execute(key: SchemaKey(connectionId: connectionId, schema: schema)) {
+                try await driver.fetchTables(schema: schema)
+            }
+            setPerSchemaState(.loaded(tables), connectionId: connectionId, schema: schema)
+        } catch is CancellationError {
+            return
+        } catch {
+            Self.logger.warning(
+                "[schema] per-schema load failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            setPerSchemaState(.failed(error.localizedDescription), connectionId: connectionId, schema: schema)
+        }
+    }
+
+    func reloadSchemaTables(connectionId: UUID, schema: String, driver: DatabaseDriver) async {
+        await perSchemaDedup.cancel(key: SchemaKey(connectionId: connectionId, schema: schema))
+        clearPerSchemaState(connectionId: connectionId, schema: schema)
+        await loadSchemaTables(connectionId: connectionId, schema: schema, driver: driver)
+    }
+
+    private func setPerSchemaState(_ state: SchemaState, connectionId: UUID, schema: String) {
+        var inner = perSchemaStates[connectionId] ?? [:]
+        inner[schema] = state
+        perSchemaStates[connectionId] = inner
+    }
+
+    private func clearPerSchemaState(connectionId: UUID, schema: String) {
+        guard var inner = perSchemaStates[connectionId] else { return }
+        inner.removeValue(forKey: schema)
+        perSchemaStates[connectionId] = inner
     }
 
     func load(connectionId: UUID, driver: DatabaseDriver, connection: DatabaseConnection) async {
@@ -108,10 +163,16 @@ final class SchemaService {
         await procedureDedup.cancel(key: connectionId)
         await functionDedup.cancel(key: connectionId)
         await schemasDedup.cancel(key: connectionId)
+        if let schemas = perSchemaStates[connectionId]?.keys {
+            for schema in schemas {
+                await perSchemaDedup.cancel(key: SchemaKey(connectionId: connectionId, schema: schema))
+            }
+        }
         states.removeValue(forKey: connectionId)
         procedures.removeValue(forKey: connectionId)
         functions.removeValue(forKey: connectionId)
         schemasInOrder.removeValue(forKey: connectionId)
+        perSchemaStates.removeValue(forKey: connectionId)
     }
 
     func refresh(connectionId: UUID) async {
@@ -131,6 +192,12 @@ final class SchemaService {
         let supportsSchemas = PluginManager.shared.supportsSchemaSwitching(for: connection.type)
         if !supportsSchemas {
             schemasInOrder.removeValue(forKey: connectionId)
+        }
+
+        let grouping = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        if grouping == .hierarchicalSchema {
+            await runHierarchicalLoad(connectionId: connectionId, driver: driver)
+            return
         }
 
         async let tablesTask: [TableInfo] = loadDedup.execute(key: connectionId) {
@@ -168,6 +235,29 @@ final class SchemaService {
             )
             states[connectionId] = .failed(error.localizedDescription)
         }
+    }
+
+    private func runHierarchicalLoad(connectionId: UUID, driver: DatabaseDriver) async {
+        async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
+            connectionId: connectionId,
+            kind: .procedure,
+            dedup: procedureDedup,
+            fetch: { try await driver.fetchProcedures(schema: nil) }
+        )
+        async let functionsTask: [RoutineInfo] = Self.fetchRoutinesSafely(
+            connectionId: connectionId,
+            kind: .function,
+            dedup: functionDedup,
+            fetch: { try await driver.fetchFunctions(schema: nil) }
+        )
+
+        let loadedProcedures = await proceduresTask
+        let loadedFunctions = await functionsTask
+        await loadSchemaList(connectionId: connectionId, driver: driver)
+
+        procedures[connectionId] = loadedProcedures
+        functions[connectionId] = loadedFunctions
+        states[connectionId] = .loaded([])
     }
 
     private func loadSchemaList(connectionId: UUID, driver: DatabaseDriver) async {

@@ -187,7 +187,7 @@ extension PluginMetadataRegistry {
                     systemDatabaseNames: [],
                     systemSchemaNames: ["INFORMATION_SCHEMA"],
                     fileExtensions: [],
-                    databaseGroupingStrategy: .bySchema,
+                    databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(

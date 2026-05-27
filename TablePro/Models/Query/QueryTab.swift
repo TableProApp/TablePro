@@ -102,7 +102,7 @@ struct QueryTab: Identifiable, Equatable {
 
         if let pluginDriver = PluginManager.shared.queryBuildingDriver(for: databaseType),
            let pluginQuery = pluginDriver.buildBrowseQuery(
-               table: tableName, sortColumns: [], columns: [], limit: pageSize, offset: 0
+               table: tableName, schema: schemaName, sortColumns: [], columns: [], limit: pageSize, offset: 0
            ) {
             return pluginQuery
         }
