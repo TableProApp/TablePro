@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Clearing a query with the trash button now also clears its results, and a new Clear Results item on the results right-click menu clears results on their own. (#1256)
+- Inserting SQL from AI Chat opens it in a new query tab instead of appending to the current query. An empty editor is filled in place. (#1257)
 
 ### Fixed
 
