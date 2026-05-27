@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - OpenCode Zen as an AI provider. Add it from the provider list and paste an OpenCode key, or leave the key blank to use the free models; the model list loads automatically, covering the Claude, GPT, Gemini, and open models Zen serves. (#1400)
+- Cmd-click a foreign key arrow to open the referenced table in a new tab instead of the current one. The right-click menu has the same Open in New Tab option. (#1421)
 
 ### Changed
 

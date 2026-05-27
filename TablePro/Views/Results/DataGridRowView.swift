@@ -98,6 +98,43 @@ class DataGridRowView: NSTableRowView {
         }
     }
 
+    private func addForeignKeyMenuItems(to menu: NSMenu, dataColumnIndex: Int, tableRows: TableRows) {
+        guard let coordinator, dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[dataColumnIndex]
+        guard let fkInfo = tableRows.columnForeignKeys[columnName],
+              let cellValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex),
+              !cellValue.isEmpty else { return }
+
+        menu.addItem(NSMenuItem.separator())
+
+        let previewItem = NSMenuItem(
+            title: String(localized: "Preview Referenced Row"),
+            action: #selector(previewForeignKey(_:)),
+            keyEquivalent: ""
+        )
+        previewItem.representedObject = dataColumnIndex
+        previewItem.target = self
+        menu.addItem(previewItem)
+
+        let navItem = NSMenuItem(
+            title: String(format: String(localized: "Open %@"), fkInfo.referencedTable),
+            action: #selector(navigateToForeignKey(_:)),
+            keyEquivalent: ""
+        )
+        navItem.representedObject = dataColumnIndex
+        navItem.target = self
+        menu.addItem(navItem)
+
+        let navInNewTabItem = NSMenuItem(
+            title: String(format: String(localized: "Open %@ in New Tab"), fkInfo.referencedTable),
+            action: #selector(navigateToForeignKeyInNewTab(_:)),
+            keyEquivalent: ""
+        )
+        navInNewTabItem.representedObject = dataColumnIndex
+        navInNewTabItem.target = self
+        menu.addItem(navInNewTabItem)
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let coordinator = coordinator,
               let tableView = coordinator.tableView else { return nil }
@@ -212,32 +249,7 @@ class DataGridRowView: NSTableRowView {
         }
 
         let tableRows = coordinator.tableRowsProvider()
-        if dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count {
-            let columnName = tableRows.columns[dataColumnIndex]
-            if let fkInfo = tableRows.columnForeignKeys[columnName],
-               let cellValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex),
-               !cellValue.isEmpty {
-                menu.addItem(NSMenuItem.separator())
-
-                let previewItem = NSMenuItem(
-                    title: String(localized: "Preview Referenced Row"),
-                    action: #selector(previewForeignKey(_:)),
-                    keyEquivalent: ""
-                )
-                previewItem.representedObject = dataColumnIndex
-                previewItem.target = self
-                menu.addItem(previewItem)
-
-                let navItem = NSMenuItem(
-                    title: String(format: String(localized: "Open %@"), fkInfo.referencedTable),
-                    action: #selector(navigateToForeignKey(_:)),
-                    keyEquivalent: ""
-                )
-                navItem.representedObject = dataColumnIndex
-                navItem.target = self
-                menu.addItem(navItem)
-            }
-        }
+        addForeignKeyMenuItems(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows)
 
         if coordinator.isEditable {
             menu.addItem(NSMenuItem.separator())
@@ -465,6 +477,14 @@ class DataGridRowView: NSTableRowView {
     }
 
     @objc private func navigateToForeignKey(_ sender: NSMenuItem) {
+        performForeignKeyNavigation(from: sender, openInNewTab: false)
+    }
+
+    @objc private func navigateToForeignKeyInNewTab(_ sender: NSMenuItem) {
+        performForeignKeyNavigation(from: sender, openInNewTab: true)
+    }
+
+    private func performForeignKeyNavigation(from sender: NSMenuItem, openInNewTab: Bool) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator else { return }
         let tableRows = coordinator.tableRowsProvider()
@@ -472,7 +492,7 @@ class DataGridRowView: NSTableRowView {
         let columnName = tableRows.columns[columnIndex]
         guard let fkInfo = tableRows.columnForeignKeys[columnName],
               let value = coordinator.cellValue(at: rowIndex, column: columnIndex) else { return }
-        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
+        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
     }
 }
 

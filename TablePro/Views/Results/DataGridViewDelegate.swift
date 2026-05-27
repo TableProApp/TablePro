@@ -20,7 +20,7 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridMoveRow(from source: Int, to destination: Int)
     func dataGridSortStateChanged(_ state: SortState)
     func dataGridFilterColumn(_ columnName: String)
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo)
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool)
     func dataGridDuplicateRow()
     func dataGridExportResults()
     func dataGridClearResults()
@@ -49,7 +49,7 @@ extension DataGridViewDelegate {
     func dataGridMoveRow(from source: Int, to destination: Int) {}
     func dataGridSortStateChanged(_ state: SortState) {}
     func dataGridFilterColumn(_ columnName: String) {}
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {}
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool) {}
     func dataGridDuplicateRow() {}
     func dataGridExportResults() {}
     func dataGridClearResults() {}
