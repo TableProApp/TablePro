@@ -50,7 +50,7 @@ struct RDSAuthTokenGeneratorTests {
     private func makeToken(sessionToken: String? = nil) -> String {
         RDSAuthTokenGenerator.generateToken(
             host: "mydb.us-east-1.rds.amazonaws.com",
-            port: 5432,
+            port: 5_432,
             region: "us-east-1",
             username: "iam_user",
             credentials: AWSCredentials(
@@ -225,5 +225,76 @@ struct RegistryAWSIAMFieldsTests {
     func excludedTypesHaveNoIAM() {
         #expect(!fieldIds(forTypeId: "Redshift").contains("awsAuth"))
         #expect(!fieldIds(forTypeId: "CockroachDB").contains("awsAuth"))
+    }
+}
+
+@Suite("AWS credential_process")
+struct AWSCredentialProcessTests {
+    @Test("Tokenizes a plain command into arguments")
+    func tokenizePlain() {
+        let argv = AWSCredentialResolver.tokenizeCommand(
+            "aws configure export-credentials --profile c9 --format process"
+        )
+        #expect(argv == ["aws", "configure", "export-credentials", "--profile", "c9", "--format", "process"])
+    }
+
+    @Test("Keeps double-quoted arguments that contain spaces intact")
+    func tokenizeQuoted() {
+        let argv = AWSCredentialResolver.tokenizeCommand("\"/Users/Dave/path to/creds.sh\" plain \"arg with spaces\"")
+        #expect(argv == ["/Users/Dave/path to/creds.sh", "plain", "arg with spaces"])
+    }
+
+    @Test("Collapses repeated spaces and returns empty for blank input")
+    func tokenizeEdges() {
+        #expect(AWSCredentialResolver.tokenizeCommand("  aws   sts  ") == ["aws", "sts"])
+        #expect(AWSCredentialResolver.tokenizeCommand("").isEmpty)
+        #expect(AWSCredentialResolver.tokenizeCommand("   ").isEmpty)
+    }
+
+    private func output(_ json: String) -> Data { Data(json.utf8) }
+
+    @Test("Parses Version 1 output with a session token")
+    func parseTemporary() throws {
+        let creds = try AWSCredentialResolver.parseCredentialProcessOutput(
+            output(
+                #"{"Version":1,"AccessKeyId":"AKID","SecretAccessKey":"SECRET","SessionToken":"TOKEN","Expiration":"2026-01-01T00:00:00Z"}"#
+            ),
+            profileName: "c9"
+        )
+        #expect(creds.accessKeyId == "AKID")
+        #expect(creds.secretAccessKey == "SECRET")
+        #expect(creds.sessionToken == "TOKEN")
+    }
+
+    @Test("Parses long-term output without a session token")
+    func parseLongTerm() throws {
+        let creds = try AWSCredentialResolver.parseCredentialProcessOutput(
+            output(#"{"Version":1,"AccessKeyId":"AKID","SecretAccessKey":"SECRET"}"#),
+            profileName: "c9"
+        )
+        #expect(creds.sessionToken == nil)
+    }
+
+    @Test("Rejects a Version other than 1")
+    func parseUnsupportedVersion() {
+        #expect(throws: AWSAuthError.credentialProcessUnsupportedVersion(profile: "c9", version: 2)) {
+            _ = try AWSCredentialResolver.parseCredentialProcessOutput(
+                output(#"{"Version":2,"AccessKeyId":"AKID","SecretAccessKey":"SECRET"}"#),
+                profileName: "c9"
+            )
+        }
+    }
+
+    @Test("Rejects malformed or incomplete output")
+    func parseBadOutput() {
+        #expect(throws: AWSAuthError.credentialProcessBadOutput("c9")) {
+            _ = try AWSCredentialResolver.parseCredentialProcessOutput(output("not json"), profileName: "c9")
+        }
+        #expect(throws: AWSAuthError.credentialProcessBadOutput("c9")) {
+            _ = try AWSCredentialResolver.parseCredentialProcessOutput(
+                output(#"{"Version":1,"AccessKeyId":"","SecretAccessKey":"SECRET"}"#),
+                profileName: "c9"
+            )
+        }
     }
 }

@@ -58,7 +58,7 @@ Open URLs like `postgresql://user:pass@host/db` directly to connect. See [Connec
 Connect to RDS or Aurora with IAM database authentication instead of a static password. Set **Authentication** in the connection form to one of the AWS IAM options:
 
 - **AWS IAM (Access Key)**: enter an access key ID, secret access key, and optional session token.
-- **AWS IAM (Profile)**: use a named profile from `~/.aws/credentials`.
+- **AWS IAM (Profile)**: use a named profile from `~/.aws/credentials` or `~/.aws/config`. Profiles that use `credential_process` work too, so you can back the profile with SSO or assume-role via `aws configure export-credentials`.
 - **AWS IAM (SSO)**: use a profile backed by IAM Identity Center. Run `aws sso login --profile <name>` first.
 
 Set **Username** to a database role granted `rds_iam`. The **AWS Region** is detected from the RDS hostname and can be overridden.
