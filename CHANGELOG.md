@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a `.sql` file names the tab after the file instead of showing "SQL Query". (#1220)
 - Data grid row context menus now copy the clicked or focused cell value for Copy, while Copy Rows still keeps the full-row TSV action.
 - Opening a table in a new tab now restores saved hidden columns before the first load, so the initial query matches the visible column set.
+- The JSON detail popover now shows long string values up to 300 characters in the tree view instead of cutting them off at 80.
 
 ## [0.45.0] - 2026-05-26
 

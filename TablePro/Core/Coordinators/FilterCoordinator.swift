@@ -423,7 +423,7 @@ final class FilterCoordinator {
 
     func clearFilterState() {
         mutateSelectedTabFilterState { state in
-            state.isVisible = false
+            state.isVisible = true
             state.filters = []
             state.appliedFilters = []
         }
