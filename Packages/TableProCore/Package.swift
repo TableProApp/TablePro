@@ -77,6 +77,11 @@ let package = Package(
             name: "TableProMSSQLCoreTests",
             dependencies: ["TableProMSSQLCore"],
             path: "Tests/TableProMSSQLCoreTests"
+        ),
+        .testTarget(
+            name: "TableProSyncTests",
+            dependencies: ["TableProSync", "TableProModels"],
+            path: "Tests/TableProSyncTests"
         )
     ]
 )

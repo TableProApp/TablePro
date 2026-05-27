@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a saved connection that fails now shows the detailed troubleshooting dialog with suggested fixes, the same one Test Connection shows, instead of a generic error alert. (#1425, #483)
 - Oracle connection errors no longer surface the driver's raw internal message; failures now explain the cause in plain language. (#483)
 - AWS IAM authentication with a named profile now reads `~/.aws/config` (not just `~/.aws/credentials`) and supports `credential_process`, so profiles backed by SSO, IAM Identity Center, or assume-role work through `aws configure export-credentials`. (#1291)
+- iOS: a connection's Safe Mode setting now survives relaunch. iCloud sync no longer drops the value, so a connection set to Confirm Writes or Read-Only no longer reverts to Off after reopening the app.
 
 ## [0.45.0] - 2026-05-26
 
