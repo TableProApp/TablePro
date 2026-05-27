@@ -129,7 +129,7 @@ final class TabSession: Identifiable {
         self.pendingChanges = TabChangeSnapshot()
         self.selectedRowIndices = []
         self.sortState = SortState()
-        self.filterState = TabFilterState()
+        self.filterState = TabFilterState(isVisible: tabType == .table)
         self.columnLayout = ColumnLayoutState()
         self.pagination = PaginationState()
         self.hasUserInteraction = false

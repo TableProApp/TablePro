@@ -383,15 +383,19 @@ final class FilterCoordinator {
 
     func restoreLastFilters(for tableName: String) {
         let settings = FilterSettingsStorage.shared.loadSettings()
-        guard settings.panelState != .alwaysHide,
-              let tab = parent.tabManager.selectedTab else { return }
+        guard let tab = parent.tabManager.selectedTab else { return }
 
-        let restored = FilterSettingsStorage.shared.loadLastFilters(
-            for: tableName,
-            connectionId: parent.connectionId,
-            databaseName: tab.tableContext.databaseName,
-            schemaName: tab.tableContext.schemaName
-        )
+        let restored: [TableFilter]
+        if settings.panelState == .alwaysHide {
+            restored = []
+        } else {
+            restored = FilterSettingsStorage.shared.loadLastFilters(
+                for: tableName,
+                connectionId: parent.connectionId,
+                databaseName: tab.tableContext.databaseName,
+                schemaName: tab.tableContext.schemaName
+            )
+        }
         mutateSelectedTabFilterState { state in
             state = Self.resolvedRestoredState(panelState: settings.panelState, saved: restored, current: state)
         }
@@ -402,9 +406,12 @@ final class FilterCoordinator {
         saved: [TableFilter],
         current: TabFilterState
     ) -> TabFilterState {
-        guard panelState != .alwaysHide else { return current }
         var state = current
-        if !saved.isEmpty {
+        if panelState == .alwaysHide {
+            state.filters = []
+            state.appliedFilters = []
+            state.isVisible = false
+        } else if !saved.isEmpty {
             state.filters = saved
             state.appliedFilters = saved
             state.isVisible = true

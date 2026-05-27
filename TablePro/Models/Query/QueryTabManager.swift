@@ -297,7 +297,7 @@ final class QueryTabManager {
         tab.hasUserInteraction = false
         tab.tableContext.isView = isView
         tab.tableContext.isEditable = !isView
-        tab.filterState = TabFilterState()
+        tab.filterState = TabFilterState(isVisible: true)
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
         tab.tableContext.databaseName = databaseName
