@@ -42,19 +42,24 @@ extension TableViewCoordinator {
         let tableRows = tableRowsProvider()
         let projection = visibleColumnProjection
         let columnTypes = projection.columnTypes(tableRows.columnTypes)
+        let columns = projection.columns(tableRows.columns)
         var tsvRows: [String] = []
         var htmlRows: [[String]] = []
+        var structuredRows: [[PluginCellValue]] = []
 
         for index in sortedIndices {
             guard let values = displayRow(at: index)?.values else { continue }
-            let formatted = formatRowValues(values: projection.values(Array(values)), columnTypes: columnTypes)
+            let projected = projection.values(Array(values))
+            let formatted = formatRowValues(values: projected, columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
+            structuredRows.append(projected)
         }
 
         let tsv = tsvRows.joined(separator: "\n")
         let html = HtmlTableEncoder.encode(rows: htmlRows)
-        ClipboardService.shared.writeRows(tsv: tsv, html: html)
+        let payload = GridRowsClipboardPayload(columns: columns, rows: structuredRows)
+        ClipboardService.shared.writeRows(tsv: tsv, html: html, gridRows: payload)
     }
 
     func copyRowsWithHeaders(at indices: Set<Int>) {
@@ -65,17 +70,21 @@ extension TableViewCoordinator {
         let columns = projection.columns(tableRows.columns)
         var tsvRows: [String] = [columns.joined(separator: "\t")]
         var htmlRows: [[String]] = []
+        var structuredRows: [[PluginCellValue]] = []
 
         for index in sortedIndices {
             guard let values = displayRow(at: index)?.values else { continue }
-            let formatted = formatRowValues(values: projection.values(Array(values)), columnTypes: columnTypes)
+            let projected = projection.values(Array(values))
+            let formatted = formatRowValues(values: projected, columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
+            structuredRows.append(projected)
         }
 
         let tsv = tsvRows.joined(separator: "\n")
         let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
-        ClipboardService.shared.writeRows(tsv: tsv, html: html)
+        let payload = GridRowsClipboardPayload(columns: columns, rows: structuredRows)
+        ClipboardService.shared.writeRows(tsv: tsv, html: html, gridRows: payload)
     }
 
     @MainActor

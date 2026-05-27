@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Pasting copied rows no longer misplaces values when a cell contains a comma (such as a user agent string); each value stays in its own column, and a real NULL is kept distinct from the literal text "NULL".
 - BigQuery: switching to another table now loads its data right away, instead of leaving the grid empty until you close and reopen the tab.
 - Custom and OpenAI-compatible AI providers now work when the base URL already ends in `/v1`, instead of building a doubled `/v1/v1/` path that failed. (#1400)
 - MongoDB: opening a collection no longer crashes when a document contains a NaN or infinite number. (#1418)
