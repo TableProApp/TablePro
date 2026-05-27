@@ -32,6 +32,7 @@ struct QueryEditorView: View {
     var onAIExplain: ((String) -> Void)?
     var onAIOptimize: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
+    var onClearResults: (() -> Void)?
 
     @State private var vimMode: VimMode = .normal
 
@@ -90,7 +91,10 @@ struct QueryEditorView: View {
             Spacer()
 
             // Clear button
-            Button(action: { queryText = "" }) {
+            Button(action: {
+                queryText = ""
+                onClearResults?()
+            }) {
                 Image(systemName: "trash")
                     .frame(width: 24, height: 24)
             }

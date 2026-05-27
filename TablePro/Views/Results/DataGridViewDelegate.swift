@@ -23,6 +23,8 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo)
     func dataGridDuplicateRow()
     func dataGridExportResults()
+    func dataGridClearResults()
+    func dataGridCanClearResults() -> Bool
     func dataGridHideColumn(_ columnName: String)
     func dataGridShowAllColumns()
     func dataGridRefresh()
@@ -50,6 +52,8 @@ extension DataGridViewDelegate {
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {}
     func dataGridDuplicateRow() {}
     func dataGridExportResults() {}
+    func dataGridClearResults() {}
+    func dataGridCanClearResults() -> Bool { false }
     func dataGridHideColumn(_ columnName: String) {}
     func dataGridShowAllColumns() {}
     func dataGridRefresh() {}

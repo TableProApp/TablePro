@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - OpenCode Zen as an AI provider. Add it from the provider list and paste an OpenCode key, or leave the key blank to use the free models; the model list loads automatically, covering the Claude, GPT, Gemini, and open models Zen serves. (#1400)
 
+### Changed
+
+- Clearing a query with the trash button now also clears its results, and a new Clear Results item on the results right-click menu clears results on their own. (#1256)
+
 ### Fixed
 
 - Custom and OpenAI-compatible AI providers now work when the base URL already ends in `/v1`, instead of building a doubled `/v1/v1/` path that failed. (#1400)

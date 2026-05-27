@@ -69,6 +69,14 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         AppCommands.shared.exportQueryResults.send(())
     }
 
+    func dataGridClearResults() {
+        coordinator?.clearActiveQueryResults()
+    }
+
+    func dataGridCanClearResults() -> Bool {
+        coordinator?.canClearActiveQueryResults ?? false
+    }
+
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {
         coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo)
     }

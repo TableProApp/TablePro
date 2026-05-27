@@ -259,6 +259,16 @@ class DataGridRowView: NSTableRowView {
         exportItem.target = self
         menu.addItem(exportItem)
 
+        if coordinator.delegate?.dataGridCanClearResults() == true {
+            let clearResultsItem = NSMenuItem(
+                title: String(localized: "Clear Results"),
+                action: #selector(clearResults),
+                keyEquivalent: ""
+            )
+            clearResultsItem.target = self
+            menu.addItem(clearResultsItem)
+        }
+
         if coordinator.isEditable {
             let duplicateItem = NSMenuItem(
                 title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "")
@@ -410,6 +420,10 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func exportResults() {
         AppCommands.shared.exportQueryResults.send(())
+    }
+
+    @objc private func clearResults() {
+        coordinator?.delegate?.dataGridClearResults()
     }
 
     @objc private func copyAsJson() {

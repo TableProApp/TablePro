@@ -37,6 +37,29 @@ extension MainContentCoordinator {
         }
     }
 
+    var canClearActiveQueryResults: Bool {
+        guard let tab = tabManager.selectedTab, tab.tabType == .query else { return false }
+        return !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty || tab.execution.lastExecutedAt != nil
+    }
+
+    func clearActiveQueryResults() {
+        guard let tabIdx = tabManager.selectedTabIndex else { return }
+        let tabId = tabManager.tabs[tabIdx].id
+        setActiveTableRows(TableRows(), for: tabId)
+        tabManager.mutate(at: tabIdx) { tab in
+            tab.display.resultSets = []
+            tab.display.activeResultSetId = nil
+            tab.execution.errorMessage = nil
+            tab.execution.rowsAffected = 0
+            tab.execution.executionTime = nil
+            tab.execution.statusMessage = nil
+            tab.execution.lastExecutedAt = nil
+            tab.schemaVersion += 1
+            tab.display.isResultsCollapsed = true
+        }
+        toolbarState.isResultsCollapsed = true
+    }
+
     // MARK: - Table Operations
 
     func createNewTable() {
