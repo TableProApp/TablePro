@@ -10,6 +10,7 @@ struct RowDetailView: View {
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var hapticSelection = 0
+    @State private var showSaveConfirmation = false
 
     init(
         columns: [ColumnInfo],
@@ -88,6 +89,14 @@ struct RowDetailView: View {
             } else {
                 Text(viewModel.operationError?.message ?? "")
             }
+        }
+        .alert("Save Changes?", isPresented: $showSaveConfirmation) {
+            Button(String(localized: "Save"), role: .destructive) {
+                Task { await executePendingSave() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(format: String(localized: "This will update a row in %@. Continue?"), viewModel.table?.name ?? ""))
         }
         .sheet(item: $fkPreviewItem) { item in
             FKPreviewView(
@@ -346,6 +355,19 @@ struct RowDetailView: View {
 
     private func handleSave() async {
         let success = await viewModel.saveChanges()
+        if viewModel.pendingWriteConfirmation {
+            showSaveConfirmation = true
+            return
+        }
+        if success {
+            hapticSuccess.toggle()
+        } else {
+            hapticError.toggle()
+        }
+    }
+
+    private func executePendingSave() async {
+        let success = await viewModel.executePendingSave()
         if success {
             hapticSuccess.toggle()
         } else {

@@ -8,6 +8,7 @@ struct InsertRowView: View {
     let columnDetails: [ColumnInfo]
     let session: ConnectionSession?
     let databaseType: DatabaseType
+    let safeModeLevel: SafeModeLevel
     var onInserted: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -19,12 +20,14 @@ struct InsertRowView: View {
         columnDetails: [ColumnInfo],
         session: ConnectionSession?,
         databaseType: DatabaseType,
+        safeModeLevel: SafeModeLevel = .off,
         onInserted: (() -> Void)? = nil
     ) {
         self.table = table
         self.columnDetails = columnDetails
         self.session = session
         self.databaseType = databaseType
+        self.safeModeLevel = safeModeLevel
         self.onInserted = onInserted
         _values = State(initialValue: Array(repeating: "", count: columnDetails.count))
         _isNullFlags = State(initialValue: columnDetails.map { col in
@@ -34,6 +37,8 @@ struct InsertRowView: View {
     @State private var isSaving = false
     @State private var operationError: AppError?
     @State private var showOperationError = false
+    @State private var showInsertConfirmation = false
+    @State private var pendingInsertSQL: String?
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
@@ -136,6 +141,14 @@ struct InsertRowView: View {
                     Text(operationError?.message ?? "")
                 }
             }
+            .alert("Insert Row?", isPresented: $showInsertConfirmation) {
+                Button(String(localized: "Insert"), role: .destructive) {
+                    Task { await executePendingInsert() }
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {}
+            } message: {
+                Text(String(format: String(localized: "This will insert a row into %@. Continue?"), table.name))
+            }
         }
     }
 
@@ -172,9 +185,26 @@ struct InsertRowView: View {
     private func insertRow() async {
         guard let session else { return }
 
-        isSaving = true
-        defer { isSaving = false }
+        let sql = buildInsertSQL()
 
+        switch safeModeLevel.writePermission {
+        case .blocked:
+            return
+        case .requiresConfirmation:
+            pendingInsertSQL = sql
+            showInsertConfirmation = true
+        case .proceed:
+            await executeInsert(sql: sql, session: session)
+        }
+    }
+
+    private func executePendingInsert() async {
+        guard let session, let sql = pendingInsertSQL else { return }
+        pendingInsertSQL = nil
+        await executeInsert(sql: sql, session: session)
+    }
+
+    private func buildInsertSQL() -> String {
         var insertColumns: [String] = []
         var insertValues: [String?] = []
 
@@ -194,12 +224,17 @@ struct InsertRowView: View {
             }
         }
 
-        let sql = SQLBuilder.buildInsert(
+        return SQLBuilder.buildInsert(
             table: table.name,
             type: databaseType,
             columns: insertColumns,
             values: insertValues
         )
+    }
+
+    private func executeInsert(sql: String, session: ConnectionSession) async {
+        isSaving = true
+        defer { isSaving = false }
 
         do {
             _ = try await session.driver.execute(query: sql)

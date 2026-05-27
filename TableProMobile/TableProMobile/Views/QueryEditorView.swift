@@ -402,14 +402,16 @@ struct QueryEditorView: View {
         guard !trimmed.isEmpty else { return }
 
         if isWriteQuery(trimmed) {
-            if safeModeLevel.blocksWrites {
+            switch safeModeLevel.writePermission {
+            case .blocked:
                 showWriteBlockedAlert = true
                 return
-            }
-            if safeModeLevel.requiresConfirmation {
+            case .requiresConfirmation:
                 pendingWriteQuery = trimmed
                 showWriteConfirmation = true
                 return
+            case .proceed:
+                break
             }
         }
 
