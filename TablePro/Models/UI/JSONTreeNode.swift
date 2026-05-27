@@ -108,16 +108,9 @@ internal enum JSONTreeParser {
         case .string(let raw):
             let decoded = JsonSyntaxParser.decodeStringLiteral(raw)
             let escaped = decoded.replacingOccurrences(of: "\"", with: "\\\"")
-            let display: String
-            let nsLen = (escaped as NSString).length
-            if nsLen > 80 {
-                display = "\"\((escaped as NSString).substring(to: 80))...\""
-            } else {
-                display = "\"\(escaped)\""
-            }
             return JSONTreeNode(
                 key: key, keyPath: keyPath, valueType: .string,
-                displayValue: display, rawValue: decoded, children: []
+                displayValue: "\"\(escaped)\"", rawValue: decoded, children: []
             )
 
         case .number(let raw):
