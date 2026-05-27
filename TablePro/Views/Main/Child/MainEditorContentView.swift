@@ -320,7 +320,8 @@ struct MainEditorContentView: View {
                         onSaveAsFavorite: { text in
                             guard !text.isEmpty else { return }
                             coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
-                        }
+                        },
+                        onClearResults: { coordinator.clearActiveQueryResults() }
                     )
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
