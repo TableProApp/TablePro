@@ -744,6 +744,11 @@ final class MainContentCoordinator {
         guard let (tab, index) = tabManager.selectedTabAndIndex,
               !tab.execution.isExecuting else { return }
 
+        if tab.tabType == .table {
+            executeTableTabQueryDirectly()
+            return
+        }
+
         let fullQuery = tab.content.query
 
         let sql: String
