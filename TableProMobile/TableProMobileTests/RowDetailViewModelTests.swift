@@ -164,6 +164,23 @@ struct RowDetailViewModelTests {
         #expect(driver.executedQueries[0].uppercased().hasPrefix("UPDATE"))
     }
 
+    @Test("saveChanges under readOnly never executes")
+    func saveReadOnlyBlocks() async {
+        let driver = MockDatabaseDriver()
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), session: makeSession(driver: driver),
+            columnDetails: makeColumns(), safeModeLevel: .readOnly
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+
+        let success = await vm.saveChanges()
+        #expect(success == false)
+        #expect(vm.pendingWriteConfirmation == false)
+        #expect(driver.executedQueries.isEmpty)
+    }
+
     @Test("saveChanges fails when no primary key value present")
     func saveWithoutPrimaryKey() async {
         let driver = MockDatabaseDriver()

@@ -188,13 +188,16 @@ final class RowDetailViewModel {
             primaryKeys: pkValues
         )
 
-        if safeModeLevel.writePermission == .requiresConfirmation {
+        switch safeModeLevel.writePermission {
+        case .blocked:
+            return false
+        case .requiresConfirmation:
             pendingSaveSQL = sql
             pendingWriteConfirmation = true
             return false
+        case .proceed:
+            return await execute(sql: sql, session: session)
         }
-
-        return await execute(sql: sql, session: session)
     }
 
     func executePendingSave() async -> Bool {

@@ -187,13 +187,15 @@ struct InsertRowView: View {
 
         let sql = buildInsertSQL()
 
-        if safeModeLevel.writePermission == .requiresConfirmation {
+        switch safeModeLevel.writePermission {
+        case .blocked:
+            return
+        case .requiresConfirmation:
             pendingInsertSQL = sql
             showInsertConfirmation = true
-            return
+        case .proceed:
+            await executeInsert(sql: sql, session: session)
         }
-
-        await executeInsert(sql: sql, session: session)
     }
 
     private func executePendingInsert() async {
