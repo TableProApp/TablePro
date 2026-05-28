@@ -39,8 +39,13 @@ struct SidebarView: View {
         }
     }
 
+    private var groupingStrategy: GroupingStrategy {
+        PluginManager.shared.databaseGroupingStrategy(for: viewModel.databaseType)
+    }
+
     private var supportsSchemaFooter: Bool {
-        PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType)
+        guard PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType) else { return false }
+        return groupingStrategy != .hierarchicalSchema
     }
 
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
@@ -144,6 +149,35 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var tablesContent: some View {
+        if groupingStrategy == .hierarchicalSchema {
+            hierarchicalContent
+        } else {
+            flatContent
+        }
+    }
+
+    @ViewBuilder
+    private var hierarchicalContent: some View {
+        switch schemaService.state(for: connectionId) {
+        case .idle, .loading:
+            loadingState
+        case .failed(let message):
+            errorState(message: message)
+        case .loaded:
+            SidebarTreeView(
+                connectionId: connectionId,
+                viewModel: viewModel,
+                windowState: windowState,
+                pendingTruncates: $pendingTruncates,
+                pendingDeletes: $pendingDeletes,
+                onDoubleClick: onDoubleClick,
+                coordinator: coordinator
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var flatContent: some View {
         switch schemaService.state(for: connectionId) {
         case .loading where tables.isEmpty:
             loadingState

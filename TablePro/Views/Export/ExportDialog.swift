@@ -569,7 +569,7 @@ struct ExportDialog: View {
             let dbType = connection.type
             let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
             switch grouping {
-            case .bySchema:
+            case .bySchema, .hierarchicalSchema:
                 let schemas = try await driver.fetchSchemas()
                 let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
                 for schema in schemas {

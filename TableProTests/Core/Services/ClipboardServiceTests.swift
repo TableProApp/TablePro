@@ -5,6 +5,7 @@
 
 import AppKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 import UniformTypeIdentifiers
 
@@ -41,5 +42,20 @@ struct ClipboardServiceTests {
         provider.writeCsv("a,b\n")
         let pb = NSPasteboard.general
         #expect(pb.string(forType: Self.tsvType) == nil)
+    }
+
+    @Test("writeRows round-trips structured grid rows through readGridRows losslessly")
+    func writeRowsRoundTripsStructuredRows() {
+        let provider = NSPasteboardClipboardProvider()
+        let payload = GridRowsClipboardPayload(
+            columns: ["id", "name", "blob"],
+            rows: [
+                [.text("1"), .text("Smith, John"), .null],
+                [.text("2"), .text("NULL"), .bytes(Data([0x01, 0x02, 0xFF]))],
+            ]
+        )
+        provider.writeRows(tsv: "1\tSmith, John\tNULL", html: nil, gridRows: payload)
+
+        #expect(provider.readGridRows() == payload)
     }
 }

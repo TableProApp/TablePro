@@ -20,9 +20,11 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridMoveRow(from source: Int, to destination: Int)
     func dataGridSortStateChanged(_ state: SortState)
     func dataGridFilterColumn(_ columnName: String)
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo)
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool)
     func dataGridDuplicateRow()
     func dataGridExportResults()
+    func dataGridClearResults()
+    func dataGridCanClearResults() -> Bool
     func dataGridHideColumn(_ columnName: String)
     func dataGridShowAllColumns()
     func dataGridRefresh()
@@ -47,9 +49,11 @@ extension DataGridViewDelegate {
     func dataGridMoveRow(from source: Int, to destination: Int) {}
     func dataGridSortStateChanged(_ state: SortState) {}
     func dataGridFilterColumn(_ columnName: String) {}
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {}
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool) {}
     func dataGridDuplicateRow() {}
     func dataGridExportResults() {}
+    func dataGridClearResults() {}
+    func dataGridCanClearResults() -> Bool { false }
     func dataGridHideColumn(_ columnName: String) {}
     func dataGridShowAllColumns() {}
     func dataGridRefresh() {}

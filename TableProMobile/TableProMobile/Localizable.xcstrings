@@ -3863,6 +3863,9 @@
         }
       }
     },
+    "Showing the first %d rows. Add LIMIT to fetch more." : {
+
+    },
     "Skip" : {
       "localizations" : {
         "vi" : {
@@ -4088,6 +4091,12 @@
         }
       }
     },
+    "Stopped at %d rows to stay within memory limits. Add LIMIT to fetch fewer." : {
+
+    },
+    "Stopped. Showing %d rows." : {
+
+    },
     "Switching..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4298,6 +4307,9 @@
           }
         }
       }
+    },
+    "The database limited the result. Showing %d rows." : {
+
     },
     "The operation violates a database constraint." : {
       "localizations" : {

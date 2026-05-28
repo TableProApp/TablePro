@@ -117,6 +117,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
     private let password: String
     private let database: String
     private let serviceName: String
+    private let useSID: Bool
     private let sslConfig: SSLConfiguration
 
     private struct LockedState: Sendable {
@@ -140,6 +141,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         password: String,
         database: String,
         serviceName: String = "",
+        useSID: Bool = false,
         sslConfig: SSLConfiguration = SSLConfiguration()
     ) {
         self.host = host
@@ -148,18 +150,20 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         self.password = password
         self.database = database
         self.serviceName = serviceName
+        self.useSID = useSID
         self.sslConfig = sslConfig
     }
 
     // MARK: - Connection
 
     func connect() async throws {
-        let service = serviceName.isEmpty ? database : serviceName
+        let identifier = serviceName.isEmpty ? database : serviceName
+        let service: OracleServiceMethod = useSID ? .sid(identifier) : .serviceName(identifier)
         let tls = try OracleSSLMapping.tls(for: sslConfig)
         let config = OracleNIO.OracleConnection.Configuration(
             host: host,
             port: port,
-            service: .serviceName(service),
+            service: service,
             username: user,
             password: password,
             tls: tls
@@ -182,14 +186,19 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                 current.isConnected = true
             }
 
-            osLogger.debug("Connected to Oracle \(self.host):\(self.port)/\(service)")
+            let target = useSID ? "\(self.host):\(self.port):\(identifier)" : "\(self.host):\(self.port)/\(identifier)"
+            osLogger.debug("Connected to Oracle \(target)")
         } catch let sqlError as OracleSQLError {
             let detail = sqlError.serverInfo?.message ?? sqlError.description
             osLogger.error("Oracle connection failed: \(detail)")
             if let sslError = Self.classifySSLError(detail) {
                 throw sslError
             }
-            throw OracleError(message: detail, category: classifyConnectError(sqlError))
+            let category = classifyConnectError(sqlError)
+            throw OracleError(
+                message: Self.connectErrorMessage(for: category, serverDetail: detail),
+                category: category
+            )
         } catch let nioSslError as NIOSSLError {
             let detail = String(describing: nioSslError)
             osLogger.error("Oracle TLS error: \(detail)")
@@ -234,6 +243,22 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             return .authVersionNotSupported
         default:
             return .connectionFailed
+        }
+    }
+
+    private static func connectErrorMessage(
+        for category: OracleError.Category,
+        serverDetail: String
+    ) -> String {
+        switch category {
+        case .authVersionNotSupported:
+            return String(localized: "This Oracle server is older than release 11.1, which the database driver does not support.")
+        case .authConnectionDropped:
+            return String(localized: "The Oracle server closed the connection during the login handshake.")
+        case .authVerifierUnsupported:
+            return String(localized: "This account uses a password verifier the database driver does not support.")
+        case .generic, .notConnected, .connectionFailed, .queryFailed:
+            return serverDetail
         }
     }
 

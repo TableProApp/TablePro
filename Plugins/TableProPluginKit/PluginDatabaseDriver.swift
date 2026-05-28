@@ -88,6 +88,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // Query building (optional, for NoSQL plugins)
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
+    func buildBrowseQuery(table: String, schema: String?, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
+    func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     // Filtered row count (optional, for NoSQL plugins; SQL plugins use COUNT(*) WHERE)
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
     // Statement generation (optional, for NoSQL plugins)
@@ -141,6 +143,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     // Default export query (optional — returns nil to use app-level fallback)
     func defaultExportQuery(table: String) -> String?
+    func defaultExportQuery(table: String, schema: String?) -> String?
 
     // Streaming row fetch for export
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error>
@@ -251,6 +254,12 @@ public extension PluginDatabaseDriver {
 
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
+    func buildBrowseQuery(table: String, schema: String?, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? {
+        buildBrowseQuery(table: table, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
+    }
+    func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? {
+        buildFilteredQuery(table: table, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
+    }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
 
@@ -284,6 +293,7 @@ public extension PluginDatabaseDriver {
     func castColumnToText(_ column: String) -> String { column }
     func allTablesMetadataSQL(schema: String?) -> String? { nil }
     func defaultExportQuery(table: String) -> String? { nil }
+    func defaultExportQuery(table: String, schema: String?) -> String? { defaultExportQuery(table: table) }
 
     func quoteIdentifier(_ name: String) -> String {
         let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")

@@ -744,6 +744,11 @@ final class MainContentCoordinator {
         guard let (tab, index) = tabManager.selectedTabAndIndex,
               !tab.execution.isExecuting else { return }
 
+        if tab.tabType == .table {
+            executeTableTabQueryDirectly()
+            return
+        }
+
         let fullQuery = tab.content.query
 
         let sql: String
@@ -863,16 +868,15 @@ final class MainContentCoordinator {
         }
     }
 
+    var aiInsertReusesSelectedQueryTab: Bool {
+        guard let (tab, _) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return false }
+        return tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     func insertQueryFromAI(_ query: String) {
-        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-           tab.tabType == .query {
-            let existingQuery = tab.content.query
+        if aiInsertReusesSelectedQueryTab, let (_, tabIndex) = tabManager.selectedTabAndIndex {
             tabManager.mutate(at: tabIndex) { mutTab in
-                if existingQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    mutTab.content.query = query
-                } else {
-                    mutTab.content.query = existingQuery + "\n\n" + query
-                }
+                mutTab.content.query = query
                 mutTab.hasUserInteraction = true
             }
         } else if tabManager.tabs.isEmpty {

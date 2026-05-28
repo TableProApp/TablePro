@@ -52,7 +52,7 @@ final class AppState {
         )
         loadPersistedData()
 
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !TestRuntime.isActive else { return }
 
         secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
         Task {

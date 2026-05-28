@@ -8,10 +8,9 @@ import Combine
 import Foundation
 import Observation
 
-internal struct PendingConnectionError: Equatable {
-    let connectionId: UUID
-    let connectionName: String
-    let message: String
+internal struct PendingConnectionError {
+    let connection: DatabaseConnection
+    let error: Error
 }
 
 @MainActor
@@ -52,11 +51,7 @@ internal final class WelcomeRouter {
     }
 
     internal func routeError(_ error: Error, for connection: DatabaseConnection) {
-        pendingError = PendingConnectionError(
-            connectionId: connection.id,
-            connectionName: connection.name,
-            message: error.localizedDescription
-        )
+        pendingError = PendingConnectionError(connection: connection, error: error)
         showWelcomeWindow()
     }
 

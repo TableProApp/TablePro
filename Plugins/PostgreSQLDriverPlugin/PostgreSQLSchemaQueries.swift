@@ -13,12 +13,12 @@ enum PostgreSQLSchemaQueries {
     /// namespaces and `information_schema`.
     ///
     /// The underscore in the `LIKE` pattern is escaped so it is matched
-    /// literally; without `ESCAPE '\'`, `_` would be SQL LIKE's single-char
-    /// wildcard and `'pg_%'` would also exclude legitimate user schemas such
-    /// as `pgboss`, `pgcrypto`, or `pgvector`.
+    /// literally; without an `ESCAPE` clause, `_` would be SQL LIKE's
+    /// single-char wildcard and `'pg_%'` would also exclude legitimate user
+    /// schemas such as `pgboss`, `pgcrypto`, or `pgvector`.
     static let listSchemas = """
         SELECT schema_name FROM information_schema.schemata
-        WHERE schema_name NOT LIKE 'pg\\_%' ESCAPE '\\'
+        WHERE schema_name NOT LIKE 'pg!_%' ESCAPE '!'
           AND schema_name <> 'information_schema'
         ORDER BY schema_name
         """
@@ -27,8 +27,8 @@ enum PostgreSQLSchemaQueries {
     /// requires the connected role to hold `USAGE` on the schema.
     static let listSchemasRedshift = """
         SELECT nspname FROM pg_namespace
-        WHERE nspname NOT LIKE 'pg\\_%' ESCAPE '\\'
-          AND nspname <> 'information_schema'
+        WHERE nspname NOT LIKE 'pg!_%' ESCAPE '!'
+          AND nspname NOT IN ('information_schema', 'catalog_history')
           AND has_schema_privilege(current_user, nspname, 'USAGE')
         ORDER BY nspname
         """

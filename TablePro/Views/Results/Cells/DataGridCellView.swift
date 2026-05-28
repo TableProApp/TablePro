@@ -337,7 +337,12 @@ final class DataGridCellView: NSView {
             return
         }
         if kind == .foreignKey {
-            accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
+            let openInNewTab = event.modifierFlags.contains(.command)
+            accessoryDelegate?.dataGridCellDidClickFKArrow(
+                row: cellRow,
+                columnIndex: cellColumnIndex,
+                openInNewTab: openInNewTab
+            )
             return
         }
         if kind.showsChevron, !visualState.isDeleted {

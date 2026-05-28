@@ -81,8 +81,12 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func defaultExportQuery(table: String) -> String? {
+        defaultExportQuery(table: table, schema: nil)
+    }
+
+    func defaultExportQuery(table: String, schema: String?) -> String? {
         guard let conn = connection else { return nil }
-        let dataset = lock.withLock { _currentDataset } ?? ""
+        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
         return "SELECT * FROM `\(conn.projectId).\(dataset).\(table)`"
     }
 
@@ -495,8 +499,22 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         limit: Int,
         offset: Int
     ) -> String? {
+        buildBrowseQuery(
+            table: table, schema: nil, sortColumns: sortColumns,
+            columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildBrowseQuery(
+        table: String,
+        schema: String?,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
         let dataset: String = lock.withLock {
-            let ds = _currentDataset ?? ""
+            let ds = schema ?? _currentDataset ?? ""
             _columnCache["\(ds).\(table)"] = columns
             return ds
         }
@@ -515,8 +533,24 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         limit: Int,
         offset: Int
     ) -> String? {
+        buildFilteredQuery(
+            table: table, schema: nil, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
         let dataset: String = lock.withLock {
-            let ds = _currentDataset ?? ""
+            let ds = schema ?? _currentDataset ?? ""
             _columnCache["\(ds).\(table)"] = columns
             return ds
         }

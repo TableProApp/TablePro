@@ -89,7 +89,7 @@ struct ConnectionStatusView: View {
     private var chipKindLabel: String {
         switch databaseGroupingStrategy {
         case .bySchema: return String(localized: "Schema")
-        case .byDatabase, .flat: return String(localized: "Database")
+        case .byDatabase, .flat, .hierarchicalSchema: return String(localized: "Database")
         }
     }
 
@@ -100,7 +100,7 @@ struct ConnectionStatusView: View {
     private var switchableChipTooltip: String {
         let switchVerb: String = switch databaseGroupingStrategy {
         case .bySchema: String(localized: "switch schema")
-        case .byDatabase, .flat: String(localized: "switch database")
+        case .byDatabase, .flat, .hierarchicalSchema: String(localized: "switch database")
         }
         if safeModeLevel == .readOnly {
             return String(
