@@ -49,7 +49,6 @@ internal enum CellInteractionMode: Equatable {
     case editOverlay(value: String)
     case editJson
     case editBlob
-    case editPhpSerialized
 
     case blocked
 }
@@ -60,42 +59,12 @@ internal struct CellInteractionResolver {
 
         let isReadOnly = !context.isTableEditable || context.isImmutableColumn
 
-        if isReadOnly {
-            if let columnType = context.columnType {
-                if columnType.isBlobType { return .viewBlob }
-                if columnType.isJsonType { return .viewJson }
-            }
-            if let override = context.displayFormatOverride {
-                switch override {
-                case .raw:
-                    return .viewInline(value: context.value ?? "NULL")
-                case .json:
-                    return .viewJson
-                case .phpSerialized:
-                    return .viewPhpSerialized
-                case .uuid, .unixTimestamp, .unixTimestampMillis:
-                    break
-                }
-            }
-            let value = context.value ?? ""
-            switch CellValueContentDetector.detect(value) {
-            case .json: return .viewJson
-            case .phpSerialized: return .viewPhpSerialized
-            case .plain: return .viewInline(value: context.value ?? "NULL")
-            }
-        }
-
-        if let columnType = context.columnType {
-            if columnType.isBlobType { return .editBlob }
-            if columnType.isJsonType { return .editJson }
-        }
-
         if let override = context.displayFormatOverride {
             switch override {
             case .raw:
-                break
+                return plainText(for: context, isReadOnly: isReadOnly)
             case .json:
-                return .editJson
+                return isReadOnly ? .viewJson : .editJson
             case .phpSerialized:
                 return .viewPhpSerialized
             case .uuid, .unixTimestamp, .unixTimestampMillis:
@@ -103,15 +72,28 @@ internal struct CellInteractionResolver {
             }
         }
 
+        if let columnType = context.columnType {
+            if columnType.isBlobType { return isReadOnly ? .viewBlob : .editBlob }
+            if columnType.isJsonType { return isReadOnly ? .viewJson : .editJson }
+        }
+
         let value = context.value ?? ""
         switch CellValueContentDetector.detect(value) {
         case .json:
-            return .editJson
+            return isReadOnly ? .viewJson : .editJson
         case .phpSerialized:
             return .viewPhpSerialized
         case .plain:
-            if value.containsLineBreak { return .editOverlay(value: value) }
-            return .editInline(value: value)
+            return plainText(for: context, isReadOnly: isReadOnly)
         }
+    }
+
+    private func plainText(for context: CellContext, isReadOnly: Bool) -> CellInteractionMode {
+        if isReadOnly {
+            return .viewInline(value: context.value ?? "NULL")
+        }
+        let value = context.value ?? ""
+        if value.containsLineBreak { return .editOverlay(value: value) }
+        return .editInline(value: value)
     }
 }

@@ -115,6 +115,17 @@ struct CellInteractionResolverReadOnlyTests {
         )
         #expect(resolver.resolve(context) == .viewPhpSerialized)
     }
+
+    @Test("read-only override .raw on declared JSON column returns viewInline (override beats type)")
+    func readOnlyOverrideRawBypassesJsonColumn() {
+        let context = ContextFactory.make(
+            value: #"{"k":1}"#,
+            columnType: .json(rawType: "JSON"),
+            isTableEditable: false,
+            displayFormatOverride: .raw
+        )
+        #expect(resolver.resolve(context) == .viewInline(value: #"{"k":1}"#))
+    }
 }
 
 @Suite("CellInteractionResolver - editable path")
@@ -163,6 +174,39 @@ struct CellInteractionResolverEditableTests {
             displayFormatOverride: .json
         )
         #expect(resolver.resolve(context) == .editJson)
+    }
+
+    @Test("editable override .raw bypasses JSON content detection")
+    func editableOverrideRawSkipsJson() {
+        let context = ContextFactory.make(
+            value: #"{"k":1}"#,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            displayFormatOverride: .raw
+        )
+        #expect(resolver.resolve(context) == .editInline(value: #"{"k":1}"#))
+    }
+
+    @Test("editable override .raw bypasses PHP content detection")
+    func editableOverrideRawSkipsPhp() {
+        let context = ContextFactory.make(
+            value: "a:0:{}",
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            displayFormatOverride: .raw
+        )
+        #expect(resolver.resolve(context) == .editInline(value: "a:0:{}"))
+    }
+
+    @Test("editable override .raw on multiline value returns editOverlay")
+    func editableOverrideRawMultilineReturnsOverlay() {
+        let context = ContextFactory.make(
+            value: "line1\nline2",
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            displayFormatOverride: .raw
+        )
+        #expect(resolver.resolve(context) == .editOverlay(value: "line1\nline2"))
     }
 
     @Test("editable JSON column returns editJson")
