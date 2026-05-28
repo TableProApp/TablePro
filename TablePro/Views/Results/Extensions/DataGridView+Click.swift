@@ -30,7 +30,7 @@ extension TableViewCoordinator {
             showJSONViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewBlob:
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
-        case .viewPhpSerialized, .editPhpSerialized:
+        case .viewPhpSerialized:
             showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editInline:
             beginCellEdit(row: row, tableColumnIndex: tableColumn)

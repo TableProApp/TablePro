@@ -165,8 +165,7 @@ private struct Cursor {
         guard let length = Int(lengthRaw), length >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "\"")) else { return nil }
         guard index + length <= bytes.count else { return nil }
-        let slice = Array(bytes[index..<(index + length)])
-        guard let decoded = String(bytes: slice, encoding: .utf8) else { return nil }
+        guard let decoded = String(bytes: bytes[index..<(index + length)], encoding: .utf8) else { return nil }
         index += length
         guard expect(UInt8(ascii: "\"")), expect(UInt8(ascii: ";")) else { return nil }
         return .string(decoded)
@@ -178,10 +177,6 @@ private struct Cursor {
         guard let countRaw = readUntil(UInt8(ascii: ":")) else { return nil }
         guard let count = Int(countRaw), count >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "{")) else { return nil }
-
-        if depth >= PhpSerializeParser.depthCap {
-            return .depthExceeded
-        }
 
         var entries: [PhpKeyValue] = []
         entries.reserveCapacity(count)
@@ -201,17 +196,12 @@ private struct Cursor {
         guard let nameLength = Int(nameLengthRaw), nameLength >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "\"")) else { return nil }
         guard index + nameLength <= bytes.count else { return nil }
-        let nameBytes = Array(bytes[index..<(index + nameLength)])
-        guard let className = String(bytes: nameBytes, encoding: .utf8) else { return nil }
+        guard let className = String(bytes: bytes[index..<(index + nameLength)], encoding: .utf8) else { return nil }
         index += nameLength
         guard expect(UInt8(ascii: "\"")), expect(UInt8(ascii: ":")) else { return nil }
         guard let countRaw = readUntil(UInt8(ascii: ":")) else { return nil }
         guard let count = Int(countRaw), count >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "{")) else { return nil }
-
-        if depth >= PhpSerializeParser.depthCap {
-            return .depthExceeded
-        }
 
         var properties: [PhpProperty] = []
         properties.reserveCapacity(count)
@@ -232,16 +222,14 @@ private struct Cursor {
         guard let nameLength = Int(nameLengthRaw), nameLength >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "\"")) else { return nil }
         guard index + nameLength <= bytes.count else { return nil }
-        let nameBytes = Array(bytes[index..<(index + nameLength)])
-        guard let className = String(bytes: nameBytes, encoding: .utf8) else { return nil }
+        guard let className = String(bytes: bytes[index..<(index + nameLength)], encoding: .utf8) else { return nil }
         index += nameLength
         guard expect(UInt8(ascii: "\"")), expect(UInt8(ascii: ":")) else { return nil }
         guard let payloadLengthRaw = readUntil(UInt8(ascii: ":")) else { return nil }
         guard let payloadLength = Int(payloadLengthRaw), payloadLength >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "{")) else { return nil }
         guard index + payloadLength <= bytes.count else { return nil }
-        let payloadBytes = Array(bytes[index..<(index + payloadLength)])
-        let payload = String(bytes: payloadBytes, encoding: .utf8) ?? ""
+        let payload = String(bytes: bytes[index..<(index + payloadLength)], encoding: .utf8) ?? ""
         index += payloadLength
         guard expect(UInt8(ascii: "}")) else { return nil }
         return .serializable(className: className, rawPayload: payload)
@@ -262,8 +250,7 @@ private struct Cursor {
             index += 1
         }
         guard index < bytes.count else { return nil }
-        let slice = Array(bytes[start..<index])
-        return String(bytes: slice, encoding: .utf8)
+        return String(bytes: bytes[start..<index], encoding: .utf8)
     }
 }
 

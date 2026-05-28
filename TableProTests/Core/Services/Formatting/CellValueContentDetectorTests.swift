@@ -61,6 +61,25 @@ struct CellValueContentDetectorTests {
         #expect(CellValueContentDetector.detect("123") == .plain)
     }
 
+    @Test("English text starting with any PHP token character stays plain")
+    func englishStartingWithPhpTokenChars() {
+        #expect(CellValueContentDetector.detect("because of this") == .plain)
+        #expect(CellValueContentDetector.detect("it works correctly") == .plain)
+        #expect(CellValueContentDetector.detect("data not loaded") == .plain)
+        #expect(CellValueContentDetector.detect("Some upper-case text") == .plain)
+        #expect(CellValueContentDetector.detect("Other text starting with O") == .plain)
+        #expect(CellValueContentDetector.detect("Custom message here") == .plain)
+        #expect(CellValueContentDetector.detect("offset = 0") == .plain)
+        #expect(CellValueContentDetector.detect("running test") == .plain)
+        #expect(CellValueContentDetector.detect("Remote URL") == .plain)
+        #expect(CellValueContentDetector.detect("No data found") == .plain)
+    }
+
+    @Test("malformed but PHP-prefix shaped text is detected as PHP (parser rejects later)")
+    func malformedPhpStillDetected() {
+        #expect(CellValueContentDetector.detect("s:99:\"short\";") == .phpSerialized)
+    }
+
     @Test("value above 5 MB is plain regardless of shape")
     func sizeCapEnforced() {
         let huge = String(repeating: "a", count: 5_000_001)
