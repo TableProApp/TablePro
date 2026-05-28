@@ -223,6 +223,83 @@ struct PostGISSpatialRewriteSeparatorTests {
     }
 }
 
+@Suite("PostGISSpatialRewrite.containsSideEffectKeyword")
+struct PostGISSpatialRewriteSideEffectTests {
+    @Test("Plain SELECT has no side effects")
+    func plainSelectClean() {
+        #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT id, geom FROM places"))
+    }
+
+    @Test("nextval call is flagged")
+    func nextvalFlagged() {
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword("SELECT nextval('s'), geom FROM places"))
+    }
+
+    @Test("setval call is flagged")
+    func setvalFlagged() {
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword("SELECT setval('s', 1), geom FROM places"))
+    }
+
+    @Test("nextval is flagged case-insensitively")
+    func nextvalCaseInsensitive() {
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword("SELECT NextVal('s'), geom FROM places"))
+    }
+
+    @Test("Data-modifying CTE with INSERT is flagged")
+    func insertCteFlagged() {
+        let query = "WITH ins AS (INSERT INTO foo VALUES (1) RETURNING geom) SELECT geom FROM ins"
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword(query))
+    }
+
+    @Test("Data-modifying CTE with UPDATE is flagged")
+    func updateCteFlagged() {
+        let query = "WITH u AS (UPDATE places SET name='x' RETURNING point) SELECT point FROM u"
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword(query))
+    }
+
+    @Test("Data-modifying CTE with DELETE is flagged")
+    func deleteCteFlagged() {
+        let query = "WITH d AS (DELETE FROM places RETURNING point) SELECT point FROM d"
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword(query))
+    }
+
+    @Test("Data-modifying CTE with MERGE is flagged")
+    func mergeCteFlagged() {
+        let query = "WITH m AS (MERGE INTO foo USING bar ON foo.id = bar.id WHEN MATCHED THEN UPDATE SET x = 1 RETURNING geom) SELECT geom FROM m"
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword(query))
+    }
+
+    @Test("Table name containing 'update' substring is NOT flagged")
+    func tableNameSubstringNotFlagged() {
+        #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT geom FROM update_log"))
+    }
+
+    @Test("nextval inside a string literal is NOT flagged")
+    func nextvalInStringNotFlagged() {
+        #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT 'nextval is fine' AS msg, geom FROM places"))
+    }
+
+    @Test("INSERT inside a line comment is NOT flagged")
+    func insertInLineCommentNotFlagged() {
+        #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT geom FROM places -- INSERT INTO audit"))
+    }
+
+    @Test("INSERT inside a block comment is NOT flagged")
+    func insertInBlockCommentNotFlagged() {
+        #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT geom /* INSERT INTO audit */ FROM places"))
+    }
+
+    @Test("UPDATE inside a double-quoted identifier is NOT flagged")
+    func updateInQuotedIdentifierNotFlagged() {
+        #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT \"UPDATE\" FROM places"))
+    }
+
+    @Test("nextval inside a dollar-quoted string is NOT flagged")
+    func nextvalInDollarQuoteNotFlagged() {
+        #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT $$nextval('s')$$ AS msg, geom FROM places"))
+    }
+}
+
 @Suite("PostGISSpatialRewrite.isSafeToWrap")
 struct PostGISSpatialRewriteSafeToWrapTests {
     @Test("Simple SELECT with unique columns is safe")
@@ -259,6 +336,22 @@ struct PostGISSpatialRewriteSafeToWrapTests {
         #expect(PostGISSpatialRewrite.isSafeToWrap(
             query: "WITH cte AS (SELECT geom FROM a) SELECT * FROM cte",
             columns: ["geom"]
+        ))
+    }
+
+    @Test("Data-modifying CTE blocks wrap")
+    func dataModifyingCteUnsafe() {
+        #expect(!PostGISSpatialRewrite.isSafeToWrap(
+            query: "WITH ins AS (INSERT INTO foo VALUES (1) RETURNING geom) SELECT geom FROM ins",
+            columns: ["geom"]
+        ))
+    }
+
+    @Test("nextval in SELECT blocks wrap")
+    func nextvalUnsafe() {
+        #expect(!PostGISSpatialRewrite.isSafeToWrap(
+            query: "SELECT nextval('s'), geom FROM places",
+            columns: ["nextval", "geom"]
         ))
     }
 }

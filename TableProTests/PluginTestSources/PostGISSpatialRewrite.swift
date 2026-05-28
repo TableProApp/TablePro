@@ -42,7 +42,76 @@ enum PostGISSpatialRewrite {
     static func isSafeToWrap(query: String, columns: [String]) -> Bool {
         guard hasUniqueColumnNames(columns) else { return false }
         guard startsWithSelectWithOrValues(query) else { return false }
-        return !hasTopLevelStatementSeparator(query)
+        guard !hasTopLevelStatementSeparator(query) else { return false }
+        return !containsSideEffectKeyword(query)
+    }
+
+    static let sideEffectTokens: Set<String> = [
+        "INSERT", "UPDATE", "DELETE", "MERGE", "TRUNCATE", "COPY",
+        "NEXTVAL", "SETVAL"
+    ]
+
+    static func containsSideEffectKeyword(_ query: String) -> Bool {
+        var found = false
+        forEachUnquotedToken(in: query) { token in
+            if sideEffectTokens.contains(token.uppercased()) {
+                found = true
+            }
+        }
+        return found
+    }
+
+    private static func forEachUnquotedToken(in query: String, _ visit: (String) -> Void) {
+        let chars = Array(query)
+        var i = 0
+        var token = ""
+
+        func flushToken() {
+            if !token.isEmpty {
+                visit(token)
+                token = ""
+            }
+        }
+
+        while i < chars.count {
+            let c = chars[i]
+
+            if c == "-", i + 1 < chars.count, chars[i + 1] == "-" {
+                flushToken()
+                while i < chars.count, chars[i] != "\n" { i += 1 }
+                continue
+            }
+            if c == "/", i + 1 < chars.count, chars[i + 1] == "*" {
+                flushToken()
+                i = skipBlockComment(chars, startingAt: i)
+                continue
+            }
+            if c == "'" {
+                flushToken()
+                i = skipSingleQuoted(chars, startingAt: i)
+                continue
+            }
+            if c == "\"" {
+                flushToken()
+                i = skipDoubleQuoted(chars, startingAt: i)
+                continue
+            }
+            if c == "$", let endOfDollar = skipDollarQuoted(chars, startingAt: i) {
+                flushToken()
+                i = endOfDollar
+                continue
+            }
+
+            if c.isLetter || c.isNumber || c == "_" {
+                token.append(c)
+                i += 1
+                continue
+            }
+
+            flushToken()
+            i += 1
+        }
+        flushToken()
     }
 
     static func hasUniqueColumnNames(_ columns: [String]) -> Bool {
