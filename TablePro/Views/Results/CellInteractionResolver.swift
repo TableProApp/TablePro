@@ -11,17 +11,45 @@ internal struct CellContext: Equatable {
     let isTableEditable: Bool
     let isRowDeleted: Bool
     let isImmutableColumn: Bool
+    let columnName: String?
+    let connectionId: UUID?
+    let tableName: String?
+    let displayFormatOverride: ValueDisplayFormat?
+
+    init(
+        columnType: ColumnType?,
+        value: String?,
+        isTableEditable: Bool,
+        isRowDeleted: Bool,
+        isImmutableColumn: Bool,
+        columnName: String? = nil,
+        connectionId: UUID? = nil,
+        tableName: String? = nil,
+        displayFormatOverride: ValueDisplayFormat? = nil
+    ) {
+        self.columnType = columnType
+        self.value = value
+        self.isTableEditable = isTableEditable
+        self.isRowDeleted = isRowDeleted
+        self.isImmutableColumn = isImmutableColumn
+        self.columnName = columnName
+        self.connectionId = connectionId
+        self.tableName = tableName
+        self.displayFormatOverride = displayFormatOverride
+    }
 }
 
 internal enum CellInteractionMode: Equatable {
     case viewInline(value: String)
     case viewJson
     case viewBlob
+    case viewPhpSerialized
 
     case editInline(value: String)
     case editOverlay(value: String)
     case editJson
     case editBlob
+    case editPhpSerialized
 
     case blocked
 }
@@ -37,7 +65,24 @@ internal struct CellInteractionResolver {
                 if columnType.isBlobType { return .viewBlob }
                 if columnType.isJsonType { return .viewJson }
             }
-            return .viewInline(value: context.value ?? "NULL")
+            if let override = context.displayFormatOverride {
+                switch override {
+                case .raw:
+                    return .viewInline(value: context.value ?? "NULL")
+                case .json:
+                    return .viewJson
+                case .phpSerialized:
+                    return .viewPhpSerialized
+                case .uuid, .unixTimestamp, .unixTimestampMillis:
+                    break
+                }
+            }
+            let value = context.value ?? ""
+            switch CellValueContentDetector.detect(value) {
+            case .json: return .viewJson
+            case .phpSerialized: return .viewPhpSerialized
+            case .plain: return .viewInline(value: context.value ?? "NULL")
+            }
         }
 
         if let columnType = context.columnType {
@@ -45,9 +90,28 @@ internal struct CellInteractionResolver {
             if columnType.isJsonType { return .editJson }
         }
 
+        if let override = context.displayFormatOverride {
+            switch override {
+            case .raw:
+                break
+            case .json:
+                return .editJson
+            case .phpSerialized:
+                return .viewPhpSerialized
+            case .uuid, .unixTimestamp, .unixTimestampMillis:
+                break
+            }
+        }
+
         let value = context.value ?? ""
-        if value.containsLineBreak { return .editOverlay(value: value) }
-        if value.looksLikeJson { return .editJson }
-        return .editInline(value: value)
+        switch CellValueContentDetector.detect(value) {
+        case .json:
+            return .editJson
+        case .phpSerialized:
+            return .viewPhpSerialized
+        case .plain:
+            if value.containsLineBreak { return .editOverlay(value: value) }
+            return .editInline(value: value)
+        }
     }
 }

@@ -71,10 +71,49 @@ struct CellInteractionResolverReadOnlyTests {
         #expect(resolver.resolve(context) == .viewJson)
     }
 
-    @Test("read-only JSON-looking plain text without columnType returns viewInline, not viewJson")
-    func readOnlyJsonLikeTextWithoutTypeReturnsViewInline() {
+    @Test("read-only JSON-looking plain text without columnType returns viewJson via detector")
+    func readOnlyJsonLikeTextWithoutTypeReturnsViewJson() {
         let context = ContextFactory.make(value: #"{"k":1}"#, columnType: nil, isTableEditable: false)
+        #expect(resolver.resolve(context) == .viewJson)
+    }
+
+    @Test("read-only PHP-shaped plain text returns viewPhpSerialized")
+    func readOnlyPhpLikeTextReturnsViewPhpSerialized() {
+        let context = ContextFactory.make(value: "a:0:{}", columnType: .text(rawType: "TEXT"), isTableEditable: false)
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
+    }
+
+    @Test("read-only override .raw beats content sniffing")
+    func readOnlyOverrideRawWins() {
+        let context = ContextFactory.make(
+            value: #"{"k":1}"#,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: false,
+            displayFormatOverride: .raw
+        )
         #expect(resolver.resolve(context) == .viewInline(value: #"{"k":1}"#))
+    }
+
+    @Test("read-only override .json forces viewJson on non-JSON text")
+    func readOnlyOverrideJsonForces() {
+        let context = ContextFactory.make(
+            value: "plain",
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: false,
+            displayFormatOverride: .json
+        )
+        #expect(resolver.resolve(context) == .viewJson)
+    }
+
+    @Test("read-only override .phpSerialized forces viewPhpSerialized")
+    func readOnlyOverridePhpSerializedForces() {
+        let context = ContextFactory.make(
+            value: "plain",
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: false,
+            displayFormatOverride: .phpSerialized
+        )
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
     }
 }
 
@@ -97,6 +136,32 @@ struct CellInteractionResolverEditableTests {
     @Test("editable plain text that looks like JSON returns editJson")
     func editableJsonLikeTextReturnsEditJson() {
         let context = ContextFactory.make(value: #"{"k":1}"#, isTableEditable: true)
+        #expect(resolver.resolve(context) == .editJson)
+    }
+
+    @Test("editable PHP-shaped text returns viewPhpSerialized (read-only)")
+    func editablePhpLikeTextReturnsView() {
+        let context = ContextFactory.make(value: "a:0:{}", isTableEditable: true)
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
+    }
+
+    @Test("editable override .phpSerialized forces viewPhpSerialized")
+    func editableOverridePhpForces() {
+        let context = ContextFactory.make(
+            value: "plain",
+            isTableEditable: true,
+            displayFormatOverride: .phpSerialized
+        )
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
+    }
+
+    @Test("editable override .json forces editJson")
+    func editableOverrideJsonForces() {
+        let context = ContextFactory.make(
+            value: "plain",
+            isTableEditable: true,
+            displayFormatOverride: .json
+        )
         #expect(resolver.resolve(context) == .editJson)
     }
 
@@ -147,14 +212,16 @@ private enum ContextFactory {
         columnType: ColumnType? = nil,
         isTableEditable: Bool = false,
         isRowDeleted: Bool = false,
-        isImmutableColumn: Bool = false
+        isImmutableColumn: Bool = false,
+        displayFormatOverride: ValueDisplayFormat? = nil
     ) -> CellContext {
         CellContext(
             columnType: columnType,
             value: value,
             isTableEditable: isTableEditable,
             isRowDeleted: isRowDeleted,
-            isImmutableColumn: isImmutableColumn
+            isImmutableColumn: isImmutableColumn,
+            displayFormatOverride: displayFormatOverride
         )
     }
 }

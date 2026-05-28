@@ -1720,6 +1720,16 @@
     "%d selected" : {
 
     },
+    "%d-%d of ? rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d-%2$d of ? rows"
+          }
+        }
+      }
+    },
     "%d-%d of %@%@ rows" : {
       "localizations" : {
         "en" : {
@@ -1929,6 +1939,7 @@
       }
     },
     "%lld of %lld" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5367,6 +5378,9 @@
           }
         }
       }
+    },
+    "All rows…" : {
+
     },
     "ALL SCHEMAS" : {
       "extractionState" : "stale",
@@ -9462,6 +9476,9 @@
         }
       }
     },
+    "Clear Results" : {
+
+    },
     "Clear search" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10163,6 +10180,9 @@
 
     },
     "cloudflared was not found. Install it with `brew install cloudflared`, or set its path in the connection's Cloudflare Tunnel settings." : {
+
+    },
+    "cloudflared was not found. Set its path below first." : {
 
     },
     "CMD" : {
@@ -13035,6 +13055,16 @@
     "Could Not Reset Sample" : {
 
     },
+    "Could not run the credential_process command for profile \"%@\": %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not run the credential_process command for profile \"%1$@\": %2$@"
+          }
+        }
+      }
+    },
     "Could not save the connection. Check disk space and permissions, then try again." : {
 
     },
@@ -13986,6 +14016,9 @@
       }
     },
     "Custom Slash Commands" : {
+
+    },
+    "Custom…" : {
 
     },
     "Customization" : {
@@ -22116,6 +22149,12 @@
     "First column" : {
 
     },
+    "First page" : {
+
+    },
+    "First Page" : {
+
+    },
     "Fit to Window" : {
       "localizations" : {
         "tr" : {
@@ -22401,6 +22440,7 @@
       }
     },
     "Format JSON" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -23023,6 +23063,9 @@
           }
         }
       }
+    },
+    "Go to page" : {
+
     },
     "Go to Settings…" : {
       "localizations" : {
@@ -25789,6 +25832,9 @@
         }
       }
     },
+    "Invalid PHP Serialized Value" : {
+
+    },
     "Invalid plugin bundle: %@" : {
       "localizations" : {
         "tr" : {
@@ -26627,6 +26673,12 @@
     "Last Activity" : {
 
     },
+    "Last page" : {
+
+    },
+    "Last Page" : {
+
+    },
     "Last query execution summary" : {
       "localizations" : {
         "tr" : {
@@ -27229,6 +27281,7 @@
       }
     },
     "Limit" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27726,6 +27779,9 @@
           }
         }
       }
+    },
+    "Loading tables…" : {
+
     },
     "Loading..." : {
       "localizations" : {
@@ -28401,6 +28457,9 @@
           }
         }
       }
+    },
+    "Maximum depth reached" : {
+
     },
     "Maximum entries cannot be negative" : {
       "localizations" : {
@@ -30114,6 +30173,9 @@
         }
       }
     },
+    "Next page" : {
+
+    },
     "Next Page" : {
       "localizations" : {
         "tr" : {
@@ -30137,6 +30199,7 @@
       }
     },
     "Next Page (⌘])" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30676,6 +30739,9 @@
       }
     },
     "No databases match “%@”" : {
+
+    },
+    "No Datasets" : {
 
     },
     "No DDL available" : {
@@ -31653,6 +31719,9 @@
         }
       }
     },
+    "No tables" : {
+
+    },
     "No Tables" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -32566,6 +32635,7 @@
       }
     },
     "Offset" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32749,6 +32819,9 @@
           }
         }
       }
+    },
+    "Open %@ in New Tab" : {
+
     },
     "Open a connection to insert" : {
 
@@ -33711,6 +33784,9 @@
         }
       }
     },
+    "Page number" : {
+
+    },
     "Page Size" : {
       "localizations" : {
         "tr" : {
@@ -33806,6 +33882,7 @@
       }
     },
     "Pagination Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -34460,6 +34537,15 @@
           }
         }
       }
+    },
+    "PHP — %@" : {
+
+    },
+    "PHP Serialized" : {
+
+    },
+    "PHP Viewer" : {
+
     },
     "Pick the type of database you want to connect to." : {
 
@@ -35801,6 +35887,9 @@
         }
       }
     },
+    "Previous page" : {
+
+    },
     "Previous Page" : {
       "localizations" : {
         "tr" : {
@@ -35824,6 +35913,7 @@
       }
     },
     "Previous Page (⌘[)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -36050,6 +36140,9 @@
         }
       }
     },
+    "private (%@)" : {
+
+    },
     "Private Key" : {
       "localizations" : {
         "tr" : {
@@ -36232,7 +36325,7 @@
     "Profile \"%@\" not found in ~/.aws/config." : {
 
     },
-    "Profile \"%@\" was not found or is missing keys in ~/.aws/credentials." : {
+    "Profile \"%@\" was not found, or has no access keys or credential_process, in ~/.aws/config or ~/.aws/credentials." : {
 
     },
     "Profile Details" : {
@@ -36368,6 +36461,9 @@
 
     },
     "Prompt template" : {
+
+    },
+    "protected" : {
 
     },
     "Providers" : {
@@ -39859,6 +39955,9 @@
         }
       }
     },
+    "Rows per page" : {
+
+    },
     "Rules" : {
 
     },
@@ -42693,6 +42792,9 @@
         }
       }
     },
+    "Show All Rows" : {
+
+    },
     "Show All Tables" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -44561,6 +44663,9 @@
           }
         }
       }
+    },
+    "SSH tunnel disconnected. Click to reconnect." : {
+
     },
     "SSH tunneling and SSL/TLS encryption support" : {
       "localizations" : {
@@ -47260,6 +47365,32 @@
         }
       }
     },
+    "The credential_process command for profile \"%@\" did not return valid credentials JSON." : {
+
+    },
+    "The credential_process command for profile \"%@\" exited with status %lld.%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The credential_process command for profile \"%1$@\" exited with status %2$lld.%3$@"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" is empty or invalid." : {
+
+    },
+    "The credential_process command for profile \"%@\" returned unsupported Version %lld (expected 1)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The credential_process command for profile \"%1$@\" returned unsupported Version %2$lld (expected 1)."
+          }
+        }
+      }
+    },
     "The destructive query to execute" : {
 
     },
@@ -47609,6 +47740,9 @@
           }
         }
       }
+    },
+    "The value could not be parsed. Use raw mode to inspect it as text." : {
+
     },
     "Theme" : {
       "extractionState" : "stale",
@@ -48257,6 +48391,9 @@
         }
       }
     },
+    "This project has no datasets yet." : {
+
+    },
     "This query may permanently modify or delete data." : {
       "localizations" : {
         "tr" : {
@@ -48380,6 +48517,9 @@
         }
       }
     },
+    "This value is too large to parse. Use raw mode to inspect it as text." : {
+
+    },
     "This Week" : {
       "localizations" : {
         "tr" : {
@@ -48467,6 +48607,9 @@
           }
         }
       }
+    },
+    "This will load all %@ rows on a single page. Large result sets use significant memory. Continue?" : {
+
     },
     "This will permanently delete %lld %@. This action cannot be undone." : {
       "localizations" : {
@@ -50746,6 +50889,9 @@
         }
       }
     },
+    "Unsupported token: %@" : {
+
+    },
     "Untitled" : {
       "localizations" : {
         "tr" : {
@@ -51515,6 +51661,12 @@
           }
         }
       }
+    },
+    "Value Too Large" : {
+
+    },
+    "Value too large to parse" : {
+
     },
     "VERBOSE (print progress)" : {
       "localizations" : {

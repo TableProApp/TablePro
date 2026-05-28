@@ -1,0 +1,69 @@
+//
+//  CellValueContentDetectorTests.swift
+//  TableProTests
+//
+
+import Foundation
+import Testing
+
+@testable import TablePro
+
+@Suite("CellValueContentDetector")
+struct CellValueContentDetectorTests {
+    @Test("empty string is plain")
+    func emptyIsPlain() {
+        #expect(CellValueContentDetector.detect("") == .plain)
+    }
+
+    @Test("JSON object is detected")
+    func jsonObjectDetected() {
+        #expect(CellValueContentDetector.detect(#"{"a":1}"#) == .json)
+    }
+
+    @Test("JSON array is detected")
+    func jsonArrayDetected() {
+        #expect(CellValueContentDetector.detect("[1,2,3]") == .json)
+    }
+
+    @Test("Invalid JSON falls through to plain")
+    func invalidJsonIsPlain() {
+        #expect(CellValueContentDetector.detect("{not json") == .plain)
+    }
+
+    @Test("PHP null is detected")
+    func phpNullDetected() {
+        #expect(CellValueContentDetector.detect("N;") == .phpSerialized)
+    }
+
+    @Test("PHP array is detected")
+    func phpArrayDetected() {
+        #expect(CellValueContentDetector.detect("a:0:{}") == .phpSerialized)
+    }
+
+    @Test("PHP object is detected")
+    func phpObjectDetected() {
+        #expect(CellValueContentDetector.detect("O:4:\"User\":0:{}") == .phpSerialized)
+    }
+
+    @Test("plain text starting with s: stays plain when not PHP-shaped")
+    func plainSPrefix() {
+        #expect(CellValueContentDetector.detect("some text") == .plain)
+    }
+
+    @Test("plain text starting with a stays plain")
+    func plainAPrefix() {
+        #expect(CellValueContentDetector.detect("a quick brown fox") == .plain)
+    }
+
+    @Test("plain JSON-looking text without object braces is plain")
+    func barePrimitiveIsPlain() {
+        #expect(CellValueContentDetector.detect("hello world") == .plain)
+        #expect(CellValueContentDetector.detect("123") == .plain)
+    }
+
+    @Test("value above 5 MB is plain regardless of shape")
+    func sizeCapEnforced() {
+        let huge = String(repeating: "a", count: 5_000_001)
+        #expect(CellValueContentDetector.detect(huge) == .plain)
+    }
+}

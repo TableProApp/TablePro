@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle Database 11g (11.1 and 11.2) now connects. Previously only 12c and later worked, so 11g servers failed with a "Server Version Not Supported" error. (#1425)
 - Oracle connections can now use a SID instead of a service name. Set Connection Type to SID in the connection form and enter the SID. (#1425)
 - Cmd-click a foreign key arrow to open the referenced table in a new tab instead of the current one. The right-click menu has the same Open in New Tab option. (#1421)
+- Cells holding JSON or PHP serialized values in text columns now open in the structured viewer automatically, without requiring the column type to be JSON.
 
 ### Changed
 
