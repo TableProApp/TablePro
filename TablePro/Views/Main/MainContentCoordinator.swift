@@ -126,6 +126,10 @@ final class MainContentCoordinator {
     /// Direct reference to structure view actions — eliminates notification broadcasts
     weak var structureActions: StructureViewActionHandler?
 
+    /// Published capability/labels for the structure-mode footer in the bottom status bar.
+    /// `TableStructureView` writes to this; `MainStatusBarView` reads from it.
+    let structureFooterState = StructureFooterState()
+
     /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
     weak var aiViewModel: AIChatViewModel?
 
@@ -175,6 +179,7 @@ final class MainContentCoordinator {
 
     @ObservationIgnored internal var queryGeneration: Int = 0
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
+    @ObservationIgnored internal var tableLoadTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
@@ -612,6 +617,8 @@ final class MainContentCoordinator {
         fileWatcher = nil
         currentQueryTask?.cancel()
         currentQueryTask = nil
+        for task in tableLoadTasks.values { task.cancel() }
+        tableLoadTasks.removeAll()
         changeManagerUpdateTask?.cancel()
         changeManagerUpdateTask = nil
         redisDatabaseSwitchTask?.cancel()

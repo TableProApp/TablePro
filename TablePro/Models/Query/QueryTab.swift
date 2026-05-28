@@ -130,6 +130,10 @@ struct QueryTab: Identifiable, Equatable {
         }
     }
 
+    static func fileDisplayTitle(for url: URL) -> String {
+        FileManager.default.displayName(atPath: url.path(percentEncoded: false))
+    }
+
     var hasUserActiveSort: Bool {
         sortState.isSorting && sortState.source == .user
     }

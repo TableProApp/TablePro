@@ -59,8 +59,16 @@ struct MainStatusBarView: View {
     // Truncated result callback
     var onFetchAll: (() -> Void)?
 
+    // Structure-mode footer accessory (Add/Remove buttons)
+    let structureFooterState: StructureFooterState?
+    let onStructureAdd: (() -> Void)?
+    let onStructureRemove: (() -> Void)?
+
     private var hasHiddenColumns: Bool { !hiddenColumns.isEmpty }
     private var hiddenCount: Int { hiddenColumns.count }
+
+    private var isStructureMode: Bool { viewMode == .structure }
+    private var showsDataChrome: Bool { !isStructureMode }
 
     var body: some View {
         HStack {
@@ -89,8 +97,7 @@ struct MainStatusBarView: View {
 
             Spacer()
 
-            // Center: Row info (selection or pagination summary) and status message
-            if snapshot.hasRows {
+            if showsDataChrome, snapshot.hasRows {
                 HStack(spacing: 4) {
                     if snapshot.pagination.isLoadingMore {
                         ProgressView()
@@ -132,71 +139,74 @@ struct MainStatusBarView: View {
 
             Spacer()
 
-            // Right: Columns, Filters toggle and Pagination controls
             HStack(spacing: 8) {
-                // Columns visibility button (works for both table and query tabs)
-                if snapshot.hasColumns {
-                    Button {
-                        showColumnPopover.toggle()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: hasHiddenColumns
-                                    ? "eye.slash.circle.fill"
-                                    : "eye.circle")
-                            Text("Columns")
-                            if hasHiddenColumns {
-                                let visible = allColumns.count - hiddenCount
-                                Text("(\(visible)/\(allColumns.count))")
-                                    .foregroundStyle(.secondary)
+                if isStructureMode, let state = structureFooterState, state.isActive {
+                    structureFooterControls(state: state)
+                }
+
+                if showsDataChrome {
+                    if snapshot.hasColumns {
+                        Button {
+                            showColumnPopover.toggle()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: hasHiddenColumns
+                                        ? "eye.slash.circle.fill"
+                                        : "eye.circle")
+                                Text("Columns")
+                                if hasHiddenColumns {
+                                    let visible = allColumns.count - hiddenCount
+                                    Text("(\(visible)/\(allColumns.count))")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
+                        .controlSize(.small)
+                        .popover(isPresented: $showColumnPopover) {
+                            ColumnVisibilityPopover(
+                                columns: allColumns,
+                                hiddenColumns: hiddenColumns,
+                                onToggleColumn: onToggleColumn,
+                                onShowAll: onShowAllColumns,
+                                onHideAll: onHideAllColumns
+                            )
+                        }
                     }
-                    .controlSize(.small)
-                    .popover(isPresented: $showColumnPopover) {
-                        ColumnVisibilityPopover(
-                            columns: allColumns,
-                            hiddenColumns: hiddenColumns,
-                            onToggleColumn: onToggleColumn,
-                            onShowAll: onShowAllColumns,
-                            onHideAll: onHideAllColumns
+
+                    if snapshot.tabType == .table, snapshot.hasTableName {
+                        Toggle(isOn: Binding(
+                            get: { filterState.isVisible },
+                            set: { _ in onToggleFilters() }
+                        )) {
+                            HStack(spacing: 4) {
+                                Image(systemName: filterState.hasAppliedFilters
+                                        ? "line.3.horizontal.decrease.circle.fill"
+                                        : "line.3.horizontal.decrease.circle")
+                                Text("Filters")
+                                if filterState.hasAppliedFilters {
+                                    Text("(\(filterState.appliedFilters.count))")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .toggleStyle(.button)
+                        .controlSize(.small)
+                        .help(String(localized: "Toggle Filters (⇧⌘F)"))
+                    }
+
+                    if snapshot.tabType == .table, snapshot.hasTableName, showsPaginationControls {
+                        PaginationControlsView(
+                            pagination: snapshot.pagination,
+                            loadedRowCount: snapshot.rowCount,
+                            onFirst: onFirstPage,
+                            onPrevious: onPreviousPage,
+                            onNext: onNextPage,
+                            onLast: onLastPage,
+                            onPageSizeChange: onPageSizeChange,
+                            onShowAll: onShowAll,
+                            onGoToPage: onGoToPage
                         )
                     }
-                }
-
-                // Filters toggle button
-                if snapshot.tabType == .table, snapshot.hasTableName {
-                    Toggle(isOn: Binding(
-                        get: { filterState.isVisible },
-                        set: { _ in onToggleFilters() }
-                    )) {
-                        HStack(spacing: 4) {
-                            Image(systemName: filterState.hasAppliedFilters
-                                    ? "line.3.horizontal.decrease.circle.fill"
-                                    : "line.3.horizontal.decrease.circle")
-                            Text("Filters")
-                            if filterState.hasAppliedFilters {
-                                Text("(\(filterState.appliedFilters.count))")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .toggleStyle(.button)
-                    .controlSize(.small)
-                    .help(String(localized: "Toggle Filters (⇧⌘F)"))
-                }
-
-                if snapshot.tabType == .table, snapshot.hasTableName, showsPaginationControls {
-                    PaginationControlsView(
-                        pagination: snapshot.pagination,
-                        loadedRowCount: snapshot.rowCount,
-                        onFirst: onFirstPage,
-                        onPrevious: onPreviousPage,
-                        onNext: onNextPage,
-                        onLast: onLastPage,
-                        onPageSizeChange: onPageSizeChange,
-                        onShowAll: onShowAll,
-                        onGoToPage: onGoToPage
-                    )
                 }
             }
         }
@@ -206,6 +216,34 @@ struct MainStatusBarView: View {
         .onChange(of: snapshot.tabId) { _, _ in
             showColumnPopover = false
         }
+    }
+
+    @ViewBuilder
+    private func structureFooterControls(state: StructureFooterState) -> some View {
+        ControlGroup {
+            Button {
+                onStructureAdd?()
+            } label: {
+                Label(state.addLabel, systemImage: "plus")
+                    .labelStyle(.iconOnly)
+            }
+            .help(state.addLabel)
+            .accessibilityLabel(state.addLabel)
+            .disabled(!state.canAdd)
+
+            Button {
+                onStructureRemove?()
+            } label: {
+                Label(state.removeLabel, systemImage: "minus")
+                    .labelStyle(.iconOnly)
+            }
+            .help(state.removeLabel)
+            .accessibilityLabel(state.removeLabel)
+            .disabled(!state.canRemove)
+        }
+        .controlGroupStyle(.navigation)
+        .controlSize(.small)
+        .fixedSize()
     }
 
     private var showsPaginationControls: Bool {

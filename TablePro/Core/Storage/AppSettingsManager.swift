@@ -146,16 +146,36 @@ final class AppSettingsManager {
             let remoteChanged = mcp.allowRemoteConnections != oldValue.allowRemoteConnections
             let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
             if enabledChanged || portChanged || remoteChanged || authChanged {
-                let settings = mcp
-                Task { [mcpServerManager] in
-                    if settings.enabled {
-                        await mcpServerManager.restart(port: UInt16(clamping: settings.port))
-                    } else {
-                        await mcpServerManager.stop()
-                    }
+                if mcp.enabled {
+                    mcpServerManager.scheduleRestart(port: UInt16(clamping: mcp.port))
+                } else {
+                    mcpServerManager.scheduleStop()
                 }
             }
         }
+    }
+
+    @MainActor
+    func setRequireAuthentication(_ value: Bool) async -> (token: MCPAuthToken, plaintext: String)? {
+        guard value, !mcp.requireAuthentication else {
+            mcp.requireAuthentication = value
+            return nil
+        }
+
+        let tokenStore = mcpServerManager.tokenStore ?? MCPTokenStore()
+        if mcpServerManager.tokenStore == nil {
+            await tokenStore.loadFromDisk()
+        }
+        let existing = await tokenStore.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
+        guard existing.isEmpty else {
+            mcp.requireAuthentication = value
+            return nil
+        }
+
+        let defaultName = String(localized: "Default token")
+        let result = await tokenStore.generate(name: defaultName, permissions: .fullAccess)
+        mcp.requireAuthentication = value
+        return result
     }
 
     @ObservationIgnored private let storage: AppSettingsStorage

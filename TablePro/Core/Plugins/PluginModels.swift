@@ -39,6 +39,7 @@ struct RejectedPlugin: Sendable {
     let name: String
     let reason: String
     let isOutdated: Bool
+    let providedDatabaseTypeIds: [String]
 }
 
 extension PluginEntry {

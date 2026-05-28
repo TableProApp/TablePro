@@ -2,8 +2,11 @@
 //  FieldEditorResolver.swift
 //  TablePro
 
+import Foundation
+
 internal enum FieldEditorKind: Equatable {
     case json
+    case phpSerialized
     case blobHex
     case boolean
     case enumPicker(values: [String])
@@ -14,9 +17,35 @@ internal enum FieldEditorKind: Equatable {
 
 @MainActor
 internal enum FieldEditorResolver {
-    static func resolve(for type: ColumnType, isLongText: Bool, originalValue: String?) -> FieldEditorKind {
-        if type.isJsonType || (originalValue ?? "").looksLikeJson {
-            return .json
+    static func resolve(
+        for type: ColumnType,
+        isLongText: Bool,
+        originalValue: String?,
+        displayFormatOverride: ValueDisplayFormat? = nil
+    ) -> FieldEditorKind {
+        let structuredAllowed: Bool
+        if let override = displayFormatOverride {
+            switch override {
+            case .raw:
+                structuredAllowed = false
+            case .phpSerialized:
+                return .phpSerialized
+            case .json:
+                return .json
+            case .uuid, .unixTimestamp, .unixTimestampMillis:
+                structuredAllowed = true
+            }
+        } else {
+            structuredAllowed = true
+        }
+
+        if structuredAllowed {
+            if type.isJsonType || (originalValue ?? "").looksLikeJson {
+                return .json
+            }
+            if CellValueContentDetector.detect(originalValue ?? "") == .phpSerialized {
+                return .phpSerialized
+            }
         }
         if type.isEnumType, let values = type.enumValues, !values.isEmpty {
             return .enumPicker(values: values)

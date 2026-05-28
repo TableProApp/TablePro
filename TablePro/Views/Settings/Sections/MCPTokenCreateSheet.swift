@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct MCPTokenCreateSheet: View {
+    private enum Field: Hashable {
+        case name
+    }
+
     @Environment(\.dismiss) private var dismiss
     let onGenerate: (String, TokenPermissions, Set<UUID>?, Date?) -> Void
 
@@ -11,6 +15,7 @@ struct MCPTokenCreateSheet: View {
     @State private var expirationOption: ExpirationOption = .never
     @State private var customExpirationDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
     @State private var connections: [DatabaseConnection] = []
+    @FocusState private var focused: Field?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +34,7 @@ struct MCPTokenCreateSheet: View {
                 .padding()
         }
         .frame(minWidth: 480, minHeight: 520)
+        .defaultFocus($focused, .name)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
         }
@@ -37,6 +43,7 @@ struct MCPTokenCreateSheet: View {
     private var nameSection: some View {
         Section(String(localized: "Token Name")) {
             TextField(String(localized: "e.g., Claude Code on VPS"), text: $tokenName)
+                .focused($focused, equals: .name)
         }
     }
 

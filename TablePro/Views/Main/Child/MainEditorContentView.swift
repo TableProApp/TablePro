@@ -759,7 +759,10 @@ struct MainEditorContentView: View {
             onShowAllColumns: { coordinator.showAllColumns() },
             onHideAllColumns: { coordinator.hideAllColumns($0) },
             onToggleFilters: { coordinator.toggleFilterPanel() },
-            onFetchAll: { coordinator.fetchAllRows() }
+            onFetchAll: { coordinator.fetchAllRows() },
+            structureFooterState: coordinator.structureFooterState,
+            onStructureAdd: { coordinator.structureActions?.addRow?() },
+            onStructureRemove: { coordinator.structureActions?.removeRow?() }
         )
     }
 

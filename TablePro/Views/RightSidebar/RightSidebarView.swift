@@ -19,6 +19,7 @@ struct RightSidebarView: View {
 
     @State private var searchText: String = ""
     @State private var expandedJsonFieldId: UUID?
+    @State private var expandedPhpFieldId: UUID?
 
     // MARK: - Inspector Mode
 
@@ -133,6 +134,10 @@ struct RightSidebarView: View {
            let field = editState.fields.first(where: { $0.id == expandedId }) {
             expandedJsonViewer(field: field, isEditable: contentMode == .editRow)
                 .onChange(of: selectedRowData?.count) { expandedJsonFieldId = nil }
+        } else if let expandedId = expandedPhpFieldId,
+                  let field = editState.fields.first(where: { $0.id == expandedId }) {
+            expandedPhpViewer(field: field)
+                .onChange(of: selectedRowData?.count) { expandedPhpFieldId = nil }
         } else {
             fieldListForm(rowData)
         }
@@ -197,6 +202,50 @@ struct RightSidebarView: View {
         )
     }
 
+    // MARK: - Expanded PHP Viewer
+
+    private func expandedPhpViewer(field: FieldEditState) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { expandedPhpFieldId = nil } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Fields")
+                    }
+                }
+                .buttonStyle(.borderless)
+
+                Spacer()
+
+                Text(field.columnName)
+                    .font(.headline)
+
+                Spacer()
+
+                Button {
+                    popOutPhpField(field: field)
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Open in Window"))
+
+                TypeBadge(field.columnTypeEnum.badgeLabel)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            PhpViewerView(rawValue: field.pendingValue ?? field.originalValue ?? "")
+        }
+    }
+
+    private func popOutPhpField(text: String? = nil, field: FieldEditState) {
+        let text = text ?? field.pendingValue ?? field.originalValue
+        PhpViewerWindowController.open(text: text, columnName: field.columnName)
+    }
+
     // MARK: - Field List
 
     private func fieldListForm(
@@ -247,11 +296,14 @@ struct RightSidebarView: View {
 
     @ViewBuilder
     private func fieldDetailRow(_ field: FieldEditState, at index: Int, isEditable: Bool) -> some View {
-        let isJsonField = FieldEditorResolver.resolve(
+        let kind = FieldEditorResolver.resolve(
             for: field.columnTypeEnum,
             isLongText: field.isLongText,
             originalValue: field.originalValue
-        ) == .json
+        )
+        let isJsonField = kind == .json
+        let isPhpField = kind == .phpSerialized
+        let isStructuredField = isJsonField || isPhpField
 
         FieldDetailView(
             context: FieldEditorContext(
@@ -264,7 +316,7 @@ struct RightSidebarView: View {
                 ) : .constant(field.originalValue ?? ""),
                 originalValue: field.originalValue,
                 hasMultipleValues: field.hasMultipleValues,
-                isReadOnly: !isEditable,
+                isReadOnly: !isEditable || isPhpField,
                 commitBytes: isEditable ? { data in editState.setFieldToBytes(at: index, data: data) } : nil
             ),
             isPendingNull: field.isPendingNull,
@@ -277,9 +329,19 @@ struct RightSidebarView: View {
             onSetFunction: { editState.setFieldToFunction(at: index, function: $0) },
             isPrimaryKey: field.isPrimaryKey,
             isForeignKey: field.isForeignKey,
-            onExpand: isJsonField ? { expandedJsonFieldId = field.id } : nil,
-            onPopOut: isJsonField ? { currentText in
-                popOutJsonField(text: currentText, field: field, isEditable: isEditable)
+            onExpand: isStructuredField ? {
+                if isJsonField {
+                    expandedJsonFieldId = field.id
+                } else {
+                    expandedPhpFieldId = field.id
+                }
+            } : nil,
+            onPopOut: isStructuredField ? { currentText in
+                if isJsonField {
+                    popOutJsonField(text: currentText, field: field, isEditable: isEditable)
+                } else {
+                    popOutPhpField(text: currentText, field: field)
+                }
             } : nil
         )
     }

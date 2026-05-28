@@ -12,7 +12,9 @@ Open JSON values from cells in two view modes: Text and Tree.
 - Double-click a cell whose value parses as JSON, or
 - Click the chevron in a JSON-typed column.
 
-The viewer opens as a popover anchored to the cell.
+The viewer opens as a popover anchored to the cell. JSON values stored in a `TEXT` or `VARCHAR` column open the viewer the same way; double-click runs a parse and routes to the structured viewer when the value parses cleanly.
+
+To opt out for a specific column, right-click the column header and pick **Display as > Raw Value**. Pick **Display as > JSON** to force JSON routing on a column whose values do not start with `{` or `[`.
 
 ## Modes
 

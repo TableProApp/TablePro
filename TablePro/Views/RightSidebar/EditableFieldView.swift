@@ -109,6 +109,8 @@ internal struct FieldDetailView: View {
         switch kind {
         case .json:
             return context.isReadOnly ? 60 : 80
+        case .phpSerialized:
+            return 80
         case .blobHex:
             return 60
         default:
@@ -123,6 +125,8 @@ internal struct FieldDetailView: View {
         switch kind {
         case .json:
             JsonEditorView(context: context, onExpand: onExpand, onPopOut: onPopOut)
+        case .phpSerialized:
+            PhpSerializedFieldView(context: context, onExpand: onExpand, onPopOut: onPopOut)
         case .blobHex:
             BlobHexEditorView(context: context)
         case .boolean:

@@ -72,6 +72,8 @@ For manual configuration, see [MCP Clients](/external-api/mcp-clients). The HTTP
 
 Tokens are managed under **Settings > Integrations > Authentication**. The pairing flow, scopes, allowlists, expiry, and revocation are documented in [Tokens](/external-api/tokens).
 
+When **Require authentication** is off and the server is bound to localhost only, requests from your own machine are accepted without a bearer token. Remote connections always require a token. Turning **Require authentication** on for the first time creates a default token, writes it to disk, and shows it once so you can copy it; existing tokens are left untouched.
+
 The activity log under **Settings > Integrations > Activity Log** shows every authentication, tool call, and resource read with the token id, category, action, connection, and outcome. Entries are kept for 90 days.
 
 ## Remote access
