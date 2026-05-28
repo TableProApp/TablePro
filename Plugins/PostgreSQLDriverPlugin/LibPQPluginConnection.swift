@@ -101,6 +101,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _cachedServerVersion: String?
     private var _cachedServerVersionNumber: Int32 = 0
     private var _isCancelled: Bool = false
+    private var _postgisOidMap: [UInt32: String] = [:]
 
     var isConnected: Bool {
         stateLock.lock()
@@ -247,6 +248,20 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    // MARK: - PostGIS OID Map
+
+    func setPostgisOidMap(_ map: [UInt32: String]) {
+        stateLock.lock()
+        _postgisOidMap = map
+        stateLock.unlock()
+    }
+
+    private var postgisOidMap: [UInt32: String] {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _postgisOidMap
+    }
+
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
@@ -337,9 +352,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             )
 
         case PGRES_TUPLES_OK:
-            let queryResult = try fetchResults(from: result)
-            PQclear(result)
-            return queryResult
+            defer { PQclear(result) }
+            return try fetchResults(from: result, originalQuery: localQuery)
 
         default:
             let error = getResultError(from: result)
@@ -441,9 +455,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             )
 
         case PGRES_TUPLES_OK:
-            let queryResult = try fetchResults(from: result)
-            PQclear(result)
-            return queryResult
+            defer { PQclear(result) }
+            return try fetchResults(from: result, originalQuery: nil)
 
         default:
             let error = getResultError(from: result)
@@ -647,10 +660,44 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Result Parsing
 
-    private func fetchResults(from result: OpaquePointer) throws -> LibPQPluginQueryResult {
-        let numFields = Int(PQnfields(result))
-        let numRows = Int(PQntuples(result))
+    private func fetchResults(from result: OpaquePointer, originalQuery: String?) throws -> LibPQPluginQueryResult {
+        let metadata = readColumnMetadata(from: result)
 
+        let oidMap = postgisOidMap
+        if !oidMap.isEmpty, let query = originalQuery {
+            let spatialIndices = Set(metadata.columnOids.enumerated().compactMap { idx, oid in
+                oidMap[oid] != nil ? idx : nil
+            })
+            if !spatialIndices.isEmpty,
+               PostGISSpatialRewrite.isSafeToWrap(query: query, columns: metadata.columns) {
+                if let rewritten = try executeSpatialRewrite(
+                    originalQuery: query,
+                    columns: metadata.columns,
+                    originalColumnOids: metadata.columnOids,
+                    spatialIndices: spatialIndices,
+                    oidMap: oidMap
+                ) {
+                    return rewritten
+                }
+            }
+        }
+
+        return try parseRows(
+            from: result,
+            columns: metadata.columns,
+            columnOids: metadata.columnOids,
+            columnTypeNames: metadata.columnTypeNames
+        )
+    }
+
+    private struct ColumnMetadata {
+        let columns: [String]
+        let columnOids: [UInt32]
+        let columnTypeNames: [String]
+    }
+
+    private func readColumnMetadata(from result: OpaquePointer) -> ColumnMetadata {
+        let numFields = Int(PQnfields(result))
         var columns: [String] = []
         var columnOids: [UInt32] = []
         var columnTypeNames: [String] = []
@@ -664,11 +711,63 @@ final class LibPQPluginConnection: @unchecked Sendable {
             } else {
                 columns.append("column_\(i)")
             }
-
-            let oid = PQftype(result, Int32(i))
-            columnOids.append(UInt32(oid))
-            columnTypeNames.append(pgOidToTypeName(UInt32(oid)))
+            let oid = UInt32(PQftype(result, Int32(i)))
+            columnOids.append(oid)
+            columnTypeNames.append(pgOidToTypeName(oid))
         }
+        return ColumnMetadata(columns: columns, columnOids: columnOids, columnTypeNames: columnTypeNames)
+    }
+
+    private func executeSpatialRewrite(
+        originalQuery: String,
+        columns: [String],
+        originalColumnOids: [UInt32],
+        spatialIndices: Set<Int>,
+        oidMap: [UInt32: String]
+    ) throws -> LibPQPluginQueryResult? {
+        let wrappedQuery = PostGISSpatialRewrite.buildWrappedQuery(
+            originalQuery: originalQuery,
+            columns: columns,
+            spatialIndices: spatialIndices
+        )
+
+        stateLock.lock()
+        let conn = self.conn
+        stateLock.unlock()
+        guard let conn else { return nil }
+
+        let wrappedResult = wrappedQuery.withCString { PQexec(conn, $0) }
+        guard let wrappedResult, PQresultStatus(wrappedResult) == PGRES_TUPLES_OK else {
+            if let wrappedResult { PQclear(wrappedResult) }
+            logger.warning("PostGIS spatial rewrite query failed; falling back to raw hex output")
+            return nil
+        }
+        defer { PQclear(wrappedResult) }
+
+        let wrappedMetadata = readColumnMetadata(from: wrappedResult)
+        let overriddenTypeNames = originalColumnOids.enumerated().map { idx, originalOid -> String in
+            if spatialIndices.contains(idx), let spatialName = oidMap[originalOid] {
+                return spatialName
+            }
+            return pgOidToTypeName(originalOid)
+        }
+
+        return try parseRows(
+            from: wrappedResult,
+            columns: columns,
+            columnOids: wrappedMetadata.columnOids,
+            columnTypeNames: overriddenTypeNames
+        )
+    }
+
+    private func parseRows(
+        from result: OpaquePointer,
+        columns: [String],
+        columnOids: [UInt32],
+        columnTypeNames: [String]
+    ) throws -> LibPQPluginQueryResult {
+        let numFields = columns.count
+        let numRows = Int(PQntuples(result))
 
         let maxRows = PluginRowLimits.emergencyMax
         let effectiveRowCount = min(numRows, maxRows)
@@ -683,7 +782,6 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if shouldCancel { _isCancelled = false }
             stateLock.unlock()
             if shouldCancel {
-                PQclear(result)
                 throw LibPQPluginError(message: "Query cancelled", sqlState: nil, detail: nil)
             }
 
