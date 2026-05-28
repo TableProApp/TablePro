@@ -106,30 +106,30 @@ struct WelcomeConnectionRow: View {
     }
 
     private var favoriteButton: some View {
-        Group {
-            if connection.isFavorite {
-                Button(action: onToggleFavorite) {
-                    Image(systemName: "star.fill")
-                        .imageScale(.small)
-                        .foregroundStyle(.yellow)
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Remove from Favorites"))
-                .accessibilityLabel(String(localized: "Favorited"))
-            } else if isHovering || isSelected {
-                Button(action: onToggleFavorite) {
-                    Image(systemName: "star")
-                        .imageScale(.small)
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Add to Favorites"))
-                .accessibilityHidden(true)
-            } else {
-                Color.clear
-            }
+        let visible = connection.isFavorite || isHovering || isSelected
+        return Button(action: onToggleFavorite) {
+            favoriteStarImage
         }
+        .buttonStyle(.borderless)
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(visible)
+        .help(toggleFavoriteActionName)
+        .accessibilityHidden(!connection.isFavorite)
+        .accessibilityLabel(String(localized: "Favorited"))
         .frame(width: 16, alignment: .center)
+    }
+
+    @ViewBuilder
+    private var favoriteStarImage: some View {
+        if connection.isFavorite {
+            Image(systemName: "star.fill")
+                .imageScale(.small)
+                .foregroundStyle(.yellow)
+        } else {
+            Image(systemName: "star")
+                .imageScale(.small)
+                .foregroundStyle(.tertiary)
+        }
     }
 
     private var subtitleText: String {

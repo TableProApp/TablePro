@@ -433,7 +433,6 @@ struct WelcomeWindowView: View {
             }
         }
         .tag(linked.id)
-        .padding(.vertical, 4)
         .contentShape(Rectangle())
         .listRowSeparator(.hidden)
     }
