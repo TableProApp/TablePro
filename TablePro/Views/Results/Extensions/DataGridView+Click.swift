@@ -30,6 +30,8 @@ extension TableViewCoordinator {
             showJSONViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewBlob:
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewPhpSerialized:
+            showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editInline:
             beginCellEdit(row: row, tableColumnIndex: tableColumn)
         case .editOverlay(let value):
@@ -48,13 +50,22 @@ extension TableViewCoordinator {
         let columnName = tableRows.columns[columnIndex]
         let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
+        let override = ValueDisplayFormatService.shared.effectiveFormat(
+            columnName: columnName,
+            connectionId: connectionId,
+            tableName: tableName
+        )
 
         return CellContext(
             columnType: columnType,
             value: cellValue(at: row, column: columnIndex),
             isTableEditable: isEditable,
             isRowDeleted: changeManager.isRowDeleted(row),
-            isImmutableColumn: immutable.contains(columnName)
+            isImmutableColumn: immutable.contains(columnName),
+            columnName: columnName,
+            connectionId: connectionId,
+            tableName: tableName,
+            displayFormatOverride: override
         )
     }
 

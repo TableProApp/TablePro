@@ -20,6 +20,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         _ = InspectorDocumentController()
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        PluginManager.shared.loadPlugins()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -62,7 +64,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
 
         MemoryPressureAdvisor.startMonitoring()
-        PluginManager.shared.loadPlugins()
         UNUserNotificationCenter.current().delegate = self
         PluginNotificationService.shared.setUp()
         ChatToolBootstrap.register()

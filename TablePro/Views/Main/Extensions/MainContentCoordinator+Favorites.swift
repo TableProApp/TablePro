@@ -53,7 +53,6 @@ extension MainContentCoordinator {
         if tabManager.tabs.isEmpty {
             tabManager.addTab(
                 initialQuery: loaded.content,
-                title: favorite.name,
                 sourceFileURL: favorite.fileURL
             )
             registerWindowForSourceFile(favorite.fileURL)
@@ -70,7 +69,7 @@ extension MainContentCoordinator {
                 tab.content.query = loaded.content
                 tab.content.savedFileContent = loaded.content
                 tab.content.loadMtime = mtime
-                tab.title = favorite.name
+                tab.title = QueryTab.fileDisplayTitle(for: favorite.fileURL)
             }
             registerWindowForSourceFile(favorite.fileURL)
             return
@@ -81,8 +80,7 @@ extension MainContentCoordinator {
             tabType: .query,
             databaseName: activeDatabaseName,
             initialQuery: loaded.content,
-            sourceFileURL: favorite.fileURL,
-            tabTitle: favorite.name
+            sourceFileURL: favorite.fileURL
         )
         WindowManager.shared.openTab(payload: payload)
     }

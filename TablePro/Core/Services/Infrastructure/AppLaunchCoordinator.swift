@@ -93,6 +93,7 @@ internal final class AppLaunchCoordinator {
                 for intent in intents {
                     await LaunchIntentRouter.shared.route(intent)
                 }
+                self.dismissWelcomeIfMainWindowVisible()
             }
         }
     }
@@ -108,10 +109,16 @@ internal final class AppLaunchCoordinator {
             for intent in intents {
                 await LaunchIntentRouter.shared.route(intent)
             }
+            self.dismissWelcomeIfMainWindowVisible()
             self.runStartupBehaviorIfNeeded(skipping: intents)
             self.phase = .ready
             self.finalizeWindowsIfNoVisibleMain(intents: intents)
         }
+    }
+
+    private func dismissWelcomeIfMainWindowVisible() {
+        guard NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
+        WindowOpener.shared.orderOutWelcome()
     }
 
     private func runStartupBehaviorIfNeeded(skipping intents: [LaunchIntent]) {

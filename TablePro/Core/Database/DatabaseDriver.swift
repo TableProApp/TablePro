@@ -403,8 +403,13 @@ enum DatabaseDriverFactory {
         let pluginId = connection.type.pluginTypeId
         if PluginManager.shared.driverPlugin(for: connection.type) == nil,
            !PluginManager.shared.hasFinishedInitialLoad {
-            logger.info("Plugin '\(pluginId)' not loaded yet — waiting for background load")
+            logger.info("Plugin '\(pluginId)' not loaded yet, waiting for background load")
             await PluginManager.shared.waitForInitialLoad()
+        }
+        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
+           PluginManager.shared.hasOutdatedRejectedPlugin(forTypeId: pluginId) {
+            logger.info("Plugin '\(pluginId)' is installed but outdated, waiting for reconciliation to update it")
+            await PluginManager.shared.awaitReconciliation()
         }
         return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
     }
@@ -415,6 +420,9 @@ enum DatabaseDriverFactory {
     ) async throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
+            if let reason = PluginManager.shared.outdatedReconcileReason(forTypeId: pluginId) {
+                throw PluginError.pluginUpdateUnavailable(reason: reason)
+            }
             if connection.type.isDownloadablePlugin {
                 throw PluginError.pluginNotInstalled(connection.type.rawValue)
             }

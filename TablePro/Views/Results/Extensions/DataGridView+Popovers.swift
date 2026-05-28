@@ -347,6 +347,32 @@ extension TableViewCoordinator {
         }
     }
 
+    func showPhpViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 560, height: 360)
+        ) { dismiss in
+            PhpViewerContentView(
+                initialValue: currentValue,
+                columnName: columnName,
+                onDismiss: dismiss,
+                onPopOut: { currentText in
+                    dismiss()
+                    PhpViewerWindowController.open(text: currentText, columnName: columnName)
+                }
+            )
+        }
+    }
+
     func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
 

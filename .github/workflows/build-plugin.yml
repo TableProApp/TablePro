@@ -324,6 +324,42 @@ jobs:
             build/Plugins/${BUNDLE_NAME}-arm64.zip \
             build/Plugins/${BUNDLE_NAME}-x86_64.zip
 
+      - name: Verify published assets match the PluginKit label
+        run: |
+          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
+          TAG="${{ matrix.tag }}"
+          PKV="${{ matrix.pluginKitVersion }}"
+          REPO="${{ github.repository }}"
+          for ARCH in arm64 x86_64; do
+            URL="https://github.com/${REPO}/releases/download/${TAG}/${BUNDLE_NAME}-${ARCH}.zip"
+            WORK=$(mktemp -d)
+            DOWNLOADED=""
+            for attempt in 1 2 3 4 5; do
+              if curl -fsSL "$URL" -o "$WORK/asset.zip"; then
+                DOWNLOADED="yes"
+                break
+              fi
+              echo "Published asset not downloadable yet (attempt $attempt/5), retrying in 5s..."
+              sleep 5
+            done
+            if [ -z "$DOWNLOADED" ]; then
+              echo "::error::Could not download the published asset at $URL to verify its PluginKit version."
+              exit 1
+            fi
+            unzip -oq "$WORK/asset.zip" -d "$WORK"
+            PLIST=$(find "$WORK" -path '*.tableplugin/Contents/Info.plist' | head -1)
+            if [ -z "$PLIST" ]; then
+              echo "::error::No .tableplugin Info.plist in the published ${BUNDLE_NAME}-${ARCH} asset."
+              exit 1
+            fi
+            ACTUAL=$(plutil -extract TableProPluginKitVersion raw "$PLIST")
+            if [ "$ACTUAL" != "$PKV" ]; then
+              echo "::error::Published ${BUNDLE_NAME}-${ARCH} at $URL is PluginKit $ACTUAL but the registry will record $PKV. Refusing to record a mismatched binary."
+              exit 1
+            fi
+            echo "Verified published ${BUNDLE_NAME}-${ARCH}: served PluginKit $ACTUAL matches the registry label."
+          done
+
       - name: Update plugin registry
         if: ${{ env.REGISTRY_DEPLOY_KEY != '' }}
         env:

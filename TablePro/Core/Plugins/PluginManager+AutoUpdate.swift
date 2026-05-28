@@ -16,12 +16,14 @@ private enum ReconciliationConfig {
 extension PluginManager {
     func scheduleReconciliation() {
         reconciliationTask?.cancel()
+        reconciliationActive = true
         reconciliationTask = Task { [weak self] in
             await self?.runReconciliationLoop()
         }
     }
 
     func runReconciliationLoop() async {
+        defer { reconciliationActive = false }
         let outdated = rejectedPlugins.filter(\.isOutdated)
         guard !outdated.isEmpty else {
             emitReconciliationOutcome()
@@ -142,7 +144,8 @@ extension PluginManager {
             registryId: existing.registryId,
             name: existing.name,
             reason: reason,
-            isOutdated: existing.isOutdated
+            isOutdated: existing.isOutdated,
+            providedDatabaseTypeIds: existing.providedDatabaseTypeIds
         )
     }
 
@@ -211,5 +214,18 @@ extension PluginManager {
         guard let manifest = RegistryClient.shared.manifest else { return nil }
         guard let id = resolveRegistryId(for: rejected, manifest: manifest) else { return nil }
         return manifest.plugins.first(where: { $0.id == id })
+    }
+
+    func hasOutdatedRejectedPlugin(forTypeId typeId: String) -> Bool {
+        rejectedPlugins.contains { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }
+    }
+
+    func outdatedReconcileReason(forTypeId typeId: String) -> String? {
+        rejectedPlugins.first { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }?.reason
+    }
+
+    func awaitReconciliation() async {
+        guard reconciliationActive, let task = reconciliationTask else { return }
+        await task.value
     }
 }

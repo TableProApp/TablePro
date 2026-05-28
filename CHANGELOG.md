@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle Database 11g (11.1 and 11.2) now connects. Previously only 12c and later worked, so 11g servers failed with a "Server Version Not Supported" error. (#1425)
 - Oracle connections can now use a SID instead of a service name. Set Connection Type to SID in the connection form and enter the SID. (#1425)
 - Cmd-click a foreign key arrow to open the referenced table in a new tab instead of the current one. The right-click menu has the same Open in New Tab option. (#1421)
+- Cells holding JSON or PHP serialized values in text columns now open in the structured viewer automatically, without requiring the column type to be JSON.
+- Add and remove buttons in the table structure editor for columns, indexes, and foreign keys, on the bottom status bar alongside the view-mode picker. Cmd+Shift+N adds and Cmd+Delete removes. An empty Indexes or Foreign Keys tab also shows a labelled add button. (#1319)
 
 ### Changed
 
@@ -26,14 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BigQuery: switching to another table now loads its data right away, instead of leaving the grid empty until you close and reopen the tab.
 - Custom and OpenAI-compatible AI providers now work when the base URL already ends in `/v1`, instead of building a doubled `/v1/v1/` path that failed. (#1400)
 - MongoDB: opening a collection no longer crashes when a document contains a NaN or infinite number. (#1418)
+- After updating TablePro, connecting to a database whose plugin is still updating in the background now waits for that update to finish instead of wrongly showing "Plugin Not Installed", so you no longer have to quit and reopen the app. When no compatible plugin build exists yet, the message now tells you to update TablePro. (#1380)
 - Opening a saved connection that fails now shows the detailed troubleshooting dialog with suggested fixes, the same one Test Connection shows, instead of a generic error alert. (#1425, #483)
 - Oracle connection errors no longer surface the driver's raw internal message; failures now explain the cause in plain language. (#483)
 - AWS IAM authentication with a named profile now reads `~/.aws/config` (not just `~/.aws/credentials`) and supports `credential_process`, so profiles backed by SSO, IAM Identity Center, or assume-role work through `aws configure export-credentials`. (#1291)
+- Opening a table no longer runs the initial query multiple times before the data arrives. The same query could fire up to four times on a single tab open; it now runs once.
 - iOS: a connection's Safe Mode setting now survives relaunch. iCloud sync no longer drops the value, so a connection set to Confirm Writes or Read-Only no longer reverts to Off after reopening the app.
 - iOS: running a query that returns a very large result no longer crashes the app. The query editor keeps the first rows it loads, stops before memory runs low, and tells you to add LIMIT to fetch more.
 - iOS: Safe Mode "Confirm Writes" now prompts before saving a row edit or inserting a row, matching the query editor. Previously grid edits and inserts saved with no confirmation.
 - Redshift: schema switching now works, along with the contains, starts with, and ends with filters and table search. All previously failed with a SQL syntax error. (#1439)
 - MCP server: the first authenticated request no longer hangs after turning on Require Authentication. Turning the setting on now creates a default token if you have none, shows it once for you to copy, and waits for the server to be ready before the next request can run. The Token Name field also focuses on first click in the Generate Token sheet. (#1093)
+- Double-clicking a CSV or TSV file when TablePro is closed now opens the file directly, instead of showing the welcome screen. (#1443)
+- Opening a `.sql` file now names the tab after the file instead of showing "SQL Query". (#1220)
 
 ## [0.45.0] - 2026-05-26
 
