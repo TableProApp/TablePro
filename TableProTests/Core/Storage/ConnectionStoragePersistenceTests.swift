@@ -12,11 +12,12 @@ import Testing
 @MainActor
 struct ConnectionStoragePersistenceTests {
     private let storage: ConnectionStorage
+    private let fileURL: URL
     private let defaults: UserDefaults
 
     init() {
         let unique = UUID().uuidString
-        let fileURL = FileManager.default.temporaryDirectory
+        self.fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("connections_\(unique).json")
         try? FileManager.default.createDirectory(
@@ -87,5 +88,33 @@ struct ConnectionStoragePersistenceTests {
         let loaded = storage.loadConnections()
 
         #expect(loaded.first?.isFavorite == true)
+    }
+
+    @Test("legacy connections.json without isFavorite key decodes as not favorited")
+    func decodesLegacyFileWithoutFavoriteKey() throws {
+        let legacyJSON = """
+        [{
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Legacy Connection",
+            "host": "localhost",
+            "port": 3306,
+            "database": "",
+            "username": "root",
+            "type": "MySQL",
+            "sshEnabled": false,
+            "sshHost": "",
+            "sshUsername": "",
+            "sshAuthMethod": "password",
+            "sshPrivateKeyPath": ""
+        }]
+        """
+        try Data(legacyJSON.utf8).write(to: fileURL, options: .atomic)
+        storage.invalidateCache()
+
+        let loaded = storage.loadConnections()
+
+        #expect(loaded.count == 1)
+        #expect(loaded.first?.name == "Legacy Connection")
+        #expect(loaded.first?.isFavorite == false)
     }
 }

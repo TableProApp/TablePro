@@ -36,8 +36,8 @@ extension WelcomeWindowView {
         Button { vm.toggleFavorite(connections) } label: {
             Label(
                 allFavorited
-                    ? String(format: String(localized: "Remove %d Connections from Favorites"), connections.count)
-                    : String(format: String(localized: "Add %d Connections to Favorites"), connections.count),
+                    ? String(localized: "Remove from Favorites")
+                    : String(localized: "Add to Favorites"),
                 systemImage: allFavorited ? "star.slash" : "star"
             )
         }

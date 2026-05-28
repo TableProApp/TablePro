@@ -97,6 +97,7 @@ final class WelcomeViewModel {
     // MARK: - Computed Properties
 
     private(set) var treeItems: [ConnectionGroupTreeNode] = []
+    private(set) var favoriteConnections: [DatabaseConnection] = []
     private(set) var connectionCountByGroup: [UUID: Int] = [:]
     private(set) var depthByGroup: [UUID: Int] = [:]
     private(set) var maxDescendantDepthByGroup: [UUID: Int] = [:]
@@ -108,6 +109,10 @@ final class WelcomeViewModel {
         } else {
             treeItems = filterGroupTree(tree, searchText: searchText)
         }
+
+        favoriteConnections = connections
+            .filter(\.isFavorite)
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
         var counts: [UUID: Int] = [:]
         var depths: [UUID: Int] = [:]
@@ -328,19 +333,19 @@ final class WelcomeViewModel {
 
     // MARK: - Favorites
 
-    var favoriteConnections: [DatabaseConnection] {
-        connections
-            .filter(\.isFavorite)
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
     func toggleFavorite(_ targets: [DatabaseConnection]) {
         guard !targets.isEmpty else { return }
         let shouldFavorite = !targets.allSatisfy(\.isFavorite)
         let ids = Set(targets.map(\.id))
+        var updated: [DatabaseConnection] = []
         for i in connections.indices where ids.contains(connections[i].id) {
             connections[i].isFavorite = shouldFavorite
-            storage.updateConnection(connections[i])
+            updated.append(connections[i])
+        }
+        guard storage.updateConnections(updated) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
         }
         rebuildTree()
         AppEvents.shared.connectionUpdated.send(targets.count == 1 ? targets.first?.id : nil)

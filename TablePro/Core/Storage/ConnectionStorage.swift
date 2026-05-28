@@ -173,6 +173,28 @@ final class ConnectionStorage {
         }
     }
 
+    /// Update multiple connections in a single file write, marking each dirty for sync.
+    @discardableResult
+    func updateConnections(_ updates: [DatabaseConnection]) -> Bool {
+        guard !updates.isEmpty else { return true }
+        var connections = loadConnections()
+        let updatesById = Dictionary(uniqueKeysWithValues: updates.map { ($0.id, $0) })
+        var didMutate = false
+        for index in connections.indices {
+            if let replacement = updatesById[connections[index].id] {
+                connections[index] = replacement
+                didMutate = true
+            }
+        }
+        guard didMutate, saveConnections(connections) else {
+            return false
+        }
+        for connection in updates where !connection.localOnly && !connection.isSample {
+            syncTracker.markDirty(.connection, id: connection.id.uuidString)
+        }
+        return true
+    }
+
     /// Delete a connection
     func deleteConnection(_ connection: DatabaseConnection) {
         var connections = loadConnections()
