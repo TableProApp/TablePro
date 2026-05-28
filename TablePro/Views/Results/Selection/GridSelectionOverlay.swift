@@ -12,8 +12,9 @@ final class GridSelectionOverlay: NSView {
     weak var tableView: NSTableView?
     weak var coordinator: TableViewCoordinator?
 
-    private static let borderWidth: CGFloat = 1.5
+    private static let borderWidth: CGFloat = 1.0
     private static let activeCellBorderWidth: CGFloat = 2.0
+    private static let borderAlpha: CGFloat = 0.7
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -34,11 +35,13 @@ final class GridSelectionOverlay: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let tableView, let coordinator else { return }
         let schema = coordinator.identitySchema
+        let totalRows = tableView.numberOfRows
 
-        NSColor.selectedContentBackgroundColor.setStroke()
+        NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.borderAlpha).setStroke()
         for rect in selection.rectangles {
             guard let frame = frame(for: rect, in: tableView, schema: schema) else { continue }
             guard frame.intersects(dirtyRect) else { continue }
+            if isFullHeight(rect, totalRows: totalRows) { continue }
             let inset = frame.insetBy(dx: Self.borderWidth / 2, dy: Self.borderWidth / 2)
             let path = NSBezierPath(rect: inset)
             path.lineWidth = Self.borderWidth
@@ -55,6 +58,11 @@ final class GridSelectionOverlay: NSView {
             path.lineWidth = Self.activeCellBorderWidth
             path.stroke()
         }
+    }
+
+    private func isFullHeight(_ rect: GridRect, totalRows: Int) -> Bool {
+        guard totalRows > 0 else { return false }
+        return rect.rows.lowerBound <= 0 && rect.rows.upperBound >= totalRows - 1
     }
 
     private func frame(for rect: GridRect, in tableView: NSTableView, schema: ColumnIdentitySchema) -> NSRect? {

@@ -101,7 +101,7 @@ class DataGridRowView: NSTableRowView {
 
         let fillColor: NSColor = isSelected
             ? NSColor.unemphasizedSelectedContentBackgroundColor
-            : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.18)
+            : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28)
         fillColor.setFill()
 
         let schema = coordinator?.identitySchema
