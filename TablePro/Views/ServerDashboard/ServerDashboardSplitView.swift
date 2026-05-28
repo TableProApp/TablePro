@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ServerDashboardSplitView: NSViewControllerRepresentable {
-    @Bindable var viewModel: ServerDashboardViewModel
+    let viewModel: ServerDashboardViewModel
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -14,14 +14,11 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         splitViewController.splitView.dividerStyle = .thin
         splitViewController.splitView.autosaveName = "ServerDashboardSplit"
 
-        let panels = orderedPanels()
-
-        for panel in panels {
+        for panel in orderedPanels() {
             let item = makeItem(for: panel, coordinator: context.coordinator)
             splitViewController.addSplitViewItem(item)
         }
 
-        context.coordinator.installedPanels = panels
         return splitViewController
     }
 
@@ -63,7 +60,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
             let item = NSSplitViewItem(viewController: controller)
             item.minimumThickness = 76
             item.maximumThickness = 200
-            item.holdingPriority = NSLayoutConstraint.Priority(260)
+            item.holdingPriority = .defaultHigh
             coordinator.metricsController = controller
             return item
 
@@ -77,7 +74,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
             let item = NSSplitViewItem(viewController: controller)
             item.minimumThickness = 100
             item.canCollapse = true
-            item.holdingPriority = NSLayoutConstraint.Priority(255)
+            item.holdingPriority = .defaultHigh
             coordinator.slowQueriesController = controller
             return item
         }
@@ -87,6 +84,5 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         var sessionsController: NSHostingController<SessionsTableView>?
         var metricsController: NSHostingController<MetricsBarView>?
         var slowQueriesController: NSHostingController<SlowQueryListView>?
-        var installedPanels: [DashboardPanel] = []
     }
 }
