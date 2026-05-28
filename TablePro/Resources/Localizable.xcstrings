@@ -38343,6 +38343,9 @@
     "Remove attachment" : {
 
     },
+    "Remove Column" : {
+
+    },
     "Remove Failed" : {
 
     },
@@ -38456,6 +38459,9 @@
         }
       }
     },
+    "Remove Foreign Key" : {
+
+    },
     "Remove from Group" : {
       "localizations" : {
         "tr" : {
@@ -38482,6 +38488,9 @@
 
     },
     "Remove image" : {
+
+    },
+    "Remove Index" : {
 
     },
     "Remove jump host" : {

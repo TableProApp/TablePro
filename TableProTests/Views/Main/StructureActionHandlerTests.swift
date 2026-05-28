@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @MainActor @Suite("StructureViewActionHandler")
 struct StructureActionHandlerTests {
@@ -99,6 +99,17 @@ struct StructureActionHandlerTests {
         #expect(count == 1)
     }
 
+    @Test("removeRow closure fires when invoked")
+    func removeRow_fires() {
+        let handler = StructureViewActionHandler()
+        var count = 0
+        handler.removeRow = { count += 1 }
+
+        handler.removeRow?()
+
+        #expect(count == 1)
+    }
+
     // MARK: - All Closures Fire Independently
 
     @Test("all closures fire independently without cross-talk")
@@ -113,6 +124,7 @@ struct StructureActionHandlerTests {
         handler.undo = { counts["undo", default: 0] += 1 }
         handler.redo = { counts["redo", default: 0] += 1 }
         handler.addRow = { counts["addRow", default: 0] += 1 }
+        handler.removeRow = { counts["removeRow", default: 0] += 1 }
 
         handler.saveChanges?()
         handler.previewSQL?()
@@ -121,6 +133,7 @@ struct StructureActionHandlerTests {
         handler.undo?()
         handler.redo?()
         handler.addRow?()
+        handler.removeRow?()
 
         #expect(counts["saveChanges"] == 1)
         #expect(counts["previewSQL"] == 1)
@@ -129,6 +142,7 @@ struct StructureActionHandlerTests {
         #expect(counts["undo"] == 1)
         #expect(counts["redo"] == 1)
         #expect(counts["addRow"] == 1)
+        #expect(counts["removeRow"] == 1)
     }
 
     // MARK: - Nil Closures Are Safe

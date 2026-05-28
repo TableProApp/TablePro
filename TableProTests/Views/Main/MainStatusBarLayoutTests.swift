@@ -32,7 +32,10 @@ struct MainStatusBarLayoutTests {
             onToggleColumn: { _ in },
             onShowAllColumns: {},
             onHideAllColumns: { _ in },
-            onToggleFilters: {}
+            onToggleFilters: {},
+            structureFooterState: nil,
+            onStructureAdd: nil,
+            onStructureRemove: nil
         )
         #expect(type(of: view.body) != Never.self)
     }

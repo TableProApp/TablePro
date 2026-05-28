@@ -84,11 +84,16 @@ struct TableStructureView: View {
             toolbar
             Divider()
             contentArea
-            structureFooter
         }
         .task(loadInitialData)
-        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
-        .onChange(of: selectedTab) { _, newValue in onSelectedTabChanged(newValue) }
+        .onChange(of: selectedRows) { _, newRows in
+            selectionState.indices = newRows
+            publishFooterState()
+        }
+        .onChange(of: selectedTab) { _, newValue in
+            onSelectedTabChanged(newValue)
+            publishFooterState()
+        }
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
         .onChange(of: foreignKeys) { onForeignKeysChanged() }
@@ -119,11 +124,14 @@ struct TableStructureView: View {
             actionHandler.undo = { self.gridDelegate.dataGridUndo() }
             actionHandler.redo = { self.gridDelegate.dataGridRedo() }
             actionHandler.addRow = { self.gridDelegate.dataGridAddRow() }
+            actionHandler.removeRow = { self.gridDelegate.dataGridDeleteRows(self.selectedRows) }
             coordinator?.structureActions = actionHandler
+            publishFooterState()
         }
         .onDisappear {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
+            coordinator?.structureFooterState.deactivate()
             selectionState.indices = []
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
@@ -172,55 +180,20 @@ struct TableStructureView: View {
         .padding()
     }
 
-    // MARK: - Footer (Add / Remove)
+    // MARK: - Footer state (rendered by MainStatusBarView)
 
-    @ViewBuilder
-    private var structureFooter: some View {
-        if isEditableTab {
-            VStack(spacing: 0) {
-                Divider()
-                HStack(spacing: 0) {
-                    addButton
-                    removeButton
-                    Spacer()
-                }
-                .padding(.horizontal, 8)
-                .frame(height: 28)
-                .background(.bar)
-            }
+    private func publishFooterState() {
+        guard let footer = coordinator?.structureFooterState else { return }
+        guard connection.type.supportsSchemaEditing,
+              let labels = footerLabels(for: selectedTab) else {
+            footer.deactivate()
+            return
         }
-    }
-
-    private var addButton: some View {
-        Button(action: { gridDelegate.dataGridAddRow() }) {
-            Label(addLabel(for: selectedTab), systemImage: "plus")
-                .labelStyle(.iconOnly)
-                .frame(width: 22, height: 22)
-        }
-        .buttonStyle(.borderless)
-        .help(addLabel(for: selectedTab))
-        .disabled(!canAdd(for: selectedTab))
-    }
-
-    private var removeButton: some View {
-        Button(action: { gridDelegate.dataGridDeleteRows(selectedRows) }) {
-            Label(removeLabel(for: selectedTab), systemImage: "minus")
-                .labelStyle(.iconOnly)
-                .frame(width: 22, height: 22)
-        }
-        .buttonStyle(.borderless)
-        .help(removeLabel(for: selectedTab))
-        .disabled(!canRemove(for: selectedTab))
-    }
-
-    private var isEditableTab: Bool {
-        guard connection.type.supportsSchemaEditing else { return false }
-        switch selectedTab {
-        case .columns, .indexes, .foreignKeys:
-            return true
-        case .ddl, .parts:
-            return false
-        }
+        footer.isActive = true
+        footer.addLabel = labels.add
+        footer.removeLabel = labels.remove
+        footer.canAdd = canAdd(for: selectedTab)
+        footer.canRemove = canRemove(for: selectedTab)
     }
 
     private func canAdd(for tab: StructureTab) -> Bool {
@@ -242,21 +215,16 @@ struct TableStructureView: View {
         }
     }
 
-    private func addLabel(for tab: StructureTab) -> String {
+    private func footerLabels(for tab: StructureTab) -> (add: String, remove: String)? {
         switch tab {
-        case .columns: return String(localized: "Add Column")
-        case .indexes: return String(localized: "Add Index")
-        case .foreignKeys: return String(localized: "Add Foreign Key")
-        case .ddl, .parts: return String(localized: "Add Row")
-        }
-    }
-
-    private func removeLabel(for tab: StructureTab) -> String {
-        switch tab {
-        case .columns: return String(localized: "Remove Column")
-        case .indexes: return String(localized: "Remove Index")
-        case .foreignKeys: return String(localized: "Remove Foreign Key")
-        case .ddl, .parts: return String(localized: "Remove Row")
+        case .columns:
+            return (String(localized: "Add Column"), String(localized: "Remove Column"))
+        case .indexes:
+            return (String(localized: "Add Index"), String(localized: "Remove Index"))
+        case .foreignKeys:
+            return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
+        case .ddl, .parts:
+            return nil
         }
     }
 
