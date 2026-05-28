@@ -105,36 +105,37 @@ struct WelcomeConnectionRow: View {
         }
     }
 
-    @ViewBuilder
     private var favoriteButton: some View {
-        if connection.isFavorite {
-            Button(action: onToggleFavorite) {
-                Image(systemName: "star.fill")
-                    .imageScale(.small)
-                    .foregroundStyle(.yellow)
+        Group {
+            if connection.isFavorite {
+                Button(action: onToggleFavorite) {
+                    Image(systemName: "star.fill")
+                        .imageScale(.small)
+                        .foregroundStyle(.yellow)
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Remove from Favorites"))
+                .accessibilityLabel(String(localized: "Favorited"))
+            } else if isHovering || isSelected {
+                Button(action: onToggleFavorite) {
+                    Image(systemName: "star")
+                        .imageScale(.small)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Add to Favorites"))
+                .accessibilityHidden(true)
+            } else {
+                Color.clear
             }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Remove from Favorites"))
-            .accessibilityLabel(String(localized: "Favorited"))
-        } else if isHovering || isSelected {
-            Button(action: onToggleFavorite) {
-                Image(systemName: "star")
-                    .imageScale(.small)
-                    .foregroundStyle(.tertiary)
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Add to Favorites"))
-            .accessibilityHidden(true)
         }
+        .frame(width: 16, alignment: .center)
     }
 
     private var subtitleText: String {
         var components: [String] = [primaryEndpoint]
         if let viaText = sshViaText {
             components.append(viaText)
-        }
-        if connection.isSample {
-            components.append(String(localized: "Sample"))
         }
         return components.joined(separator: " · ")
     }

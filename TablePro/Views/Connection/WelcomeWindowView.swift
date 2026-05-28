@@ -224,7 +224,7 @@ struct WelcomeWindowView: View {
             connectionsHeader
             Divider()
             ZStack {
-                if vm.treeItems.isEmpty && vm.linkedConnections.isEmpty {
+                if vm.treeItems.isEmpty && vm.linkedConnections.isEmpty && vm.favoriteConnections.isEmpty {
                     emptyState
                 } else {
                     connectionList
@@ -294,43 +294,52 @@ struct WelcomeWindowView: View {
     private var connectionList: some View {
         ScrollViewReader { proxy in
             List(selection: $vm.selectedConnectionIds) {
-                if vm.searchText.isEmpty, !vm.favoriteConnections.isEmpty {
+                let showsFavoritesSection = vm.searchText.isEmpty && !vm.favoriteConnections.isEmpty
+                let showsLinkedSection = !vm.linkedConnections.isEmpty
+                    && LicenseManager.shared.isFeatureAvailable(.linkedFolders)
+                let treeHasGroups = vm.treeItems.contains { item in
+                    if case .group = item { return true }
+                    return false
+                }
+                let treeNeedsHeader = showsFavoritesSection && !treeHasGroups && !vm.treeItems.isEmpty
+
+                if showsFavoritesSection {
                     Section {
                         ForEach(vm.favoriteConnections) { conn in
                             connectionRow(for: conn)
                         }
                     } header: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star.fill")
-                                .font(.caption2)
-                            Text(String(localized: "Favorites"))
-                                .font(.caption)
-                        }
-                        .foregroundStyle(.secondary)
+                        sourceListSectionHeader(String(localized: "Favorites"))
                     }
                 }
 
-                TreeRowsView(items: vm.treeItems, parentGroupId: nil, vm: vm) { conn in
-                    connectionRow(for: conn)
+                if treeNeedsHeader {
+                    Section {
+                        TreeRowsView(items: vm.treeItems, parentGroupId: nil, vm: vm) { conn in
+                            connectionRow(for: conn)
+                        }
+                    } header: {
+                        sourceListSectionHeader(String(localized: "Connections"))
+                    }
+                } else {
+                    TreeRowsView(items: vm.treeItems, parentGroupId: nil, vm: vm) { conn in
+                        connectionRow(for: conn)
+                    }
                 }
 
-                if !vm.linkedConnections.isEmpty, LicenseManager.shared.isFeatureAvailable(.linkedFolders) {
+                if showsLinkedSection {
                     Section {
                         ForEach(vm.linkedConnections) { linked in
                             linkedConnectionRow(for: linked)
                         }
                     } header: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "folder.fill")
-                                .font(.caption2)
-                            Text(String(localized: "Linked"))
-                                .font(.caption)
-                        }
-                        .foregroundStyle(.secondary)
+                        sourceListSectionHeader(String(localized: "Linked"))
                     }
                 }
             }
             .listStyle(.inset)
+            .listRowSeparator(.hidden)
+            .listSectionSeparator(.hidden)
             .scrollContentBackground(.hidden)
             .focused($focus, equals: .connectionList)
             .contextMenu(forSelectionType: UUID.self) { ids in
@@ -393,8 +402,15 @@ struct WelcomeWindowView: View {
             onToggleFavorite: { vm.toggleFavorite([connection]) }
         )
         .tag(connection.id)
-        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .listRowSeparator(.hidden)
+    }
+
+    private func sourceListSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .padding(.top, 6)
     }
 
     private func linkedConnectionRow(for linked: LinkedConnection) -> some View {
@@ -418,7 +434,6 @@ struct WelcomeWindowView: View {
         }
         .tag(linked.id)
         .padding(.vertical, 4)
-        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .contentShape(Rectangle())
         .listRowSeparator(.hidden)
     }
@@ -497,6 +512,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
                 } label: {
                     groupLabel(for: group)
                 }
+                .listRowSeparator(.hidden)
             }
         }
         .onMove(perform: allConnections ? { from, to in
