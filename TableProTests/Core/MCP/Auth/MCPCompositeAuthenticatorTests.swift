@@ -28,7 +28,8 @@ struct MCPCompositeAuthenticatorTests {
             Issue.record("Expected allow, got \(decision)")
             return
         }
-        #expect(principal == MCPPrincipal.anonymousLoopback)
+        #expect(principal.tokenId == nil)
+        #expect(principal.tokenFingerprint == "anonymous-loopback")
         #expect(principal.scopes.contains(.toolsWrite))
         #expect(principal.scopes.contains(.admin))
     }
@@ -45,7 +46,8 @@ struct MCPCompositeAuthenticatorTests {
             Issue.record("Expected allow, got \(decision)")
             return
         }
-        #expect(principal == MCPPrincipal.anonymousLoopback)
+        #expect(principal.tokenId == nil)
+        #expect(principal.tokenFingerprint == "anonymous-loopback")
     }
 
     @Test("Loopback + auth required + valid bearer allows token principal")
@@ -64,7 +66,7 @@ struct MCPCompositeAuthenticatorTests {
             return
         }
         #expect(principal.metadata.label == "Token A")
-        #expect(principal != MCPPrincipal.anonymousLoopback)
+        #expect(principal.tokenId != nil)
     }
 
     @Test("Loopback + auth required + missing header denies")

@@ -16,21 +16,23 @@ struct MCPSection: View {
     private var requireAuthBinding: Binding<Bool> {
         Binding(
             get: { settings.requireAuthentication },
-            set: { newValue in
-                guard !isAuthBootstrapping else { return }
-                isAuthBootstrapping = true
-                Task { @MainActor in
-                    defer { isAuthBootstrapping = false }
-                    let bootstrap = await settingsManager.setRequireAuthentication(newValue)
-                    if let bootstrap {
-                        revealedToken = bootstrap.token
-                        revealedPlaintext = bootstrap.plaintext
-                        showRevealSheet = true
-                    }
-                    await refreshTokens()
-                }
-            }
+            set: { applyRequireAuthentication($0) }
         )
+    }
+
+    private func applyRequireAuthentication(_ newValue: Bool) {
+        guard !isAuthBootstrapping else { return }
+        isAuthBootstrapping = true
+        Task { @MainActor in
+            defer { isAuthBootstrapping = false }
+            let bootstrap = await settingsManager.setRequireAuthentication(newValue)
+            if let bootstrap {
+                revealedToken = bootstrap.token
+                revealedPlaintext = bootstrap.plaintext
+                showRevealSheet = true
+            }
+            await refreshTokens()
+        }
     }
 
     var body: some View {
