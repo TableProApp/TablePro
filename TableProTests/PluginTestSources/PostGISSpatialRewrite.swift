@@ -48,7 +48,12 @@ enum PostGISSpatialRewrite {
 
     static let sideEffectTokens: Set<String> = [
         "INSERT", "UPDATE", "DELETE", "MERGE", "TRUNCATE", "COPY",
-        "NEXTVAL", "SETVAL"
+        "NEXTVAL", "SETVAL",
+        "PG_NOTIFY", "PG_LOGICAL_EMIT_MESSAGE",
+        "PG_ADVISORY_LOCK", "PG_ADVISORY_LOCK_SHARED",
+        "PG_ADVISORY_XACT_LOCK", "PG_ADVISORY_XACT_LOCK_SHARED",
+        "PG_TRY_ADVISORY_LOCK", "PG_TRY_ADVISORY_LOCK_SHARED",
+        "PG_TRY_ADVISORY_XACT_LOCK", "PG_TRY_ADVISORY_XACT_LOCK_SHARED"
     ]
 
     static func containsSideEffectKeyword(_ query: String) -> Bool {

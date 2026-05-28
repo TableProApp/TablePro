@@ -269,6 +269,31 @@ struct PostGISSpatialRewriteSideEffectTests {
         #expect(PostGISSpatialRewrite.containsSideEffectKeyword(query))
     }
 
+    @Test("pg_notify call is flagged")
+    func pgNotifyFlagged() {
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword("SELECT pg_notify('c', 'm'), geom FROM places"))
+    }
+
+    @Test("pg_advisory_lock call is flagged")
+    func pgAdvisoryLockFlagged() {
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword("SELECT pg_advisory_lock(1), geom FROM places"))
+    }
+
+    @Test("pg_try_advisory_xact_lock variant is flagged")
+    func pgTryAdvisoryXactLockFlagged() {
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword("SELECT pg_try_advisory_xact_lock(1), geom FROM places"))
+    }
+
+    @Test("pg_logical_emit_message is flagged")
+    func pgLogicalEmitMessageFlagged() {
+        #expect(PostGISSpatialRewrite.containsSideEffectKeyword("SELECT pg_logical_emit_message(true, 'c', 'm'), geom FROM places"))
+    }
+
+    @Test("Read-only pg_ function is NOT flagged")
+    func pgReadOnlyFunctionNotFlagged() {
+        #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT pg_typeof(geom), geom FROM places"))
+    }
+
     @Test("Table name containing 'update' substring is NOT flagged")
     func tableNameSubstringNotFlagged() {
         #expect(!PostGISSpatialRewrite.containsSideEffectKeyword("SELECT geom FROM update_log"))
