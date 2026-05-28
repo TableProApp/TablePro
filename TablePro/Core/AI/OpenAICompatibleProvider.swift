@@ -262,8 +262,7 @@ final class OpenAICompatibleProvider: ChatTransport {
                 )
             }
         default:
-            let chatPath = "/v1/chat/completions"
-            guard let url = URL(string: "\(endpoint)\(chatPath)") else {
+            guard let url = URL(string: endpoint.openAIPath("chat/completions")) else {
                 throw AIProviderError.invalidEndpoint(endpoint)
             }
 
@@ -312,10 +311,10 @@ final class OpenAICompatibleProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
-        let chatPath = providerType == .ollama
-            ? "/api/chat"
-            : "/v1/chat/completions"
-        guard let url = URL(string: "\(endpoint)\(chatPath)") else {
+        let urlString = providerType == .ollama
+            ? "\(endpoint)/api/chat"
+            : endpoint.openAIPath("chat/completions")
+        guard let url = URL(string: urlString) else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 
@@ -481,7 +480,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     private func fetchOpenAIModels() async throws -> [String] {
-        guard let url = URL(string: "\(endpoint)/v1/models") else {
+        guard let url = URL(string: endpoint.openAIPath("models")) else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 

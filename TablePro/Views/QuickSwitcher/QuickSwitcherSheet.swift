@@ -14,6 +14,11 @@ struct QuickSwitcherSheet: View {
     let databaseType: DatabaseType
     let onSelect: (QuickSwitcherItem) -> Void
 
+    private let sheetWidth: CGFloat = 460
+    private let rowHeight: CGFloat = 30
+    private let sectionHeaderHeight: CGFloat = 28
+    private let maxVisibleRows = 9
+
     @State private var viewModel: QuickSwitcherViewModel
 
     init(
@@ -43,13 +48,18 @@ struct QuickSwitcherSheet: View {
                 emptyState
             } else {
                 itemList
+                    .frame(height: viewModel.listHeight(
+                        rowHeight: rowHeight,
+                        headerHeight: sectionHeaderHeight,
+                        maxVisibleRows: maxVisibleRows
+                    ))
             }
 
             Divider()
 
             footer
         }
-        .frame(width: 460, height: 500)
+        .frame(width: sheetWidth)
         .navigationTitle(String(localized: "Quick Switcher"))
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
@@ -144,9 +154,9 @@ struct QuickSwitcherSheet: View {
                     .lineLimit(1)
             }
         }
-        .padding(.vertical, 3)
+        .frame(height: rowHeight)
         .contentShape(Rectangle())
-        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
         .listRowSeparator(.hidden)
         .id(item.id)
         .tag(item.id)
@@ -160,7 +170,8 @@ struct QuickSwitcherSheet: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
     }
 
     private var emptyState: some View {
@@ -181,7 +192,8 @@ struct QuickSwitcherSheet: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
     }
 
     private var footer: some View {

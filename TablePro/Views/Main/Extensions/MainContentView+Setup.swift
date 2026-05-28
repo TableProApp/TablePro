@@ -40,6 +40,17 @@ extension MainContentView {
 
         switch payload.intent {
         case .openContent:
+            if let selectedTab = tabManager.selectedTab,
+                selectedTab.tabType == .table,
+                let tableName = selectedTab.tableContext.tableName
+            {
+                coordinator.restoreLastHiddenColumnsForTable(tableName)
+                if selectedTab.filterState.appliedFilters.isEmpty {
+                    coordinator.restoreFiltersForTable(tableName)
+                } else if let tabIndex = tabManager.selectedTabIndex {
+                    coordinator.rebuildTableQuery(at: tabIndex)
+                }
+            }
             if payload.skipAutoExecute {
                 _ = await schemaLoad
                 return
@@ -56,23 +67,7 @@ extension MainContentView {
                     {
                         await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
                     } else {
-                        if !selectedTab.filterState.appliedFilters.isEmpty,
-                            let tableName = selectedTab.tableContext.tableName,
-                            let tabIndex = tabManager.selectedTabIndex
-                        {
-                            let filteredQuery = coordinator.queryBuilder.buildFilteredQuery(
-                                tableName: tableName,
-                                filters: selectedTab.filterState.appliedFilters,
-                                columns: [],
-                                limit: selectedTab.pagination.pageSize,
-                                offset: selectedTab.pagination.currentOffset
-                            )
-                            tabManager.mutate(at: tabIndex) { $0.content.query = filteredQuery }
-                        }
-                        if let tableName = selectedTab.tableContext.tableName {
-                            coordinator.restoreLastHiddenColumnsForTable(tableName)
-                        }
-                        coordinator.executeTableTabQueryDirectly()
+                        coordinator.lazyLoadCurrentTabIfNeeded()
                     }
                 } else {
                     coordinator.needsLazyLoad = true
@@ -150,6 +145,10 @@ extension MainContentView {
             if firstTab.tabType == .table,
                 !firstTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
+                if let tableName = firstTab.tableContext.tableName {
+                    coordinator.restoreLastHiddenColumnsForTable(tableName)
+                    coordinator.restoreFiltersForTable(tableName)
+                }
                 if let session = DatabaseManager.shared.activeSessions[connection.id],
                     session.isConnected
                 {
@@ -158,10 +157,7 @@ extension MainContentView {
                     {
                         Task { await coordinator.switchDatabase(to: firstTab.tableContext.databaseName) }
                     } else {
-                        if let tableName = firstTab.tableContext.tableName {
-                            coordinator.restoreLastHiddenColumnsForTable(tableName)
-                        }
-                        coordinator.executeTableTabQueryDirectly()
+                        coordinator.lazyLoadCurrentTabIfNeeded()
                     }
                 } else {
                     coordinator.needsLazyLoad = true
@@ -193,7 +189,7 @@ extension MainContentView {
         } else if selectedTab?.tabType == .erDiagram {
             windowTitle = String(localized: "ER Diagram")
         } else if let fileURL = selectedTab?.content.sourceFileURL {
-            windowTitle = selectedTab?.title ?? fileURL.deletingPathExtension().lastPathComponent
+            windowTitle = selectedTab?.title ?? QueryTab.fileDisplayTitle(for: fileURL)
         } else {
             let langName = PluginManager.shared.queryLanguageName(for: connection.type)
             let queryLabel = String(format: String(localized: "%@ Query"), langName)
@@ -213,7 +209,7 @@ extension MainContentView {
         )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
         if isPreview {
-            window.subtitle = String(format: String(localized: "%@ — Preview"), connection.name)
+            window.subtitle = String(format: String(localized: "%@ - Preview"), connection.name)
         } else {
             window.subtitle = connection.name
         }
@@ -226,8 +222,7 @@ extension MainContentView {
         WindowLifecycleMonitor.shared.register(
             window: window,
             connectionId: connection.id,
-            windowId: windowId,
-            isPreview: isPreview
+            windowId: windowId
         )
         viewWindow = window
         coordinator.contentWindow = window

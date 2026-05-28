@@ -116,7 +116,7 @@ struct AIProviderDetailSheet: View {
         switch draft.type.authStyle {
         case .apiKey:
             return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .oauth, .none:
+        case .optionalApiKey, .oauth, .none:
             return true
         }
     }
@@ -132,7 +132,7 @@ struct AIProviderDetailSheet: View {
     @ViewBuilder
     private var authSection: some View {
         switch draft.type.authStyle {
-        case .apiKey:
+        case .apiKey, .optionalApiKey:
             apiKeyAuthSection
         case .oauth:
             copilotAuthSection
@@ -159,7 +159,7 @@ struct AIProviderDetailSheet: View {
                         Text("Test Connection")
                     }
                 }
-                .disabled(isTesting || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(isTesting || (draft.type.authStyle == .apiKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }
             if case .success = testResult {
                 Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")

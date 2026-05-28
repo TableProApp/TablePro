@@ -42,6 +42,7 @@ final class MCPServerManager {
     private var internalBridgeToken: String?
     private var serverGeneration: Int = 0
     private var revocationObserverId: UUID?
+    private var lifecycleTask: Task<Void, Never>?
 
     var isRunning: Bool {
         if case .running = state { return true } else { return false }
@@ -97,9 +98,13 @@ final class MCPServerManager {
         let newRateLimiter = MCPRateLimiter()
         rateLimiter = newRateLimiter
 
-        let authenticator = MCPBearerTokenAuthenticator(
+        let bearerAuthenticator = MCPBearerTokenAuthenticator(
             tokenStore: newTokenStore,
             rateLimiter: newRateLimiter
+        )
+        let authenticator = MCPCompositeAuthenticator(
+            bearer: bearerAuthenticator,
+            requireAuthentication: settings.requireAuthentication
         )
 
         let newTransport = MCPHttpServerTransport(
@@ -172,6 +177,32 @@ final class MCPServerManager {
     func restart(port: UInt16) async {
         await stop()
         await start(port: port)
+    }
+
+    func scheduleStart(port: UInt16) {
+        enqueueLifecycle { [weak self] in
+            await self?.start(port: port)
+        }
+    }
+
+    func scheduleStop() {
+        enqueueLifecycle { [weak self] in
+            await self?.stop()
+        }
+    }
+
+    func scheduleRestart(port: UInt16) {
+        enqueueLifecycle { [weak self] in
+            await self?.restart(port: port)
+        }
+    }
+
+    private func enqueueLifecycle(_ work: @escaping @MainActor () async -> Void) {
+        let previousTask = lifecycleTask
+        lifecycleTask = Task { @MainActor in
+            await previousTask?.value
+            await work()
+        }
     }
 
     func lazyStart() async {

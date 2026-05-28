@@ -168,7 +168,7 @@ struct FilterSQLGenerator {
     /// Explicit style: requires an ESCAPE declaration.
     private var likeEscapeClause: String {
         if dialect.likeEscapeStyle == .implicit { return "" }
-        return " ESCAPE '\\'"
+        return " ESCAPE '!'"
     }
 
     private func generateLikeCondition(column: String, pattern: String) -> String {
@@ -231,7 +231,7 @@ struct FilterSQLGenerator {
     }
 
     /// Escape only single quotes for SQL string literal context.
-    /// Used for LIKE patterns where backslashes are already escaped
+    /// Used for LIKE patterns where wildcards are already escaped
     /// by escapeLikeWildcards for the ESCAPE clause.
     private func escapeSQLQuote(_ value: String) -> String {
         guard value.contains("'") else { return value }
@@ -255,9 +255,8 @@ struct FilterSQLGenerator {
     }
 
     private func escapeLikeWildcards(_ value: String) -> String {
-        guard value.contains("\\") || value.contains("%") || value.contains("_") else { return value }
-
         if dialect.likeEscapeStyle == .implicit {
+            guard value.contains("\\") || value.contains("%") || value.contains("_") else { return value }
             // MySQL uses \ as both string escape and default LIKE escape.
             // Need double backslash in SQL string so string layer yields single \
             // which LIKE then uses as escape char.
@@ -266,10 +265,11 @@ struct FilterSQLGenerator {
                 .replacingOccurrences(of: "%", with: "\\\\%")
                 .replacingOccurrences(of: "_", with: "\\\\_")
         }
+        guard value.contains("!") || value.contains("%") || value.contains("_") else { return value }
         return value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
+            .replacingOccurrences(of: "!", with: "!!")
+            .replacingOccurrences(of: "%", with: "!%")
+            .replacingOccurrences(of: "_", with: "!_")
     }
 
     // MARK: - Raw SQL Validation

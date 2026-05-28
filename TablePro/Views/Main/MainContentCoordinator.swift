@@ -43,7 +43,6 @@ struct DisplayFormatsCacheEntry {
 /// Uses a single `.sheet(item:)` modifier instead of multiple `.sheet(isPresented:)`.
 enum ActiveSheet: Identifiable {
     case quickSwitcher
-    case connectionSwitcher
     case sqlPreview
     case exportDialog
     case importDialog
@@ -56,7 +55,6 @@ enum ActiveSheet: Identifiable {
     var id: String {
         switch self {
         case .quickSwitcher: "quickSwitcher"
-        case .connectionSwitcher: "connectionSwitcher"
         case .sqlPreview: "sqlPreview"
         case .exportDialog: "exportDialog"
         case .importDialog: "importDialog"
@@ -128,6 +126,10 @@ final class MainContentCoordinator {
     /// Direct reference to structure view actions — eliminates notification broadcasts
     weak var structureActions: StructureViewActionHandler?
 
+    /// Published capability/labels for the structure-mode footer in the bottom status bar.
+    /// `TableStructureView` writes to this; `MainStatusBarView` reads from it.
+    let structureFooterState = StructureFooterState()
+
     /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
     weak var aiViewModel: AIChatViewModel?
 
@@ -157,6 +159,7 @@ final class MainContentCoordinator {
     var tableMetadata: TableMetadata?
     var activeSheet: ActiveSheet?
     var isDatabaseSwitcherShown = false
+    var isConnectionSwitcherShown = false
     var databaseToDrop: String?
     var importFileURL: URL?
     var exportPreselectedTableNames: Set<String>?
@@ -176,6 +179,7 @@ final class MainContentCoordinator {
 
     @ObservationIgnored internal var queryGeneration: Int = 0
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
+    @ObservationIgnored internal var tableLoadTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
@@ -613,6 +617,8 @@ final class MainContentCoordinator {
         fileWatcher = nil
         currentQueryTask?.cancel()
         currentQueryTask = nil
+        for task in tableLoadTasks.values { task.cancel() }
+        tableLoadTasks.removeAll()
         changeManagerUpdateTask?.cancel()
         changeManagerUpdateTask = nil
         redisDatabaseSwitchTask?.cancel()
@@ -745,6 +751,11 @@ final class MainContentCoordinator {
         guard let (tab, index) = tabManager.selectedTabAndIndex,
               !tab.execution.isExecuting else { return }
 
+        if tab.tabType == .table {
+            executeTableTabQueryDirectly()
+            return
+        }
+
         let fullQuery = tab.content.query
 
         let sql: String
@@ -864,16 +875,15 @@ final class MainContentCoordinator {
         }
     }
 
+    var aiInsertReusesSelectedQueryTab: Bool {
+        guard let (tab, _) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return false }
+        return tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     func insertQueryFromAI(_ query: String) {
-        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-           tab.tabType == .query {
-            let existingQuery = tab.content.query
+        if aiInsertReusesSelectedQueryTab, let (_, tabIndex) = tabManager.selectedTabAndIndex {
             tabManager.mutate(at: tabIndex) { mutTab in
-                if existingQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    mutTab.content.query = query
-                } else {
-                    mutTab.content.query = existingQuery + "\n\n" + query
-                }
+                mutTab.content.query = query
                 mutTab.hasUserInteraction = true
             }
         } else if tabManager.tabs.isEmpty {

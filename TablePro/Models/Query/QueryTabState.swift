@@ -142,6 +142,15 @@ struct PaginationState: Equatable {
         currentPage < totalPages
     }
 
+    var isLastPageKnown: Bool {
+        totalRowCount != nil
+    }
+
+    func canGoToNextPage(loadedRowCount: Int) -> Bool {
+        if hasNextPage { return true }
+        return totalRowCount == nil && loadedRowCount >= pageSize
+    }
+
     /// Whether there is a previous page available
     var hasPreviousPage: Bool {
         currentPage > 1
@@ -162,37 +171,37 @@ struct PaginationState: Equatable {
 
     // MARK: - Navigation Methods
 
-    /// Navigate to next page
-    mutating func goToNextPage() {
-        guard hasNextPage else { return }
-        currentPage += 1
-        currentOffset = (currentPage - 1) * pageSize
-    }
-
-    /// Navigate to previous page
-    mutating func goToPreviousPage() {
-        guard hasPreviousPage else { return }
-        currentPage -= 1
-        currentOffset = (currentPage - 1) * pageSize
-    }
-
-    /// Navigate to first page
-    mutating func goToFirstPage() {
-        currentPage = 1
-        currentOffset = 0
-    }
-
-    /// Navigate to last page
-    mutating func goToLastPage() {
-        currentPage = totalPages
-        currentOffset = (totalPages - 1) * pageSize
-    }
-
-    /// Navigate to specific page
-    mutating func goToPage(_ page: Int) {
-        guard page > 0 && page <= totalPages else { return }
+    private mutating func setPage(_ page: Int) {
         currentPage = page
         currentOffset = (page - 1) * pageSize
+    }
+
+    mutating func goToNextPage() {
+        guard hasNextPage else { return }
+        setPage(currentPage + 1)
+    }
+
+    mutating func goToNextPage(loadedRowCount: Int) {
+        guard canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
+        setPage(currentPage + 1)
+    }
+
+    mutating func goToPreviousPage() {
+        guard hasPreviousPage else { return }
+        setPage(currentPage - 1)
+    }
+
+    mutating func goToFirstPage() {
+        setPage(1)
+    }
+
+    mutating func goToLastPage() {
+        setPage(totalPages)
+    }
+
+    mutating func goToPage(_ page: Int) {
+        guard page > 0 && page <= totalPages else { return }
+        setPage(page)
     }
 
     /// Reset pagination to first page

@@ -56,7 +56,7 @@ extension TableViewCoordinator {
                 onNavigate: { [weak self, model] in
                     dismiss()
                     guard let value = model.cellValue else { return }
-                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: model.fkInfo)
+                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: model.fkInfo, openInNewTab: false)
                 },
                 onDismiss: dismiss
             )
@@ -128,7 +128,7 @@ extension TableViewCoordinator {
         PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
-            contentSize: nil
+            contentSize: NSSize(width: 560, height: 420)
         ) { [weak self] dismiss in
             JSONEditorContentView(
                 initialValue: currentValue,
@@ -170,6 +170,36 @@ extension TableViewCoordinator {
                 },
                 onCommitBytes: { data in
                     self?.commitBinaryEdit(row: row, columnIndex: columnIndex, data: data)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
+    func showDateTimePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let columnType = tableRows.columnTypes[columnIndex]
+        let parsed = DateEditingService.parse(cellValue(at: row, column: columnIndex))
+        let initialDate = parsed?.date ?? Date()
+        let timeZone = parsed?.timeZone ?? .gmt
+        let components = DateEditingService.components(for: columnType)
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView
+        ) { [weak self] dismiss in
+            DateTimePickerContentView(
+                initialDate: initialDate,
+                components: components,
+                timeZone: timeZone,
+                onCommit: { picked in
+                    let newValue = parsed.map { DateEditingService.string(from: picked, like: $0) }
+                        ?? DateEditingService.defaultString(from: picked, columnType: columnType)
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss
             )
@@ -298,7 +328,7 @@ extension TableViewCoordinator {
         PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
-            contentSize: nil
+            contentSize: NSSize(width: 560, height: 360)
         ) { dismiss in
             JSONViewerContentView(
                 initialValue: currentValue,
@@ -312,6 +342,32 @@ extension TableViewCoordinator {
                         isEditable: false,
                         onCommit: nil
                     )
+                }
+            )
+        }
+    }
+
+    func showPhpViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 560, height: 360)
+        ) { dismiss in
+            PhpViewerContentView(
+                initialValue: currentValue,
+                columnName: columnName,
+                onDismiss: dismiss,
+                onPopOut: { currentText in
+                    dismiss()
+                    PhpViewerWindowController.open(text: currentText, columnName: columnName)
                 }
             )
         }

@@ -117,7 +117,7 @@ final class QueryTabManager {
         if let title {
             tabTitle = title
         } else if let sourceFileURL {
-            tabTitle = sourceFileURL.deletingPathExtension().lastPathComponent
+            tabTitle = QueryTab.fileDisplayTitle(for: sourceFileURL)
         } else {
             tabTitle = nextTitle()
         }

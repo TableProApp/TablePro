@@ -10,15 +10,24 @@ internal struct JsonEditorView: View {
     var onExpand: (() -> Void)?
     var onPopOut: ((String) -> Void)?
 
+    @State private var displayText: String
+
+    init(context: FieldEditorContext, onExpand: (() -> Void)? = nil, onPopOut: ((String) -> Void)? = nil) {
+        self.context = context
+        self.onExpand = onExpand
+        self.onPopOut = onPopOut
+        self._displayText = State(wrappedValue: JsonReindenter.reindent(context.value.wrappedValue))
+    }
+
     var body: some View {
-        JSONSyntaxTextView(text: context.value, isEditable: !context.isReadOnly, wordWrap: true)
+        JSONCodeEditor(text: $displayText, isEditable: !context.isReadOnly)
             .frame(minHeight: context.isReadOnly ? 60 : 80, maxHeight: 120)
             .clipShape(RoundedRectangle(cornerRadius: 5))
             .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
             .overlay(alignment: .bottomTrailing) {
                 HStack(spacing: 2) {
                     if let onPopOut {
-                        Button { onPopOut(context.value.wrappedValue) } label: {
+                        Button { onPopOut(displayText) } label: {
                             Image(systemName: "arrow.up.forward.app")
                                 .font(.caption2)
                                 .padding(4)
@@ -40,5 +49,18 @@ internal struct JsonEditorView: View {
                 }
                 .padding(4)
             }
+            .onChange(of: displayText) { propagateEdit() }
+            .onChange(of: context.value.wrappedValue) { syncFromBinding() }
+    }
+
+    private func propagateEdit() {
+        guard !context.isReadOnly,
+              JsonReindenter.normalize(displayText) != JsonReindenter.normalize(context.value.wrappedValue) else { return }
+        context.value.wrappedValue = displayText
+    }
+
+    private func syncFromBinding() {
+        guard JsonReindenter.normalize(context.value.wrappedValue) != JsonReindenter.normalize(displayText) else { return }
+        displayText = JsonReindenter.reindent(context.value.wrappedValue)
     }
 }

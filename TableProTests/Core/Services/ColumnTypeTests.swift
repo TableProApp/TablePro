@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Column Type")
 struct ColumnTypeTests {
@@ -119,6 +120,21 @@ struct ColumnTypeTests {
     @Test("text column with raw TIME still reports isTimeOnly false")
     func textWithTimeRawIsNotTimeOnly() {
         #expect(!ColumnType.text(rawType: "TIME").isTimeOnly)
+    }
+
+    @Test("timestamp with TIME and precision reports isTimeOnly true")
+    func timeWithPrecisionIsTimeOnly() {
+        #expect(ColumnType.timestamp(rawType: "TIME(6)").isTimeOnly)
+    }
+
+    @Test("timestamp with TIMESTAMP and precision reports isTimeOnly false")
+    func timestampWithPrecisionIsNotTimeOnly() {
+        #expect(!ColumnType.timestamp(rawType: "TIMESTAMP(6)").isTimeOnly)
+    }
+
+    @Test("timestamptz reports isTimeOnly false")
+    func timestamptzIsNotTimeOnly() {
+        #expect(!ColumnType.timestamp(rawType: "TIMESTAMPTZ").isTimeOnly)
     }
 
     // MARK: - enumValues Property

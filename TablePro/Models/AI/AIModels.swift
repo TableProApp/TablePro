@@ -14,6 +14,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case openRouter
     case gemini
     case ollama
+    case openCode
     case custom
 
     var id: String { rawValue }
@@ -26,6 +27,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openRouter: return "OpenRouter"
         case .gemini:     return "Gemini"
         case .ollama:     return "Ollama"
+        case .openCode:   return "OpenCode Zen"
         case .custom:     return String(localized: "Custom")
         }
     }
@@ -38,17 +40,23 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openRouter: return "https://openrouter.ai/api"
         case .gemini:     return "https://generativelanguage.googleapis.com"
         case .ollama:     return "http://localhost:11434"
+        case .openCode:   return "https://opencode.ai/zen"
         case .custom:     return ""
         }
     }
 
-    enum AuthStyle: Sendable { case apiKey, oauth, none }
+    enum AuthStyle: Sendable {
+        case apiKey, optionalApiKey, oauth, none
+
+        var usesAPIKey: Bool { self == .apiKey || self == .optionalApiKey }
+    }
 
     var authStyle: AuthStyle {
         switch self {
-        case .copilot: return .oauth
-        case .ollama:  return .none
-        default:       return .apiKey
+        case .copilot:  return .oauth
+        case .ollama:   return .none
+        case .openCode: return .optionalApiKey
+        default:        return .apiKey
         }
     }
 
@@ -60,6 +68,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .openRouter: return "globe"
         case .gemini:     return "wand.and.stars"
         case .ollama:     return "desktopcomputer"
+        case .openCode:   return "sparkles"
         case .custom:     return "server.rack"
         }
     }

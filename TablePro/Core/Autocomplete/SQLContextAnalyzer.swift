@@ -103,6 +103,22 @@ struct SQLContext {
         self.currentFunction = currentFunction
         self.isAfterComma = isAfterComma
     }
+
+    func replacingTableReferences(_ references: [TableReference]) -> SQLContext {
+        SQLContext(
+            clauseType: clauseType,
+            prefix: prefix,
+            prefixRange: prefixRange,
+            dotPrefix: dotPrefix,
+            tableReferences: references,
+            isInsideString: isInsideString,
+            isInsideComment: isInsideComment,
+            cteNames: cteNames,
+            nestingLevel: nestingLevel,
+            currentFunction: currentFunction,
+            isAfterComma: isAfterComma
+        )
+    }
 }
 
 /// Analyzes SQL query to determine completion context

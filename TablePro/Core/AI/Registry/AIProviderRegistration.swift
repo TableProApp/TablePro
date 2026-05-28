@@ -64,7 +64,7 @@ enum AIProviderRegistration {
             }
         ))
 
-        for type in [AIProviderType.openRouter, .ollama, .custom] {
+        for type in [AIProviderType.openRouter, .openCode, .ollama, .custom] {
             registry.register(AIProviderDescriptor(
                 typeID: type.rawValue,
                 displayName: type.displayName,

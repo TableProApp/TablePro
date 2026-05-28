@@ -34,15 +34,18 @@ struct PluginManagerReconciliationTests {
     private func makeRejected(
         bundleId: String? = nil,
         registryId: String? = nil,
-        isOutdated: Bool = true
+        isOutdated: Bool = true,
+        reason: String = "ABI mismatch",
+        providedDatabaseTypeIds: [String] = []
     ) -> RejectedPlugin {
         RejectedPlugin(
             url: URL(fileURLWithPath: "/tmp/test-\(UUID().uuidString).tableplugin"),
             bundleId: bundleId,
             registryId: registryId,
             name: "Test",
-            reason: "ABI mismatch",
-            isOutdated: isOutdated
+            reason: reason,
+            isOutdated: isOutdated,
+            providedDatabaseTypeIds: providedDatabaseTypeIds
         )
     }
 
@@ -81,5 +84,67 @@ struct PluginManagerReconciliationTests {
         let url = rejected.url
         pm.removeFromRejected(url: url)
         #expect(!pm.rejectedPlugins.contains { $0.url == url })
+    }
+
+    @Test("connect treats an outdated installed plugin as updatable, not missing")
+    func hasOutdatedRejectedPluginMatchesType() {
+        let pm = PluginManager.shared
+        let rejected = makeRejected(bundleId: "com.example.driver", providedDatabaseTypeIds: ["TestDriverType"])
+        pm.rejectedPlugins.append(rejected)
+        defer { pm.removeFromRejected(url: rejected.url) }
+        #expect(pm.hasOutdatedRejectedPlugin(forTypeId: "TestDriverType"))
+        #expect(!pm.hasOutdatedRejectedPlugin(forTypeId: "OtherDriverType"))
+    }
+
+    @Test("plugins rejected for non-ABI reasons are not treated as updatable")
+    func hasOutdatedRejectedPluginIgnoresNonOutdated() {
+        let pm = PluginManager.shared
+        let rejected = makeRejected(isOutdated: false, providedDatabaseTypeIds: ["TestDriverType"])
+        pm.rejectedPlugins.append(rejected)
+        defer { pm.removeFromRejected(url: rejected.url) }
+        #expect(!pm.hasOutdatedRejectedPlugin(forTypeId: "TestDriverType"))
+    }
+
+    @Test("outdatedReconcileReason surfaces the rejected plugin's reason for the type")
+    func outdatedReconcileReasonReturnsReason() {
+        let pm = PluginManager.shared
+        let rejected = makeRejected(
+            reason: "A newer version of TablePro is required for this plugin.",
+            providedDatabaseTypeIds: ["TestDriverType"]
+        )
+        pm.rejectedPlugins.append(rejected)
+        defer { pm.removeFromRejected(url: rejected.url) }
+        #expect(pm.outdatedReconcileReason(forTypeId: "TestDriverType") == "A newer version of TablePro is required for this plugin.")
+        #expect(pm.outdatedReconcileReason(forTypeId: "OtherDriverType") == nil)
+    }
+
+    @Test("incompatible-build errors are permanent reconciliation failures")
+    func permanentFailuresClassified() {
+        #expect(PluginError.noCompatibleBinary.isPermanentReconciliationFailure)
+        #expect(PluginError.incompatibleVersion(required: 15, current: 14).isPermanentReconciliationFailure)
+        #expect(PluginError.incompatibleWithCurrentApp(minimumRequired: "0.44.0").isPermanentReconciliationFailure)
+        #expect(PluginError.appVersionTooOld(minimumRequired: "0.44.0", currentApp: "0.43.3").isPermanentReconciliationFailure)
+    }
+
+    @Test("transient errors are retried, not surfaced as permanent failures")
+    func transientFailuresNotPermanent() {
+        #expect(!PluginError.downloadFailed("timeout").isPermanentReconciliationFailure)
+        #expect(!PluginError.checksumMismatch.isPermanentReconciliationFailure)
+        #expect(!PluginError.installFailed("io error").isPermanentReconciliationFailure)
+    }
+
+    @Test("reconciliation retries only when a transient failure still has attempts left")
+    func reconciliationRetryDecision() {
+        #expect(PluginManager.reconciliationShouldRetry(sawTransientFailure: true, retryRemaining: true))
+        #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: true, retryRemaining: false))
+        #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: false, retryRemaining: true))
+        #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: false, retryRemaining: false))
+    }
+
+    @Test("forceRefresh manifest request bypasses the local cache and sends no If-None-Match")
+    func forceRefreshRequestBypassesCache() {
+        let request = RegistryClient.shared.makeManifestRequest(forceRefresh: true)
+        #expect(request.cachePolicy == .reloadIgnoringLocalCacheData)
+        #expect(request.value(forHTTPHeaderField: "If-None-Match") == nil)
     }
 }

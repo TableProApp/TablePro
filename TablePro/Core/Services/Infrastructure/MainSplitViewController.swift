@@ -49,6 +49,34 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private var connectionStatusCancellable: AnyCancellable?
 
+    // MARK: - Title Resolution
+
+    static func resolveDefaultTitle(payload: EditorTabPayload?, queryLanguageName: String?) -> String {
+        switch payload?.tabType {
+        case .serverDashboard:
+            return String(localized: "Server Dashboard")
+        case .erDiagram:
+            return String(localized: "ER Diagram")
+        case .createTable:
+            return String(localized: "Create Table")
+        default:
+            break
+        }
+        if let tabTitle = payload?.tabTitle {
+            return tabTitle
+        }
+        if let sourceFileURL = payload?.sourceFileURL {
+            return QueryTab.fileDisplayTitle(for: sourceFileURL)
+        }
+        if let tableName = payload?.tableName {
+            return tableName
+        }
+        if let queryLanguageName {
+            return String(format: String(localized: "%@ Query"), queryLanguageName)
+        }
+        return String(localized: "SQL Query")
+    }
+
     // MARK: - Init
 
     init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?) {
@@ -60,25 +88,14 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             self.payloadConnection = nil
         }
 
-        let defaultTitle: String
-        if payload?.tabType == .serverDashboard {
-            defaultTitle = String(localized: "Server Dashboard")
-        } else if payload?.tabType == .erDiagram {
-            defaultTitle = String(localized: "ER Diagram")
-        } else if payload?.tabType == .createTable {
-            defaultTitle = String(localized: "Create Table")
-        } else if let tabTitle = payload?.tabTitle {
-            defaultTitle = tabTitle
-        } else if let tableName = payload?.tableName {
-            defaultTitle = tableName
-        } else if let connectionId = payload?.connectionId,
-                  let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection {
-            let langName = PluginManager.shared.queryLanguageName(for: connection.type)
-            defaultTitle = "\(langName) Query"
-        } else {
-            defaultTitle = String(localized: "SQL Query")
-        }
-        self.windowTitle = defaultTitle
+        let queryLanguageName: String? = {
+            guard let connectionId = payload?.connectionId,
+                  let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection else {
+                return nil
+            }
+            return PluginManager.shared.queryLanguageName(for: connection.type)
+        }()
+        self.windowTitle = Self.resolveDefaultTitle(payload: payload, queryLanguageName: queryLanguageName)
 
         var resolvedSession: ConnectionSession?
         if let connectionId = payload?.connectionId {
@@ -331,18 +348,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             windowState: sessionState.coordinator.windowSidebarState,
             onDoubleClick: { [weak self] table in
                 guard let coordinator = self?.sessionState?.coordinator else { return }
-                let connectionId = coordinator.connectionId
-                if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId),
-                   let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
-                    if previewCoordinator.tabManager.selectedTab?.tableContext.tableName == table.name {
-                        previewCoordinator.promotePreviewTab()
-                    } else {
-                        previewCoordinator.promotePreviewTab()
-                        coordinator.openTableTab(table)
-                    }
-                } else {
+                let activeTab = coordinator.tabManager.selectedTab
+                if activeTab?.tabType == .table, activeTab?.tableContext.tableName == table.name {
                     coordinator.promotePreviewTab()
-                    coordinator.openTableTab(table)
+                } else {
+                    coordinator.openTableTab(table, forceNonPreview: true)
                 }
             },
             pendingTruncates: sessionPendingTruncatesBinding,

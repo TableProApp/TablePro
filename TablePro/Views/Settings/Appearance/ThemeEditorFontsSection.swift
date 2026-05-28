@@ -123,7 +123,6 @@ struct ThemeEditorFontsSection: View {
             var copy = engine.duplicateTheme(base, newName: base.name + " (Custom)")
             mutate(&copy.fonts)
             try? engine.saveUserTheme(copy)
-            engine.activateTheme(copy)
             editingTheme = copy
             onThemeDuplicated?(copy)
         } else {

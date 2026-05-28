@@ -23,7 +23,7 @@ struct JSONViewerContentView: View {
         self.columnName = columnName
         self.onDismiss = onDismiss
         self.onPopOut = onPopOut
-        self._text = State(initialValue: initialValue?.prettyPrintedAsJson() ?? initialValue ?? "")
+        self._text = State(initialValue: initialValue ?? "")
     }
 
     var body: some View {

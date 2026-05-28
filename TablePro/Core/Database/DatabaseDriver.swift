@@ -95,6 +95,10 @@ protocol DatabaseDriver: AnyObject {
     /// Returns nil if not available (e.g., SQLite). Used for instant pagination display.
     func fetchApproximateRowCount(table: String) async throws -> Int?
 
+    /// Fetch an exact row count for the table filtered by `filters`.
+    /// Returns nil when the driver can't count a filtered set, so the caller falls back.
+    func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
+
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
 
@@ -354,6 +358,7 @@ extension DatabaseDriver {
     }
 
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? { nil }
 
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? { nil }
@@ -398,18 +403,26 @@ enum DatabaseDriverFactory {
         let pluginId = connection.type.pluginTypeId
         if PluginManager.shared.driverPlugin(for: connection.type) == nil,
            !PluginManager.shared.hasFinishedInitialLoad {
-            logger.info("Plugin '\(pluginId)' not loaded yet — waiting for background load")
+            logger.info("Plugin '\(pluginId)' not loaded yet, waiting for background load")
             await PluginManager.shared.waitForInitialLoad()
         }
-        return try createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
+        if PluginManager.shared.driverPlugin(for: connection.type) == nil,
+           PluginManager.shared.hasOutdatedRejectedPlugin(forTypeId: pluginId) {
+            logger.info("Plugin '\(pluginId)' is installed but outdated, waiting for reconciliation to update it")
+            await PluginManager.shared.awaitReconciliation()
+        }
+        return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
     }
 
     private static func createDriverFromPlugin(
         for connection: DatabaseConnection,
         passwordOverride: String? = nil
-    ) throws -> DatabaseDriver {
+    ) async throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
+            if let reason = PluginManager.shared.outdatedReconcileReason(forTypeId: pluginId) {
+                throw PluginError.pluginUpdateUnavailable(reason: reason)
+            }
             if connection.type.isDownloadablePlugin {
                 throw PluginError.pluginNotInstalled(connection.type.rawValue)
             }
@@ -417,23 +430,54 @@ enum DatabaseDriverFactory {
                 "\(pluginId) driver plugin not loaded. The plugin may be disabled or missing from the PlugIns directory."
             )
         }
+        var ssl = connection.sslConfig
+        var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
+        if connection.usesAWSIAM {
+            if ssl.mode == .disabled || ssl.mode == .preferred {
+                ssl.mode = .required
+            }
+            additionalFields["enableCleartextPlugin"] = "true"
+        }
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
             username: connection.username,
-            password: resolvePassword(for: connection, override: passwordOverride),
+            password: try await resolvePassword(for: connection, fields: additionalFields, override: passwordOverride),
             database: connection.database,
-            ssl: connection.sslConfig,
-            additionalFields: buildAdditionalFields(for: connection, plugin: plugin)
+            ssl: ssl,
+            additionalFields: additionalFields
         )
         let pluginDriver = plugin.createDriver(config: config)
         return PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
     }
 
+    private static func resolveIAMPassword(
+        for connection: DatabaseConnection,
+        fields: [String: String]
+    ) async throws -> String {
+        let source = fields["awsAuth"] ?? "accessKey"
+        let explicitRegion = fields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
+        guard let region = explicitRegion ?? RDSEndpoint.region(forHost: connection.host) else {
+            throw AWSAuthError.regionUnknown(host: connection.host)
+        }
+        let credentials = try await AWSCredentialResolver.resolve(source: source, fields: fields)
+        return RDSAuthTokenGenerator.generateToken(
+            host: connection.host,
+            port: connection.port,
+            region: region,
+            username: connection.username,
+            credentials: credentials
+        )
+    }
+
     private static func resolvePassword(
         for connection: DatabaseConnection,
+        fields: [String: String],
         override: String? = nil
-    ) -> String {
+    ) async throws -> String {
+        if connection.usesAWSIAM {
+            return try await resolveIAMPassword(for: connection, fields: fields)
+        }
         if let override { return override }
         if connection.usePgpass {
             let pgpassHost = connection.additionalFields["pgpassOriginalHost"] ?? connection.host

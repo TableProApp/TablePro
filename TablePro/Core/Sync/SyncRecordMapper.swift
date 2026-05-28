@@ -110,6 +110,8 @@ struct SyncRecordMapper {
         // Note: sshTunnelMode is intentionally NOT synced — it is re-derived
         // on decode from sshConfig + sshProfileId. If adding sshTunnelMode to
         // the sync schema in the future, apply path contraction to its snapshot.
+        // cloudflareTunnelMode is also NOT synced: it is device-local runtime
+        // config and its service-token secrets live in the Keychain.
         do {
             let sshData = try encoder.encode(Self.makePortable(connection.sshConfig))
             record["sshConfigJson"] = sshData as CKRecordValue

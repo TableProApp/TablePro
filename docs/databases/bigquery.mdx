@@ -48,7 +48,7 @@ OAuth tokens are session-only. You'll need to re-authorize after disconnecting. 
 
 ## Features
 
-**Dataset Browsing**: The first dataset is auto-selected on connect. Switch datasets with ⌘K or the database switcher. Datasets show as schemas in the sidebar.
+**Dataset Browsing**: The sidebar lists every dataset as an expandable node. Click a dataset to load its tables; they load the first time you open it. Search filters across the datasets you have open.
 
 **Table Structure**: Columns with full BigQuery types: `STRUCT<name STRING, age INT64>`, `ARRAY<STRING>`, nullable status, field descriptions. Clustering and partitioning info in the Indexes tab.
 
@@ -113,7 +113,7 @@ Minimum roles:
 
 **Cost**: Use `LIMIT`, select specific columns, prefer partitioned tables. Set **Max Bytes Billed** to prevent expensive queries. Table browsing caps rows automatically.
 
-**No tables after connect**: Switch datasets with ⌘K. The first dataset is auto-selected, but if it's empty, switch to one with tables.
+**No tables after connect**: Expand a dataset node in the sidebar to load its tables. Empty datasets stay empty; open another dataset that has tables.
 
 ## Limitations
 

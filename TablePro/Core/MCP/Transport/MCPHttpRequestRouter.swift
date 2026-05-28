@@ -42,15 +42,11 @@ struct MCPHttpRequestRouter: Sendable {
         case .delete:
             await handleDeleteMcp(head: head, context: context, clientAddress: clientAddress)
         default:
-            await respondTopLevel(
-                context: context,
-                error: MCPProtocolError(
-                    code: JsonRpcErrorCode.methodNotFound,
-                    message: "Method not allowed",
-                    httpStatus: .methodNotAllowed
-                ),
-                requestId: nil
-            )
+            if pathMatchesMcp(head.path) {
+                await respondHttpMethodNotAllowed(context: context)
+            } else {
+                await respondHttpNotFound(context: context)
+            }
         }
     }
 
@@ -177,15 +173,7 @@ struct MCPHttpRequestRouter: Sendable {
         clientAddress: MCPClientAddress
     ) async {
         guard pathMatchesMcp(head.path) else {
-            await respondTopLevel(
-                context: context,
-                error: MCPProtocolError(
-                    code: JsonRpcErrorCode.methodNotFound,
-                    message: "Method not found",
-                    httpStatus: .notFound
-                ),
-                requestId: nil
-            )
+            await respondHttpNotFound(context: context)
             return
         }
 
@@ -242,15 +230,7 @@ struct MCPHttpRequestRouter: Sendable {
         now: Date
     ) async {
         guard pathMatchesMcp(head.path) else {
-            await respondTopLevel(
-                context: context,
-                error: MCPProtocolError(
-                    code: JsonRpcErrorCode.methodNotFound,
-                    message: "Method not found",
-                    httpStatus: .notFound
-                ),
-                requestId: nil
-            )
+            await respondHttpNotFound(context: context)
             return
         }
 
@@ -344,15 +324,7 @@ struct MCPHttpRequestRouter: Sendable {
         clientAddress: MCPClientAddress
     ) async {
         guard pathMatchesMcp(head.path) else {
-            await respondTopLevel(
-                context: context,
-                error: MCPProtocolError(
-                    code: JsonRpcErrorCode.methodNotFound,
-                    message: "Method not found",
-                    httpStatus: .notFound
-                ),
-                requestId: nil
-            )
+            await respondHttpNotFound(context: context)
             return
         }
 
@@ -443,6 +415,25 @@ struct MCPHttpRequestRouter: Sendable {
             status: error.httpStatus,
             sessionId: nil,
             extraHeaders: error.extraHeaders
+        )
+        await context.cancel()
+    }
+
+    private func respondHttpNotFound(context: HttpConnectionContext) async {
+        await context.writePlainJsonError(
+            status: .notFound,
+            error: "not_found",
+            errorDescription: "TablePro's MCP server does not provide this endpoint."
+        )
+        await context.cancel()
+    }
+
+    private func respondHttpMethodNotAllowed(context: HttpConnectionContext) async {
+        await context.writePlainJsonError(
+            status: .methodNotAllowed,
+            error: "method_not_allowed",
+            errorDescription: "This HTTP method is not supported.",
+            extraHeaders: [("Allow", "GET, POST, DELETE, OPTIONS")]
         )
         await context.cancel()
     }

@@ -10,11 +10,11 @@
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 @Suite("Multi-Connection Navigation")
 struct MultiConnectionNavigationTests {
-
     // MARK: - Helpers
 
     @MainActor
@@ -138,7 +138,8 @@ struct MultiConnectionNavigationTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
@@ -151,7 +152,8 @@ struct MultiConnectionNavigationTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "accounts",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
@@ -164,41 +166,45 @@ struct MultiConnectionNavigationTests {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "items",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty
+            hasExistingTabs: !manager.tabs.isEmpty,
+            isActiveTabReusable: false
         )
         #expect(result == .skip)
     }
 
-    // MARK: - SidebarNavigationResult: openInPlace for all database types with no tabs
+    // MARK: - SidebarNavigationResult: reuseActiveTab for all database types with no tabs
 
-    @Test("resolve returns openInPlace for mysql with no existing tabs")
-    func resolveOpenInPlaceForMysqlNoTabs() {
+    @Test("resolve returns reuseActiveTab for mysql with no existing tabs")
+    func resolveReuseActiveTabForMysqlNoTabs() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
-    @Test("resolve returns openInPlace for postgresql with no existing tabs")
-    func resolveOpenInPlaceForPostgresqlNoTabs() {
+    @Test("resolve returns reuseActiveTab for postgresql with no existing tabs")
+    func resolveReuseActiveTabForPostgresqlNoTabs() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "accounts",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
-    @Test("resolve returns openInPlace for sqlite with no existing tabs")
-    func resolveOpenInPlaceForSqliteNoTabs() {
+    @Test("resolve returns reuseActiveTab for sqlite with no existing tabs")
+    func resolveReuseActiveTabForSqliteNoTabs() {
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "items",
             currentTabTableName: nil,
-            hasExistingTabs: false
+            hasExistingTabs: false,
+            isActiveTabReusable: false
         )
-        #expect(result == .openInPlace)
+        #expect(result == .reuseActiveTab)
     }
 
     // MARK: - Coordinator connection scoping

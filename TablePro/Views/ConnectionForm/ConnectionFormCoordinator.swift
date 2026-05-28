@@ -29,6 +29,7 @@ final class ConnectionFormCoordinator {
     var network: NetworkPaneViewModel
     var auth: AuthPaneViewModel
     var ssh: SSHPaneViewModel
+    var cloudflareTunnel: CloudflareTunnelPaneViewModel
     var ssl: SSLPaneViewModel
     var customization: CustomizationPaneViewModel
     var advanced: AdvancedPaneViewModel
@@ -65,6 +66,9 @@ final class ConnectionFormCoordinator {
         if services.pluginManager.supportsSSH(for: network.type) {
             panes.append(.ssh)
         }
+        if services.pluginManager.supportsCloudflareTunnel(for: network.type) {
+            panes.append(.cloudflareTunnel)
+        }
         if services.pluginManager.supportsSSL(for: network.type) {
             panes.append(.ssl)
         }
@@ -78,6 +82,7 @@ final class ConnectionFormCoordinator {
         network.validationIssues.isEmpty
             && auth.validationIssues.isEmpty
             && ssh.validationIssues.isEmpty
+            && cloudflareTunnel.validationIssues.isEmpty
             && ssl.validationIssues.isEmpty
             && customization.validationIssues.isEmpty
             && advanced.validationIssues.isEmpty
@@ -99,6 +104,7 @@ final class ConnectionFormCoordinator {
         self.network = NetworkPaneViewModel()
         self.auth = AuthPaneViewModel()
         self.ssh = SSHPaneViewModel()
+        self.cloudflareTunnel = CloudflareTunnelPaneViewModel()
         self.ssl = SSLPaneViewModel()
         self.customization = CustomizationPaneViewModel()
         self.advanced = AdvancedPaneViewModel()
@@ -108,6 +114,7 @@ final class ConnectionFormCoordinator {
         network.coordinator = ref
         auth.coordinator = ref
         ssh.coordinator = ref
+        cloudflareTunnel.coordinator = ref
         ssl.coordinator = ref
         customization.coordinator = ref
         advanced.coordinator = ref
@@ -152,6 +159,7 @@ final class ConnectionFormCoordinator {
             network.load(from: existing)
             auth.load(from: existing, storage: storage)
             ssh.load(from: existing, storage: storage)
+            cloudflareTunnel.load(from: existing, storage: storage)
             ssl.load(from: existing)
             customization.load(from: existing)
             advanced.load(from: existing)
@@ -255,6 +263,7 @@ final class ConnectionFormCoordinator {
         }
 
         let sshTunnelMode = ssh.state.buildTunnelMode()
+        let cloudflareTunnelMode = cloudflareTunnel.state.buildTunnelMode()
         let connectionToSave = DatabaseConnection(
             id: finalId,
             name: network.name,
@@ -270,6 +279,7 @@ final class ConnectionFormCoordinator {
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
             sshTunnelMode: sshTunnelMode,
+            cloudflareTunnelMode: cloudflareTunnelMode,
             safeModeLevel: customization.safeModeLevel,
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
@@ -306,6 +316,8 @@ final class ConnectionFormCoordinator {
             storage.deleteKeyPassphrase(for: connectionToSave.id)
             storage.deleteTOTPSecret(for: connectionToSave.id)
         }
+
+        cloudflareTunnel.save(to: connectionToSave.id, storage: storage)
 
         var savedConnections = storage.loadConnections()
         if isNew {
@@ -428,6 +440,7 @@ final class ConnectionFormCoordinator {
         }
 
         let testTunnelMode = ssh.state.buildTunnelMode()
+        let testCloudflareMode = cloudflareTunnel.state.buildTunnelMode()
         let testConn = DatabaseConnection(
             name: network.name,
             host: testHost,
@@ -442,6 +455,7 @@ final class ConnectionFormCoordinator {
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
             sshTunnelMode: testTunnelMode,
+            cloudflareTunnelMode: testCloudflareMode,
             redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
@@ -454,6 +468,7 @@ final class ConnectionFormCoordinator {
         let connectionType = network.type
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state
+        let cloudflareState = cloudflareTunnel.state
         let additionalFieldValues = finalAdditionalFields
 
         testTask = Task { [weak self] in
@@ -473,6 +488,11 @@ final class ConnectionFormCoordinator {
                     if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
                         services.connectionStorage.saveTOTPSecret(sshState.totpSecret, for: testConn.id)
                     }
+                }
+
+                if cloudflareState.enabled && cloudflareState.authMethod == .serviceToken {
+                    services.connectionStorage.saveCloudflareTokenId(cloudflareState.serviceTokenId, for: testConn.id)
+                    services.connectionStorage.saveCloudflareTokenSecret(cloudflareState.serviceTokenSecret, for: testConn.id)
                 }
 
                 for field in services.pluginManager.additionalConnectionFields(for: connectionType)
@@ -554,6 +574,8 @@ final class ConnectionFormCoordinator {
         services.connectionStorage.deleteSSHPassword(for: testId)
         services.connectionStorage.deleteKeyPassphrase(for: testId)
         services.connectionStorage.deleteTOTPSecret(for: testId)
+        services.connectionStorage.deleteCloudflareTokenId(for: testId)
+        services.connectionStorage.deleteCloudflareTokenSecret(for: testId)
         let secureFieldIds = services.pluginManager.additionalConnectionFields(for: network.type)
             .filter(\.isSecure).map(\.id)
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)

@@ -121,7 +121,8 @@ extension QueryExecutionCoordinator {
             tab.tableContext.tableName = tableName
             tab.tableContext.isEditable = isEditable
 
-            if let metadata, let approxCount = metadata.approximateRowCount, approxCount > 0 {
+            if let metadata, let approxCount = metadata.approximateRowCount, approxCount > 0,
+               !tab.filterState.hasAppliedFilters {
                 tab.pagination.totalRowCount = approxCount
                 tab.pagination.isApproximateRowCount = true
             }
@@ -251,57 +252,14 @@ extension QueryExecutionCoordinator {
         connectionType: DatabaseType,
         schemaResult: SchemaResult?
     ) {
+        resolveRowCount(
+            tableName: tableName,
+            tabId: tabId,
+            capturedGeneration: capturedGeneration,
+            connectionType: connectionType
+        )
+
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
-
-        Task(priority: .background) { [weak self, parent] in
-            guard let self else { return }
-            guard !parent.isTearingDown else { return }
-            guard let mainDriver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
-
-            let count: Int?
-            let isApproximate: Bool
-            if isNonSQL {
-                count = try? await mainDriver.fetchApproximateRowCount(table: tableName)
-                isApproximate = true
-            } else {
-                let threshold = await AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
-                let approxCount = await MainActor.run {
-                    self.parent.tabManager.tabs.first { $0.id == tabId }?.pagination.totalRowCount
-                }
-                if let approx = approxCount, approx >= threshold {
-                    return
-                }
-
-                let quotedTable = mainDriver.quoteIdentifier(tableName)
-                do {
-                    let countResult = try await mainDriver.execute(
-                        query: "SELECT COUNT(*) FROM \(quotedTable)"
-                    )
-                    if let firstRow = countResult.rows.first,
-                       let countStr = firstRow.first?.asText {
-                        count = Int(countStr)
-                    } else {
-                        count = nil
-                    }
-                } catch {
-                    helpersLogger.warning("COUNT(*) query failed for \(tableName): \(error.localizedDescription)")
-                    count = nil
-                }
-                isApproximate = false
-            }
-
-            if let count {
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    guard capturedGeneration == parent.queryGeneration else { return }
-                    parent.tabManager.mutate(tabId: tabId) { tab in
-                        tab.pagination.totalRowCount = count
-                        tab.pagination.isApproximateRowCount = isApproximate
-                    }
-                }
-            }
-        }
-
         guard !isNonSQL else { return }
         guard let enumDriver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
         Task(priority: .background) { [weak self, parent] in
@@ -362,54 +320,104 @@ extension QueryExecutionCoordinator {
         capturedGeneration: Int,
         connectionType: DatabaseType
     ) {
+        resolveRowCount(
+            tableName: tableName,
+            tabId: tabId,
+            capturedGeneration: capturedGeneration,
+            connectionType: connectionType
+        )
+    }
+
+    func resolveRowCount(
+        tableName: String,
+        tabId: UUID,
+        capturedGeneration: Int,
+        connectionType: DatabaseType
+    ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
 
-        Task { [weak self, parent] in
+        Task(priority: .background) { [weak self, parent] in
             guard let self else { return }
-            guard let mainDriver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
+            guard !parent.isTearingDown else { return }
+            guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
 
-            let count: Int?
-            let isApproximate: Bool
-            if isNonSQL {
-                count = try? await mainDriver.fetchApproximateRowCount(table: tableName)
-                isApproximate = true
-            } else {
-                let threshold = await AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
-                let approxCount = await MainActor.run {
-                    self.parent.tabManager.tabs.first { $0.id == tabId }?.pagination.totalRowCount
-                }
-                if let approx = approxCount, approx >= threshold {
-                    return
-                }
-
-                let quotedTable = mainDriver.quoteIdentifier(tableName)
-                do {
-                    let countResult = try await mainDriver.execute(
-                        query: "SELECT COUNT(*) FROM \(quotedTable)"
-                    )
-                    if let firstRow = countResult.rows.first,
-                       let countStr = firstRow.first?.asText {
-                        count = Int(countStr)
-                    } else {
-                        count = nil
-                    }
-                } catch {
-                    helpersLogger.warning("COUNT(*) query failed for \(tableName): \(error.localizedDescription)")
-                    count = nil
-                }
-                isApproximate = false
+            let prepared: (plan: RowCountPlan, sql: String?) = await MainActor.run {
+                guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return (.skip, nil) }
+                let plan = Self.rowCountPlan(
+                    isNonSQL: isNonSQL,
+                    filterState: tab.filterState,
+                    approximateRowCount: tab.pagination.totalRowCount,
+                    threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
+                )
+                guard case let .exactCount(filtered) = plan else { return (plan, nil) }
+                let sql = parent.queryBuilder.buildFilteredCountQuery(
+                    tableName: tableName,
+                    schemaName: tab.tableContext.schemaName,
+                    filters: filtered ? tab.filterState.appliedFilters : [],
+                    logicMode: tab.filterState.filterLogicMode
+                )
+                return (plan, sql)
             }
 
-            if let count {
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    parent.tabManager.mutate(tabId: tabId) { tab in
-                        tab.pagination.totalRowCount = count
+            let outcome: RowCountOutcome
+            switch prepared.plan {
+            case .skip:
+                return
+            case .clear:
+                outcome = .clear
+            case .approximate:
+                guard let count = try? await driver.fetchApproximateRowCount(table: tableName) else { return }
+                outcome = .count(count, isApproximate: true)
+            case let .filteredNonSQL(filters, logicMode):
+                if let count = try? await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode) {
+                    outcome = .count(count, isApproximate: false)
+                } else {
+                    outcome = .clear
+                }
+            case .exactCount:
+                guard let sql = prepared.sql else { return }
+                do {
+                    let result = try await driver.execute(query: sql)
+                    guard let countStr = result.rows.first?.first?.asText, let count = Int(countStr) else { return }
+                    outcome = .count(count, isApproximate: false)
+                } catch {
+                    helpersLogger.warning("COUNT query failed for \(tableName): \(error.localizedDescription)")
+                    return
+                }
+            }
+
+            await MainActor.run {
+                guard capturedGeneration == parent.queryGeneration else { return }
+                parent.tabManager.mutate(tabId: tabId) { tab in
+                    switch outcome {
+                    case let .count(value, isApproximate):
+                        tab.pagination.totalRowCount = value
                         tab.pagination.isApproximateRowCount = isApproximate
+                    case .clear:
+                        tab.pagination.totalRowCount = nil
+                        tab.pagination.isApproximateRowCount = false
                     }
                 }
             }
         }
+    }
+
+    static func rowCountPlan(
+        isNonSQL: Bool,
+        filterState: TabFilterState,
+        approximateRowCount: Int?,
+        threshold: Int
+    ) -> RowCountPlan {
+        if isNonSQL {
+            return filterState.hasAppliedFilters
+                ? .filteredNonSQL(filters: filterState.appliedFilters, logicMode: filterState.filterLogicMode)
+                : .approximate
+        }
+        let exceedsThreshold = (approximateRowCount ?? 0) >= threshold
+        if filterState.hasAppliedFilters {
+            return exceedsThreshold ? .clear : .exactCount(filtered: true)
+        }
+        return exceedsThreshold ? .skip : .exactCount(filtered: false)
     }
 
     func handleQueryExecutionError(
@@ -480,4 +488,17 @@ extension QueryExecutionCoordinator {
         }
         parent.runQuery()
     }
+}
+
+enum RowCountPlan: Equatable {
+    case skip
+    case clear
+    case approximate
+    case exactCount(filtered: Bool)
+    case filteredNonSQL(filters: [TableFilter], logicMode: FilterLogicMode)
+}
+
+private enum RowCountOutcome {
+    case count(Int, isApproximate: Bool)
+    case clear
 }

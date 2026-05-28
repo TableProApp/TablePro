@@ -16,6 +16,7 @@ struct DBeaverImporter: ForeignAppImporter {
     let displayName = "DBeaver"
     let symbolName = "bird"
     let appBundleIdentifier = "org.jkiss.dbeaver.core.product"
+    let readsPasswordsFromKeychain = false
 
     /// All known DBeaver Eclipse product identifiers. Community, Enterprise,
     /// Ultimate, and Lite variants each register a different bundle ID, but

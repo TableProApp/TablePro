@@ -71,9 +71,59 @@ struct CellInteractionResolverReadOnlyTests {
         #expect(resolver.resolve(context) == .viewJson)
     }
 
-    @Test("read-only JSON-looking plain text without columnType returns viewInline, not viewJson")
-    func readOnlyJsonLikeTextWithoutTypeReturnsViewInline() {
+    @Test("read-only JSON-looking plain text without columnType returns viewJson via detector")
+    func readOnlyJsonLikeTextWithoutTypeReturnsViewJson() {
         let context = ContextFactory.make(value: #"{"k":1}"#, columnType: nil, isTableEditable: false)
+        #expect(resolver.resolve(context) == .viewJson)
+    }
+
+    @Test("read-only PHP-shaped plain text returns viewPhpSerialized")
+    func readOnlyPhpLikeTextReturnsViewPhpSerialized() {
+        let context = ContextFactory.make(value: "a:0:{}", columnType: .text(rawType: "TEXT"), isTableEditable: false)
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
+    }
+
+    @Test("read-only override .raw beats content sniffing")
+    func readOnlyOverrideRawWins() {
+        let context = ContextFactory.make(
+            value: #"{"k":1}"#,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: false,
+            displayFormatOverride: .raw
+        )
+        #expect(resolver.resolve(context) == .viewInline(value: #"{"k":1}"#))
+    }
+
+    @Test("read-only override .json forces viewJson on non-JSON text")
+    func readOnlyOverrideJsonForces() {
+        let context = ContextFactory.make(
+            value: "plain",
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: false,
+            displayFormatOverride: .json
+        )
+        #expect(resolver.resolve(context) == .viewJson)
+    }
+
+    @Test("read-only override .phpSerialized forces viewPhpSerialized")
+    func readOnlyOverridePhpSerializedForces() {
+        let context = ContextFactory.make(
+            value: "plain",
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: false,
+            displayFormatOverride: .phpSerialized
+        )
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
+    }
+
+    @Test("read-only override .raw on declared JSON column returns viewInline (override beats type)")
+    func readOnlyOverrideRawBypassesJsonColumn() {
+        let context = ContextFactory.make(
+            value: #"{"k":1}"#,
+            columnType: .json(rawType: "JSON"),
+            isTableEditable: false,
+            displayFormatOverride: .raw
+        )
         #expect(resolver.resolve(context) == .viewInline(value: #"{"k":1}"#))
     }
 }
@@ -98,6 +148,65 @@ struct CellInteractionResolverEditableTests {
     func editableJsonLikeTextReturnsEditJson() {
         let context = ContextFactory.make(value: #"{"k":1}"#, isTableEditable: true)
         #expect(resolver.resolve(context) == .editJson)
+    }
+
+    @Test("editable PHP-shaped text returns viewPhpSerialized (read-only)")
+    func editablePhpLikeTextReturnsView() {
+        let context = ContextFactory.make(value: "a:0:{}", isTableEditable: true)
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
+    }
+
+    @Test("editable override .phpSerialized forces viewPhpSerialized")
+    func editableOverridePhpForces() {
+        let context = ContextFactory.make(
+            value: "plain",
+            isTableEditable: true,
+            displayFormatOverride: .phpSerialized
+        )
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
+    }
+
+    @Test("editable override .json forces editJson")
+    func editableOverrideJsonForces() {
+        let context = ContextFactory.make(
+            value: "plain",
+            isTableEditable: true,
+            displayFormatOverride: .json
+        )
+        #expect(resolver.resolve(context) == .editJson)
+    }
+
+    @Test("editable override .raw bypasses JSON content detection")
+    func editableOverrideRawSkipsJson() {
+        let context = ContextFactory.make(
+            value: #"{"k":1}"#,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            displayFormatOverride: .raw
+        )
+        #expect(resolver.resolve(context) == .editInline(value: #"{"k":1}"#))
+    }
+
+    @Test("editable override .raw bypasses PHP content detection")
+    func editableOverrideRawSkipsPhp() {
+        let context = ContextFactory.make(
+            value: "a:0:{}",
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            displayFormatOverride: .raw
+        )
+        #expect(resolver.resolve(context) == .editInline(value: "a:0:{}"))
+    }
+
+    @Test("editable override .raw on multiline value returns editOverlay")
+    func editableOverrideRawMultilineReturnsOverlay() {
+        let context = ContextFactory.make(
+            value: "line1\nline2",
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            displayFormatOverride: .raw
+        )
+        #expect(resolver.resolve(context) == .editOverlay(value: "line1\nline2"))
     }
 
     @Test("editable JSON column returns editJson")
@@ -147,14 +256,16 @@ private enum ContextFactory {
         columnType: ColumnType? = nil,
         isTableEditable: Bool = false,
         isRowDeleted: Bool = false,
-        isImmutableColumn: Bool = false
+        isImmutableColumn: Bool = false,
+        displayFormatOverride: ValueDisplayFormat? = nil
     ) -> CellContext {
         CellContext(
             columnType: columnType,
             value: value,
             isTableEditable: isTableEditable,
             isRowDeleted: isRowDeleted,
-            isImmutableColumn: isImmutableColumn
+            isImmutableColumn: isImmutableColumn,
+            displayFormatOverride: displayFormatOverride
         )
     }
 }

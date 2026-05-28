@@ -105,37 +105,12 @@ extension MainContentCoordinator {
 
     // MARK: - Lazy Load
 
-    /// Execute the current tab's query if it is a table tab whose row data is
-    /// missing or evicted. Apple-pattern guards in cheap-content-first order:
-    /// trivial content checks reject before the expensive connection probe.
-    /// Idempotent — repeated calls with the same state are no-ops.
     func lazyLoadCurrentTabIfNeeded() {
         guard let tab = tabManager.selectedTab else { return }
-        guard tab.tabType == .table else { return }
-        guard tab.execution.errorMessage == nil else { return }
-        guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard canAutoLoadTableTab(tab) else { return }
+        guard tableLoadTasks[tab.id] == nil else { return }
 
-        let rows = tabSessionRegistry.tableRows(for: tab.id)
-        let isEvicted = tabSessionRegistry.isEvicted(tab.id)
-        let hasFreshRows = !rows.rows.isEmpty && !isEvicted
-        let hasExecuted = tab.execution.lastExecutedAt != nil && !isEvicted
-        guard !hasFreshRows, !hasExecuted else { return }
-
-        let hasPendingEdits =
-            changeManager.hasChanges
-            || tab.pendingChanges.hasChanges
-        guard !hasPendingEdits else { return }
-
-        // A previous load that was cancelled mid-flight (e.g. user rapidly
-        // switched away) leaves `isExecuting = true` with no rows and no
-        // `lastExecutedAt`. Clear the stale flag inline so the executor's
-        // own `!tab.execution.isExecuting` guard inside
-        // `executeTableTabQueryDirectly` doesn't suppress this re-fire.
-        if tab.execution.isExecuting && rows.rows.isEmpty && tab.execution.lastExecutedAt == nil {
-            tabManager.mutate(tabId: tab.id) { $0.execution.isExecuting = false }
-        } else if tab.execution.isExecuting {
-            return
-        }
+        clearAbandonedExecutingFlagIfNeeded(for: tab)
 
         guard let session = DatabaseManager.shared.session(for: connectionId),
               session.isConnected else {
@@ -143,9 +118,37 @@ extension MainContentCoordinator {
             return
         }
 
+        let tabId = tab.id
         Self.lifecycleLogger.debug(
-            "[switch] coordinator.lazyLoadCurrentTabIfNeeded executing tabId=\(tab.id, privacy: .public) evicted=\(isEvicted)"
+            "[switch] coordinator.lazyLoadCurrentTabIfNeeded executing tabId=\(tabId, privacy: .public)"
         )
-        executeTableTabQueryDirectly()
+        tableLoadTasks[tabId] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.tableLoadTasks[tabId] = nil }
+            self.executeTableTabQueryDirectly()
+            if let task = self.currentQueryTask {
+                await task.value
+            }
+        }
+    }
+
+    private func canAutoLoadTableTab(_ tab: QueryTab) -> Bool {
+        guard tab.tabType == .table else { return false }
+        guard tab.execution.errorMessage == nil else { return false }
+        guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+
+        let rows = tabSessionRegistry.tableRows(for: tab.id)
+        let isEvicted = tabSessionRegistry.isEvicted(tab.id)
+        let hasFreshRows = !rows.rows.isEmpty && !isEvicted
+        let hasExecuted = tab.execution.lastExecutedAt != nil && !isEvicted
+        guard !hasFreshRows, !hasExecuted else { return false }
+
+        let hasPendingEdits = changeManager.hasChanges || tab.pendingChanges.hasChanges
+        return !hasPendingEdits
+    }
+
+    private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {
+        guard tab.execution.isExecuting, currentQueryTask == nil else { return }
+        tabManager.mutate(tabId: tab.id) { $0.execution.isExecuting = false }
     }
 }

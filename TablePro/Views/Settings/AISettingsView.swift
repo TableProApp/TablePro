@@ -213,7 +213,7 @@ struct AISettingsView: View {
     }
 
     private var orderedAddableTypes: [AIProviderType] {
-        [.copilot, .claude, .openAI, .openRouter, .gemini, .ollama]
+        [.copilot, .claude, .openAI, .openRouter, .openCode, .gemini, .ollama]
     }
 
     // MARK: - Inline Suggestions
@@ -312,7 +312,7 @@ struct AISettingsView: View {
         switch provider.type.authStyle {
         case .oauth:
             return copilotStatusText()
-        case .apiKey:
+        case .apiKey, .optionalApiKey:
             if provider.type == .custom {
                 return customStatusText(for: provider)
             }
@@ -356,7 +356,7 @@ struct AISettingsView: View {
 
     private func refreshKeyAvailability() {
         var ids: Set<UUID> = []
-        for provider in settings.providers where provider.type.authStyle == .apiKey {
+        for provider in settings.providers where provider.type.authStyle.usesAPIKey {
             if let key = AIKeyStorage.shared.loadAPIKey(for: provider.id), !key.isEmpty {
                 ids.insert(provider.id)
             }
@@ -379,7 +379,7 @@ struct AISettingsView: View {
     }
 
     private func saveProvider(_ provider: AIProviderConfig, apiKey: String, isNew: Bool) {
-        if provider.type.authStyle == .apiKey {
+        if provider.type.authStyle.usesAPIKey {
             AIKeyStorage.shared.saveAPIKey(apiKey, for: provider.id)
         }
 

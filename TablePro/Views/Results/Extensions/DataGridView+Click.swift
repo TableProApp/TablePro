@@ -30,6 +30,8 @@ extension TableViewCoordinator {
             showJSONViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewBlob:
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewPhpSerialized:
+            showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editInline:
             beginCellEdit(row: row, tableColumnIndex: tableColumn)
         case .editOverlay(let value):
@@ -48,13 +50,22 @@ extension TableViewCoordinator {
         let columnName = tableRows.columns[columnIndex]
         let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
+        let override = ValueDisplayFormatService.shared.effectiveFormat(
+            columnName: columnName,
+            connectionId: connectionId,
+            tableName: tableName
+        )
 
         return CellContext(
             columnType: columnType,
             value: cellValue(at: row, column: columnIndex),
             isTableEditable: isEditable,
             isRowDeleted: changeManager.isRowDeleted(row),
-            isImmutableColumn: immutable.contains(columnName)
+            isImmutableColumn: immutable.contains(columnName),
+            columnName: columnName,
+            connectionId: connectionId,
+            tableName: tableName,
+            displayFormatOverride: override
         )
     }
 
@@ -99,12 +110,14 @@ extension TableViewCoordinator {
             showJSONEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if columnType.isBlobType {
             showBlobEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.isDateType {
+            showDateTimePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         }
     }
 
     // MARK: - FK Navigation
 
-    func handleFKArrowAction(row: Int, columnIndex: Int) {
+    func handleFKArrowAction(row: Int, columnIndex: Int, openInNewTab: Bool) {
         let tableRows = tableRowsProvider()
         guard row >= 0 && row < cachedRowCount,
               columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
@@ -115,7 +128,7 @@ extension TableViewCoordinator {
         let value = cellValue(at: row, column: columnIndex)
         guard let value = value, !value.isEmpty else { return }
 
-        delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
+        delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
     }
 
     // MARK: - Type Picker Popover

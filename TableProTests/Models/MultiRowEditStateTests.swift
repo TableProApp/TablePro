@@ -41,7 +41,7 @@ struct MultiRowEditStateTests {
         func hasEditFalseWhenNoPendingChanges() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: false
             )
             #expect(field.hasEdit == false)
@@ -51,7 +51,7 @@ struct MultiRowEditStateTests {
         func hasEditTrueWhenPendingValueSet() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: "2", isPendingNull: false, isPendingDefault: false
             )
             #expect(field.hasEdit == true)
@@ -61,7 +61,7 @@ struct MultiRowEditStateTests {
         func hasEditTrueWhenPendingNull() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: true, isPendingDefault: false
             )
             #expect(field.hasEdit == true)
@@ -71,7 +71,7 @@ struct MultiRowEditStateTests {
         func hasEditTrueWhenPendingDefault() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: true
             )
             #expect(field.hasEdit == true)
@@ -81,7 +81,7 @@ struct MultiRowEditStateTests {
         func effectiveValueReturnsPendingValue() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: "updated", isPendingNull: false, isPendingDefault: false
             )
             #expect(field.effectiveValue == "updated")
@@ -91,7 +91,7 @@ struct MultiRowEditStateTests {
         func effectiveValueReturnsNilWhenPendingNull() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: true, isPendingDefault: false
             )
             #expect(field.effectiveValue == nil)
@@ -101,7 +101,7 @@ struct MultiRowEditStateTests {
         func effectiveValueReturnsDefaultWhenPendingDefault() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: true
             )
             #expect(field.effectiveValue == "__DEFAULT__")
@@ -111,7 +111,7 @@ struct MultiRowEditStateTests {
         func effectiveValueReturnsNilWhenNoEdit() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: false
             )
             #expect(field.effectiveValue == nil)

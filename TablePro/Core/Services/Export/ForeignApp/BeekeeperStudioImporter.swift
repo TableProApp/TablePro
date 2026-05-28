@@ -26,6 +26,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
     let displayName = "Beekeeper Studio"
     let symbolName = "ant"
     let appBundleIdentifier = "io.beekeeperstudio.desktop"
+    let readsPasswordsFromKeychain = false
 
     var dataDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/beekeeper-studio")

@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 7 providers."
+description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, fix-error. 8 providers."
 ---
 
 # AI Assistant
@@ -28,7 +28,7 @@ Open **Settings** (`Cmd+,`) > **AI**. The tab is modeled on Xcode's Intelligence
 
 ### Add a Provider
 
-1. Click **Add Provider...** and pick a type: GitHub Copilot, Claude, OpenAI, OpenRouter, Gemini, Ollama, or a custom OpenAI-compatible endpoint.
+1. Click **Add Provider...** and pick a type: GitHub Copilot, Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama, or a custom OpenAI-compatible endpoint.
 2. Enter the API key, or run device-flow sign-in for Copilot.
 3. Enter a model name, or pick one from the fetched list. Click **Reload** if needed.
 4. Click **Test Connection**.
@@ -62,7 +62,7 @@ Press `Cmd+Shift+L`, click the inspector toggle and pick **AI Chat**, or use **V
   />
 </Frame>
 
-Type a question and press Return. Code blocks have **Copy** and **Insert to Editor** buttons. Token counts show below each response.
+Type a question and press Return. Code blocks have **Copy** and **Insert** buttons. Insert opens the SQL in a new query tab, or fills the current editor if it's empty. Token counts show below each response.
 
 <Frame caption="Code block actions">
   <img
@@ -177,7 +177,7 @@ The cap is 10 tool round trips per turn. If you hit it, send a follow-up to cont
 | `execute_query` | Run `SELECT` / `INSERT` / `UPDATE` / `DELETE`. Multi-statement input rejected. Destructive DDL blocked. | Edit, Agent |
 | `confirm_destructive_operation` | Run destructive DDL after the model passes the verbatim phrase `I understand this is irreversible` | Agent |
 
-Provider support: Claude, OpenAI, OpenRouter, Gemini, Ollama (model-dependent), GitHub Copilot, and custom OpenAI-compatible endpoints.
+Provider support: Claude, OpenAI, OpenRouter, OpenCode Zen, Gemini, Ollama (model-dependent), GitHub Copilot, and custom OpenAI-compatible endpoints.
 
 ### Attach Context with `@`
 

@@ -38,6 +38,7 @@ public enum SyncRecordMapper {
         record["type"] = connection.type.rawValue as CKRecordValue
         record["sortOrder"] = Int64(connection.sortOrder) as CKRecordValue
         record["isReadOnly"] = Int64(connection.isReadOnly ? 1 : 0) as CKRecordValue
+        record["safeModeLevel"] = connection.safeModeLevel.rawValue as CKRecordValue
         record["sshEnabled"] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         record["sslEnabled"] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
 
@@ -111,6 +112,7 @@ public enum SyncRecordMapper {
         let tagId = (record["tagId"] as? String).flatMap { UUID(uuidString: $0) }
         let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
         let isReadOnly = (record["isReadOnly"] as? Int64 ?? 0) != 0
+        let safeModeLevel = safeModeLevel(fromWire: record["safeModeLevel"] as? String, isReadOnly: isReadOnly)
         let queryTimeout = (record["queryTimeoutSeconds"] as? Int64).map { Int($0) }
         var sshConfig: SSHConfiguration?
         if let sshData = record["sshConfigJson"] as? Data {
@@ -151,6 +153,7 @@ public enum SyncRecordMapper {
             database: database,
             colorTag: colorTag,
             isReadOnly: isReadOnly,
+            safeModeLevel: safeModeLevel,
             queryTimeoutSeconds: queryTimeout,
             additionalFields: additionalFields,
             sshEnabled: sshEnabled,
@@ -161,6 +164,16 @@ public enum SyncRecordMapper {
             tagId: tagId,
             sortOrder: sortOrder
         )
+    }
+
+    private static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
+        guard let raw else { return isReadOnly ? .readOnly : .off }
+        if let level = SafeModeLevel(rawValue: raw) { return level }
+        switch raw {
+        case "silent": return .off
+        case "alert", "alertFull", "safeMode", "safeModeFull": return .confirmWrites
+        default: return isReadOnly ? .readOnly : .off
+        }
     }
 
     // MARK: - Update Existing CKRecord (preserves macOS-only fields)
@@ -175,6 +188,7 @@ public enum SyncRecordMapper {
         record["type"] = connection.type.rawValue as CKRecordValue
         record["sortOrder"] = Int64(connection.sortOrder) as CKRecordValue
         record["isReadOnly"] = Int64(connection.isReadOnly ? 1 : 0) as CKRecordValue
+        record["safeModeLevel"] = connection.safeModeLevel.rawValue as CKRecordValue
         record["sshEnabled"] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         record["sslEnabled"] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
 

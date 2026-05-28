@@ -661,7 +661,7 @@
         }
       }
     },
-    "%@ — Preview" : {
+    "%@ - Preview" : {
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -672,7 +672,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ — Xem trước"
+            "value" : "%@ - Xem trước"
           }
         },
         "zh-Hans" : {
@@ -1316,15 +1316,8 @@
         }
       }
     },
-    "%@ was not found on this system. Install it with `brew install libpq` and link it, or set a custom path under Settings > Terminal > CLI Paths > %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ was not found on this system. Install it with `brew install libpq` and link it, or set a custom path under Settings > Terminal > CLI Paths > %2$@."
-          }
-        }
-      }
+    "%@ was not found on this system. Install it with `brew install libpq` and link it." : {
+
     },
     "%@, %@" : {
       "localizations" : {
@@ -1727,6 +1720,16 @@
     "%d selected" : {
 
     },
+    "%d-%d of ? rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d-%2$d of ? rows"
+          }
+        }
+      }
+    },
     "%d-%d of %@%@ rows" : {
       "localizations" : {
         "en" : {
@@ -1936,6 +1939,7 @@
       }
     },
     "%lld of %lld" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3559,7 +3563,16 @@
         }
       }
     },
+    "A Cloudflare tunnel already exists for connection: %@" : {
+
+    },
     "A command named \"/%@\" already exists." : {
+
+    },
+    "A connection can use one tunnel at a time. Disable the SSH Tunnel to use a Cloudflare Tunnel." : {
+
+    },
+    "A connection cannot use SSH and Cloudflare tunnels at the same time." : {
 
     },
     "A connection with this name, host, and type already exists." : {
@@ -3605,6 +3618,9 @@
           }
         }
       }
+    },
+    "A newer version of TablePro is required for this plugin. Update TablePro to keep using it." : {
+
     },
     "A sync conflict was detected and needs to be resolved." : {
       "localizations" : {
@@ -3695,6 +3711,9 @@
         }
       }
     },
+    "Access Application" : {
+
+    },
     "Access Key ID" : {
       "localizations" : {
         "en" : {
@@ -3722,6 +3741,9 @@
           }
         }
       }
+    },
+    "Access Key ID and Secret Access Key are required for AWS IAM authentication." : {
+
     },
     "Account" : {
       "localizations" : {
@@ -5356,6 +5378,9 @@
           }
         }
       }
+    },
+    "All rows…" : {
+
     },
     "ALL SCHEMAS" : {
       "extractionState" : "stale",
@@ -7330,6 +7355,9 @@
         }
       }
     },
+    "Automatic" : {
+
+    },
     "Automatically check for updates" : {
       "localizations" : {
         "tr" : {
@@ -7373,6 +7401,15 @@
           }
         }
       }
+    },
+    "AWS IAM (Access Key)" : {
+
+    },
+    "AWS IAM (Profile)" : {
+
+    },
+    "AWS IAM (SSO)" : {
+
     },
     "AWS managed key-value/document store" : {
 
@@ -7513,6 +7550,7 @@
       }
     },
     "Bar" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7629,6 +7667,7 @@
       }
     },
     "Block" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7918,6 +7957,9 @@
           }
         }
       }
+    },
+    "Browser Sign-In" : {
+
     },
     "Built-in" : {
       "localizations" : {
@@ -8374,6 +8416,12 @@
         }
       }
     },
+    "Cannot read ~/.aws/config." : {
+
+    },
+    "Cannot read ~/.aws/credentials." : {
+
+    },
     "Cannot save changes: connection is read only" : {
 
     },
@@ -8430,6 +8478,9 @@
       }
     },
     "Cannot Show DDL" : {
+
+    },
+    "Cannot use SSH Tunnel and Cloudflare Tunnel at the same time" : {
 
     },
     "Cap user query results at the configured row count" : {
@@ -9119,10 +9170,16 @@
     "Choose Dump File" : {
 
     },
+    "Choose port automatically" : {
+
+    },
     "Choose where to save the dump of “%@”." : {
 
     },
     "Choose your client and follow the steps to connect it to TablePro." : {
+
+    },
+    "Choose..." : {
 
     },
     "Claude Code" : {
@@ -9419,6 +9476,9 @@
         }
       }
     },
+    "Clear Results" : {
+
+    },
     "Clear search" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9511,6 +9571,7 @@
       }
     },
     "CLI Paths" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -9533,6 +9594,7 @@
       }
     },
     "CLI tool \"%@\" not found in PATH" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -9807,6 +9869,9 @@
         }
       }
     },
+    "Client ID" : {
+
+    },
     "Client Key" : {
       "localizations" : {
         "tr" : {
@@ -9830,6 +9895,9 @@
       }
     },
     "Client key is required when client certificate is set" : {
+
+    },
+    "Client Secret" : {
 
     },
     "Client:" : {
@@ -10088,6 +10156,33 @@
       }
     },
     "Cloud Native" : {
+
+    },
+    "Cloudflare Access needs a browser sign-in. Sign in at %@, then reconnect." : {
+
+    },
+    "Cloudflare hostname is required" : {
+
+    },
+    "Cloudflare Tunnel" : {
+
+    },
+    "Cloudflare tunnel disconnected. Click to reconnect." : {
+
+    },
+    "cloudflared failed to start: %@" : {
+
+    },
+    "cloudflared failed to start." : {
+
+    },
+    "cloudflared not found. Install it with `brew install cloudflared`, or choose the binary above." : {
+
+    },
+    "cloudflared was not found. Install it with `brew install cloudflared`, or set its path in the connection's Cloudflare Tunnel settings." : {
+
+    },
+    "cloudflared was not found. Set its path below first." : {
 
     },
     "CMD" : {
@@ -12766,6 +12861,9 @@
     "Could not decode image" : {
 
     },
+    "Could not determine an AWS region for \"%@\". Set the AWS Region field." : {
+
+    },
     "Could not encode image" : {
 
     },
@@ -12956,6 +13054,16 @@
     },
     "Could Not Reset Sample" : {
 
+    },
+    "Could not run the credential_process command for profile \"%@\": %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not run the credential_process command for profile \"%1$@\": %2$@"
+          }
+        }
+      }
     },
     "Could not save the connection. Check disk space and permissions, then try again." : {
 
@@ -13707,6 +13815,7 @@
       }
     },
     "Cursor blink" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13786,6 +13895,7 @@
       }
     },
     "Cursor style:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13906,6 +14016,9 @@
       }
     },
     "Custom Slash Commands" : {
+
+    },
+    "Custom…" : {
 
     },
     "Customization" : {
@@ -16000,6 +16113,9 @@
     "Details: %@" : {
 
     },
+    "Detected" : {
+
+    },
     "Diagnostic Info" : {
 
     },
@@ -16072,6 +16188,9 @@
           }
         }
       }
+    },
+    "Disable SSH Tunnel" : {
+
     },
     "disabled" : {
 
@@ -16303,6 +16422,7 @@
       }
     },
     "Display" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -17754,6 +17874,9 @@
           }
         }
       }
+    },
+    "Enable Cloudflare Tunnel" : {
+
     },
     "Enable inline suggestions" : {
       "extractionState" : "stale",
@@ -19993,6 +20116,9 @@
         }
       }
     },
+    "Expose to local network" : {
+
+    },
     "Expression (e.g., age >= 0)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -20174,6 +20300,9 @@
         }
       }
     },
+    "Failed to build the SSO portal URL for profile \"%@\"." : {
+
+    },
     "Failed to compress data" : {
       "localizations" : {
         "tr" : {
@@ -20197,6 +20326,7 @@
       }
     },
     "Failed to create terminal process (errno: %d)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -20217,6 +20347,9 @@
           }
         }
       }
+    },
+    "Failed to decode the SSO portal response for profile \"%@\"." : {
+
     },
     "Failed to decompress .gz file" : {
       "localizations" : {
@@ -20973,6 +21106,16 @@
         }
       }
     },
+    "Failed to reach the SSO portal for profile \"%@\": %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to reach the SSO portal for profile \"%1$@\": %2$@"
+          }
+        }
+      }
+    },
     "Failed to read file: %@" : {
       "localizations" : {
         "tr" : {
@@ -21587,6 +21730,18 @@
         }
       }
     },
+    "Fill" : {
+
+    },
+    "Fill Column" : {
+
+    },
+    "Fill column \"%@\"" : {
+
+    },
+    "Fill Column…" : {
+
+    },
     "Filter" : {
       "localizations" : {
         "tr" : {
@@ -21994,6 +22149,12 @@
     "First column" : {
 
     },
+    "First page" : {
+
+    },
+    "First Page" : {
+
+    },
     "Fit to Window" : {
       "localizations" : {
         "tr" : {
@@ -22161,6 +22322,7 @@
       }
     },
     "Font size:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -22183,6 +22345,7 @@
       }
     },
     "Font:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -22277,6 +22440,7 @@
       }
     },
     "Format JSON" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -22900,6 +23064,9 @@
         }
       }
     },
+    "Go to page" : {
+
+    },
     "Go to Settings…" : {
       "localizations" : {
         "tr" : {
@@ -23436,6 +23603,9 @@
           }
         }
       }
+    },
+    "Hostname" : {
+
     },
     "hostname:%lld" : {
       "extractionState" : "stale",
@@ -25056,6 +25226,7 @@
       }
     },
     "Install the CLI client for %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -25660,6 +25831,9 @@
           }
         }
       }
+    },
+    "Invalid PHP Serialized Value" : {
+
     },
     "Invalid plugin bundle: %@" : {
       "localizations" : {
@@ -26499,6 +26673,12 @@
     "Last Activity" : {
 
     },
+    "Last page" : {
+
+    },
+    "Last Page" : {
+
+    },
     "Last query execution summary" : {
       "localizations" : {
         "tr" : {
@@ -27101,6 +27281,7 @@
       }
     },
     "Limit" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27291,6 +27472,12 @@
 
     },
     "List tables and views in the active database of a connection." : {
+
+    },
+    "Listens on all interfaces (0.0.0.0), reachable from your local network." : {
+
+    },
+    "Listens only on 127.0.0.1." : {
 
     },
     "Load" : {
@@ -27593,6 +27780,9 @@
         }
       }
     },
+    "Loading tables…" : {
+
+    },
     "Loading..." : {
       "localizations" : {
         "tr" : {
@@ -27659,6 +27849,9 @@
         }
       }
     },
+    "Local Listener" : {
+
+    },
     "Local only" : {
       "localizations" : {
         "tr" : {
@@ -27705,6 +27898,12 @@
       }
     },
     "Local only, not synced to iCloud" : {
+
+    },
+    "Local port" : {
+
+    },
+    "Local port must be between 1 and 65535" : {
 
     },
     "localhost" : {
@@ -28258,6 +28457,9 @@
           }
         }
       }
+    },
+    "Maximum depth reached" : {
+
     },
     "Maximum entries cannot be negative" : {
       "localizations" : {
@@ -28946,6 +29148,9 @@
           }
         }
       }
+    },
+    "Modifier Key Required" : {
+
     },
     "MongoDB" : {
       "extractionState" : "stale",
@@ -29968,6 +30173,9 @@
         }
       }
     },
+    "Next page" : {
+
+    },
     "Next Page" : {
       "localizations" : {
         "tr" : {
@@ -29991,6 +30199,7 @@
       }
     },
     "Next Page (⌘])" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30243,6 +30452,9 @@
         }
       }
     },
+    "No available local port for the Cloudflare tunnel." : {
+
+    },
     "No changes to preview" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -30332,6 +30544,12 @@
         }
       }
     },
+    "No compatible build is available yet. This plugin will update automatically once one is published." : {
+
+    },
+    "No connections" : {
+
+    },
     "No Connections" : {
       "localizations" : {
         "tr" : {
@@ -30397,6 +30615,9 @@
           }
         }
       }
+    },
+    "No connections match “%@”" : {
+
     },
     "No connections yet" : {
       "extractionState" : "stale",
@@ -30518,6 +30739,9 @@
       }
     },
     "No databases match “%@”" : {
+
+    },
+    "No Datasets" : {
 
     },
     "No DDL available" : {
@@ -31495,6 +31719,9 @@
         }
       }
     },
+    "No tables" : {
+
+    },
     "No Tables" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -31629,6 +31856,7 @@
       }
     },
     "No values found" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32407,6 +32635,7 @@
       }
     },
     "Offset" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32590,6 +32819,9 @@
           }
         }
       }
+    },
+    "Open %@ in New Tab" : {
+
     },
     "Open a connection to insert" : {
 
@@ -33085,6 +33317,7 @@
 
     },
     "Open Terminal" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33272,6 +33505,7 @@
       }
     },
     "Option as Meta key" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33320,6 +33554,9 @@
       }
     },
     "Optional one-line description" : {
+
+    },
+    "Optional, for temporary credentials" : {
 
     },
     "Options" : {
@@ -33471,6 +33708,7 @@
 
     },
     "Override auto-detected CLI paths per database type." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33545,6 +33783,9 @@
           }
         }
       }
+    },
+    "Page number" : {
+
     },
     "Page Size" : {
       "localizations" : {
@@ -33641,6 +33882,7 @@
       }
     },
     "Pagination Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -34296,6 +34538,15 @@
         }
       }
     },
+    "PHP — %@" : {
+
+    },
+    "PHP Serialized" : {
+
+    },
+    "PHP Viewer" : {
+
+    },
     "Pick the type of database you want to connect to." : {
 
     },
@@ -34765,7 +35016,18 @@
         }
       }
     },
+    "Plugin was built for PluginKit version %d; this release of TablePro needs version %d." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Plugin was built for PluginKit version %1$d; this release of TablePro needs version %2$d."
+          }
+        }
+      }
+    },
     "Plugin was built with PluginKit version %d, but version %d is required. Please update the plugin." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -35625,6 +35887,9 @@
         }
       }
     },
+    "Previous page" : {
+
+    },
     "Previous Page" : {
       "localizations" : {
         "tr" : {
@@ -35648,6 +35913,7 @@
       }
     },
     "Previous Page (⌘[)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -35874,6 +36140,9 @@
         }
       }
     },
+    "private (%@)" : {
+
+    },
     "Private Key" : {
       "localizations" : {
         "tr" : {
@@ -36047,6 +36316,18 @@
         }
       }
     },
+    "Profile \"%@\" in ~/.aws/config is missing sso_account_id or sso_role_name." : {
+
+    },
+    "Profile \"%@\" in ~/.aws/config is missing sso_start_url or sso_region." : {
+
+    },
+    "Profile \"%@\" not found in ~/.aws/config." : {
+
+    },
+    "Profile \"%@\" was not found, or has no access keys or credential_process, in ~/.aws/config or ~/.aws/credentials." : {
+
+    },
     "Profile Details" : {
 
     },
@@ -36180,6 +36461,9 @@
 
     },
     "Prompt template" : {
+
+    },
+    "protected" : {
 
     },
     "Providers" : {
@@ -37432,6 +37716,7 @@
 
     },
     "Reconnect" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -38058,6 +38343,9 @@
     "Remove attachment" : {
 
     },
+    "Remove Column" : {
+
+    },
     "Remove Failed" : {
 
     },
@@ -38171,6 +38459,9 @@
         }
       }
     },
+    "Remove Foreign Key" : {
+
+    },
     "Remove from Group" : {
       "localizations" : {
         "tr" : {
@@ -38197,6 +38488,9 @@
 
     },
     "Remove image" : {
+
+    },
+    "Remove Index" : {
 
     },
     "Remove jump host" : {
@@ -39289,6 +39583,16 @@
         }
       }
     },
+    "Role \"%@\" in account \"%@\" is not accessible via SSO. Check role permissions in IAM Identity Center." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Role \"%1$@\" in account \"%2$@\" is not accessible via SSO. Check role permissions in IAM Identity Center."
+          }
+        }
+      }
+    },
     "root" : {
       "localizations" : {
         "tr" : {
@@ -39659,6 +39963,9 @@
           }
         }
       }
+    },
+    "Rows per page" : {
+
     },
     "Rules" : {
 
@@ -40626,6 +40933,7 @@
 
     },
     "Scrollback lines:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -41946,6 +42254,12 @@
         }
       }
     },
+    "Service Token" : {
+
+    },
+    "Service token ID and secret are required" : {
+
+    },
     "Session Token" : {
       "localizations" : {
         "en" : {
@@ -42084,6 +42398,9 @@
           }
         }
       }
+    },
+    "Set to NULL" : {
+
     },
     "Set Up AI Provider" : {
       "extractionState" : "stale",
@@ -42484,6 +42801,9 @@
         }
       }
     },
+    "Show All Rows" : {
+
+    },
     "Show All Tables" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -42828,6 +43148,9 @@
         }
       }
     },
+    "Sign In with Browser..." : {
+
+    },
     "Sign in with GitHub" : {
       "localizations" : {
         "tr" : {
@@ -42959,6 +43282,9 @@
           }
         }
       }
+    },
+    "Signs in to Cloudflare Access once and caches the token, so connecting doesn't open a browser." : {
+
     },
     "Silent" : {
       "localizations" : {
@@ -43920,6 +44246,7 @@
       }
     },
     "sqlite3 is included with macOS" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -44324,6 +44651,7 @@
       }
     },
     "SSH tunnel did not connect within 30 seconds" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -44344,6 +44672,9 @@
           }
         }
       }
+    },
+    "SSH tunnel disconnected. Click to reconnect." : {
+
     },
     "SSH tunneling and SSL/TLS encryption support" : {
       "localizations" : {
@@ -44499,6 +44830,69 @@
         }
       }
     },
+    "SSO portal returned HTTP %lld for profile \"%@\"." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO portal returned HTTP %1$lld for profile \"%2$@\"."
+          }
+        }
+      }
+    },
+    "SSO role credentials for profile \"%@\" were already expired. Run 'aws sso login --profile %@' to refresh." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO role credentials for profile \"%1$@\" were already expired. Run 'aws sso login --profile %2$@' to refresh."
+          }
+        }
+      }
+    },
+    "SSO session \"%@\" in ~/.aws/config is missing sso_start_url or sso_region." : {
+
+    },
+    "SSO session \"%@\" referenced by profile \"%@\" was not found in ~/.aws/config." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO session \"%1$@\" referenced by profile \"%2$@\" was not found in ~/.aws/config."
+          }
+        }
+      }
+    },
+    "SSO session for profile \"%@\" has expired. Run 'aws sso login --profile %@' to refresh." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO session for profile \"%1$@\" has expired. Run 'aws sso login --profile %2$@' to refresh."
+          }
+        }
+      }
+    },
+    "SSO token cache for profile \"%@\" is malformed. Run 'aws sso login --profile %@' to refresh." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO token cache for profile \"%1$@\" is malformed. Run 'aws sso login --profile %2$@' to refresh."
+          }
+        }
+      }
+    },
+    "SSO token cache not found for profile \"%@\". Run 'aws sso login --profile %@' first." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "SSO token cache not found for profile \"%1$@\". Run 'aws sso login --profile %2$@' first."
+          }
+        }
+      }
+    },
     "Starting service…" : {
       "localizations" : {
         "tr" : {
@@ -44542,6 +44936,9 @@
           }
         }
       }
+    },
+    "Starts and stops `cloudflared access tcp` with this connection and routes it through a local port." : {
+
     },
     "starts with" : {
       "localizations" : {
@@ -46320,6 +46717,9 @@
         }
       }
     },
+    "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
+
+    },
     "TablePro Website" : {
       "localizations" : {
         "tr" : {
@@ -46573,6 +46973,7 @@
       }
     },
     "Terminal" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -46595,6 +46996,7 @@
       }
     },
     "Terminal bell" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -46617,6 +47019,7 @@
       }
     },
     "Terminal Unavailable" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -46865,6 +47268,9 @@
         }
       }
     },
+    "The Access application policy must use a Service Auth rule, or Cloudflare still prompts for browser sign-in." : {
+
+    },
     "The API key will be permanently deleted." : {
       "localizations" : {
         "tr" : {
@@ -46918,6 +47324,12 @@
     "The bundled sample database is missing from the app." : {
 
     },
+    "The Cloudflare tunnel did not become ready in time: %@" : {
+
+    },
+    "The Cloudflare tunnel did not become ready in time." : {
+
+    },
     "The code expires in 15 minutes." : {
       "localizations" : {
         "tr" : {
@@ -46958,6 +47370,32 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "代码已复制到剪贴板。"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" did not return valid credentials JSON." : {
+
+    },
+    "The credential_process command for profile \"%@\" exited with status %lld.%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The credential_process command for profile \"%1$@\" exited with status %2$lld.%3$@"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" is empty or invalid." : {
+
+    },
+    "The credential_process command for profile \"%@\" returned unsupported Version %lld (expected 1)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The credential_process command for profile \"%1$@\" returned unsupported Version %2$lld (expected 1)."
           }
         }
       }
@@ -47312,7 +47750,11 @@
         }
       }
     },
+    "The value could not be parsed. Use raw mode to inspect it as text." : {
+
+    },
     "Theme" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -47338,6 +47780,7 @@
 
     },
     "Theme:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -47380,6 +47823,9 @@
           }
         }
       }
+    },
+    "This action needs a modifier key like ⌘ or ⌥. A plain key won't reach the menu reliably." : {
+
     },
     "This connection was deleted on another device or window. Your changes were not saved." : {
 
@@ -47901,6 +48347,9 @@
         }
       }
     },
+    "This plugin is not in the registry, so it can't be updated automatically." : {
+
+    },
     "This plugin requires TablePro %@ or later" : {
       "localizations" : {
         "tr" : {
@@ -47951,6 +48400,9 @@
         }
       }
     },
+    "This project has no datasets yet." : {
+
+    },
     "This query may permanently modify or delete data." : {
       "localizations" : {
         "tr" : {
@@ -47972,6 +48424,12 @@
           }
         }
       }
+    },
+    "This sets %lld loaded rows. Review and Save to apply." : {
+
+    },
+    "This sets 1 loaded row. Review and Save to apply." : {
+
     },
     "This shortcut is reserved by macOS and cannot be assigned." : {
       "localizations" : {
@@ -48068,6 +48526,9 @@
         }
       }
     },
+    "This value is too large to parse. Use raw mode to inspect it as text." : {
+
+    },
     "This Week" : {
       "localizations" : {
         "tr" : {
@@ -48155,6 +48616,9 @@
           }
         }
       }
+    },
+    "This will load all %@ rows on a single page. Large result sets use significant memory. Continue?" : {
+
     },
     "This will permanently delete %lld %@. This action cannot be undone." : {
       "localizations" : {
@@ -49761,6 +50225,7 @@
 
     },
     "Underline" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -49825,6 +50290,9 @@
           }
         }
       }
+    },
+    "Unexpected response from the SSO portal for profile \"%@\"." : {
+
     },
     "Uninstall" : {
       "localizations" : {
@@ -50430,6 +50898,9 @@
         }
       }
     },
+    "Unsupported token: %@" : {
+
+    },
     "Untitled" : {
       "localizations" : {
         "tr" : {
@@ -50573,6 +51044,9 @@
           }
         }
       }
+    },
+    "Updating this plugin didn't finish. TablePro will try again the next time it launches." : {
+
     },
     "Updating..." : {
       "localizations" : {
@@ -51147,6 +51621,7 @@
       }
     },
     "Value excluded from query" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -51195,6 +51670,12 @@
           }
         }
       }
+    },
+    "Value Too Large" : {
+
+    },
+    "Value too large to parse" : {
+
     },
     "VERBOSE (print progress)" : {
       "localizations" : {

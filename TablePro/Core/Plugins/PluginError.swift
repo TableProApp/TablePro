@@ -19,6 +19,7 @@ enum PluginError: LocalizedError {
     case appVersionTooOld(minimumRequired: String, currentApp: String)
     case downloadFailed(String)
     case pluginNotInstalled(String)
+    case pluginUpdateUnavailable(reason: String)
     case incompatibleWithCurrentApp(minimumRequired: String)
     case invalidDescriptor(pluginId: String, reason: String)
 
@@ -33,7 +34,7 @@ enum PluginError: LocalizedError {
         case .incompatibleVersion(let required, let current):
             return String(format: String(localized: "Plugin requires PluginKit version %d, but app provides version %d"), required, current)
         case .pluginOutdated(let pluginVersion, let requiredVersion):
-            let format = String(localized: "Plugin was built with PluginKit version %d, but version %d is required. Please update the plugin.")
+            let format = String(localized: "Plugin was built for PluginKit version %d; this release of TablePro needs version %d.")
             return String(format: format, pluginVersion, requiredVersion)
         case .cannotUninstallBuiltIn:
             return String(localized: "Built-in plugins cannot be uninstalled")
@@ -51,6 +52,8 @@ enum PluginError: LocalizedError {
             return String(format: String(localized: "Plugin download failed: %@"), reason)
         case .pluginNotInstalled(let databaseType):
             return String(format: String(localized: "The %@ plugin is not installed. You can download it from the plugin marketplace."), databaseType)
+        case .pluginUpdateUnavailable(let reason):
+            return reason
         case .incompatibleWithCurrentApp(let minimumRequired):
             return String(format: String(localized: "This plugin requires TablePro %@ or later"), minimumRequired)
         case .invalidDescriptor(let pluginId, let reason):
@@ -61,5 +64,14 @@ enum PluginError: LocalizedError {
     var isOutdated: Bool {
         if case .pluginOutdated = self { return true }
         return false
+    }
+
+    var isPermanentReconciliationFailure: Bool {
+        switch self {
+        case .noCompatibleBinary, .incompatibleVersion, .incompatibleWithCurrentApp, .appVersionTooOld:
+            return true
+        default:
+            return false
+        }
     }
 }

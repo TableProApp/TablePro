@@ -3,6 +3,126 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.45.0</title>
+            <pubDate>Tue, 26 May 2026 01:02:36 +0000</pubDate>
+            <sparkle:version>91</sparkle:version>
+            <sparkle:shortVersionString>0.45.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Cloudflare Tunnel: connect to a database behind Cloudflare Access. TablePro starts and stops `cloudflared access tcp` per connection, the same way it manages SSH tunnels, with browser sign-in or a service token. Needs cloudflared (`brew install cloudflared`). (#1285)</li>
+<li>Fill Column: right-click a column header to set one value across all loaded rows. The fill is staged like a normal edit, and one undo reverts it. Not available on primary key columns. (#1304)</li>
+<li>AWS IAM authentication for PostgreSQL and MySQL on RDS and Aurora. Pick AWS IAM in the connection's Authentication field with an access key, named profile, or SSO. TablePro generates a fresh token on every connect and requires SSL. (#1291)</li>
+<li>Date picker for date, datetime, timestamp, and time cells, from the chevron button. Double-clicking still edits the cell as text, and the picker keeps the value's format, fractional seconds, and timezone offset. (#1405)</li>
+<li>Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or custom) and First, Previous, Next, and Last buttons. (#1364)</li>
+<li>Click the page indicator in the pagination bar to jump to a specific page. (#1364)</li>
+<li>Pagination now appears for filtered tables with an unknown total row count, instead of showing only the first page. (#1364)</li>
+<li>First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)</li>
+<li>JSON and JSONB cells display pretty-printed by default, keeping your key order and exact numbers. Viewing or reformatting no longer marks the row changed, and saving no longer reorders keys or rounds large integers.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, with no orphan custom themes left behind. (#1381)</li>
+<li>Installing or updating a plugin right after updating TablePro now refetches the plugin list first, so it no longer fails against a stale cached list. (#1380)</li>
+<li>Pressing Esc to close the Raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen. (#1403)</li>
+<li>Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of "Invalid OAuth error response". (#1409)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.45.0/TablePro-0.45.0-arm64.zip" length="18214729" type="application/octet-stream" sparkle:edSignature="5Umo2HWkq0Xl55S0hjlDPUCGBScG8ckgPDBtNOCg109frVmaruWbjq4Y4R0lnT7HrscQYC2BDUQrWm4cPzSOAQ=="/>
+        </item>
+        <item>
+            <title>0.45.0</title>
+            <pubDate>Tue, 26 May 2026 01:02:36 +0000</pubDate>
+            <sparkle:version>91</sparkle:version>
+            <sparkle:shortVersionString>0.45.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Cloudflare Tunnel: connect to a database behind Cloudflare Access. TablePro starts and stops `cloudflared access tcp` per connection, the same way it manages SSH tunnels, with browser sign-in or a service token. Needs cloudflared (`brew install cloudflared`). (#1285)</li>
+<li>Fill Column: right-click a column header to set one value across all loaded rows. The fill is staged like a normal edit, and one undo reverts it. Not available on primary key columns. (#1304)</li>
+<li>AWS IAM authentication for PostgreSQL and MySQL on RDS and Aurora. Pick AWS IAM in the connection's Authentication field with an access key, named profile, or SSO. TablePro generates a fresh token on every connect and requires SSL. (#1291)</li>
+<li>Date picker for date, datetime, timestamp, and time cells, from the chevron button. Double-clicking still edits the cell as text, and the picker keeps the value's format, fractional seconds, and timezone offset. (#1405)</li>
+<li>Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or custom) and First, Previous, Next, and Last buttons. (#1364)</li>
+<li>Click the page indicator in the pagination bar to jump to a specific page. (#1364)</li>
+<li>Pagination now appears for filtered tables with an unknown total row count, instead of showing only the first page. (#1364)</li>
+<li>First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)</li>
+<li>JSON and JSONB cells display pretty-printed by default, keeping your key order and exact numbers. Viewing or reformatting no longer marks the row changed, and saving no longer reorders keys or rounds large integers.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, with no orphan custom themes left behind. (#1381)</li>
+<li>Installing or updating a plugin right after updating TablePro now refetches the plugin list first, so it no longer fails against a stale cached list. (#1380)</li>
+<li>Pressing Esc to close the Raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen. (#1403)</li>
+<li>Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of "Invalid OAuth error response". (#1409)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.45.0/TablePro-0.45.0-x86_64.zip" length="19201117" type="application/octet-stream" sparkle:edSignature="TD7ArKWPvhDL2UC05+rWhh+Rg7R0lBWpuaPRWlFqrdKIcLf/Oj4wzrBVReBXKsxhly2IAXRABoMPH6zf6x5TAg=="/>
+        </item>
+        <item>
+            <title>0.44.0</title>
+            <pubDate>Fri, 22 May 2026 17:58:29 +0000</pubDate>
+            <sparkle:version>90</sparkle:version>
+            <sparkle:shortVersionString>0.44.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Import connections and passwords from DataGrip, including SSH tunnels and SSL settings. The source app doesn't need to be running. (#1374)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Active Connections is now a searchable toolbar popover instead of a modal dialog. (#1350)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Connecting to a PostgreSQL-compatible engine without the pg_matviews catalog (such as db9.ai) no longer fails to load tables. (#1383)</li>
+<li>Filtering a table now updates the row and page counts to match the filtered result, instead of the whole-table totals.</li>
+<li>Reopening a table restores the filter you had applied, per connection. Removing or clearing a filter is remembered too, so an unfiltered table reopens with no filter. (#1347)</li>
+<li>Quick switcher panel height now fits its results instead of leaving empty space below short lists. (#1349)</li>
+<li>Importing connections from TablePlus brings over saved passwords again, after a recent release looked under the wrong keychain name.</li>
+<li>Importing an SSH connection from TablePlus no longer fills in a fake private key path when no key was selected, and skips empty TLS certificate paths.</li>
+<li>Importing from DBeaver no longer shows an unnecessary keychain permission warning, since DBeaver stores passwords in its own file.</li>
+<li>Raw SQL filter now suggests columns and keywords at every position, including after AND and OR, instead of only the first. (#1346)</li>
+<li>Plugins left incompatible after a TablePro update now update quietly in the background instead of showing a premature "could not be loaded" alert. You are notified only when no compatible version exists yet. (#1322)</li>
+<li>A plugin you download and install by hand is no longer blocked by macOS Gatekeeper once its signature is verified. (#1322)</li>
+<li>Clicking a table now replaces the active tab instead of opening a new one when you have multiple tabs open. A new tab still opens for unsaved edits, an applied filter, or sorting; double-click always opens a new tab. (#1348)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.44.0/TablePro-0.44.0-arm64.zip" length="18102107" type="application/octet-stream" sparkle:edSignature="eJCYVjYy3MT4186wjyS/Xp3AUAH0pS2WxgS+UHjTkjHm9OeP8LMcDSn6QYlWTm2Nq0L+Fs7A9d0wiNTED20OBw=="/>
+        </item>
+        <item>
+            <title>0.44.0</title>
+            <pubDate>Fri, 22 May 2026 17:58:29 +0000</pubDate>
+            <sparkle:version>90</sparkle:version>
+            <sparkle:shortVersionString>0.44.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Import connections and passwords from DataGrip, including SSH tunnels and SSL settings. The source app doesn't need to be running. (#1374)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Active Connections is now a searchable toolbar popover instead of a modal dialog. (#1350)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Connecting to a PostgreSQL-compatible engine without the pg_matviews catalog (such as db9.ai) no longer fails to load tables. (#1383)</li>
+<li>Filtering a table now updates the row and page counts to match the filtered result, instead of the whole-table totals.</li>
+<li>Reopening a table restores the filter you had applied, per connection. Removing or clearing a filter is remembered too, so an unfiltered table reopens with no filter. (#1347)</li>
+<li>Quick switcher panel height now fits its results instead of leaving empty space below short lists. (#1349)</li>
+<li>Importing connections from TablePlus brings over saved passwords again, after a recent release looked under the wrong keychain name.</li>
+<li>Importing an SSH connection from TablePlus no longer fills in a fake private key path when no key was selected, and skips empty TLS certificate paths.</li>
+<li>Importing from DBeaver no longer shows an unnecessary keychain permission warning, since DBeaver stores passwords in its own file.</li>
+<li>Raw SQL filter now suggests columns and keywords at every position, including after AND and OR, instead of only the first. (#1346)</li>
+<li>Plugins left incompatible after a TablePro update now update quietly in the background instead of showing a premature "could not be loaded" alert. You are notified only when no compatible version exists yet. (#1322)</li>
+<li>A plugin you download and install by hand is no longer blocked by macOS Gatekeeper once its signature is verified. (#1322)</li>
+<li>Clicking a table now replaces the active tab instead of opening a new one when you have multiple tabs open. A new tab still opens for unsaved edits, an applied filter, or sorting; double-click always opens a new tab. (#1348)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.44.0/TablePro-0.44.0-x86_64.zip" length="19090612" type="application/octet-stream" sparkle:edSignature="y1JdtLJQSZujIKETdWJy18d61IgblmKCEjjsvY2G7As637aDAhpEsCnpVJ4E9eYoeWbvR2EMhM0eMrnIJnIDAQ=="/>
+        </item>
+        <item>
             <title>0.43.3</title>
             <pubDate>Fri, 22 May 2026 08:28:56 +0000</pubDate>
             <sparkle:version>89</sparkle:version>

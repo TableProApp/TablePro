@@ -10,6 +10,7 @@ struct FilterRowView: View {
     let columns: [String]
     let completions: [String]
     var enumValuesByColumn: [String: [String]] = [:]
+    var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
@@ -18,6 +19,13 @@ struct FilterRowView: View {
 
     private var pickerEligibleOperators: Set<FilterOperator> {
         [.equal, .notEqual]
+    }
+
+    private var rawSQLCompletionSource: FilterCompletionSource {
+        if let rawSQLCompletionProvider {
+            return .sqlTokens(rawSQLCompletionProvider)
+        }
+        return .staticValues(completions)
     }
 
     private var allowedValuesForCurrentColumn: [String]? {
@@ -85,7 +93,7 @@ struct FilterRowView: View {
                 focusedId: $focusedFilterId,
                 identity: filter.id,
                 placeholder: "e.g. id = 1",
-                completions: completions,
+                completionSource: rawSQLCompletionSource,
                 allowsMultiLine: true,
                 onSubmit: onSubmit
             )
@@ -100,7 +108,7 @@ struct FilterRowView: View {
                     focusedId: $focusedFilterId,
                     identity: filter.id,
                     placeholder: String(localized: "Value"),
-                    completions: completions,
+                    completionSource: .staticValues(completions),
                     onSubmit: onSubmit
                 )
                 .frame(minWidth: 80)

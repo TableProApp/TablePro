@@ -143,6 +143,11 @@ struct WelcomeWindowView: View {
         .pluginInstallPrompt(connection: $vm.pluginInstallConnection) { connection in
             vm.connectAfterInstall(connection)
         }
+        .sheet(item: $vm.pluginDiagnostic) { item in
+            PluginDiagnosticSheet(item: item) {
+                vm.pluginDiagnostic = nil
+            }
+        }
         .alert(String(localized: "Rename Group"), isPresented: $vm.showRenameGroupAlert) {
             TextField(String(localized: "Group name"), text: $vm.renameGroupName)
             Button(String(localized: "Rename")) { vm.confirmRenameGroup() }

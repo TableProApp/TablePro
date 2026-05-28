@@ -102,7 +102,7 @@ struct QueryTab: Identifiable, Equatable {
 
         if let pluginDriver = PluginManager.shared.queryBuildingDriver(for: databaseType),
            let pluginQuery = pluginDriver.buildBrowseQuery(
-               table: tableName, sortColumns: [], columns: [], limit: pageSize, offset: 0
+               table: tableName, schema: schemaName, sortColumns: [], columns: [], limit: pageSize, offset: 0
            ) {
             return pluginQuery
         }
@@ -128,6 +128,10 @@ struct QueryTab: Identifiable, Equatable {
                 offset: 0
             )
         }
+    }
+
+    static func fileDisplayTitle(for url: URL) -> String {
+        FileManager.default.displayName(atPath: url.path(percentEncoded: false))
     }
 
     var hasUserActiveSort: Bool {

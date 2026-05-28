@@ -179,6 +179,11 @@ final class MainContentCommandActions {
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
         let fromDataGrid = rowIndices != nil
 
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
+            coordinator?.structureActions?.removeRow?()
+            return
+        }
+
         let indices = rowIndices ?? selectionState.indices
         if !indices.isEmpty {
             coordinator?.deleteSelectedRows(indices: indices)
@@ -815,7 +820,7 @@ final class MainContentCommandActions {
     }
 
     func openConnectionSwitcher() {
-        coordinator?.activeSheet = .connectionSwitcher
+        coordinator?.isConnectionSwitcherShown = true
     }
 
     // MARK: - Undo/Redo (Group A — Called Directly)

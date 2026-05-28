@@ -5,10 +5,14 @@ import Testing
 
 private final class MockClipboardProvider: ClipboardProvider {
     var lastWrittenText: String?
+    var lastWrittenGridRows: GridRowsClipboardPayload?
     var textToRead: String?
+    var gridRowsToRead: GridRowsClipboardPayload?
     var lastWasGridRows = false
 
     func readText() -> String? { textToRead }
+
+    func readGridRows() -> GridRowsClipboardPayload? { gridRowsToRead }
 
     func writeText(_ text: String) {
         lastWrittenText = text
@@ -20,8 +24,9 @@ private final class MockClipboardProvider: ClipboardProvider {
         lastWasGridRows = false
     }
 
-    func writeRows(tsv: String, html: String?) {
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {
         lastWrittenText = tsv
+        lastWrittenGridRows = gridRows
         lastWasGridRows = true
     }
 
@@ -265,5 +270,33 @@ struct RowOperationsManagerCopyTests {
         let result = copyAndCapture(manager: manager, indices: [0], rows: rows, visibleColumnIndices: nil)
 
         #expect(result == "1\tAlice\talice@test.com")
+    }
+
+    @Test("Copy writes structured grid rows with column names and raw cell values")
+    func copyWritesStructuredGridRows() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Smith, John", nil]]
+        let clipboard = MockClipboardProvider()
+        ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
+
+        manager.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
+
+        #expect(clipboard.lastWrittenGridRows?.columns == ["id", "name", "email"])
+        #expect(clipboard.lastWrittenGridRows?.rows == [[.text("1"), .text("Smith, John"), .null]])
+    }
+
+    @Test("Structured grid rows follow visible column projection and visual order")
+    func structuredGridRowsFollowProjection() {
+        let (manager, _) = makeManager()
+        let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
+        let clipboard = MockClipboardProvider()
+        ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
+
+        manager.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows, visibleColumnIndices: [2, 0])
+
+        #expect(clipboard.lastWrittenGridRows?.columns == ["email", "id"])
+        #expect(clipboard.lastWrittenGridRows?.rows == [[.text("alice@test.com"), .text("1")]])
     }
 }

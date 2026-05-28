@@ -18,7 +18,27 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let iconName = "oracle-icon"
     static let defaultPort = 1_521
     static let additionalConnectionFields: [ConnectionField] = [
-        ConnectionField(id: "oracleServiceName", label: "Service Name", placeholder: "ORCL")
+        ConnectionField(
+            id: "oracleConnectionType",
+            label: "Connection Type",
+            defaultValue: "service",
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(value: "service", label: "Service Name"),
+                ConnectionField.DropdownOption(value: "sid", label: "SID")
+            ])
+        ),
+        ConnectionField(
+            id: "oracleServiceName",
+            label: "Service Name",
+            placeholder: "ORCL",
+            visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["service"])
+        ),
+        ConnectionField(
+            id: "oracleSID",
+            label: "SID",
+            placeholder: "XE",
+            visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["sid"])
+        )
     ]
 
     // MARK: - UI/Capability Metadata
@@ -123,9 +143,10 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 title: String(localized: "Connection Dropped During Handshake"),
                 message: oracleError.message,
                 suggestedActions: [
-                    String(localized: "If the same connection works in DBeaver or sqlplus, this is likely an OOB compatibility issue with cloud-hosted Oracle."),
-                    String(localized: "TablePro 1.2.0 already gates OOB on the server flag, so most cases are resolved. If you still hit this, file an issue."),
-                    String(localized: "Try disabling SSH tunnel or load balancer firewall rules between client and server.")
+                    String(localized: "The server may require Native Network Encryption, which the pure-Swift driver cannot negotiate."),
+                    String(localized: "Configure the listener for TLS, or set SQLNET.ENCRYPTION_SERVER to ACCEPTED instead of REQUIRED."),
+                    String(localized: "If the same connection works in DBeaver or SQL Developer, they use Oracle's OCI client, which supports Native Network Encryption."),
+                    String(localized: "Check for a firewall or load balancer between the client and server that closes connections mid-handshake.")
                 ],
                 supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
             )
@@ -134,9 +155,8 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 title: String(localized: "Server Version Not Supported"),
                 message: oracleError.message,
                 suggestedActions: [
-                    String(localized: "TablePro requires Oracle 12c or later via the OracleNIO Swift driver."),
-                    String(localized: "Check the user account's password_versions; only 10G, 11G, and 12C are supported."),
-                    String(localized: "Rotate the password under modern auth if password_versions contains an unrecognized verifier.")
+                    String(localized: "TablePro supports Oracle Database 11.1 and later. This server reports an older release (10g or earlier)."),
+                    String(localized: "Upgrade the database to 11.2 or later, or connect with a client that bundles Oracle's OCI client such as SQL Developer or DataGrip.")
                 ],
                 supportURL: issuesURL
             )
@@ -185,14 +205,18 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let serviceName = config.additionalFields["oracleServiceName"] ?? ""
+        let useSID = config.additionalFields["oracleConnectionType"] == "sid"
+        let identifier = useSID
+            ? config.additionalFields["oracleSID"] ?? ""
+            : config.additionalFields["oracleServiceName"] ?? ""
         let conn = OracleConnectionWrapper(
             host: config.host,
             port: config.port,
             user: config.username,
             password: config.password,
             database: config.database,
-            serviceName: serviceName,
+            serviceName: identifier,
+            useSID: useSID,
             sslConfig: config.ssl
         )
         try await conn.connect()

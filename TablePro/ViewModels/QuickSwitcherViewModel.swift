@@ -33,7 +33,7 @@ internal final class QuickSwitcherViewModel {
     @ObservationIgnored private var activeLoadId = UUID()
 
     private(set) var groups: [Group] = []
-    private(set) var isLoading = false
+    private(set) var isLoading = true
     var selectedItemId: String?
 
     var searchText = "" {
@@ -45,6 +45,13 @@ internal final class QuickSwitcherViewModel {
 
     var flatItems: [QuickSwitcherItem] {
         groups.flatMap(\.items)
+    }
+
+    func listHeight(rowHeight: CGFloat, headerHeight: CGFloat, maxVisibleRows: Int) -> CGFloat {
+        let headerCount = groups.filter { $0.header != nil }.count
+        let naturalHeight = CGFloat(flatItems.count) * rowHeight + CGFloat(headerCount) * headerHeight
+        let maxHeight = CGFloat(maxVisibleRows) * rowHeight
+        return min(naturalHeight, maxHeight)
     }
 
     init(connectionId: UUID, services: AppServices, defaults: UserDefaults = .standard) {

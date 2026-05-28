@@ -59,6 +59,7 @@ final class WelcomeViewModel {
 
     var connectionError: String?
     var showConnectionError = false
+    var pluginDiagnostic: PluginDiagnosticItem?
 
     var showImportFilePanel = false
     var importResultCount: Int?
@@ -219,8 +220,7 @@ final class WelcomeViewModel {
             return
         }
         if let pendingError = WelcomeRouter.shared.consumePendingError() {
-            connectionError = pendingError.message
-            showConnectionError = true
+            presentConnectionFailure(pendingError.error, connection: pendingError.connection)
         }
     }
 
@@ -609,7 +609,17 @@ final class WelcomeViewModel {
 
         Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
         WindowManager.shared.closeWindow(for: connection.id)
-        connectionError = SSLHandshakeError.formatted(error)
-        showConnectionError = true
+        presentConnectionFailure(error, connection: connection)
+    }
+
+    private func presentConnectionFailure(_ error: Error, connection: DatabaseConnection) {
+        if let item = PluginDiagnosticItem.classify(
+            error: error, connection: connection, username: connection.username
+        ) {
+            pluginDiagnostic = item
+        } else {
+            connectionError = SSLHandshakeError.formatted(error)
+            showConnectionError = true
+        }
     }
 }

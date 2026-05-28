@@ -20,6 +20,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         _ = InspectorDocumentController()
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        PluginManager.shared.loadPlugins()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -59,8 +61,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
         DatabaseManager.shared.startObservingSystemEvents()
 
+        Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
+
         MemoryPressureAdvisor.startMonitoring()
-        PluginManager.shared.loadPlugins()
         UNUserNotificationCenter.current().delegate = self
         PluginNotificationService.shared.setUp()
         ChatToolBootstrap.register()
@@ -136,6 +139,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
         SSHTunnelManager.shared.terminateAllProcessesSync()
+        CloudflareTunnelManager.shared.terminateAllProcessesSync()
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

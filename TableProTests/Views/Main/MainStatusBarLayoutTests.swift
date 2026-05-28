@@ -4,10 +4,11 @@
 //
 
 import Foundation
-import TableProPluginKit
 import SwiftUI
-@testable import TablePro
+import TableProPluginKit
 import Testing
+
+@testable import TablePro
 
 @Suite("MainStatusBarView Layout")
 @MainActor
@@ -25,13 +26,16 @@ struct MainStatusBarLayoutTests {
             onPreviousPage: {},
             onNextPage: {},
             onLastPage: {},
-            onLimitChange: { _ in },
-            onOffsetChange: { _ in },
-            onPaginationGo: {},
+            onPageSizeChange: { _ in },
+            onShowAll: {},
+            onGoToPage: { _ in },
             onToggleColumn: { _ in },
             onShowAllColumns: {},
             onHideAllColumns: { _ in },
-            onToggleFilters: {}
+            onToggleFilters: {},
+            structureFooterState: nil,
+            onStructureAdd: nil,
+            onStructureRemove: nil
         )
         #expect(type(of: view.body) != Never.self)
     }
