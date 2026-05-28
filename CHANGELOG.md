@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle connections can now use a SID instead of a service name. Set Connection Type to SID in the connection form and enter the SID. (#1425)
 - Cmd-click a foreign key arrow to open the referenced table in a new tab instead of the current one. The right-click menu has the same Open in New Tab option. (#1421)
 - Cells holding JSON or PHP serialized values in text columns now open in the structured viewer automatically, without requiring the column type to be JSON.
+- Add and remove buttons in the table structure editor for columns, indexes, and foreign keys, alongside the existing Cmd+Shift+N shortcut. An empty Indexes or Foreign Keys tab also shows a labelled add button. (#1319)
 
 ### Changed
 

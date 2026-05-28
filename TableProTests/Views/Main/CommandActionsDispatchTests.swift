@@ -131,4 +131,25 @@ struct CommandActionsDispatchTests {
 
         #expect(pasteRowsCalled)
     }
+
+    // MARK: - addNewRow (structure mode)
+
+    @Test("addNewRow in structure mode calls structureActions.addRow")
+    func addNewRow_structureMode_callsStructureActions() {
+        let (actions, coordinator) = makeSUT()
+        coordinator.tabManager.addTab(databaseName: "testdb")
+
+        if let idx = coordinator.tabManager.selectedTabIndex {
+            coordinator.tabManager.tabs[idx].display.resultsViewMode = .structure
+        }
+
+        let handler = StructureViewActionHandler()
+        var addRowCalled = false
+        handler.addRow = { addRowCalled = true }
+        coordinator.structureActions = handler
+
+        actions.addNewRow()
+
+        #expect(addRowCalled)
+    }
 }

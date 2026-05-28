@@ -84,6 +84,7 @@ struct TableStructureView: View {
             toolbar
             Divider()
             contentArea
+            structureFooter
         }
         .task(loadInitialData)
         .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
@@ -171,6 +172,94 @@ struct TableStructureView: View {
         .padding()
     }
 
+    // MARK: - Footer (Add / Remove)
+
+    @ViewBuilder
+    private var structureFooter: some View {
+        if isEditableTab {
+            VStack(spacing: 0) {
+                Divider()
+                HStack(spacing: 0) {
+                    addButton
+                    removeButton
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(.bar)
+            }
+        }
+    }
+
+    private var addButton: some View {
+        Button(action: { gridDelegate.dataGridAddRow() }) {
+            Label(addLabel(for: selectedTab), systemImage: "plus")
+                .labelStyle(.iconOnly)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help(addLabel(for: selectedTab))
+        .disabled(!canAdd(for: selectedTab))
+    }
+
+    private var removeButton: some View {
+        Button(action: { gridDelegate.dataGridDeleteRows(selectedRows) }) {
+            Label(removeLabel(for: selectedTab), systemImage: "minus")
+                .labelStyle(.iconOnly)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help(removeLabel(for: selectedTab))
+        .disabled(!canRemove(for: selectedTab))
+    }
+
+    private var isEditableTab: Bool {
+        guard connection.type.supportsSchemaEditing else { return false }
+        switch selectedTab {
+        case .columns, .indexes, .foreignKeys:
+            return true
+        case .ddl, .parts:
+            return false
+        }
+    }
+
+    private func canAdd(for tab: StructureTab) -> Bool {
+        switch tab {
+        case .columns: return connection.type.supportsAddColumn
+        case .indexes: return connection.type.supportsAddIndex
+        case .foreignKeys: return connection.type.supportsForeignKeys
+        case .ddl, .parts: return false
+        }
+    }
+
+    private func canRemove(for tab: StructureTab) -> Bool {
+        guard !selectedRows.isEmpty else { return false }
+        switch tab {
+        case .columns: return connection.type.supportsDropColumn
+        case .indexes: return connection.type.supportsDropIndex
+        case .foreignKeys: return connection.type.supportsForeignKeys
+        case .ddl, .parts: return false
+        }
+    }
+
+    private func addLabel(for tab: StructureTab) -> String {
+        switch tab {
+        case .columns: return String(localized: "Add Column")
+        case .indexes: return String(localized: "Add Index")
+        case .foreignKeys: return String(localized: "Add Foreign Key")
+        case .ddl, .parts: return String(localized: "Add Row")
+        }
+    }
+
+    private func removeLabel(for tab: StructureTab) -> String {
+        switch tab {
+        case .columns: return String(localized: "Remove Column")
+        case .indexes: return String(localized: "Remove Index")
+        case .foreignKeys: return String(localized: "Remove Foreign Key")
+        case .ddl, .parts: return String(localized: "Remove Row")
+        }
+    }
+
     // MARK: - Tab Label with Count Badge
 
     private func tabLabel(for tab: StructureTab) -> String {
@@ -206,13 +295,37 @@ struct TableStructureView: View {
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
-        case .columns, .indexes, .foreignKeys:
+        case .columns:
             structureGrid
+        case .indexes:
+            if shouldShowIndexesEmptyState {
+                EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
+            } else {
+                structureGrid
+            }
+        case .foreignKeys:
+            if shouldShowForeignKeysEmptyState {
+                EmptyStateView.foreignKeys { gridDelegate.dataGridAddRow() }
+            } else {
+                structureGrid
+            }
         case .ddl:
             ddlView
         case .parts:
             ClickHousePartsView(tableName: tableName, connectionId: connection.id)
         }
+    }
+
+    private var shouldShowIndexesEmptyState: Bool {
+        loadedTabs.contains(.indexes)
+            && structureChangeManager.workingIndexes.isEmpty
+            && connection.type.supportsAddIndex
+    }
+
+    private var shouldShowForeignKeysEmptyState: Bool {
+        loadedTabs.contains(.foreignKeys)
+            && structureChangeManager.workingForeignKeys.isEmpty
+            && connection.type.supportsForeignKeys
     }
 
     // MARK: - Structure Grid (DataGridView)
