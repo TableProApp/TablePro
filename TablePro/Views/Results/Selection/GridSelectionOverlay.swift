@@ -36,12 +36,14 @@ final class GridSelectionOverlay: NSView {
         guard let tableView, let coordinator else { return }
         let schema = coordinator.identitySchema
         let totalRows = tableView.numberOfRows
+        let editingCell = activeOverlayCell(in: coordinator)
 
         NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.borderAlpha).setStroke()
         for rect in selection.rectangles {
             guard let frame = frame(for: rect, in: tableView, schema: schema) else { continue }
             guard frame.intersects(dirtyRect) else { continue }
             if isFullHeight(rect, totalRows: totalRows) { continue }
+            if let editingCell, rect.contains(editingCell) { continue }
             let inset = frame.insetBy(dx: Self.borderWidth / 2, dy: Self.borderWidth / 2)
             let path = NSBezierPath(rect: inset)
             path.lineWidth = Self.borderWidth
@@ -49,6 +51,7 @@ final class GridSelectionOverlay: NSView {
         }
 
         if let active = selection.activeCell,
+           editingCell != active,
            selection.rectangles.count > 1 || (selection.rectangles.first?.rows.count ?? 0) > 1 || (selection.rectangles.first?.columns.count ?? 0) > 1,
            let frame = frame(for: GridRect(cell: active), in: tableView, schema: schema),
            frame.intersects(dirtyRect) {
@@ -58,6 +61,16 @@ final class GridSelectionOverlay: NSView {
             path.lineWidth = Self.activeCellBorderWidth
             path.stroke()
         }
+    }
+
+    private func activeOverlayCell(in coordinator: TableViewCoordinator) -> GridCoord? {
+        if let editor = coordinator.overlayEditor, editor.isActive {
+            return GridCoord(row: editor.row, column: editor.columnIndex)
+        }
+        if let viewer = coordinator.overlayViewer, viewer.isActive {
+            return GridCoord(row: viewer.row, column: viewer.columnIndex)
+        }
+        return nil
     }
 
     private func isFullHeight(_ rect: GridRect, totalRows: Int) -> Bool {
