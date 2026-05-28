@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS: running a query that returns a very large result no longer crashes the app. The query editor keeps the first rows it loads, stops before memory runs low, and tells you to add LIMIT to fetch more.
 - iOS: Safe Mode "Confirm Writes" now prompts before saving a row edit or inserting a row, matching the query editor. Previously grid edits and inserts saved with no confirmation.
 - Redshift: schema switching now works, along with the contains, starts with, and ends with filters and table search. All previously failed with a SQL syntax error. (#1439)
+- MCP server: the first authenticated request no longer hangs after turning on Require Authentication. Turning the setting on now creates a default token if you have none, shows it once for you to copy, and waits for the server to be ready before the next request can run. The Token Name field also focuses on first click in the Generate Token sheet. (#1093)
 
 ## [0.45.0] - 2026-05-26
 

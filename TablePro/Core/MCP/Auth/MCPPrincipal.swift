@@ -48,4 +48,15 @@ public struct MCPPrincipal: Sendable, Equatable, Hashable {
         hasher.combine(tokenFingerprint)
         hasher.combine(tokenId)
     }
+
+    public static let anonymousLoopback = MCPPrincipal(
+        tokenFingerprint: "anonymous-loopback",
+        tokenId: nil,
+        scopes: [.toolsRead, .toolsWrite, .resourcesRead, .admin],
+        metadata: MCPPrincipalMetadata(
+            label: "Anonymous (loopback)",
+            issuedAt: .distantPast,
+            expiresAt: nil
+        )
+    )
 }
