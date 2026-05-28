@@ -20,6 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         _ = InspectorDocumentController()
+        PluginManager.shared.loadPlugins()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -62,7 +63,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
 
         MemoryPressureAdvisor.startMonitoring()
-        PluginManager.shared.loadPlugins()
         UNUserNotificationCenter.current().delegate = self
         PluginNotificationService.shared.setUp()
         ChatToolBootstrap.register()

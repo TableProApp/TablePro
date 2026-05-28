@@ -93,6 +93,7 @@ internal final class AppLaunchCoordinator {
                 for intent in intents {
                     await LaunchIntentRouter.shared.route(intent)
                 }
+                WindowOpener.shared.orderOutWelcome()
             }
         }
     }
@@ -107,6 +108,9 @@ internal final class AppLaunchCoordinator {
             guard let self else { return }
             for intent in intents {
                 await LaunchIntentRouter.shared.route(intent)
+            }
+            if !intents.isEmpty {
+                WindowOpener.shared.orderOutWelcome()
             }
             self.runStartupBehaviorIfNeeded(skipping: intents)
             self.phase = .ready
