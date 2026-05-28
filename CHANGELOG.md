@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Generate Token sheet focuses the Token Name field on first open. (#1093)
 - Double-clicking a CSV or TSV file when TablePro is closed opens the file directly. (#1443)
 - Opening a `.sql` file names the tab after the file instead of showing "SQL Query". (#1220)
+- Server Dashboard now shows the Slow Queries panel. The panels are in a vertical split with draggable dividers, and divider positions are remembered across launches. (#1464)
 
 ## [0.45.0] - 2026-05-26
 
