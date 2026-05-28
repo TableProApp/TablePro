@@ -1541,6 +1541,16 @@
     "%1$@, %2$@" : {
       "shouldTranslate" : false
     },
+    "%d cells selected, rows %d to %d, columns %d to %d" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d cells selected, rows %2$d to %3$d, columns %4$d to %5$d"
+          }
+        }
+      }
+    },
     "%d columns" : {
 
     },
@@ -8712,6 +8722,9 @@
           }
         }
       }
+    },
+    "Cell selection cleared" : {
+
     },
     "Cell Value" : {
       "localizations" : {

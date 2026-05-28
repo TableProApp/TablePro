@@ -80,12 +80,19 @@ final class GridSelectionController {
             return .replaceFocus(coord)
         }
         if cleanModifiers.contains(.shift) && !cleanModifiers.contains(.command) {
-            return extend(to: coord)
+            let anchor = selection.anchor ?? coord
+            dragOrigin = anchor
+            dragMode = .replace
+            dragBaseSelection = .empty
+            update(.single(GridRect.between(anchor, coord), anchor: anchor, active: coord))
+            return .replaceFocus(coord)
         }
         dragOrigin = coord
         dragMode = .replace
         dragBaseSelection = .empty
-        update(.single(GridRect(cell: coord), anchor: coord, active: coord))
+        if !selection.isEmpty {
+            update(.empty)
+        }
         return .replaceFocus(coord)
     }
 
@@ -129,12 +136,6 @@ final class GridSelectionController {
 
         rectangles.append(cellRect)
         update(GridSelection(rectangles: rectangles, activeCell: coord, anchor: coord))
-    }
-
-    private func extend(to coord: GridCoord) -> MouseDisposition {
-        let origin = selection.anchor ?? coord
-        update(.single(GridRect.between(origin, coord), anchor: origin, active: coord))
-        return .replaceFocus(coord)
     }
 
     func selectAll(totalRows: Int, totalColumns: Int) {
@@ -189,11 +190,20 @@ final class GridSelectionController {
         let union = old.affectedColumns.union(new.affectedColumns)
         if let headerView = (tableView as? KeyHandlingTableView)?.headerView as? SortableHeaderView {
             headerView.updateColumnSelectionIndicators(
-                selectedColumns: new.affectedColumns,
+                selectedColumns: fullySelectedColumns(in: new),
                 dirtyColumns: union
             )
         }
         return union
+    }
+
+    private func fullySelectedColumns(in selection: GridSelection) -> IndexSet {
+        guard let totalRows = tableView?.numberOfRows, totalRows > 0 else { return IndexSet() }
+        var fully = IndexSet()
+        for rect in selection.rectangles where rect.rows.lowerBound <= 0 && rect.rows.upperBound >= totalRows - 1 {
+            fully.insert(integersIn: rect.columns.lowerBound...rect.columns.upperBound)
+        }
+        return fully
     }
 
     private func reloadRowsForFill(old: GridSelection, new: GridSelection, dirtyColumns: IndexSet) {

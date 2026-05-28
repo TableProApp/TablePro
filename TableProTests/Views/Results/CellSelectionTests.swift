@@ -135,15 +135,28 @@ struct GridSelectionTests {
 @Suite("GridSelectionController gestures")
 @MainActor
 struct GridSelectionControllerTests {
-    @Test("plain mouseDown replaces the selection with the clicked cell")
-    func plainClickReplacesSelection() {
+    @Test("plain click without drag leaves the selection empty")
+    func plainClickWithoutDragHasNoSelection() {
         let controller = GridSelectionController()
         let coord = GridCoord(row: 2, column: 3)
         _ = controller.beginDrag(at: coord, modifiers: [])
         controller.endDrag(dragged: false, originalCoord: coord)
-        #expect(controller.selection.rectangles == [GridRect(cell: coord)])
-        #expect(controller.selection.anchor == coord)
-        #expect(controller.selection.activeCell == coord)
+        #expect(controller.selection.isEmpty)
+    }
+
+    @Test("plain click on an existing selection clears it without creating a new rect")
+    func plainClickClearsPreviousSelection() {
+        let controller = GridSelectionController()
+        let first = GridCoord(row: 0, column: 0)
+        let second = GridCoord(row: 3, column: 4)
+        _ = controller.beginDrag(at: first, modifiers: [])
+        controller.continueDrag(to: GridCoord(row: 1, column: 2))
+        controller.endDrag(dragged: true, originalCoord: first)
+        #expect(!controller.selection.isEmpty)
+
+        _ = controller.beginDrag(at: second, modifiers: [])
+        controller.endDrag(dragged: false, originalCoord: second)
+        #expect(controller.selection.isEmpty)
     }
 
     @Test("drag extends to a rectangle anchored at the mousedown coord")
@@ -163,13 +176,16 @@ struct GridSelectionControllerTests {
     func shiftExtendsAcrossColumns() {
         let controller = GridSelectionController()
         let origin = GridCoord(row: 2, column: 2)
-        let target = GridCoord(row: 5, column: 6)
+        let dragTo = GridCoord(row: 2, column: 2)
         _ = controller.beginDrag(at: origin, modifiers: [])
-        controller.endDrag(dragged: false, originalCoord: origin)
-        _ = controller.beginDrag(at: target, modifiers: .shift)
+        controller.continueDrag(to: dragTo)
+        controller.endDrag(dragged: true, originalCoord: origin)
+
+        let shiftTarget = GridCoord(row: 5, column: 6)
+        _ = controller.beginDrag(at: shiftTarget, modifiers: .shift)
         #expect(controller.selection.rectangles == [GridRect(rows: 2...5, columns: 2...6)])
         #expect(controller.selection.anchor == origin)
-        #expect(controller.selection.activeCell == target)
+        #expect(controller.selection.activeCell == shiftTarget)
     }
 
     @Test("cmd+click without drag toggles a single cell")
@@ -177,8 +193,11 @@ struct GridSelectionControllerTests {
         let controller = GridSelectionController()
         let first = GridCoord(row: 0, column: 0)
         let second = GridCoord(row: 3, column: 4)
-        _ = controller.beginDrag(at: first, modifiers: [])
+
+        _ = controller.beginDrag(at: first, modifiers: .command)
         controller.endDrag(dragged: false, originalCoord: first)
+        #expect(controller.selection.rectangles == [GridRect(cell: first)])
+
         _ = controller.beginDrag(at: second, modifiers: .command)
         controller.endDrag(dragged: false, originalCoord: second)
         #expect(controller.selection.rectangles == [GridRect(cell: first), GridRect(cell: second)])

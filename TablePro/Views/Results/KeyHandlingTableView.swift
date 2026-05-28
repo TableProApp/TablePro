@@ -115,6 +115,11 @@ final class KeyHandlingTableView: NSTableView {
         let isDataColumn = column.identifier != ColumnIdentitySchema.rowNumberIdentifier
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
+        if event.clickCount >= 2 {
+            super.mouseDown(with: event)
+            return
+        }
+
         guard isDataColumn,
               let schema = coordinator?.identitySchema,
               let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema) else {
@@ -135,10 +140,10 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         let disposition = controller.beginDrag(at: coord, modifiers: modifiers)
-
         switch disposition {
         case .replaceFocus(let activeCoord):
-            selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: false)
+            let byExtending = modifiers.contains(.shift) || modifiers.contains(.command)
+            selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: byExtending)
             focusedRow = activeCoord.row
             focusedColumn = DataGridView.tableColumnIndex(for: activeCoord.column, in: self, schema: schema) ?? clickedColumn
         case .clearFocus:
@@ -149,14 +154,10 @@ final class KeyHandlingTableView: NSTableView {
             super.mouseDown(with: event)
         }
 
-        let supportsDrag = !modifiers.contains(.shift)
-        if supportsDrag {
-            trackDrag(initial: coord, schema: schema)
-        }
+        trackDrag(initial: coord, schema: schema)
 
-        if alreadyFocusedHere,
-           modifiers.isEmpty,
-           event.clickCount == 1,
+        if modifiers.isEmpty,
+           alreadyFocusedHere,
            selectedRowIndexes.count == 1,
            coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumn) == true {
             coordinator?.beginCellEdit(row: clickedRow, tableColumnIndex: clickedColumn)
