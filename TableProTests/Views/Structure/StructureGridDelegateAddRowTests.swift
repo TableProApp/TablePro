@@ -109,4 +109,43 @@ struct StructureGridDelegateAddRowTests {
         #expect(manager.workingIndexes.count == indexesBefore)
         #expect(manager.workingForeignKeys.count == fksBefore)
     }
+
+    @Test("Columns sub-tab: dataGridDeleteRows removes the selected column")
+    func columnsTab_deleteRemovesColumn() {
+        let (delegate, manager) = makeDelegate(selectedTab: .columns)
+        delegate.dataGridAddRow()
+        let after = manager.workingColumns.count
+        #expect(after > 0)
+        delegate.dataGridDeleteRows([after - 1])
+        #expect(manager.workingColumns.count == after - 1)
+    }
+
+    @Test("Indexes sub-tab: dataGridDeleteRows removes the selected index")
+    func indexesTab_deleteRemovesIndex() {
+        let (delegate, manager) = makeDelegate(selectedTab: .indexes)
+        delegate.dataGridAddRow()
+        let after = manager.workingIndexes.count
+        #expect(after > 0)
+        delegate.dataGridDeleteRows([after - 1])
+        #expect(manager.workingIndexes.count == after - 1)
+    }
+
+    @Test("Foreign keys sub-tab: dataGridDeleteRows removes the selected foreign key")
+    func foreignKeysTab_deleteRemovesForeignKey() {
+        let (delegate, manager) = makeDelegate(selectedTab: .foreignKeys)
+        delegate.dataGridAddRow()
+        let after = manager.workingForeignKeys.count
+        #expect(after > 0)
+        delegate.dataGridDeleteRows([after - 1])
+        #expect(manager.workingForeignKeys.count == after - 1)
+    }
+
+    @Test("Indexes sub-tab on SQLite: dataGridDeleteRows is a no-op (supportsDropIndex == false)")
+    func sqliteIndexes_deleteIsNoOp() {
+        let (delegate, manager) = makeDelegate(selectedTab: .indexes, type: .sqlite)
+        manager.addIndex(.placeholder())
+        let before = manager.workingIndexes.count
+        delegate.dataGridDeleteRows([before - 1])
+        #expect(manager.workingIndexes.count == before)
+    }
 }

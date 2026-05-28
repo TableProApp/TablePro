@@ -53,6 +53,7 @@ struct TableStructureView: View {
     @State var columnLayoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister()
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
+    @State private var footerOwnerId = UUID()
 
     init(
         tableName: String,
@@ -131,7 +132,7 @@ struct TableStructureView: View {
         .onDisappear {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
-            coordinator?.structureFooterState.deactivate()
+            coordinator?.structureFooterState.deactivate(owner: footerOwnerId)
             selectionState.indices = []
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
@@ -186,14 +187,16 @@ struct TableStructureView: View {
         guard let footer = coordinator?.structureFooterState else { return }
         guard connection.type.supportsSchemaEditing,
               let labels = footerLabels(for: selectedTab) else {
-            footer.deactivate()
+            footer.deactivate(owner: footerOwnerId)
             return
         }
-        footer.isActive = true
-        footer.addLabel = labels.add
-        footer.removeLabel = labels.remove
-        footer.canAdd = canAdd(for: selectedTab)
-        footer.canRemove = canRemove(for: selectedTab)
+        footer.update(
+            owner: footerOwnerId,
+            canAdd: canAdd(for: selectedTab),
+            canRemove: canRemove(for: selectedTab),
+            addLabel: labels.add,
+            removeLabel: labels.remove
+        )
     }
 
     private func canAdd(for tab: StructureTab) -> Bool {

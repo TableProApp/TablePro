@@ -230,7 +230,6 @@ struct MainStatusBarView: View {
             .help(state.addLabel)
             .accessibilityLabel(state.addLabel)
             .disabled(!state.canAdd)
-            .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Button {
                 onStructureRemove?()
@@ -241,11 +240,10 @@ struct MainStatusBarView: View {
             .help(state.removeLabel)
             .accessibilityLabel(state.removeLabel)
             .disabled(!state.canRemove)
-            .keyboardShortcut(.delete, modifiers: .command)
         }
         .controlGroupStyle(.navigation)
         .controlSize(.small)
-        .frame(width: 64)
+        .fixedSize()
     }
 
     private var showsPaginationControls: Bool {
