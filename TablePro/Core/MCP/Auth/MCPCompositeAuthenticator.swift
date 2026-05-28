@@ -1,9 +1,6 @@
 import Foundation
-import os
 
 public actor MCPCompositeAuthenticator: MCPAuthenticator {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Auth")
-
     private let bearer: MCPBearerTokenAuthenticator
     private let requireAuthentication: Bool
 

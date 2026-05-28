@@ -11,12 +11,16 @@ struct MCPSection: View {
     @State private var showRevealSheet = false
     @State private var revealedToken: MCPAuthToken?
     @State private var revealedPlaintext: String = ""
+    @State private var isAuthBootstrapping = false
 
     private var requireAuthBinding: Binding<Bool> {
         Binding(
             get: { settings.requireAuthentication },
             set: { newValue in
+                guard !isAuthBootstrapping else { return }
+                isAuthBootstrapping = true
                 Task { @MainActor in
+                    defer { isAuthBootstrapping = false }
                     let bootstrap = await settingsManager.setRequireAuthentication(newValue)
                     if let bootstrap {
                         revealedToken = bootstrap.token
