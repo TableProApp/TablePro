@@ -67,7 +67,7 @@ extension MainContentView {
                     {
                         await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
                     } else {
-                        coordinator.executeTableTabQueryDirectly()
+                        coordinator.lazyLoadCurrentTabIfNeeded()
                     }
                 } else {
                     coordinator.needsLazyLoad = true
@@ -157,7 +157,7 @@ extension MainContentView {
                     {
                         Task { await coordinator.switchDatabase(to: firstTab.tableContext.databaseName) }
                     } else {
-                        coordinator.executeTableTabQueryDirectly()
+                        coordinator.lazyLoadCurrentTabIfNeeded()
                     }
                 } else {
                     coordinator.needsLazyLoad = true
