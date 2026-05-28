@@ -185,7 +185,7 @@ final class SortableHeaderView: NSTableHeaderView {
 
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
-        if modifiers.contains(.command) {
+        if modifiers.contains(.command) && !modifiers.contains(.shift) {
             coordinator.selectColumn(dataIndex)
             return
         }

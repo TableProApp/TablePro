@@ -244,8 +244,10 @@ final class KeyHandlingTableView: NSTableView {
         switch item.action {
         case #selector(delete(_:)), #selector(deleteBackward(_:)):
             return coordinator?.isEditable == true && !selectedRowIndexes.isEmpty
-        case #selector(copy(_:)), #selector(copyRowsAsTSV(_:)):
+        case #selector(copy(_:)):
             return !selection.cellSelection.isEmpty || !selectedRowIndexes.isEmpty
+        case #selector(copyRowsAsTSV(_:)):
+            return !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil
         case #selector(insertNewline(_:)):

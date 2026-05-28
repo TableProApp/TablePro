@@ -312,7 +312,7 @@ extension TableViewCoordinator {
     func selectColumn(_ dataColumnIndex: Int) {
         guard let keyTableView = tableView as? KeyHandlingTableView else { return }
         keyTableView.selection.cellSelection = .column(dataColumnIndex)
-        keyTableView.cellSelectionAnchor = nil
+        keyTableView.cellSelectionAnchor = CellPosition(row: 0, column: dataColumnIndex)
         keyTableView.deselectAll(nil)
     }
 
@@ -346,7 +346,7 @@ extension TableViewCoordinator {
             lines.append(text)
         }
 
-        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
+        ClipboardService.shared.writeRows(tsv: lines.joined(separator: "\n"), html: nil)
     }
 
     private func copyCellPositions(_ positions: Set<CellPosition>) {
@@ -366,6 +366,6 @@ extension TableViewCoordinator {
             lines.append(text)
         }
 
-        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
+        ClipboardService.shared.writeRows(tsv: lines.joined(separator: "\n"), html: nil)
     }
 }
