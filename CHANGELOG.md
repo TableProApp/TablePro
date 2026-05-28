@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Column and cell-range selection in the data grid: Cmd+click a column header to select the entire column, Shift+click to select a vertical range, Cmd+click individual cells for non-contiguous selection (#1446)
+- Rectangular cell selection in the data grid. Click and drag to select a range, Shift+click to extend, Cmd+click to add cells, Cmd+click a column header to select the column, Shift+Arrow to extend by one cell, Cmd+A to select the whole grid, Cmd+C to copy as TSV. (#1446)
 - BigQuery: the sidebar now shows every dataset as an expandable node, with each dataset's tables loading when you open it, instead of showing one dataset at a time behind a picker.
 - OpenCode Zen as an AI provider. Add it from the provider list and paste an OpenCode key, or leave the key blank to use the free models; the model list loads automatically, covering the Claude, GPT, Gemini, and open models Zen serves. (#1400)
 - Oracle Database 11g (11.1 and 11.2) now connects. Previously only 12c and later worked, so 11g servers failed with a "Server Version Not Supported" error. (#1425)

@@ -12,15 +12,13 @@ struct DataGridCellPalette: Equatable {
     let mediumFont: NSFont
     let deletedRowText: NSColor
     let modifiedColumnTint: NSColor
-    let cellSelectionTint: NSColor
 
     static let placeholder = DataGridCellPalette(
         regularFont: .systemFont(ofSize: NSFont.systemFontSize),
         italicFont: .systemFont(ofSize: NSFont.systemFontSize),
         mediumFont: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium),
         deletedRowText: .secondaryLabelColor,
-        modifiedColumnTint: .systemYellow,
-        cellSelectionTint: .controlAccentColor.withAlphaComponent(0.12)
+        modifiedColumnTint: .systemYellow
     )
 }
 
@@ -31,8 +29,7 @@ extension ThemeEngine {
             italicFont: dataGridFonts.italic,
             mediumFont: dataGridFonts.medium,
             deletedRowText: colors.dataGrid.deletedText,
-            modifiedColumnTint: colors.dataGrid.modified,
-            cellSelectionTint: .controlAccentColor.withAlphaComponent(0.12)
+            modifiedColumnTint: colors.dataGrid.modified
         )
     }
 }

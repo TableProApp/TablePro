@@ -2,198 +2,131 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CellSelection")
-struct CellSelectionTests {
-    // MARK: - contains
-
-    @Test("none contains nothing")
-    func noneContainsNothing() {
-        let sel = CellSelection.none
-        #expect(!sel.contains(row: 0, column: 0))
-        #expect(!sel.contains(row: 5, column: 3))
+@Suite("GridRect")
+struct GridRectTests {
+    @Test("rect from two coords spans the bounding box regardless of order")
+    func betweenCoordsHandlesOrder() {
+        let a = GridCoord(row: 5, column: 2)
+        let b = GridCoord(row: 1, column: 7)
+        let rect = GridRect.between(a, b)
+        #expect(rect.rows == 1...5)
+        #expect(rect.columns == 2...7)
     }
 
-    @Test("column contains any row in that column")
-    func columnContainsMatchingColumn() {
-        let sel = CellSelection.column(2)
-        #expect(sel.contains(row: 0, column: 2))
-        #expect(sel.contains(row: 999, column: 2))
-        #expect(!sel.contains(row: 0, column: 1))
-        #expect(!sel.contains(row: 0, column: 3))
+    @Test("contains is inclusive on both bounds")
+    func containsInclusiveBounds() {
+        let rect = GridRect(rows: 2...4, columns: 1...3)
+        #expect(rect.contains(GridCoord(row: 2, column: 1)))
+        #expect(rect.contains(GridCoord(row: 4, column: 3)))
+        #expect(!rect.contains(GridCoord(row: 1, column: 2)))
+        #expect(!rect.contains(GridCoord(row: 5, column: 2)))
+        #expect(!rect.contains(GridCoord(row: 3, column: 4)))
     }
 
-    @Test("range contains rows within bounds in correct column")
-    func rangeContainsWithinBounds() {
-        let sel = CellSelection.range(column: 1, rows: 3...7)
-        #expect(sel.contains(row: 3, column: 1))
-        #expect(sel.contains(row: 5, column: 1))
-        #expect(sel.contains(row: 7, column: 1))
-        #expect(!sel.contains(row: 2, column: 1))
-        #expect(!sel.contains(row: 8, column: 1))
-        #expect(!sel.contains(row: 5, column: 0))
+    @Test("clamped returns nil when rect lies entirely outside the limits")
+    func clampedOutsideReturnsNil() {
+        let rect = GridRect(rows: 10...20, columns: 5...8)
+        #expect(rect.clamped(rowLimit: 5, columnLimit: 10) == nil)
     }
 
-    @Test("cells contains only listed positions")
-    func cellsContainsExactPositions() {
-        let sel = CellSelection.cells([
-            CellPosition(row: 1, column: 2),
-            CellPosition(row: 5, column: 3)
-        ])
-        #expect(sel.contains(row: 1, column: 2))
-        #expect(sel.contains(row: 5, column: 3))
-        #expect(!sel.contains(row: 1, column: 3))
-        #expect(!sel.contains(row: 2, column: 2))
-    }
-
-    // MARK: - affectedColumns
-
-    @Test("none has no affected columns")
-    func noneAffectedColumns() {
-        #expect(CellSelection.none.affectedColumns.isEmpty)
-    }
-
-    @Test("column reports single affected column")
-    func columnAffectedColumns() {
-        let sel = CellSelection.column(4)
-        #expect(sel.affectedColumns == IndexSet(integer: 4))
-    }
-
-    @Test("range reports single affected column")
-    func rangeAffectedColumns() {
-        let sel = CellSelection.range(column: 2, rows: 0...10)
-        #expect(sel.affectedColumns == IndexSet(integer: 2))
-    }
-
-    @Test("cells reports all unique columns")
-    func cellsAffectedColumns() {
-        let sel = CellSelection.cells([
-            CellPosition(row: 0, column: 1),
-            CellPosition(row: 2, column: 3),
-            CellPosition(row: 4, column: 1)
-        ])
-        #expect(sel.affectedColumns == IndexSet([1, 3]))
-    }
-
-    // MARK: - affectedRows
-
-    @Test("column has no affected rows")
-    func columnAffectedRows() {
-        #expect(CellSelection.column(0).affectedRows.isEmpty)
-    }
-
-    @Test("range reports all rows in bounds")
-    func rangeAffectedRows() {
-        let sel = CellSelection.range(column: 0, rows: 2...5)
-        #expect(sel.affectedRows == IndexSet(integersIn: 2...5))
-    }
-
-    @Test("cells reports all unique rows")
-    func cellsAffectedRows() {
-        let sel = CellSelection.cells([
-            CellPosition(row: 1, column: 0),
-            CellPosition(row: 3, column: 2),
-            CellPosition(row: 1, column: 5)
-        ])
-        #expect(sel.affectedRows == IndexSet([1, 3]))
-    }
-
-    // MARK: - isEmpty
-
-    @Test("none is empty")
-    func noneIsEmpty() {
-        #expect(CellSelection.none.isEmpty)
-    }
-
-    @Test("column is not empty")
-    func columnIsNotEmpty() {
-        #expect(!CellSelection.column(0).isEmpty)
-    }
-
-    @Test("range is not empty")
-    func rangeIsNotEmpty() {
-        #expect(!CellSelection.range(column: 0, rows: 0...0).isEmpty)
-    }
-
-    @Test("cells with elements is not empty")
-    func cellsNotEmpty() {
-        #expect(!CellSelection.cells([CellPosition(row: 0, column: 0)]).isEmpty)
-    }
-
-    @Test("cells with empty set is empty")
-    func cellsEmptySetIsEmpty() {
-        #expect(CellSelection.cells(Set()).isEmpty)
+    @Test("clamped reduces a partially outside rect to the visible window")
+    func clampedPartialOverlap() {
+        let rect = GridRect(rows: 3...12, columns: -2...4)
+        let clamped = rect.clamped(rowLimit: 8, columnLimit: 6)
+        #expect(clamped?.rows == 3...7)
+        #expect(clamped?.columns == 0...4)
     }
 }
 
-@Suite("TableSelection.reloadIndexes with cellSelection")
-struct TableSelectionCellSelectionTests {
-    @Test("returns nil when nothing changed")
-    func noChangeReturnsNil() {
-        let sel = TableSelection(focusedRow: 1, focusedColumn: 2, cellSelection: .column(3))
-        #expect(sel.reloadIndexes(from: sel) == nil)
+@Suite("GridSelection")
+struct GridSelectionTests {
+    private let rect = GridRect(rows: 0...2, columns: 0...1)
+    private let active = GridCoord(row: 0, column: 0)
+
+    @Test("empty selection contains nothing and has no bounding rect")
+    func emptySelection() {
+        let selection = GridSelection.empty
+        #expect(selection.isEmpty)
+        #expect(!selection.contains(GridCoord(row: 0, column: 0)))
+        #expect(selection.boundingRectangle == nil)
+        #expect(selection.affectedRows.isEmpty)
+        #expect(selection.affectedColumns.isEmpty)
     }
 
-    @Test("returns affected indexes when cellSelection changes from none to range")
-    func noneToRangeReturnsIndexes() {
-        let old = TableSelection(focusedRow: -1, focusedColumn: -1, cellSelection: .none)
-        let new = TableSelection(focusedRow: -1, focusedColumn: -1, cellSelection: .range(column: 2, rows: 3...5))
-        let result = new.reloadIndexes(from: old)
-        #expect(result != nil)
-        #expect(result?.rows == IndexSet(integersIn: 3...5))
-        #expect(result?.columns == IndexSet(integer: 2))
+    @Test("single rect selection reports its bounding box")
+    func singleRectSelection() {
+        let selection = GridSelection.single(rect, anchor: active, active: active)
+        #expect(!selection.isEmpty)
+        #expect(selection.contains(row: 1, column: 1))
+        #expect(!selection.contains(row: 3, column: 0))
+        #expect(selection.boundingRectangle == rect)
     }
 
-    @Test("column-only change has empty affectedRows so reload uses the visible-column side path")
-    func columnChangeReturnsNilDueToEmptyRows() {
-        let old = TableSelection(focusedRow: -1, focusedColumn: -1, cellSelection: .none)
-        let new = TableSelection(focusedRow: -1, focusedColumn: -1, cellSelection: .column(1))
-        #expect(new.reloadIndexes(from: old) == nil)
-    }
-
-    @Test("focus change combined with cell selection returns union of indexes")
-    func focusAndCellSelectionChange() {
-        let old = TableSelection(
-            focusedRow: 0,
-            focusedColumn: 0,
-            cellSelection: .cells([CellPosition(row: 2, column: 1)])
+    @Test("multiple rectangles report union of affected rows and columns")
+    func multipleRectanglesUnion() {
+        let selection = GridSelection(
+            rectangles: [
+                GridRect(rows: 0...0, columns: 0...0),
+                GridRect(rows: 5...6, columns: 3...4)
+            ],
+            activeCell: GridCoord(row: 5, column: 3),
+            anchor: GridCoord(row: 5, column: 3)
         )
-        let new = TableSelection(
-            focusedRow: 3,
-            focusedColumn: 1,
-            cellSelection: .cells([CellPosition(row: 4, column: 2)])
-        )
-        guard let result = new.reloadIndexes(from: old) else {
-            Issue.record("expected reload indexes for combined focus and cell selection change")
-            return
-        }
-        #expect(result.rows.contains(0))
-        #expect(result.rows.contains(2))
-        #expect(result.rows.contains(3))
-        #expect(result.rows.contains(4))
-        #expect(result.columns.contains(0))
-        #expect(result.columns.contains(1))
-        #expect(result.columns.contains(2))
+        #expect(selection.affectedRows == IndexSet([0, 5, 6]))
+        #expect(selection.affectedColumns == IndexSet([0, 3, 4]))
     }
 
-    @Test("anchor-only change does not trigger a reload")
-    func anchorOnlyChangeReturnsNil() {
-        let old = TableSelection(
-            focusedRow: -1,
-            focusedColumn: -1,
-            cellSelection: .cells([CellPosition(row: 1, column: 2)]),
-            cellSelectionAnchor: CellPosition(row: 1, column: 2)
+    @Test("bounding rectangle wraps disjoint rectangles")
+    func boundingRectangleSpansDisjointRects() {
+        let selection = GridSelection(
+            rectangles: [
+                GridRect(rows: 1...1, columns: 0...0),
+                GridRect(rows: 7...8, columns: 5...6)
+            ],
+            activeCell: nil,
+            anchor: nil
         )
-        let new = TableSelection(
-            focusedRow: -1,
-            focusedColumn: -1,
-            cellSelection: .cells([CellPosition(row: 1, column: 2)]),
-            cellSelectionAnchor: CellPosition(row: 5, column: 2)
-        )
-        #expect(new.reloadIndexes(from: old) == nil)
+        #expect(selection.boundingRectangle == GridRect(rows: 1...8, columns: 0...6))
     }
 
-    @Test("default TableSelection has no anchor")
-    func defaultHasNoAnchor() {
-        #expect(TableSelection().cellSelectionAnchor == nil)
+    @Test("columns(in:) reports only rects that include the row")
+    func columnsInRowFiltersByRow() {
+        let selection = GridSelection(
+            rectangles: [
+                GridRect(rows: 0...2, columns: 1...2),
+                GridRect(rows: 5...6, columns: 4...4)
+            ],
+            activeCell: nil,
+            anchor: nil
+        )
+        #expect(selection.columns(in: 1) == IndexSet([1, 2]))
+        #expect(selection.columns(in: 6) == IndexSet(integer: 4))
+        #expect(selection.columns(in: 3).isEmpty)
+    }
+
+    @Test("contains is true if any rectangle includes the coord")
+    func containsAnyRectangle() {
+        let selection = GridSelection(
+            rectangles: [
+                GridRect(rows: 0...0, columns: 0...0),
+                GridRect(rows: 5...6, columns: 3...4)
+            ],
+            activeCell: nil,
+            anchor: nil
+        )
+        #expect(selection.contains(row: 0, column: 0))
+        #expect(selection.contains(row: 6, column: 4))
+        #expect(!selection.contains(row: 2, column: 2))
+    }
+
+    @Test("union merges rectangles, taking the new active and anchor when present")
+    func unionPrefersOtherActiveAndAnchor() {
+        let lhs = GridSelection.single(GridRect(rows: 0...0, columns: 0...0), anchor: active, active: active)
+        let other = GridCoord(row: 4, column: 4)
+        let rhs = GridSelection.single(GridRect(rows: 4...4, columns: 4...4), anchor: other, active: other)
+        let merged = lhs.union(rhs)
+        #expect(merged.rectangles.count == 2)
+        #expect(merged.activeCell == other)
+        #expect(merged.anchor == other)
     }
 }

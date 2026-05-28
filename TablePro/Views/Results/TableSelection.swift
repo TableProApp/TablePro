@@ -3,14 +3,11 @@ import Foundation
 struct TableSelection: Equatable {
     var focusedRow: Int = -1
     var focusedColumn: Int = -1
-    var cellSelection: CellSelection = .none
-    var cellSelectionAnchor: CellPosition?
 
     func reloadIndexes(from previous: TableSelection) -> (rows: IndexSet, columns: IndexSet)? {
-        let focusChanged = previous.focusedRow != focusedRow || previous.focusedColumn != focusedColumn
-        let cellSelectionChanged = previous.cellSelection != cellSelection
-
-        guard focusChanged || cellSelectionChanged else { return nil }
+        guard previous.focusedRow != focusedRow || previous.focusedColumn != focusedColumn else {
+            return nil
+        }
 
         var rows = IndexSet()
         var columns = IndexSet()
@@ -19,13 +16,6 @@ struct TableSelection: Equatable {
         if previous.focusedColumn >= 0 { columns.insert(previous.focusedColumn) }
         if focusedRow >= 0 { rows.insert(focusedRow) }
         if focusedColumn >= 0 { columns.insert(focusedColumn) }
-
-        if cellSelectionChanged {
-            rows.formUnion(previous.cellSelection.affectedRows)
-            rows.formUnion(cellSelection.affectedRows)
-            columns.formUnion(previous.cellSelection.affectedColumns)
-            columns.formUnion(cellSelection.affectedColumns)
-        }
 
         guard !rows.isEmpty, !columns.isEmpty else { return nil }
         return (rows, columns)

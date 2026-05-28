@@ -220,8 +220,17 @@ extension TableViewCoordinator {
         let rowCount = min(totalRows, PluginRowLimits.emergencyMax)
         guard rowCount > 0 else { return }
 
-        let positions = (0..<rowCount).map { CellPosition(row: $0, column: columnIndex) }
-        let lines = formatCellPositions(positions, tableRows: tableRows)
+        let columnType = tableRows.columnTypes.indices.contains(columnIndex)
+            ? tableRows.columnTypes[columnIndex]
+            : nil
+
+        var lines: [String] = []
+        lines.reserveCapacity(rowCount)
+        for rowIndex in 0..<rowCount {
+            guard let row = displayRow(at: rowIndex), row.values.indices.contains(columnIndex) else { continue }
+            let text = RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType) ?? "NULL"
+            lines.append(text)
+        }
         guard !lines.isEmpty else { return }
         ClipboardService.shared.writeText(lines.joined(separator: "\n"))
     }
@@ -309,47 +318,50 @@ extension TableViewCoordinator {
     }
 
     func selectColumn(_ dataColumnIndex: Int) {
-        guard let keyTableView = tableView as? KeyHandlingTableView else { return }
-        keyTableView.selection.cellSelection = .column(dataColumnIndex)
-        keyTableView.selection.cellSelectionAnchor = CellPosition(row: 0, column: dataColumnIndex)
-        keyTableView.deselectAll(nil)
-    }
-
-    func copyCellSelection(_ cellSelection: CellSelection) {
-        switch cellSelection {
-        case .none:
-            return
-        case .column(let columnIndex):
-            copyColumnValues(columnIndex: columnIndex)
-        case .range(let columnIndex, let rows):
-            let positions = rows.map { CellPosition(row: $0, column: columnIndex) }
-            copyCellPositions(positions)
-        case .cells(let positions):
-            let sorted = positions.sorted { $0.row != $1.row ? $0.row < $1.row : $0.column < $1.column }
-            copyCellPositions(sorted)
+        let totalRows = sortedIDs?.count ?? tableRowsProvider().rows.count
+        selectionController.selectEntireColumn(dataColumnIndex, totalRows: totalRows)
+        if let keyTableView = tableView as? KeyHandlingTableView {
+            keyTableView.deselectAll(nil)
         }
     }
 
-    private func copyCellPositions(_ positions: [CellPosition]) {
+    func copyGridSelection(_ selection: GridSelection) {
+        guard let rect = selection.boundingRectangle else { return }
         let tableRows = tableRowsProvider()
-        let formatted = formatCellPositions(positions, tableRows: tableRows)
-        guard !formatted.isEmpty else { return }
-        ClipboardService.shared.writeText(formatted.joined(separator: "\n"))
-    }
+        let columnTypes = tableRows.columnTypes
+        let rowCount = sortedIDs?.count ?? tableRows.rows.count
+        let columnCount = tableRows.columns.count
 
-    private func formatCellPositions(_ positions: [CellPosition], tableRows: TableRows) -> [String] {
+        let rowRange = rect.rows.lowerBound...min(rect.rows.upperBound, max(0, rowCount - 1))
+        let columnRange = rect.columns.lowerBound...min(rect.columns.upperBound, max(0, columnCount - 1))
+        guard rowRange.lowerBound <= rowRange.upperBound,
+              columnRange.lowerBound <= columnRange.upperBound else { return }
+
         var lines: [String] = []
-        lines.reserveCapacity(positions.count)
-        for pos in positions {
-            guard pos.column >= 0, pos.column < tableRows.columns.count,
-                  let row = displayRow(at: pos.row),
-                  row.values.indices.contains(pos.column) else { continue }
-            let columnType = tableRows.columnTypes.indices.contains(pos.column)
-                ? tableRows.columnTypes[pos.column]
-                : nil
-            let text = RowValueCopyFormatter.copyText(cell: row.values[pos.column], columnType: columnType) ?? "NULL"
-            lines.append(text)
+        lines.reserveCapacity(rowRange.count)
+        for rowIndex in rowRange {
+            guard let row = displayRow(at: rowIndex) else {
+                lines.append(String(repeating: "\t", count: columnRange.count - 1))
+                continue
+            }
+            var fields: [String] = []
+            fields.reserveCapacity(columnRange.count)
+            for columnIndex in columnRange {
+                guard selection.contains(row: rowIndex, column: columnIndex) else {
+                    fields.append("")
+                    continue
+                }
+                guard row.values.indices.contains(columnIndex) else {
+                    fields.append("")
+                    continue
+                }
+                let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
+                let text = RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType) ?? "NULL"
+                fields.append(text)
+            }
+            lines.append(fields.joined(separator: "\t"))
         }
-        return lines
+
+        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
     }
 }

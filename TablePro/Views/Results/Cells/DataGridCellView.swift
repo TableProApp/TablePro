@@ -26,11 +26,9 @@ final class DataGridCellView: NSView {
     private var textFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
     private var textColor: NSColor = .labelColor
     private var modifiedColumnTint: NSColor?
-    private var cellSelectionTint: NSColor = .controlAccentColor.withAlphaComponent(0.12)
 
     private var visualState: RowVisualState = .empty
     private var isFocusedCell: Bool = false
-    private var isInCellSelection: Bool = false
     private var onEmphasizedSelection: Bool = false
 
     private var cachedLine: CTLine?
@@ -142,10 +140,6 @@ final class DataGridCellView: NSView {
             modifiedColumnTint = nextTint
             needsRedraw = true
         }
-        if cellSelectionTint != palette.cellSelectionTint {
-            cellSelectionTint = palette.cellSelectionTint
-            needsRedraw = true
-        }
 
         if visualState != state.visualState {
             visualState = state.visualState
@@ -156,11 +150,6 @@ final class DataGridCellView: NSView {
             updateFocusPresentation()
             needsRedraw = true
         }
-        if isInCellSelection != state.isInCellSelection {
-            isInCellSelection = state.isInCellSelection
-            needsRedraw = true
-        }
-
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
 
@@ -209,11 +198,6 @@ final class DataGridCellView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         if let tint = modifiedColumnTint, !onEmphasizedSelection {
             tint.setFill()
-            bounds.fill()
-        }
-
-        if isInCellSelection && !onEmphasizedSelection {
-            cellSelectionTint.setFill()
             bounds.fill()
         }
 
