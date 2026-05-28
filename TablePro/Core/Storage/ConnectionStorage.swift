@@ -551,6 +551,8 @@ private struct StoredConnection: Codable {
 
     let isSample: Bool
 
+    let isFavorite: Bool
+
     // TOTP configuration
     let totpMode: String
     let totpAlgorithm: String
@@ -638,6 +640,9 @@ private struct StoredConnection: Codable {
         // Sample marker
         self.isSample = connection.isSample
 
+        // Favorite flag
+        self.isFavorite = connection.isFavorite
+
         // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
         self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
 
@@ -669,6 +674,7 @@ private struct StoredConnection: Codable {
         case additionalFields
         case localOnly
         case isSample
+        case isFavorite
     }
 
     func encode(to encoder: Encoder) throws {
@@ -711,6 +717,7 @@ private struct StoredConnection: Codable {
         try container.encodeIfPresent(additionalFields, forKey: .additionalFields)
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
+        try container.encode(isFavorite, forKey: .isFavorite)
     }
 
     // Custom decoder to handle migration from old format
@@ -779,6 +786,7 @@ private struct StoredConnection: Codable {
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }
 
     func toConnection() -> DatabaseConnection {
@@ -882,6 +890,7 @@ private struct StoredConnection: Codable {
             sortOrder: sortOrder,
             localOnly: localOnly,
             isSample: isSample,
+            isFavorite: isFavorite,
             additionalFields: mergedFields
         )
     }

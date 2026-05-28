@@ -63,4 +63,29 @@ struct ConnectionStoragePersistenceTests {
         #expect(loaded.first?.id == connection.id)
         #expect(loaded.first?.name == "Round Trip Test")
     }
+
+    @Test("connections default to not favorited")
+    func defaultsToNotFavorited() {
+        let connection = DatabaseConnection(name: "Plain Test")
+        storage.saveConnections([connection])
+        let loaded = storage.loadConnections()
+
+        #expect(loaded.first?.isFavorite == false)
+    }
+
+    @Test("round-trip preserves the isFavorite flag")
+    func roundTripPreservesFavorite() {
+        var connection = DatabaseConnection(
+            name: "Favorite Test",
+            host: "127.0.0.1",
+            port: 5_432,
+            type: .postgresql
+        )
+        connection.isFavorite = true
+
+        storage.saveConnections([connection])
+        let loaded = storage.loadConnections()
+
+        #expect(loaded.first?.isFavorite == true)
+    }
 }

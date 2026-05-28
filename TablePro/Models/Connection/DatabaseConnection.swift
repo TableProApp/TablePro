@@ -333,6 +333,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sortOrder: Int
     var localOnly: Bool = false
     var isSample: Bool = false
+    var isFavorite: Bool = false
 
     var mongoAuthSource: String? {
         get { additionalFields["mongoAuthSource"]?.nilIfEmpty }
@@ -428,6 +429,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         sortOrder: Int = 0,
         localOnly: Bool = false,
         isSample: Bool = false,
+        isFavorite: Bool = false,
         additionalFields: [String: String]? = nil
     ) {
         self.id = id
@@ -469,6 +471,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.sortOrder = sortOrder
         self.localOnly = localOnly
         self.isSample = isSample
+        self.isFavorite = isFavorite
         if let additionalFields {
             self.additionalFields = additionalFields
         } else {
@@ -516,7 +519,7 @@ extension DatabaseConnection: Codable {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, groupId, sshProfileId
         case sshTunnelMode, cloudflareTunnelMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
-        case redisDatabase, startupCommands, sortOrder, localOnly, isSample
+        case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
     }
 
     init(from decoder: Decoder) throws {
@@ -545,6 +548,7 @@ extension DatabaseConnection: Codable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         cloudflareTunnelMode = try container.decodeIfPresent(CloudflareTunnelMode.self, forKey: .cloudflareTunnelMode) ?? .disabled
 
         // Migrate from legacy fields if sshTunnelMode is not present
@@ -595,6 +599,7 @@ extension DatabaseConnection: Codable {
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
+        try container.encode(isFavorite, forKey: .isFavorite)
     }
 }
 

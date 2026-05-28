@@ -294,6 +294,22 @@ struct WelcomeWindowView: View {
     private var connectionList: some View {
         ScrollViewReader { proxy in
             List(selection: $vm.selectedConnectionIds) {
+                if vm.searchText.isEmpty, !vm.favoriteConnections.isEmpty {
+                    Section {
+                        ForEach(vm.favoriteConnections) { conn in
+                            connectionRow(for: conn)
+                        }
+                    } header: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.caption2)
+                            Text(String(localized: "Favorites"))
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
                 TreeRowsView(items: vm.treeItems, parentGroupId: nil, vm: vm) { conn in
                     connectionRow(for: conn)
                 }
@@ -372,7 +388,9 @@ struct WelcomeWindowView: View {
         let sshProfile = connection.sshProfileId.flatMap { SSHProfileStorage.shared.profile(for: $0) }
         return WelcomeConnectionRow(
             connection: connection,
-            sshProfile: sshProfile
+            sshProfile: sshProfile,
+            isSelected: vm.selectedConnectionIds.contains(connection.id),
+            onToggleFavorite: { vm.toggleFavorite([connection]) }
         )
         .tag(connection.id)
         .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))

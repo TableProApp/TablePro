@@ -326,6 +326,26 @@ final class WelcomeViewModel {
         WindowOpener.shared.openConnectionForm(editing: duplicate.id)
     }
 
+    // MARK: - Favorites
+
+    var favoriteConnections: [DatabaseConnection] {
+        connections
+            .filter(\.isFavorite)
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func toggleFavorite(_ targets: [DatabaseConnection]) {
+        guard !targets.isEmpty else { return }
+        let shouldFavorite = !targets.allSatisfy(\.isFavorite)
+        let ids = Set(targets.map(\.id))
+        for i in connections.indices where ids.contains(connections[i].id) {
+            connections[i].isFavorite = shouldFavorite
+            storage.updateConnection(connections[i])
+        }
+        rebuildTree()
+        AppEvents.shared.connectionUpdated.send(targets.count == 1 ? targets.first?.id : nil)
+    }
+
     // MARK: - Delete
 
     func deleteSelectedConnections() {

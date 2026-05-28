@@ -8,6 +8,9 @@ import SwiftUI
 struct WelcomeConnectionRow: View {
     let connection: DatabaseConnection
     let sshProfile: SSHProfile?
+    let isSelected: Bool
+    let onToggleFavorite: () -> Void
+    @State private var isHovering = false
     private let pluginManager = PluginManager.shared
 
     private var displayTag: ConnectionTag? {
@@ -24,6 +27,12 @@ struct WelcomeConnectionRow: View {
         return pluginManager.rejectedPlugins.contains { rejected in
             rejected.bundleId == typeId || rejected.registryId == typeId
         }
+    }
+
+    private var toggleFavoriteActionName: String {
+        connection.isFavorite
+            ? String(localized: "Remove from Favorites")
+            : String(localized: "Add to Favorites")
     }
 
     var body: some View {
@@ -52,7 +61,11 @@ struct WelcomeConnectionRow: View {
             trailingAccessories
         }
         .contentShape(Rectangle())
+        .onHover { hovering in isHovering = hovering }
         .accessibilityElement(children: .combine)
+        .accessibilityAction(named: Text(toggleFavoriteActionName)) {
+            onToggleFavorite()
+        }
     }
 
     @ViewBuilder
@@ -87,6 +100,31 @@ struct WelcomeConnectionRow: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(String(format: String(localized: "Tag: %@"), tag.name))
             }
+
+            favoriteButton
+        }
+    }
+
+    @ViewBuilder
+    private var favoriteButton: some View {
+        if connection.isFavorite {
+            Button(action: onToggleFavorite) {
+                Image(systemName: "star.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.yellow)
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Remove from Favorites"))
+            .accessibilityLabel(String(localized: "Favorited"))
+        } else if isHovering || isSelected {
+            Button(action: onToggleFavorite) {
+                Image(systemName: "star")
+                    .imageScale(.small)
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Add to Favorites"))
+            .accessibilityHidden(true)
         }
     }
 
