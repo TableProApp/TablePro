@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS: running a query that returns a very large result no longer crashes the app. The query editor keeps the first rows it loads, stops before memory runs low, and tells you to add LIMIT to fetch more.
 - iOS: Safe Mode "Confirm Writes" now prompts before saving a row edit or inserting a row, matching the query editor. Previously grid edits and inserts saved with no confirmation.
 - Redshift: schema switching now works, along with the contains, starts with, and ends with filters and table search. All previously failed with a SQL syntax error. (#1439)
+- Opening a `.sql` file now names the tab after the file instead of showing "SQL Query". (#1220)
 
 ## [0.45.0] - 2026-05-26
 

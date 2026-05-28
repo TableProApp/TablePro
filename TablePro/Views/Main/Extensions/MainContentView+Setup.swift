@@ -189,7 +189,7 @@ extension MainContentView {
         } else if selectedTab?.tabType == .erDiagram {
             windowTitle = String(localized: "ER Diagram")
         } else if let fileURL = selectedTab?.content.sourceFileURL {
-            windowTitle = selectedTab?.title ?? fileURL.deletingPathExtension().lastPathComponent
+            windowTitle = selectedTab?.title ?? QueryTab.fileDisplayTitle(for: fileURL)
         } else {
             let langName = PluginManager.shared.queryLanguageName(for: connection.type)
             let queryLabel = String(format: String(localized: "%@ Query"), langName)
