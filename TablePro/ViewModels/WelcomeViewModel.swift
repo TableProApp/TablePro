@@ -103,16 +103,20 @@ final class WelcomeViewModel {
     private(set) var maxDescendantDepthByGroup: [UUID: Int] = [:]
 
     func rebuildTree() {
-        let tree = buildGroupTree(groups: groups, connections: connections, parentId: nil)
-        if searchText.isEmpty {
-            treeItems = tree
-        } else {
-            treeItems = filterGroupTree(tree, searchText: searchText)
-        }
-
         favoriteConnections = connections
             .filter(\.isFavorite)
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+
+        let tree = buildGroupTree(groups: groups, connections: connections, parentId: nil)
+        let baseItems = searchText.isEmpty ? tree : filterGroupTree(tree, searchText: searchText)
+        if searchText.isEmpty, !favoriteConnections.isEmpty {
+            treeItems = baseItems.filter { node in
+                if case .connection(let conn) = node, conn.isFavorite { return false }
+                return true
+            }
+        } else {
+            treeItems = baseItems
+        }
 
         var counts: [UUID: Int] = [:]
         var depths: [UUID: Int] = [:]
@@ -335,12 +339,14 @@ final class WelcomeViewModel {
 
     func toggleFavorite(_ targets: [DatabaseConnection]) {
         guard !targets.isEmpty else { return }
-        let shouldFavorite = !targets.allSatisfy(\.isFavorite)
         let ids = Set(targets.map(\.id))
+        let live = connections.filter { ids.contains($0.id) }
+        guard !live.isEmpty else { return }
+        let shouldFavorite = !live.allSatisfy(\.isFavorite)
         var updated: [DatabaseConnection] = []
-        for i in connections.indices where ids.contains(connections[i].id) {
-            connections[i].isFavorite = shouldFavorite
-            updated.append(connections[i])
+        for index in connections.indices where ids.contains(connections[index].id) {
+            connections[index].isFavorite = shouldFavorite
+            updated.append(connections[index])
         }
         guard storage.updateConnections(updated) else {
             connections = storage.loadConnections()

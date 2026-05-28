@@ -178,7 +178,7 @@ final class ConnectionStorage {
     func updateConnections(_ updates: [DatabaseConnection]) -> Bool {
         guard !updates.isEmpty else { return true }
         var connections = loadConnections()
-        let updatesById = Dictionary(uniqueKeysWithValues: updates.map { ($0.id, $0) })
+        let updatesById = Dictionary(updates.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         var didMutate = false
         for index in connections.indices {
             if let replacement = updatesById[connections[index].id] {
@@ -189,7 +189,7 @@ final class ConnectionStorage {
         guard didMutate, saveConnections(connections) else {
             return false
         }
-        for connection in updates where !connection.localOnly && !connection.isSample {
+        for connection in updatesById.values where !connection.localOnly && !connection.isSample {
             syncTracker.markDirty(.connection, id: connection.id.uuidString)
         }
         return true
