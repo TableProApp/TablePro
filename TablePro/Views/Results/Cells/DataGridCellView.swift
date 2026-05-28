@@ -84,6 +84,12 @@ final class DataGridCellView: NSView {
         cellRow = state.row
         cellColumnIndex = state.columnIndex
 
+        if hasOverlay {
+            hasOverlay = false
+            updateFocusPresentation()
+            needsRedraw = true
+        }
+
         let nextDisplayText: String
         let nextFont: NSFont
         let nextColor: NSColor

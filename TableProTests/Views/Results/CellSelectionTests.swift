@@ -237,6 +237,57 @@ struct GridSelectionControllerTests {
         #expect(controller.selection.activeCell == GridCoord(row: 0, column: 0))
     }
 
+    @Test("selectEntireColumn covers all rows in that column")
+    func selectColumnSpansAllRows() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(2, totalRows: 5)
+        #expect(controller.selection.rectangles == [GridRect(rows: 0...4, columns: 2...2)])
+        #expect(controller.selection.activeCell == GridCoord(row: 0, column: 2))
+        #expect(controller.selection.anchor == GridCoord(row: 0, column: 2))
+    }
+
+    @Test("selectEntireRow covers all columns in that row")
+    func selectRowSpansAllColumns() {
+        let controller = GridSelectionController()
+        controller.selectEntireRow(3, totalColumns: 6)
+        #expect(controller.selection.rectangles == [GridRect(rows: 3...3, columns: 0...5)])
+        #expect(controller.selection.activeCell == GridCoord(row: 3, column: 0))
+    }
+
+    @Test("extendActiveCell moves the active cell and grows the rectangle from the anchor")
+    func extendActiveCellGrowsRectangle() {
+        let controller = GridSelectionController()
+        let origin = GridCoord(row: 2, column: 2)
+        _ = controller.beginDrag(at: origin, modifiers: [])
+        controller.continueDrag(to: GridCoord(row: 3, column: 3))
+        controller.endDrag(dragged: true, originalCoord: origin)
+
+        controller.extendActiveCell(direction: .down, jumpToEdge: false, totalRows: 10, totalColumns: 10)
+        #expect(controller.selection.rectangles == [GridRect(rows: 2...4, columns: 2...3)])
+        #expect(controller.selection.activeCell == GridCoord(row: 4, column: 3))
+        #expect(controller.selection.anchor == origin)
+    }
+
+    @Test("extendActiveCell with jumpToEdge jumps to the grid edge")
+    func extendActiveCellJumpsToEdge() {
+        let controller = GridSelectionController()
+        let origin = GridCoord(row: 2, column: 2)
+        _ = controller.beginDrag(at: origin, modifiers: [])
+        controller.continueDrag(to: origin)
+        controller.endDrag(dragged: true, originalCoord: origin)
+
+        controller.extendActiveCell(direction: .right, jumpToEdge: true, totalRows: 10, totalColumns: 10)
+        #expect(controller.selection.activeCell == GridCoord(row: 2, column: 9))
+        #expect(controller.selection.rectangles == [GridRect(rows: 2...2, columns: 2...9)])
+    }
+
+    @Test("extendActiveCell is a no-op when the selection is empty")
+    func extendActiveCellNoOpEmpty() {
+        let controller = GridSelectionController()
+        controller.extendActiveCell(direction: .down, jumpToEdge: false, totalRows: 10, totalColumns: 10)
+        #expect(controller.selection.isEmpty)
+    }
+
     @Test("clear empties the selection")
     func clearEmpties() {
         let controller = GridSelectionController()

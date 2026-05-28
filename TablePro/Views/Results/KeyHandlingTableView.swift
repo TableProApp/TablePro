@@ -84,6 +84,14 @@ final class KeyHandlingTableView: NSTableView {
 
     private var gridSelection: GridSelectionController? { coordinator?.selectionController }
 
+    private func withSelectionSync(_ work: () -> Void) {
+        let coordinator = coordinator
+        let wasSyncing = coordinator?.isSyncingSelection ?? false
+        coordinator?.isSyncingSelection = true
+        work()
+        coordinator?.isSyncingSelection = wasSyncing
+    }
+
     private func totalRows() -> Int { numberOfRows }
 
     private func totalDataColumns() -> Int {
@@ -142,8 +150,9 @@ final class KeyHandlingTableView: NSTableView {
         let disposition = controller.beginDrag(at: coord, modifiers: modifiers)
         switch disposition {
         case .replaceFocus(let activeCoord):
-            let byExtending = modifiers.contains(.shift) || modifiers.contains(.command)
-            selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: byExtending)
+            withSelectionSync {
+                selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: false)
+            }
             focusedRow = activeCoord.row
             focusedColumn = DataGridView.tableColumnIndex(for: activeCoord.column, in: self, schema: schema) ?? clickedColumn
         case .clearFocus:

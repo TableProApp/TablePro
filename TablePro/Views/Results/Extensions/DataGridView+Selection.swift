@@ -38,7 +38,7 @@ extension TableViewCoordinator {
 
         guard let keyTableView = tableView as? KeyHandlingTableView else { return }
 
-        if !newSelection.isEmpty, !selectionController.isEmpty {
+        if !isSyncingSelection, !newSelection.isEmpty, !selectionController.isEmpty {
             selectionController.clear()
         }
 
