@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import Testing
@@ -128,5 +129,102 @@ struct GridSelectionTests {
         #expect(merged.rectangles.count == 2)
         #expect(merged.activeCell == other)
         #expect(merged.anchor == other)
+    }
+}
+
+@Suite("GridSelectionController gestures")
+@MainActor
+struct GridSelectionControllerTests {
+    @Test("plain mouseDown replaces the selection with the clicked cell")
+    func plainClickReplacesSelection() {
+        let controller = GridSelectionController()
+        let coord = GridCoord(row: 2, column: 3)
+        _ = controller.beginDrag(at: coord, modifiers: [])
+        controller.endDrag(dragged: false, originalCoord: coord)
+        #expect(controller.selection.rectangles == [GridRect(cell: coord)])
+        #expect(controller.selection.anchor == coord)
+        #expect(controller.selection.activeCell == coord)
+    }
+
+    @Test("drag extends to a rectangle anchored at the mousedown coord")
+    func dragBuildsRectangle() {
+        let controller = GridSelectionController()
+        let origin = GridCoord(row: 1, column: 1)
+        let target = GridCoord(row: 4, column: 3)
+        _ = controller.beginDrag(at: origin, modifiers: [])
+        controller.continueDrag(to: target)
+        controller.endDrag(dragged: true, originalCoord: origin)
+        #expect(controller.selection.rectangles == [GridRect(rows: 1...4, columns: 1...3)])
+        #expect(controller.selection.anchor == origin)
+        #expect(controller.selection.activeCell == target)
+    }
+
+    @Test("shift extends the existing selection from the anchor across columns")
+    func shiftExtendsAcrossColumns() {
+        let controller = GridSelectionController()
+        let origin = GridCoord(row: 2, column: 2)
+        let target = GridCoord(row: 5, column: 6)
+        _ = controller.beginDrag(at: origin, modifiers: [])
+        controller.endDrag(dragged: false, originalCoord: origin)
+        _ = controller.beginDrag(at: target, modifiers: .shift)
+        #expect(controller.selection.rectangles == [GridRect(rows: 2...5, columns: 2...6)])
+        #expect(controller.selection.anchor == origin)
+        #expect(controller.selection.activeCell == target)
+    }
+
+    @Test("cmd+click without drag toggles a single cell")
+    func cmdClickTogglesCell() {
+        let controller = GridSelectionController()
+        let first = GridCoord(row: 0, column: 0)
+        let second = GridCoord(row: 3, column: 4)
+        _ = controller.beginDrag(at: first, modifiers: [])
+        controller.endDrag(dragged: false, originalCoord: first)
+        _ = controller.beginDrag(at: second, modifiers: .command)
+        controller.endDrag(dragged: false, originalCoord: second)
+        #expect(controller.selection.rectangles == [GridRect(cell: first), GridRect(cell: second)])
+
+        _ = controller.beginDrag(at: second, modifiers: .command)
+        controller.endDrag(dragged: false, originalCoord: second)
+        #expect(controller.selection.rectangles == [GridRect(cell: first)])
+    }
+
+    @Test("cmd+drag appends a fresh rectangle without clobbering the base selection")
+    func cmdDragAppendsRectangle() {
+        let controller = GridSelectionController()
+        let baseOrigin = GridCoord(row: 0, column: 0)
+        let baseTarget = GridCoord(row: 1, column: 1)
+        _ = controller.beginDrag(at: baseOrigin, modifiers: [])
+        controller.continueDrag(to: baseTarget)
+        controller.endDrag(dragged: true, originalCoord: baseOrigin)
+
+        let cmdOrigin = GridCoord(row: 5, column: 5)
+        let cmdTarget = GridCoord(row: 7, column: 7)
+        _ = controller.beginDrag(at: cmdOrigin, modifiers: .command)
+        controller.continueDrag(to: cmdTarget)
+        controller.endDrag(dragged: true, originalCoord: cmdOrigin)
+
+        #expect(controller.selection.rectangles == [
+            GridRect(rows: 0...1, columns: 0...1),
+            GridRect(rows: 5...7, columns: 5...7)
+        ])
+        #expect(controller.selection.activeCell == cmdTarget)
+    }
+
+    @Test("selectAll covers every cell")
+    func selectAllSpansGrid() {
+        let controller = GridSelectionController()
+        controller.selectAll(totalRows: 4, totalColumns: 3)
+        #expect(controller.selection.rectangles == [GridRect(rows: 0...3, columns: 0...2)])
+        #expect(controller.selection.activeCell == GridCoord(row: 0, column: 0))
+    }
+
+    @Test("clear empties the selection")
+    func clearEmpties() {
+        let controller = GridSelectionController()
+        let coord = GridCoord(row: 0, column: 0)
+        _ = controller.beginDrag(at: coord, modifiers: [])
+        controller.endDrag(dragged: false, originalCoord: coord)
+        controller.clear()
+        #expect(controller.selection.isEmpty)
     }
 }

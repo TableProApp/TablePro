@@ -13,6 +13,7 @@ final class GridSelectionOverlay: NSView {
     weak var coordinator: TableViewCoordinator?
 
     private static let borderWidth: CGFloat = 1.5
+    private static let activeCellBorderWidth: CGFloat = 2.0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -34,15 +35,24 @@ final class GridSelectionOverlay: NSView {
         guard let tableView, let coordinator else { return }
         let schema = coordinator.identitySchema
 
-        let borderColor = NSColor.selectedContentBackgroundColor
-        borderColor.setStroke()
-
+        NSColor.selectedContentBackgroundColor.setStroke()
         for rect in selection.rectangles {
             guard let frame = frame(for: rect, in: tableView, schema: schema) else { continue }
             guard frame.intersects(dirtyRect) else { continue }
             let inset = frame.insetBy(dx: Self.borderWidth / 2, dy: Self.borderWidth / 2)
             let path = NSBezierPath(rect: inset)
             path.lineWidth = Self.borderWidth
+            path.stroke()
+        }
+
+        if let active = selection.activeCell,
+           selection.rectangles.count > 1 || (selection.rectangles.first?.rows.count ?? 0) > 1 || (selection.rectangles.first?.columns.count ?? 0) > 1,
+           let frame = frame(for: GridRect(cell: active), in: tableView, schema: schema),
+           frame.intersects(dirtyRect) {
+            NSColor.controlAccentColor.setStroke()
+            let inset = frame.insetBy(dx: Self.activeCellBorderWidth / 2, dy: Self.activeCellBorderWidth / 2)
+            let path = NSBezierPath(rect: inset)
+            path.lineWidth = Self.activeCellBorderWidth
             path.stroke()
         }
     }

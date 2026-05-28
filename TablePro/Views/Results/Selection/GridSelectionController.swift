@@ -16,9 +16,16 @@ final class GridSelectionController {
     weak var coordinator: TableViewCoordinator?
 
     private var dragOrigin: GridCoord?
+    private var dragMode: DragMode = .replace
+    private var dragBaseSelection: GridSelection = .empty
     var onSelectionChange: ((GridSelection) -> Void)?
 
     var isEmpty: Bool { selection.isEmpty }
+
+    private enum DragMode {
+        case replace
+        case additive
+    }
 
     func update(_ newSelection: GridSelection) {
         guard selection != newSelection else { return }
@@ -27,7 +34,36 @@ final class GridSelectionController {
         overlay?.selection = newSelection
         let dirty = reloadColumns(for: old, new: newSelection)
         reloadRowsForFill(old: old, new: newSelection, dirtyColumns: dirty)
+        postAccessibilityAnnouncement(for: newSelection)
         onSelectionChange?(newSelection)
+    }
+
+    private func postAccessibilityAnnouncement(for newSelection: GridSelection) {
+        guard NSWorkspace.shared.isVoiceOverEnabled, let tableView else { return }
+        let announcement: String
+        if newSelection.isEmpty {
+            announcement = String(localized: "Cell selection cleared")
+        } else if let rect = newSelection.boundingRectangle {
+            let cellCount = newSelection.rectangles.reduce(0) { $0 + ($1.rows.count * $1.columns.count) }
+            announcement = String(
+                format: String(localized: "%d cells selected, rows %d to %d, columns %d to %d"),
+                cellCount,
+                rect.rows.lowerBound + 1,
+                rect.rows.upperBound + 1,
+                rect.columns.lowerBound + 1,
+                rect.columns.upperBound + 1
+            )
+        } else {
+            return
+        }
+        NSAccessibility.post(
+            element: tableView,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: announcement,
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue
+            ]
+        )
     }
 
     func clear() {
@@ -38,52 +74,67 @@ final class GridSelectionController {
     func beginDrag(at coord: GridCoord, modifiers: NSEvent.ModifierFlags) -> MouseDisposition {
         let cleanModifiers = modifiers.intersection([.command, .shift, .option, .control])
         if cleanModifiers.contains(.command) && !cleanModifiers.contains(.shift) {
-            return toggleCell(coord)
+            dragOrigin = coord
+            dragMode = .additive
+            dragBaseSelection = selection
+            return .replaceFocus(coord)
         }
         if cleanModifiers.contains(.shift) && !cleanModifiers.contains(.command) {
             return extend(to: coord)
         }
         dragOrigin = coord
+        dragMode = .replace
+        dragBaseSelection = .empty
         update(.single(GridRect(cell: coord), anchor: coord, active: coord))
         return .replaceFocus(coord)
     }
 
     func continueDrag(to coord: GridCoord) {
         guard let origin = dragOrigin else { return }
-        update(.single(GridRect.between(origin, coord), anchor: origin, active: coord))
+        switch dragMode {
+        case .replace:
+            update(.single(GridRect.between(origin, coord), anchor: origin, active: coord))
+        case .additive:
+            var rectangles = dragBaseSelection.rectangles
+            rectangles.append(GridRect.between(origin, coord))
+            update(GridSelection(rectangles: rectangles, activeCell: coord, anchor: origin))
+        }
     }
 
-    func endDrag() {
-        dragOrigin = nil
+    func endDrag(dragged: Bool, originalCoord: GridCoord) {
+        defer {
+            dragOrigin = nil
+            dragMode = .replace
+            dragBaseSelection = .empty
+        }
+        guard !dragged, dragMode == .additive else { return }
+        applyCmdClickToggle(at: originalCoord)
     }
 
-    private func toggleCell(_ coord: GridCoord) -> MouseDisposition {
+    private func applyCmdClickToggle(at coord: GridCoord) {
         let cellRect = GridRect(cell: coord)
-        var rectangles = selection.rectangles
+        var rectangles = dragBaseSelection.rectangles
 
         if let index = rectangles.firstIndex(where: { $0 == cellRect }) {
             rectangles.remove(at: index)
             if rectangles.isEmpty {
                 update(.empty)
-                return .clearFocus
+                return
             }
-            update(GridSelection(rectangles: rectangles, activeCell: rectangles.last.flatMap(activeCell(in:)), anchor: selection.anchor))
-            return .replaceFocus(rectangles.last.flatMap(activeCell(in:)) ?? coord)
+            let last = rectangles[rectangles.count - 1]
+            let active = GridCoord(row: last.rows.lowerBound, column: last.columns.lowerBound)
+            update(GridSelection(rectangles: rectangles, activeCell: active, anchor: dragBaseSelection.anchor))
+            return
         }
 
         rectangles.append(cellRect)
         update(GridSelection(rectangles: rectangles, activeCell: coord, anchor: coord))
-        return .replaceFocus(coord)
     }
 
     private func extend(to coord: GridCoord) -> MouseDisposition {
         let origin = selection.anchor ?? coord
         update(.single(GridRect.between(origin, coord), anchor: origin, active: coord))
         return .replaceFocus(coord)
-    }
-
-    private func activeCell(in rect: GridRect) -> GridCoord {
-        GridCoord(row: rect.rows.lowerBound, column: rect.columns.lowerBound)
     }
 
     func selectAll(totalRows: Int, totalColumns: Int) {

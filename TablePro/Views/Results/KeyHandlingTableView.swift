@@ -149,7 +149,8 @@ final class KeyHandlingTableView: NSTableView {
             super.mouseDown(with: event)
         }
 
-        if modifiers.intersection([.command, .shift]).isEmpty {
+        let supportsDrag = !modifiers.contains(.shift)
+        if supportsDrag {
             trackDrag(initial: coord, schema: schema)
         }
 
@@ -164,10 +165,11 @@ final class KeyHandlingTableView: NSTableView {
 
     private func trackDrag(initial: GridCoord, schema: ColumnIdentitySchema) {
         guard let window, let controller = gridSelection else { return }
+        var dragged = false
         let mask: NSEvent.EventTypeMask = [.leftMouseDragged, .leftMouseUp]
         while let event = window.nextEvent(matching: mask) {
             if event.type == .leftMouseUp {
-                controller.endDrag()
+                controller.endDrag(dragged: dragged, originalCoord: initial)
                 return
             }
             let point = convert(event.locationInWindow, from: nil)
@@ -175,7 +177,9 @@ final class KeyHandlingTableView: NSTableView {
             let rowIdx = clampRow(row(at: point))
             let columnIdx = clampDataColumn(column(at: point), schema: schema)
             guard rowIdx >= 0, columnIdx >= 0 else { continue }
-            controller.continueDrag(to: GridCoord(row: rowIdx, column: columnIdx))
+            let coord = GridCoord(row: rowIdx, column: columnIdx)
+            if coord != initial { dragged = true }
+            controller.continueDrag(to: coord)
         }
     }
 
@@ -490,9 +494,17 @@ final class KeyHandlingTableView: NSTableView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let clickedRow = row(at: point)
+        let clickedColumn = column(at: point)
 
-        if clickedRow >= 0,
-           let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) {
+        if clickedRow >= 0, let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) {
+            if let schema = coordinator?.identitySchema,
+               clickedColumn >= 0,
+               let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
+               let controller = gridSelection,
+               !controller.isEmpty,
+               controller.selection.contains(row: clickedRow, column: dataColumn) {
+                return rowView.menu(for: event)
+            }
             if !selectedRowIndexes.contains(clickedRow) {
                 selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
             }

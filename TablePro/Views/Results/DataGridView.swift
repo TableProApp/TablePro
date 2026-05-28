@@ -281,6 +281,7 @@ struct DataGridView: NSViewRepresentable {
         }
 
         if needsFullReload {
+            coordinator.selectionController.clear()
             tableView.reloadData()
             coordinator.startBackgroundPrewarm()
         }
