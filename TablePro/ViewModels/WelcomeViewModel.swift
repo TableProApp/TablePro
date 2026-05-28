@@ -97,16 +97,25 @@ final class WelcomeViewModel {
     // MARK: - Computed Properties
 
     private(set) var treeItems: [ConnectionGroupTreeNode] = []
+    private(set) var favoriteConnections: [DatabaseConnection] = []
     private(set) var connectionCountByGroup: [UUID: Int] = [:]
     private(set) var depthByGroup: [UUID: Int] = [:]
     private(set) var maxDescendantDepthByGroup: [UUID: Int] = [:]
 
     func rebuildTree() {
+        favoriteConnections = connections
+            .filter(\.isFavorite)
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+
         let tree = buildGroupTree(groups: groups, connections: connections, parentId: nil)
-        if searchText.isEmpty {
-            treeItems = tree
+        let baseItems = searchText.isEmpty ? tree : filterGroupTree(tree, searchText: searchText)
+        if searchText.isEmpty, !favoriteConnections.isEmpty {
+            treeItems = baseItems.filter { node in
+                if case .connection(let conn) = node, conn.isFavorite { return false }
+                return true
+            }
         } else {
-            treeItems = filterGroupTree(tree, searchText: searchText)
+            treeItems = baseItems
         }
 
         var counts: [UUID: Int] = [:]
@@ -324,6 +333,28 @@ final class WelcomeViewModel {
         let duplicate = storage.duplicateConnection(connection)
         loadConnections()
         WindowOpener.shared.openConnectionForm(editing: duplicate.id)
+    }
+
+    // MARK: - Favorites
+
+    func toggleFavorite(_ targets: [DatabaseConnection]) {
+        guard !targets.isEmpty else { return }
+        let ids = Set(targets.map(\.id))
+        let live = connections.filter { ids.contains($0.id) }
+        guard !live.isEmpty else { return }
+        let shouldFavorite = !live.allSatisfy(\.isFavorite)
+        var updated: [DatabaseConnection] = []
+        for index in connections.indices where ids.contains(connections[index].id) {
+            connections[index].isFavorite = shouldFavorite
+            updated.append(connections[index])
+        }
+        guard storage.updateConnections(updated) else {
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
+        rebuildTree()
+        AppEvents.shared.connectionUpdated.send(targets.count == 1 ? targets.first?.id : nil)
     }
 
     // MARK: - Delete

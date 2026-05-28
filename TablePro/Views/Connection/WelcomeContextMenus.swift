@@ -32,6 +32,18 @@ extension WelcomeWindowView {
 
         Divider()
 
+        let allFavorited = connections.allSatisfy(\.isFavorite)
+        Button { vm.toggleFavorite(connections) } label: {
+            Label(
+                allFavorited
+                    ? String(localized: "Remove from Favorites")
+                    : String(localized: "Add to Favorites"),
+                systemImage: allFavorited ? "star.slash" : "star"
+            )
+        }
+
+        Divider()
+
         Menu(String(localized: "Share")) {
             Button {
                 vm.exportConnections(connections)
@@ -105,6 +117,17 @@ extension WelcomeWindowView {
 
         Button { vm.duplicateConnection(connection) } label: {
             Label(String(localized: "Duplicate"), systemImage: "doc.on.doc")
+        }
+
+        Divider()
+
+        Button { vm.toggleFavorite([connection]) } label: {
+            Label(
+                connection.isFavorite
+                    ? String(localized: "Remove from Favorites")
+                    : String(localized: "Add to Favorites"),
+                systemImage: connection.isFavorite ? "star.slash" : "star"
+            )
         }
 
         Divider()

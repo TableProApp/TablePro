@@ -142,4 +142,39 @@ struct MainWindowToolbarValidationTests {
         let unknown = NSToolbarItem.Identifier("com.test.unknown")
         #expect(MainWindowToolbar.isEnabled(itemIdentifier: unknown, context: context) == true)
     }
+
+    @Test("Toolbar identifier is stable across instances so AppKit autosave can persist customizations")
+    func toolbarIdentifierIsStable() {
+        #expect(MainWindowToolbar.toolbarIdentifier.rawValue == "com.TablePro.main.toolbar")
+    }
+
+    @Test("Toolbar is configured for user customization and autosave")
+    func toolbarConfigurationEnablesAutosave() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+        let owner = MainWindowToolbar(coordinator: coordinator)
+        #expect(owner.managedToolbar.identifier == MainWindowToolbar.toolbarIdentifier)
+        #expect(owner.managedToolbar.allowsUserCustomization == true)
+        #expect(owner.managedToolbar.autosavesConfiguration == true)
+    }
+
+    @Test("Allowed item identifiers are a superset of defaults so restored items survive autosave")
+    func allowedItemIdentifiersAreSupersetOfDefaults() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+        let owner = MainWindowToolbar(coordinator: coordinator)
+        let toolbar = owner.managedToolbar
+        let defaults = Set(owner.toolbarDefaultItemIdentifiers(toolbar))
+        let allowed = Set(owner.toolbarAllowedItemIdentifiers(toolbar))
+        #expect(defaults.isSubset(of: allowed))
+    }
+
+    private func makeCoordinator() -> MainContentCoordinator {
+        MainContentCoordinator(
+            connection: TestFixtures.makeConnection(database: "db_a"),
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+    }
 }

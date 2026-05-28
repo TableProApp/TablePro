@@ -78,6 +78,7 @@ struct SyncRecordMapper {
         record["modifiedAtLocal"] = Date() as CKRecordValue
         record["schemaVersion"] = schemaVersion as CKRecordValue
         record["sortOrder"] = Int64(connection.sortOrder) as CKRecordValue
+        record["isFavorite"] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue
 
         if let tagId = connection.tagId {
             record["tagId"] = tagId.uuidString as CKRecordValue
@@ -163,6 +164,7 @@ struct SyncRecordMapper {
         let redisDatabase = (record["redisDatabase"] as? Int64).map { Int($0) }
         let startupCommands = record["startupCommands"] as? String
         let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
+        let isFavorite = (record["isFavorite"] as? Int64 ?? 0) != 0
         let sshProfileId = (record["sshProfileId"] as? String).flatMap { UUID(uuidString: $0) }
 
         var sshConfig = SSHConfiguration()
@@ -216,6 +218,7 @@ struct SyncRecordMapper {
             redisDatabase: redisDatabase,
             startupCommands: startupCommands,
             sortOrder: sortOrder,
+            isFavorite: isFavorite,
             additionalFields: additionalFields
         )
     }

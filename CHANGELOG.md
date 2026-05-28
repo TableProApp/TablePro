@@ -17,30 +17,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cmd-click a foreign key arrow to open the referenced table in a new tab instead of the current one. The right-click menu has the same Open in New Tab option. (#1421)
 - Cells holding JSON or PHP serialized values in text columns now open in the structured viewer automatically, without requiring the column type to be JSON.
 - Add and remove buttons in the table structure editor for columns, indexes, and foreign keys, on the bottom status bar alongside the view-mode picker. Cmd+Shift+N adds and Cmd+Delete removes. An empty Indexes or Foreign Keys tab also shows a labelled add button. (#1319)
+- BigQuery datasets show as expandable nodes in the sidebar, instead of one at a time behind a picker.
+- OpenCode Zen as an AI provider, with free models when no key is set. (#1400)
+- Oracle Database 11g (11.1 and 11.2) now connects. (#1425)
+- Oracle connections can use a SID instead of a service name. (#1425)
+- Cmd-click a foreign key arrow (or pick Open in New Tab from the right-click menu) to open the referenced table in a new tab. (#1421)
+- Favorite a connection from the welcome screen. Starred connections appear in a Favorites section at the top of the list. (#1302)
+- Text-column cells holding JSON or PHP serialized values open in the structured viewer automatically.
+- Add and remove buttons in the table structure editor, with Cmd+Shift+N to add and Cmd+Delete to remove. Empty Indexes or Foreign Keys tabs show a labelled add button. (#1319)
 
 ### Changed
 
-- Clearing a query with the trash button now also clears its results, and a new Clear Results item on the results right-click menu clears results on their own. (#1256)
-- Inserting SQL from AI Chat opens it in a new query tab instead of appending to the current query. An empty editor is filled in place. (#1257)
+- The query trash button now clears results too, and a Clear Results item on the right-click menu clears results alone. (#1256)
+- Inserting SQL from AI Chat opens a new query tab, or fills an empty editor in place. (#1257)
 
 ### Fixed
 
-- Pasting copied rows no longer misplaces values when a cell contains a comma (such as a user agent string); each value stays in its own column, and a real NULL is kept distinct from the literal text "NULL".
-- BigQuery: switching to another table now loads its data right away, instead of leaving the grid empty until you close and reopen the tab.
-- Custom and OpenAI-compatible AI providers now work when the base URL already ends in `/v1`, instead of building a doubled `/v1/v1/` path that failed. (#1400)
-- MongoDB: opening a collection no longer crashes when a document contains a NaN or infinite number. (#1418)
-- After updating TablePro, connecting to a database whose plugin is still updating in the background now waits for that update to finish instead of wrongly showing "Plugin Not Installed", so you no longer have to quit and reopen the app. When no compatible plugin build exists yet, the message now tells you to update TablePro. (#1380)
-- Opening a saved connection that fails now shows the detailed troubleshooting dialog with suggested fixes, the same one Test Connection shows, instead of a generic error alert. (#1425, #483)
-- Oracle connection errors no longer surface the driver's raw internal message; failures now explain the cause in plain language. (#483)
-- AWS IAM authentication with a named profile now reads `~/.aws/config` (not just `~/.aws/credentials`) and supports `credential_process`, so profiles backed by SSO, IAM Identity Center, or assume-role work through `aws configure export-credentials`. (#1291)
-- Opening a table no longer runs the initial query multiple times before the data arrives. The same query could fire up to four times on a single tab open; it now runs once.
-- iOS: a connection's Safe Mode setting now survives relaunch. iCloud sync no longer drops the value, so a connection set to Confirm Writes or Read-Only no longer reverts to Off after reopening the app.
-- iOS: running a query that returns a very large result no longer crashes the app. The query editor keeps the first rows it loads, stops before memory runs low, and tells you to add LIMIT to fetch more.
-- iOS: Safe Mode "Confirm Writes" now prompts before saving a row edit or inserting a row, matching the query editor. Previously grid edits and inserts saved with no confirmation.
-- Redshift: schema switching now works, along with the contains, starts with, and ends with filters and table search. All previously failed with a SQL syntax error. (#1439)
-- MCP server: the first authenticated request no longer hangs after turning on Require Authentication. Turning the setting on now creates a default token if you have none, shows it once for you to copy, and waits for the server to be ready before the next request can run. The Token Name field also focuses on first click in the Generate Token sheet. (#1093)
-- Double-clicking a CSV or TSV file when TablePro is closed now opens the file directly, instead of showing the welcome screen. (#1443)
-- Opening a `.sql` file now names the tab after the file instead of showing "SQL Query". (#1220)
+- Toolbar customizations now persist after closing and reopening a session window. (#1455)
+- Pasting rows with commas in a cell now keeps each value in its own column and preserves NULL vs the literal text "NULL".
+- BigQuery: switching to another table loads its data immediately instead of leaving the grid empty.
+- Custom and OpenAI-compatible AI providers work when the base URL ends in `/v1`. (#1400)
+- MongoDB: opening a collection no longer crashes on documents containing NaN or infinite numbers. (#1418)
+- Connecting after an app update now waits for in-progress plugin updates instead of showing "Plugin Not Installed". When no compatible plugin build exists yet, the message asks you to update TablePro. (#1380)
+- Failed saved connections now show the Test Connection troubleshooting dialog instead of a generic alert. (#1425, #483)
+- Oracle connection errors explain the cause in plain language instead of the driver's raw message. (#483)
+- AWS IAM authentication with a named profile reads `~/.aws/config` and supports `credential_process`, so SSO, IAM Identity Center, and assume-role profiles work. (#1291)
+- Opening a table no longer runs the initial query multiple times before data arrives.
+- iOS: Safe Mode setting survives relaunch instead of reverting to Off after iCloud sync.
+- iOS: large query results no longer crash the app; the editor keeps the rows it loaded and suggests adding LIMIT.
+- iOS: Safe Mode "Confirm Writes" now prompts before grid edits and inserts, matching the query editor.
+- Redshift: schema switching, table search, and contains/starts with/ends with filters now work. (#1439)
+- MCP server: turning on Require Authentication no longer hangs the first request, and now generates a default token if none exists and shows it once. (#1093)
+- The Generate Token sheet focuses the Token Name field on first open. (#1093)
+- Double-clicking a CSV or TSV file when TablePro is closed opens the file directly. (#1443)
+- Opening a `.sql` file names the tab after the file instead of showing "SQL Query". (#1220)
 
 ## [0.45.0] - 2026-05-26
 
