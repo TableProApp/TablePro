@@ -13,6 +13,8 @@ import TableProPluginKit
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
+    internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar")
+
     weak var coordinator: MainContentCoordinator?
 
     internal let managedToolbar: NSToolbar
@@ -26,14 +28,12 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal init(coordinator: MainContentCoordinator) {
         self.coordinator = coordinator
-        // Unique identifier per toolbar instance prevents tab-group merging that would collapse
-        // all tabs into one toolbar and leave subsequent windows blank.
-        self.managedToolbar = NSToolbar(identifier: "com.TablePro.main.toolbar.\(UUID().uuidString)")
+        self.managedToolbar = NSToolbar(identifier: Self.toolbarIdentifier)
         super.init()
         self.managedToolbar.delegate = self
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
-        self.managedToolbar.autosavesConfiguration = false
+        self.managedToolbar.autosavesConfiguration = true
     }
 
     func invalidate() {
