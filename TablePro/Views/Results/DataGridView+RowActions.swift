@@ -308,4 +308,64 @@ extension TableViewCoordinator {
         delegate.dataGridMoveRow(from: fromRow, to: row)
         return true
     }
+
+    func selectColumn(_ dataColumnIndex: Int) {
+        guard let keyTableView = tableView as? KeyHandlingTableView else { return }
+        keyTableView.selection.cellSelection = .column(dataColumnIndex)
+        keyTableView.cellSelectionAnchor = nil
+        keyTableView.deselectAll(nil)
+    }
+
+    func copyCellSelection(_ cellSelection: CellSelection) {
+        switch cellSelection {
+        case .none:
+            return
+        case .column(let columnIndex):
+            copyColumnValues(columnIndex: columnIndex)
+        case .range(let columnIndex, let rows):
+            copyCellRange(columnIndex: columnIndex, rows: rows)
+        case .cells(let positions):
+            copyCellPositions(positions)
+        }
+    }
+
+    private func copyCellRange(columnIndex: Int, rows: ClosedRange<Int>) {
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+
+        let columnType = tableRows.columnTypes.indices.contains(columnIndex)
+            ? tableRows.columnTypes[columnIndex]
+            : nil
+
+        var lines: [String] = []
+        lines.reserveCapacity(rows.count)
+
+        for rowIndex in rows {
+            guard let row = displayRow(at: rowIndex), row.values.indices.contains(columnIndex) else { continue }
+            let text = RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType) ?? "NULL"
+            lines.append(text)
+        }
+
+        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
+    }
+
+    private func copyCellPositions(_ positions: Set<CellPosition>) {
+        let tableRows = tableRowsProvider()
+        let sorted = positions.sorted { $0.row != $1.row ? $0.row < $1.row : $0.column < $1.column }
+
+        var lines: [String] = []
+        lines.reserveCapacity(sorted.count)
+
+        for pos in sorted {
+            guard pos.column >= 0, pos.column < tableRows.columns.count else { continue }
+            guard let row = displayRow(at: pos.row), row.values.indices.contains(pos.column) else { continue }
+            let columnType = tableRows.columnTypes.indices.contains(pos.column)
+                ? tableRows.columnTypes[pos.column]
+                : nil
+            let text = RowValueCopyFormatter.copyText(cell: row.values[pos.column], columnType: columnType) ?? "NULL"
+            lines.append(text)
+        }
+
+        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
+    }
 }

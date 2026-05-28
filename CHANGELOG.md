@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Column and cell-range selection in the data grid: Cmd+click a column header to select the entire column, Shift+click to select a vertical range, Cmd+click individual cells for non-contiguous selection (#1446)
+
 ## [0.43.3] - 2026-05-22
 
 ### Fixed

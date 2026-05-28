@@ -20,6 +20,7 @@ struct DataGridCellContent {
 struct DataGridCellState {
     let visualState: RowVisualState
     let isFocused: Bool
+    let isInCellSelection: Bool
     let isEditable: Bool
     let isLargeDataset: Bool
     let row: Int

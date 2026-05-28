@@ -4,6 +4,7 @@ final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
 
     private var isRaisingOverlay = false
+    var cellSelectionAnchor: CellPosition?
 
     override var acceptsFirstResponder: Bool {
         true
@@ -30,6 +31,14 @@ final class KeyHandlingTableView: NSTableView {
 
     var selection = TableSelection() {
         didSet {
+            if oldValue.cellSelection != selection.cellSelection {
+                if case .column = oldValue.cellSelection {
+                    reloadVisibleColumnCells(oldValue.cellSelection.affectedColumns)
+                }
+                if case .column = selection.cellSelection {
+                    reloadVisibleColumnCells(selection.cellSelection.affectedColumns)
+                }
+            }
             guard let (rows, columns) = selection.reloadIndexes(from: oldValue) else { return }
             scheduleFocusReload(rows: rows, columns: columns)
         }
@@ -62,6 +71,19 @@ final class KeyHandlingTableView: NSTableView {
         reloadData(forRowIndexes: validRows, columnIndexes: validColumns)
     }
 
+    private func reloadVisibleColumnCells(_ columns: IndexSet) {
+        guard !columns.isEmpty, numberOfRows > 0 else { return }
+        let visibleRows = rows(in: visibleRect)
+        guard visibleRows.length > 0 else { return }
+        let rowRange = visibleRows.location..<(visibleRows.location + visibleRows.length)
+        let tableColumnIndexes = IndexSet(columns.compactMap { dataCol in
+            guard let schema = coordinator?.identitySchema else { return nil }
+            return DataGridView.tableColumnIndex(for: dataCol, in: self, schema: schema)
+        })
+        guard !tableColumnIndexes.isEmpty else { return }
+        reloadData(forRowIndexes: IndexSet(integersIn: rowRange), columnIndexes: tableColumnIndexes)
+    }
+
     var focusedRow: Int {
         get { selection.focusedRow }
         set { selection.focusedRow = newValue }
@@ -84,6 +106,35 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
+        guard clickedRow >= 0,
+              clickedColumn >= 0,
+              clickedColumn < numberOfColumns else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        let column = tableColumns[clickedColumn]
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isDataColumn = column.identifier != ColumnIdentitySchema.rowNumberIdentifier
+
+        if isDataColumn, let schema = coordinator?.identitySchema,
+           let dataColIndex = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema) {
+            if modifiers.contains(.command) && !modifiers.contains(.shift) {
+                handleCmdClickCell(row: clickedRow, dataColumn: dataColIndex)
+                return
+            }
+            if modifiers.contains(.shift) && !modifiers.contains(.command) {
+                if handleShiftClickCell(row: clickedRow, dataColumn: dataColIndex) {
+                    return
+                }
+            }
+        }
+
+        if !selection.cellSelection.isEmpty {
+            selection.cellSelection = .none
+            cellSelectionAnchor = nil
+        }
+
         let alreadyFocusedHere = clickedRow >= 0
             && clickedColumn >= 0
             && clickedRow == focusedRow
@@ -91,14 +142,7 @@ final class KeyHandlingTableView: NSTableView {
 
         super.mouseDown(with: event)
 
-        guard clickedRow >= 0,
-              clickedColumn >= 0,
-              clickedColumn < numberOfColumns else {
-            return
-        }
-
-        let column = tableColumns[clickedColumn]
-        if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
+        if !isDataColumn {
             focusedRow = -1
             focusedColumn = -1
             return
@@ -116,6 +160,43 @@ final class KeyHandlingTableView: NSTableView {
         }
     }
 
+    private func handleCmdClickCell(row: Int, dataColumn: Int) {
+        var positions: Set<CellPosition>
+        switch selection.cellSelection {
+        case .cells(let existing):
+            positions = existing
+        case .column, .range:
+            positions = Set()
+        case .none:
+            positions = Set()
+        }
+
+        let pos = CellPosition(row: row, column: dataColumn)
+        if positions.contains(pos) {
+            positions.remove(pos)
+        } else {
+            positions.insert(pos)
+        }
+
+        selection.cellSelection = positions.isEmpty ? .none : .cells(positions)
+        cellSelectionAnchor = positions.isEmpty ? nil : pos
+        deselectAll(nil)
+    }
+
+    private func handleShiftClickCell(row: Int, dataColumn: Int) -> Bool {
+        guard let anchor = cellSelectionAnchor, anchor.column == dataColumn else {
+            cellSelectionAnchor = CellPosition(row: row, column: dataColumn)
+            selection.cellSelection = .cells(Set([CellPosition(row: row, column: dataColumn)]))
+            deselectAll(nil)
+            return true
+        }
+        let low = min(anchor.row, row)
+        let high = max(anchor.row, row)
+        selection.cellSelection = .range(column: dataColumn, rows: low...high)
+        deselectAll(nil)
+        return true
+    }
+
     @objc func delete(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
         guard !selectedRowIndexes.isEmpty else { return }
@@ -123,7 +204,9 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     @objc func copy(_ sender: Any?) {
-        if let cell = focusedDataCell() {
+        if !selection.cellSelection.isEmpty {
+            coordinator?.copyCellSelection(selection.cellSelection)
+        } else if let cell = focusedDataCell() {
             coordinator?.copyCellValue(at: cell.row, columnIndex: cell.columnIndex)
         } else {
             coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
@@ -162,13 +245,13 @@ final class KeyHandlingTableView: NSTableView {
         case #selector(delete(_:)), #selector(deleteBackward(_:)):
             return coordinator?.isEditable == true && !selectedRowIndexes.isEmpty
         case #selector(copy(_:)), #selector(copyRowsAsTSV(_:)):
-            return !selectedRowIndexes.isEmpty
+            return !selection.cellSelection.isEmpty || !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil
         case #selector(insertNewline(_:)):
             return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn)
         case #selector(cancelOperation(_:)):
-            return false
+            return !selection.cellSelection.isEmpty
         default:
             return super.validateUserInterfaceItem(item)
         }
@@ -247,6 +330,9 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     @objc override func cancelOperation(_ sender: Any?) {
+        guard !selection.cellSelection.isEmpty else { return }
+        selection.cellSelection = .none
+        cellSelectionAnchor = nil
     }
 
     private func deleteSelectedRowsIfPossible() {

@@ -65,6 +65,11 @@ extension TableViewCoordinator {
             return true
         }()
 
+        let isInCellSelection: Bool = {
+            guard let keyTableView = tableView as? KeyHandlingTableView else { return false }
+            return keyTableView.selection.cellSelection.contains(row: row, column: columnIndex)
+        }()
+
         let isDropdown = dropdownColumns?.contains(columnIndex) == true
         let isTypePicker = typePickerColumns?.contains(columnIndex) == true
         let isEnumOrSet = enumOrSetColumns.contains(columnIndex)
@@ -87,6 +92,7 @@ extension TableViewCoordinator {
         let cellState = DataGridCellState(
             visualState: state,
             isFocused: isFocused,
+            isInCellSelection: isInCellSelection,
             isEditable: isEditable,
             isLargeDataset: isLargeDataset,
             row: row,

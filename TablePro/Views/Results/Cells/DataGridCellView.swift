@@ -29,6 +29,7 @@ final class DataGridCellView: NSView {
 
     private var visualState: RowVisualState = .empty
     private var isFocusedCell: Bool = false
+    private var isInCellSelection: Bool = false
     private var onEmphasizedSelection: Bool = false
 
     private var cachedLine: CTLine?
@@ -150,6 +151,10 @@ final class DataGridCellView: NSView {
             updateFocusPresentation()
             needsRedraw = true
         }
+        if isInCellSelection != state.isInCellSelection {
+            isInCellSelection = state.isInCellSelection
+            needsRedraw = true
+        }
 
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
@@ -199,6 +204,11 @@ final class DataGridCellView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         if let tint = modifiedColumnTint, !onEmphasizedSelection {
             tint.setFill()
+            bounds.fill()
+        }
+
+        if isInCellSelection && !onEmphasizedSelection {
+            NSColor.controlAccentColor.withAlphaComponent(0.12).setFill()
             bounds.fill()
         }
 

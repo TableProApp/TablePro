@@ -183,9 +183,14 @@ final class SortableHeaderView: NSTableHeaderView {
             return
         }
 
-        let isMultiSort = event.modifierFlags
-            .intersection(.deviceIndependentFlagsMask)
-            .contains(.shift)
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        if modifiers.contains(.command) {
+            coordinator.selectColumn(dataIndex)
+            return
+        }
+
+        let isMultiSort = modifiers.contains(.shift)
         let transition = HeaderSortCycle.nextTransition(
             state: coordinator.currentSortState,
             clickedColumn: dataIndex,
