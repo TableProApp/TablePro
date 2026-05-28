@@ -34,6 +34,8 @@ final class ValueDisplayFormatService {
             return formatAsTimestamp(rawValue, divideBy: 1)
         case .unixTimestampMillis:
             return formatAsTimestamp(rawValue, divideBy: 1_000)
+        case .json, .phpSerialized:
+            return rawValue
         }
     }
 

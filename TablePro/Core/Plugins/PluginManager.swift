@@ -111,6 +111,7 @@ final class PluginManager {
     @ObservationIgnored private var activatedBundleIds: Set<String> = []
 
     @ObservationIgnored internal var reconciliationTask: Task<Void, Never>?
+    @ObservationIgnored internal var reconciliationActive = false
     @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
     @ObservationIgnored internal var reconciliationManifestAttempts = 0
     @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
@@ -291,7 +292,8 @@ final class PluginManager {
                     registryId: Self.readRegistryMetadata(for: url)?.pluginId,
                     name: manifest.bundleId,
                     reason: error.localizedDescription,
-                    isOutdated: (error as? PluginError)?.isOutdated ?? false
+                    isOutdated: (error as? PluginError)?.isOutdated ?? false,
+                    providedDatabaseTypeIds: manifest.providedDatabaseTypeIds
                 ))
             }
             return
@@ -307,7 +309,8 @@ final class PluginManager {
                     registryId: Self.readRegistryMetadata(for: url)?.pluginId,
                     name: manifest.bundleId,
                     reason: error.localizedDescription,
-                    isOutdated: false
+                    isOutdated: false,
+                    providedDatabaseTypeIds: manifest.providedDatabaseTypeIds
                 ))
                 return
             }
@@ -620,7 +623,8 @@ final class PluginManager {
                         registryId: Self.readRegistryMetadata(for: winner.url)?.pluginId,
                         name: winner.url.deletingPathExtension().lastPathComponent,
                         reason: error.localizedDescription,
-                        isOutdated: (error as? PluginError)?.isOutdated ?? false
+                        isOutdated: (error as? PluginError)?.isOutdated ?? false,
+                        providedDatabaseTypeIds: bundle.flatMap { PluginManifest(bundle: $0)?.providedDatabaseTypeIds } ?? []
                     ))
                 }
             }

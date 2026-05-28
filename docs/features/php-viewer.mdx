@@ -1,0 +1,43 @@
+---
+title: PHP Serialized Viewer
+description: Inspect PHP serialize() values from cells as a collapsible tree, with a raw text fallback.
+---
+
+# PHP Serialized Viewer
+
+Read PHP `serialize()` output stored in a text column as a structured tree, without pulling the value into a separate tool.
+
+## Open
+
+- Double-click a cell whose value parses as PHP serialized data, or
+- Right-click the column header and pick **Display as > PHP Serialized** to force the viewer on a column whose values do not auto-detect.
+
+The viewer opens as a popover anchored to the cell. Detection runs only when you open the cell, so the grid scroll path stays fast.
+
+## Modes
+
+Switch with the segmented control in the viewer toolbar.
+
+- **Tree**: collapsible tree with a search field. Each node shows its key, value, and a type badge (`str`, `int`, `arr`, `obj`, `ser`, `ref`).
+- **Raw**: the original serialized string with text selection. Use this when the value fails to parse or when you want to copy the exact bytes.
+
+The viewer is read-only. PHP serialized values round-trip through PHP itself, so TablePro does not write them back.
+
+## Object members
+
+Object properties show their visibility next to the key:
+
+- Public members have no badge.
+- Protected members show a `protected` badge.
+- Private members show `private (ClassName)` so you can tell whose private slot you are looking at.
+
+Classes implementing `Serializable` (the `C:` token) show as a single leaf with the class name and the raw payload, since the payload is opaque to TablePro. Reference tokens (`r:` / `R:`) show as `→ #N` and are not followed.
+
+## Limits
+
+- Values above 5 MB are not parsed and the viewer drops to raw mode.
+- The tree is capped at 5000 nodes and 256 levels of nesting; anything beyond is shown as a truncation marker.
+
+## Opt out
+
+Pick **Display as > Raw Value** on the column header to disable structured viewing for that column. The cell then opens in the standard text viewer.
