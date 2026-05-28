@@ -112,6 +112,21 @@ final class SortableHeaderView: NSTableHeaderView {
         }
     }
 
+    func updateColumnSelectionIndicators(selectedColumns: IndexSet, dirtyColumns: IndexSet) {
+        guard let tableView = tableView, let coordinator = coordinator else { return }
+        for (columnIndex, column) in tableView.tableColumns.enumerated() {
+            guard let cell = column.headerCell as? SortableHeaderCell,
+                  let dataIndex = coordinator.dataColumnIndex(from: column.identifier) else { continue }
+            let shouldBeSelected = selectedColumns.contains(dataIndex)
+            if cell.isColumnSelected != shouldBeSelected {
+                cell.isColumnSelected = shouldBeSelected
+                setNeedsDisplay(headerRect(ofColumn: columnIndex))
+            } else if dirtyColumns.contains(dataIndex) {
+                setNeedsDisplay(headerRect(ofColumn: columnIndex))
+            }
+        }
+    }
+
     func updateSortIndicators(state: SortState, schema: ColumnIdentitySchema) {
         guard let tableView = tableView else { return }
 

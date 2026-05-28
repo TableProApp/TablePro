@@ -4,7 +4,6 @@ import Testing
 
 @Suite("CellSelection")
 struct CellSelectionTests {
-
     // MARK: - contains
 
     @Test("none contains nothing")
@@ -128,7 +127,6 @@ struct CellSelectionTests {
 
 @Suite("TableSelection.reloadIndexes with cellSelection")
 struct TableSelectionCellSelectionTests {
-
     @Test("returns nil when nothing changed")
     func noChangeReturnsNil() {
         let sel = TableSelection(focusedRow: 1, focusedColumn: 2, cellSelection: .column(3))
@@ -145,26 +143,57 @@ struct TableSelectionCellSelectionTests {
         #expect(result?.columns == IndexSet(integer: 2))
     }
 
-    @Test("returns nil for column-only change because affectedRows is empty")
+    @Test("column-only change has empty affectedRows so reload uses the visible-column side path")
     func columnChangeReturnsNilDueToEmptyRows() {
         let old = TableSelection(focusedRow: -1, focusedColumn: -1, cellSelection: .none)
         let new = TableSelection(focusedRow: -1, focusedColumn: -1, cellSelection: .column(1))
-        let result = new.reloadIndexes(from: old)
-        #expect(result == nil)
+        #expect(new.reloadIndexes(from: old) == nil)
     }
 
     @Test("focus change combined with cell selection returns union of indexes")
     func focusAndCellSelectionChange() {
-        let old = TableSelection(focusedRow: 0, focusedColumn: 0, cellSelection: .cells([CellPosition(row: 2, column: 1)]))
-        let new = TableSelection(focusedRow: 3, focusedColumn: 1, cellSelection: .cells([CellPosition(row: 4, column: 2)]))
-        let result = new.reloadIndexes(from: old)
-        #expect(result != nil)
-        #expect(result!.rows.contains(0))
-        #expect(result!.rows.contains(2))
-        #expect(result!.rows.contains(3))
-        #expect(result!.rows.contains(4))
-        #expect(result!.columns.contains(0))
-        #expect(result!.columns.contains(1))
-        #expect(result!.columns.contains(2))
+        let old = TableSelection(
+            focusedRow: 0,
+            focusedColumn: 0,
+            cellSelection: .cells([CellPosition(row: 2, column: 1)])
+        )
+        let new = TableSelection(
+            focusedRow: 3,
+            focusedColumn: 1,
+            cellSelection: .cells([CellPosition(row: 4, column: 2)])
+        )
+        guard let result = new.reloadIndexes(from: old) else {
+            Issue.record("expected reload indexes for combined focus and cell selection change")
+            return
+        }
+        #expect(result.rows.contains(0))
+        #expect(result.rows.contains(2))
+        #expect(result.rows.contains(3))
+        #expect(result.rows.contains(4))
+        #expect(result.columns.contains(0))
+        #expect(result.columns.contains(1))
+        #expect(result.columns.contains(2))
+    }
+
+    @Test("anchor-only change does not trigger a reload")
+    func anchorOnlyChangeReturnsNil() {
+        let old = TableSelection(
+            focusedRow: -1,
+            focusedColumn: -1,
+            cellSelection: .cells([CellPosition(row: 1, column: 2)]),
+            cellSelectionAnchor: CellPosition(row: 1, column: 2)
+        )
+        let new = TableSelection(
+            focusedRow: -1,
+            focusedColumn: -1,
+            cellSelection: .cells([CellPosition(row: 1, column: 2)]),
+            cellSelectionAnchor: CellPosition(row: 5, column: 2)
+        )
+        #expect(new.reloadIndexes(from: old) == nil)
+    }
+
+    @Test("default TableSelection has no anchor")
+    func defaultHasNoAnchor() {
+        #expect(TableSelection().cellSelectionAnchor == nil)
     }
 }

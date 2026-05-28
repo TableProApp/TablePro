@@ -26,6 +26,7 @@ final class DataGridCellView: NSView {
     private var textFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
     private var textColor: NSColor = .labelColor
     private var modifiedColumnTint: NSColor?
+    private var cellSelectionTint: NSColor = .controlAccentColor.withAlphaComponent(0.12)
 
     private var visualState: RowVisualState = .empty
     private var isFocusedCell: Bool = false
@@ -141,6 +142,10 @@ final class DataGridCellView: NSView {
             modifiedColumnTint = nextTint
             needsRedraw = true
         }
+        if cellSelectionTint != palette.cellSelectionTint {
+            cellSelectionTint = palette.cellSelectionTint
+            needsRedraw = true
+        }
 
         if visualState != state.visualState {
             visualState = state.visualState
@@ -208,7 +213,7 @@ final class DataGridCellView: NSView {
         }
 
         if isInCellSelection && !onEmphasizedSelection {
-            NSColor.controlAccentColor.withAlphaComponent(0.12).setFill()
+            cellSelectionTint.setFill()
             bounds.fill()
         }
 

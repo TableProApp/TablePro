@@ -9,6 +9,7 @@ import AppKit
 final class SortableHeaderCell: NSTableHeaderCell {
     var sortDirection: SortDirection?
     var sortPriority: Int?
+    var isColumnSelected: Bool = false
 
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
@@ -30,6 +31,11 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        if isColumnSelected {
+            NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
+            cellFrame.fill()
+        }
+
         drawTitle(in: titleRect(forBounds: cellFrame), font: titleFont(isSorted: sortDirection != nil))
 
         guard let direction = sortDirection else { return }

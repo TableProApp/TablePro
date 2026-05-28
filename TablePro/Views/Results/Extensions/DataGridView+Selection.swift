@@ -40,7 +40,7 @@ extension TableViewCoordinator {
 
         if !newSelection.isEmpty && !keyTableView.selection.cellSelection.isEmpty {
             keyTableView.selection.cellSelection = .none
-            keyTableView.cellSelectionAnchor = nil
+            keyTableView.selection.cellSelectionAnchor = nil
         }
 
         let newFocus = resolvedFocus(

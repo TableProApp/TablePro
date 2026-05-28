@@ -4,6 +4,7 @@ struct TableSelection: Equatable {
     var focusedRow: Int = -1
     var focusedColumn: Int = -1
     var cellSelection: CellSelection = .none
+    var cellSelectionAnchor: CellPosition?
 
     func reloadIndexes(from previous: TableSelection) -> (rows: IndexSet, columns: IndexSet)? {
         let focusChanged = previous.focusedRow != focusedRow || previous.focusedColumn != focusedColumn

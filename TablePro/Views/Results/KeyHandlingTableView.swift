@@ -4,7 +4,6 @@ final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
 
     private var isRaisingOverlay = false
-    var cellSelectionAnchor: CellPosition?
 
     override var acceptsFirstResponder: Bool {
         true
@@ -38,10 +37,20 @@ final class KeyHandlingTableView: NSTableView {
                 if case .column = selection.cellSelection {
                     reloadVisibleColumnCells(selection.cellSelection.affectedColumns)
                 }
+                updateHeaderSelectionIndicators(
+                    previous: oldValue.cellSelection,
+                    current: selection.cellSelection
+                )
             }
             guard let (rows, columns) = selection.reloadIndexes(from: oldValue) else { return }
             scheduleFocusReload(rows: rows, columns: columns)
         }
+    }
+
+    private func updateHeaderSelectionIndicators(previous: CellSelection, current: CellSelection) {
+        guard let headerView = headerView as? SortableHeaderView else { return }
+        let union = previous.affectedColumns.union(current.affectedColumns)
+        headerView.updateColumnSelectionIndicators(selectedColumns: current.affectedColumns, dirtyColumns: union)
     }
 
     private var pendingFocusReloadRows: IndexSet?
@@ -130,10 +139,7 @@ final class KeyHandlingTableView: NSTableView {
             }
         }
 
-        if !selection.cellSelection.isEmpty {
-            selection.cellSelection = .none
-            cellSelectionAnchor = nil
-        }
+        clearCellSelection()
 
         let alreadyFocusedHere = clickedRow >= 0
             && clickedColumn >= 0
@@ -161,15 +167,10 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     private func handleCmdClickCell(row: Int, dataColumn: Int) {
-        var positions: Set<CellPosition>
-        switch selection.cellSelection {
-        case .cells(let existing):
-            positions = existing
-        case .column, .range:
-            positions = Set()
-        case .none:
-            positions = Set()
-        }
+        var positions: Set<CellPosition> = {
+            if case .cells(let existing) = selection.cellSelection { return existing }
+            return []
+        }()
 
         let pos = CellPosition(row: row, column: dataColumn)
         if positions.contains(pos) {
@@ -178,23 +179,30 @@ final class KeyHandlingTableView: NSTableView {
             positions.insert(pos)
         }
 
-        selection.cellSelection = positions.isEmpty ? .none : .cells(positions)
-        cellSelectionAnchor = positions.isEmpty ? nil : pos
+        if positions.isEmpty {
+            clearCellSelection()
+        } else {
+            selection.cellSelection = .cells(positions)
+            selection.cellSelectionAnchor = pos
+        }
         deselectAll(nil)
     }
 
     private func handleShiftClickCell(row: Int, dataColumn: Int) -> Bool {
-        guard let anchor = cellSelectionAnchor, anchor.column == dataColumn else {
-            cellSelectionAnchor = CellPosition(row: row, column: dataColumn)
-            selection.cellSelection = .cells(Set([CellPosition(row: row, column: dataColumn)]))
-            deselectAll(nil)
-            return true
+        guard let anchor = selection.cellSelectionAnchor, anchor.column == dataColumn else {
+            return false
         }
         let low = min(anchor.row, row)
         let high = max(anchor.row, row)
         selection.cellSelection = .range(column: dataColumn, rows: low...high)
         deselectAll(nil)
         return true
+    }
+
+    private func clearCellSelection() {
+        guard !selection.cellSelection.isEmpty || selection.cellSelectionAnchor != nil else { return }
+        selection.cellSelection = .none
+        selection.cellSelectionAnchor = nil
     }
 
     @objc func delete(_ sender: Any?) {
@@ -332,9 +340,11 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     @objc override func cancelOperation(_ sender: Any?) {
-        guard !selection.cellSelection.isEmpty else { return }
-        selection.cellSelection = .none
-        cellSelectionAnchor = nil
+        guard !selection.cellSelection.isEmpty else {
+            super.cancelOperation(sender)
+            return
+        }
+        clearCellSelection()
     }
 
     private func deleteSelectedRowsIfPossible() {
