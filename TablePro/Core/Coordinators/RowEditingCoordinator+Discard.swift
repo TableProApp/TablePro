@@ -26,7 +26,7 @@ extension RowEditingCoordinator {
             )
         )
         guard case .authorized = decision else {
-            return
+            throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
         guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
