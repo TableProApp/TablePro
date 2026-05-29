@@ -173,7 +173,6 @@ final class DatabaseTreeMetadataService {
     }
 
     func loadTables(connectionId: UUID, database: String, schema: String?) async {
-        await loadRoutines(connectionId: connectionId, database: database, schema: schema)
         if database == activeDatabase(for: connectionId) {
             guard let session = DatabaseManager.shared.session(for: connectionId),
                   let driver = session.driver else { return }
@@ -186,10 +185,14 @@ final class DatabaseTreeMetadataService {
                     connectionId: connectionId, driver: driver, connection: session.connection
                 )
             }
+            await loadRoutines(connectionId: connectionId, database: database, schema: schema)
             return
         }
         let key = Self.tableKey(connectionId: connectionId, database: database, schema: schema)
-        if case .loaded = tableStates[key] { return }
+        if case .loaded = tableStates[key] {
+            await loadRoutines(connectionId: connectionId, database: database, schema: schema)
+            return
+        }
         tableStates[key] = .loading
         do {
             let normalizedSchema = key.schema
@@ -208,7 +211,9 @@ final class DatabaseTreeMetadataService {
                 "[tree] table load failed connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
             tableStates[key] = .failed(error.localizedDescription)
+            return
         }
+        await loadRoutines(connectionId: connectionId, database: database, schema: schema)
     }
 
     func loadRoutines(connectionId: UUID, database: String, schema: String?) async {
