@@ -38,20 +38,20 @@ enum TableRowLogic {
     }
 
     static func iconColor(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool) -> Color {
-        if isPendingDelete { return .red }
-        if isPendingTruncate { return .orange }
+        if isPendingDelete { return Color(nsColor: .systemRed) }
+        if isPendingTruncate { return Color(nsColor: .systemOrange) }
         switch table.type {
-        case .table:            return .blue
-        case .view:             return .purple
+        case .table:            return Color(nsColor: .systemBlue)
+        case .view:             return Color(nsColor: .systemPurple)
         case .materializedView: return Color(nsColor: .systemTeal)
         case .foreignTable:     return Color(nsColor: .systemIndigo)
-        case .systemTable:      return .gray
+        case .systemTable:      return Color(nsColor: .systemGray)
         }
     }
 
     static func textColor(isPendingDelete: Bool, isPendingTruncate: Bool) -> Color {
-        if isPendingDelete { return .red }
-        if isPendingTruncate { return .orange }
+        if isPendingDelete { return Color(nsColor: .systemRed) }
+        if isPendingTruncate { return Color(nsColor: .systemOrange) }
         return .primary
     }
 }
