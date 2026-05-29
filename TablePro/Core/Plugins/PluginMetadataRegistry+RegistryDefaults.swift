@@ -855,6 +855,82 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Embedded analytical SQL")
                 )
             )),
+            ("Beancount", PluginMetadataSnapshot(
+                displayName: "Beancount", iconName: "beancount-icon", defaultPort: 0,
+                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
+                isDownloadable: true, primaryUrlScheme: "beancount", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [], pathFieldRole: .filePath,
+                supportsHealthMonitor: false, urlSchemes: ["beancount"], postConnectActions: [],
+                brandColorHex: "#3F7D20",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .fileBased, supportsDatabaseSwitching: false,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: false,
+                    supportsExport: true,
+                    supportsSSH: false,
+                    supportsSSL: false,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsAddColumn: false,
+                    supportsModifyColumn: false,
+                    supportsDropColumn: false,
+                    supportsRenameColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "public",
+                    defaultGroupName: "main",
+                    tableEntityName: "Ledger Tables",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [
+                        "id", "transaction_id", "date", "flag", "payee", "narration",
+                        "account", "amount", "commodity", "currency", "source_file", "line"
+                    ],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: [],
+                    fileExtensions: ["beancount"],
+                    databaseGroupingStrategy: .flat,
+                    structureColumnFields: [.name, .type, .nullable, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: SQLDialectDescriptor(
+                        identifierQuote: "\"",
+                        keywords: [
+                            "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER",
+                            "ON", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "AS",
+                            "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET",
+                            "WITH", "UNION", "INTERSECT", "EXCEPT",
+                            "CASE", "WHEN", "THEN", "ELSE", "END", "NULL", "IS",
+                            "ASC", "DESC", "DISTINCT"
+                        ],
+                        functions: ["COUNT", "SUM", "AVG", "MAX", "MIN", "ROUND", "DATE", "STRFTIME"],
+                        dataTypes: ["INTEGER", "TEXT", "DATE", "DECIMAL"],
+                        regexSyntax: .unsupported,
+                        booleanLiteralStyle: .numeric,
+                        likeEscapeStyle: .explicit,
+                        paginationStyle: .limit
+                    ),
+                    statementCompletions: [],
+                    columnTypesByCategory: [
+                        "Integer": ["INTEGER"],
+                        "String": ["TEXT"],
+                        "Date": ["DATE"],
+                        "Decimal": ["DECIMAL"]
+                    ]
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    category: .analytical,
+                    tagline: String(localized: "Plain-text accounting ledgers")
+                )
+            )),
             ("Cassandra", PluginMetadataSnapshot(
                 displayName: "Cassandra / ScyllaDB", iconName: "cassandra-icon", defaultPort: 9_042,
                 requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: true,
