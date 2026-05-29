@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Oracle connections negotiate Native Network Encryption when the server asks for it, so servers with `SQLNET.ENCRYPTION_SERVER` or `SQLNET.CRYPTO_CHECKSUM_SERVER` set to REQUIRED now connect (AES with a SHA crypto-checksum), matching what SQL Developer and DBeaver do. (#483)
+- Oracle connections follow listener redirects, so RAC SCAN listeners, shared server, and load-balanced setups now connect instead of failing during the handshake. (#483)
+
+### Fixed
+
+- Oracle connection failures show the listener's actual reason (such as an unknown service name) instead of a generic "server closed the connection" message. (#483)
+
 ## [0.46.0] - 2026-05-28
 
 ### Added

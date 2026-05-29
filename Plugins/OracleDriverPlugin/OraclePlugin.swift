@@ -143,10 +143,9 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                 title: String(localized: "Connection Dropped During Handshake"),
                 message: oracleError.message,
                 suggestedActions: [
-                    String(localized: "The server may require Native Network Encryption, which the pure-Swift driver cannot negotiate."),
-                    String(localized: "Configure the listener for TLS, or set SQLNET.ENCRYPTION_SERVER to ACCEPTED instead of REQUIRED."),
-                    String(localized: "If the same connection works in DBeaver or SQL Developer, they use Oracle's OCI client, which supports Native Network Encryption."),
-                    String(localized: "Check for a firewall or load balancer between the client and server that closes connections mid-handshake.")
+                    String(localized: "Check for a firewall, VPN, or load balancer between you and the server that closes connections mid-handshake."),
+                    String(localized: "If the listener endpoint is TLS-only (TCPS), set the SSL mode in the connection's SSL settings."),
+                    String(localized: "Confirm the host and port reach the database listener directly, not a proxy that resets unknown traffic.")
                 ],
                 supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
             )

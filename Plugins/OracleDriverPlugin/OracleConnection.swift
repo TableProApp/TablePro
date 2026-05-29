@@ -189,7 +189,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             let target = useSID ? "\(self.host):\(self.port):\(identifier)" : "\(self.host):\(self.port)/\(identifier)"
             osLogger.debug("Connected to Oracle \(target)")
         } catch let sqlError as OracleSQLError {
-            let detail = sqlError.serverInfo?.message ?? sqlError.description
+            let detail = Self.connectFailureDetail(sqlError)
             osLogger.error("Oracle connection failed: \(detail)")
             if let sslError = Self.classifySSLError(detail) {
                 throw sslError
@@ -236,6 +236,11 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         if codeDescription.hasPrefix("unsupportedVerifierType") {
             return .authVerifierUnsupported(flag: codeDescription)
         }
+        // A listener that refuses the connection (wrong service name, SID, or listener
+        // policy) sends its own error text, which is more useful than a generic message.
+        if error.underlying is OracleListenerRefusedError {
+            return .connectionFailed
+        }
         switch codeDescription {
         case "uncleanShutdown":
             return .authConnectionDropped
@@ -244,6 +249,19 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         default:
             return .connectionFailed
         }
+    }
+
+    private static func connectFailureDetail(_ error: OracleSQLError) -> String {
+        if let refused = error.underlying as? OracleListenerRefusedError {
+            if let code = refused.code {
+                return String(
+                    format: String(localized: "The Oracle listener refused the connection (ORA-%d)."),
+                    code
+                )
+            }
+            return String(localized: "The Oracle listener refused the connection.")
+        }
+        return error.serverInfo?.message ?? error.description
     }
 
     private static func connectErrorMessage(
