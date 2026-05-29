@@ -63,18 +63,12 @@ final class QueryExecutor {
         var parallelSchemaTask: Task<SchemaResult, Error>?
         if fetchSchemaForTable, let tableName, !tableName.isEmpty {
             parallelSchemaTask = Task {
-                guard let driver = DatabaseManager.shared.driver(for: connId) else {
-                    throw DatabaseError.notConnected
+                try await DatabaseManager.shared.withMetadataDriver(connectionId: connId) { driver in
+                    let cols = try await driver.fetchColumns(table: tableName)
+                    let fks = try await driver.fetchForeignKeys(table: tableName)
+                    let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
+                    return (columnInfo: cols, fkInfo: fks, approximateRowCount: approxCount)
                 }
-                async let cols = driver.fetchColumns(table: tableName)
-                async let fks = driver.fetchForeignKeys(table: tableName)
-                let result = try await (columnInfo: cols, fkInfo: fks)
-                let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
-                return (
-                    columnInfo: result.columnInfo,
-                    fkInfo: result.fkInfo,
-                    approximateRowCount: approxCount
-                )
             }
         }
 
@@ -174,13 +168,13 @@ final class QueryExecutor {
         if let parallelTask {
             return try? await parallelTask.value
         }
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
         do {
-            async let cols = driver.fetchColumns(table: tableName)
-            async let fks = driver.fetchForeignKeys(table: tableName)
-            let (c, f) = try await (cols, fks)
-            let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
-            return (columnInfo: c, fkInfo: f, approximateRowCount: approxCount)
+            return try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
+                let cols = try await driver.fetchColumns(table: tableName)
+                let fks = try await driver.fetchForeignKeys(table: tableName)
+                let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
+                return (columnInfo: cols, fkInfo: fks, approximateRowCount: approxCount)
+            }
         } catch {
             queryExecutorLog.error("Phase 2 schema fetch failed: \(error.localizedDescription, privacy: .public)")
             return nil

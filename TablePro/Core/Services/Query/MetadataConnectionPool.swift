@@ -10,9 +10,16 @@ import os
 final class MetadataConnectionPool {
     static let shared = MetadataConnectionPool()
 
+    enum Workload: Hashable, Sendable {
+        case interactive
+        case bulk
+    }
+
     private struct Key: Hashable, Sendable {
         let connectionId: UUID
         let database: String
+        let schema: String?
+        let workload: Workload
     }
 
     private final class Entry {
@@ -33,7 +40,7 @@ final class MetadataConnectionPool {
 
     private var entries: [Key: Entry] = [:]
     private var pending: [Key: Task<Void, Error>] = [:]
-    private let maxPerConnection = 4
+    private let maxPerConnection = 6
     private let connectTimeoutSeconds: UInt64 = 15
     private static let logger = Logger(subsystem: "com.TablePro", category: "MetadataConnectionPool")
 
@@ -42,9 +49,13 @@ final class MetadataConnectionPool {
     func withDriver<T: Sendable>(
         connectionId: UUID,
         database: String,
+        schema: String? = nil,
+        workload: Workload = .interactive,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        let entry = try await acquireEntry(connectionId: connectionId, database: database)
+        let entry = try await acquireEntry(
+            connectionId: connectionId, database: database, schema: schema, workload: workload
+        )
         entry.inFlightCount += 1
         entry.lastUsed = Date()
         defer { releaseEntry(entry) }
@@ -66,10 +77,13 @@ final class MetadataConnectionPool {
     }
 
     func invalidate(connectionId: UUID, database: String) {
-        let key = Key(connectionId: connectionId, database: database)
-        pending[key]?.cancel()
-        pending.removeValue(forKey: key)
-        closeOrDeferEntry(forKey: key)
+        let matching = Set(entries.keys.filter { $0.connectionId == connectionId && $0.database == database })
+            .union(pending.keys.filter { $0.connectionId == connectionId && $0.database == database })
+        for key in matching {
+            pending[key]?.cancel()
+            pending.removeValue(forKey: key)
+            closeOrDeferEntry(forKey: key)
+        }
     }
 
     func closeAll(connectionId: UUID) {
@@ -98,8 +112,10 @@ final class MetadataConnectionPool {
         }
     }
 
-    private func acquireEntry(connectionId: UUID, database: String) async throws -> Entry {
-        let key = Key(connectionId: connectionId, database: database)
+    private func acquireEntry(
+        connectionId: UUID, database: String, schema: String?, workload: Workload
+    ) async throws -> Entry {
+        let key = Key(connectionId: connectionId, database: database, schema: schema, workload: workload)
         if let entry = entries[key], entry.driver.status == .connected {
             return entry
         }
@@ -152,6 +168,26 @@ final class MetadataConnectionPool {
         )
         do {
             try await connectWithTimeout(driver: driver, database: key.database)
+            do {
+                try await driver.applyQueryTimeout(AppSettingsManager.shared.general.queryTimeoutSeconds)
+            } catch {
+                Self.logger.warning(
+                    "[metadata-pool] query timeout not applied connId=\(key.connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                )
+            }
+            await DatabaseManager.shared.executeStartupCommands(
+                session.connection.startupCommands, on: driver, connectionName: session.connection.name
+            )
+            if let schema = key.schema, let switchable = driver as? SchemaSwitchable {
+                do {
+                    try await switchable.switchSchema(to: schema)
+                } catch {
+                    Self.logger.warning(
+                        "[metadata-pool] schema switch failed, discarding connection connId=\(key.connectionId, privacy: .public) schema=\(schema, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                    )
+                    throw error
+                }
+            }
         } catch {
             driver.disconnect()
             throw error

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Moving a connection into or out of a group now syncs across devices, instead of leaving it ungrouped on your other Macs.
+- Opening a table on a connection with many tables no longer stalls for several seconds while autocomplete and table metadata load. Background schema introspection now runs on separate connections instead of waiting behind, or blocking, the query that fills the grid. (#1483)
 
 ## [0.46.0] - 2026-05-28
 
