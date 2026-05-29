@@ -55,7 +55,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isRestorable = AppSettingsStorage.shared.loadGeneral().startupBehavior == .reopenLast
         window.restorationClass = TabWindowRestoration.self
         window.toolbarStyle = .unified
-        window.titleVisibility = .hidden
+        window.titleVisibility = .visible
         window.tabbingMode = .preferred
         window.tabbingIdentifier = WindowManager.tabbingIdentifier(for: payload.connectionId)
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])

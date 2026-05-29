@@ -661,28 +661,6 @@
         }
       }
     },
-    "%@ - Preview" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ - Önizleme"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ - Xem trước"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ - 预览"
-          }
-        }
-      }
-    },
     "%@ (%@@%@)" : {
       "localizations" : {
         "en" : {
