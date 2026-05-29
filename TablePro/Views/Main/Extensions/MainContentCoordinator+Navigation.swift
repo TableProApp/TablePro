@@ -19,7 +19,8 @@ extension MainContentCoordinator {
         _ table: TableInfo,
         showStructure: Bool = false,
         redirectToSibling: Bool = false,
-        forceNonPreview: Bool = false
+        forceNonPreview: Bool = false,
+        activateGridFocus: Bool = false
     ) {
         openTableTab(
             table.name,
@@ -27,7 +28,8 @@ extension MainContentCoordinator {
             showStructure: showStructure,
             isView: table.type == .view,
             redirectToSibling: redirectToSibling,
-            forceNonPreview: forceNonPreview
+            forceNonPreview: forceNonPreview,
+            activateGridFocus: activateGridFocus
         )
     }
 
@@ -37,7 +39,8 @@ extension MainContentCoordinator {
         showStructure: Bool = false,
         isView: Bool = false,
         redirectToSibling: Bool = false,
-        forceNonPreview: Bool = false
+        forceNonPreview: Bool = false,
+        activateGridFocus: Bool = false
     ) {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
@@ -65,7 +68,14 @@ extension MainContentCoordinator {
             if showStructure, let (_, tabIndex) = tabManager.selectedTabAndIndex {
                 tabManager.mutate(at: tabIndex) { $0.display.resultsViewMode = .structure }
             }
+            if activateGridFocus {
+                focusActiveGrid()
+            }
             return
+        }
+
+        if activateGridFocus {
+            pendingGridFocusOnOpen = true
         }
 
         // During database switch, update the existing tab in-place instead of

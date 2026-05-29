@@ -112,7 +112,7 @@ struct SidebarContextMenu: View {
             Button("Show Structure") {
                 perform {
                     if let clickedTable {
-                        coordinator?.openTableTab(clickedTable, showStructure: true)
+                        coordinator?.openTableTab(clickedTable, showStructure: true, activateGridFocus: true)
                     }
                 }
             }

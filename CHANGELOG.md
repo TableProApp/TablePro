@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Running `EXPLAIN` or `EXPLAIN ANALYZE` typed in the editor now opens the plan viewer instead of squashing the plan into one truncated grid cell. (#1480)
 - Filtering the data grid keeps you on the keyboard. Applying or clearing a filter returns focus to the grid so you can keep moving through cells, Return applies the filter, and Escape closes the filter panel and returns to the grid. (#1490)
-- Opening a table now focuses the data grid, so you can move through cells with the arrow keys without clicking first. (#1490)
+- Opening a table (Return or double-click in the sidebar) moves keyboard focus into the data grid so you can navigate cells with the arrow keys. Arrowing the sidebar still previews tables without taking focus. (#1490)
 - Moving a connection into or out of a group now syncs across devices, instead of leaving it ungrouped on your other Macs.
 - Opening a table on a connection with many tables no longer stalls for several seconds while autocomplete and table metadata load. Background schema introspection now runs on separate connections instead of waiting behind, or blocking, the query that fills the grid. (#1483)
 

@@ -215,7 +215,7 @@ internal struct FavoritesTabView: View {
     @ViewBuilder
     private func favoriteTableContextMenu(_ table: TableInfo) -> some View {
         Button(String(localized: "Open Table")) {
-            coordinator?.openTableTab(table)
+            coordinator?.openTableTab(table, activateGridFocus: true)
         }
 
         Button(String(localized: "Show ER Diagram")) {
@@ -265,7 +265,7 @@ internal struct FavoritesTabView: View {
         switch selection {
         case .table(let database, let schema, let name):
             if let table = favoriteTable(database: database, schema: schema, name: name) {
-                coordinator?.openTableTab(table)
+                coordinator?.openTableTab(table, activateGridFocus: true)
             }
         case .node(let id):
             guard let node = viewModel.node(forId: id) else { return }

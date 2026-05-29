@@ -12,9 +12,9 @@ final class KeyHandlingTableView: NSTableView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard coordinator?.tabType == .table, let window else { return }
-        let current = window.firstResponder
-        guard current == nil || current === window else { return }
+        guard coordinator?.tabType == .table, let window,
+              let mainCoordinator = (coordinator?.delegate as? DataTabGridDelegate)?.coordinator,
+              mainCoordinator.consumePendingGridFocus() else { return }
         window.makeFirstResponder(self)
     }
 

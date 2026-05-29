@@ -139,6 +139,10 @@ final class MainContentCoordinator {
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 
+    /// One-shot intent set when the user explicitly opens a table (Return/double-click),
+    /// consumed by the grid as it appears to move focus into it. Never set on mere selection.
+    @ObservationIgnored var pendingGridFocusOnOpen = false
+
     /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
     @ObservationIgnored weak var inspectorProxy: InspectorVisibilityProxy?
 
