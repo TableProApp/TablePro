@@ -46,9 +46,11 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        core.onPostConnect = { [weak self] in
+            await self?.probeCatalogPresence()
+            await self?.probePostgisOids()
+        }
         try await core.connect()
-        await probeCatalogPresence()
-        await probePostgisOids()
     }
 
     private func probeCatalogPresence() async {

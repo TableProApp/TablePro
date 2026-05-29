@@ -15,6 +15,8 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     var currentSchema: String = "public"
 
+    var onPostConnect: (@Sendable () async -> Void)?
+
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
 
@@ -42,6 +44,8 @@ final class LibPQDriverCore: @unchecked Sendable {
            let schema = schemaResult.rows.first?.first?.asText {
             currentSchema = schema
         }
+
+        await onPostConnect?()
     }
 
     func disconnect() {
