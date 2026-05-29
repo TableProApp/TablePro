@@ -118,13 +118,16 @@ struct DatabaseTreeView: View {
         .onAppear {
             loadDatabasesIfNeeded()
             expandActive()
-            reconcileLoads()
+            reconcileLoads(retryFailed: false)
         }
         .onChange(of: activeContextKey) { _, _ in
             expandActive()
         }
         .onChange(of: reconcileKey) { _, _ in
-            reconcileLoads()
+            reconcileLoads(retryFailed: true)
+        }
+        .onChange(of: schemaGenerationToken) { _, _ in
+            reconcileLoads(retryFailed: false)
         }
         .onChange(of: localSelection) { oldRefs, newRefs in
             guard let ref = SelectionDelta.singleAddition(old: oldRefs, new: newRefs) else { return }
@@ -137,7 +140,7 @@ struct DatabaseTreeView: View {
     }
 
     private var reconcileKey: String {
-        "\(committedActiveDatabase ?? "")|\(committedActiveSchema ?? "")|\(schemaGenerationToken)|\(connectionStatusToken)"
+        "\(committedActiveDatabase ?? "")|\(committedActiveSchema ?? "")|\(connectionStatusToken)"
     }
 
     private var connectionStatusToken: String {
@@ -457,37 +460,51 @@ struct DatabaseTreeView: View {
         }
     }
 
-    private func reconcileLoads() {
+    private func reconcileLoads(retryFailed: Bool) {
         guard case .loaded = treeService.databaseListState(for: connectionId) else { return }
 
         if let active = committedActiveDatabase {
-            ensureContentLoaded(database: active, schema: supportsSchemaLevel ? committedActiveSchema : nil)
+            ensureContentLoaded(
+                database: active,
+                schema: supportsSchemaLevel ? committedActiveSchema : nil,
+                retryFailed: retryFailed
+            )
         }
 
         for database in windowState.expandedTreeDatabases {
             guard !supportsSchemaLevel else {
-                ensureSchemaListLoaded(database: database)
+                ensureSchemaListLoaded(database: database, retryFailed: retryFailed)
                 let expandedSchemas = windowState.expandedTreeDatabaseSchemas
                     .filter { $0.database == database }
                 for key in expandedSchemas {
-                    ensureContentLoaded(database: database, schema: key.schema)
+                    ensureContentLoaded(database: database, schema: key.schema, retryFailed: retryFailed)
                 }
                 continue
             }
-            ensureContentLoaded(database: database, schema: nil)
+            ensureContentLoaded(database: database, schema: nil, retryFailed: retryFailed)
         }
     }
 
-    private func ensureSchemaListLoaded(database: String) {
-        guard case .idle = treeService.schemaListState(connectionId: connectionId, database: database) else { return }
-        loadDatabaseContentIfNeeded(database)
+    private func ensureSchemaListLoaded(database: String, retryFailed: Bool) {
+        switch treeService.schemaListState(connectionId: connectionId, database: database) {
+        case .idle:
+            loadDatabaseContentIfNeeded(database)
+        case .failed where retryFailed:
+            loadDatabaseContentIfNeeded(database)
+        case .loading, .loaded, .failed:
+            return
+        }
     }
 
-    private func ensureContentLoaded(database: String, schema: String?) {
-        guard case .idle = treeService.tableState(
-            connectionId: connectionId, database: database, schema: schema
-        ) else { return }
-        loadTablesIfNeeded(database: database, schema: schema)
+    private func ensureContentLoaded(database: String, schema: String?, retryFailed: Bool) {
+        switch treeService.tableState(connectionId: connectionId, database: database, schema: schema) {
+        case .idle:
+            loadTablesIfNeeded(database: database, schema: schema)
+        case .failed where retryFailed:
+            loadTablesIfNeeded(database: database, schema: schema)
+        case .loading, .loaded, .failed:
+            return
+        }
     }
 
     private func loadDatabaseContentIfNeeded(_ database: String) {

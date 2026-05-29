@@ -150,7 +150,6 @@ final class DatabaseTreeMetadataService {
 
     func loadSchemaList(connectionId: UUID, database: String) async {
         if database == activeDatabase(for: connectionId) { return }
-        guard !isReconnecting(connectionId) else { return }
         let key = DatabaseKey(connectionId: connectionId, database: database)
         if case .loaded = schemaListStates[key] { return }
         schemaListStates[key] = .loading
@@ -174,7 +173,6 @@ final class DatabaseTreeMetadataService {
     }
 
     func loadTables(connectionId: UUID, database: String, schema: String?) async {
-        guard !isReconnecting(connectionId) else { return }
         await loadRoutines(connectionId: connectionId, database: database, schema: schema)
         if database == activeDatabase(for: connectionId) {
             guard let session = DatabaseManager.shared.session(for: connectionId),
@@ -214,7 +212,6 @@ final class DatabaseTreeMetadataService {
     }
 
     func loadRoutines(connectionId: UUID, database: String, schema: String?) async {
-        guard !isReconnecting(connectionId) else { return }
         let key = Self.tableKey(connectionId: connectionId, database: database, schema: schema)
         if routineLists[key] != nil { return }
         let normalizedSchema = key.schema
@@ -344,10 +341,6 @@ final class DatabaseTreeMetadataService {
         return value.isEmpty ? nil : value
     }
 
-    private func isReconnecting(_ connectionId: UUID) -> Bool {
-        if case .connecting = DatabaseManager.shared.session(for: connectionId)?.status { return true }
-        return false
-    }
 
     private static func tableKey(connectionId: UUID, database: String, schema: String?) -> TableKey {
         let normalized: String? = (schema?.isEmpty == true) ? nil : schema
