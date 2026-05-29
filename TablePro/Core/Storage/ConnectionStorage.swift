@@ -590,6 +590,9 @@ private struct StoredConnection: Codable {
     // Plugin-driven additional fields
     let additionalFields: [String: String]?
 
+    // Password source (file, env, or command) for connections provisioned outside the app
+    let passwordSource: PasswordSource?
+
     init(from connection: DatabaseConnection) {
         self.id = connection.id
         self.name = connection.name
@@ -675,6 +678,9 @@ private struct StoredConnection: Codable {
 
         // Plugin-driven additional fields
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
+
+        // Password source (not synced to iCloud; see SyncRecordMapper)
+        self.passwordSource = connection.passwordSource
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -697,6 +703,7 @@ private struct StoredConnection: Codable {
         case localOnly
         case isSample
         case isFavorite
+        case passwordSource
     }
 
     func encode(to encoder: Encoder) throws {
@@ -740,6 +747,7 @@ private struct StoredConnection: Codable {
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
         try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encodeIfPresent(passwordSource, forKey: .passwordSource)
     }
 
     // Custom decoder to handle migration from old format
@@ -806,6 +814,7 @@ private struct StoredConnection: Codable {
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
         cloudflareTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudflareTunnelModeJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
+        passwordSource = try? container.decodeIfPresent(PasswordSource.self, forKey: .passwordSource)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
@@ -913,6 +922,7 @@ private struct StoredConnection: Codable {
             localOnly: localOnly,
             isSample: isSample,
             isFavorite: isFavorite,
+            passwordSource: passwordSource,
             additionalFields: mergedFields
         )
     }

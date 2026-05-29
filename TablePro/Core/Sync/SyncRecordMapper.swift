@@ -113,6 +113,8 @@ struct SyncRecordMapper {
         // the sync schema in the future, apply path contraction to its snapshot.
         // cloudflareTunnelMode is also NOT synced: it is device-local runtime
         // config and its service-token secrets live in the Keychain.
+        // passwordSource is also NOT synced: its file path, env var, or command
+        // is device-local and may not exist or resolve on another Mac.
         do {
             let sshData = try encoder.encode(Self.makePortable(connection.sshConfig))
             record["sshConfigJson"] = sshData as CKRecordValue

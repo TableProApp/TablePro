@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain, so scripts can provision a connection without entering the password by hand. (#1254)
+
 ## [0.46.0] - 2026-05-28
 
 ### Added

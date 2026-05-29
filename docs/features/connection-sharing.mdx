@@ -168,6 +168,24 @@ Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved at connection time.
 
 Works with `.env` files, 1Password CLI (`op run`), direnv.
 
+## Password Sources
+
+Connections in `~/Library/Application Support/TablePro/connections.json` can declare where their password comes from instead of storing it in the Keychain. This helps when a script provisions connections, for example one Docker database per git worktree. The password is resolved at connect time. It is not synced to iCloud, since the path, variable, or command is specific to one Mac.
+
+Add a `passwordSource` object to the connection:
+
+```json
+{ "passwordSource": { "kind": "file", "path": "~/.config/tablepro/secrets/feature-x.pw" } }
+{ "passwordSource": { "kind": "env", "variable": "STAGING_DB_PASSWORD" } }
+{ "passwordSource": { "kind": "command", "shell": "op read op://vault/feature-x/password" } }
+```
+
+- `file`: reads the password from the file. A trailing newline is trimmed. Use `chmod 600` to keep it private.
+- `env`: reads the named environment variable. Apps launched from the Dock do not inherit your shell exports, so set it with `launchctl setenv NAME value` or launch TablePro from a terminal.
+- `command`: runs the command through `/bin/bash` and reads stdout. Works with `op`, `vault`, `pass`, and `sops`. A trailing newline is trimmed, a non-zero exit fails the connection, and the command has a 30 second timeout.
+
+When `passwordSource` is set it replaces the Keychain lookup for that connection. If resolution fails, the connection reports the error instead of falling back to the Keychain.
+
 ## File Format
 
 JSON. Required fields: `name`, `host`, `type`.
