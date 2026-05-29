@@ -53,7 +53,7 @@ final class QueryExecutionCoordinator {
     func dispatchStatements(_ statements: [String], tabIndex index: Int) {
         guard !parent.isShowingSafeModePrompt else { return }
         parent.isShowingSafeModePrompt = true
-        let request = makeExecuteRequest(sql: statements.joined(separator: "\n"))
+        let request = makeExecuteRequest(statements: statements)
         Task { [parent] in
             defer { parent.isShowingSafeModePrompt = false }
             switch await ExecutionGateProvider.shared.authorize(request) {
@@ -69,12 +69,12 @@ final class QueryExecutionCoordinator {
         }
     }
 
-    private func makeExecuteRequest(sql: String) -> OperationRequest {
+    private func makeExecuteRequest(statements: [String]) -> OperationRequest {
         OperationRequest(
             connectionId: parent.connectionId,
             databaseType: parent.connection.type,
-            sql: sql,
-            kind: OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: parent.connection.type)),
+            sql: statements.joined(separator: "\n"),
+            kind: OperationKind.worst(of: statements, databaseType: parent.connection.type),
             caller: .userInterface,
             capabilities: .interactiveUser,
             operationDescription: String(localized: "Execute Query")
@@ -89,7 +89,7 @@ final class QueryExecutionCoordinator {
         guard !parent.isShowingSafeModePrompt else { return }
         parent.isShowingSafeModePrompt = true
         let tabId = parent.tabManager.tabs[index].id
-        let request = makeExecuteRequest(sql: statements.joined(separator: "\n"))
+        let request = makeExecuteRequest(statements: statements)
         Task { [parent] in
             defer { parent.isShowingSafeModePrompt = false }
             switch await ExecutionGateProvider.shared.authorize(request) {

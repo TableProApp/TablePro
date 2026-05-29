@@ -36,4 +36,18 @@ internal extension OperationKind {
         case .destructive: return .destructiveQuery
         }
     }
+
+    static func worst(of statements: [String], databaseType: DatabaseType) -> OperationKind {
+        var result: OperationKind = .readQuery
+        for statement in statements {
+            let tier = QueryClassifier.classifyTier(statement, databaseType: databaseType)
+            if tier == .destructive || QueryClassifier.isDangerousQuery(statement, databaseType: databaseType) {
+                return .destructiveQuery
+            }
+            if tier == .write {
+                result = .writeQuery
+            }
+        }
+        return result
+    }
 }

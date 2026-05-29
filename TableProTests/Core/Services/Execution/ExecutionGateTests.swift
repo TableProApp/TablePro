@@ -121,6 +121,39 @@ struct ExecutionGateTests {
         #expect(confirm.callCount == 1)
     }
 
+    @Test("Unqualified DELETE is treated as destructive even when declared a write")
+    func unqualifiedDeleteForcesConfirm() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(sql: "DELETE FROM users", kind: .writeQuery))
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 1)
+        #expect(confirm.lastDestructive)
+    }
+
+    @Test("Qualified DELETE with WHERE is an ordinary write")
+    func qualifiedDeleteIsWrite() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(sql: "DELETE FROM users WHERE id = 1", kind: .writeQuery))
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 0)
+    }
+
+    @Test("worst(of:) escalates to destructive for any destructive or dangerous statement")
+    func worstAcrossStatements() {
+        #expect(OperationKind.worst(of: ["SELECT 1", "DROP TABLE t"], databaseType: .mysql) == .destructiveQuery)
+        #expect(OperationKind.worst(of: ["SELECT 1", "DELETE FROM t"], databaseType: .mysql) == .destructiveQuery)
+        #expect(OperationKind.worst(of: ["SELECT 1", "UPDATE t SET a=1"], databaseType: .mysql) == .writeQuery)
+        #expect(OperationKind.worst(of: ["SELECT 1", "SELECT 2"], databaseType: .mysql) == .readQuery)
+    }
+
     // MARK: - Read-only
 
     @Test("Read-only allows reads, blocks writes")
