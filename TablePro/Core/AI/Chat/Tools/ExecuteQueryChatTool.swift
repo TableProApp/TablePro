@@ -83,6 +83,13 @@ struct ExecuteQueryChatTool: ChatTool {
             _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
         }
 
+        try await context.authPolicy.checkSafeModeDialog(
+            sql: query,
+            connectionId: connectionId,
+            databaseType: meta.databaseType,
+            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+        )
+
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
