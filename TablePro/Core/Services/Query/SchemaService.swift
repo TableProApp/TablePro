@@ -89,14 +89,28 @@ final class SchemaService {
     }
 
     func loadSchemaTables(connectionId: UUID, schema: String, driver: DatabaseDriver) async {
-        if case .loaded = schemaState(for: connectionId, schema: schema) { return }
+        if case .loaded = schemaState(for: connectionId, schema: schema) {
+            Self.logger.debug(
+                "[schema] loadSchemaTables skip-loaded connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public)"
+            )
+            return
+        }
+        Self.logger.debug(
+            "[schema] loadSchemaTables begin connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public) driver=\(driver.status.label, privacy: .public)"
+        )
         setPerSchemaState(.loading, connectionId: connectionId, schema: schema)
         do {
             let tables = try await perSchemaDedup.execute(key: SchemaKey(connectionId: connectionId, schema: schema)) {
                 try await driver.fetchTables(schema: schema)
             }
             setPerSchemaState(.loaded(tables), connectionId: connectionId, schema: schema)
+            Self.logger.debug(
+                "[schema] loadSchemaTables loaded connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public) count=\(tables.count, privacy: .public)"
+            )
         } catch is CancellationError {
+            Self.logger.debug(
+                "[schema] loadSchemaTables cancelled connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public)"
+            )
             return
         } catch {
             Self.logger.warning(
@@ -172,6 +186,9 @@ final class SchemaService {
     }
 
     func invalidate(connectionId: UUID) async {
+        Self.logger.debug(
+            "[schema] invalidate connId=\(connectionId, privacy: .public) perSchema=\(self.perSchemaStates[connectionId]?.count ?? 0, privacy: .public)"
+        )
         await loadDedup.cancel(key: connectionId)
         await procedureDedup.cancel(key: connectionId)
         await functionDedup.cancel(key: connectionId)
@@ -201,6 +218,9 @@ final class SchemaService {
         driver: DatabaseDriver,
         connection: DatabaseConnection
     ) async {
+        Self.logger.debug(
+            "[schema] runLoad begin connId=\(connectionId, privacy: .public) db=\(connection.database, privacy: .public) driver=\(driver.status.label, privacy: .public)"
+        )
         states[connectionId] = .loading
         bumpGeneration(connectionId)
 
@@ -243,7 +263,11 @@ final class SchemaService {
             procedures[connectionId] = loadedProcedures
             functions[connectionId] = loadedFunctions
             bumpGeneration(connectionId)
+            Self.logger.debug(
+                "[schema] runLoad loaded connId=\(connectionId, privacy: .public) tables=\(tables.count, privacy: .public) schemas=\(self.schemasInOrder[connectionId]?.count ?? 0, privacy: .public)"
+            )
         } catch is CancellationError {
+            Self.logger.debug("[schema] runLoad cancelled connId=\(connectionId, privacy: .public)")
             return
         } catch {
             Self.logger.warning(
@@ -316,6 +340,9 @@ final class SchemaService {
         guard let session = DatabaseManager.shared.activeSessions[connectionId],
               let driver = session.driver else { return }
         let connection = session.connection
+        Self.logger.debug(
+            "[schema] handleSchemaSwitch connId=\(connectionId, privacy: .public) schema=\(session.currentSchema ?? "nil", privacy: .public) grouping=\(connection.type.rawValue, privacy: .public)"
+        )
         if PluginManager.shared.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
             await invalidate(connectionId: connectionId)
             await reload(connectionId: connectionId, driver: driver, connection: connection)
@@ -325,6 +352,9 @@ final class SchemaService {
     }
 
     private func reloadCurrentSchemaContent(connectionId: UUID, driver: DatabaseDriver) async {
+        Self.logger.debug(
+            "[schema] reloadCurrentSchemaContent connId=\(connectionId, privacy: .public) driver=\(driver.status.label, privacy: .public)"
+        )
         await loadDedup.cancel(key: connectionId)
         await procedureDedup.cancel(key: connectionId)
         await functionDedup.cancel(key: connectionId)

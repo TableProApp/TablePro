@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import os
 import SwiftUI
 import TableProPluginKit
 
@@ -45,6 +46,8 @@ struct DatabaseTreeSchemaRef: Identifiable {
 
 struct DatabaseTreeView: View {
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SidebarTreeView")
 
     let connectionId: UUID
     let databaseType: DatabaseType
@@ -135,21 +138,30 @@ struct DatabaseTreeView: View {
             }
         }
         .onAppear {
+            Self.logger.debug(
+                "onAppear connId=\(connectionId, privacy: .public) active=\(committedActiveDatabase ?? "nil", privacy: .public) toolbar=\(activeDatabase ?? "nil", privacy: .public)"
+            )
             loadDatabasesIfNeeded()
             expandActive()
             reconcileLoads(retryFailed: false)
         }
-        .onChange(of: activeContextKey) { _, _ in
+        .onChange(of: activeContextKey) { old, new in
+            Self.logger.debug("trigger activeContextKey '\(old, privacy: .public)' -> '\(new, privacy: .public)'")
             expandActive()
         }
-        .onChange(of: reconcileKey) { _, _ in
+        .onChange(of: reconcileKey) { old, new in
+            Self.logger.debug("trigger reconcileKey '\(old, privacy: .public)' -> '\(new, privacy: .public)'")
             reconcileLoads(retryFailed: true)
         }
-        .onChange(of: schemaGenerationToken) { _, _ in
+        .onChange(of: schemaGenerationToken) { old, new in
+            Self.logger.debug("trigger schemaGeneration \(old, privacy: .public) -> \(new, privacy: .public)")
             reconcileLoads(retryFailed: false)
         }
         .onChange(of: localSelection) { oldRefs, newRefs in
             guard let ref = SelectionDelta.singleAddition(old: oldRefs, new: newRefs) else { return }
+            Self.logger.debug(
+                "selection-navigate db=\(ref.database, privacy: .public) schema=\(ref.schema ?? "nil", privacy: .public) table=\(ref.table.name, privacy: .public)"
+            )
             openTable(ref.table, in: ref.database, schema: ref.schema)
         }
     }
@@ -267,6 +279,7 @@ struct DatabaseTreeView: View {
         case .idle, .loading:
             loadingRow(String(localized: "Loading schemas\u{2026}"))
                 .task(id: database) {
+                    Self.logger.debug("task->loadSchemaList db=\(database, privacy: .public)")
                     await treeService.loadSchemaList(connectionId: connectionId, database: database)
                 }
         case .failed(let message):
@@ -297,6 +310,9 @@ struct DatabaseTreeView: View {
         case .idle, .loading:
             loadingRow(String(localized: "Loading tables\u{2026}"))
                 .task(id: "\(database)|\(schema ?? "")") {
+                    Self.logger.debug(
+                        "task->loadTables db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
+                    )
                     await treeService.loadTables(
                         connectionId: connectionId, database: database, schema: schema
                     )
@@ -452,6 +468,7 @@ struct DatabaseTreeView: View {
         Binding(
             get: { !searchText.isEmpty || windowState.expandedTreeDatabases.contains(database) },
             set: { isExpanded in
+                Self.logger.debug("expand-database db=\(database, privacy: .public) expanded=\(isExpanded, privacy: .public)")
                 if isExpanded {
                     windowState.expandedTreeDatabases.insert(database)
                     loadDatabaseContentIfNeeded(database)
@@ -467,6 +484,9 @@ struct DatabaseTreeView: View {
         return Binding(
             get: { !searchText.isEmpty || windowState.expandedTreeDatabaseSchemas.contains(key) },
             set: { isExpanded in
+                Self.logger.debug(
+                    "expand-schema db=\(database, privacy: .public) schema=\(schema, privacy: .public) expanded=\(isExpanded, privacy: .public)"
+                )
                 if isExpanded {
                     windowState.expandedTreeDatabaseSchemas.insert(key)
                     loadTablesIfNeeded(database: database, schema: schema)
@@ -478,7 +498,10 @@ struct DatabaseTreeView: View {
     }
 
     private func loadDatabasesIfNeeded() {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            Self.logger.debug("loadDatabasesIfNeeded skip-no-driver connId=\(connectionId, privacy: .public)")
+            return
+        }
         Task {
             await treeService.loadDatabaseList(
                 connectionId: connectionId,
@@ -489,7 +512,14 @@ struct DatabaseTreeView: View {
     }
 
     private func reconcileLoads(retryFailed: Bool) {
-        guard case .loaded = treeService.databaseListState(for: connectionId) else { return }
+        guard case .loaded = treeService.databaseListState(for: connectionId) else {
+            Self.logger.debug("reconcile skip (db list not loaded) retryFailed=\(retryFailed, privacy: .public)")
+            return
+        }
+        let expandedSchemaCount = windowState.expandedTreeDatabaseSchemas.count
+        Self.logger.debug(
+            "reconcile begin retryFailed=\(retryFailed, privacy: .public) active=\(committedActiveDatabase ?? "nil", privacy: .public) activeSchema=\(committedActiveSchema ?? "nil", privacy: .public) expandedDbs=\(windowState.expandedTreeDatabases.count, privacy: .public) expandedSchemas=\(expandedSchemaCount, privacy: .public)"
+        )
 
         if let active = committedActiveDatabase {
             ensureContentLoaded(
@@ -514,10 +544,13 @@ struct DatabaseTreeView: View {
     }
 
     private func ensureSchemaListLoaded(database: String, retryFailed: Bool) {
-        switch treeService.schemaListState(connectionId: connectionId, database: database) {
+        let state = treeService.schemaListState(connectionId: connectionId, database: database)
+        switch state {
         case .idle:
+            Self.logger.debug("reconcile kick schemaList db=\(database, privacy: .public) reason=idle")
             loadDatabaseContentIfNeeded(database)
         case .failed where retryFailed:
+            Self.logger.debug("reconcile kick schemaList db=\(database, privacy: .public) reason=retryFailed")
             loadDatabaseContentIfNeeded(database)
         case .loading, .loaded, .failed:
             return
@@ -525,10 +558,17 @@ struct DatabaseTreeView: View {
     }
 
     private func ensureContentLoaded(database: String, schema: String?, retryFailed: Bool) {
-        switch treeService.tableState(connectionId: connectionId, database: database, schema: schema) {
+        let state = treeService.tableState(connectionId: connectionId, database: database, schema: schema)
+        switch state {
         case .idle:
+            Self.logger.debug(
+                "reconcile kick tables db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) reason=idle"
+            )
             loadTablesIfNeeded(database: database, schema: schema)
         case .failed where retryFailed:
+            Self.logger.debug(
+                "reconcile kick tables db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) reason=retryFailed"
+            )
             loadTablesIfNeeded(database: database, schema: schema)
         case .loading, .loaded, .failed:
             return
@@ -576,12 +616,19 @@ struct DatabaseTreeView: View {
 
     private func setActiveDatabase(_ database: String) {
         guard database != activeDatabase else { return }
+        Self.logger.debug("setActiveDatabase db=\(database, privacy: .public)")
         Task { @MainActor in
             await coordinator?.switchDatabase(to: database)
+            Self.logger.debug(
+                "setActiveDatabase done db=\(database, privacy: .public) committed=\(committedActiveDatabase ?? "nil", privacy: .public)"
+            )
         }
     }
 
     private func setActiveSchema(database: String, schema: String) {
+        Self.logger.debug(
+            "setActiveSchema db=\(database, privacy: .public) schema=\(schema, privacy: .public)"
+        )
         Task { @MainActor in
             if database != activeDatabase {
                 await coordinator?.switchDatabase(to: database)
@@ -594,14 +641,22 @@ struct DatabaseTreeView: View {
 
     private func openTable(_ table: TableInfo, in database: String, schema: String?) {
         Task { @MainActor in
+            Self.logger.debug(
+                "openTable begin table=\(table.name, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) committed=\(committedActiveDatabase ?? "nil", privacy: .public)"
+            )
             if database != committedActiveDatabase {
+                Self.logger.debug("openTable switchDatabase -> \(database, privacy: .public)")
                 await coordinator?.switchDatabase(to: database)
             }
             if let schema,
                schema != coordinator?.toolbarState.currentSchema,
                PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
+                Self.logger.debug("openTable switchSchema -> \(schema, privacy: .public)")
                 await coordinator?.switchSchema(to: schema)
             }
+            Self.logger.debug(
+                "openTable openTableTab table=\(table.name, privacy: .public) committed=\(committedActiveDatabase ?? "nil", privacy: .public) currentSchema=\(coordinator?.toolbarState.currentSchema ?? "nil", privacy: .public)"
+            )
             coordinator?.openTableTab(table)
         }
     }

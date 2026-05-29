@@ -44,6 +44,9 @@ final class MetadataConnectionPool {
         database: String,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
+        Self.logger.debug(
+            "[metadata-pool] withDriver acquire connId=\(connectionId, privacy: .public) db=\(database, privacy: .public)"
+        )
         let entry = try await acquireEntry(connectionId: connectionId, database: database)
         entry.inFlightCount += 1
         entry.lastUsed = Date()
@@ -56,7 +59,18 @@ final class MetadataConnectionPool {
             return try await body(driver)
         }
         entry.tail = Task { @MainActor in _ = try? await work.value }
-        return try await work.value
+        do {
+            let result = try await work.value
+            Self.logger.debug(
+                "[metadata-pool] withDriver done connId=\(connectionId, privacy: .public) db=\(database, privacy: .public)"
+            )
+            return result
+        } catch {
+            Self.logger.debug(
+                "[metadata-pool] withDriver threw connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            throw error
+        }
     }
 
     private func releaseEntry(_ entry: Entry) {
@@ -101,16 +115,21 @@ final class MetadataConnectionPool {
     private func acquireEntry(connectionId: UUID, database: String) async throws -> Entry {
         let key = Key(connectionId: connectionId, database: database)
         if let entry = entries[key], entry.driver.status == .connected {
+            Self.logger.debug("[metadata-pool] reuse connId=\(connectionId, privacy: .public) db=\(database, privacy: .public)")
             return entry
         }
 
         if let inFlight = pending[key] {
+            Self.logger.debug("[metadata-pool] await-pending connId=\(connectionId, privacy: .public) db=\(database, privacy: .public)")
             try await inFlight.value
             guard let entry = entries[key] else { throw DatabaseError.notConnected }
             return entry
         }
 
         guard DatabaseManager.shared.session(for: connectionId) != nil else {
+            Self.logger.debug(
+                "[metadata-pool] acquire-no-session connId=\(connectionId, privacy: .public) db=\(database, privacy: .public)"
+            )
             throw DatabaseError.notConnected
         }
 
