@@ -259,6 +259,23 @@ final class MainContentCommandActions {
         PluginManager.shared.supportsDatabaseSwitching(for: connection.type)
     }
 
+    var canSwitchSidebarLayout: Bool {
+        guard PluginManager.shared.connectionMode(for: connection.type) == .network,
+              PluginManager.shared.supportsDatabaseSwitching(for: connection.type) else {
+            return false
+        }
+        let grouping = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        return grouping == .byDatabase || grouping == .bySchema
+    }
+
+    var sidebarLayout: SidebarLayout {
+        SharedSidebarState.forConnection(connection.id).sidebarLayout
+    }
+
+    func setSidebarLayout(_ layout: SidebarLayout) {
+        SharedSidebarState.forConnection(connection.id).sidebarLayout = layout
+    }
+
     var isCurrentTabEditable: Bool {
         coordinator?.tabManager.selectedTab?.tableContext.isEditable == true
     }

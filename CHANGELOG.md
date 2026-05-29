@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- The sidebar lists every database on the server as a tree; right-click a database or schema to set it as active. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)
+- The sidebar can show every database on the server as an expandable tree. Switch a connection between the flat list and the tree from the View menu (Sidebar Layout); right-click a database or schema to set it active. Set the default layout for new connections in Settings, General. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)
 
 ## [0.46.0] - 2026-05-28
 

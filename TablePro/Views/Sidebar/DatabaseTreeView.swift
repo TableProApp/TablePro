@@ -36,6 +36,12 @@ struct DatabaseTreeView: View {
         coordinator?.toolbarState.currentSchema
     }
 
+    private var committedActiveDatabase: String? {
+        guard let session = DatabaseManager.shared.session(for: connectionId) else { return nil }
+        let value = session.activeDatabase
+        return value.isEmpty ? nil : value
+    }
+
     private var systemSchemas: Set<String> {
         Set(PluginManager.shared.systemSchemaNames(for: databaseType))
     }
@@ -80,6 +86,12 @@ struct DatabaseTreeView: View {
         .onChange(of: activeSchema ?? "") { _, _ in
             expandActive()
         }
+        .onChange(of: localSelection) { oldTables, newTables in
+            let action = TableSelectionAction.resolve(oldTables: oldTables, newTables: newTables)
+            guard case .navigate(let table) = action,
+                  let origin = locateTable(table) else { return }
+            openTable(table, in: origin.database, schema: origin.schema)
+        }
     }
 
     private var treeList: some View {
@@ -94,8 +106,15 @@ struct DatabaseTreeView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .contextMenu(forSelectionType: TableInfo.self) { _ in
-            EmptyView()
+        .contextMenu(forSelectionType: TableInfo.self) { selection in
+            SidebarContextMenu(
+                clickedTable: selection.first,
+                selectedTables: selection,
+                isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+                coordinator: coordinator
+            )
         } primaryAction: { selection in
             guard let table = selection.first,
                   let origin = locateTable(table) else { return }
@@ -145,7 +164,7 @@ struct DatabaseTreeView: View {
                 .foregroundStyle(rowForeground(isActive: isActive, isSystem: db.isSystemDatabase))
         } icon: {
             Image(systemName: db.isSystemDatabase ? "gearshape" : "cylinder")
-                .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .foregroundStyle(db.isSystemDatabase ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
         }
         .contextMenu {
             Button(String(localized: "Use as Active Database")) {
@@ -167,7 +186,7 @@ struct DatabaseTreeView: View {
                 .foregroundStyle(rowForeground(isActive: isActive, isSystem: isSystem))
         } icon: {
             Image(systemName: "folder")
-                .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .foregroundStyle(.tint)
         }
         .contextMenu {
             Button(String(localized: "Use as Active Schema")) {
@@ -246,6 +265,11 @@ struct DatabaseTreeView: View {
                 ForEach(routines) { routine in
                     RoutineRowView(routine: routine)
                         .tag(routine)
+                        .contextMenu {
+                            RoutineContextMenu(routine: routine) { selected in
+                                coordinator?.showRoutineDDL(selected)
+                            }
+                        }
                 }
             }
         }
@@ -459,7 +483,7 @@ struct DatabaseTreeView: View {
 
     private func openTable(_ table: TableInfo, in database: String, schema: String?) {
         Task { @MainActor in
-            if database != activeDatabase {
+            if database != committedActiveDatabase {
                 await coordinator?.switchDatabase(to: database)
             }
             if let schema,

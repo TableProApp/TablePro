@@ -36,24 +36,6 @@ enum TableRowLogic {
         }
         return label
     }
-
-    static func iconColor(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool) -> Color {
-        if isPendingDelete { return .red }
-        if isPendingTruncate { return .orange }
-        switch table.type {
-        case .table:            return .blue
-        case .view:             return .purple
-        case .materializedView: return Color(nsColor: .systemTeal)
-        case .foreignTable:     return Color(nsColor: .systemIndigo)
-        case .systemTable:      return .gray
-        }
-    }
-
-    static func textColor(isPendingDelete: Bool, isPendingTruncate: Bool) -> Color {
-        if isPendingDelete { return .red }
-        if isPendingTruncate { return .orange }
-        return .primary
-    }
 }
 
 struct TableRow: View {
@@ -61,42 +43,31 @@ struct TableRow: View {
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
 
-    private var iconColor: Color {
-        TableRowLogic.iconColor(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate)
-    }
-
-    private var textColor: Color {
-        TableRowLogic.textColor(isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate)
-    }
-
     @ViewBuilder
     private var pendingStateBadge: some View {
         if isPendingDelete {
             Image(systemName: "minus.circle.fill")
                 .font(.caption)
-                .sidebarTint(.red)
+                .foregroundStyle(.red)
         } else if isPendingTruncate {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption)
-                .sidebarTint(.orange)
+                .foregroundStyle(.orange)
         }
     }
 
     var body: some View {
         Label {
             Text(table.name)
-                .font(.callout)
                 .lineLimit(1)
-                .sidebarTint(textColor)
         } icon: {
             Image(systemName: TableRowLogic.iconName(for: table.type))
-                .sidebarTint(iconColor)
-                .frame(width: 14)
+                .sidebarTint(Color.accentColor)
+                .frame(width: 16)
                 .overlay(alignment: .bottomTrailing) {
                     pendingStateBadge
                 }
         }
-        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(TableRowLogic.accessibilityLabel(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
     }

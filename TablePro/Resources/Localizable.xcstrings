@@ -15070,6 +15070,9 @@
         }
       }
     },
+    "Default layout for new connections:" : {
+
+    },
     "Default Operator" : {
       "localizations" : {
         "tr" : {
@@ -26907,6 +26910,9 @@
         }
       }
     },
+    "Layout for new connections on servers that support a database tree. Switch the current connection from the View menu." : {
+
+    },
     "Length" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -27450,6 +27456,9 @@
           }
         }
       }
+    },
+    "List" : {
+
     },
     "List all databases on the server" : {
 
@@ -43117,6 +43126,15 @@
           }
         }
       }
+    },
+    "Sidebar as List" : {
+
+    },
+    "Sidebar as Tree" : {
+
+    },
+    "Sidebar Layout" : {
+
     },
     "Sidebar Panel" : {
       "extractionState" : "stale",

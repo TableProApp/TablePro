@@ -68,47 +68,48 @@ struct SidebarContextMenu: View {
     }
 
     var body: some View {
-        Button(String(localized: "Create New Table...")) {
+        Button("Create New Table...") {
             coordinator?.createNewTable()
         }
         .disabled(isReadOnly)
 
-        Button(String(localized: "Create New View...")) {
+        Button("Create New View...") {
             coordinator?.createView()
         }
         .disabled(isReadOnly)
 
         Divider()
 
-        if isView {
-            Button(String(localized: "Edit View Definition")) {
-                if let viewName = clickedTable?.name {
-                    coordinator?.editViewDefinition(viewName)
+        if clickedTable != nil {
+            if isView {
+                Button("Edit View Definition") {
+                    if let viewName = clickedTable?.name {
+                        coordinator?.editViewDefinition(viewName)
+                    }
+                }
+                .disabled(isReadOnly)
+            }
+
+            Button("Show Structure") {
+                if let clickedTable {
+                    coordinator?.openTableTab(clickedTable, showStructure: true)
                 }
             }
-            .disabled(isReadOnly)
         }
 
-        Button(String(localized: "Show Structure")) {
-            if let clickedTable {
-                coordinator?.openTableTab(clickedTable, showStructure: true)
-            }
-        }
-        .disabled(clickedTable == nil)
-
-        Button(String(localized: "View ER Diagram")) {
+        Button("View ER Diagram") {
             coordinator?.showERDiagram()
         }
 
-        Button(String(localized: "Copy Name")) {
-            ClipboardService.shared.writeText(effectiveTableNames.joined(separator: ","))
-        }
-        .disabled(!hasSelection)
+        if hasSelection {
+            Button("Copy Name") {
+                ClipboardService.shared.writeText(effectiveTableNames.joined(separator: ","))
+            }
 
-        Button(String(localized: "Export...")) {
-            coordinator?.openExportDialog(preselectedTableNames: Set(effectiveTableNames))
+            Button("Export...") {
+                coordinator?.openExportDialog(preselectedTableNames: Set(effectiveTableNames))
+            }
         }
-        .disabled(!hasSelection)
 
         if SidebarContextMenuLogic.importVisible(
             clickedTable: clickedTable,
@@ -116,13 +117,14 @@ struct SidebarContextMenu: View {
                 for: coordinator?.connection.type ?? .mysql
             )
         ) {
-            Button(String(localized: "Import...")) {
+            Button("Import...") {
                 coordinator?.openImportDialog()
             }
             .disabled(isReadOnly)
         }
 
-        if let ops = coordinator?.supportedMaintenanceOperations(), !ops.isEmpty, hasSelection {
+        if hasSelection,
+           let ops = coordinator?.supportedMaintenanceOperations(), !ops.isEmpty {
             Menu(String(localized: "Maintenance")) {
                 ForEach(ops, id: \.self) { op in
                     Button(op) {
@@ -135,21 +137,23 @@ struct SidebarContextMenu: View {
             .disabled(isReadOnly)
         }
 
-        Divider()
+        if hasSelection {
+            Divider()
 
-        if SidebarContextMenuLogic.truncateVisible(clickedTable: clickedTable) {
-            Button(String(localized: "Truncate")) {
-                onBatchToggleTruncate(effectiveTableNames)
+            if SidebarContextMenuLogic.truncateVisible(clickedTable: clickedTable) {
+                Button("Truncate") {
+                    onBatchToggleTruncate(effectiveTableNames)
+                }
+                .disabled(isReadOnly)
             }
-            .disabled(!hasSelection || isReadOnly)
-        }
 
-        Button(
-            SidebarContextMenuLogic.deleteLabel(for: clickedTable?.type),
-            role: .destructive
-        ) {
-            onBatchToggleDelete(effectiveTableNames)
+            Button(
+                SidebarContextMenuLogic.deleteLabel(for: clickedTable?.type),
+                role: .destructive
+            ) {
+                onBatchToggleDelete(effectiveTableNames)
+            }
+            .disabled(isReadOnly)
         }
-        .disabled(!hasSelection || isReadOnly)
     }
 }

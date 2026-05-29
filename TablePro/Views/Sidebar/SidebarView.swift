@@ -158,10 +158,14 @@ struct SidebarView: View {
         }
     }
 
-    private var usesDatabaseTree: Bool {
+    private var canUseDatabaseTree: Bool {
         PluginManager.shared.connectionMode(for: viewModel.databaseType) == .network
             && PluginManager.shared.supportsDatabaseSwitching(for: viewModel.databaseType)
             && (groupingStrategy == .byDatabase || groupingStrategy == .bySchema)
+    }
+
+    private var usesDatabaseTree: Bool {
+        canUseDatabaseTree && sidebarState.sidebarLayout == .tree
     }
 
     @ViewBuilder
@@ -176,6 +180,7 @@ struct SidebarView: View {
             coordinator: coordinator
         )
     }
+
 
     @ViewBuilder
     private var hierarchicalContent: some View {
@@ -279,8 +284,15 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .contextMenu(forSelectionType: TableInfo.self) { _ in
-            EmptyView()
+        .contextMenu(forSelectionType: TableInfo.self) { selection in
+            SidebarContextMenu(
+                clickedTable: selection.first,
+                selectedTables: selection,
+                isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+                coordinator: coordinator
+            )
         } primaryAction: { selection in
             guard let table = selection.first else { return }
             onDoubleClick?(table)
@@ -332,16 +344,6 @@ struct SidebarView: View {
                     isPendingDelete: pendingDeletes.contains(table.name)
                 )
                 .tag(table)
-                .contextMenu {
-                    SidebarContextMenu(
-                        clickedTable: table,
-                        selectedTables: windowState.selectedTables,
-                        isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                        onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                        onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                        coordinator: coordinator
-                    )
-                }
             }
         }
     }
