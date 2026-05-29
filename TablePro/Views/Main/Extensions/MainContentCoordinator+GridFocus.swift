@@ -5,7 +5,7 @@
 
 import Foundation
 
-extension MainContentCoordinator {
+internal extension MainContentCoordinator {
     func focusActiveGrid() {
         dataTabDelegate?.tableViewCoordinator?.focusGrid()
     }

@@ -604,7 +604,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
-    func focusGrid() {
+    internal func focusGrid() {
         guard let tableView, let window = tableView.window else { return }
         window.makeFirstResponder(tableView)
     }
