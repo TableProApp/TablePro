@@ -419,6 +419,10 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func copyFromContextMenu(_ sender: NSMenuItem) {
         guard let coordinator else { return }
+        if !coordinator.selectionController.isEmpty {
+            coordinator.copyGridSelection(coordinator.selectionController.selection)
+            return
+        }
         switch sender.representedObject as? CopyContextTarget {
         case .cell(let columnIndex):
             coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)

@@ -184,4 +184,25 @@ struct DataGridRowViewCopyTests {
 
         #expect(delegate.copiedRows == Set([0, 1]))
     }
+
+    @Test("Copy uses the rectangular grid selection when one exists")
+    func copyUsesGridSelection() {
+        let clipboard = DataGridRowViewCopyClipboard()
+        ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
+
+        let coordinator = makeCoordinator(
+            rows: [[.text("1"), .text("Alice")], [.text("2"), .text("Bob")]],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT")]
+        )
+        coordinator.selectionController.selectAll(totalRows: 2, totalColumns: 2)
+
+        let rowView = DataGridRowView()
+        rowView.coordinator = coordinator
+        rowView.rowIndex = 0
+
+        invokeCopy(on: rowView, target: .cell(0))
+
+        #expect(clipboard.text == "1\tAlice\n2\tBob")
+    }
 }
