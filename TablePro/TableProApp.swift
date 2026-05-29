@@ -143,6 +143,13 @@ struct AppMenuCommands: Commands {
         focusedActions ?? commandRegistry.current
     }
 
+    private var sidebarLayoutBinding: Binding<SidebarLayout> {
+        Binding(
+            get: { actions?.sidebarLayout ?? .flat },
+            set: { actions?.setSidebarLayout($0) }
+        )
+    }
+
     private func shortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
@@ -537,6 +544,17 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleInspector))
             .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
+            Picker(selection: sidebarLayoutBinding) {
+                Text("Sidebar as List").tag(SidebarLayout.flat)
+                Text("Sidebar as Tree").tag(SidebarLayout.tree)
+            } label: {
+                Text("Sidebar Layout")
+            }
+            .pickerStyle(.inline)
+            .disabled(!(actions?.canSwitchSidebarLayout ?? false))
 
             Divider()
 

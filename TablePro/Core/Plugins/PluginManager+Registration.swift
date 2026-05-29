@@ -446,6 +446,15 @@ extension PluginManager {
             .schema.databaseGroupingStrategy ?? .byDatabase
     }
 
+    func supportsDatabaseTree(for databaseType: DatabaseType) -> Bool {
+        guard connectionMode(for: databaseType) == .network,
+              supportsDatabaseSwitching(for: databaseType) else {
+            return false
+        }
+        let grouping = databaseGroupingStrategy(for: databaseType)
+        return grouping == .byDatabase || grouping == .bySchema
+    }
+
     func defaultGroupName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.defaultGroupName ?? "main"

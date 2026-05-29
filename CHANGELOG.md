@@ -7,11 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Mark a table as a favorite by clicking the star button at the end of its sidebar row. Favorites are scoped to the connection, database, and schema, pinned to the top of their section, appear in a dedicated Tables group in the Favorites tab, and sync through iCloud when the Table Favorites toggle is on.
+- A plus button in the bottom bar of the Tables sidebar opens a menu to create a new table or view, without right-clicking. It's disabled while safe mode blocks writes.
+- The sidebar can show every database on the server as an expandable tree. Switch a connection between the flat list and the tree from the View menu (Sidebar Layout); right-click a database or schema to set it active. Set the default layout for new connections in Settings, General. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)
+- A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain, so scripts can provision a connection without entering the password by hand. (#1254)
+
 ### Changed
 
+- The Tables sidebar bottom bar uses native macOS styling. The schema switcher is a borderless pull-down menu on the sidebar's own background instead of a wide gray bordered control, matching the Favorites footer, and switching schemas now goes through the same path as the toolbar so filters and the active tab stay in sync.
+- The Maintenance submenu in the sidebar context menu is hidden when no maintenance operations are available or the target is read-only, instead of showing an empty disabled menu.
+- The window minimum width now adjusts to the visible panes, so opening the inspector on a small window no longer pushes content off-screen.
 - Destructive queries (DROP, TRUNCATE, DELETE without WHERE) now always ask for confirmation, even with Safe Mode off. (#1481)
 - Table structure changes, table creation, maintenance, column reorder, and saved data-grid edits now follow the connection's Safe Mode and read-only setting. (#1481)
 - AI assistant and MCP queries now follow the same Safe Mode confirmation, read-only, and authentication rules as the editor. (#1481)
+
+### Removed
+
+- "Create New Table…" from the sidebar right-click menu. Use the plus button in the Tables sidebar footer instead.
+
+### Fixed
+
+- Moving a connection into or out of a group now syncs across devices, instead of leaving it ungrouped on your other Macs.
+- Opening a table on a connection with many tables no longer stalls for several seconds while autocomplete and table metadata load. Background schema introspection now runs on separate connections instead of waiting behind, or blocking, the query that fills the grid. (#1483)
 
 ## [0.46.0] - 2026-05-28
 

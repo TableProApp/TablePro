@@ -125,6 +125,7 @@ Thumbs.db
 *.p12
 *.mobileprovision
 Secrets.xcconfig
+Local.xcconfig
 
 # Debug
 *.log
@@ -154,3 +155,4 @@ fix-1322-plugin-abi-and-registry-overhaul.diff
 
 # Issue analysis blueprints (local only)
 .analysis/
+.docs/

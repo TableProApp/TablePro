@@ -288,6 +288,7 @@ final class ConnectionFormCoordinator {
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,
+            passwordSource: originalConnection?.passwordSource,
             additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
         )
 
@@ -459,6 +460,7 @@ final class ConnectionFormCoordinator {
             redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
+            passwordSource: auth.password.isEmpty ? originalConnection?.passwordSource : nil,
             additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
         )
         temporaryTestIds.insert(testConn.id)

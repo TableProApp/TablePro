@@ -24,7 +24,7 @@ struct SyncSection: View {
                         syncCoordinator.disableSync()
                     }
                 }
-                .help("Syncs connections, settings, and SSH profiles across your Macs via iCloud.")
+                .help("Syncs connections, table favorites, settings, and SSH profiles across your Macs via iCloud.")
                 .disabled(!isProAvailable)
         } header: {
             HStack(spacing: 6) {
@@ -120,6 +120,7 @@ struct SyncSection: View {
             Toggle("Groups & Tags:", isOn: $settingsManager.sync.syncGroupsAndTags)
             Toggle("SSH Profiles:", isOn: $settingsManager.sync.syncSSHProfiles)
             Toggle("Settings:", isOn: $settingsManager.sync.syncSettings)
+            Toggle("Table Favorites:", isOn: $settingsManager.sync.syncTableFavorites)
         }
     }
 

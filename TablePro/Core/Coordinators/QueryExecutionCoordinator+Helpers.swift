@@ -261,8 +261,7 @@ extension QueryExecutionCoordinator {
 
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         guard !isNonSQL else { return }
-        guard let enumDriver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
-        Task(priority: .background) { [weak self, parent] in
+        Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
 
@@ -270,17 +269,14 @@ extension QueryExecutionCoordinator {
             if let schema = schemaResult {
                 columnInfo = schema.columnInfo
             } else {
-                do {
-                    columnInfo = try await enumDriver.fetchColumns(table: tableName)
-                } catch {
-                    columnInfo = []
-                }
+                columnInfo = (try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId) { driver in
+                    try await driver.fetchColumns(table: tableName)
+                }) ?? []
             }
 
             let columnEnumValues = await parent.fetchEnumValues(
                 columnInfo: columnInfo,
                 tableName: tableName,
-                driver: enumDriver,
                 connectionType: connectionType
             )
 
@@ -336,10 +332,9 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
 
-        Task(priority: .background) { [weak self, parent] in
+        Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
-            guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else { return }
 
             let prepared: (plan: RowCountPlan, sql: String?) = await MainActor.run {
                 guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return (.skip, nil) }
@@ -366,24 +361,33 @@ extension QueryExecutionCoordinator {
             case .clear:
                 outcome = .clear
             case .approximate:
-                guard let count = try? await driver.fetchApproximateRowCount(table: tableName) else { return }
+                guard let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, { driver in
+                    try await driver.fetchApproximateRowCount(table: tableName)
+                }) else { return }
                 outcome = .count(count, isApproximate: true)
             case let .filteredNonSQL(filters, logicMode):
-                if let count = try? await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode) {
+                if let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk, { driver in
+                    try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
+                }) {
                     outcome = .count(count, isApproximate: false)
                 } else {
                     outcome = .clear
                 }
             case .exactCount:
                 guard let sql = prepared.sql else { return }
+                let count: Int?
                 do {
-                    let result = try await driver.execute(query: sql)
-                    guard let countStr = result.rows.first?.first?.asText, let count = Int(countStr) else { return }
-                    outcome = .count(count, isApproximate: false)
+                    count = try await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk) { driver in
+                        let result = try await driver.execute(query: sql)
+                        guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
+                        return Int(countStr)
+                    }
                 } catch {
                     helpersLogger.warning("COUNT query failed for \(tableName): \(error.localizedDescription)")
                     return
                 }
+                guard let count else { return }
+                outcome = .count(count, isApproximate: false)
             }
 
             await MainActor.run {

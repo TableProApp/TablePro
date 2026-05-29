@@ -43,12 +43,10 @@ extension MainContentCoordinator {
     func loadSchemaColumns(for tableName: String, schema: String?) async {
         let key = schemaColumnsKey(tableName, schema: schema)
         guard schemaColumnsCache[key] == nil else { return }
-        guard let driver = services.databaseManager.driver(for: connectionId) else {
-            columnScopeLog.error("loadSchemaColumns: no driver for connection; cannot scope columns for table=\(tableName, privacy: .public)")
-            return
-        }
         do {
-            let columns = try await driver.fetchColumns(table: tableName, schema: schema)
+            let columns = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+                try await driver.fetchColumns(table: tableName, schema: schema)
+            }
             guard !columns.isEmpty else {
                 columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .public); cannot scope")
                 return

@@ -25,11 +25,18 @@ actor SQLSchemaProvider {
     private var loadTask: Task<Void, Never>?
     private var eagerColumnTask: Task<Void, Never>?
 
-    // Store a weak driver reference to avoid retaining it after disconnect (MEM-9)
-    private weak var cachedDriver: (any DatabaseDriver)?
+    struct ColumnMetadataSource: Sendable {
+        let fetchColumns: @Sendable (_ table: String) async throws -> [ColumnInfo]
+        let fetchAllColumns: @Sendable () async throws -> [String: [ColumnInfo]]
+    }
 
-    // Store connection info for reference
+    private weak var cachedDriver: (any DatabaseDriver)?
+    private let metadataSource: ColumnMetadataSource?
     private var connectionInfo: DatabaseConnection?
+
+    init(metadataSource: ColumnMetadataSource? = nil) {
+        self.metadataSource = metadataSource
+    }
 
     // MARK: - Public API
 
@@ -97,12 +104,15 @@ actor SQLSchemaProvider {
             return cached
         }
 
-        guard let driver = cachedDriver else {
-            return []
-        }
-
         do {
-            let columns = try await driver.fetchColumns(table: tableName)
+            let columns: [ColumnInfo]
+            if let metadataSource {
+                columns = try await metadataSource.fetchColumns(tableName)
+            } else if let driver = cachedDriver {
+                columns = try await driver.fetchColumns(table: tableName)
+            } else {
+                return []
+            }
             columnCache[key] = columns
             columnAccessOrder.append(key)
             evictIfNeeded()
@@ -168,13 +178,23 @@ actor SQLSchemaProvider {
     // MARK: - Eager Column Loading
 
     private func startEagerColumnLoad() {
-        guard !tables.isEmpty, let driver = cachedDriver else { return }
+        guard !tables.isEmpty else { return }
+        let source = metadataSource
+        let driver = cachedDriver
+        guard source != nil || driver != nil else { return }
         eagerColumnTask?.cancel()
         let tableCount = tables.count
-        eagerColumnTask = Task {
+        eagerColumnTask = Task(priority: .utility) {
             Self.logger.info("[schema] eager column load starting tableCount=\(tableCount)")
             do {
-                let allColumns = try await driver.fetchAllColumns()
+                let allColumns: [String: [ColumnInfo]]
+                if let source {
+                    allColumns = try await source.fetchAllColumns()
+                } else if let driver {
+                    allColumns = try await driver.fetchAllColumns()
+                } else {
+                    return
+                }
                 guard !Task.isCancelled else { return }
                 self.populateColumnCache(allColumns)
                 Self.logger.info("[schema] eager column load complete cachedCount=\(self.columnCache.count)")
