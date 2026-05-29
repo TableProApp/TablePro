@@ -6,6 +6,24 @@
 import SwiftUI
 import TableProPluginKit
 
+struct DatabaseTreeTableRef: Hashable, Identifiable {
+    let database: String
+    let schema: String?
+    let table: TableInfo
+
+    var id: String {
+        "\(database)|\(schema ?? "")|\(table.id)"
+    }
+
+    static func == (lhs: DatabaseTreeTableRef, rhs: DatabaseTreeTableRef) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+}
+
 struct DatabaseTreeView: View {
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
 
@@ -17,7 +35,7 @@ struct DatabaseTreeView: View {
     @Binding var pendingDeletes: Set<String>
     let coordinator: MainContentCoordinator?
 
-    @State private var localSelection: Set<TableInfo> = []
+    @State private var localSelection: Set<DatabaseTreeTableRef> = []
 
     private var groupingStrategy: GroupingStrategy {
         PluginManager.shared.databaseGroupingStrategy(for: databaseType)
@@ -43,12 +61,12 @@ struct DatabaseTreeView: View {
     }
 
     @MainActor
-    private func activateClickedDatabase(_ table: TableInfo?) async {
-        guard let table, let origin = locateTable(table) else { return }
-        if origin.database != committedActiveDatabase {
-            await coordinator?.switchDatabase(to: origin.database)
+    private func activate(_ ref: DatabaseTreeTableRef?) async {
+        guard let ref else { return }
+        if ref.database != committedActiveDatabase {
+            await coordinator?.switchDatabase(to: ref.database)
         }
-        if let schema = origin.schema,
+        if let schema = ref.schema,
            schema != coordinator?.toolbarState.currentSchema,
            PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
             await coordinator?.switchSchema(to: schema)
@@ -67,7 +85,7 @@ struct DatabaseTreeView: View {
         viewModel.searchText
     }
 
-    private var selectedTablesBinding: Binding<Set<TableInfo>> {
+    private var selectedTablesBinding: Binding<Set<DatabaseTreeTableRef>> {
         Binding(
             get: { localSelection },
             set: { localSelection = $0 }
@@ -99,11 +117,9 @@ struct DatabaseTreeView: View {
         .onChange(of: activeSchema ?? "") { _, _ in
             expandActive()
         }
-        .onChange(of: localSelection) { oldTables, newTables in
-            let action = TableSelectionAction.resolve(oldTables: oldTables, newTables: newTables)
-            guard case .navigate(let table) = action,
-                  let origin = locateTable(table) else { return }
-            openTable(table, in: origin.database, schema: origin.schema)
+        .onChange(of: localSelection) { oldRefs, newRefs in
+            guard let ref = SelectionDelta.singleAddition(old: oldRefs, new: newRefs) else { return }
+            openTable(ref.table, in: ref.database, schema: ref.schema)
         }
     }
 
@@ -119,46 +135,23 @@ struct DatabaseTreeView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .contextMenu(forSelectionType: TableInfo.self) { selection in
+        .contextMenu(forSelectionType: DatabaseTreeTableRef.self) { selection in
             SidebarContextMenu(
-                clickedTable: selection.first,
-                selectedTables: selection,
+                clickedTable: selection.first?.table,
+                selectedTables: Set(selection.map(\.table)),
                 isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
                 onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
                 onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
                 coordinator: coordinator,
-                activateBeforeAction: { await activateClickedDatabase(selection.first) }
+                activateBeforeAction: { await activate(selection.first) }
             )
         } primaryAction: { selection in
-            guard let table = selection.first,
-                  let origin = locateTable(table) else { return }
-            openTable(table, in: origin.database, schema: origin.schema)
+            guard let ref = selection.first else { return }
+            openTable(ref.table, in: ref.database, schema: ref.schema)
         }
         .onExitCommand {
             localSelection.removeAll()
         }
-    }
-
-    private func locateTable(_ target: TableInfo) -> (database: String, schema: String?)? {
-        for db in visibleDatabases {
-            if supportsSchemaLevel {
-                let schemaState = treeService.schemaListState(connectionId: connectionId, database: db.name)
-                if case .loaded(let schemas) = schemaState {
-                    for schema in schemas {
-                        let candidates = tables(database: db.name, schema: schema)
-                        if candidates.contains(where: { $0.id == target.id }) {
-                            return (db.name, schema)
-                        }
-                    }
-                }
-            } else {
-                let candidates = tables(database: db.name, schema: nil)
-                if candidates.contains(where: { $0.id == target.id }) {
-                    return (db.name, nil)
-                }
-            }
-        }
-        return nil
     }
 
     @ViewBuilder
@@ -274,7 +267,7 @@ struct DatabaseTreeView: View {
                         isPendingTruncate: pendingTruncates.contains(table.name),
                         isPendingDelete: pendingDeletes.contains(table.name)
                     )
-                    .tag(table)
+                    .tag(DatabaseTreeTableRef(database: database, schema: schema, table: table))
                 }
                 ForEach(routines) { routine in
                     RoutineRowView(routine: routine)

@@ -15,7 +15,6 @@ internal enum SidebarTab: String, CaseIterable {
     case favorites
 }
 
-/// How the tables tab presents objects for engines that support a database tree.
 internal enum SidebarLayout: String, CaseIterable, Sendable {
     case flat
     case tree

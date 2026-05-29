@@ -14,7 +14,6 @@ struct SidebarTreeView: View {
 
     @State private var searchLoadTask: Task<Void, Never>?
 
-
     private var systemSchemas: Set<String> {
         Set(PluginManager.shared.systemSchemaNames(for: viewModel.databaseType))
     }

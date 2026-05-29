@@ -19,11 +19,15 @@ final class MetadataConnectionPool {
         let driver: DatabaseDriver
         var lastUsed: Date
         var inFlightCount: Int
+        var closeWhenIdle: Bool
+        var tail: Task<Void, Never>
 
         init(driver: DatabaseDriver) {
             self.driver = driver
             self.lastUsed = Date()
             self.inFlightCount = 0
+            self.closeWhenIdle = false
+            self.tail = Task {}
         }
     }
 
@@ -38,21 +42,34 @@ final class MetadataConnectionPool {
     func withDriver<T: Sendable>(
         connectionId: UUID,
         database: String,
-        _ body: @Sendable (DatabaseDriver) async throws -> T
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let entry = try await acquireEntry(connectionId: connectionId, database: database)
         entry.inFlightCount += 1
         entry.lastUsed = Date()
-        defer { entry.inFlightCount -= 1 }
-        return try await body(entry.driver)
+        defer { releaseEntry(entry) }
+
+        let previous = entry.tail
+        let driver = entry.driver
+        let work = Task { @MainActor () async throws -> T in
+            await previous.value
+            return try await body(driver)
+        }
+        entry.tail = Task { @MainActor in _ = try? await work.value }
+        return try await work.value
+    }
+
+    private func releaseEntry(_ entry: Entry) {
+        entry.inFlightCount -= 1
+        guard entry.inFlightCount == 0, entry.closeWhenIdle else { return }
+        entry.driver.disconnect()
     }
 
     func invalidate(connectionId: UUID, database: String) {
         let key = Key(connectionId: connectionId, database: database)
         pending[key]?.cancel()
         pending.removeValue(forKey: key)
-        entries[key]?.driver.disconnect()
-        entries.removeValue(forKey: key)
+        closeOrDeferEntry(forKey: key)
     }
 
     func closeAll(connectionId: UUID) {
@@ -62,13 +79,22 @@ final class MetadataConnectionPool {
         }
         let keys = entries.keys.filter { $0.connectionId == connectionId }
         for key in keys {
-            entries[key]?.driver.disconnect()
-            entries.removeValue(forKey: key)
+            closeOrDeferEntry(forKey: key)
         }
         if !keys.isEmpty {
             Self.logger.info(
                 "[metadata-pool] closed all connId=\(connectionId, privacy: .public) count=\(keys.count, privacy: .public)"
             )
+        }
+    }
+
+    private func closeOrDeferEntry(forKey key: Key) {
+        guard let entry = entries[key] else { return }
+        entries.removeValue(forKey: key)
+        if entry.inFlightCount == 0 {
+            entry.driver.disconnect()
+        } else {
+            entry.closeWhenIdle = true
         }
     }
 

@@ -42,7 +42,7 @@ final class GroupStorageTests: XCTestCase {
         storage = GroupStorage(
             userDefaults: defaults,
             syncTracker: tracker,
-            connectionStorage: connectionStorage
+            connectionStorage: self.connectionStorage
         )
     }
 

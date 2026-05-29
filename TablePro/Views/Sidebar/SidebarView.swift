@@ -158,14 +158,9 @@ struct SidebarView: View {
         }
     }
 
-    private var canUseDatabaseTree: Bool {
-        PluginManager.shared.connectionMode(for: viewModel.databaseType) == .network
-            && PluginManager.shared.supportsDatabaseSwitching(for: viewModel.databaseType)
-            && (groupingStrategy == .byDatabase || groupingStrategy == .bySchema)
-    }
-
     private var usesDatabaseTree: Bool {
-        canUseDatabaseTree && sidebarState.sidebarLayout == .tree
+        PluginManager.shared.supportsDatabaseTree(for: viewModel.databaseType)
+            && sidebarState.sidebarLayout == .tree
     }
 
     @ViewBuilder
@@ -180,7 +175,6 @@ struct SidebarView: View {
             coordinator: coordinator
         )
     }
-
 
     @ViewBuilder
     private var hierarchicalContent: some View {

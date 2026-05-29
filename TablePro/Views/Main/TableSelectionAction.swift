@@ -20,11 +20,21 @@ enum TableSelectionAction: Equatable {
         oldTables: Set<TableInfo>,
         newTables: Set<TableInfo>
     ) -> TableSelectionAction {
-        let added = newTables.subtracting(oldTables)
-        guard added.count == 1, let table = added.first else {
+        guard let table = SelectionDelta.singleAddition(old: oldTables, new: newTables) else {
             return .noNavigation
         }
         return .navigate(table: table)
+    }
+}
+
+enum SelectionDelta {
+    static func singleAddition<Element: Hashable>(
+        old: Set<Element>,
+        new: Set<Element>
+    ) -> Element? {
+        let added = new.subtracting(old)
+        guard added.count == 1 else { return nil }
+        return added.first
     }
 }
 
