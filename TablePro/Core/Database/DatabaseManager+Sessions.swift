@@ -348,7 +348,7 @@ extension DatabaseManager {
         removeSessionEntry(for: sessionId)
 
         await SchemaService.shared.invalidate(connectionId: sessionId)
-        await DatabaseTreeMetadataService.shared.invalidate(connectionId: sessionId)
+        await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: sessionId)
 
         SchemaProviderRegistry.shared.clear(for: sessionId)
 

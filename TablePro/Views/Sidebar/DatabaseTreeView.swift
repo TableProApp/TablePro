@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import os
 import SwiftUI
 import TableProPluginKit
 
@@ -47,8 +46,6 @@ struct DatabaseTreeSchemaRef: Identifiable {
 struct DatabaseTreeView: View {
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SidebarTreeView")
-
     let connectionId: UUID
     let databaseType: DatabaseType
     let viewModel: SidebarViewModel
@@ -76,31 +73,12 @@ struct DatabaseTreeView: View {
         coordinator?.toolbarState.currentSchema
     }
 
-    private var committedActiveDatabase: String? {
-        guard let session = DatabaseManager.shared.session(for: connectionId) else { return nil }
-        let value = session.activeDatabase
-        return value.isEmpty ? nil : value
+    private var isConnected: Bool {
+        DatabaseManager.shared.session(for: connectionId)?.status == .connected
     }
 
-    private var committedActiveSchema: String? {
-        DatabaseManager.shared.session(for: connectionId)?.currentSchema
-    }
-
-    private var schemaGenerationToken: Int {
-        SchemaService.shared.generationToken(for: connectionId)
-    }
-
-    @MainActor
-    private func activate(_ ref: DatabaseTreeTableRef?) async {
-        guard let ref else { return }
-        if ref.database != committedActiveDatabase {
-            await coordinator?.switchDatabase(to: ref.database)
-        }
-        if let schema = ref.schema,
-           schema != coordinator?.toolbarState.currentSchema,
-           PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
-            await coordinator?.switchSchema(to: schema)
-        }
+    private var connectionToken: String {
+        isConnected ? "connected" : "down"
     }
 
     private var systemSchemas: Set<String> {
@@ -124,63 +102,30 @@ struct DatabaseTreeView: View {
 
     var body: some View {
         Group {
-            let state = treeService.databaseListState(for: connectionId)
-            if case .failed(let message) = state {
+            switch treeService.databaseListState(for: connectionId) {
+            case .failed(let message):
                 errorState(message: message)
-            } else if databases.isEmpty {
-                if case .loaded = state {
-                    emptyDatabasesState
-                } else {
-                    loadingState
-                }
-            } else {
+            case .loaded where databases.isEmpty:
+                emptyDatabasesState
+            case .loaded:
                 treeList
+            case .idle, .loading:
+                loadingState
             }
         }
-        .onAppear {
-            Self.logger.debug(
-                "onAppear connId=\(connectionId, privacy: .public) active=\(committedActiveDatabase ?? "nil", privacy: .public) toolbar=\(activeDatabase ?? "nil", privacy: .public)"
-            )
-            loadDatabasesIfNeeded()
-            expandActive()
-            reconcileLoads(retryFailed: false)
+        .task(id: connectionToken) {
+            await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
         }
-        .onChange(of: activeContextKey) { old, new in
-            Self.logger.debug("trigger activeContextKey '\(old, privacy: .public)' -> '\(new, privacy: .public)'")
-            expandActive()
-        }
-        .onChange(of: reconcileKey) { old, new in
-            Self.logger.debug("trigger reconcileKey '\(old, privacy: .public)' -> '\(new, privacy: .public)'")
-            reconcileLoads(retryFailed: true)
-        }
-        .onChange(of: schemaGenerationToken) { old, new in
-            Self.logger.debug("trigger schemaGeneration \(old, privacy: .public) -> \(new, privacy: .public)")
-            reconcileLoads(retryFailed: false)
-        }
+        .onAppear { expandActive() }
+        .onChange(of: activeContextKey) { _, _ in expandActive() }
         .onChange(of: localSelection) { oldRefs, newRefs in
             guard let ref = SelectionDelta.singleAddition(old: oldRefs, new: newRefs) else { return }
-            Self.logger.debug(
-                "selection-navigate db=\(ref.database, privacy: .public) schema=\(ref.schema ?? "nil", privacy: .public) table=\(ref.table.name, privacy: .public)"
-            )
             openTable(ref.table, in: ref.database, schema: ref.schema)
         }
     }
 
     private var activeContextKey: String {
         "\(activeDatabase ?? "")|\(activeSchema ?? "")"
-    }
-
-    private var reconcileKey: String {
-        "\(committedActiveDatabase ?? "")|\(committedActiveSchema ?? "")|\(connectionStatusToken)"
-    }
-
-    private var connectionStatusToken: String {
-        switch DatabaseManager.shared.session(for: connectionId)?.status {
-        case .connected: return "connected"
-        case .connecting: return "connecting"
-        case .error: return "error"
-        case .disconnected, .none: return "disconnected"
-        }
     }
 
     private var treeList: some View {
@@ -219,7 +164,7 @@ struct DatabaseTreeView: View {
         if supportsSchemaLevel {
             schemasContent(for: db.name)
         } else {
-            tablesContent(database: db.name, schema: nil)
+            objectsContent(database: db.name, schema: nil)
         }
     }
 
@@ -239,7 +184,7 @@ struct DatabaseTreeView: View {
             }
             .disabled(isActive)
             Button(String(localized: "Refresh")) {
-                refreshDatabase(db.name)
+                Task { await treeService.refreshSchemas(connectionId: connectionId, database: db.name) }
             }
         }
     }
@@ -261,7 +206,9 @@ struct DatabaseTreeView: View {
             }
             .disabled(isActive)
             Button(String(localized: "Refresh")) {
-                refreshSchema(database: database, schema: schema)
+                Task {
+                    await treeService.refreshObjects(connectionId: connectionId, database: database, schema: schema)
+                }
             }
         }
     }
@@ -274,13 +221,11 @@ struct DatabaseTreeView: View {
 
     @ViewBuilder
     private func schemasContent(for database: String) -> some View {
-        let state = treeService.schemaListState(connectionId: connectionId, database: database)
-        switch state {
+        switch treeService.schemaListState(connectionId: connectionId, database: database) {
         case .idle, .loading:
             loadingRow(String(localized: "Loading schemas\u{2026}"))
-                .task(id: database) {
-                    Self.logger.debug("task->loadSchemaList db=\(database, privacy: .public)")
-                    await treeService.loadSchemaList(connectionId: connectionId, database: database)
+                .task(id: "\(database)|\(connectionToken)") {
+                    await treeService.loadSchemas(connectionId: connectionId, database: database)
                 }
         case .failed(let message):
             errorRow(message)
@@ -290,10 +235,8 @@ struct DatabaseTreeView: View {
                 emptyRow(String(localized: "No schemas"))
             } else {
                 ForEach(visible.map { DatabaseTreeSchemaRef(database: database, schema: $0) }) { ref in
-                    DisclosureGroup(
-                        isExpanded: schemaExpansionBinding(database: ref.database, schema: ref.schema)
-                    ) {
-                        tablesContent(database: ref.database, schema: ref.schema)
+                    DisclosureGroup(isExpanded: schemaExpansionBinding(database: ref.database, schema: ref.schema)) {
+                        objectsContent(database: ref.database, schema: ref.schema)
                     } label: {
                         schemaHeader(database: ref.database, schema: ref.schema)
                     }
@@ -303,19 +246,12 @@ struct DatabaseTreeView: View {
     }
 
     @ViewBuilder
-    private func tablesContent(database: String, schema: String?) -> some View {
-        switch treeService.tableState(
-            connectionId: connectionId, database: database, schema: schema
-        ) {
+    private func objectsContent(database: String, schema: String?) -> some View {
+        switch treeService.objectsState(connectionId: connectionId, database: database, schema: schema) {
         case .idle, .loading:
             loadingRow(String(localized: "Loading tables\u{2026}"))
-                .task(id: "\(database)|\(schema ?? "")") {
-                    Self.logger.debug(
-                        "task->loadTables db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-                    )
-                    await treeService.loadTables(
-                        connectionId: connectionId, database: database, schema: schema
-                    )
+                .task(id: "\(database)|\(schema ?? "")|\(connectionToken)") {
+                    await treeService.loadObjects(connectionId: connectionId, database: database, schema: schema)
                 }
         case .failed(let message):
             errorRow(message)
@@ -396,6 +332,92 @@ struct DatabaseTreeView: View {
             .foregroundStyle(.secondary)
     }
 
+    // MARK: - Selection actions
+
+    @MainActor
+    private func activate(_ ref: DatabaseTreeTableRef?) async {
+        guard let ref else { return }
+        if ref.database != activeDatabase {
+            await coordinator?.switchDatabase(to: ref.database)
+        }
+        if let schema = ref.schema,
+           schema != coordinator?.toolbarState.currentSchema,
+           PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
+            await coordinator?.switchSchema(to: schema)
+        }
+    }
+
+    private func setActiveDatabase(_ database: String) {
+        guard database != activeDatabase else { return }
+        Task { await coordinator?.switchDatabase(to: database) }
+    }
+
+    private func setActiveSchema(database: String, schema: String) {
+        Task {
+            if database != activeDatabase {
+                await coordinator?.switchDatabase(to: database)
+            }
+            if schema != coordinator?.toolbarState.currentSchema {
+                await coordinator?.switchSchema(to: schema)
+            }
+        }
+    }
+
+    private func openTable(_ table: TableInfo, in database: String, schema: String?) {
+        Task { @MainActor in
+            if database != activeDatabase {
+                await coordinator?.switchDatabase(to: database)
+            }
+            if let schema,
+               schema != coordinator?.toolbarState.currentSchema,
+               PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
+                await coordinator?.switchSchema(to: schema)
+            }
+            coordinator?.openTableTab(table)
+        }
+    }
+
+    private func expandActive() {
+        guard let active = activeDatabase else { return }
+        windowState.expandedTreeDatabases.insert(active)
+        if let schema = activeSchema {
+            windowState.expandedTreeDatabaseSchemas.insert(
+                DatabaseSchemaKey(database: active, schema: schema)
+            )
+        }
+    }
+
+    // MARK: - Expansion
+
+    private func databaseExpansionBinding(for database: String) -> Binding<Bool> {
+        Binding(
+            get: { !searchText.isEmpty || windowState.expandedTreeDatabases.contains(database) },
+            set: { isExpanded in
+                if isExpanded {
+                    windowState.expandedTreeDatabases.insert(database)
+                } else {
+                    windowState.expandedTreeDatabases.remove(database)
+                }
+            }
+        )
+    }
+
+    private func schemaExpansionBinding(database: String, schema: String) -> Binding<Bool> {
+        let key = DatabaseSchemaKey(database: database, schema: schema)
+        return Binding(
+            get: { !searchText.isEmpty || windowState.expandedTreeDatabaseSchemas.contains(key) },
+            set: { isExpanded in
+                if isExpanded {
+                    windowState.expandedTreeDatabaseSchemas.insert(key)
+                } else {
+                    windowState.expandedTreeDatabaseSchemas.remove(key)
+                }
+            }
+        )
+    }
+
+    // MARK: - Search filtering
+
     private func tables(database: String, schema: String?) -> [TableInfo] {
         treeService.tables(connectionId: connectionId, database: database, schema: schema)
     }
@@ -413,25 +435,21 @@ struct DatabaseTreeView: View {
 
     private func databaseMatchesSearch(_ db: DatabaseMetadata) -> Bool {
         if db.name.localizedCaseInsensitiveContains(searchText) { return true }
-        let schemas = treeService.schemaListState(connectionId: connectionId, database: db.name)
-        if case .loaded(let list) = schemas {
+        if case .loaded(let list) = treeService.schemaListState(connectionId: connectionId, database: db.name) {
             if list.contains(where: { $0.localizedCaseInsensitiveContains(searchText) }) { return true }
             for schema in list where schemaContentMatchesSearch(database: db.name, schema: schema) {
                 return true
             }
         }
-        if schemaContentMatchesSearch(database: db.name, schema: nil) { return true }
-        return false
+        return schemaContentMatchesSearch(database: db.name, schema: nil)
     }
 
     private func schemaContentMatchesSearch(database: String, schema: String?) -> Bool {
         if let schema, schema.localizedCaseInsensitiveContains(searchText) { return true }
-        let tableMatches = tables(database: database, schema: schema)
-            .contains { $0.name.localizedCaseInsensitiveContains(searchText) }
-        if tableMatches { return true }
-        let routineMatches = routines(database: database, schema: schema)
-            .contains { $0.name.localizedCaseInsensitiveContains(searchText) }
-        return routineMatches
+        if tables(database: database, schema: schema).contains(where: { $0.name.localizedCaseInsensitiveContains(searchText) }) {
+            return true
+        }
+        return routines(database: database, schema: schema).contains { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
     private func visibleSchemas(database: String, all: [String]) -> [String] {
@@ -462,202 +480,5 @@ struct DatabaseTreeView: View {
             : all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
         var seen = Set<String>()
         return matched.filter { seen.insert($0.id).inserted }
-    }
-
-    private func databaseExpansionBinding(for database: String) -> Binding<Bool> {
-        Binding(
-            get: { !searchText.isEmpty || windowState.expandedTreeDatabases.contains(database) },
-            set: { isExpanded in
-                Self.logger.debug("expand-database db=\(database, privacy: .public) expanded=\(isExpanded, privacy: .public)")
-                if isExpanded {
-                    windowState.expandedTreeDatabases.insert(database)
-                    loadDatabaseContentIfNeeded(database)
-                } else {
-                    windowState.expandedTreeDatabases.remove(database)
-                }
-            }
-        )
-    }
-
-    private func schemaExpansionBinding(database: String, schema: String) -> Binding<Bool> {
-        let key = DatabaseSchemaKey(database: database, schema: schema)
-        return Binding(
-            get: { !searchText.isEmpty || windowState.expandedTreeDatabaseSchemas.contains(key) },
-            set: { isExpanded in
-                Self.logger.debug(
-                    "expand-schema db=\(database, privacy: .public) schema=\(schema, privacy: .public) expanded=\(isExpanded, privacy: .public)"
-                )
-                if isExpanded {
-                    windowState.expandedTreeDatabaseSchemas.insert(key)
-                    loadTablesIfNeeded(database: database, schema: schema)
-                } else {
-                    windowState.expandedTreeDatabaseSchemas.remove(key)
-                }
-            }
-        )
-    }
-
-    private func loadDatabasesIfNeeded() {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            Self.logger.debug("loadDatabasesIfNeeded skip-no-driver connId=\(connectionId, privacy: .public)")
-            return
-        }
-        Task {
-            await treeService.loadDatabaseList(
-                connectionId: connectionId,
-                driver: driver,
-                databaseType: databaseType
-            )
-        }
-    }
-
-    private func reconcileLoads(retryFailed: Bool) {
-        guard case .loaded = treeService.databaseListState(for: connectionId) else {
-            Self.logger.debug("reconcile skip (db list not loaded) retryFailed=\(retryFailed, privacy: .public)")
-            return
-        }
-        let expandedSchemaCount = windowState.expandedTreeDatabaseSchemas.count
-        Self.logger.debug(
-            "reconcile begin retryFailed=\(retryFailed, privacy: .public) active=\(committedActiveDatabase ?? "nil", privacy: .public) activeSchema=\(committedActiveSchema ?? "nil", privacy: .public) expandedDbs=\(windowState.expandedTreeDatabases.count, privacy: .public) expandedSchemas=\(expandedSchemaCount, privacy: .public)"
-        )
-
-        if let active = committedActiveDatabase {
-            ensureContentLoaded(
-                database: active,
-                schema: supportsSchemaLevel ? committedActiveSchema : nil,
-                retryFailed: retryFailed
-            )
-        }
-
-        for database in windowState.expandedTreeDatabases {
-            guard !supportsSchemaLevel else {
-                ensureSchemaListLoaded(database: database, retryFailed: retryFailed)
-                let expandedSchemas = windowState.expandedTreeDatabaseSchemas
-                    .filter { $0.database == database }
-                for key in expandedSchemas {
-                    ensureContentLoaded(database: database, schema: key.schema, retryFailed: retryFailed)
-                }
-                continue
-            }
-            ensureContentLoaded(database: database, schema: nil, retryFailed: retryFailed)
-        }
-    }
-
-    private func ensureSchemaListLoaded(database: String, retryFailed: Bool) {
-        let state = treeService.schemaListState(connectionId: connectionId, database: database)
-        switch state {
-        case .idle:
-            Self.logger.debug("reconcile kick schemaList db=\(database, privacy: .public) reason=idle")
-            loadDatabaseContentIfNeeded(database)
-        case .failed where retryFailed:
-            Self.logger.debug("reconcile kick schemaList db=\(database, privacy: .public) reason=retryFailed")
-            loadDatabaseContentIfNeeded(database)
-        case .loading, .loaded, .failed:
-            return
-        }
-    }
-
-    private func ensureContentLoaded(database: String, schema: String?, retryFailed: Bool) {
-        let state = treeService.tableState(connectionId: connectionId, database: database, schema: schema)
-        switch state {
-        case .idle:
-            Self.logger.debug(
-                "reconcile kick tables db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) reason=idle"
-            )
-            loadTablesIfNeeded(database: database, schema: schema)
-        case .failed where retryFailed:
-            Self.logger.debug(
-                "reconcile kick tables db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) reason=retryFailed"
-            )
-            loadTablesIfNeeded(database: database, schema: schema)
-        case .loading, .loaded, .failed:
-            return
-        }
-    }
-
-    private func loadDatabaseContentIfNeeded(_ database: String) {
-        if supportsSchemaLevel {
-            Task { await treeService.loadSchemaList(connectionId: connectionId, database: database) }
-        } else {
-            loadTablesIfNeeded(database: database, schema: nil)
-        }
-    }
-
-    private func loadTablesIfNeeded(database: String, schema: String?) {
-        Task {
-            await treeService.loadTables(connectionId: connectionId, database: database, schema: schema)
-        }
-    }
-
-    private func refreshDatabase(_ database: String) {
-        Task {
-            await treeService.refreshDatabase(connectionId: connectionId, database: database)
-            loadDatabaseContentIfNeeded(database)
-        }
-    }
-
-    private func refreshSchema(database: String, schema: String) {
-        Task {
-            await treeService.reloadTables(
-                connectionId: connectionId, database: database, schema: schema
-            )
-        }
-    }
-
-    private func expandActive() {
-        guard let active = activeDatabase else { return }
-        windowState.expandedTreeDatabases.insert(active)
-        if let schema = activeSchema {
-            windowState.expandedTreeDatabaseSchemas.insert(
-                DatabaseSchemaKey(database: active, schema: schema)
-            )
-        }
-    }
-
-    private func setActiveDatabase(_ database: String) {
-        guard database != activeDatabase else { return }
-        Self.logger.debug("setActiveDatabase db=\(database, privacy: .public)")
-        Task { @MainActor in
-            await coordinator?.switchDatabase(to: database)
-            Self.logger.debug(
-                "setActiveDatabase done db=\(database, privacy: .public) committed=\(committedActiveDatabase ?? "nil", privacy: .public)"
-            )
-        }
-    }
-
-    private func setActiveSchema(database: String, schema: String) {
-        Self.logger.debug(
-            "setActiveSchema db=\(database, privacy: .public) schema=\(schema, privacy: .public)"
-        )
-        Task { @MainActor in
-            if database != activeDatabase {
-                await coordinator?.switchDatabase(to: database)
-            }
-            if schema != coordinator?.toolbarState.currentSchema {
-                await coordinator?.switchSchema(to: schema)
-            }
-        }
-    }
-
-    private func openTable(_ table: TableInfo, in database: String, schema: String?) {
-        Task { @MainActor in
-            Self.logger.debug(
-                "openTable begin table=\(table.name, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) committed=\(committedActiveDatabase ?? "nil", privacy: .public)"
-            )
-            if database != committedActiveDatabase {
-                Self.logger.debug("openTable switchDatabase -> \(database, privacy: .public)")
-                await coordinator?.switchDatabase(to: database)
-            }
-            if let schema,
-               schema != coordinator?.toolbarState.currentSchema,
-               PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
-                Self.logger.debug("openTable switchSchema -> \(schema, privacy: .public)")
-                await coordinator?.switchSchema(to: schema)
-            }
-            Self.logger.debug(
-                "openTable openTableTab table=\(table.name, privacy: .public) committed=\(committedActiveDatabase ?? "nil", privacy: .public) currentSchema=\(coordinator?.toolbarState.currentSchema ?? "nil", privacy: .public)"
-            )
-            coordinator?.openTableTab(table)
-        }
     }
 }

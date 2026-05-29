@@ -17,35 +17,24 @@ final class DatabaseTreeMetadataService {
         let database: String
     }
 
-    struct TableKey: Hashable, Sendable {
+    struct ObjectsKey: Hashable, Sendable {
         let connectionId: UUID
         let database: String
         let schema: String?
     }
 
-    enum DatabaseListState: Equatable, Sendable {
-        case idle
-        case loading
-        case loaded([DatabaseMetadata])
-        case failed(String)
+    struct SchemaObjects: Equatable, Sendable {
+        var tables: [TableInfo]
+        var routines: [RoutineInfo]
     }
 
-    enum SchemaListState: Equatable, Sendable {
-        case idle
-        case loading
-        case loaded([String])
-        case failed(String)
-    }
+    private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
+    private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
+    private(set) var objects: [ObjectsKey: MetadataLoadState<SchemaObjects>] = [:]
 
-    private(set) var databaseListStates: [UUID: DatabaseListState] = [:]
-    private(set) var schemaListStates: [DatabaseKey: SchemaListState] = [:]
-    private(set) var tableStates: [TableKey: SchemaState] = [:]
-    private(set) var routineLists: [TableKey: [RoutineInfo]] = [:]
-
-    @ObservationIgnored private let databaseListDedup = OnceTask<UUID, [DatabaseMetadata]>()
-    @ObservationIgnored private let schemaListDedup = OnceTask<DatabaseKey, [String]>()
-    @ObservationIgnored private let tableDedup = OnceTask<TableKey, [TableInfo]>()
-    @ObservationIgnored private let routineDedup = OnceTask<TableKey, [RoutineInfo]>()
+    @ObservationIgnored private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
+    @ObservationIgnored private let schemaDedup = OnceTask<DatabaseKey, [String]>()
+    @ObservationIgnored private let objectsDedup = OnceTask<ObjectsKey, SchemaObjects>()
 
     @ObservationIgnored private static let logger = Logger(
         subsystem: "com.TablePro", category: "SidebarTree"
@@ -53,434 +42,227 @@ final class DatabaseTreeMetadataService {
 
     private init() {}
 
-    func databaseListState(for connectionId: UUID) -> DatabaseListState {
-        databaseListStates[connectionId] ?? .idle
+    // MARK: - Reads
+
+    func databaseListState(for connectionId: UUID) -> MetadataLoadState<[DatabaseMetadata]> {
+        databaseList[connectionId] ?? .idle
     }
 
     func databases(for connectionId: UUID) -> [DatabaseMetadata] {
-        if case .loaded(let list) = databaseListState(for: connectionId) {
-            return list
-        }
-        return []
+        databaseList[connectionId]?.value ?? []
     }
 
-    func schemaListState(connectionId: UUID, database: String) -> SchemaListState {
-        if database == activeDatabase(for: connectionId) {
-            let schemas = SchemaService.shared.schemas(for: connectionId)
-            if !schemas.isEmpty {
-                return .loaded(schemas)
-            }
-            switch SchemaService.shared.state(for: connectionId) {
-            case .idle: return .idle
-            case .loading: return .loading
-            case .failed(let message): return .failed(message)
-            case .loaded: return .loaded(schemas)
-            }
-        }
-        return schemaListStates[DatabaseKey(connectionId: connectionId, database: database)] ?? .idle
+    func schemaListState(connectionId: UUID, database: String) -> MetadataLoadState<[String]> {
+        schemaList[DatabaseKey(connectionId: connectionId, database: database)] ?? .idle
     }
 
     func schemas(connectionId: UUID, database: String) -> [String] {
-        if case .loaded(let list) = schemaListState(connectionId: connectionId, database: database) {
-            return list
-        }
-        return []
+        schemaList[DatabaseKey(connectionId: connectionId, database: database)]?.value ?? []
     }
 
-    func tableState(connectionId: UUID, database: String, schema: String?) -> SchemaState {
-        if database == activeDatabase(for: connectionId) {
-            if let schema {
-                return SchemaService.shared.schemaState(for: connectionId, schema: schema)
-            }
-            return SchemaService.shared.state(for: connectionId)
-        }
-        return tableStates[Self.tableKey(
-            connectionId: connectionId, database: database, schema: schema
-        )] ?? .idle
+    func objectsState(connectionId: UUID, database: String, schema: String?) -> MetadataLoadState<SchemaObjects> {
+        objects[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)] ?? .idle
     }
 
     func tables(connectionId: UUID, database: String, schema: String?) -> [TableInfo] {
-        if database == activeDatabase(for: connectionId) {
-            if let schema {
-                return SchemaService.shared.tables(for: connectionId, schema: schema)
-            }
-            return SchemaService.shared.tables(for: connectionId)
-        }
-        if case .loaded(let list) = tableState(
-            connectionId: connectionId, database: database, schema: schema
-        ) {
-            return list
-        }
-        return []
+        objects[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value?.tables ?? []
     }
 
     func routines(connectionId: UUID, database: String, schema: String?) -> [RoutineInfo] {
-        routineLists[Self.tableKey(connectionId: connectionId, database: database, schema: schema)] ?? []
+        objects[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value?.routines ?? []
     }
 
-    func loadDatabaseList(connectionId: UUID, driver: DatabaseDriver, databaseType: DatabaseType) async {
-        Self.logger.debug(
-            "loadDatabaseList enter connId=\(connectionId, privacy: .public) type=\(databaseType.rawValue, privacy: .public) state=\(Self.label(self.databaseListState(for: connectionId)), privacy: .public) driver=\(driver.status.label, privacy: .public)"
-        )
-        if case .loaded = databaseListState(for: connectionId) {
-            Self.logger.debug("loadDatabaseList skip-loaded connId=\(connectionId, privacy: .public)")
+    // MARK: - Loads
+
+    func loadDatabases(connectionId: UUID, databaseType: DatabaseType) async {
+        guard isConnected(connectionId) else {
+            Self.logger.debug("loadDatabases skip-not-connected connId=\(connectionId, privacy: .public)")
             return
         }
-        databaseListStates[connectionId] = .loading
+        switch databaseListState(for: connectionId) {
+        case .loaded, .loading: return
+        case .idle, .failed: break
+        }
+        databaseList[connectionId] = .loading
         let systemNames = Set(PluginManager.shared.systemDatabaseNames(for: databaseType))
         do {
-            let list = try await databaseListDedup.execute(key: connectionId) {
-                let names = try await driver.fetchDatabases()
-                return names.sorted().map { name in
-                    DatabaseMetadata.minimal(name: name, isSystem: systemNames.contains(name))
+            let list = try await databaseDedup.execute(key: connectionId) { [self] in
+                try await withDriver(connectionId: connectionId, database: nil) { driver in
+                    try await driver.fetchDatabases().sorted().map {
+                        DatabaseMetadata.minimal(name: $0, isSystem: systemNames.contains($0))
+                    }
                 }
             }
-            databaseListStates[connectionId] = .loaded(list)
-            Self.logger.debug(
-                "loadDatabaseList loaded connId=\(connectionId, privacy: .public) count=\(list.count, privacy: .public)"
-            )
+            databaseList[connectionId] = .loaded(list)
+            Self.logger.debug("loadDatabases loaded connId=\(connectionId, privacy: .public) count=\(list.count, privacy: .public)")
         } catch is CancellationError {
-            Self.logger.debug("loadDatabaseList cancelled connId=\(connectionId, privacy: .public)")
-            return
+            resetIfLoading(databaseConnectionId: connectionId)
         } catch {
-            Self.logger.warning(
-                "loadDatabaseList failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
-            )
-            databaseListStates[connectionId] = .failed(error.localizedDescription)
+            databaseList[connectionId] = .failed(error.localizedDescription)
+            Self.logger.warning("loadDatabases failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
     }
 
-    func reloadDatabaseList(connectionId: UUID, driver: DatabaseDriver, databaseType: DatabaseType) async {
-        Self.logger.debug("reloadDatabaseList connId=\(connectionId, privacy: .public)")
-        await databaseListDedup.cancel(key: connectionId)
-        databaseListStates.removeValue(forKey: connectionId)
-        await loadDatabaseList(
-            connectionId: connectionId, driver: driver, databaseType: databaseType
-        )
-    }
-
-    func loadSchemaList(connectionId: UUID, database: String) async {
-        let active = activeDatabase(for: connectionId)
-        Self.logger.debug(
-            "loadSchemaList enter connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) active=\(active ?? "nil", privacy: .public)"
-        )
-        if database == active {
-            Self.logger.debug("loadSchemaList skip-active db=\(database, privacy: .public)")
-            return
-        }
-        if isConnecting(connectionId) {
-            Self.logger.debug("loadSchemaList skip-connecting db=\(database, privacy: .public)")
+    func loadSchemas(connectionId: UUID, database: String) async {
+        guard isConnected(connectionId) else {
+            Self.logger.debug("loadSchemas skip-not-connected db=\(database, privacy: .public)")
             return
         }
         let key = DatabaseKey(connectionId: connectionId, database: database)
-        if case .loaded = schemaListStates[key] {
-            Self.logger.debug("loadSchemaList skip-loaded db=\(database, privacy: .public)")
-            return
+        switch schemaList[key] ?? .idle {
+        case .loaded, .loading: return
+        case .idle, .failed: break
         }
-        schemaListStates[key] = .loading
+        schemaList[key] = .loading
         do {
-            let list = try await schemaListDedup.execute(key: key) {
-                try await MetadataConnectionPool.shared.withDriver(
-                    connectionId: connectionId, database: database
-                ) { driver in
+            let list = try await schemaDedup.execute(key: key) { [self] in
+                try await withDriver(connectionId: connectionId, database: database) { driver in
                     try await driver.fetchSchemas()
                 }
             }
-            schemaListStates[key] = .loaded(list)
-            Self.logger.debug(
-                "loadSchemaList loaded db=\(database, privacy: .public) count=\(list.count, privacy: .public)"
-            )
+            schemaList[key] = .loaded(list)
+            Self.logger.debug("loadSchemas loaded db=\(database, privacy: .public) count=\(list.count, privacy: .public)")
         } catch is CancellationError {
-            Self.logger.debug("loadSchemaList cancelled db=\(database, privacy: .public)")
-            return
+            if case .loading = schemaList[key] { schemaList[key] = .idle }
         } catch {
-            Self.logger.warning(
-                "loadSchemaList failed connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
-            )
-            schemaListStates[key] = .failed(error.localizedDescription)
+            schemaList[key] = .failed(error.localizedDescription)
+            Self.logger.warning("loadSchemas failed db=\(database, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
     }
 
-    func loadTables(connectionId: UUID, database: String, schema: String?) async {
-        let active = activeDatabase(for: connectionId)
-        let isActive = database == active
-        Self.logger.debug(
-            "loadTables enter connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) active=\(active ?? "nil", privacy: .public) isActive=\(isActive, privacy: .public) driver=\(self.driverStatusLabel(connectionId), privacy: .public)"
-        )
-        if isConnecting(connectionId) {
-            Self.logger.debug(
-                "loadTables skip-connecting db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-            )
+    func loadObjects(connectionId: UUID, database: String, schema: String?) async {
+        guard isConnected(connectionId) else {
+            Self.logger.debug("loadObjects skip-not-connected db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)")
             return
         }
-        if isActive {
-            guard let session = DatabaseManager.shared.session(for: connectionId),
-                  let driver = session.driver else {
-                Self.logger.debug(
-                    "loadTables active-skip-no-driver db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-                )
-                return
-            }
-            if let schema {
-                Self.logger.debug(
-                    "loadTables active->loadSchemaTables schema=\(schema, privacy: .public) before=\(SchemaService.shared.schemaState(for: connectionId, schema: schema).label, privacy: .public)"
-                )
-                await SchemaService.shared.loadSchemaTables(
-                    connectionId: connectionId, schema: schema, driver: driver
-                )
-                Self.logger.debug(
-                    "loadTables active->loadSchemaTables done schema=\(schema, privacy: .public) after=\(SchemaService.shared.schemaState(for: connectionId, schema: schema).label, privacy: .public)"
-                )
-            } else if case .idle = SchemaService.shared.state(for: connectionId) {
-                Self.logger.debug("loadTables active->SchemaService.load db=\(database, privacy: .public)")
-                await SchemaService.shared.load(
-                    connectionId: connectionId, driver: driver, connection: session.connection
-                )
-            }
-            await loadRoutines(connectionId: connectionId, database: database, schema: schema)
-            return
+        let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        switch objects[key] ?? .idle {
+        case .loaded, .loading: return
+        case .idle, .failed: break
         }
-        let key = Self.tableKey(connectionId: connectionId, database: database, schema: schema)
-        if case .loaded = tableStates[key] {
-            Self.logger.debug(
-                "loadTables nonactive-skip-loaded db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-            )
-            await loadRoutines(connectionId: connectionId, database: database, schema: schema)
-            return
-        }
-        tableStates[key] = .loading
-        do {
-            let normalizedSchema = key.schema
-            let list = try await tableDedup.execute(key: key) {
-                try await MetadataConnectionPool.shared.withDriver(
-                    connectionId: connectionId, database: database
-                ) { driver in
-                    try await driver.fetchTables(schema: normalizedSchema)
-                }
-            }
-            tableStates[key] = .loaded(list)
-            Self.logger.debug(
-                "loadTables nonactive-loaded db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) count=\(list.count, privacy: .public)"
-            )
-        } catch is CancellationError {
-            Self.logger.debug(
-                "loadTables nonactive-cancelled db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-            )
-            return
-        } catch {
-            Self.logger.warning(
-                "loadTables nonactive-failed connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
-            )
-            tableStates[key] = .failed(error.localizedDescription)
-            return
-        }
-        await loadRoutines(connectionId: connectionId, database: database, schema: schema)
-    }
-
-    func loadRoutines(connectionId: UUID, database: String, schema: String?) async {
-        let key = Self.tableKey(connectionId: connectionId, database: database, schema: schema)
-        if routineLists[key] != nil {
-            Self.logger.debug(
-                "loadRoutines skip-loaded db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-            )
-            return
-        }
-        if isConnecting(connectionId) {
-            Self.logger.debug(
-                "loadRoutines skip-connecting db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-            )
-            return
-        }
+        objects[key] = .loading
         let normalizedSchema = key.schema
-        let isActive = database == activeDatabase(for: connectionId)
-        let activeSessionDriver = isActive ? DatabaseManager.shared.session(for: connectionId)?.driver : nil
-        if isActive, activeSessionDriver == nil {
-            Self.logger.debug(
-                "loadRoutines active-skip-no-driver db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-            )
-            return
-        }
         do {
-            let list = try await routineDedup.execute(key: key) {
-                if let activeSessionDriver {
-                    return try await Self.fetchRoutines(driver: activeSessionDriver, schema: normalizedSchema)
-                }
-                return try await MetadataConnectionPool.shared.withDriver(
-                    connectionId: connectionId, database: database
-                ) { driver in
-                    try await Self.fetchRoutines(driver: driver, schema: normalizedSchema)
+            let result = try await objectsDedup.execute(key: key) { [self] in
+                try await withDriver(connectionId: connectionId, database: database) { driver in
+                    async let tables = driver.fetchTables(schema: normalizedSchema)
+                    async let procedures = driver.fetchProcedures(schema: normalizedSchema)
+                    async let functions = driver.fetchFunctions(schema: normalizedSchema)
+                    return SchemaObjects(
+                        tables: try await tables,
+                        routines: try await procedures + functions
+                    )
                 }
             }
-            routineLists[key] = list
+            objects[key] = .loaded(result)
             Self.logger.debug(
-                "loadRoutines loaded db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) count=\(list.count, privacy: .public)"
+                "loadObjects loaded db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) tables=\(result.tables.count, privacy: .public) routines=\(result.routines.count, privacy: .public)"
             )
         } catch is CancellationError {
-            Self.logger.debug(
-                "loadRoutines cancelled db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-            )
-            return
+            if case .loading = objects[key] { objects[key] = .idle }
         } catch {
+            objects[key] = .failed(error.localizedDescription)
             Self.logger.warning(
-                "loadRoutines failed connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "loadObjects failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            routineLists[key] = []
         }
     }
 
-    private static func fetchRoutines(driver: DatabaseDriver, schema: String?) async throws -> [RoutineInfo] {
-        async let procedures = driver.fetchProcedures(schema: schema)
-        async let functions = driver.fetchFunctions(schema: schema)
-        return try await procedures + functions
+    // MARK: - Refresh
+
+    func refreshDatabases(connectionId: UUID, databaseType: DatabaseType) async {
+        await databaseDedup.cancel(key: connectionId)
+        databaseList.removeValue(forKey: connectionId)
+        await loadDatabases(connectionId: connectionId, databaseType: databaseType)
     }
 
-    func reloadTables(connectionId: UUID, database: String, schema: String?) async {
-        Self.logger.debug(
-            "reloadTables connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
-        )
-        let key = Self.tableKey(connectionId: connectionId, database: database, schema: schema)
-        await routineDedup.cancel(key: key)
-        routineLists.removeValue(forKey: key)
-        if database == activeDatabase(for: connectionId) {
-            guard let session = DatabaseManager.shared.session(for: connectionId),
-                  let driver = session.driver else { return }
-            if let schema {
-                await SchemaService.shared.reloadSchemaTables(
-                    connectionId: connectionId, schema: schema, driver: driver
-                )
-            } else {
-                await SchemaService.shared.reload(
-                    connectionId: connectionId, driver: driver, connection: session.connection
-                )
-            }
-            await loadRoutines(connectionId: connectionId, database: database, schema: schema)
-            return
-        }
-        await tableDedup.cancel(key: key)
-        tableStates.removeValue(forKey: key)
-        await loadTables(connectionId: connectionId, database: database, schema: schema)
+    func refreshSchemas(connectionId: UUID, database: String) async {
+        let key = DatabaseKey(connectionId: connectionId, database: database)
+        await schemaDedup.cancel(key: key)
+        schemaList.removeValue(forKey: key)
+        await loadSchemas(connectionId: connectionId, database: database)
     }
 
-    func refreshDatabase(connectionId: UUID, database: String) async {
-        Self.logger.debug(
-            "refreshDatabase connId=\(connectionId, privacy: .public) db=\(database, privacy: .public)"
-        )
-        if database == activeDatabase(for: connectionId) {
-            await SchemaService.shared.refresh(connectionId: connectionId)
-            return
-        }
-        await invalidateDatabase(connectionId: connectionId, database: database)
+    func refreshObjects(connectionId: UUID, database: String, schema: String?) async {
+        let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        await objectsDedup.cancel(key: key)
+        objects.removeValue(forKey: key)
+        await loadObjects(connectionId: connectionId, database: database, schema: schema)
     }
 
-    func invalidate(connectionId: UUID) async {
-        Self.logger.debug("invalidate connId=\(connectionId, privacy: .public)")
-        await databaseListDedup.cancel(key: connectionId)
-        databaseListStates.removeValue(forKey: connectionId)
-        await invalidatePerDatabaseCaches(connectionId: connectionId)
-    }
+    // MARK: - Lifecycle
 
-    func invalidateForReconnect(connectionId: UUID) async {
-        Self.logger.debug("invalidateForReconnect connId=\(connectionId, privacy: .public)")
-        await invalidatePerDatabaseCaches(connectionId: connectionId)
-    }
-
-    private func invalidatePerDatabaseCaches(connectionId: UUID) async {
-        let dbKeys = schemaListStates.keys.filter { $0.connectionId == connectionId }
-        let tableKeys = tableStates.keys.filter { $0.connectionId == connectionId }
-        let routineKeys = routineLists.keys.filter { $0.connectionId == connectionId }
-        Self.logger.debug(
-            "invalidatePerDatabaseCaches connId=\(connectionId, privacy: .public) schemaLists=\(dbKeys.count, privacy: .public) tableStates=\(tableKeys.count, privacy: .public) routineLists=\(routineKeys.count, privacy: .public)"
-        )
-        for key in dbKeys {
-            await schemaListDedup.cancel(key: key)
-            schemaListStates.removeValue(forKey: key)
-        }
-        for key in tableKeys {
-            await tableDedup.cancel(key: key)
-            tableStates.removeValue(forKey: key)
-        }
-        for key in routineKeys {
-            await routineDedup.cancel(key: key)
-            routineLists.removeValue(forKey: key)
-        }
-
+    func handleReconnect(connectionId: UUID) async {
+        Self.logger.debug("handleReconnect connId=\(connectionId, privacy: .public)")
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
+        await resetPending(connectionId: connectionId)
     }
 
-    func invalidateDatabase(connectionId: UUID, database: String) async {
-        Self.logger.debug(
-            "invalidateDatabase connId=\(connectionId, privacy: .public) db=\(database, privacy: .public)"
-        )
-        let dbKey = DatabaseKey(connectionId: connectionId, database: database)
-        await schemaListDedup.cancel(key: dbKey)
-        schemaListStates.removeValue(forKey: dbKey)
-
-        let tableKeys = tableStates.keys.filter {
-            $0.connectionId == connectionId && $0.database == database
+    func handleDisconnect(connectionId: UUID) async {
+        Self.logger.debug("handleDisconnect connId=\(connectionId, privacy: .public)")
+        MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
+        await databaseDedup.cancel(key: connectionId)
+        for key in schemaList.keys where key.connectionId == connectionId {
+            await schemaDedup.cancel(key: key)
         }
-        for key in tableKeys {
-            await tableDedup.cancel(key: key)
-            tableStates.removeValue(forKey: key)
+        for key in objects.keys where key.connectionId == connectionId {
+            await objectsDedup.cancel(key: key)
         }
+        databaseList.removeValue(forKey: connectionId)
+        schemaList = schemaList.filter { $0.key.connectionId != connectionId }
+        objects = objects.filter { $0.key.connectionId != connectionId }
+    }
 
-        let routineKeys = routineLists.keys.filter {
-            $0.connectionId == connectionId && $0.database == database
+    // MARK: - Private
+
+    private func resetPending(connectionId: UUID) async {
+        if isPending(databaseList[connectionId]) {
+            await databaseDedup.cancel(key: connectionId)
+            databaseList[connectionId] = .idle
         }
-        for key in routineKeys {
-            await routineDedup.cancel(key: key)
-            routineLists.removeValue(forKey: key)
+        for (key, state) in schemaList where key.connectionId == connectionId && isPending(state) {
+            await schemaDedup.cancel(key: key)
+            schemaList[key] = .idle
         }
-
-        MetadataConnectionPool.shared.invalidate(connectionId: connectionId, database: database)
+        for (key, state) in objects where key.connectionId == connectionId && isPending(state) {
+            await objectsDedup.cancel(key: key)
+            objects[key] = .idle
+        }
     }
 
-    private func activeDatabase(for connectionId: UUID) -> String? {
-        guard let session = DatabaseManager.shared.session(for: connectionId) else { return nil }
-        let value = session.activeDatabase
-        return value.isEmpty ? nil : value
-    }
-
-    private func isConnecting(_ connectionId: UUID) -> Bool {
-        DatabaseManager.shared.session(for: connectionId)?.status == .connecting
-    }
-
-    private func driverStatusLabel(_ connectionId: UUID) -> String {
-        DatabaseManager.shared.session(for: connectionId)?.driver?.status.label ?? "noDriver"
-    }
-
-    private static func label(_ state: DatabaseListState) -> String {
+    private func isPending<Value>(_ state: MetadataLoadState<Value>?) -> Bool {
         switch state {
-        case .idle: return "idle"
-        case .loading: return "loading"
-        case .loaded(let list): return "loaded(\(list.count))"
-        case .failed: return "failed"
+        case .loading, .failed: return true
+        case .idle, .loaded, .none: return false
         }
     }
 
-    private static func tableKey(connectionId: UUID, database: String, schema: String?) -> TableKey {
+    private func resetIfLoading(databaseConnectionId connectionId: UUID) {
+        if case .loading = databaseList[connectionId] { databaseList[connectionId] = .idle }
+    }
+
+    private func isConnected(_ connectionId: UUID) -> Bool {
+        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+    }
+
+    private func withDriver<T: Sendable>(
+        connectionId: UUID,
+        database: String?,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        let session = DatabaseManager.shared.session(for: connectionId)
+        let usesPrimary = database == nil || database == session?.activeDatabase
+        if usesPrimary, let driver = session?.driver, driver.status == .connected {
+            return try await body(driver)
+        }
+        guard let database else { throw DatabaseError.notConnected }
+        return try await MetadataConnectionPool.shared.withDriver(
+            connectionId: connectionId, database: database, body
+        )
+    }
+
+    private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {
         let normalized: String? = (schema?.isEmpty == true) ? nil : schema
-        return TableKey(connectionId: connectionId, database: database, schema: normalized)
-    }
-}
-
-extension SchemaState {
-    var label: String {
-        switch self {
-        case .idle: return "idle"
-        case .loading: return "loading"
-        case .loaded(let tables): return "loaded(\(tables.count))"
-        case .failed: return "failed"
-        }
-    }
-}
-
-extension ConnectionStatus {
-    var label: String {
-        switch self {
-        case .disconnected: return "disconnected"
-        case .connecting: return "connecting"
-        case .connected: return "connected"
-        case .error: return "error"
-        }
+        return ObjectsKey(connectionId: connectionId, database: database, schema: normalized)
     }
 }
