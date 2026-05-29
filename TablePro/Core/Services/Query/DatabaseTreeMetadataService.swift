@@ -64,11 +64,15 @@ final class DatabaseTreeMetadataService {
 
     func schemaListState(connectionId: UUID, database: String) -> SchemaListState {
         if database == activeDatabase(for: connectionId) {
+            let schemas = SchemaService.shared.schemas(for: connectionId)
+            if !schemas.isEmpty {
+                return .loaded(schemas)
+            }
             switch SchemaService.shared.state(for: connectionId) {
             case .idle: return .idle
             case .loading: return .loading
             case .failed(let message): return .failed(message)
-            case .loaded: return .loaded(SchemaService.shared.schemas(for: connectionId))
+            case .loaded: return .loaded(schemas)
             }
         }
         return schemaListStates[DatabaseKey(connectionId: connectionId, database: database)] ?? .idle

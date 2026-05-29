@@ -315,7 +315,55 @@ final class SchemaService {
     private func handleSchemaSwitch(connectionId: UUID) async {
         guard let session = DatabaseManager.shared.activeSessions[connectionId],
               let driver = session.driver else { return }
-        await invalidate(connectionId: connectionId)
-        await reload(connectionId: connectionId, driver: driver, connection: session.connection)
+        let connection = session.connection
+        if PluginManager.shared.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
+            await invalidate(connectionId: connectionId)
+            await reload(connectionId: connectionId, driver: driver, connection: connection)
+            return
+        }
+        await reloadCurrentSchemaContent(connectionId: connectionId, driver: driver)
+    }
+
+    private func reloadCurrentSchemaContent(connectionId: UUID, driver: DatabaseDriver) async {
+        await loadDedup.cancel(key: connectionId)
+        await procedureDedup.cancel(key: connectionId)
+        await functionDedup.cancel(key: connectionId)
+
+        states[connectionId] = .loading
+        bumpGeneration(connectionId)
+
+        async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
+            connectionId: connectionId,
+            kind: .procedure,
+            dedup: procedureDedup,
+            fetch: { try await driver.fetchProcedures(schema: nil) }
+        )
+        async let functionsTask: [RoutineInfo] = Self.fetchRoutinesSafely(
+            connectionId: connectionId,
+            kind: .function,
+            dedup: functionDedup,
+            fetch: { try await driver.fetchFunctions(schema: nil) }
+        )
+
+        let loadedProcedures = await proceduresTask
+        let loadedFunctions = await functionsTask
+
+        do {
+            let tables = try await loadDedup.execute(key: connectionId) {
+                try await driver.fetchTables()
+            }
+            states[connectionId] = .loaded(tables)
+            procedures[connectionId] = loadedProcedures
+            functions[connectionId] = loadedFunctions
+            bumpGeneration(connectionId)
+        } catch is CancellationError {
+            return
+        } catch {
+            Self.logger.warning(
+                "[schema] current-schema reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            states[connectionId] = .failed(error.localizedDescription)
+            bumpGeneration(connectionId)
+        }
     }
 }
