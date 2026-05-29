@@ -13,6 +13,7 @@ enum PasswordSourceResolver {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PasswordSourceResolver")
 
     private static let commandTimeoutSeconds: UInt64 = 30
+    private static let maxOutputBytes = 1_048_576
 
     enum ResolutionError: LocalizedError {
         case fileNotFound(path: String)
@@ -20,6 +21,7 @@ enum PasswordSourceResolver {
         case environmentVariableNotSet(name: String)
         case commandFailed(exitCode: Int32, stderr: String)
         case commandTimedOut
+        case outputTooLarge
         case emptyPassword
 
         var errorDescription: String? {
@@ -45,6 +47,8 @@ enum PasswordSourceResolver {
                 return String(format: String(localized: "Password command failed (exit %d): %@"), exitCode, message)
             case .commandTimedOut:
                 return String(localized: "Password command timed out after 30 seconds")
+            case .outputTooLarge:
+                return String(localized: "Password command produced too much output")
             case .emptyPassword:
                 return String(localized: "The password source produced an empty password")
             }
@@ -94,11 +98,15 @@ enum PasswordSourceResolver {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
-            let stdoutCollector = PipeDataCollector()
-            let stderrCollector = PipeDataCollector()
+            let stdoutCollector = PipeDataCollector(maxBytes: maxOutputBytes)
+            let stderrCollector = PipeDataCollector(maxBytes: maxOutputBytes)
             stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
                 let chunk = handle.availableData
-                if !chunk.isEmpty { stdoutCollector.append(chunk) }
+                guard !chunk.isEmpty else { return }
+                stdoutCollector.append(chunk)
+                if stdoutCollector.overflowed, process.isRunning {
+                    process.terminate()
+                }
             }
             stderrPipe.fileHandleForReading.readabilityHandler = { handle in
                 let chunk = handle.availableData
@@ -107,9 +115,13 @@ enum PasswordSourceResolver {
 
             try process.run()
 
+            let didTimeout = AtomicFlag()
             let timeoutTask = Task.detached {
                 try await Task.sleep(nanoseconds: timeoutSeconds * 1_000_000_000)
-                if process.isRunning { process.terminate() }
+                if process.isRunning {
+                    didTimeout.set()
+                    process.terminate()
+                }
             }
 
             process.waitUntilExit()
@@ -118,7 +130,10 @@ enum PasswordSourceResolver {
             stdoutPipe.fileHandleForReading.readabilityHandler = nil
             stderrPipe.fileHandleForReading.readabilityHandler = nil
 
-            if process.terminationReason == .uncaughtSignal {
+            if stdoutCollector.overflowed {
+                throw ResolutionError.outputTooLarge
+            }
+            if didTimeout.isSet {
                 throw ResolutionError.commandTimedOut
             }
             if process.terminationStatus != 0 {
@@ -167,17 +182,56 @@ enum PasswordSourceResolver {
 
 private final class PipeDataCollector: @unchecked Sendable {
     private let lock = NSLock()
+    private let maxBytes: Int
     private var data = Data()
+    private var didOverflow = false
+
+    init(maxBytes: Int) {
+        self.maxBytes = maxBytes
+    }
 
     func append(_ chunk: Data) {
         lock.lock()
-        data.append(chunk)
-        lock.unlock()
+        defer { lock.unlock() }
+        let remaining = maxBytes - data.count
+        guard remaining > 0 else {
+            didOverflow = true
+            return
+        }
+        if chunk.count > remaining {
+            data.append(chunk.prefix(remaining))
+            didOverflow = true
+        } else {
+            data.append(chunk)
+        }
+    }
+
+    var overflowed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return didOverflow
     }
 
     var string: String {
         lock.lock()
         defer { lock.unlock() }
         return String(data: data, encoding: .utf8) ?? ""
+    }
+}
+
+private final class AtomicFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
+    }
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 }

@@ -814,7 +814,7 @@ private struct StoredConnection: Codable {
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
         cloudflareTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudflareTunnelModeJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
-        passwordSource = try? container.decodeIfPresent(PasswordSource.self, forKey: .passwordSource)
+        passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false

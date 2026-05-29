@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 
 /// Declares where a connection's password comes from when it is not stored in the Keychain.
 /// Resolved at connect time from a file, an environment variable, or the stdout of a shell command.
@@ -11,6 +12,8 @@ enum PasswordSource: Codable, Hashable, Sendable {
     case file(path: String)
     case env(variable: String)
     case command(shell: String)
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "PasswordSource")
 
     private enum CodingKeys: String, CodingKey {
         case kind, path, variable, shell
@@ -51,6 +54,20 @@ enum PasswordSource: Codable, Hashable, Sendable {
         case let .command(shell):
             try container.encode(Kind.command.rawValue, forKey: .kind)
             try container.encode(shell, forKey: .shell)
+        }
+    }
+
+    /// Decodes a password source from a connection container, treating a present-but-malformed
+    /// entry as absent so one bad connection cannot fail loading of the whole store.
+    static func resilientlyDecoded<Key>(
+        from container: KeyedDecodingContainer<Key>,
+        forKey key: Key
+    ) -> PasswordSource? {
+        do {
+            return try container.decodeIfPresent(PasswordSource.self, forKey: key)
+        } catch {
+            logger.warning("Ignoring malformed passwordSource in a connection")
+            return nil
         }
     }
 }

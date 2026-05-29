@@ -553,7 +553,7 @@ extension DatabaseConnection: Codable {
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
-        passwordSource = try? container.decodeIfPresent(PasswordSource.self, forKey: .passwordSource)
+        passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
         cloudflareTunnelMode = try container.decodeIfPresent(CloudflareTunnelMode.self, forKey: .cloudflareTunnelMode) ?? .disabled
 
         // Migrate from legacy fields if sshTunnelMode is not present

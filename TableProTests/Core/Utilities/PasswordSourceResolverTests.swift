@@ -7,7 +7,7 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("PasswordSourceResolver")
+@Suite("PasswordSourceResolver", .serialized)
 struct PasswordSourceResolverTests {
     @Test("Reads a password from a file")
     func fileHappyPath() async throws {
@@ -151,6 +151,24 @@ struct PasswordSourceResolverTests {
     func commandRejectsNul() async {
         await #expect(throws: PasswordSourceResolver.ResolutionError.self) {
             try await PasswordSourceResolver.resolve(.command(shell: "printf 'a\\000b'"))
+        }
+    }
+
+    @Test("Throws when command output exceeds the size cap")
+    func commandOutputTooLarge() async {
+        do {
+            _ = try await PasswordSourceResolver.resolveCommand(
+                shell: "head -c 2000000 /dev/zero | tr '\\0' 'a'",
+                timeoutSeconds: 30
+            )
+            Issue.record("Expected resolveCommand to reject oversized output")
+        } catch let error as PasswordSourceResolver.ResolutionError {
+            guard case .outputTooLarge = error else {
+                Issue.record("Expected outputTooLarge, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Unexpected error: \(error)")
         }
     }
 
