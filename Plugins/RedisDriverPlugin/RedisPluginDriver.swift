@@ -789,7 +789,7 @@ private extension RedisPluginDriver {
             )
 
         default:
-            fatalError("Unexpected operation in executeKeyOperation")
+            throw RedisPluginError(code: 0, message: "Unexpected operation in executeKeyOperation")
         }
     }
 
@@ -844,7 +844,7 @@ private extension RedisPluginDriver {
             )
 
         default:
-            fatalError("Unexpected operation in executeHashOperation")
+            throw RedisPluginError(code: 0, message: "Unexpected operation in executeHashOperation")
         }
     }
 
@@ -896,7 +896,7 @@ private extension RedisPluginDriver {
             )
 
         default:
-            fatalError("Unexpected operation in executeListOperation")
+            throw RedisPluginError(code: 0, message: "Unexpected operation in executeListOperation")
         }
     }
 
@@ -948,7 +948,7 @@ private extension RedisPluginDriver {
             )
 
         default:
-            fatalError("Unexpected operation in executeSetOperation")
+            throw RedisPluginError(code: 0, message: "Unexpected operation in executeSetOperation")
         }
     }
 
@@ -1019,7 +1019,7 @@ private extension RedisPluginDriver {
             )
 
         default:
-            fatalError("Unexpected operation in executeSortedSetOperation")
+            throw RedisPluginError(code: 0, message: "Unexpected operation in executeSortedSetOperation")
         }
     }
 
@@ -1049,7 +1049,7 @@ private extension RedisPluginDriver {
             )
 
         default:
-            fatalError("Unexpected operation in executeStreamOperation")
+            throw RedisPluginError(code: 0, message: "Unexpected operation in executeStreamOperation")
         }
     }
 
@@ -1130,7 +1130,7 @@ private extension RedisPluginDriver {
             return buildStatusResult("OK", startTime: startTime)
 
         default:
-            fatalError("Unexpected operation in executeServerOperation")
+            throw RedisPluginError(code: 0, message: "Unexpected operation in executeServerOperation")
         }
     }
 }
