@@ -175,7 +175,8 @@ final class DatabaseTreeMetadataService {
     func loadTables(connectionId: UUID, database: String, schema: String?) async {
         if database == activeDatabase(for: connectionId) {
             guard let session = DatabaseManager.shared.session(for: connectionId),
-                  let driver = session.driver else { return }
+                  let driver = session.driver,
+                  driver.status == .connected else { return }
             if let schema {
                 await SchemaService.shared.loadSchemaTables(
                     connectionId: connectionId, schema: schema, driver: driver
