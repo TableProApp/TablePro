@@ -59,7 +59,7 @@ final class QueryExecutionCoordinator {
             if !writeStatements.isEmpty {
                 parent.tabManager.mutate(at: index) {
                     $0.execution.errorMessage =
-                        String(localized: "Cannot execute write queries: connection is read only")
+                        String(localized: "Cannot execute write queries: connection is read-only")
                 }
                 return
             }
@@ -134,7 +134,7 @@ final class QueryExecutionCoordinator {
             if !writeStatements.isEmpty {
                 parent.tabManager.mutate(at: index) {
                     $0.execution.errorMessage =
-                        String(localized: "Cannot execute write queries: connection is read only")
+                        String(localized: "Cannot execute write queries: connection is read-only")
                 }
                 return
             }
