@@ -60,6 +60,14 @@ struct DatabaseTreeView: View {
         return value.isEmpty ? nil : value
     }
 
+    private var committedActiveSchema: String? {
+        DatabaseManager.shared.session(for: connectionId)?.currentSchema
+    }
+
+    private var schemaGenerationToken: Int {
+        SchemaService.shared.generationToken(for: connectionId)
+    }
+
     @MainActor
     private func activate(_ ref: DatabaseTreeTableRef?) async {
         guard let ref else { return }
@@ -110,17 +118,26 @@ struct DatabaseTreeView: View {
         .onAppear {
             loadDatabasesIfNeeded()
             expandActive()
+            reconcileLoads()
         }
-        .onChange(of: activeDatabase ?? "") { _, _ in
+        .onChange(of: activeContextKey) { _, _ in
             expandActive()
         }
-        .onChange(of: activeSchema ?? "") { _, _ in
-            expandActive()
+        .onChange(of: reconcileKey) { _, _ in
+            reconcileLoads()
         }
         .onChange(of: localSelection) { oldRefs, newRefs in
             guard let ref = SelectionDelta.singleAddition(old: oldRefs, new: newRefs) else { return }
             openTable(ref.table, in: ref.database, schema: ref.schema)
         }
+    }
+
+    private var activeContextKey: String {
+        "\(activeDatabase ?? "")|\(activeSchema ?? "")"
+    }
+
+    private var reconcileKey: String {
+        "\(committedActiveDatabase ?? "")|\(committedActiveSchema ?? "")|\(schemaGenerationToken)"
     }
 
     private var treeList: some View {
@@ -429,6 +446,39 @@ struct DatabaseTreeView: View {
                 databaseType: databaseType
             )
         }
+    }
+
+    private func reconcileLoads() {
+        guard case .loaded = treeService.databaseListState(for: connectionId) else { return }
+
+        if let active = committedActiveDatabase {
+            ensureContentLoaded(database: active, schema: supportsSchemaLevel ? committedActiveSchema : nil)
+        }
+
+        for database in windowState.expandedTreeDatabases {
+            guard !supportsSchemaLevel else {
+                ensureSchemaListLoaded(database: database)
+                let expandedSchemas = windowState.expandedTreeDatabaseSchemas
+                    .filter { $0.database == database }
+                for key in expandedSchemas {
+                    ensureContentLoaded(database: database, schema: key.schema)
+                }
+                continue
+            }
+            ensureContentLoaded(database: database, schema: nil)
+        }
+    }
+
+    private func ensureSchemaListLoaded(database: String) {
+        guard case .idle = treeService.schemaListState(connectionId: connectionId, database: database) else { return }
+        loadDatabaseContentIfNeeded(database)
+    }
+
+    private func ensureContentLoaded(database: String, schema: String?) {
+        guard case .idle = treeService.tableState(
+            connectionId: connectionId, database: database, schema: schema
+        ) else { return }
+        loadTablesIfNeeded(database: database, schema: schema)
     }
 
     private func loadDatabaseContentIfNeeded(_ database: String) {
