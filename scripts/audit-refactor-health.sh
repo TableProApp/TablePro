@@ -132,9 +132,9 @@ report_sql_hotspots() {
 
 report_gate_migration() {
     section "Execution-gate migration (R-003)"
-    echo "  SafeModeGuard.checkPermission call sites: $(count_swift_matches 'SafeModeGuard\.checkPermission' TablePro)"
+    echo "  ExecutionGate authorize call sites:       $(count_swift_matches 'ExecutionGateProvider\.shared\.authorize' TablePro)"
     echo "  direct driver execute call sites:         $(count_swift_matches 'driver\.(execute|executeParameterized|executeUserQuery)\(' TablePro)"
-    echo "  (both should trend down as callers route through the execution gate)"
+    echo "  (direct driver execute should trend down as callers route through the gate)"
 }
 
 echo "TablePro refactor health audit"
