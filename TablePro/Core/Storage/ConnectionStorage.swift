@@ -278,6 +278,7 @@ final class ConnectionStorage {
             startupCommands: connection.startupCommands,
             sortOrder: connection.sortOrder,
             localOnly: connection.localOnly,
+            passwordSource: connection.passwordSource,
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
 
