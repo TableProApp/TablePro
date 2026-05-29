@@ -8,12 +8,11 @@ struct SchemaPickerFooter: View {
     let databaseType: DatabaseType
 
     @Bindable private var schemaService = SchemaService.shared
+    @Bindable private var databaseManager = DatabaseManager.shared
     @State private var showSystemSchemas = false
-    @State private var schemaVersion = 0
 
     private var currentSchema: String? {
-        _ = schemaVersion
-        return DatabaseManager.shared.session(for: connectionId)?.currentSchema
+        databaseManager.session(for: connectionId)?.currentSchema
     }
 
     private var allSchemas: [String] {
@@ -46,11 +45,6 @@ struct SchemaPickerFooter: View {
                     onRefresh: { Task { await schemaService.refresh(connectionId: connectionId) } }
                 )
                 .padding(8)
-            }
-            .onReceive(AppEvents.shared.currentSchemaChanged) { changedId in
-                if changedId == connectionId {
-                    schemaVersion &+= 1
-                }
             }
         }
     }

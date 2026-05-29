@@ -69,30 +69,32 @@ struct TableRow: View {
         TableRowLogic.textColor(isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate)
     }
 
+    @ViewBuilder
+    private var pendingStateBadge: some View {
+        if isPendingDelete {
+            Image(systemName: "minus.circle.fill")
+                .font(.caption)
+                .sidebarTint(.red)
+        } else if isPendingTruncate {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.caption)
+                .sidebarTint(.orange)
+        }
+    }
+
     var body: some View {
         Label {
             Text(table.name)
-                .font(.system(.callout, design: .monospaced))
+                .font(.callout)
                 .lineLimit(1)
                 .sidebarTint(textColor)
         } icon: {
-            ZStack(alignment: .bottomTrailing) {
-                Image(systemName: TableRowLogic.iconName(for: table.type))
-                    .sidebarTint(iconColor)
-                    .frame(width: 14)
-
-                if isPendingDelete {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.caption)
-                        .sidebarTint(.red)
-                        .offset(x: 4, y: 4)
-                } else if isPendingTruncate {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .font(.caption)
-                        .sidebarTint(.orange)
-                        .offset(x: 4, y: 4)
+            Image(systemName: TableRowLogic.iconName(for: table.type))
+                .sidebarTint(iconColor)
+                .frame(width: 14)
+                .overlay(alignment: .bottomTrailing) {
+                    pendingStateBadge
                 }
-            }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)

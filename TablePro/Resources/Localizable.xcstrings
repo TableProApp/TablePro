@@ -11299,6 +11299,9 @@
         }
       }
     },
+    "Connecting to '%@' timed out." : {
+
+    },
     "Connecting to %@" : {
 
     },
@@ -27779,6 +27782,9 @@
         }
       }
     },
+    "Loading schemas…" : {
+
+    },
     "Loading tables..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -30714,6 +30720,9 @@
     "No databases" : {
 
     },
+    "No Databases" : {
+
+    },
     "No databases found" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -30925,6 +30934,9 @@
           }
         }
       }
+    },
+    "No items" : {
+
     },
     "No keys" : {
       "localizations" : {
@@ -31603,6 +31615,9 @@
           }
         }
       }
+    },
+    "No schemas" : {
+
     },
     "No schemas found" : {
       "extractionState" : "stale",
@@ -48447,6 +48462,9 @@
         }
       }
     },
+    "This server has no databases yet." : {
+
+    },
     "This sets %lld loaded rows. Review and Save to apply." : {
 
     },
@@ -51189,6 +51207,12 @@
           }
         }
       }
+    },
+    "Use as Active Database" : {
+
+    },
+    "Use as Active Schema" : {
+
     },
     "Use clipboard URL" : {
 

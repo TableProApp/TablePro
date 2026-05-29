@@ -731,6 +731,11 @@ final class MainContentCoordinator {
             driver: driver,
             connection: connection
         )
+        await DatabaseTreeMetadataService.shared.loadDatabaseList(
+            connectionId: connectionId,
+            driver: driver,
+            databaseType: connection.type
+        )
         await reconcilePostSchemaLoad()
     }
 

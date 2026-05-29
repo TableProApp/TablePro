@@ -2,8 +2,6 @@
 //  SidebarContextMenu.swift
 //  TablePro
 //
-//  Context menu for sidebar table rows and empty space.
-//
 
 import SwiftUI
 import TableProPluginKit
@@ -17,7 +15,6 @@ enum SidebarContextMenuLogic {
         clickedTable?.type == .view
     }
 
-    /// True when the object cannot be modified via DML (INSERT/UPDATE/DELETE).
     static func isReadOnlyKind(_ type: TableInfo.TableType?) -> Bool {
         switch type {
         case .view, .materializedView, .foreignTable, .systemTable:
@@ -47,7 +44,6 @@ enum SidebarContextMenuLogic {
     }
 }
 
-/// Unified context menu for sidebar — used for both table rows and empty space
 struct SidebarContextMenu: View {
     let clickedTable: TableInfo?
     let selectedTables: Set<TableInfo>
@@ -72,12 +68,12 @@ struct SidebarContextMenu: View {
     }
 
     var body: some View {
-        Button("Create New Table...") {
+        Button(String(localized: "Create New Table...")) {
             coordinator?.createNewTable()
         }
         .disabled(isReadOnly)
 
-        Button("Create New View...") {
+        Button(String(localized: "Create New View...")) {
             coordinator?.createView()
         }
         .disabled(isReadOnly)
@@ -85,7 +81,7 @@ struct SidebarContextMenu: View {
         Divider()
 
         if isView {
-            Button("Edit View Definition") {
+            Button(String(localized: "Edit View Definition")) {
                 if let viewName = clickedTable?.name {
                     coordinator?.editViewDefinition(viewName)
                 }
@@ -93,7 +89,7 @@ struct SidebarContextMenu: View {
             .disabled(isReadOnly)
         }
 
-        Button("Show Structure") {
+        Button(String(localized: "Show Structure")) {
             if let clickedTable {
                 coordinator?.openTableTab(clickedTable, showStructure: true)
             }
@@ -104,12 +100,12 @@ struct SidebarContextMenu: View {
             coordinator?.showERDiagram()
         }
 
-        Button("Copy Name") {
+        Button(String(localized: "Copy Name")) {
             ClipboardService.shared.writeText(effectiveTableNames.joined(separator: ","))
         }
         .disabled(!hasSelection)
 
-        Button("Export...") {
+        Button(String(localized: "Export...")) {
             coordinator?.openExportDialog(preselectedTableNames: Set(effectiveTableNames))
         }
         .disabled(!hasSelection)
@@ -120,7 +116,7 @@ struct SidebarContextMenu: View {
                 for: coordinator?.connection.type ?? .mysql
             )
         ) {
-            Button("Import...") {
+            Button(String(localized: "Import...")) {
                 coordinator?.openImportDialog()
             }
             .disabled(isReadOnly)
@@ -142,7 +138,7 @@ struct SidebarContextMenu: View {
         Divider()
 
         if SidebarContextMenuLogic.truncateVisible(clickedTable: clickedTable) {
-            Button("Truncate") {
+            Button(String(localized: "Truncate")) {
                 onBatchToggleTruncate(effectiveTableNames)
             }
             .disabled(!hasSelection || isReadOnly)

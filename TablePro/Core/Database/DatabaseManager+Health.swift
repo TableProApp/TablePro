@@ -207,6 +207,7 @@ extension DatabaseManager {
         }
 
         await SchemaService.shared.invalidate(connectionId: sessionId)
+        await DatabaseTreeMetadataService.shared.invalidateForReconnect(connectionId: sessionId)
 
         // Stop existing health monitor
         await stopHealthMonitor(for: sessionId)

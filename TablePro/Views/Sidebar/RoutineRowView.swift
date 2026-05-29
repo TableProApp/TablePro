@@ -43,7 +43,7 @@ struct RoutineRowView: View {
     var body: some View {
         Label {
             Text(routine.name)
-                .font(.system(.callout, design: .monospaced))
+                .font(.callout)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .sidebarTint(.primary)

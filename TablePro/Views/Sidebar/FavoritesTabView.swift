@@ -175,89 +175,16 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func nodeRows(_ items: [FavoriteNode]) -> AnyView {
-        AnyView(ForEach(items) { node in
-            switch node.content {
-            case .favorite(let favorite):
-                FavoriteRowView(favorite: favorite)
-                    .tag(node.id)
-            case .folder(let folder):
-                DisclosureGroup(isExpanded: Binding(
-                    get: { FavoritesExpansionState.shared.isFolderExpanded(folder.id, for: connectionId) },
-                    set: { expanded in
-                        FavoritesExpansionState.shared.setFolderExpanded(folder.id, expanded: expanded, for: connectionId)
-                    }
-                )) {
-                    if let children = node.children {
-                        nodeRows(children)
-                    }
-                } label: {
-                    folderLabel(folder)
-                }
-                .tag(node.id)
-            case .linkedFolder(let linkedFolder):
-                DisclosureGroup(isExpanded: linkedSubtreeBinding(node.id)) {
-                    if let children = node.children {
-                        nodeRows(children)
-                    }
-                } label: {
-                    LinkedFolderRowLabel(folder: linkedFolder)
-                }
-                .tag(node.id)
-            case .linkedSubfolder(_, let displayName, _):
-                DisclosureGroup(isExpanded: linkedSubtreeBinding(node.id)) {
-                    if let children = node.children {
-                        nodeRows(children)
-                    }
-                } label: {
-                    LinkedSubfolderRowLabel(displayName: displayName)
-                }
-                .tag(node.id)
-            case .linkedFavorite(let linked):
-                LinkedFavoriteRowView(favorite: linked)
-                    .tag(node.id)
-            }
-        })
-    }
-
-    private func linkedSubtreeBinding(_ nodeId: String) -> Binding<Bool> {
-        Binding(
-            get: { FavoritesExpansionState.shared.isLinkedNodeExpanded(nodeId, for: connectionId) },
-            set: { expanded in
-                FavoritesExpansionState.shared.setLinkedNodeExpanded(nodeId, expanded: expanded, for: connectionId)
-            }
+    @ViewBuilder
+    private func nodeRows(_ items: [FavoriteNode]) -> some View {
+        FavoriteNodeRowsView(
+            items: items,
+            connectionId: connectionId,
+            viewModel: viewModel,
+            renameFocus: $isRenameFocused
         )
     }
 
-    @ViewBuilder
-    private func folderLabel(_ folder: SQLFavoriteFolder) -> some View {
-        if viewModel.renamingFolderId == folder.id {
-            HStack(spacing: 4) {
-                Image(systemName: "folder")
-                TextField(
-                    "",
-                    text: Binding(
-                        get: { viewModel.renamingFolderName },
-                        set: { viewModel.renamingFolderName = $0 }
-                    )
-                )
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel(String(localized: "Folder name"))
-                .focused($isRenameFocused)
-                .onSubmit {
-                    viewModel.commitRenameFolder(folder)
-                }
-                .onExitCommand {
-                    viewModel.renamingFolderId = nil
-                }
-                .onAppear {
-                    isRenameFocused = true
-                }
-            }
-        } else {
-            Label(folder.name, systemImage: "folder")
-        }
-    }
 
     private func deleteSelectedNode() {
         guard let nodeId = sidebarState.selectedFavoriteNodeId else { return }
@@ -498,6 +425,121 @@ internal struct FavoritesTabView: View {
             guard !existing.contains(where: { $0.path == path }) else { return }
             LinkedSQLFolderStorage.shared.addFolder(LinkedSQLFolder(path: path))
             SQLFolderWatcher.shared.reload()
+        }
+    }
+}
+
+private struct FavoriteNodeRowsView: View {
+    let items: [FavoriteNode]
+    let connectionId: UUID
+    let viewModel: FavoritesSidebarViewModel
+    let renameFocus: FocusState<Bool>.Binding
+
+    var body: some View {
+        ForEach(items) { node in
+            content(for: node)
+        }
+    }
+
+    @ViewBuilder
+    private func content(for node: FavoriteNode) -> some View {
+        switch node.content {
+        case .favorite(let favorite):
+            FavoriteRowView(favorite: favorite)
+                .tag(node.id)
+        case .folder(let folder):
+            DisclosureGroup(isExpanded: folderExpansionBinding(folder)) {
+                if let children = node.children {
+                    FavoriteNodeRowsView(
+                        items: children,
+                        connectionId: connectionId,
+                        viewModel: viewModel,
+                        renameFocus: renameFocus
+                    )
+                }
+            } label: {
+                folderLabel(folder)
+            }
+            .tag(node.id)
+        case .linkedFolder(let linkedFolder):
+            DisclosureGroup(isExpanded: linkedSubtreeBinding(node.id)) {
+                if let children = node.children {
+                    FavoriteNodeRowsView(
+                        items: children,
+                        connectionId: connectionId,
+                        viewModel: viewModel,
+                        renameFocus: renameFocus
+                    )
+                }
+            } label: {
+                LinkedFolderRowLabel(folder: linkedFolder)
+            }
+            .tag(node.id)
+        case .linkedSubfolder(_, let displayName, _):
+            DisclosureGroup(isExpanded: linkedSubtreeBinding(node.id)) {
+                if let children = node.children {
+                    FavoriteNodeRowsView(
+                        items: children,
+                        connectionId: connectionId,
+                        viewModel: viewModel,
+                        renameFocus: renameFocus
+                    )
+                }
+            } label: {
+                LinkedSubfolderRowLabel(displayName: displayName)
+            }
+            .tag(node.id)
+        case .linkedFavorite(let linked):
+            LinkedFavoriteRowView(favorite: linked)
+                .tag(node.id)
+        }
+    }
+
+    private func folderExpansionBinding(_ folder: SQLFavoriteFolder) -> Binding<Bool> {
+        Binding(
+            get: { FavoritesExpansionState.shared.isFolderExpanded(folder.id, for: connectionId) },
+            set: { expanded in
+                FavoritesExpansionState.shared.setFolderExpanded(folder.id, expanded: expanded, for: connectionId)
+            }
+        )
+    }
+
+    private func linkedSubtreeBinding(_ nodeId: String) -> Binding<Bool> {
+        Binding(
+            get: { FavoritesExpansionState.shared.isLinkedNodeExpanded(nodeId, for: connectionId) },
+            set: { expanded in
+                FavoritesExpansionState.shared.setLinkedNodeExpanded(nodeId, expanded: expanded, for: connectionId)
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func folderLabel(_ folder: SQLFavoriteFolder) -> some View {
+        if viewModel.renamingFolderId == folder.id {
+            HStack(spacing: 4) {
+                Image(systemName: "folder")
+                TextField(
+                    "",
+                    text: Binding(
+                        get: { viewModel.renamingFolderName },
+                        set: { viewModel.renamingFolderName = $0 }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel(String(localized: "Folder name"))
+                .focused(renameFocus)
+                .onSubmit {
+                    viewModel.commitRenameFolder(folder)
+                }
+                .onExitCommand {
+                    viewModel.renamingFolderId = nil
+                }
+                .onAppear {
+                    renameFocus.wrappedValue = true
+                }
+            }
+        } else {
+            Label(folder.name, systemImage: "folder")
         }
     }
 }

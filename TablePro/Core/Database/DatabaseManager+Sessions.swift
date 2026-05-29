@@ -347,10 +347,12 @@ extension DatabaseManager {
         removeSessionEntry(for: sessionId)
 
         await SchemaService.shared.invalidate(connectionId: sessionId)
+        await DatabaseTreeMetadataService.shared.invalidate(connectionId: sessionId)
 
         SchemaProviderRegistry.shared.clear(for: sessionId)
 
         SharedSidebarState.removeConnection(sessionId)
+        SidebarViewModel.removeConnection(sessionId)
 
         if currentSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {
