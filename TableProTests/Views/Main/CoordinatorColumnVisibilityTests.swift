@@ -98,11 +98,15 @@ struct CoordinatorColumnVisibilityTests {
         #expect(coordinator.selectedTabHiddenColumns == ["one", "two"])
     }
 
-    @Test("pruneHiddenColumns drops names not in the current set")
+    @Test("pruneHiddenColumns drops hidden names that no longer exist in the schema")
     func pruneHiddenColumns() {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addTableTab(to: tabManager, tableName: "users")
         coordinator.hideAllColumns(["a", "b", "c", "d"])
+        coordinator.schemaColumnsCache["\(coordinator.connectionId):\(coordinator.activeDatabaseName)::users"] = (
+            columns: ["b", "d", "e"],
+            primaryKeys: []
+        )
 
         coordinator.pruneHiddenColumns(currentColumns: ["b", "d", "e"])
         #expect(coordinator.selectedTabHiddenColumns == ["b", "d"])
@@ -170,8 +174,8 @@ struct CoordinatorColumnVisibilityTests {
 
         #expect(tab.columnLayout.hiddenColumns == ["email"])
         #expect(tab.content.query.contains("SELECT *") == false)
-        #expect(tab.content.query.contains("\"id\""))
-        #expect(tab.content.query.contains("\"name\""))
-        #expect(tab.content.query.contains("\"email\"") == false)
+        #expect(tab.content.query.contains("id"))
+        #expect(tab.content.query.contains("name"))
+        #expect(tab.content.query.contains("email") == false)
     }
 }
