@@ -21,6 +21,7 @@ internal struct CallerCapabilities: OptionSet, Sendable {
     static let mayRunMultiStatement = CallerCapabilities(rawValue: 1 << 2)
     static let preCleared = CallerCapabilities(rawValue: 1 << 3)
     static let cannotPrompt = CallerCapabilities(rawValue: 1 << 4)
+    static let confirmationPreCleared = CallerCapabilities(rawValue: 1 << 5)
 
     static let interactiveUser: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement]
 }

@@ -97,8 +97,7 @@ public struct ExportDataTool: MCPToolImplementation {
             try await services.authPolicy.checkSafeModeDialog(
                 sql: query,
                 connectionId: connectionId,
-                databaseType: meta.databaseType,
-                safeModeLevel: meta.safeModeLevel
+                databaseType: meta.databaseType
             )
             queries.append((label: "query", sql: query))
         } else if let tables {
@@ -109,8 +108,7 @@ public struct ExportDataTool: MCPToolImplementation {
                 try await services.authPolicy.checkSafeModeDialog(
                     sql: sql,
                     connectionId: connectionId,
-                    databaseType: meta.databaseType,
-                    safeModeLevel: meta.safeModeLevel
+                    databaseType: meta.databaseType
                 )
                 queries.append((label: table, sql: sql))
             }

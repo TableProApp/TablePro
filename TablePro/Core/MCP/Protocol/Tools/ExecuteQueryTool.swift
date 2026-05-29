@@ -117,8 +117,7 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         try await services.authPolicy.checkSafeModeDialog(
             sql: query,
             connectionId: connectionId,
-            databaseType: meta.databaseType,
-            safeModeLevel: meta.safeModeLevel
+            databaseType: meta.databaseType
         )
 
         Self.logger.debug("execute_query invoked for connection \(connectionId.uuidString, privacy: .public)")

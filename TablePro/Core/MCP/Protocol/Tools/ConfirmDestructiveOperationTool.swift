@@ -76,7 +76,7 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             sql: query,
             connectionId: connectionId,
             databaseType: meta.databaseType,
-            safeModeLevel: meta.safeModeLevel
+            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
         )
 
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }

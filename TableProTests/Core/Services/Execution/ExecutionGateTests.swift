@@ -345,6 +345,45 @@ struct ExecutionGateTests {
         #expect(auth.callCount == 0)
     }
 
+    @Test("Confirmation pre-cleared skips confirm but still authenticates under safe mode")
+    func confirmationPreClearedSkipsConfirmKeepsAuth() async {
+        let confirm = StubConfirming(answer: false)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .safeMode, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(
+            makeRequest(
+                sql: "DROP TABLE t",
+                kind: .destructiveQuery,
+                capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared],
+                caller: .mcpClient(label: nil)
+            )
+        )
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 0)
+        #expect(auth.callCount == 1)
+    }
+
+    @Test("Confirmation pre-cleared still denies when authentication fails")
+    func confirmationPreClearedAuthFailureDenies() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: false)
+        let gate = makeGate(level: .safeMode, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(
+            makeRequest(
+                sql: "DROP TABLE t",
+                kind: .destructiveQuery,
+                capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared],
+                caller: .mcpClient(label: nil)
+            )
+        )
+
+        #expect(!decision.isAuthorized)
+        #expect(confirm.callCount == 0)
+    }
+
     @Test("Cannot-prompt caller is denied when confirmation required")
     func cannotPromptDeniesWhenConfirmationRequired() async {
         let confirm = StubConfirming(answer: true)

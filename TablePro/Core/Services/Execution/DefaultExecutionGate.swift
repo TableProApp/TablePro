@@ -48,7 +48,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
         let isMetadataRead = request.kind == .metadataRead
         let needsConfirmation = !isMetadataRead
             && (isDestructive || (level.requiresConfirmation && (effectiveWrite || level.appliesToAllQueries)))
-        if needsConfirmation, !caps.contains(.preCleared) {
+        if needsConfirmation, !caps.contains(.preCleared), !caps.contains(.confirmationPreCleared) {
             if caps.contains(.cannotPrompt) {
                 return .denied(reason: String(localized: "Confirmation is required for this operation"))
             }
