@@ -553,25 +553,22 @@ final class WelcomeViewModel {
 
         let updatedValidGroupIds = Set(groups.map(\.id))
         var order = 0
-        var dirtyIds: [String] = []
+        var updated: [DatabaseConnection] = []
         for i in connections.indices {
             let isUngrouped = connections[i].groupId.map { !updatedValidGroupIds.contains($0) } ?? true
             if isUngrouped {
                 if connections[i].sortOrder != order {
                     connections[i].sortOrder = order
-                    dirtyIds.append(connections[i].id.uuidString)
+                    updated.append(connections[i])
                 }
                 order += 1
             }
         }
 
-        guard storage.saveConnections(connections) else {
+        guard storage.updateConnections(updated) else {
             connections = storage.loadConnections()
             rebuildTree()
             return
-        }
-        if !dirtyIds.isEmpty {
-            services.syncTracker.markDirty(.connection, ids: dirtyIds)
         }
         rebuildTree()
     }
@@ -595,22 +592,19 @@ final class WelcomeViewModel {
         connections.move(fromOffsets: globalSource, toOffset: globalDestination)
 
         var order = 0
-        var dirtyIds: [String] = []
+        var updated: [DatabaseConnection] = []
         for i in connections.indices where connections[i].groupId == group.id {
             if connections[i].sortOrder != order {
                 connections[i].sortOrder = order
-                dirtyIds.append(connections[i].id.uuidString)
+                updated.append(connections[i])
             }
             order += 1
         }
 
-        guard storage.saveConnections(connections) else {
+        guard storage.updateConnections(updated) else {
             connections = storage.loadConnections()
             rebuildTree()
             return
-        }
-        if !dirtyIds.isEmpty {
-            services.syncTracker.markDirty(.connection, ids: dirtyIds)
         }
         rebuildTree()
     }

@@ -189,9 +189,10 @@ final class ConnectionStorage {
         guard didMutate, saveConnections(connections) else {
             return false
         }
-        for connection in updatesById.values where !connection.localOnly && !connection.isSample {
-            syncTracker.markDirty(.connection, id: connection.id.uuidString)
-        }
+        let dirtyIds = updatesById.values
+            .filter { !$0.localOnly && !$0.isSample }
+            .map { $0.id.uuidString }
+        syncTracker.markDirty(.connection, ids: dirtyIds)
         return true
     }
 
