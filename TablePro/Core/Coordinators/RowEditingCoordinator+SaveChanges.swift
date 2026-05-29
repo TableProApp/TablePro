@@ -18,7 +18,7 @@ extension RowEditingCoordinator {
         guard !parent.safeModeLevel.blocksAllWrites else {
             if let index = parent.tabManager.selectedTabIndex {
                 parent.tabManager.mutate(at: index) {
-                    $0.execution.errorMessage = String(localized: "Cannot save changes: connection is read only")
+                    $0.execution.errorMessage = String(localized: "Cannot save changes: connection is read-only")
                 }
             }
             parent.saveCompletionContinuation?.resume(returning: false)
