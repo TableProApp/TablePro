@@ -10,6 +10,14 @@ final class KeyHandlingTableView: NSTableView {
         true
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard coordinator?.tabType == .table, let window else { return }
+        let current = window.firstResponder
+        guard current == nil || current === window else { return }
+        window.makeFirstResponder(self)
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
         guard !isRaisingOverlay else { return }

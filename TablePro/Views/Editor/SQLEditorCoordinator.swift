@@ -110,7 +110,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
                 // Auto-focus: make the editor first responder, then ensure a
                 // cursor exists. Order matters — setCursorPositions calls
                 // updateSelectionViews which guards on isFirstResponder.
-                if let window = textView.window {
+                if !self.isDestroyed, let window = textView.window {
                     window.makeFirstResponder(textView)
                 }
                 if controller.cursorPositions.isEmpty {
