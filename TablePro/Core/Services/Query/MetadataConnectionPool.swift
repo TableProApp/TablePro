@@ -10,7 +10,7 @@ import os
 final class MetadataConnectionPool {
     static let shared = MetadataConnectionPool()
 
-    private struct Key: Hashable {
+    private struct Key: Hashable, Sendable {
         let connectionId: UUID
         let database: String
     }
@@ -28,6 +28,7 @@ final class MetadataConnectionPool {
     }
 
     private var entries: [Key: Entry] = [:]
+    private var pending: [Key: Task<Void, Error>] = [:]
     private let maxPerConnection = 4
     private let connectTimeoutSeconds: UInt64 = 15
     private static let logger = Logger(subsystem: "com.TablePro", category: "MetadataConnectionPool")
@@ -48,11 +49,15 @@ final class MetadataConnectionPool {
 
     func invalidate(connectionId: UUID, database: String) {
         let key = Key(connectionId: connectionId, database: database)
+        pending[key]?.cancel()
         entries[key]?.driver.disconnect()
         entries.removeValue(forKey: key)
     }
 
     func closeAll(connectionId: UUID) {
+        for key in pending.keys where key.connectionId == connectionId {
+            pending[key]?.cancel()
+        }
         let keys = entries.keys.filter { $0.connectionId == connectionId }
         for key in keys {
             entries[key]?.driver.disconnect()
@@ -71,28 +76,62 @@ final class MetadataConnectionPool {
             return entry
         }
 
-        guard let session = DatabaseManager.shared.session(for: connectionId) else {
+        if let inFlight = pending[key] {
+            try await inFlight.value
+            guard let entry = entries[key] else { throw DatabaseError.notConnected }
+            return entry
+        }
+
+        guard DatabaseManager.shared.session(for: connectionId) != nil else {
             throw DatabaseError.notConnected
         }
 
-        evictIfNeeded(for: connectionId)
+        evictIdleIfNeeded(for: connectionId)
 
+        let task = Task<Void, Error> { [self] in
+            let entry = try await openEntry(key: key)
+            if Task.isCancelled {
+                entry.driver.disconnect()
+                return
+            }
+            entries[key] = entry
+        }
+        pending[key] = task
+        do {
+            try await task.value
+        } catch {
+            pending.removeValue(forKey: key)
+            throw error
+        }
+        pending.removeValue(forKey: key)
+
+        guard let entry = entries[key] else { throw DatabaseError.notConnected }
+        return entry
+    }
+
+    private func openEntry(key: Key) async throws -> Entry {
+        guard let session = DatabaseManager.shared.session(for: key.connectionId) else {
+            throw DatabaseError.notConnected
+        }
         let baseConnection = session.effectiveConnection ?? session.connection
         var cloned = baseConnection
-        cloned.database = database
+        cloned.database = key.database
 
         let driver = try await DatabaseDriverFactory.createDriver(
             for: cloned,
             passwordOverride: session.cachedPassword,
             awaitPlugins: true
         )
-        try await connectWithTimeout(driver: driver, database: database)
-        let entry = Entry(driver: driver)
-        entries[key] = entry
+        do {
+            try await connectWithTimeout(driver: driver, database: key.database)
+        } catch {
+            driver.disconnect()
+            throw error
+        }
         Self.logger.info(
-            "[metadata-pool] opened connId=\(connectionId, privacy: .public) db=\(database, privacy: .public)"
+            "[metadata-pool] opened connId=\(key.connectionId, privacy: .public) db=\(key.database, privacy: .public)"
         )
-        return entry
+        return Entry(driver: driver)
     }
 
     private func connectWithTimeout(driver: DatabaseDriver, database: String) async throws {
@@ -116,17 +155,12 @@ final class MetadataConnectionPool {
         }
     }
 
-    private func evictIfNeeded(for connectionId: UUID) {
-        let mine = entries.filter { $0.key.connectionId == connectionId }
-        guard mine.count >= maxPerConnection else { return }
-        let idleEntries = mine.filter { $0.value.inFlightCount == 0 }
-        let pool = idleEntries.isEmpty ? mine : idleEntries
-        guard let oldest = pool.min(by: { $0.value.lastUsed < $1.value.lastUsed }) else { return }
-        if idleEntries.isEmpty {
-            Self.logger.warning(
-                "[metadata-pool] cap reached but all in-flight; evicting busy connId=\(connectionId, privacy: .public) db=\(oldest.key.database, privacy: .public)"
-            )
-        }
+    private func evictIdleIfNeeded(for connectionId: UUID) {
+        let live = entries.filter { $0.key.connectionId == connectionId }
+        let pendingCount = pending.keys.filter { $0.connectionId == connectionId }.count
+        guard live.count + pendingCount >= maxPerConnection else { return }
+        let idle = live.filter { $0.value.inFlightCount == 0 }
+        guard let oldest = idle.min(by: { $0.value.lastUsed < $1.value.lastUsed }) else { return }
         entries[oldest.key]?.driver.disconnect()
         entries.removeValue(forKey: oldest.key)
         Self.logger.info(

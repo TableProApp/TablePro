@@ -53,6 +53,7 @@ extension DatabaseManager {
                 guard let self else { return false }
                 guard let session = await self.activeSessions[connectionId] else { return false }
                 await SchemaService.shared.invalidate(connectionId: connectionId)
+                await DatabaseTreeMetadataService.shared.invalidateForReconnect(connectionId: connectionId)
                 do {
                     let result = try await self.trackOperation(sessionId: connectionId) {
                         try await self.reconnectDriver(for: session)

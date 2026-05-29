@@ -76,17 +76,20 @@ internal final class SidebarContainerViewController: NSViewController {
     }
 
     private static func awaitChange(state: SharedSidebarState, windowState: WindowSidebarState) async {
-        await withCheckedContinuation { continuation in
-            var resumed = false
-            withObservationTracking {
-                _ = state.selectedSidebarTab
-                _ = windowState.searchText
-                _ = windowState.favoritesSearchText
-            } onChange: {
-                guard !resumed else { return }
-                resumed = true
-                continuation.resume()
+        let box = ObservationContinuationBox()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                box.attach(continuation)
+                withObservationTracking {
+                    _ = state.selectedSidebarTab
+                    _ = windowState.searchText
+                    _ = windowState.favoritesSearchText
+                } onChange: {
+                    box.resume()
+                }
             }
+        } onCancel: {
+            box.resume()
         }
     }
 
@@ -131,5 +134,30 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         case .favorites:
             windowState.favoritesSearchText = text
         }
+    }
+}
+
+private final class ObservationContinuationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var resumed = false
+
+    func attach(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else {
+            continuation.resume()
+            return
+        }
+        self.continuation = continuation
+    }
+
+    func resume() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else { return }
+        resumed = true
+        continuation?.resume()
+        continuation = nil
     }
 }
