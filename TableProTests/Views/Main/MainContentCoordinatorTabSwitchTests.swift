@@ -442,6 +442,7 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         tabManager.tabs[index].filterState.filters = [f1, f2]
         tabManager.tabs[index].filterState.filterLogicMode = .or
+        tabManager.tabs[index].filterState.isVisible = true
 
         coordinator.applySelectedFilters()
         #expect(coordinator.selectedTabFilterState.appliedFilters.count == 2)
@@ -450,7 +451,41 @@ struct MainContentCoordinatorTabSwitchTests {
         coordinator.clearFilterState()
         #expect(coordinator.selectedTabFilterState.filters.isEmpty)
         #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
-        #expect(coordinator.selectedTabFilterState.isVisible == false)
+        #expect(coordinator.selectedTabFilterState.isVisible == true)
+    }
+
+    @Test("Applying filters persists them immediately so a reopened table restores them")
+    func applyFiltersPersistForReopen() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        defer {
+            FilterSettingsStorage.shared.clearLastFilters(
+                for: "users",
+                connectionId: coordinator.connectionId,
+                databaseName: "",
+                schemaName: nil
+            )
+        }
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [
+            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        ]
+
+        coordinator.applyAllFilters()
+
+        let persisted = FilterSettingsStorage.shared.loadLastFilters(
+            for: "users",
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil
+        )
+        #expect(persisted.count == 1)
+        #expect(persisted.first?.columnName == "id")
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")

@@ -168,6 +168,7 @@ Missing a case produces a wrong "{Language} Query" title on the first frame.
 | Tab state            | JSON persistence | `TabPersistenceService` / `TabStateStorage` |
 | Filter presets       | UserDefaults     | `FilterSettingsStorage`                     |
 | Per-table filters    | UserDefaults     | `FilterSettingsStorage` (saves `appliedFilters` only) |
+| Favorite tables      | UserDefaults     | `FavoriteTablesStorage` (per connection + database + schema; iCloud-synced) |
 
 ### Logging & Debugging
 

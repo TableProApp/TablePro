@@ -839,19 +839,21 @@ final class MainContentCoordinator {
             isShowingSafeModePrompt = true
             Task {
                 defer { isShowingSafeModePrompt = false }
-                let window = NSApp.keyWindow
-                let permission = await SafeModeGuard.checkPermission(
-                    level: level,
-                    isWriteOperation: false,
-                    sql: sql,
-                    operationDescription: String(localized: "Execute Query"),
-                    window: window,
-                    databaseType: connection.type
+                let decision = await ExecutionGateProvider.shared.authorize(
+                    OperationRequest(
+                        connectionId: connectionId,
+                        databaseType: connection.type,
+                        sql: sql,
+                        kind: .readQuery,
+                        caller: .userInterface,
+                        capabilities: .interactiveUser,
+                        operationDescription: String(localized: "Execute Query")
+                    )
                 )
-                switch permission {
-                case .allowed:
+                switch decision {
+                case .authorized:
                     executeQueryInternal(sql)
-                case .blocked(let reason):
+                case .denied(let reason):
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
@@ -944,16 +946,18 @@ final class MainContentCoordinator {
         if !explainVariants.isEmpty {
             if needsConfirmation {
                 Task {
-                    let window = NSApp.keyWindow
-                    let permission = await SafeModeGuard.checkPermission(
-                        level: level,
-                        isWriteOperation: false,
-                        sql: "EXPLAIN",
-                        operationDescription: String(localized: "Execute Query"),
-                        window: window,
-                        databaseType: connection.type
+                    let decision = await ExecutionGateProvider.shared.authorize(
+                        OperationRequest(
+                            connectionId: connectionId,
+                            databaseType: connection.type,
+                            sql: "EXPLAIN",
+                            kind: .readQuery,
+                            caller: .userInterface,
+                            capabilities: .interactiveUser,
+                            operationDescription: String(localized: "Execute Query")
+                        )
                     )
-                    if case .allowed = permission {
+                    if case .authorized = decision {
                         runVariantExplain(explainVariants[0])
                     }
                 }
@@ -975,16 +979,18 @@ final class MainContentCoordinator {
 
         if needsConfirmation {
             Task {
-                let window = NSApp.keyWindow
-                let permission = await SafeModeGuard.checkPermission(
-                    level: level,
-                    isWriteOperation: false,
-                    sql: explainSQL,
-                    operationDescription: String(localized: "Execute Query"),
-                    window: window,
-                    databaseType: connection.type
+                let decision = await ExecutionGateProvider.shared.authorize(
+                    OperationRequest(
+                        connectionId: connectionId,
+                        databaseType: connection.type,
+                        sql: explainSQL,
+                        kind: .readQuery,
+                        caller: .userInterface,
+                        capabilities: .interactiveUser,
+                        operationDescription: String(localized: "Execute Query")
+                    )
                 )
-                if case .allowed = permission {
+                if case .authorized = decision {
                     executeQueryInternal(explainSQL)
                 }
             }

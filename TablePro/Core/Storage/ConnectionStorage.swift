@@ -220,6 +220,8 @@ final class ConnectionStorage {
         let appSettings = appSettingsProvider()
         appSettings.saveLastDatabase(nil, for: connection.id)
         appSettings.saveLastSchema(nil, for: connection.id)
+
+        FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
     }
 
     /// Batch-delete multiple connections and clean up their Keychain entries
@@ -246,6 +248,7 @@ final class ConnectionStorage {
             let appSettings = appSettingsProvider()
             appSettings.saveLastDatabase(nil, for: conn.id)
             appSettings.saveLastSchema(nil, for: conn.id)
+            FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
         }
     }
 

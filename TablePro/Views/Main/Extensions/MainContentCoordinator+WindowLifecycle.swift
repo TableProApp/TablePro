@@ -125,7 +125,7 @@ extension MainContentCoordinator {
         tableLoadTasks[tabId] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.tableLoadTasks[tabId] = nil }
-            self.executeTableTabQueryDirectly()
+            self.executeSelectedTableTabQuery()
             if let task = self.currentQueryTask {
                 await task.value
             }

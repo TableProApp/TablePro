@@ -5,8 +5,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("MainContentCoordinator column visibility helpers")
 @MainActor
@@ -53,6 +54,25 @@ struct CoordinatorColumnVisibilityTests {
         #expect(tabManager.tabs[index].columnLayout.hiddenColumns == ["name"])
     }
 
+    @Test("Hiding a column persists immediately so a reopened table restores it")
+    func hideColumnPersistsForReopen() {
+        let (coordinator, tabManager) = makeCoordinator()
+        _ = addTableTab(to: tabManager, tableName: "users")
+        let storageKey = ColumnVisibilityPersistence.key(
+            tableName: "users",
+            connectionId: coordinator.connectionId
+        )
+        defer { UserDefaults.standard.removeObject(forKey: storageKey) }
+
+        coordinator.hideColumn("email")
+
+        let persisted = ColumnVisibilityPersistence.loadHiddenColumns(
+            for: "users",
+            connectionId: coordinator.connectionId
+        )
+        #expect(persisted == ["email"])
+    }
+
     @Test("showColumn removes from the active tab's hidden set")
     func showColumn() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -97,11 +117,15 @@ struct CoordinatorColumnVisibilityTests {
         #expect(coordinator.selectedTabHiddenColumns == ["one", "two"])
     }
 
-    @Test("pruneHiddenColumns drops names not in the current set")
+    @Test("pruneHiddenColumns drops hidden names that no longer exist in the schema")
     func pruneHiddenColumns() {
         let (coordinator, tabManager) = makeCoordinator()
         _ = addTableTab(to: tabManager, tableName: "users")
         coordinator.hideAllColumns(["a", "b", "c", "d"])
+        coordinator.schemaColumnsCache["\(coordinator.connectionId):\(coordinator.activeDatabaseName)::users"] = (
+            columns: ["b", "d", "e"],
+            primaryKeys: []
+        )
 
         coordinator.pruneHiddenColumns(currentColumns: ["b", "d", "e"])
         #expect(coordinator.selectedTabHiddenColumns == ["b", "d"])
@@ -126,5 +150,51 @@ struct CoordinatorColumnVisibilityTests {
 
         let session = coordinator.tabSessionRegistry.session(for: tabId)
         #expect(session?.columnLayout.hiddenColumns == ["name"])
+    }
+
+    @Test("Payload-created table tabs rebuild their query after restoring hidden columns")
+    func payloadCreatedTableTabsRebuildQueryAfterRestoringHiddenColumns() async {
+        let connection = TestFixtures.makeConnection(database: "db")
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .table,
+            tableName: "users",
+            databaseName: "db"
+        )
+        let state = SessionStateFactory.create(connection: connection, payload: payload)
+        let coordinator = state.coordinator
+        let storageKey = ColumnVisibilityPersistence.key(
+            tableName: "users",
+            connectionId: connection.id
+        )
+
+        defer {
+            UserDefaults.standard.removeObject(forKey: storageKey)
+            coordinator.teardown()
+        }
+
+        ColumnVisibilityPersistence.saveHiddenColumns(
+            ["email"],
+            for: "users",
+            connectionId: connection.id
+        )
+        coordinator.schemaColumnsCache["\(connection.id):db::users"] = (
+            columns: ["id", "name", "email"],
+            primaryKeys: ["id"]
+        )
+
+        coordinator.restoreLastHiddenColumnsForTable("users")
+        await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
+
+        guard let tab = state.tabManager.selectedTab else {
+            Issue.record("Expected payload-created table tab")
+            return
+        }
+
+        #expect(tab.columnLayout.hiddenColumns == ["email"])
+        #expect(tab.content.query.contains("SELECT *") == false)
+        #expect(tab.content.query.contains("id"))
+        #expect(tab.content.query.contains("name"))
+        #expect(tab.content.query.contains("email") == false)
     }
 }

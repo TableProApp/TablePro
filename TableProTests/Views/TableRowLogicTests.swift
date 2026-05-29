@@ -7,11 +7,11 @@
 
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 @Suite("TableRowLogicTests")
 struct TableRowLogicTests {
-
     // MARK: - Accessibility Label
 
     @Test("Normal table accessibility label")
@@ -54,6 +54,13 @@ struct TableRowLogicTests {
         let table = TestFixtures.makeTableInfo(name: "my_view", type: .view)
         let label = TableRowLogic.accessibilityLabel(table: table, isPendingDelete: true, isPendingTruncate: false)
         #expect(label == "View: my_view, pending delete")
+    }
+
+    @Test("Favorite table accessibility label")
+    func accessibilityLabelFavoriteTable() {
+        let table = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let label = TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false, isFavorite: true)
+        #expect(label == "Table: users, favorite")
     }
 
     // MARK: - Icon Name per Kind

@@ -64,4 +64,30 @@ struct DatabaseTypeTests {
         set.insert(DatabaseType(rawValue: "MySQL"))
         #expect(set.count == 2)
     }
+
+    @Test("Desktop-recognized constants have correct raw values")
+    func desktopConstants() {
+        #expect(DatabaseType.cockroachdb.rawValue == "CockroachDB")
+        #expect(DatabaseType.scylladb.rawValue == "ScyllaDB")
+        #expect(DatabaseType.turso.rawValue == "Turso")
+    }
+
+    @Test("Desktop-recognized constants stay out of the built-in allKnownTypes list")
+    func desktopConstantsNotInAllKnownTypes() {
+        #expect(!DatabaseType.allKnownTypes.contains(.cockroachdb))
+        #expect(!DatabaseType.allKnownTypes.contains(.scylladb))
+        #expect(!DatabaseType.allKnownTypes.contains(.turso))
+    }
+
+    @Test("Decodes a persisted connection type string")
+    func decodesPersistedTypeString() throws {
+        let decoded = try JSONDecoder().decode(DatabaseType.self, from: Data("\"MySQL\"".utf8))
+        #expect(decoded == .mysql)
+    }
+
+    @Test("Decodes an unknown persisted type string without loss")
+    func decodesUnknownPersistedTypeString() throws {
+        let decoded = try JSONDecoder().decode(DatabaseType.self, from: Data("\"FutureDB\"".utf8))
+        #expect(decoded.rawValue == "FutureDB")
+    }
 }

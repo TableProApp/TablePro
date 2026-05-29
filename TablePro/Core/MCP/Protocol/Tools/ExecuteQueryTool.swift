@@ -118,7 +118,7 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             sql: query,
             connectionId: connectionId,
             databaseType: meta.databaseType,
-            safeModeLevel: meta.safeModeLevel
+            capabilities: [.mayWrite, .confirmationPreCleared]
         )
 
         Self.logger.debug("execute_query invoked for connection \(connectionId.uuidString, privacy: .public)")

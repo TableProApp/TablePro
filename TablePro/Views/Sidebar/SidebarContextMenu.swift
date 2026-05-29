@@ -42,6 +42,15 @@ enum SidebarContextMenuLogic {
         case .table, .none:     return String(localized: "Delete")
         }
     }
+
+    static func maintenanceGroupEnabled(
+        isReadOnly: Bool,
+        hasSelection: Bool,
+        supportedOperations: [String]
+    ) -> Bool {
+        guard !isReadOnly, hasSelection else { return false }
+        return !supportedOperations.isEmpty
+    }
 }
 
 struct SidebarContextMenu: View {
@@ -81,11 +90,6 @@ struct SidebarContextMenu: View {
     }
 
     var body: some View {
-        Button("Create New Table...") {
-            perform { coordinator?.createNewTable() }
-        }
-        .disabled(isReadOnly)
-
         Button("Create New View...") {
             perform { coordinator?.createView() }
         }
@@ -140,10 +144,14 @@ struct SidebarContextMenu: View {
             .disabled(isReadOnly)
         }
 
-        if hasSelection,
-           let ops = coordinator?.supportedMaintenanceOperations(), !ops.isEmpty {
+        let maintenanceOps = coordinator?.supportedMaintenanceOperations() ?? []
+        if SidebarContextMenuLogic.maintenanceGroupEnabled(
+            isReadOnly: isReadOnly,
+            hasSelection: hasSelection,
+            supportedOperations: maintenanceOps
+        ) {
             Menu(String(localized: "Maintenance")) {
-                ForEach(ops, id: \.self) { op in
+                ForEach(maintenanceOps, id: \.self) { op in
                     Button(op) {
                         perform {
                             if let table = clickedTable?.name {
@@ -153,7 +161,6 @@ struct SidebarContextMenu: View {
                     }
                 }
             }
-            .disabled(isReadOnly)
         }
 
         if hasSelection {

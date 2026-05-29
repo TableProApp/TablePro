@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Preview Tab")
 struct PreviewTabTests {

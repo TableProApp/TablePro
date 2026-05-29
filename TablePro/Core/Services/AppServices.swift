@@ -16,6 +16,7 @@ struct AppServices {
     let schemaService: SchemaService
     let schemaProviderRegistry: SchemaProviderRegistry
     let sqlFavoriteManager: SQLFavoriteManager
+    let favoriteTablesStorage: FavoriteTablesStorage
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
     let groupStorage: GroupStorage
@@ -43,6 +44,7 @@ struct AppServices {
         schemaService: .shared,
         schemaProviderRegistry: .shared,
         sqlFavoriteManager: .shared,
+        favoriteTablesStorage: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
         groupStorage: .shared,

@@ -18,6 +18,7 @@ enum SyncRecordType: String, CaseIterable {
     case settings = "AppSettings"
     case favorite = "SQLFavorite"
     case favoriteFolder = "SQLFavoriteFolder"
+    case tableFavorite = "FavoriteTable"
     case sshProfile = "SSHProfile"
 }
 
@@ -55,6 +56,7 @@ struct SyncRecordMapper {
         case .settings: recordName = "Settings_\(id)"
         case .favorite: recordName = "Favorite_\(id)"
         case .favoriteFolder: recordName = "FavoriteFolder_\(id)"
+        case .tableFavorite: recordName = "FavoriteTable_\(id)"
         case .sshProfile: recordName = "SSHProfile_\(id)"
         }
         return CKRecord.ID(recordName: recordName, zoneID: zone)
@@ -326,6 +328,45 @@ struct SyncRecordMapper {
 
     static func settingsData(from record: CKRecord) -> Data? {
         record["settingsJson"] as? Data
+    }
+
+    // MARK: - Table Favorite
+
+    static func toCKRecord(favoriteEntry entry: FavoriteTablesStorage.FavoriteEntry, in zone: CKRecordZone.ID) -> CKRecord {
+        let favoriteId = FavoriteTablesStorage.syncId(for: entry)
+        let recordID = recordID(type: .tableFavorite, id: favoriteId, in: zone)
+        let record = CKRecord(recordType: SyncRecordType.tableFavorite.rawValue, recordID: recordID)
+
+        record["connectionId"] = entry.connectionId.uuidString as CKRecordValue
+        record["name"] = entry.name as CKRecordValue
+        if let database = entry.database {
+            record["database"] = database as CKRecordValue
+        }
+        if let schema = entry.schema {
+            record["schema"] = schema as CKRecordValue
+        }
+        record["modifiedAtLocal"] = Date() as CKRecordValue
+        record["schemaVersion"] = schemaVersion as CKRecordValue
+
+        return record
+    }
+
+    static func favoriteEntry(from record: CKRecord) throws -> FavoriteTablesStorage.FavoriteEntry {
+        guard let name = record["name"] as? String, !name.isEmpty else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        guard let connectionIdString = record["connectionId"] as? String,
+              let connectionId = UUID(uuidString: connectionIdString) else {
+            throw SyncDecodeError.missingRequiredField("connectionId")
+        }
+        let database = record["database"] as? String
+        let schema = record["schema"] as? String
+        return FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connectionId,
+            database: database,
+            schema: schema,
+            name: name
+        )
     }
 
     // MARK: - SSH Profile
