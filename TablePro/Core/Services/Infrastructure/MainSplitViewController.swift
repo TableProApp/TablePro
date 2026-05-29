@@ -357,7 +357,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 let activeTab = coordinator.tabManager.selectedTab
                 if activeTab?.tabType == .table, activeTab?.tableContext.tableName == table.name {
                     coordinator.promotePreviewTab()
-                    coordinator.focusActiveGrid()
+                    coordinator.requestGridFocus()
                 } else {
                     coordinator.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
                 }

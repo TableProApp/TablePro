@@ -604,9 +604,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
-    internal func focusGrid() {
-        guard let tableView, let window = tableView.window else { return }
+    @discardableResult
+    internal func focusGrid() -> Bool {
+        guard let tableView, let window = tableView.window else { return false }
         window.makeFirstResponder(tableView)
+        return true
     }
 
     func beginEditing(displayRow: Int, column: Int) {

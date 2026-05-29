@@ -92,6 +92,8 @@ extension MainContentCoordinator {
                 } catch {
                     navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
                 }
+            } else {
+                pendingGridFocusOnOpen = false
             }
             return
         }
@@ -112,6 +114,7 @@ extension MainContentCoordinator {
                 guard hasMatch,
                       let windowId = sibling.windowId,
                       let window = WindowLifecycleMonitor.shared.window(for: windowId) else { continue }
+                pendingGridFocusOnOpen = false
                 window.makeKeyAndOrderFront(nil)
                 return
             }
