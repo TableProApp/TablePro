@@ -8,6 +8,12 @@ import Combine
 
 @MainActor
 class DataGridRowView: NSTableRowView {
+    enum CopyContextTarget {
+        case cell(Int)
+        case row
+        case unresolved
+    }
+
     weak var coordinator: TableViewCoordinator?
     var rowIndex: Int = 0
 
@@ -181,9 +187,17 @@ class DataGridRowView: NSTableRowView {
             return menu
         }
 
+        let copyTarget: CopyContextTarget = if dataColumnIndex >= 0 {
+            .cell(dataColumnIndex)
+        } else if clickedColumn >= 0 {
+            .row
+        } else {
+            .unresolved
+        }
+
         let copyItem = NSMenuItem(
             title: String(localized: "Copy"), action: #selector(copyFromContextMenu(_:)), keyEquivalent: "")
-        copyItem.representedObject = dataColumnIndex >= 0 ? NSNumber(value: dataColumnIndex) : nil
+        copyItem.representedObject = copyTarget
         copyItem.target = self
         menu.addItem(copyItem)
 
@@ -414,11 +428,18 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func copyFromContextMenu(_ sender: NSMenuItem) {
         guard let coordinator else { return }
-        if let columnIndex = contextMenuCopyColumnIndex(for: sender, in: coordinator) {
+        switch sender.representedObject as? CopyContextTarget {
+        case .cell(let columnIndex):
             coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
-            return
+        case .unresolved:
+            if let columnIndex = focusedDataColumnIndex(in: coordinator) {
+                coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
+            } else {
+                copySelectedOrCurrentRow()
+            }
+        case .row, .none:
+            copySelectedOrCurrentRow()
         }
-        copySelectedOrCurrentRow()
     }
 
     @objc private func pasteRows() {
@@ -430,10 +451,7 @@ class DataGridRowView: NSTableRowView {
         coordinator?.copyCellValue(at: rowIndex, columnIndex: columnIndex)
     }
 
-    private func contextMenuCopyColumnIndex(for sender: NSMenuItem, in coordinator: TableViewCoordinator) -> Int? {
-        if let clickedColumnIndex = sender.representedObject as? NSNumber {
-            return clickedColumnIndex.intValue
-        }
+    private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
         guard let tableView = coordinator.tableView as? KeyHandlingTableView,
               tableView.focusedRow == rowIndex,
               DataGridView.isDataTableColumn(tableView.focusedColumn) else { return nil }

@@ -11,9 +11,10 @@ private final class DataGridRowViewCopyClipboard: ClipboardProvider {
     var hasGridRowsValue = false
 
     func readText() -> String? { text }
+    func readGridRows() -> GridRowsClipboardPayload? { nil }
     func writeText(_ text: String) { self.text = text; hasGridRowsValue = false }
     func writeCsv(_ csv: String) { text = csv; hasGridRowsValue = false }
-    func writeRows(tsv: String, html: String?) { text = tsv; hasGridRowsValue = true }
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) { text = tsv; hasGridRowsValue = true }
     var hasText: Bool { text != nil }
     var hasGridRows: Bool { hasGridRowsValue }
 }
@@ -69,11 +70,12 @@ struct DataGridRowViewCopyTests {
         return tableView
     }
 
-    private func invokeCopy(on rowView: DataGridRowView, clickedDataColumnIndex: Int? = nil) {
+    private func invokeCopy(
+        on rowView: DataGridRowView,
+        target: DataGridRowView.CopyContextTarget = .unresolved
+    ) {
         let item = NSMenuItem(title: "Copy", action: nil, keyEquivalent: "")
-        if let clickedDataColumnIndex {
-            item.representedObject = NSNumber(value: clickedDataColumnIndex)
-        }
+        item.representedObject = target
         _ = rowView.perform(NSSelectorFromString("copyFromContextMenu:"), with: item)
     }
 
@@ -95,7 +97,7 @@ struct DataGridRowViewCopyTests {
         rowView.coordinator = coordinator
         rowView.rowIndex = 0
 
-        invokeCopy(on: rowView, clickedDataColumnIndex: 1)
+        invokeCopy(on: rowView, target: .cell(1))
 
         #expect(clipboard.text == "0xAABB")
         #expect(clipboard.hasGridRows == false)
@@ -123,6 +125,28 @@ struct DataGridRowViewCopyTests {
 
         #expect(clipboard.text == "NULL")
         #expect(clipboard.hasGridRows == false)
+    }
+
+    @Test("Copy from row-number column copies row even when a data cell is focused")
+    func copyFromRowNumberColumnCopiesRow() {
+        let delegate = DataGridRowViewCopyDelegateSpy()
+        let coordinator = makeCoordinator(
+            rows: [[.text("1"), .text("Alice")]],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT")],
+            selectedRows: [0],
+            delegate: delegate
+        )
+        let tableView = makeTableView(for: coordinator)
+        tableView.focusedRow = 0
+        tableView.focusedColumn = 2
+
+        let rowView = DataGridRowView()
+        rowView.coordinator = coordinator
+        rowView.rowIndex = 0
+
+        invokeCopy(on: rowView, target: .row)
+
+        #expect(delegate.copiedRows == Set([0]))
     }
 
     @Test("Copy rows action still dispatches full-row copy")
