@@ -26,6 +26,9 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let dynamodb = DatabaseType(rawValue: "DynamoDB")
     public static let bigquery = DatabaseType(rawValue: "BigQuery")
     public static let libsql = DatabaseType(rawValue: "libSQL")
+    public static let cockroachdb = DatabaseType(rawValue: "CockroachDB")
+    public static let scylladb = DatabaseType(rawValue: "ScyllaDB")
+    public static let turso = DatabaseType(rawValue: "Turso")
 
     public static let allKnownTypes: [DatabaseType] = [
         .mysql, .mariadb, .postgresql, .sqlite, .redis, .mongodb,
