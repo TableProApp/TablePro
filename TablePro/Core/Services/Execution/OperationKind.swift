@@ -28,4 +28,12 @@ internal extension OperationKind {
     var declaresDestructive: Bool {
         self == .destructiveQuery
     }
+
+    static func from(_ tier: QueryTier) -> OperationKind {
+        switch tier {
+        case .safe: return .readQuery
+        case .write: return .writeQuery
+        case .destructive: return .destructiveQuery
+        }
+    }
 }
