@@ -168,6 +168,10 @@ final class DatabaseTreeMetadataService {
             Self.logger.debug("loadSchemaList skip-active db=\(database, privacy: .public)")
             return
         }
+        if isConnecting(connectionId) {
+            Self.logger.debug("loadSchemaList skip-connecting db=\(database, privacy: .public)")
+            return
+        }
         let key = DatabaseKey(connectionId: connectionId, database: database)
         if case .loaded = schemaListStates[key] {
             Self.logger.debug("loadSchemaList skip-loaded db=\(database, privacy: .public)")
@@ -203,12 +207,17 @@ final class DatabaseTreeMetadataService {
         Self.logger.debug(
             "loadTables enter connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) active=\(active ?? "nil", privacy: .public) isActive=\(isActive, privacy: .public) driver=\(self.driverStatusLabel(connectionId), privacy: .public)"
         )
+        if isConnecting(connectionId) {
+            Self.logger.debug(
+                "loadTables skip-connecting db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
+            )
+            return
+        }
         if isActive {
             guard let session = DatabaseManager.shared.session(for: connectionId),
-                  let driver = session.driver,
-                  driver.status == .connected else {
+                  let driver = session.driver else {
                 Self.logger.debug(
-                    "loadTables active-skip-not-connected db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) driver=\(self.driverStatusLabel(connectionId), privacy: .public)"
+                    "loadTables active-skip-no-driver db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
                 )
                 return
             }
@@ -273,6 +282,12 @@ final class DatabaseTreeMetadataService {
         if routineLists[key] != nil {
             Self.logger.debug(
                 "loadRoutines skip-loaded db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
+            )
+            return
+        }
+        if isConnecting(connectionId) {
+            Self.logger.debug(
+                "loadRoutines skip-connecting db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public)"
             )
             return
         }
@@ -423,6 +438,10 @@ final class DatabaseTreeMetadataService {
         guard let session = DatabaseManager.shared.session(for: connectionId) else { return nil }
         let value = session.activeDatabase
         return value.isEmpty ? nil : value
+    }
+
+    private func isConnecting(_ connectionId: UUID) -> Bool {
+        DatabaseManager.shared.session(for: connectionId)?.status == .connecting
     }
 
     private func driverStatusLabel(_ connectionId: UUID) -> String {

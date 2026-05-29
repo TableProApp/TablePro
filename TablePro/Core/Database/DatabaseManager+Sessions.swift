@@ -260,6 +260,7 @@ extension DatabaseManager {
                 session.connection.database = database
                 session.currentDatabase = database
                 session.currentSchema = nil
+                session.status = .connecting
             }
             appSettingsStorage.saveLastSchema(nil, for: connectionId)
             await SchemaService.shared.invalidate(connectionId: connectionId)
