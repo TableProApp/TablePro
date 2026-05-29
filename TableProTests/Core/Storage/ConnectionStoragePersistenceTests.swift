@@ -66,6 +66,20 @@ struct ConnectionStoragePersistenceTests {
         #expect(loaded.first?.name == "Round Trip Test")
     }
 
+    @Test("duplicating a connection preserves its password source")
+    func duplicatePreservesPasswordSource() {
+        var connection = DatabaseConnection(name: "Source", type: .postgresql)
+        connection.passwordSource = .file(path: "~/.config/tablepro/db.pw")
+        storage.addConnection(connection)
+
+        let duplicate = storage.duplicateConnection(connection)
+        #expect(duplicate.id != connection.id)
+        #expect(duplicate.passwordSource == .file(path: "~/.config/tablepro/db.pw"))
+
+        let reloaded = storage.loadConnections().first { $0.id == duplicate.id }
+        #expect(reloaded?.passwordSource == .file(path: "~/.config/tablepro/db.pw"))
+    }
+
     @Test("connections default to not favorited")
     func defaultsToNotFavorited() {
         let connection = DatabaseConnection(name: "Plain Test")

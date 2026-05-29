@@ -8,6 +8,12 @@ import Combine
 
 @MainActor
 class DataGridRowView: NSTableRowView {
+    enum CopyContextTarget {
+        case cell(Int)
+        case row
+        case unresolved
+    }
+
     weak var coordinator: TableViewCoordinator?
     var rowIndex: Int = 0
 
@@ -85,9 +91,34 @@ class DataGridRowView: NSTableRowView {
 
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
-        guard let rowTint, !isSelected else { return }
-        rowTint.setFill()
-        bounds.fill()
+        if let rowTint, !isSelected {
+            rowTint.setFill()
+            bounds.fill()
+        }
+        drawCellSelectionFill(in: dirtyRect)
+    }
+
+    private func drawCellSelectionFill(in dirtyRect: NSRect) {
+        guard let selection = coordinator?.selectionController.selection,
+              !selection.isEmpty,
+              let tableView = coordinator?.tableView else { return }
+        let columns = selection.columns(in: rowIndex)
+        guard !columns.isEmpty else { return }
+
+        let fillColor: NSColor = isSelected
+            ? NSColor.unemphasizedSelectedContentBackgroundColor
+            : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28)
+        fillColor.setFill()
+
+        let schema = coordinator?.identitySchema
+        for dataColumn in columns {
+            guard let schema,
+                  let tableColumnIndex = DataGridView.tableColumnIndex(for: dataColumn, in: tableView, schema: schema) else { continue }
+            let columnRect = tableView.rect(ofColumn: tableColumnIndex)
+            let localRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
+            guard localRect.intersects(dirtyRect) else { continue }
+            localRect.fill()
+        }
     }
 
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
@@ -156,21 +187,29 @@ class DataGridRowView: NSTableRowView {
             return menu
         }
 
+        let copyTarget: CopyContextTarget = if dataColumnIndex >= 0 {
+            .cell(dataColumnIndex)
+        } else if clickedColumn >= 0 {
+            .row
+        } else {
+            .unresolved
+        }
+
         let copyItem = NSMenuItem(
-            title: String(localized: "Copy"), action: #selector(copySelectedOrCurrentRow), keyEquivalent: "")
+            title: String(localized: "Copy"), action: #selector(copyFromContextMenu(_:)), keyEquivalent: "")
+        copyItem.representedObject = copyTarget
         copyItem.target = self
         menu.addItem(copyItem)
 
         let copyAsMenu = NSMenu()
 
-        if dataColumnIndex >= 0 {
-            let copyCellItem = NSMenuItem(
-                title: String(localized: "Cell Value"), action: #selector(copyCellValue(_:)),
-                keyEquivalent: "")
-            copyCellItem.representedObject = dataColumnIndex
-            copyCellItem.target = self
-            copyAsMenu.addItem(copyCellItem)
-        }
+        let copyRowsItem = NSMenuItem(
+            title: String(localized: "Rows"),
+            action: #selector(copySelectedOrCurrentRow),
+            keyEquivalent: ""
+        )
+        copyRowsItem.target = self
+        copyAsMenu.addItem(copyRowsItem)
 
         let copyWithHeadersItem = NSMenuItem(
             title: String(localized: "With Headers"),
@@ -378,13 +417,39 @@ class DataGridRowView: NSTableRowView {
         coordinator.delegate?.dataGridCopyRows(selectedOrCurrentIndices(in: coordinator))
     }
 
+    @objc private func copyFromContextMenu(_ sender: NSMenuItem) {
+        guard let coordinator else { return }
+        if !coordinator.selectionController.isEmpty {
+            coordinator.copyGridSelection(coordinator.selectionController.selection)
+            return
+        }
+        switch sender.representedObject as? CopyContextTarget {
+        case .cell(let columnIndex):
+            coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
+        case .unresolved:
+            if let columnIndex = focusedDataColumnIndex(in: coordinator) {
+                coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
+            } else {
+                copySelectedOrCurrentRow()
+            }
+        case .row, .none:
+            copySelectedOrCurrentRow()
+        }
+    }
+
     @objc private func pasteRows() {
         coordinator?.delegate?.dataGridPasteRows()
     }
 
-    @objc private func copyCellValue(_ sender: NSMenuItem) {
-        guard let columnIndex = sender.representedObject as? Int else { return }
-        coordinator?.copyCellValue(at: rowIndex, columnIndex: columnIndex)
+    private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
+        guard let tableView = coordinator.tableView as? KeyHandlingTableView,
+              tableView.focusedRow == rowIndex,
+              DataGridView.isDataTableColumn(tableView.focusedColumn) else { return nil }
+        return DataGridView.dataColumnIndex(
+            for: tableView.focusedColumn,
+            in: tableView,
+            schema: coordinator.identitySchema
+        )
     }
 
     @objc private func setNullValue(_ sender: NSMenuItem) {

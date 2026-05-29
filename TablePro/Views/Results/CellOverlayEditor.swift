@@ -38,6 +38,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         textView.font = ThemeEngine.shared.dataGridFonts.regular
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
+        textView.focusRingType = .none
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true

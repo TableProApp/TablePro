@@ -51,7 +51,17 @@ class CellOverlayBase: NSObject {
         self.columnIndex = columnIndex
         tableView.addSubview(container)
         self.container = container
+        underlyingCell(in: tableView, row: row, column: column)?.applyOverlayActive(true)
+        selectionOverlay(in: tableView)?.needsDisplay = true
         installDismissObservers()
+    }
+
+    private func underlyingCell(in tableView: NSTableView, row: Int, column: Int) -> DataGridCellView? {
+        tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? DataGridCellView
+    }
+
+    private func selectionOverlay(in tableView: NSTableView) -> GridSelectionOverlay? {
+        (tableView as? KeyHandlingTableView)?.selectionOverlay
     }
 
     func handleDismiss(reason: CellOverlayDismissReason) {
@@ -61,6 +71,10 @@ class CellOverlayBase: NSObject {
     func removeOverlay() {
         guard let activeContainer = container else { return }
         removeDismissObservers()
+        if let hostTableView {
+            underlyingCell(in: hostTableView, row: row, column: column)?.applyOverlayActive(false)
+            selectionOverlay(in: hostTableView)?.needsDisplay = true
+        }
         activeContainer.removeFromSuperview()
         container = nil
         if let hostTableView {

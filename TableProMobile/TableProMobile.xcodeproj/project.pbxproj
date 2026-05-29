@@ -126,7 +126,6 @@
 		5A87ED242F7F88F200D028D0 /* ClipboardService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardService.swift; sourceTree = "<group>"; };
 		5A87ED252F7F88F200D028D0 /* DeeplinkHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeeplinkHandler.swift; sourceTree = "<group>"; };
 		5A87ED262F7F88F200D028D0 /* PreConnectHookRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreConnectHookRunner.swift; sourceTree = "<group>"; };
-		5A87ED272F7F88F200D028D0 /* SafeModeGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeModeGuard.swift; sourceTree = "<group>"; };
 		5A87ED282F7F88F200D028D0 /* SessionStateFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateFactory.swift; sourceTree = "<group>"; };
 		5A87ED292F7F88F200D028D0 /* SettingsNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotifications.swift; sourceTree = "<group>"; };
 		5A87ED2A2F7F88F200D028D0 /* SettingsValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsValidation.swift; sourceTree = "<group>"; };
@@ -764,7 +763,6 @@
 				5A87ED242F7F88F200D028D0 /* ClipboardService.swift */,
 				5A87ED252F7F88F200D028D0 /* DeeplinkHandler.swift */,
 				5A87ED262F7F88F200D028D0 /* PreConnectHookRunner.swift */,
-				5A87ED272F7F88F200D028D0 /* SafeModeGuard.swift */,
 				5A87ED282F7F88F200D028D0 /* SessionStateFactory.swift */,
 				5A87ED292F7F88F200D028D0 /* SettingsNotifications.swift */,
 				5A87ED2A2F7F88F200D028D0 /* SettingsValidation.swift */,

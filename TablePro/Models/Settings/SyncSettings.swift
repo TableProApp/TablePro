@@ -15,6 +15,7 @@ struct SyncSettings: Codable, Equatable {
     var syncSettings: Bool
     var syncPasswords: Bool
     var syncSSHProfiles: Bool
+    var syncTableFavorites: Bool
 
     init(
         enabled: Bool,
@@ -22,7 +23,8 @@ struct SyncSettings: Codable, Equatable {
         syncGroupsAndTags: Bool,
         syncSettings: Bool,
         syncPasswords: Bool = false,
-        syncSSHProfiles: Bool = true
+        syncSSHProfiles: Bool = true,
+        syncTableFavorites: Bool = true
     ) {
         self.enabled = enabled
         self.syncConnections = syncConnections
@@ -30,6 +32,7 @@ struct SyncSettings: Codable, Equatable {
         self.syncSettings = syncSettings
         self.syncPasswords = syncPasswords
         self.syncSSHProfiles = syncSSHProfiles
+        self.syncTableFavorites = syncTableFavorites
     }
 
     init(from decoder: Decoder) throws {
@@ -40,6 +43,7 @@ struct SyncSettings: Codable, Equatable {
         syncSettings = try container.decode(Bool.self, forKey: .syncSettings)
         syncPasswords = try container.decodeIfPresent(Bool.self, forKey: .syncPasswords) ?? false
         syncSSHProfiles = try container.decodeIfPresent(Bool.self, forKey: .syncSSHProfiles) ?? true
+        syncTableFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncTableFavorites) ?? true
     }
 
     static let `default` = SyncSettings(
@@ -48,6 +52,7 @@ struct SyncSettings: Codable, Equatable {
         syncGroupsAndTags: true,
         syncSettings: true,
         syncPasswords: false,
-        syncSSHProfiles: true
+        syncSSHProfiles: true,
+        syncTableFavorites: true
     )
 }

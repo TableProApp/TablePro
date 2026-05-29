@@ -109,6 +109,7 @@ struct DataGridView: NSViewRepresentable {
 
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
+        installSelectionOverlay(tableView: tableView, coordinator: context.coordinator)
         context.coordinator.attachScrollObservers(scrollView: scrollView)
         context.coordinator.tableRowsController.attach(tableView)
         context.coordinator.tableRowsProvider = tableRowsProvider
@@ -280,6 +281,7 @@ struct DataGridView: NSViewRepresentable {
         }
 
         if needsFullReload {
+            coordinator.selectionController.clear()
             tableView.reloadData()
             coordinator.startBackgroundPrewarm()
         }
@@ -382,6 +384,17 @@ struct DataGridView: NSViewRepresentable {
         column.minWidth = columnWidth
         column.maxWidth = columnWidth
         column.width = columnWidth
+    }
+
+    private func installSelectionOverlay(tableView: KeyHandlingTableView, coordinator: TableViewCoordinator) {
+        let overlay = GridSelectionOverlay(frame: tableView.bounds)
+        overlay.tableView = tableView
+        overlay.coordinator = coordinator
+        tableView.addSubview(overlay)
+        coordinator.selectionController.tableView = tableView
+        coordinator.selectionController.overlay = overlay
+        coordinator.selectionController.coordinator = coordinator
+        tableView.selectionOverlay = overlay
     }
 
     static let firstDataTableColumnIndex: Int = 1

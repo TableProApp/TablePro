@@ -123,7 +123,7 @@
                 "pages": [
                   "features/tabs",
                   "features/query-history",
-                  "features/sql-favorites",
+                  "features/favorites",
                   "features/keyboard-shortcuts"
                 ]
               },

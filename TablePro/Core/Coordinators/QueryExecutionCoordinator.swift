@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import Foundation
 
 @MainActor @Observable
@@ -52,74 +51,34 @@ final class QueryExecutionCoordinator {
     }
 
     func dispatchStatements(_ statements: [String], tabIndex index: Int) {
-        let level = parent.safeModeLevel
-
-        if level == .readOnly {
-            let writeStatements = statements.filter { parent.isWriteQuery($0) }
-            if !writeStatements.isEmpty {
-                parent.tabManager.mutate(at: index) {
-                    $0.execution.errorMessage =
-                        String(localized: "Cannot execute write queries: connection is read only")
-                }
-                return
-            }
-        }
-
-        if level == .silent {
-            guard !parent.isShowingSafeModePrompt else { return }
-            parent.isShowingSafeModePrompt = true
-            if statements.count == 1 {
-                Task { [parent] in
-                    defer { parent.isShowingSafeModePrompt = false }
-                    let window = NSApp.keyWindow
-                    guard await parent.confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
+        guard !parent.isShowingSafeModePrompt else { return }
+        parent.isShowingSafeModePrompt = true
+        let request = makeExecuteRequest(statements: statements)
+        Task { [parent] in
+            defer { parent.isShowingSafeModePrompt = false }
+            switch await ExecutionGateProvider.shared.authorize(request) {
+            case .authorized:
+                if statements.count == 1 {
                     parent.executeQueryInternal(statements[0])
-                }
-            } else {
-                Task { [parent] in
-                    defer { parent.isShowingSafeModePrompt = false }
-                    let window = NSApp.keyWindow
-                    let dangerousStatements = statements.filter { parent.isDangerousQuery($0) }
-                    if !dangerousStatements.isEmpty {
-                        guard await parent.confirmDangerousQueries(dangerousStatements, window: window) else { return }
-                    }
+                } else {
                     executeMultipleStatements(statements)
                 }
-            }
-        } else if level.requiresConfirmation {
-            guard !parent.isShowingSafeModePrompt else { return }
-            parent.isShowingSafeModePrompt = true
-            Task { [parent] in
-                defer { parent.isShowingSafeModePrompt = false }
-                let window = NSApp.keyWindow
-                let combinedSQL = statements.joined(separator: "\n")
-                let hasWrite = statements.contains { parent.isWriteQuery($0) }
-                let permission = await SafeModeGuard.checkPermission(
-                    level: level,
-                    isWriteOperation: hasWrite,
-                    sql: combinedSQL,
-                    operationDescription: String(localized: "Execute Query"),
-                    window: window,
-                    databaseType: parent.connection.type
-                )
-                switch permission {
-                case .allowed:
-                    if statements.count == 1 {
-                        parent.executeQueryInternal(statements[0])
-                    } else {
-                        executeMultipleStatements(statements)
-                    }
-                case .blocked(let reason):
-                    parent.tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
-                }
-            }
-        } else {
-            if statements.count == 1 {
-                parent.executeQueryInternal(statements[0])
-            } else {
-                executeMultipleStatements(statements)
+            case .denied(let reason):
+                parent.tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
             }
         }
+    }
+
+    private func makeExecuteRequest(statements: [String]) -> OperationRequest {
+        OperationRequest(
+            connectionId: parent.connectionId,
+            databaseType: parent.connection.type,
+            sql: statements.joined(separator: "\n"),
+            kind: OperationKind.worst(of: statements, databaseType: parent.connection.type),
+            caller: .userInterface,
+            capabilities: .interactiveUser,
+            operationDescription: String(localized: "Execute Query")
+        )
     }
 
     func dispatchParameterizedStatements(
@@ -127,62 +86,18 @@ final class QueryExecutionCoordinator {
         parameters: [QueryParameter],
         tabIndex index: Int
     ) {
-        let level = parent.safeModeLevel
-
-        if level == .readOnly {
-            let writeStatements = statements.filter { parent.isWriteQuery($0) }
-            if !writeStatements.isEmpty {
-                parent.tabManager.mutate(at: index) {
-                    $0.execution.errorMessage =
-                        String(localized: "Cannot execute write queries: connection is read only")
-                }
-                return
-            }
-        }
-
+        guard !parent.isShowingSafeModePrompt else { return }
+        parent.isShowingSafeModePrompt = true
         let tabId = parent.tabManager.tabs[index].id
-
-        if level == .silent {
-            guard !parent.isShowingSafeModePrompt else { return }
-            parent.isShowingSafeModePrompt = true
-            Task { [parent] in
-                defer { parent.isShowingSafeModePrompt = false }
-                let window = NSApp.keyWindow
-                if statements.count == 1 {
-                    guard await parent.confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
-                } else {
-                    let dangerousStatements = statements.filter { parent.isDangerousQuery($0) }
-                    if !dangerousStatements.isEmpty {
-                        guard await parent.confirmDangerousQueries(dangerousStatements, window: window) else { return }
-                    }
-                }
+        let request = makeExecuteRequest(statements: statements)
+        Task { [parent] in
+            defer { parent.isShowingSafeModePrompt = false }
+            switch await ExecutionGateProvider.shared.authorize(request) {
+            case .authorized:
                 executeParameterizedAfterSafeMode(statements, parameters: parameters)
+            case .denied(let reason):
+                parent.tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
             }
-        } else if level.requiresConfirmation {
-            guard !parent.isShowingSafeModePrompt else { return }
-            parent.isShowingSafeModePrompt = true
-            Task { [parent] in
-                defer { parent.isShowingSafeModePrompt = false }
-                let window = NSApp.keyWindow
-                let combinedSQL = statements.joined(separator: "\n")
-                let hasWrite = statements.contains { parent.isWriteQuery($0) }
-                let permission = await SafeModeGuard.checkPermission(
-                    level: level,
-                    isWriteOperation: hasWrite,
-                    sql: combinedSQL,
-                    operationDescription: String(localized: "Execute Query"),
-                    window: window,
-                    databaseType: parent.connection.type
-                )
-                switch permission {
-                case .allowed:
-                    executeParameterizedAfterSafeMode(statements, parameters: parameters)
-                case .blocked(let reason):
-                    parent.tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
-                }
-            }
-        } else {
-            executeParameterizedAfterSafeMode(statements, parameters: parameters)
         }
     }
 

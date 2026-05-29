@@ -70,8 +70,11 @@ final class DataChangeManager: ChangeManaging {
 
     private func registerUndo(actionName: String, _ handler: @escaping (DataChangeManager) -> Void) {
         guard let undoManager = undoManagerProvider?() else { return }
+        let opensOwnGroup = !undoManager.groupsByEvent && undoManager.groupingLevel == 0
+        if opensOwnGroup { undoManager.beginUndoGrouping() }
         undoManager.registerUndo(withTarget: self, handler: handler)
         undoManager.setActionName(actionName)
+        if opensOwnGroup { undoManager.endUndoGrouping() }
     }
 
     // MARK: - Configuration

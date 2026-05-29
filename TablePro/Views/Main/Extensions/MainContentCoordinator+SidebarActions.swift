@@ -98,8 +98,9 @@ extension MainContentCoordinator {
     func editViewDefinition(_ viewName: String) {
         Task {
             do {
-                guard let driver = DatabaseManager.shared.driver(for: self.connection.id) else { return }
-                let definition = try await driver.fetchViewDefinition(view: viewName)
+                let definition = try await DatabaseManager.shared.withMetadataDriver(connectionId: self.connection.id) { driver in
+                    try await driver.fetchViewDefinition(view: viewName)
+                }
 
                 let payload = EditorTabPayload(
                     connectionId: connection.id,
@@ -191,6 +192,27 @@ extension MainContentCoordinator {
 
         Task { [weak self] in
             guard let self else { return }
+            let decision = await ExecutionGateProvider.shared.authorize(
+                OperationRequest(
+                    connectionId: self.connectionId,
+                    databaseType: self.connection.type,
+                    sql: statements.joined(separator: "\n"),
+                    kind: .maintenance,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: operation
+                )
+            )
+            guard case .authorized = decision else {
+                if let reason = decision.deniedReason {
+                    await AlertHelper.showErrorSheet(
+                        title: String(format: String(localized: "%@ failed"), operation),
+                        message: reason,
+                        window: self.contentWindow
+                    )
+                }
+                return
+            }
             do {
                 var lastResult: QueryResult?
                 for sql in statements {

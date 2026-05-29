@@ -479,6 +479,9 @@ enum DatabaseDriverFactory {
             return try await resolveIAMPassword(for: connection, fields: fields)
         }
         if let override { return override }
+        if let passwordSource = connection.passwordSource {
+            return try await PasswordSourceResolver.resolve(passwordSource)
+        }
         if connection.usePgpass {
             let pgpassHost = connection.additionalFields["pgpassOriginalHost"] ?? connection.host
             let pgpassPort = connection.additionalFields["pgpassOriginalPort"]

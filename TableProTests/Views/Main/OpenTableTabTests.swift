@@ -30,6 +30,7 @@ struct OpenTableTabTests {
 
         #expect(tabManager.tabs.count == 1)
         #expect(tabManager.tabs.first?.tableContext.tableName == "users")
+        #expect(tabManager.tabs.first?.filterState.isVisible == false)
     }
 
     // MARK: - Window-local reuse (issue #1348)
@@ -78,6 +79,7 @@ struct OpenTableTabTests {
         #expect(tabManager.tabs.count == 1)
         #expect(tabManager.selectedTab?.tabType == .table)
         #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(tabManager.selectedTab?.filterState.isVisible == false)
     }
 
     @Test("Clicking the active table again is a no-op")

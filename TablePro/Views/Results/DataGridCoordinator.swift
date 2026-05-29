@@ -101,6 +101,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     let cellRegistry: DataGridCellRegistry
     let columnPool = DataGridColumnPool()
     let tableRowsController = TableRowsController()
+    let selectionController = GridSelectionController()
     var overlayEditor: CellOverlayEditor?
     var overlayViewer: CellOverlayViewer?
 
@@ -203,6 +204,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         prewarmResumeTask?.cancel()
         prewarmResumeTask = nil
         detachScrollObservers()
+        selectionController.clear()
         overlayEditor?.dismiss(commit: false)
         overlayViewer?.dismiss()
         settingsCancellable?.cancel()
@@ -264,6 +266,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let tableView else { return }
         invalidateAllDisplayCaches()
         updateCache()
+        selectionController.clear()
         tableView.reloadData()
         startBackgroundPrewarm()
     }
@@ -599,6 +602,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
            firstResponder.isDescendant(of: tableView) {
             window.makeFirstResponder(tableView)
         }
+    }
+
+    internal func focusGrid() {
+        guard let tableView, let window = tableView.window else { return }
+        window.makeFirstResponder(tableView)
     }
 
     func beginEditing(displayRow: Int, column: Int) {
