@@ -236,11 +236,6 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         if codeDescription.hasPrefix("unsupportedVerifierType") {
             return .authVerifierUnsupported(flag: codeDescription)
         }
-        // A listener that refuses the connection (wrong service name, SID, or listener
-        // policy) sends its own error text, which is more useful than a generic message.
-        if error.underlying is OracleListenerRefusedError {
-            return .connectionFailed
-        }
         switch codeDescription {
         case "uncleanShutdown":
             return .authConnectionDropped
