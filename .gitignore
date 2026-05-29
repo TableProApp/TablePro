@@ -157,3 +157,4 @@ fix-1322-plugin-abi-and-registry-overhaul.diff
 .analysis/
 .docs/
 Local.xcconfig
+/plans/reports
