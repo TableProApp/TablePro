@@ -2,18 +2,60 @@
 //  SidebarViewModel.swift
 //  TablePro
 //
-//  ViewModel for SidebarView.
-//  Handles search filtering and batch operations.
-//
 
 import Observation
 import SwiftUI
 import TableProPluginKit
 
-// MARK: - SidebarViewModel
-
 @MainActor @Observable
 final class SidebarViewModel {
+    private static var registry: [UUID: SidebarViewModel] = [:]
+
+    static func shared(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        selectedTables: Binding<Set<TableInfo>>,
+        pendingTruncates: Binding<Set<String>>,
+        pendingDeletes: Binding<Set<String>>,
+        tableOperationOptions: Binding<[String: TableOperationOptions]>
+    ) -> SidebarViewModel {
+        if let existing = registry[connectionId] {
+            existing.updateBindings(
+                selectedTables: selectedTables,
+                pendingTruncates: pendingTruncates,
+                pendingDeletes: pendingDeletes,
+                tableOperationOptions: tableOperationOptions
+            )
+            return existing
+        }
+        let viewModel = SidebarViewModel(
+            selectedTables: selectedTables,
+            pendingTruncates: pendingTruncates,
+            pendingDeletes: pendingDeletes,
+            tableOperationOptions: tableOperationOptions,
+            databaseType: databaseType,
+            connectionId: connectionId
+        )
+        registry[connectionId] = viewModel
+        return viewModel
+    }
+
+    static func removeConnection(_ connectionId: UUID) {
+        registry.removeValue(forKey: connectionId)
+    }
+
+    func updateBindings(
+        selectedTables: Binding<Set<TableInfo>>,
+        pendingTruncates: Binding<Set<String>>,
+        pendingDeletes: Binding<Set<String>>,
+        tableOperationOptions: Binding<[String: TableOperationOptions]>
+    ) {
+        selectedTablesBinding = selectedTables
+        pendingTruncatesBinding = pendingTruncates
+        pendingDeletesBinding = pendingDeletes
+        tableOperationOptionsBinding = tableOperationOptions
+    }
+
     // MARK: - Expansion State
 
     struct ExpansionState: Sendable {
@@ -88,7 +130,6 @@ final class SidebarViewModel {
         set { tableOperationOptionsBinding.wrappedValue = newValue }
     }
 
-    // Maintained for backwards compatibility with call sites that read/write a single boolean.
     var isTablesExpanded: Bool {
         get { expanded[.table] }
         set { expanded[.table] = newValue }
@@ -272,20 +313,24 @@ final class SidebarViewModel {
     // MARK: - Filtering
 
     @ObservationIgnored private var cachedFilteredTables: [TableInfo]?
-    @ObservationIgnored private var cachedFilterInputs: (count: Int, hash: Int, query: String)?
+    @ObservationIgnored private var cachedFilterInputs: (count: Int, generation: Int, query: String)?
 
     @ObservationIgnored private var cachedKindBuckets: [SidebarObjectKind: [TableInfo]] = [:]
-    @ObservationIgnored private var cachedKindFingerprint: (count: Int, hash: Int)?
+    @ObservationIgnored private var cachedKindFingerprint: (count: Int, generation: Int)?
 
     @ObservationIgnored private var cachedFilteredByKind: [SidebarObjectKind: [TableInfo]] = [:]
-    @ObservationIgnored private var cachedFilteredByKindFingerprint: (count: Int, hash: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredByKindFingerprint: (count: Int, generation: Int, query: String)?
 
     @ObservationIgnored private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
-    @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, hash: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
+
+    private var schemaGeneration: Int {
+        SchemaService.shared.generationToken(for: connectionId)
+    }
 
     func filteredTables(from tables: [TableInfo]) -> [TableInfo] {
         let query = searchText
-        let fingerprint = (count: tables.count, hash: tables.hashValue, query: query)
+        let fingerprint = (count: tables.count, generation: schemaGeneration, query: query)
         if let cache = cachedFilteredTables,
            let inputs = cachedFilterInputs,
            inputs == fingerprint {
@@ -304,9 +349,9 @@ final class SidebarViewModel {
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
         guard !kind.isRoutine else { return [] }
-        let fingerprint = (count: tables.count, hash: tables.hashValue)
+        let fingerprint = (count: tables.count, generation: schemaGeneration)
         if cachedKindFingerprint?.count != fingerprint.count
-            || cachedKindFingerprint?.hash != fingerprint.hash {
+            || cachedKindFingerprint?.generation != fingerprint.generation {
             rebuildKindBuckets(from: tables)
             cachedKindFingerprint = fingerprint
         }
@@ -315,9 +360,9 @@ final class SidebarViewModel {
 
     func filteredTables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
         let query = searchText
-        let fingerprint = (count: tables.count, hash: tables.hashValue, query: query)
+        let fingerprint = (count: tables.count, generation: schemaGeneration, query: query)
         if cachedFilteredByKindFingerprint?.count != fingerprint.count
-            || cachedFilteredByKindFingerprint?.hash != fingerprint.hash
+            || cachedFilteredByKindFingerprint?.generation != fingerprint.generation
             || cachedFilteredByKindFingerprint?.query != fingerprint.query {
             let bucket = self.tables(of: .table, from: tables)
             let bucketView = self.tables(of: .view, from: tables)
@@ -334,9 +379,9 @@ final class SidebarViewModel {
 
     func filteredRoutines(of kind: SidebarObjectKind, from routines: [RoutineInfo]) -> [RoutineInfo] {
         let query = searchText
-        let fingerprint = (count: routines.count, hash: routines.hashValue, query: query)
+        let fingerprint = (count: routines.count, generation: schemaGeneration, query: query)
         if cachedFilteredRoutinesFingerprint?.count != fingerprint.count
-            || cachedFilteredRoutinesFingerprint?.hash != fingerprint.hash
+            || cachedFilteredRoutinesFingerprint?.generation != fingerprint.generation
             || cachedFilteredRoutinesFingerprint?.query != fingerprint.query {
             let procs = routines.filter { $0.kind == .procedure }
             let funcs = routines.filter { $0.kind == .function }

@@ -731,14 +731,18 @@ final class MainContentCoordinator {
             driver: driver,
             connection: connection
         )
+        await DatabaseTreeMetadataService.shared.loadDatabases(
+            connectionId: connectionId,
+            databaseType: connection.type
+        )
         await reconcilePostSchemaLoad()
     }
 
     func loadTableMetadata(tableName: String) async {
-        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-
         do {
-            let metadata = try await driver.fetchTableMetadata(tableName: tableName)
+            let metadata = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+                try await driver.fetchTableMetadata(tableName: tableName)
+            }
             self.tableMetadata = metadata
         } catch {
             Self.logger.error("Failed to load table metadata: \(error.localizedDescription, privacy: .public)")
@@ -1157,7 +1161,6 @@ final class MainContentCoordinator {
     func fetchEnumValues(
         columnInfo: [ColumnInfo],
         tableName: String,
-        driver: DatabaseDriver,
         connectionType: DatabaseType
     ) async -> [String: [String]] {
         var result: [String: [String]] = [:]
@@ -1168,7 +1171,10 @@ final class MainContentCoordinator {
             }
         }
 
-        if result.isEmpty, let createSQL = try? await driver.fetchTableDDL(table: tableName) {
+        if result.isEmpty,
+           let createSQL = try? await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, { driver in
+               try await driver.fetchTableDDL(table: tableName)
+           }) {
             for col in columnInfo {
                 if let values = QuerySqlParser.parseSQLiteCheckConstraintValues(
                     createSQL: createSQL, columnName: col.name

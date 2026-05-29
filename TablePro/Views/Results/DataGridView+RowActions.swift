@@ -226,13 +226,12 @@ extension TableViewCoordinator {
 
         var lines: [String] = []
         lines.reserveCapacity(rowCount)
-
         for rowIndex in 0..<rowCount {
             guard let row = displayRow(at: rowIndex), row.values.indices.contains(columnIndex) else { continue }
             let text = RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType) ?? "NULL"
             lines.append(text)
         }
-
+        guard !lines.isEmpty else { return }
         ClipboardService.shared.writeText(lines.joined(separator: "\n"))
     }
 
@@ -316,5 +315,53 @@ extension TableViewCoordinator {
         guard fromRow != row && fromRow != row - 1 else { return false }
         delegate.dataGridMoveRow(from: fromRow, to: row)
         return true
+    }
+
+    func selectColumn(_ dataColumnIndex: Int) {
+        let totalRows = sortedIDs?.count ?? tableRowsProvider().rows.count
+        selectionController.selectEntireColumn(dataColumnIndex, totalRows: totalRows)
+        if let keyTableView = tableView as? KeyHandlingTableView {
+            keyTableView.deselectAll(nil)
+        }
+    }
+
+    func copyGridSelection(_ selection: GridSelection) {
+        guard let rect = selection.boundingRectangle else { return }
+        let tableRows = tableRowsProvider()
+        let columnTypes = tableRows.columnTypes
+        let rowCount = sortedIDs?.count ?? tableRows.rows.count
+        let columnCount = tableRows.columns.count
+
+        let rowRange = rect.rows.lowerBound...min(rect.rows.upperBound, max(0, rowCount - 1))
+        let columnRange = rect.columns.lowerBound...min(rect.columns.upperBound, max(0, columnCount - 1))
+        guard rowRange.lowerBound <= rowRange.upperBound,
+              columnRange.lowerBound <= columnRange.upperBound else { return }
+
+        var lines: [String] = []
+        lines.reserveCapacity(rowRange.count)
+        for rowIndex in rowRange {
+            guard let row = displayRow(at: rowIndex) else {
+                lines.append(String(repeating: "\t", count: columnRange.count - 1))
+                continue
+            }
+            var fields: [String] = []
+            fields.reserveCapacity(columnRange.count)
+            for columnIndex in columnRange {
+                guard selection.contains(row: rowIndex, column: columnIndex) else {
+                    fields.append("")
+                    continue
+                }
+                guard row.values.indices.contains(columnIndex) else {
+                    fields.append("")
+                    continue
+                }
+                let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
+                let text = RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType) ?? "NULL"
+                fields.append(text)
+            }
+            lines.append(fields.joined(separator: "\t"))
+        }
+
+        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
     }
 }

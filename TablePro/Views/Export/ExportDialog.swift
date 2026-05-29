@@ -550,16 +550,6 @@ struct ExportDialog: View {
 
     @MainActor
     private func loadDatabaseItems() async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            isLoading = false
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Error"),
-                message: String(localized: "Not connected to database"),
-                window: nil
-            )
-            return
-        }
-
         // Snapshot user-toggled selections before replacing items
         let priorSelections = currentSelectionState()
 
@@ -570,10 +560,12 @@ struct ExportDialog: View {
             let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
             switch grouping {
             case .bySchema, .hierarchicalSchema:
-                let schemas = try await driver.fetchSchemas()
+                let schemas = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                    try await driver.fetchSchemas()
+                }
                 let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
                 for schema in schemas {
-                    let tables = try await fetchTablesForSchema(schema, driver: driver)
+                    let tables = try await fetchTablesForSchema(schema)
                     let isDefaultSchema = schema.caseInsensitiveCompare(defaultSchema) == .orderedSame
                     let tableItems = tables.map { table in
                         let key = "\(schema).\(table.name)"
@@ -602,15 +594,16 @@ struct ExportDialog: View {
             case .flat:
                 let fallbackName = PluginManager.shared.defaultGroupName(for: dbType)
                 let dbItem = try await buildFlatDatabaseItem(
-                    driver: driver,
                     name: connection.database.isEmpty ? fallbackName : connection.database,
                     priorSelections: priorSelections
                 )
                 if let dbItem { items.append(dbItem) }
             case .byDatabase:
-                let databases = try await driver.fetchDatabases()
+                let databases = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                    try await driver.fetchDatabases()
+                }
                 for dbName in databases {
-                    let tables = try await fetchTablesForDatabase(dbName, driver: driver)
+                    let tables = try await fetchTablesForDatabase(dbName)
                     let isCurrentDB = dbName == connection.database
                     let tableItems = tables.map { table in
                         let key = "\(dbName).\(table.name)"
@@ -658,11 +651,12 @@ struct ExportDialog: View {
     }
 
     private func buildFlatDatabaseItem(
-        driver: DatabaseDriver,
         name: String,
         priorSelections: [String: Bool] = [:]
     ) async throws -> ExportDatabaseItem? {
-        let tables = try await driver.fetchTables()
+        let tables = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+            try await driver.fetchTables()
+        }
         let tableItems = tables.map { table in
             let key = "\(name).\(table.name)"
             let selected = priorSelections[key] ?? preselectedTables.contains(table.name)
@@ -677,64 +671,66 @@ struct ExportDialog: View {
         return ExportDatabaseItem(name: name, tables: tableItems, isExpanded: true)
     }
 
-    private func fetchTablesForSchema(_ schema: String, driver: DatabaseDriver) async throws -> [TableInfo] {
-        // Oracle does not have information_schema — use ALL_TABLES/ALL_VIEWS
-        if connection.type.pluginTypeId == "Oracle" {
-            let escapedSchema = schema.replacingOccurrences(of: "'", with: "''")
+    private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
+        let isOracle = connection.type.pluginTypeId == "Oracle"
+        return try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+            if isOracle {
+                let escapedSchema = schema.replacingOccurrences(of: "'", with: "''")
+                let query = """
+                    SELECT TABLE_NAME, 'BASE TABLE' AS TABLE_TYPE FROM ALL_TABLES WHERE OWNER = '\(escapedSchema)'
+                    UNION ALL
+                    SELECT VIEW_NAME, 'VIEW' FROM ALL_VIEWS WHERE OWNER = '\(escapedSchema)'
+                    ORDER BY 1
+                    """
+                let result = try await driver.execute(query: query)
+                return result.rows.compactMap { row -> TableInfo? in
+                    guard let name = row[safe: 0]?.asText else { return nil }
+                    let typeStr = row[safe: 1]?.asText ?? "BASE TABLE"
+                    let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
+                    return TableInfo(name: name, type: type, rowCount: nil)
+                }
+            }
+
             let query = """
-                SELECT TABLE_NAME, 'BASE TABLE' AS TABLE_TYPE FROM ALL_TABLES WHERE OWNER = '\(escapedSchema)'
-                UNION ALL
-                SELECT VIEW_NAME, 'VIEW' FROM ALL_VIEWS WHERE OWNER = '\(escapedSchema)'
-                ORDER BY 1
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                ORDER BY table_name
                 """
             let result = try await driver.execute(query: query)
             return result.rows.compactMap { row -> TableInfo? in
-                guard let name = row[safe: 0]?.asText else { return nil }
-                let typeStr = row[safe: 1]?.asText ?? "BASE TABLE"
+                guard row.count >= 2,
+                      let rowSchema = row[0].asText,
+                      rowSchema == schema,
+                      let name = row[1].asText else {
+                    return nil
+                }
+                let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
                 let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
                 return TableInfo(name: name, type: type, rowCount: nil)
             }
         }
-
-        let query = """
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            ORDER BY table_name
-            """
-        let result = try await driver.execute(query: query)
-        return result.rows.compactMap { row -> TableInfo? in
-            guard row.count >= 2,
-                  let rowSchema = row[0].asText,
-                  rowSchema == schema,
-                  let name = row[1].asText else {
-                return nil
-            }
-            let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
-            let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-            return TableInfo(name: name, type: type, rowCount: nil)
-        }
     }
 
-    private func fetchTablesForDatabase(_ database: String, driver: DatabaseDriver) async throws -> [TableInfo] {
-        // Fetch tables from information_schema and filter by database in Swift to avoid SQL interpolation.
-        // MySQL/MariaDB: information_schema.TABLES contains TABLE_SCHEMA, TABLE_NAME, and TABLE_TYPE.
-        let query = """
-            SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
-            FROM information_schema.TABLES
-            ORDER BY TABLE_NAME
-            """
-        let result = try await driver.execute(query: query)
+    private func fetchTablesForDatabase(_ database: String) async throws -> [TableInfo] {
+        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+            let query = """
+                SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
+                FROM information_schema.TABLES
+                ORDER BY TABLE_NAME
+                """
+            let result = try await driver.execute(query: query)
 
-        return result.rows.compactMap { row -> TableInfo? in
-            guard row.count >= 2,
-                  let rowSchema = row[0].asText,
-                  rowSchema == database,
-                  let name = row[1].asText else {
-                return nil
+            return result.rows.compactMap { row -> TableInfo? in
+                guard row.count >= 2,
+                      let rowSchema = row[0].asText,
+                      rowSchema == database,
+                      let name = row[1].asText else {
+                    return nil
+                }
+                let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
+                let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
+                return TableInfo(name: name, type: type, rowCount: nil)
             }
-            let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
-            let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-            return TableInfo(name: name, type: type, rowCount: nil)
         }
     }
 

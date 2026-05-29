@@ -95,15 +95,19 @@ final class ERDiagramViewModel {
             await waitForConnection()
         }
 
-        guard let driver = services.databaseManager.driver(for: connectionId) else {
+        guard services.databaseManager.driver(for: connectionId) != nil else {
             loadState = .failed(String(localized: "No database connection"))
             return
         }
 
         do {
-            async let columnsResult = driver.fetchAllColumns()
-            async let fksResult = driver.fetchAllForeignKeys()
-            let (allColumns, allFKs) = try await (columnsResult, fksResult)
+            let (allColumns, allFKs) = try await services.databaseManager.withMetadataDriver(
+                connectionId: connectionId, workload: .bulk
+            ) { driver in
+                let cols = try await driver.fetchAllColumns()
+                let fks = try await driver.fetchAllForeignKeys()
+                return (cols, fks)
+            }
 
             let builtGraph = ERDiagramGraphBuilder.build(
                 allColumns: allColumns,

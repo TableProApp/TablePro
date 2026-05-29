@@ -4,6 +4,45 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="May 28, 2026" description="v0.46.0">
+  ### New Features
+
+  - **Rectangular Cell Selection**: Click and drag to select a range in the data grid. Shift and Cmd modifiers extend or add cells, and Cmd+C copies the selection as TSV (#1446)
+  - **Favorite Connections**: Star a connection from the welcome screen and it appears in a Favorites section at the top of the list (#1302)
+  - **Foreign Key in New Tab**: Cmd-click a foreign key arrow, or pick Open in New Tab from the right-click menu, to open the referenced table without replacing the current one (#1421)
+  - **Add and Remove in Table Structure**: The structure editor gains add and remove buttons for columns, indexes, and foreign keys, with Cmd+Shift+N and Cmd+Delete shortcuts (#1319)
+  - **OpenCode Zen AI Provider**: A new AI provider with free models when no key is set (#1400)
+  - **Auto JSON and PHP Cell Viewer**: Text cells holding JSON or PHP serialized values open in the structured viewer automatically
+  - **BigQuery Dataset Tree**: BigQuery datasets show as expandable nodes in the sidebar instead of one at a time behind a picker
+  - **Oracle 11g and SID Connections**: Oracle Database 11g (11.1 and 11.2) now connects, and Oracle connections can use a SID instead of a service name (#1425)
+
+  ### Improvements
+
+  - **Clear Query Results**: The query trash button clears results too, and a Clear Results menu item clears results alone (#1256)
+  - **AI SQL Into New Tab**: Inserting SQL from AI Chat opens a new query tab, or fills an empty editor in place (#1257)
+
+  ### Bug Fixes
+
+  - **Toolbar Customizations Persist**: Toolbar customizations stick across closing and reopening a session window (#1455)
+  - **MongoDB NaN and Infinity Crash**: Opening a MongoDB collection no longer crashes on documents containing NaN or infinite numbers (#1418)
+  - **Paste Rows with Commas and NULL**: Pasting rows with commas in a cell keeps each value in its own column and preserves NULL vs the literal text "NULL"
+  - **BigQuery Table Switch**: Switching to another table in BigQuery loads its data immediately instead of leaving the grid empty
+  - **Custom AI Base URL ending /v1**: Custom and OpenAI-compatible AI providers work when the base URL ends in `/v1` (#1400)
+  - **Plugin Update Wait**: Connecting after an app update waits for in-progress plugin updates; when no compatible plugin build exists yet, the message asks you to update TablePro (#1380)
+  - **Detailed Saved Connection Errors**: Failed saved connections show the Test Connection troubleshooting dialog instead of a generic alert (#1425, #483)
+  - **Plain-Language Oracle Errors**: Oracle connection errors explain the cause in plain language instead of the driver's raw message (#483)
+  - **AWS IAM Profile Sources**: AWS IAM authentication with a named profile reads `~/.aws/config` and supports `credential_process`, so SSO, IAM Identity Center, and assume-role profiles work (#1291)
+  - **Single Initial Query**: Opening a table no longer runs the initial query multiple times before data arrives
+  - **iOS Safe Mode Persist**: Safe Mode setting survives relaunch on iOS instead of reverting to Off after iCloud sync
+  - **iOS Large Result Stability**: Large query results no longer crash the app on iOS; the editor keeps the rows it loaded and suggests adding LIMIT
+  - **iOS Confirm Writes Prompt**: Safe Mode "Confirm Writes" prompts before grid edits and inserts on iOS, matching the query editor
+  - **Redshift Schema and Filters**: Schema switching, table search, and contains/starts with/ends with filters now work on Redshift (#1439)
+  - **MCP Require Auth**: Turning on Require Authentication no longer hangs the first request, generates a default token if needed, and shows it once. The Generate Token sheet focuses the Token Name field on first open (#1093)
+  - **Direct CSV and TSV Open**: Double-clicking a CSV or TSV file when TablePro is closed opens the file directly (#1443)
+  - **Tab Named After SQL File**: Opening a `.sql` file names the tab after the file instead of "SQL Query" (#1220)
+  - **Server Dashboard Slow Queries**: Server Dashboard shows the Slow Queries panel, with a draggable vertical split and remembered divider positions (#1464)
+</Update>
+
 <Update label="May 26, 2026" description="v0.45.0">
   ### New Features
 

@@ -3,6 +3,103 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.46.0</title>
+            <pubDate>Thu, 28 May 2026 15:22:43 +0000</pubDate>
+            <sparkle:version>92</sparkle:version>
+            <sparkle:shortVersionString>0.46.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Rectangular cell selection in the data grid, with Shift and Cmd modifiers to extend or add cells, and Cmd+C to copy as TSV. (#1446)</li>
+<li>BigQuery datasets show as expandable nodes in the sidebar instead of one at a time behind a picker.</li>
+<li>OpenCode Zen as an AI provider, with free models when no key is set. (#1400)</li>
+<li>Oracle Database 11g (11.1 and 11.2) now connects. (#1425)</li>
+<li>Oracle connections can use a SID instead of a service name. (#1425)</li>
+<li>Cmd-click a foreign key arrow (or pick Open in New Tab from the right-click menu) to open the referenced table in a new tab. (#1421)</li>
+<li>Favorite a connection from the welcome screen; starred connections appear in a Favorites section at the top of the list. (#1302)</li>
+<li>Text-column cells holding JSON or PHP serialized values open in the structured viewer automatically.</li>
+<li>Add and remove buttons in the table structure editor (Cmd+Shift+N to add, Cmd+Delete to remove), and a labelled add button on empty Indexes or Foreign Keys tabs. (#1319)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The query trash button clears results too, and a Clear Results item on the right-click menu clears results alone. (#1256)</li>
+<li>Inserting SQL from AI Chat opens a new query tab, or fills an empty editor in place. (#1257)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Toolbar customizations persist after closing and reopening a session window. (#1455)</li>
+<li>Pasting rows with commas in a cell keeps each value in its own column and preserves NULL vs the literal text "NULL".</li>
+<li>BigQuery: switching to another table loads its data immediately instead of leaving the grid empty.</li>
+<li>Custom and OpenAI-compatible AI providers work when the base URL ends in `/v1`. (#1400)</li>
+<li>MongoDB: opening a collection no longer crashes on documents containing NaN or infinite numbers. (#1418)</li>
+<li>Connecting after an app update waits for in-progress plugin updates; when no compatible plugin build exists yet, the message asks you to update TablePro. (#1380)</li>
+<li>Failed saved connections show the Test Connection troubleshooting dialog instead of a generic alert. (#1425, #483)</li>
+<li>Oracle connection errors explain the cause in plain language instead of the driver's raw message. (#483)</li>
+<li>AWS IAM authentication with a named profile reads `~/.aws/config` and supports `credential_process`, so SSO, IAM Identity Center, and assume-role profiles work. (#1291)</li>
+<li>Opening a table no longer runs the initial query multiple times before data arrives.</li>
+<li>iOS: Safe Mode setting survives relaunch instead of reverting to Off after iCloud sync.</li>
+<li>iOS: large query results no longer crash the app; the editor keeps the rows it loaded and suggests adding LIMIT.</li>
+<li>iOS: Safe Mode "Confirm Writes" prompts before grid edits and inserts, matching the query editor.</li>
+<li>Redshift: schema switching, table search, and contains/starts with/ends with filters now work. (#1439)</li>
+<li>MCP server: turning on Require Authentication no longer hangs the first request, generates a default token if needed, and shows it once. (#1093)</li>
+<li>The Generate Token sheet focuses the Token Name field on first open. (#1093)</li>
+<li>Double-clicking a CSV or TSV file when TablePro is closed opens the file directly. (#1443)</li>
+<li>Opening a `.sql` file names the tab after the file instead of "SQL Query". (#1220)</li>
+<li>Server Dashboard shows the Slow Queries panel, with a draggable vertical split and remembered divider positions. (#1464)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.46.0/TablePro-0.46.0-arm64.zip" length="18357432" type="application/octet-stream" sparkle:edSignature="AwHlQCAaJvX/KJThzAKugmJnFSCdb42E9tG19QPujozubxxRV+FIuTHD5wRGO2JYHHmcO3+gCXywSHga2StBBg=="/>
+        </item>
+        <item>
+            <title>0.46.0</title>
+            <pubDate>Thu, 28 May 2026 15:22:44 +0000</pubDate>
+            <sparkle:version>92</sparkle:version>
+            <sparkle:shortVersionString>0.46.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Rectangular cell selection in the data grid, with Shift and Cmd modifiers to extend or add cells, and Cmd+C to copy as TSV. (#1446)</li>
+<li>BigQuery datasets show as expandable nodes in the sidebar instead of one at a time behind a picker.</li>
+<li>OpenCode Zen as an AI provider, with free models when no key is set. (#1400)</li>
+<li>Oracle Database 11g (11.1 and 11.2) now connects. (#1425)</li>
+<li>Oracle connections can use a SID instead of a service name. (#1425)</li>
+<li>Cmd-click a foreign key arrow (or pick Open in New Tab from the right-click menu) to open the referenced table in a new tab. (#1421)</li>
+<li>Favorite a connection from the welcome screen; starred connections appear in a Favorites section at the top of the list. (#1302)</li>
+<li>Text-column cells holding JSON or PHP serialized values open in the structured viewer automatically.</li>
+<li>Add and remove buttons in the table structure editor (Cmd+Shift+N to add, Cmd+Delete to remove), and a labelled add button on empty Indexes or Foreign Keys tabs. (#1319)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The query trash button clears results too, and a Clear Results item on the right-click menu clears results alone. (#1256)</li>
+<li>Inserting SQL from AI Chat opens a new query tab, or fills an empty editor in place. (#1257)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Toolbar customizations persist after closing and reopening a session window. (#1455)</li>
+<li>Pasting rows with commas in a cell keeps each value in its own column and preserves NULL vs the literal text "NULL".</li>
+<li>BigQuery: switching to another table loads its data immediately instead of leaving the grid empty.</li>
+<li>Custom and OpenAI-compatible AI providers work when the base URL ends in `/v1`. (#1400)</li>
+<li>MongoDB: opening a collection no longer crashes on documents containing NaN or infinite numbers. (#1418)</li>
+<li>Connecting after an app update waits for in-progress plugin updates; when no compatible plugin build exists yet, the message asks you to update TablePro. (#1380)</li>
+<li>Failed saved connections show the Test Connection troubleshooting dialog instead of a generic alert. (#1425, #483)</li>
+<li>Oracle connection errors explain the cause in plain language instead of the driver's raw message. (#483)</li>
+<li>AWS IAM authentication with a named profile reads `~/.aws/config` and supports `credential_process`, so SSO, IAM Identity Center, and assume-role profiles work. (#1291)</li>
+<li>Opening a table no longer runs the initial query multiple times before data arrives.</li>
+<li>iOS: Safe Mode setting survives relaunch instead of reverting to Off after iCloud sync.</li>
+<li>iOS: large query results no longer crash the app; the editor keeps the rows it loaded and suggests adding LIMIT.</li>
+<li>iOS: Safe Mode "Confirm Writes" prompts before grid edits and inserts, matching the query editor.</li>
+<li>Redshift: schema switching, table search, and contains/starts with/ends with filters now work. (#1439)</li>
+<li>MCP server: turning on Require Authentication no longer hangs the first request, generates a default token if needed, and shows it once. (#1093)</li>
+<li>The Generate Token sheet focuses the Token Name field on first open. (#1093)</li>
+<li>Double-clicking a CSV or TSV file when TablePro is closed opens the file directly. (#1443)</li>
+<li>Opening a `.sql` file names the tab after the file instead of "SQL Query". (#1220)</li>
+<li>Server Dashboard shows the Slow Queries panel, with a draggable vertical split and remembered divider positions. (#1464)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.46.0/TablePro-0.46.0-x86_64.zip" length="19371195" type="application/octet-stream" sparkle:edSignature="Cs7UZTXKjJu6OVhKf7/SVx14n3v6/+x19PrZ1038Y0EZz+VMht8usSK0ZIJCL9pPXLNzWNgGZpTT5F+UGZhYCg=="/>
+        </item>
+        <item>
             <title>0.45.0</title>
             <pubDate>Tue, 26 May 2026 01:02:36 +0000</pubDate>
             <sparkle:version>91</sparkle:version>

@@ -259,6 +259,18 @@ final class MainContentCommandActions {
         PluginManager.shared.supportsDatabaseSwitching(for: connection.type)
     }
 
+    var canSwitchSidebarLayout: Bool {
+        PluginManager.shared.supportsDatabaseTree(for: connection.type)
+    }
+
+    var sidebarLayout: SidebarLayout {
+        SharedSidebarState.forConnection(connection.id).sidebarLayout
+    }
+
+    func setSidebarLayout(_ layout: SidebarLayout) {
+        SharedSidebarState.forConnection(connection.id).sidebarLayout = layout
+    }
+
     var isCurrentTabEditable: Bool {
         coordinator?.tabManager.selectedTab?.tableContext.isEditable == true
     }

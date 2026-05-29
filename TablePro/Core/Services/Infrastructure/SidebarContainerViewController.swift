@@ -12,7 +12,7 @@ internal final class SidebarContainerViewController: NSViewController {
     private var hostingController: NSHostingController<AnyView>
     private var sidebarState: SharedSidebarState?
     private var windowState: WindowSidebarState?
-    private var observationGeneration = 0
+    private var observationTask: Task<Void, Never>?
 
     var rootView: AnyView {
         get { hostingController.rootView }
@@ -58,7 +58,7 @@ internal final class SidebarContainerViewController: NSViewController {
     }
 
     func updateSidebarState(_ state: SharedSidebarState?, windowState: WindowSidebarState?) {
-        observationGeneration += 1
+        observationTask?.cancel()
         self.sidebarState = state
         self.windowState = windowState
         guard let state, let windowState else {
@@ -66,29 +66,35 @@ internal final class SidebarContainerViewController: NSViewController {
             return
         }
         searchField.isHidden = false
-        syncFromState(state, windowState: windowState)
-        startObserving(state, windowState: windowState, generation: observationGeneration)
-    }
-
-    private func startObserving(
-        _ state: SharedSidebarState,
-        windowState: WindowSidebarState,
-        generation: Int
-    ) {
-        withObservationTracking {
-            _ = state.selectedSidebarTab
-            _ = windowState.searchText
-            _ = windowState.favoritesSearchText
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self,
-                      generation == self.observationGeneration,
-                      let sidebarState = self.sidebarState,
-                      let windowState = self.windowState else { return }
-                self.syncFromState(sidebarState, windowState: windowState)
-                self.startObserving(sidebarState, windowState: windowState, generation: generation)
+        observationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                self.syncFromState(state, windowState: windowState)
+                await Self.awaitChange(state: state, windowState: windowState)
             }
         }
+    }
+
+    private static func awaitChange(state: SharedSidebarState, windowState: WindowSidebarState) async {
+        let box = ObservationContinuationBox()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                box.attach(continuation)
+                withObservationTracking {
+                    _ = state.selectedSidebarTab
+                    _ = windowState.searchText
+                    _ = windowState.favoritesSearchText
+                } onChange: {
+                    box.resume()
+                }
+            }
+        } onCancel: {
+            box.resume()
+        }
+    }
+
+    deinit {
+        observationTask?.cancel()
     }
 
     private func syncFromState(_ state: SharedSidebarState, windowState: WindowSidebarState) {
@@ -128,5 +134,30 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         case .favorites:
             windowState.favoritesSearchText = text
         }
+    }
+}
+
+private final class ObservationContinuationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var resumed = false
+
+    func attach(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else {
+            continuation.resume()
+            return
+        }
+        self.continuation = continuation
+    }
+
+    func resume() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else { return }
+        resumed = true
+        continuation?.resume()
+        continuation = nil
     }
 }

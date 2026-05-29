@@ -85,9 +85,34 @@ class DataGridRowView: NSTableRowView {
 
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
-        guard let rowTint, !isSelected else { return }
-        rowTint.setFill()
-        bounds.fill()
+        if let rowTint, !isSelected {
+            rowTint.setFill()
+            bounds.fill()
+        }
+        drawCellSelectionFill(in: dirtyRect)
+    }
+
+    private func drawCellSelectionFill(in dirtyRect: NSRect) {
+        guard let selection = coordinator?.selectionController.selection,
+              !selection.isEmpty,
+              let tableView = coordinator?.tableView else { return }
+        let columns = selection.columns(in: rowIndex)
+        guard !columns.isEmpty else { return }
+
+        let fillColor: NSColor = isSelected
+            ? NSColor.unemphasizedSelectedContentBackgroundColor
+            : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28)
+        fillColor.setFill()
+
+        let schema = coordinator?.identitySchema
+        for dataColumn in columns {
+            guard let schema,
+                  let tableColumnIndex = DataGridView.tableColumnIndex(for: dataColumn, in: tableView, schema: schema) else { continue }
+            let columnRect = tableView.rect(ofColumn: tableColumnIndex)
+            let localRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
+            guard localRect.intersects(dirtyRect) else { continue }
+            localRect.fill()
+        }
     }
 
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {

@@ -28,14 +28,10 @@ extension TableStructureView {
         isLoading = true
         errorMessage = nil
 
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            errorMessage = String(localized: "Not connected")
-            isLoading = false
-            return
-        }
-
         do {
-            columns = try await driver.fetchColumns(table: tableName)
+            columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                try await driver.fetchColumns(table: tableName)
+            }
             loadedTabs.insert(.columns)
         } catch {
             errorMessage = error.localizedDescription
@@ -50,23 +46,28 @@ extension TableStructureView {
     }
 
     func fetchTabData(_ tab: StructureTab) async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
-
         do {
             switch tab {
             case .columns:
-                columns = try await driver.fetchColumns(table: tableName)
+                columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                    try await driver.fetchColumns(table: tableName)
+                }
             case .indexes:
-                indexes = try await driver.fetchIndexes(table: tableName)
+                indexes = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                    try await driver.fetchIndexes(table: tableName)
+                }
             case .foreignKeys:
-                foreignKeys = try await driver.fetchForeignKeys(table: tableName)
+                foreignKeys = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                    try await driver.fetchForeignKeys(table: tableName)
+                }
             case .ddl:
-                let sequences = try await driver.fetchDependentSequences(forTable: tableName)
-                let enumTypes = try await driver.fetchDependentTypes(forTable: tableName)
-                let baseDDL = try await driver.fetchTableDDL(table: tableName)
-                if sequences.isEmpty && enumTypes.isEmpty {
-                    ddlStatement = baseDDL
-                } else {
+                ddlStatement = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
+                    let sequences = try await driver.fetchDependentSequences(forTable: tableName)
+                    let enumTypes = try await driver.fetchDependentTypes(forTable: tableName)
+                    let baseDDL = try await driver.fetchTableDDL(table: tableName)
+                    if sequences.isEmpty && enumTypes.isEmpty {
+                        return baseDDL
+                    }
                     var preamble = ""
                     for seq in sequences {
                         preamble += seq.ddl + "\n\n"
@@ -76,7 +77,7 @@ extension TableStructureView {
                         let quotedLabels = enumType.labels.map { "'\(SQLEscaping.escapeStringLiteral($0))'" }
                         preamble += "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n"
                     }
-                    ddlStatement = preamble + "\n" + baseDDL
+                    return preamble + "\n" + baseDDL
                 }
             case .parts:
                 return

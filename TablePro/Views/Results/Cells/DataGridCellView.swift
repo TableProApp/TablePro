@@ -30,6 +30,7 @@ final class DataGridCellView: NSView {
     private var visualState: RowVisualState = .empty
     private var isFocusedCell: Bool = false
     private var onEmphasizedSelection: Bool = false
+    private var hasOverlay: Bool = false
 
     private var cachedLine: CTLine?
 
@@ -82,6 +83,12 @@ final class DataGridCellView: NSView {
         }
         cellRow = state.row
         cellColumnIndex = state.columnIndex
+
+        if hasOverlay {
+            hasOverlay = false
+            updateFocusPresentation()
+            needsRedraw = true
+        }
 
         let nextDisplayText: String
         let nextFont: NSFont
@@ -150,7 +157,6 @@ final class DataGridCellView: NSView {
             updateFocusPresentation()
             needsRedraw = true
         }
-
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
 
@@ -176,18 +182,26 @@ final class DataGridCellView: NSView {
         updateFocusPresentation()
     }
 
+    func applyOverlayActive(_ value: Bool) {
+        guard hasOverlay != value else { return }
+        hasOverlay = value
+        updateFocusPresentation()
+        needsDisplay = true
+    }
+
     private func updateFocusPresentation() {
-        focusRingType = (isFocusedCell && !onEmphasizedSelection) ? .exterior : .none
+        let shouldShowRing = isFocusedCell && !onEmphasizedSelection && !hasOverlay
+        focusRingType = shouldShowRing ? .exterior : .none
         noteFocusRingMaskChanged()
         needsDisplay = true
     }
 
     override var focusRingMaskBounds: NSRect {
-        onEmphasizedSelection ? .zero : bounds
+        (onEmphasizedSelection || hasOverlay) ? .zero : bounds
     }
 
     override func drawFocusRingMask() {
-        guard !onEmphasizedSelection else { return }
+        guard !onEmphasizedSelection, !hasOverlay else { return }
         NSBezierPath(rect: bounds).fill()
     }
 
@@ -211,7 +225,7 @@ final class DataGridCellView: NSView {
         drawAccessory(in: accessoryRect)
         NSGraphicsContext.current?.restoreGraphicsState()
 
-        if isFocusedCell && onEmphasizedSelection {
+        if isFocusedCell && onEmphasizedSelection && !hasOverlay {
             drawFocusBorder()
         }
     }

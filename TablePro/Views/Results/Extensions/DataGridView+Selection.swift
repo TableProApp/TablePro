@@ -38,6 +38,10 @@ extension TableViewCoordinator {
 
         guard let keyTableView = tableView as? KeyHandlingTableView else { return }
 
+        if !isSyncingSelection, !newSelection.isEmpty, !selectionController.isEmpty {
+            selectionController.clear()
+        }
+
         let newFocus = resolvedFocus(
             previous: previousSelection,
             current: newSelection,
