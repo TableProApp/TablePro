@@ -24,6 +24,25 @@ struct DatabaseTreeTableRef: Hashable, Identifiable {
     }
 }
 
+struct DatabaseTreeRoutineRef: Identifiable {
+    let database: String
+    let schema: String?
+    let routine: RoutineInfo
+
+    var id: String {
+        "\(database)|\(schema ?? "")|\(routine.id)"
+    }
+}
+
+struct DatabaseTreeSchemaRef: Identifiable {
+    let database: String
+    let schema: String
+
+    var id: String {
+        "\(database)|\(schema)"
+    }
+}
+
 struct DatabaseTreeView: View {
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
 
@@ -257,13 +276,13 @@ struct DatabaseTreeView: View {
             if visible.isEmpty {
                 emptyRow(String(localized: "No schemas"))
             } else {
-                ForEach(visible, id: \.self) { schema in
+                ForEach(visible.map { DatabaseTreeSchemaRef(database: database, schema: $0) }) { ref in
                     DisclosureGroup(
-                        isExpanded: schemaExpansionBinding(database: database, schema: schema)
+                        isExpanded: schemaExpansionBinding(database: ref.database, schema: ref.schema)
                     ) {
-                        tablesContent(database: database, schema: schema)
+                        tablesContent(database: ref.database, schema: ref.schema)
                     } label: {
-                        schemaHeader(database: database, schema: schema)
+                        schemaHeader(database: ref.database, schema: ref.schema)
                     }
                 }
             }
@@ -290,19 +309,18 @@ struct DatabaseTreeView: View {
             if tables.isEmpty && routines.isEmpty {
                 emptyRow(String(localized: "No items"))
             } else {
-                ForEach(tables) { table in
+                ForEach(tables.map { DatabaseTreeTableRef(database: database, schema: schema, table: $0) }) { ref in
                     TableRow(
-                        table: table,
-                        isPendingTruncate: pendingTruncates.contains(table.name),
-                        isPendingDelete: pendingDeletes.contains(table.name)
+                        table: ref.table,
+                        isPendingTruncate: pendingTruncates.contains(ref.table.name),
+                        isPendingDelete: pendingDeletes.contains(ref.table.name)
                     )
-                    .tag(DatabaseTreeTableRef(database: database, schema: schema, table: table))
+                    .tag(ref)
                 }
-                ForEach(routines) { routine in
-                    RoutineRowView(routine: routine)
-                        .tag(routine)
+                ForEach(routines.map { DatabaseTreeRoutineRef(database: database, schema: schema, routine: $0) }) { ref in
+                    RoutineRowView(routine: ref.routine)
                         .contextMenu {
-                            RoutineContextMenu(routine: routine) { selected in
+                            RoutineContextMenu(routine: ref.routine) { selected in
                                 coordinator?.showRoutineDDL(selected)
                             }
                         }
@@ -372,8 +390,9 @@ struct DatabaseTreeView: View {
 
     private var visibleDatabases: [DatabaseMetadata] {
         let nonSystem = databases.filter { !$0.isSystemDatabase }
-        guard !searchText.isEmpty else { return nonSystem }
-        return nonSystem.filter { databaseMatchesSearch($0) }
+        let matched = searchText.isEmpty ? nonSystem : nonSystem.filter { databaseMatchesSearch($0) }
+        var seen = Set<String>()
+        return matched.filter { seen.insert($0.id).inserted }
     }
 
     private func databaseMatchesSearch(_ db: DatabaseMetadata) -> Bool {
@@ -400,18 +419,24 @@ struct DatabaseTreeView: View {
     }
 
     private func visibleSchemas(database: String, all: [String]) -> [String] {
-        let filtered = all.filter { !systemSchemas.contains($0) }
-        guard !searchText.isEmpty else { return filtered }
-        return filtered.filter { schema in
-            schema.localizedCaseInsensitiveContains(searchText)
-                || schemaContentMatchesSearch(database: database, schema: schema)
-        }
+        let nonSystem = all.filter { !systemSchemas.contains($0) }
+        let matched = searchText.isEmpty
+            ? nonSystem
+            : nonSystem.filter { schema in
+                schema.localizedCaseInsensitiveContains(searchText)
+                    || schemaContentMatchesSearch(database: database, schema: schema)
+            }
+        var seen = Set<String>()
+        return matched.filter { seen.insert($0).inserted }
     }
 
     private func filteredTables(database: String, schema: String?) -> [TableInfo] {
         let all = tables(database: database, schema: schema)
-        guard !searchText.isEmpty else { return all }
-        return all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        let matched = searchText.isEmpty
+            ? all
+            : all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        var seen = Set<String>()
+        return matched.filter { seen.insert($0.id).inserted }
     }
 
     private func filteredRoutines(database: String, schema: String?) -> [RoutineInfo] {
