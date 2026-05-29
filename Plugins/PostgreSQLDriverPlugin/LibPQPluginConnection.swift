@@ -353,7 +353,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result, originalQuery: localQuery)
+            return try fetchResults(from: result)
 
         default:
             let error = getResultError(from: result)
@@ -456,7 +456,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result, originalQuery: nil)
+            return try fetchResults(from: result)
 
         default:
             let error = getResultError(from: result)
@@ -660,34 +660,25 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Result Parsing
 
-    private func fetchResults(from result: OpaquePointer, originalQuery: String?) throws -> LibPQPluginQueryResult {
+    private func fetchResults(from result: OpaquePointer) throws -> LibPQPluginQueryResult {
         let metadata = readColumnMetadata(from: result)
-
-        let oidMap = postgisOidMap
-        if !oidMap.isEmpty, let query = originalQuery {
-            let spatialIndices = Set(metadata.columnOids.enumerated().compactMap { idx, oid in
-                oidMap[oid] != nil ? idx : nil
-            })
-            if !spatialIndices.isEmpty,
-               PostGISSpatialRewrite.isSafeToWrap(query: query, columns: metadata.columns) {
-                if let rewritten = try executeSpatialRewrite(
-                    originalQuery: query,
-                    columns: metadata.columns,
-                    originalColumnOids: metadata.columnOids,
-                    spatialIndices: spatialIndices,
-                    oidMap: oidMap
-                ) {
-                    return rewritten
-                }
-            }
-        }
-
-        return try parseRows(
+        let parsed = try parseRows(
             from: result,
             columns: metadata.columns,
             columnOids: metadata.columnOids,
             columnTypeNames: metadata.columnTypeNames
         )
+
+        let oidMap = postgisOidMap
+        guard !oidMap.isEmpty else { return parsed }
+
+        let spatialColumns = metadata.columnOids.enumerated().compactMap { index, oid -> (index: Int, typeName: String)? in
+            guard let typeName = oidMap[oid] else { return nil }
+            return (index, typeName)
+        }
+        guard !spatialColumns.isEmpty else { return parsed }
+
+        return renderSpatialColumns(parsed, spatialColumns: spatialColumns)
     }
 
     private struct ColumnMetadata {
@@ -718,46 +709,84 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return ColumnMetadata(columns: columns, columnOids: columnOids, columnTypeNames: columnTypeNames)
     }
 
-    private func executeSpatialRewrite(
-        originalQuery: String,
-        columns: [String],
-        originalColumnOids: [UInt32],
-        spatialIndices: Set<Int>,
-        oidMap: [UInt32: String]
-    ) throws -> LibPQPluginQueryResult? {
-        let wrappedQuery = PostGISSpatialRewrite.buildWrappedQuery(
-            originalQuery: originalQuery,
-            columns: columns,
-            spatialIndices: spatialIndices
-        )
+    private func renderSpatialColumns(
+        _ result: LibPQPluginQueryResult,
+        spatialColumns: [(index: Int, typeName: String)]
+    ) -> LibPQPluginQueryResult {
+        var rows = result.rows
+        var columnTypeNames = result.columnTypeNames
 
+        for column in spatialColumns {
+            if column.index < columnTypeNames.count {
+                columnTypeNames[column.index] = column.typeName
+            }
+
+            guard let query = PostGISSpatialRewrite.conversionQuery(forTypeName: column.typeName) else { continue }
+
+            let hexValues: [String?] = rows.map { row in
+                guard column.index < row.count, case let .text(hex) = row[column.index] else { return nil }
+                return hex
+            }
+            guard hexValues.contains(where: { $0 != nil }) else { continue }
+
+            guard let converted = convertSpatialValues(hexValues, query: query),
+                  converted.count == hexValues.count else {
+                logger.warning("PostGIS value conversion failed for column \(column.index); keeping raw hex")
+                continue
+            }
+
+            for (rowIndex, value) in converted.enumerated() where column.index < rows[rowIndex].count {
+                rows[rowIndex][column.index] = value
+            }
+        }
+
+        return LibPQPluginQueryResult(
+            columns: result.columns,
+            columnOids: result.columnOids,
+            columnTypeNames: columnTypeNames,
+            rows: rows,
+            affectedRows: result.affectedRows,
+            commandTag: result.commandTag,
+            isTruncated: result.isTruncated
+        )
+    }
+
+    private func convertSpatialValues(_ hexValues: [String?], query: String) -> [PluginCellValue]? {
         stateLock.lock()
         let conn = self.conn
         stateLock.unlock()
         guard let conn else { return nil }
 
-        let wrappedResult = wrappedQuery.withCString { PQexec(conn, $0) }
-        guard let wrappedResult, PQresultStatus(wrappedResult) == PGRES_TUPLES_OK else {
-            if let wrappedResult { PQclear(wrappedResult) }
-            logger.warning("PostGIS spatial rewrite query failed; falling back to raw hex output")
+        let arrayLiteral = PostGISSpatialRewrite.arrayLiteral(from: hexValues)
+        guard let paramCStr = strdup(arrayLiteral) else { return nil }
+        defer { free(paramCStr) }
+
+        let paramValues: [UnsafePointer<CChar>?] = [UnsafePointer(paramCStr)]
+        let result: OpaquePointer? = query.withCString { queryPtr in
+            PQexecParams(conn, queryPtr, 1, nil, paramValues, nil, nil, 0)
+        }
+
+        guard let result, PQresultStatus(result) == PGRES_TUPLES_OK else {
+            if let result { PQclear(result) }
             return nil
         }
-        defer { PQclear(wrappedResult) }
+        defer { PQclear(result) }
 
-        let wrappedMetadata = readColumnMetadata(from: wrappedResult)
-        let overriddenTypeNames = originalColumnOids.enumerated().map { idx, originalOid -> String in
-            if spatialIndices.contains(idx), let spatialName = oidMap[originalOid] {
-                return spatialName
+        let rowCount = Int(PQntuples(result))
+        var converted: [PluginCellValue] = []
+        converted.reserveCapacity(rowCount)
+        for rowIndex in 0..<rowCount {
+            if PQgetisnull(result, Int32(rowIndex), 0) == 1 {
+                converted.append(.null)
+            } else if let valuePtr = PQgetvalue(result, Int32(rowIndex), 0) {
+                let length = Int(PQgetlength(result, Int32(rowIndex), 0))
+                let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
+                converted.append(.text(String(bytes: bufferPtr, encoding: .utf8) ?? ""))
+            } else {
+                converted.append(.null)
             }
-            return pgOidToTypeName(originalOid)
         }
-
-        return try parseRows(
-            from: wrappedResult,
-            columns: columns,
-            columnOids: wrappedMetadata.columnOids,
-            columnTypeNames: overriddenTypeNames
-        )
+        return converted
     }
 
     private func parseRows(
