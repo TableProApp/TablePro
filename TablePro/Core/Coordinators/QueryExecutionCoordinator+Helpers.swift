@@ -72,11 +72,12 @@ extension QueryExecutionCoordinator {
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
-        if QueryClassifier.isExplainStatement(sql), columns.count == 1 {
+        if let planText = ExplainResultRouter.planText(sql: sql, columns: columns, rows: rows) {
             applyExplainResult(
                 tabId: tabId,
-                rows: rows,
+                planText: planText,
                 executionTime: executionTime,
+                rowCount: rows.count,
                 sql: sql,
                 connection: conn,
                 queryParameterValues: queryParameterValues
@@ -217,17 +218,19 @@ extension QueryExecutionCoordinator {
 
     private func applyExplainResult(
         tabId: UUID,
-        rows: [[PluginCellValue]],
+        planText: String,
         executionTime: TimeInterval,
+        rowCount: Int,
         sql: String,
         connection conn: DatabaseConnection,
         queryParameterValues: [QueryParameter]?
     ) {
-        let planText = rows.map { $0.first?.asText ?? "" }.joined(separator: "\n")
         let plan = QueryPlanParserFactory.parser(for: conn.type)?.parse(rawText: planText)
 
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.executionTime = executionTime
+            tab.execution.rowsAffected = 0
+            tab.execution.statusMessage = nil
             tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.display.explainText = planText
@@ -244,7 +247,7 @@ extension QueryExecutionCoordinator {
             connectionId: conn.id,
             databaseName: parent.activeDatabaseName,
             executionTime: executionTime,
-            rowCount: rows.count,
+            rowCount: rowCount,
             wasSuccessful: true,
             errorMessage: nil,
             parameterValues: queryParameterValues

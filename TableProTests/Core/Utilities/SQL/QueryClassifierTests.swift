@@ -20,10 +20,18 @@ struct QueryClassifierExplainTests {
         #expect(QueryClassifier.isExplainStatement("EXPLAIN QUERY PLAN SELECT 1"))
     }
 
-    @Test("Ignores leading whitespace and newlines after the keyword")
-    func handlesWhitespace() {
+    @Test("Detects MariaDB ANALYZE statements")
+    func detectsAnalyzeVariants() {
+        #expect(QueryClassifier.isExplainStatement("ANALYZE FORMAT=JSON SELECT 1"))
+        #expect(QueryClassifier.isExplainStatement("analyze select 1"))
+    }
+
+    @Test("Ignores leading whitespace, newlines, and comments")
+    func handlesWhitespaceAndComments() {
         #expect(QueryClassifier.isExplainStatement("   EXPLAIN SELECT 1"))
         #expect(QueryClassifier.isExplainStatement("\n\tEXPLAIN\nSELECT 1"))
+        #expect(QueryClassifier.isExplainStatement("-- plan check\nEXPLAIN SELECT 1"))
+        #expect(QueryClassifier.isExplainStatement("/* warm cache */ EXPLAIN ANALYZE SELECT 1"))
     }
 
     @Test("Does not match DESCRIBE, identifiers, or other statements")

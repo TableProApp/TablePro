@@ -31,6 +31,8 @@ enum QueryClassifier {
         "FLUSHDB", "FLUSHALL", "DEBUG", "SHUTDOWN",
     ]
 
+    private static let explainPrefixes: [String] = ["EXPLAIN", "ANALYZE"]
+
     private static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
 
     static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
@@ -132,10 +134,28 @@ enum QueryClassifier {
     }
 
     static func isExplainStatement(_ sql: String) -> Bool {
-        let upper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard upper.hasPrefix("EXPLAIN"), let boundary = upper.dropFirst("EXPLAIN".count).first else {
-            return false
+        let upper = strippingLeadingComments(sql).uppercased()
+        return explainPrefixes.contains { prefix in
+            guard upper.hasPrefix(prefix), let boundary = upper.dropFirst(prefix.count).first else {
+                return false
+            }
+            return boundary == "(" || boundary.isWhitespace
         }
-        return boundary == "(" || boundary.isWhitespace
+    }
+
+    private static func strippingLeadingComments(_ sql: String) -> String {
+        var remaining = sql[...]
+        while true {
+            let trimmed = remaining.drop { $0.isWhitespace }
+            if trimmed.hasPrefix("--") {
+                guard let newline = trimmed.firstIndex(of: "\n") else { return "" }
+                remaining = trimmed[trimmed.index(after: newline)...]
+            } else if trimmed.hasPrefix("/*") {
+                guard let close = trimmed.range(of: "*/") else { return "" }
+                remaining = trimmed[close.upperBound...]
+            } else {
+                return String(trimmed)
+            }
+        }
     }
 }
