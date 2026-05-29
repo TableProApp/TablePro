@@ -260,6 +260,7 @@ extension DatabaseManager {
                 session.connection.database = database
                 session.currentDatabase = database
                 session.currentSchema = nil
+                session.status = .connecting
             }
             appSettingsStorage.saveLastSchema(nil, for: connectionId)
             await SchemaService.shared.invalidate(connectionId: connectionId)
@@ -347,7 +348,7 @@ extension DatabaseManager {
         removeSessionEntry(for: sessionId)
 
         await SchemaService.shared.invalidate(connectionId: sessionId)
-        await DatabaseTreeMetadataService.shared.invalidate(connectionId: sessionId)
+        await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: sessionId)
 
         SchemaProviderRegistry.shared.clear(for: sessionId)
 
