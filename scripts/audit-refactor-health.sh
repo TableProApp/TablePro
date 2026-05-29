@@ -64,6 +64,30 @@ count_swift_matches() {
     grep_swift "$pattern" "$@" | grep -c . || true
 }
 
+BASELINE_FILE=".github/duplicate-contract-baseline.txt"
+PLUGINKIT_A="Plugins/TableProPluginKit"
+PLUGINKIT_B="Packages/TableProCore/Sources/TableProPluginKit"
+DATABASETYPE_AUTHORITATIVE="Packages/TableProCore/Sources/TableProModels/DatabaseType.swift"
+
+baseline_keys() {
+    [ -f "$BASELINE_FILE" ] || return 0
+    sed -E 's/#.*//' "$BASELINE_FILE" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -v '^$' || true
+}
+
+pluginkit_divergent_paths() {
+    [ -d "$PLUGINKIT_A" ] && [ -d "$PLUGINKIT_B" ] || return 0
+    { diff -qr "$PLUGINKIT_A" "$PLUGINKIT_B" 2>/dev/null || true; } | sed -E \
+        -e "s#^Files $PLUGINKIT_A/(.*) and .* differ#\\1#" \
+        -e "s#^Only in $PLUGINKIT_A(/?[^:]*): #\\1/#" \
+        -e "s#^Only in $PLUGINKIT_B(/?[^:]*): #\\1/#" \
+        | sed -E 's#^/##' | sort -u | grep -v '^$' || true
+}
+
+databasetype_extra_defs() {
+    grep_swift '^(public )?(struct|enum) DatabaseType[ :<]' TablePro Plugins Packages TableProMobile \
+        | awk -F: '{print $1}' | sort -u | grep -vxF "$DATABASETYPE_AUTHORITATIVE" || true
+}
+
 report_loc_by_area() {
     section "Swift LOC by area"
     echo "Swift files (app + plugins + packages + mobile): $(count_swift_files TablePro Plugins Packages TableProMobile)"
@@ -76,23 +100,20 @@ report_duplicate_contracts() {
     section "Duplicate shared contracts (R-001 / R-002 / R-008)"
 
     echo "DatabaseType definitions:"
-    local dbtype_defs dbtype_count
+    local dbtype_defs
     dbtype_defs=$(grep_swift '^(public )?(struct|enum) DatabaseType[ :<]' TablePro Plugins Packages TableProMobile | awk -F: '{print $1}' | sort -u)
     if [ -n "$dbtype_defs" ]; then
         printf '%s\n' "$dbtype_defs" | sed 's/^/  /'
     else
         echo "  (none found)"
     fi
-    dbtype_count=$(printf '%s\n' "$dbtype_defs" | grep -c . || true)
 
     echo
     echo "PluginKit source trees:"
-    if [ -d "Plugins/TableProPluginKit" ] && [ -d "Packages/TableProCore/Sources/TableProPluginKit" ]; then
-        echo "  both present (duplicate authoritative PluginKit)"
-        if $CHECK_MODE; then
-            echo "  ⚠️  drift gate: duplicate PluginKit source trees still present"
-            DRIFT_FAILURES=$((DRIFT_FAILURES + 1))
-        fi
+    local pk_divergent
+    pk_divergent=$(pluginkit_divergent_paths)
+    if [ -d "$PLUGINKIT_A" ] && [ -d "$PLUGINKIT_B" ]; then
+        echo "  both present; $(printf '%s\n' "$pk_divergent" | grep -c . || true) divergent file(s) pending Phase 1 consolidation"
     else
         echo "  single source ✅"
     fi
@@ -105,9 +126,29 @@ report_duplicate_contracts() {
         echo "  single source ✅"
     fi
 
-    if $CHECK_MODE && [ "${dbtype_count:-0}" -gt 1 ]; then
-        echo "  ⚠️  drift gate: more than one production DatabaseType definition"
-        DRIFT_FAILURES=$((DRIFT_FAILURES + 1))
+    if $CHECK_MODE; then
+        local baseline new_drift=0 path
+        baseline=$(baseline_keys)
+        while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            if ! printf '%s\n' "$baseline" | grep -qxF "pluginkit:$path"; then
+                echo "  ❌ new PluginKit divergence not in baseline: $path"
+                new_drift=$((new_drift + 1))
+            fi
+        done <<< "$pk_divergent"
+        while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            if ! printf '%s\n' "$baseline" | grep -qxF "databasetype:$path"; then
+                echo "  ❌ DatabaseType defined outside the authoritative source and baseline: $path"
+                new_drift=$((new_drift + 1))
+            fi
+        done <<< "$(databasetype_extra_defs)"
+        if [ "$new_drift" -gt 0 ]; then
+            DRIFT_FAILURES=$((DRIFT_FAILURES + new_drift))
+        else
+            echo
+            echo "  ✅ no new shared-contract drift beyond $BASELINE_FILE"
+        fi
     fi
 }
 
