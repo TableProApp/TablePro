@@ -3,7 +3,7 @@ import Foundation
 public struct PluginQueryResult: Codable, Sendable {
     public let columns: [String]
     public let columnTypeNames: [String]
-    public let rows: [[String?]]
+    public let rows: [[PluginCellValue]]
     public let rowsAffected: Int
     public let executionTime: TimeInterval
     public let isTruncated: Bool
@@ -12,7 +12,7 @@ public struct PluginQueryResult: Codable, Sendable {
     public init(
         columns: [String],
         columnTypeNames: [String],
-        rows: [[String?]],
+        rows: [[PluginCellValue]],
         rowsAffected: Int,
         executionTime: TimeInterval,
         isTruncated: Bool = false,
