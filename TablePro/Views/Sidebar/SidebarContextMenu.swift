@@ -51,6 +51,7 @@ struct SidebarContextMenu: View {
     let onBatchToggleTruncate: ([String]) -> Void
     let onBatchToggleDelete: ([String]) -> Void
     let coordinator: MainContentCoordinator?
+    var activateBeforeAction: (@MainActor () async -> Void)?
 
     private var hasSelection: Bool {
         SidebarContextMenuLogic.hasSelection(selectedTables: selectedTables, clickedTable: clickedTable)
@@ -67,14 +68,26 @@ struct SidebarContextMenu: View {
         return selectedTables.map(\.name).sorted()
     }
 
+    @MainActor
+    private func perform(_ action: @MainActor @escaping () -> Void) {
+        guard let activate = activateBeforeAction else {
+            action()
+            return
+        }
+        Task { @MainActor in
+            await activate()
+            action()
+        }
+    }
+
     var body: some View {
         Button("Create New Table...") {
-            coordinator?.createNewTable()
+            perform { coordinator?.createNewTable() }
         }
         .disabled(isReadOnly)
 
         Button("Create New View...") {
-            coordinator?.createView()
+            perform { coordinator?.createView() }
         }
         .disabled(isReadOnly)
 
@@ -83,22 +96,26 @@ struct SidebarContextMenu: View {
         if clickedTable != nil {
             if isView {
                 Button("Edit View Definition") {
-                    if let viewName = clickedTable?.name {
-                        coordinator?.editViewDefinition(viewName)
+                    perform {
+                        if let viewName = clickedTable?.name {
+                            coordinator?.editViewDefinition(viewName)
+                        }
                     }
                 }
                 .disabled(isReadOnly)
             }
 
             Button("Show Structure") {
-                if let clickedTable {
-                    coordinator?.openTableTab(clickedTable, showStructure: true)
+                perform {
+                    if let clickedTable {
+                        coordinator?.openTableTab(clickedTable, showStructure: true)
+                    }
                 }
             }
         }
 
         Button("View ER Diagram") {
-            coordinator?.showERDiagram()
+            perform { coordinator?.showERDiagram() }
         }
 
         if hasSelection {
@@ -107,7 +124,7 @@ struct SidebarContextMenu: View {
             }
 
             Button("Export...") {
-                coordinator?.openExportDialog(preselectedTableNames: Set(effectiveTableNames))
+                perform { coordinator?.openExportDialog(preselectedTableNames: Set(effectiveTableNames)) }
             }
         }
 
@@ -118,7 +135,7 @@ struct SidebarContextMenu: View {
             )
         ) {
             Button("Import...") {
-                coordinator?.openImportDialog()
+                perform { coordinator?.openImportDialog() }
             }
             .disabled(isReadOnly)
         }
@@ -128,8 +145,10 @@ struct SidebarContextMenu: View {
             Menu(String(localized: "Maintenance")) {
                 ForEach(ops, id: \.self) { op in
                     Button(op) {
-                        if let table = clickedTable?.name {
-                            coordinator?.showMaintenanceSheet(operation: op, tableName: table)
+                        perform {
+                            if let table = clickedTable?.name {
+                                coordinator?.showMaintenanceSheet(operation: op, tableName: table)
+                            }
                         }
                     }
                 }
@@ -142,7 +161,7 @@ struct SidebarContextMenu: View {
 
             if SidebarContextMenuLogic.truncateVisible(clickedTable: clickedTable) {
                 Button("Truncate") {
-                    onBatchToggleTruncate(effectiveTableNames)
+                    perform { onBatchToggleTruncate(effectiveTableNames) }
                 }
                 .disabled(isReadOnly)
             }
@@ -151,7 +170,7 @@ struct SidebarContextMenu: View {
                 SidebarContextMenuLogic.deleteLabel(for: clickedTable?.type),
                 role: .destructive
             ) {
-                onBatchToggleDelete(effectiveTableNames)
+                perform { onBatchToggleDelete(effectiveTableNames) }
             }
             .disabled(isReadOnly)
         }

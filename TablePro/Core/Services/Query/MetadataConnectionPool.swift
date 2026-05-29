@@ -50,13 +50,15 @@ final class MetadataConnectionPool {
     func invalidate(connectionId: UUID, database: String) {
         let key = Key(connectionId: connectionId, database: database)
         pending[key]?.cancel()
+        pending.removeValue(forKey: key)
         entries[key]?.driver.disconnect()
         entries.removeValue(forKey: key)
     }
 
     func closeAll(connectionId: UUID) {
-        for key in pending.keys where key.connectionId == connectionId {
+        for key in pending.keys.filter({ $0.connectionId == connectionId }) {
             pending[key]?.cancel()
+            pending.removeValue(forKey: key)
         }
         let keys = entries.keys.filter { $0.connectionId == connectionId }
         for key in keys {
@@ -100,10 +102,10 @@ final class MetadataConnectionPool {
         do {
             try await task.value
         } catch {
-            pending.removeValue(forKey: key)
+            if pending[key] == task { pending.removeValue(forKey: key) }
             throw error
         }
-        pending.removeValue(forKey: key)
+        if pending[key] == task { pending.removeValue(forKey: key) }
 
         guard let entry = entries[key] else { throw DatabaseError.notConnected }
         return entry

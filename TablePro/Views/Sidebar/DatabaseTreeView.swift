@@ -42,6 +42,19 @@ struct DatabaseTreeView: View {
         return value.isEmpty ? nil : value
     }
 
+    @MainActor
+    private func activateClickedDatabase(_ table: TableInfo?) async {
+        guard let table, let origin = locateTable(table) else { return }
+        if origin.database != committedActiveDatabase {
+            await coordinator?.switchDatabase(to: origin.database)
+        }
+        if let schema = origin.schema,
+           schema != coordinator?.toolbarState.currentSchema,
+           PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
+            await coordinator?.switchSchema(to: schema)
+        }
+    }
+
     private var systemSchemas: Set<String> {
         Set(PluginManager.shared.systemSchemaNames(for: databaseType))
     }
@@ -113,7 +126,8 @@ struct DatabaseTreeView: View {
                 isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
                 onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
                 onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                coordinator: coordinator
+                coordinator: coordinator,
+                activateBeforeAction: { await activateClickedDatabase(selection.first) }
             )
         } primaryAction: { selection in
             guard let table = selection.first,
