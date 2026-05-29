@@ -130,4 +130,12 @@ enum QueryClassifier {
     static func isMultiStatement(_ sql: String) -> Bool {
         SQLStatementScanner.allStatements(in: sql).count > 1
     }
+
+    static func isExplainStatement(_ sql: String) -> Bool {
+        let upper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard upper.hasPrefix("EXPLAIN"), let boundary = upper.dropFirst("EXPLAIN".count).first else {
+            return false
+        }
+        return boundary == "(" || boundary.isWhitespace
+    }
 }

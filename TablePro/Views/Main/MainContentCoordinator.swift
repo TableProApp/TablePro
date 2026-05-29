@@ -1144,6 +1144,9 @@ final class MainContentCoordinator {
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
+        if tab.tabType != .table, QueryClassifier.isExplainStatement(sql) {
+            return (nil, false)
+        }
         let usesNoSQLBrowsing = services.pluginManager.editorLanguage(for: connection.type) != .sql
             || (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
                 .queryBuildingPluginDriver != nil
