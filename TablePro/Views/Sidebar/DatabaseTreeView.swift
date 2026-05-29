@@ -416,8 +416,11 @@ struct DatabaseTreeView: View {
 
     private func filteredRoutines(database: String, schema: String?) -> [RoutineInfo] {
         let all = routines(database: database, schema: schema)
-        guard !searchText.isEmpty else { return all }
-        return all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        let matched = searchText.isEmpty
+            ? all
+            : all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        var seen = Set<String>()
+        return matched.filter { seen.insert($0.id).inserted }
     }
 
     private func databaseExpansionBinding(for database: String) -> Binding<Bool> {
