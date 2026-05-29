@@ -40,10 +40,12 @@ final class DatabaseTreeMetadataService {
     private(set) var databaseListStates: [UUID: DatabaseListState] = [:]
     private(set) var schemaListStates: [DatabaseKey: SchemaListState] = [:]
     private(set) var tableStates: [TableKey: SchemaState] = [:]
+    private(set) var routineLists: [TableKey: [RoutineInfo]] = [:]
 
     @ObservationIgnored private let databaseListDedup = OnceTask<UUID, [DatabaseMetadata]>()
     @ObservationIgnored private let schemaListDedup = OnceTask<DatabaseKey, [String]>()
     @ObservationIgnored private let tableDedup = OnceTask<TableKey, [TableInfo]>()
+    @ObservationIgnored private let routineDedup = OnceTask<TableKey, [RoutineInfo]>()
 
     @ObservationIgnored private static let logger = Logger(
         subsystem: "com.TablePro", category: "DatabaseTreeMetadataService"
@@ -113,8 +115,7 @@ final class DatabaseTreeMetadataService {
     }
 
     func routines(connectionId: UUID, database: String, schema: String?) -> [RoutineInfo] {
-        guard database == activeDatabase(for: connectionId) else { return [] }
-        return SchemaService.shared.routines(for: connectionId)
+        routineLists[Self.tableKey(connectionId: connectionId, database: database, schema: schema)] ?? []
     }
 
     func loadDatabaseList(connectionId: UUID, driver: DatabaseDriver, databaseType: DatabaseType) async {
@@ -149,6 +150,7 @@ final class DatabaseTreeMetadataService {
 
     func loadSchemaList(connectionId: UUID, database: String) async {
         if database == activeDatabase(for: connectionId) { return }
+        guard !isReconnecting(connectionId) else { return }
         let key = DatabaseKey(connectionId: connectionId, database: database)
         if case .loaded = schemaListStates[key] { return }
         schemaListStates[key] = .loading
@@ -172,6 +174,8 @@ final class DatabaseTreeMetadataService {
     }
 
     func loadTables(connectionId: UUID, database: String, schema: String?) async {
+        guard !isReconnecting(connectionId) else { return }
+        await loadRoutines(connectionId: connectionId, database: database, schema: schema)
         if database == activeDatabase(for: connectionId) {
             guard let session = DatabaseManager.shared.session(for: connectionId),
                   let driver = session.driver else { return }
@@ -209,7 +213,47 @@ final class DatabaseTreeMetadataService {
         }
     }
 
+    func loadRoutines(connectionId: UUID, database: String, schema: String?) async {
+        guard !isReconnecting(connectionId) else { return }
+        let key = Self.tableKey(connectionId: connectionId, database: database, schema: schema)
+        if routineLists[key] != nil { return }
+        let normalizedSchema = key.schema
+        let activeSessionDriver = database == activeDatabase(for: connectionId)
+            ? DatabaseManager.shared.session(for: connectionId)?.driver
+            : nil
+        if database == activeDatabase(for: connectionId), activeSessionDriver == nil { return }
+        do {
+            let list = try await routineDedup.execute(key: key) {
+                if let activeSessionDriver {
+                    return try await Self.fetchRoutines(driver: activeSessionDriver, schema: normalizedSchema)
+                }
+                return try await MetadataConnectionPool.shared.withDriver(
+                    connectionId: connectionId, database: database
+                ) { driver in
+                    try await Self.fetchRoutines(driver: driver, schema: normalizedSchema)
+                }
+            }
+            routineLists[key] = list
+        } catch is CancellationError {
+            return
+        } catch {
+            Self.logger.warning(
+                "[tree] routine load failed connId=\(connectionId, privacy: .public) db=\(database, privacy: .public) schema=\(schema ?? "", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            routineLists[key] = []
+        }
+    }
+
+    private static func fetchRoutines(driver: DatabaseDriver, schema: String?) async throws -> [RoutineInfo] {
+        async let procedures = driver.fetchProcedures(schema: schema)
+        async let functions = driver.fetchFunctions(schema: schema)
+        return try await procedures + functions
+    }
+
     func reloadTables(connectionId: UUID, database: String, schema: String?) async {
+        let key = Self.tableKey(connectionId: connectionId, database: database, schema: schema)
+        await routineDedup.cancel(key: key)
+        routineLists.removeValue(forKey: key)
         if database == activeDatabase(for: connectionId) {
             guard let session = DatabaseManager.shared.session(for: connectionId),
                   let driver = session.driver else { return }
@@ -222,9 +266,9 @@ final class DatabaseTreeMetadataService {
                     connectionId: connectionId, driver: driver, connection: session.connection
                 )
             }
+            await loadRoutines(connectionId: connectionId, database: database, schema: schema)
             return
         }
-        let key = Self.tableKey(connectionId: connectionId, database: database, schema: schema)
         await tableDedup.cancel(key: key)
         tableStates.removeValue(forKey: key)
         await loadTables(connectionId: connectionId, database: database, schema: schema)
@@ -261,6 +305,12 @@ final class DatabaseTreeMetadataService {
             tableStates.removeValue(forKey: key)
         }
 
+        let routineKeys = routineLists.keys.filter { $0.connectionId == connectionId }
+        for key in routineKeys {
+            await routineDedup.cancel(key: key)
+            routineLists.removeValue(forKey: key)
+        }
+
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
     }
 
@@ -277,6 +327,14 @@ final class DatabaseTreeMetadataService {
             tableStates.removeValue(forKey: key)
         }
 
+        let routineKeys = routineLists.keys.filter {
+            $0.connectionId == connectionId && $0.database == database
+        }
+        for key in routineKeys {
+            await routineDedup.cancel(key: key)
+            routineLists.removeValue(forKey: key)
+        }
+
         MetadataConnectionPool.shared.invalidate(connectionId: connectionId, database: database)
     }
 
@@ -284,6 +342,11 @@ final class DatabaseTreeMetadataService {
         guard let session = DatabaseManager.shared.session(for: connectionId) else { return nil }
         let value = session.activeDatabase
         return value.isEmpty ? nil : value
+    }
+
+    private func isReconnecting(_ connectionId: UUID) -> Bool {
+        if case .connecting = DatabaseManager.shared.session(for: connectionId)?.status { return true }
+        return false
     }
 
     private static func tableKey(connectionId: UUID, database: String, schema: String?) -> TableKey {

@@ -137,7 +137,16 @@ struct DatabaseTreeView: View {
     }
 
     private var reconcileKey: String {
-        "\(committedActiveDatabase ?? "")|\(committedActiveSchema ?? "")|\(schemaGenerationToken)"
+        "\(committedActiveDatabase ?? "")|\(committedActiveSchema ?? "")|\(schemaGenerationToken)|\(connectionStatusToken)"
+    }
+
+    private var connectionStatusToken: String {
+        switch DatabaseManager.shared.session(for: connectionId)?.status {
+        case .connected: return "connected"
+        case .connecting: return "connecting"
+        case .error: return "error"
+        case .disconnected, .none: return "disconnected"
+        }
     }
 
     private var treeList: some View {
