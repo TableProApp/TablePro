@@ -15,6 +15,7 @@ struct FilterRowView: View {
     let onDuplicate: () -> Void
     let onRemove: () -> Void
     let onSubmit: () -> Void
+    let onCancel: () -> Void
     @Binding var focusedFilterId: UUID?
 
     private var pickerEligibleOperators: Set<FilterOperator> {
@@ -65,6 +66,7 @@ struct FilterRowView: View {
         .fixedSize()
         .labelsHidden()
         .accessibilityLabel(String(localized: "Filter column"))
+        .accessibilityValue(filter.isRawSQL ? String(localized: "Raw SQL") : filter.columnName)
         .help(String(localized: "Select filter column"))
     }
 
@@ -79,6 +81,7 @@ struct FilterRowView: View {
         .fixedSize()
         .labelsHidden()
         .accessibilityLabel(String(localized: "Filter operator"))
+        .accessibilityValue(filter.filterOperator.displayName)
         .help(String(localized: "Select filter operator"))
     }
 
@@ -95,7 +98,8 @@ struct FilterRowView: View {
                 placeholder: "e.g. id = 1",
                 completionSource: rawSQLCompletionSource,
                 allowsMultiLine: true,
-                onSubmit: onSubmit
+                onSubmit: onSubmit,
+                onCancel: onCancel
             )
             .accessibilityLabel(String(localized: "WHERE clause"))
         } else if filter.filterOperator.requiresValue {
@@ -109,7 +113,8 @@ struct FilterRowView: View {
                     identity: filter.id,
                     placeholder: String(localized: "Value"),
                     completionSource: .staticValues(completions),
-                    onSubmit: onSubmit
+                    onSubmit: onSubmit,
+                    onCancel: onCancel
                 )
                 .frame(minWidth: 80)
                 .accessibilityLabel(String(localized: "Filter value"))
