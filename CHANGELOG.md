@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Moving a connection into or out of a group now syncs across devices, instead of leaving it ungrouped on your other Macs.
+
 ## [0.46.0] - 2026-05-28
 
 ### Added

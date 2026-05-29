@@ -415,10 +415,12 @@ final class WelcomeViewModel {
 
     func moveConnections(_ targets: [DatabaseConnection], toGroup groupId: UUID) {
         let ids = Set(targets.map(\.id))
+        var updated: [DatabaseConnection] = []
         for i in connections.indices where ids.contains(connections[i].id) {
             connections[i].groupId = groupId
+            updated.append(connections[i])
         }
-        guard storage.saveConnections(connections) else {
+        guard storage.updateConnections(updated) else {
             connections = storage.loadConnections()
             rebuildTree()
             return
@@ -428,10 +430,12 @@ final class WelcomeViewModel {
 
     func removeFromGroup(_ targets: [DatabaseConnection]) {
         let ids = Set(targets.map(\.id))
+        var updated: [DatabaseConnection] = []
         for i in connections.indices where ids.contains(connections[i].id) {
             connections[i].groupId = nil
+            updated.append(connections[i])
         }
-        guard storage.saveConnections(connections) else {
+        guard storage.updateConnections(updated) else {
             connections = storage.loadConnections()
             rebuildTree()
             return
