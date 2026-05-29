@@ -14,6 +14,9 @@ final class GroupStorageTests: XCTestCase {
     private var syncDefaults: UserDefaults!
     private var syncSuiteName: String!
     private var storage: GroupStorage!
+    private var tracker: SyncChangeTracker!
+    private var connectionStorage: ConnectionStorage!
+    private var connectionFileURL: URL!
 
     override func setUp() {
         super.setUp()
@@ -23,18 +26,38 @@ final class GroupStorageTests: XCTestCase {
         syncSuiteName = "com.TablePro.tests.Sync.\(unique)"
         syncDefaults = UserDefaults(suiteName: syncSuiteName)!
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
-        storage = GroupStorage(userDefaults: defaults, syncTracker: tracker)
+        tracker = SyncChangeTracker(metadataStorage: metadata)
+        connectionFileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("group-connections_\(unique).json")
+        try? FileManager.default.createDirectory(
+            at: connectionFileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        connectionStorage = ConnectionStorage(
+            fileURL: connectionFileURL,
+            userDefaults: defaults,
+            syncTracker: tracker
+        )
+        storage = GroupStorage(
+            userDefaults: defaults,
+            syncTracker: tracker,
+            connectionStorage: connectionStorage
+        )
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         syncDefaults.removePersistentDomain(forName: syncSuiteName)
+        try? FileManager.default.removeItem(at: connectionFileURL)
         defaults = nil
         suiteName = nil
         syncDefaults = nil
         syncSuiteName = nil
         storage = nil
+        tracker = nil
+        connectionStorage = nil
+        connectionFileURL = nil
         super.tearDown()
     }
 
@@ -127,6 +150,22 @@ final class GroupStorageTests: XCTestCase {
         let loaded = storage.loadGroups()
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded[0].name, "Prod")
+    }
+
+    func testDeleteGroupClearsMembershipAndMarksConnectionDirtyForSync() {
+        let group = ConnectionGroup(name: "Dev", color: .green)
+        storage.saveGroups([group])
+
+        let connection = DatabaseConnection(name: "Grouped", groupId: group.id)
+        connectionStorage.addConnection(connection)
+        tracker.clearAllDirty(.connection)
+
+        storage.deleteGroup(group)
+
+        let reloaded = connectionStorage.loadConnections()
+        XCTAssertEqual(reloaded.count, 1)
+        XCTAssertNil(reloaded[0].groupId)
+        XCTAssertTrue(tracker.dirtyRecords(for: .connection).contains(connection.id.uuidString))
     }
 
     // MARK: - Lookup
