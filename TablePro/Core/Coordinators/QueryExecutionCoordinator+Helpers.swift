@@ -366,7 +366,7 @@ extension QueryExecutionCoordinator {
                 }) else { return }
                 outcome = .count(count, isApproximate: true)
             case let .filteredNonSQL(filters, logicMode):
-                if let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, { driver in
+                if let count = try? await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk, { driver in
                     try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
                 }) {
                     outcome = .count(count, isApproximate: false)
@@ -377,7 +377,7 @@ extension QueryExecutionCoordinator {
                 guard let sql = prepared.sql else { return }
                 let count: Int?
                 do {
-                    count = try await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId) { driver in
+                    count = try await DatabaseManager.shared.withMetadataDriver(connectionId: parent.connectionId, workload: .bulk) { driver in
                         let result = try await driver.execute(query: sql)
                         guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
                         return Int(countStr)
