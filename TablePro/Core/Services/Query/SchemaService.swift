@@ -215,7 +215,7 @@ final class SchemaService {
 
         let grouping = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
         if grouping == .hierarchicalSchema {
-            await runHierarchicalLoad(connectionId: connectionId, driver: driver)
+            await runHierarchicalLoad(connectionId: connectionId, driver: driver, generation: generation)
             return
         }
 
@@ -285,7 +285,7 @@ final class SchemaService {
         }
     }
 
-    private func runHierarchicalLoad(connectionId: UUID, driver: DatabaseDriver) async {
+    private func runHierarchicalLoad(connectionId: UUID, driver: DatabaseDriver, generation: Int) async {
         async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
             connectionId: connectionId,
             kind: .procedure,
@@ -301,14 +301,18 @@ final class SchemaService {
 
         let loadedProcedures = await proceduresTask
         let loadedFunctions = await functionsTask
-        if let loadedSchemas = await Self.fetchSchemasSafely(
+        let loadedSchemas = await Self.fetchSchemasSafely(
             connectionId: connectionId,
             dedup: schemasDedup,
             fetch: { try await driver.fetchSchemas() }
-        ) {
+        )
+
+        guard isCurrentLoadGeneration(generation, for: connectionId, phase: "hierarchical-loaded") else {
+            return
+        }
+        if let loadedSchemas {
             schemasInOrder[connectionId] = loadedSchemas
         }
-
         procedures[connectionId] = loadedProcedures
         functions[connectionId] = loadedFunctions
         states[connectionId] = .loaded([])
