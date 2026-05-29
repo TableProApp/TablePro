@@ -185,13 +185,11 @@ final class DatabaseTreeMetadataService {
 
     func handleDisconnect(connectionId: UUID) async {
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
+        let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
+        let objectKeys = objects.keys.filter { $0.connectionId == connectionId }
         await databaseDedup.cancel(key: connectionId)
-        for key in schemaList.keys where key.connectionId == connectionId {
-            await schemaDedup.cancel(key: key)
-        }
-        for key in objects.keys where key.connectionId == connectionId {
-            await objectsDedup.cancel(key: key)
-        }
+        for key in schemaKeys { await schemaDedup.cancel(key: key) }
+        for key in objectKeys { await objectsDedup.cancel(key: key) }
         databaseList.removeValue(forKey: connectionId)
         schemaList = schemaList.filter { $0.key.connectionId != connectionId }
         objects = objects.filter { $0.key.connectionId != connectionId }
@@ -200,18 +198,22 @@ final class DatabaseTreeMetadataService {
     // MARK: - Private
 
     private func resetPending(connectionId: UUID) async {
+        let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
+        let objectKeys = objects.keys.filter { $0.connectionId == connectionId }
+
         if isPending(databaseList[connectionId]) {
             await databaseDedup.cancel(key: connectionId)
-            databaseList[connectionId] = .idle
         }
-        for (key, state) in schemaList where key.connectionId == connectionId && isPending(state) {
+        for key in schemaKeys where isPending(schemaList[key]) {
             await schemaDedup.cancel(key: key)
-            schemaList[key] = .idle
         }
-        for (key, state) in objects where key.connectionId == connectionId && isPending(state) {
+        for key in objectKeys where isPending(objects[key]) {
             await objectsDedup.cancel(key: key)
-            objects[key] = .idle
         }
+
+        if isPending(databaseList[connectionId]) { databaseList[connectionId] = .idle }
+        for key in schemaKeys where isPending(schemaList[key]) { schemaList[key] = .idle }
+        for key in objectKeys where isPending(objects[key]) { objects[key] = .idle }
     }
 
     private func isPending<Value>(_ state: MetadataLoadState<Value>?) -> Bool {

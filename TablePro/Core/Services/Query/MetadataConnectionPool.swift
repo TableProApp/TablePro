@@ -14,17 +14,32 @@ final class MetadataConnectionPool {
         let database: String
     }
 
+    @MainActor
     private final class Entry {
         let driver: DatabaseDriver
         var lastUsed: Date
         var inFlightCount: Int
         var closeWhenIdle: Bool
+        private var tail: Task<Void, Never> = Task {}
 
         init(driver: DatabaseDriver) {
             self.driver = driver
             self.lastUsed = Date()
             self.inFlightCount = 0
             self.closeWhenIdle = false
+        }
+
+        func runSerially<T: Sendable>(
+            _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+        ) async throws -> T {
+            let previous = tail
+            let driver = self.driver
+            let work = Task { @MainActor () async throws -> T in
+                await previous.value
+                return try await body(driver)
+            }
+            tail = Task { @MainActor in _ = try? await work.value }
+            return try await work.value
         }
     }
 
@@ -38,13 +53,13 @@ final class MetadataConnectionPool {
     func withDriver<T: Sendable>(
         connectionId: UUID,
         database: String,
-        _ body: @Sendable (DatabaseDriver) async throws -> T
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         let entry = try await acquireEntry(connectionId: connectionId, database: database)
         entry.inFlightCount += 1
         entry.lastUsed = Date()
         defer { releaseEntry(entry) }
-        return try await body(entry.driver)
+        return try await entry.runSerially(body)
     }
 
     func closeAll(connectionId: UUID) {

@@ -55,6 +55,7 @@ struct DatabaseTreeView: View {
     let coordinator: MainContentCoordinator?
 
     @State private var localSelection: Set<DatabaseTreeTableRef> = []
+    @State private var searchText: String = ""
 
     private var groupingStrategy: GroupingStrategy {
         PluginManager.shared.databaseGroupingStrategy(for: databaseType)
@@ -89,10 +90,6 @@ struct DatabaseTreeView: View {
         treeService.databases(for: connectionId)
     }
 
-    private var searchText: String {
-        viewModel.searchText
-    }
-
     private var selectedTablesBinding: Binding<Set<DatabaseTreeTableRef>> {
         Binding(
             get: { localSelection },
@@ -115,6 +112,13 @@ struct DatabaseTreeView: View {
         }
         .task(id: connectionToken) {
             await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
+        }
+        .task(id: viewModel.searchText) {
+            let live = viewModel.searchText
+            guard !live.isEmpty else { searchText = ""; return }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            searchText = live
         }
         .onAppear { expandActive() }
         .onChange(of: activeContextKey) { _, _ in expandActive() }
