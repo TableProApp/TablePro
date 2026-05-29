@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The sidebar can show every database on the server as an expandable tree. Switch a connection between the flat list and the tree from the View menu (Sidebar Layout); right-click a database or schema to set it active. Set the default layout for new connections in Settings, General. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)
+- A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain, so scripts can provision a connection without entering the password by hand. (#1254)
+
+### Fixed
+
+- Moving a connection into or out of a group now syncs across devices, instead of leaving it ungrouped on your other Macs.
 
 ## [0.46.0] - 2026-05-28
 
