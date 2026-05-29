@@ -50,9 +50,9 @@ extension MainContentView {
                 } else if let tabIndex = tabManager.selectedTabIndex {
                     coordinator.rebuildTableQuery(at: tabIndex)
                 }
-                await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
             }
             if payload.skipAutoExecute {
+                await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
                 _ = await schemaLoad
                 return
             }
@@ -151,7 +151,6 @@ extension MainContentView {
                 if let tableName = firstTab.tableContext.tableName {
                     coordinator.restoreLastHiddenColumnsForTable(tableName)
                     coordinator.restoreFiltersForTable(tableName)
-                    await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
                 }
                 if let session = DatabaseManager.shared.activeSessions[connection.id],
                     session.isConnected

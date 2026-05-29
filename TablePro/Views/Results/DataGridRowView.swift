@@ -203,15 +203,6 @@ class DataGridRowView: NSTableRowView {
 
         let copyAsMenu = NSMenu()
 
-        if dataColumnIndex >= 0 {
-            let copyCellItem = NSMenuItem(
-                title: String(localized: "Cell Value"), action: #selector(copyCellValue(_:)),
-                keyEquivalent: "")
-            copyCellItem.representedObject = dataColumnIndex
-            copyCellItem.target = self
-            copyAsMenu.addItem(copyCellItem)
-        }
-
         let copyRowsItem = NSMenuItem(
             title: String(localized: "Rows"),
             action: #selector(copySelectedOrCurrentRow),
@@ -444,11 +435,6 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func pasteRows() {
         coordinator?.delegate?.dataGridPasteRows()
-    }
-
-    @objc private func copyCellValue(_ sender: NSMenuItem) {
-        guard let columnIndex = sender.representedObject as? Int else { return }
-        coordinator?.copyCellValue(at: rowIndex, columnIndex: columnIndex)
     }
 
     private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {

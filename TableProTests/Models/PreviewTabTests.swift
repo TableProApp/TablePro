@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Preview Tab")
 struct PreviewTabTests {
@@ -29,7 +30,6 @@ struct PreviewTabTests {
         )
         let tab = QueryTab(from: persisted)
         #expect(tab.isPreview == false)
-        #expect(tab.filterState.isVisible == true)
     }
 
     @Test("TabSettings enablePreviewTabs defaults to true")
@@ -46,7 +46,6 @@ struct PreviewTabTests {
         #expect(manager.tabs.count == 1)
         #expect(manager.selectedTab?.isPreview == true)
         #expect(manager.selectedTab?.tableContext.tableName == "users")
-        #expect(manager.selectedTab?.filterState.isVisible == true)
     }
 
     @Test("replaceTabContent can set isPreview flag")

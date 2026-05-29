@@ -30,23 +30,11 @@ struct FilterRestoreTests {
         let result = FilterCoordinator.resolvedRestoredState(
             panelState: .restoreLast,
             saved: [],
-            current: TabFilterState()
-        )
-
-        #expect(result.appliedFilters.isEmpty)
-        #expect(!result.isVisible)
-    }
-
-    @Test("Restore Last with no saved filters preserves a visible current bar")
-    func restoreLastWithNoFiltersPreservesVisibleBar() {
-        let result = FilterCoordinator.resolvedRestoredState(
-            panelState: .restoreLast,
-            saved: [],
             current: TabFilterState(isVisible: true)
         )
 
         #expect(result.appliedFilters.isEmpty)
-        #expect(result.isVisible)
+        #expect(!result.isVisible)
     }
 
     @Test("Always Show reveals the bar even without saved filters")

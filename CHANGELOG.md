@@ -47,7 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The query trash button clears results too, and a Clear Results item on the right-click menu clears results alone. (#1256)
 - Inserting SQL from AI Chat opens a new query tab, or fills an empty editor in place. (#1257)
-- Table tabs now open with the filter bar visible by default, while filter restore settings like Always Hide still override that default.
 
 ### Fixed
 

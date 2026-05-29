@@ -54,6 +54,25 @@ struct CoordinatorColumnVisibilityTests {
         #expect(tabManager.tabs[index].columnLayout.hiddenColumns == ["name"])
     }
 
+    @Test("Hiding a column persists immediately so a reopened table restores it")
+    func hideColumnPersistsForReopen() {
+        let (coordinator, tabManager) = makeCoordinator()
+        _ = addTableTab(to: tabManager, tableName: "users")
+        let storageKey = ColumnVisibilityPersistence.key(
+            tableName: "users",
+            connectionId: coordinator.connectionId
+        )
+        defer { UserDefaults.standard.removeObject(forKey: storageKey) }
+
+        coordinator.hideColumn("email")
+
+        let persisted = ColumnVisibilityPersistence.loadHiddenColumns(
+            for: "users",
+            connectionId: coordinator.connectionId
+        )
+        #expect(persisted == ["email"])
+    }
+
     @Test("showColumn removes from the active tab's hidden set")
     func showColumn() {
         let (coordinator, tabManager) = makeCoordinator()

@@ -288,12 +288,14 @@ final class FilterCoordinator {
         mutateSelectedTabFilterState { state in
             state.appliedFilters = state.filters.filter { $0.isSelected && $0.isValid }
         }
+        saveLastFiltersForActiveTable()
     }
 
     func applyAllFilters() {
         mutateSelectedTabFilterState { state in
             state.appliedFilters = state.filters.filter { $0.isEnabled && $0.isValid }
         }
+        saveLastFiltersForActiveTable()
     }
 
     func clearAppliedFilters() {
@@ -407,16 +409,19 @@ final class FilterCoordinator {
         current: TabFilterState
     ) -> TabFilterState {
         var state = current
-        if panelState == .alwaysHide {
+        switch panelState {
+        case .alwaysHide:
             state.filters = []
             state.appliedFilters = []
             state.isVisible = false
-        } else if !saved.isEmpty {
+        case .alwaysShow:
             state.filters = saved
             state.appliedFilters = saved
             state.isVisible = true
-        } else if panelState == .alwaysShow {
-            state.isVisible = true
+        case .restoreLast:
+            state.filters = saved
+            state.appliedFilters = saved
+            state.isVisible = !saved.isEmpty
         }
         return state
     }
