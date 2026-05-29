@@ -339,6 +339,25 @@ struct ExecutionGateTests {
         #expect(decision.deniedReason?.contains("Destructive") == true)
     }
 
+    @Test("Confirmation pre-cleared does not bypass the destructive capability guard")
+    func confirmationPreClearedDoesNotBypassDestructiveGuard() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .alert, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(
+            makeRequest(
+                sql: "DROP TABLE t",
+                kind: .destructiveQuery,
+                capabilities: [.confirmationPreCleared],
+                caller: .mcpClient(label: nil)
+            )
+        )
+
+        #expect(decision.deniedReason?.contains("Destructive") == true)
+        #expect(confirm.callCount == 0)
+    }
+
     @Test("Multi-statement denied without capability, allowed with it")
     func multiStatementCapability() async {
         let confirm = StubConfirming(answer: true)

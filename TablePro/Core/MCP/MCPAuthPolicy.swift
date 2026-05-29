@@ -149,7 +149,7 @@ public actor MCPAuthPolicy {
         sql: String,
         connectionId: UUID,
         databaseType: DatabaseType,
-        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement, .confirmationPreCleared]
+        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement]
     ) async throws {
         let decision = await ExecutionGateProvider.shared.authorize(
             OperationRequest(
