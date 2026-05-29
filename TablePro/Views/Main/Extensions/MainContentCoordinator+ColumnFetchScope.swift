@@ -22,6 +22,14 @@ extension MainContentCoordinator {
         )
     }
 
+    func executeSelectedTableTabQuery() {
+        if selectedTabHiddenColumns.isEmpty {
+            executeTableTabQueryDirectly()
+        } else {
+            requeryWithColumnScope()
+        }
+    }
+
     func requeryWithColumnScope(debounced: Bool = false) {
         columnScopeRequeryTask?.cancel()
         columnScopeRequeryTask = Task { @MainActor [weak self] in

@@ -450,7 +450,7 @@ struct MainContentCoordinatorTabSwitchTests {
         coordinator.clearFilterState()
         #expect(coordinator.selectedTabFilterState.filters.isEmpty)
         #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
-        #expect(coordinator.selectedTabFilterState.isVisible == false)
+        #expect(coordinator.selectedTabFilterState.isVisible == true)
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")

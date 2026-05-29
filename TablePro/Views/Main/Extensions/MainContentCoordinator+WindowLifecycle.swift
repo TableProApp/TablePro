@@ -125,11 +125,7 @@ extension MainContentCoordinator {
         tableLoadTasks[tabId] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.tableLoadTasks[tabId] = nil }
-            if tab.columnLayout.hiddenColumns.isEmpty {
-                self.executeTableTabQueryDirectly()
-            } else {
-                self.requeryWithColumnScope()
-            }
+            self.executeSelectedTableTabQuery()
             if let task = self.currentQueryTask {
                 await task.value
             }
