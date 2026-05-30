@@ -215,6 +215,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
         installObservers()
         recomputeWindowMinSize()
+        window.recalculateKeyViewLoop()
     }
 
     override func viewDidDisappear() {
