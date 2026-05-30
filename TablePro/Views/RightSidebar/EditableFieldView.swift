@@ -73,6 +73,22 @@ internal struct FieldDetailView: View {
         }
         .labelsHidden()
         .onHover { isHovered = $0 }
+        .contextMenu {
+            if !context.isReadOnly {
+                FieldMenuContent(
+                    value: context.value.wrappedValue,
+                    columnType: context.columnType,
+                    sqlFunctions: SQLFunctionProvider.functions(for: databaseType),
+                    isPendingNull: isPendingNull,
+                    isPendingDefault: isPendingDefault,
+                    onSetNull: onSetNull,
+                    onSetDefault: onSetDefault,
+                    onSetEmpty: onSetEmpty,
+                    onSetFunction: onSetFunction,
+                    onClear: { context.value.wrappedValue = context.originalValue ?? "" }
+                )
+            }
+        }
     }
 
     // MARK: - Header
