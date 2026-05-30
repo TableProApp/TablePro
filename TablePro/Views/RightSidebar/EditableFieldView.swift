@@ -120,8 +120,14 @@ internal struct FieldDetailView: View {
 
     // MARK: - Editor Dispatch
 
-    @ViewBuilder
     private func resolvedEditor(for kind: FieldEditorKind) -> some View {
+        editorContent(for: kind)
+            .accessibilityLabel(context.columnName)
+            .accessibilityValue(context.value.wrappedValue)
+    }
+
+    @ViewBuilder
+    private func editorContent(for kind: FieldEditorKind) -> some View {
         switch kind {
         case .json:
             JsonEditorView(context: context, onExpand: onExpand, onPopOut: onPopOut)

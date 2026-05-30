@@ -525,6 +525,7 @@ struct KeyboardSettings: Codable, Equatable {
         .cut: KeyCombo(key: "x", command: true),
         .copy: KeyCombo(key: "c", command: true),
         .copyRowsExplicit: KeyCombo(key: "c", command: true, shift: true),
+        .copyWithHeaders: KeyCombo(key: "c", command: true, option: true),
         .copyAsJson: KeyCombo(key: "j", command: true, option: true),
         .paste: KeyCombo(key: "v", command: true),
         .delete: KeyCombo(key: "delete", command: true, isSpecialKey: true),
