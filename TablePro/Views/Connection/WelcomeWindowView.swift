@@ -79,6 +79,7 @@ struct WelcomeWindowView: View {
                 vm.importResultCount = count
                 vm.pendingImportResultCount = nil
             }
+            focus = .connectionList
         }) { sheet in
             switch sheet {
             case .newGroup(let parentId):
@@ -279,6 +280,8 @@ struct WelcomeWindowView: View {
                 text: $vm.searchText,
                 placeholder: String(localized: "Search for connection..."),
                 controlSize: .regular,
+                onMoveDown: { focus = .connectionList },
+                onSubmit: { focus = .connectionList },
                 focusTrigger: searchFocusTrigger,
                 maxWidth: 240
             )

@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Copy with Headers now has a default keyboard shortcut (Cmd+Option+C), so it works and is discoverable from the keyboard instead of showing in the Edit menu with no key. (#1490)
+- VoiceOver now reads the column name and current value for each field editor in the cell inspector. (#1490)
+- VoiceOver announces the active tab title when you switch between window tabs. (#1490)
+- Opening a query tab no longer pulls keyboard focus away from the sidebar or another control; the editor takes focus only when nothing else holds it. VoiceOver now labels the SQL editor and the Clear and Format buttons. (#1490)
+- The connection form opens with the Name field focused, Return or the Down arrow in the welcome search moves to the connection list, and focus returns to the list after a sheet closes, so you can set up a connection without the mouse. (#1490)
 - Escape now dismisses search-based sheets and popovers (database switcher, quick switcher, column and connection pickers). Pressing Escape clears the search text first; a second Escape closes the sheet. (#1490)
 - Running `EXPLAIN` or `EXPLAIN ANALYZE` typed in the editor now opens the plan viewer instead of squashing the plan into one truncated grid cell. (#1480)
 - Filtering the data grid keeps you on the keyboard. Applying or clearing a filter returns focus to the grid so you can keep moving through cells, Return applies the filter, and Escape closes the filter panel and returns to the grid. (#1490)
