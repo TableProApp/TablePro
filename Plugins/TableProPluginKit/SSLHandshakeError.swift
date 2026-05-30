@@ -10,6 +10,7 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
     case unknown(serverMessage: String)
     case clientKeyPassphraseRequired(serverMessage: String)
     case clientKeyPassphraseIncorrect(serverMessage: String)
+    case clientKeyInvalid(serverMessage: String)
 
     public var serverMessage: String {
         switch self {
@@ -20,6 +21,7 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
              .clientCertRequired(let msg),
              .clientKeyPassphraseRequired(let msg),
              .clientKeyPassphraseIncorrect(let msg),
+             .clientKeyInvalid(let msg),
              .cipherMismatch(let msg),
              .unknown(let msg):
             return msg
@@ -42,6 +44,8 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
             return String(localized: "The client private key is encrypted and needs a passphrase.")
         case .clientKeyPassphraseIncorrect:
             return String(localized: "The passphrase for the client private key is incorrect.")
+        case .clientKeyInvalid:
+            return String(localized: "The client private key could not be read. It may be malformed or in an unsupported format.")
         case .cipherMismatch:
             return String(localized: "The server and TablePro could not agree on a TLS cipher or protocol version.")
         case .unknown:
@@ -98,6 +102,8 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
             return String(localized: "Open the connection editor, switch to the SSL tab, and enter the Key Passphrase.")
         case .clientKeyPassphraseIncorrect:
             return String(localized: "Open the connection editor, switch to the SSL tab, and correct the Key Passphrase.")
+        case .clientKeyInvalid:
+            return String(localized: "Check that the Client Key path points to a valid PEM private key.")
         case .cipherMismatch:
             return String(localized: "Update the server's TLS configuration or use a newer database server version that supports modern ciphers.")
         case .unknown:

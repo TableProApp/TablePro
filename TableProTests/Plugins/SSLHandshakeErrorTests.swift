@@ -54,6 +54,13 @@ struct SSLHandshakeErrorTests {
         #expect(error.recoverySuggestion?.contains("Key Passphrase") == true)
     }
 
+    @Test("clientKeyInvalid describes a malformed key and points at the path")
+    func testClientKeyInvalid() {
+        let error = SSLHandshakeError.clientKeyInvalid(serverMessage: "not a PEM")
+        #expect(error.errorDescription?.contains("malformed") == true)
+        #expect(error.recoverySuggestion?.contains("Client Key") == true)
+    }
+
     @Test("cipherMismatch suggests server update")
     func testCipherMismatch() {
         let error = SSLHandshakeError.cipherMismatch(serverMessage: "no shared cipher")
@@ -93,8 +100,9 @@ struct SSLHandshakeErrorTests {
             .clientCertRequired(serverMessage: "msg-5"),
             .clientKeyPassphraseRequired(serverMessage: "msg-6"),
             .clientKeyPassphraseIncorrect(serverMessage: "msg-7"),
-            .cipherMismatch(serverMessage: "msg-8"),
-            .unknown(serverMessage: "msg-9")
+            .clientKeyInvalid(serverMessage: "msg-8"),
+            .cipherMismatch(serverMessage: "msg-9"),
+            .unknown(serverMessage: "msg-10")
         ]
         for error in cases {
             #expect(!error.serverMessage.isEmpty)

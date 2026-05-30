@@ -283,17 +283,28 @@ private actor CassandraConnectionActor {
         guard let keyData = FileManager.default.contents(atPath: keyPath),
               let keyString = String(data: keyData, encoding: .utf8) else {
             cleanup()
-            throw SSLHandshakeError.clientCertRequired(serverMessage: "Could not read client key at \(keyPath)")
+            throw SSLHandshakeError.clientKeyInvalid(serverMessage: "Could not read client key at \(keyPath)")
         }
         let passphrase = keyPassphrase?.isEmpty == false ? keyPassphrase : nil
         let keyResult = cass_ssl_set_private_key(ssl, keyString, passphrase)
         if keyResult != CASS_OK {
             cleanup()
-            if passphrase == nil {
-                throw SSLHandshakeError.clientKeyPassphraseRequired(serverMessage: "The client key at \(keyPath) is encrypted. Enter its passphrase.")
-            }
-            throw SSLHandshakeError.clientKeyPassphraseIncorrect(serverMessage: "The passphrase for the client key at \(keyPath) is incorrect.")
+            throw Self.privateKeyLoadError(keyPEM: keyString, hasPassphrase: passphrase != nil, keyPath: keyPath)
         }
+    }
+
+    static func isEncryptedPrivateKey(_ pem: String) -> Bool {
+        pem.contains("ENCRYPTED PRIVATE KEY") || (pem.contains("Proc-Type:") && pem.contains("ENCRYPTED"))
+    }
+
+    static func privateKeyLoadError(keyPEM: String, hasPassphrase: Bool, keyPath: String) -> SSLHandshakeError {
+        guard isEncryptedPrivateKey(keyPEM) else {
+            return .clientKeyInvalid(serverMessage: "The client key at \(keyPath) is not a valid private key")
+        }
+        if hasPassphrase {
+            return .clientKeyPassphraseIncorrect(serverMessage: "The passphrase for the client key at \(keyPath) is incorrect")
+        }
+        return .clientKeyPassphraseRequired(serverMessage: "The client key at \(keyPath) is encrypted. Enter its passphrase.")
     }
 
     func close() {
