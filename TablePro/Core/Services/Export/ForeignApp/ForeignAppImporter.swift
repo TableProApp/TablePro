@@ -7,6 +7,7 @@ import AppKit
 import Foundation
 import os
 import Security
+import UniformTypeIdentifiers
 
 // MARK: - Protocol
 
@@ -22,8 +23,14 @@ protocol ForeignAppImporter {
     /// system show a per-item access prompt. Importers that read passwords from
     /// a file (DBeaver, Beekeeper Studio) return false so no prompt is promised.
     var readsPasswordsFromKeychain: Bool { get }
+    /// Non-nil for importers that read a user-selected export file instead of an
+    /// installed app's on-disk store. The values are the content types the file
+    /// picker filters to; the source picker presents a panel and hands the
+    /// chosen URL to `setSelectedFile(_:)` before importing.
+    var importFileTypes: [UTType]? { get }
     func installedAppURL() -> URL?
     func connectionCount() -> Int
+    mutating func setSelectedFile(_ url: URL)
     func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult
 }
 
@@ -39,6 +46,10 @@ extension ForeignAppImporter {
     func isAvailable() -> Bool {
         installedAppURL() != nil
     }
+
+    var importFileTypes: [UTType]? { nil }
+
+    mutating func setSelectedFile(_ url: URL) {}
 }
 
 // MARK: - Result
@@ -85,7 +96,8 @@ enum ForeignAppImporterRegistry {
         SequelAceImporter(),
         DBeaverImporter(),
         DataGripImporter(),
-        BeekeeperStudioImporter()
+        BeekeeperStudioImporter(),
+        NavicatImporter()
     ]
 }
 

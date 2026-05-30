@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ImportFromAppSourcePicker: View {
     let onSelect: (any ForeignAppImporter, Bool) -> Void
@@ -14,6 +15,9 @@ struct ImportFromAppSourcePicker: View {
     @State private var includePasswords = true
     @State private var importerStates: [(importer: any ForeignAppImporter, available: Bool, count: Int)] = []
     @State private var isLoading = true
+    @State private var fileImporterPresented = false
+    @State private var pendingImporter: (any ForeignAppImporter)?
+    @State private var pendingIncludePasswords = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +30,12 @@ struct ImportFromAppSourcePicker: View {
             footer
         }
         .onAppear { loadStates() }
+        .fileImporter(
+            isPresented: $fileImporterPresented,
+            allowedContentTypes: pendingImporter?.importFileTypes ?? []
+        ) { result in
+            handleFileSelection(result)
+        }
     }
 
     // MARK: - Header
@@ -74,7 +84,11 @@ struct ImportFromAppSourcePicker: View {
                 Text(state.importer.displayName)
                     .font(.body)
 
-                if state.available {
+                if state.importer.importFileTypes != nil {
+                    Text(String(localized: "Choose an export file to import"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else if state.available {
                     Text(
                         state.count == 1
                             ? String(localized: "1 connection found")
@@ -169,6 +183,20 @@ struct ImportFromAppSourcePicker: View {
         guard let selectedId,
               let state = importerStates.first(where: { $0.importer.id == selectedId }),
               state.available else { return }
-        onSelect(state.importer, includePasswords)
+
+        if state.importer.importFileTypes != nil {
+            pendingImporter = state.importer
+            pendingIncludePasswords = includePasswords
+            fileImporterPresented = true
+        } else {
+            onSelect(state.importer, includePasswords)
+        }
+    }
+
+    private func handleFileSelection(_ result: Result<URL, Error>) {
+        defer { pendingImporter = nil }
+        guard case .success(let url) = result, var importer = pendingImporter else { return }
+        importer.setSelectedFile(url)
+        onSelect(importer, pendingIncludePasswords)
     }
 }

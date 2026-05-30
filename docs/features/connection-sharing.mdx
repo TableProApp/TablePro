@@ -58,10 +58,10 @@ Duplicates are unchecked. Check to import, then pick **As Copy**, **Replace**, o
 
 ## Import from Other Apps
 
-Bring your connections over from TablePlus, Sequel Ace, DBeaver, or DataGrip. Passwords can be imported too. The source app doesn't need to be running.
+Bring your connections over from TablePlus, Sequel Ace, DBeaver, DataGrip, or Navicat. Passwords can be imported too. The source app doesn't need to be running.
 
 1. **File** > **Import from Other App...**
-2. Pick the source app and click **Continue**.
+2. Pick the source app and click **Continue**. Navicat opens a file picker: choose the `.ncx` file you exported from Navicat.
 3. Review the list, uncheck anything you don't want, then click **Import**.
 
 <Frame caption="Pick the source app">
@@ -85,8 +85,11 @@ Groups and folders carry over.
 | Sequel Ace | MySQL | From Keychain |
 | DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file |
 | DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` |
+| Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file |
 
 DataGrip stores connections per project. TablePro imports the connections from the projects DataGrip is tracking (its recent projects), along with their SSH tunnel and SSL settings, and the SSH tunnel password when DataGrip saved one. If a connection is missing, open its project in DataGrip once so it returns to the recent list. Connections protected by a DataGrip master password can't be read.
+
+Navicat keeps its connections in an encrypted store that can't be read directly, so TablePro imports from an export instead. In Navicat, choose **File** > **Export Connections**, and turn on **Export Password** if you want passwords to come across. Pick the resulting `.ncx` file in TablePro. SSH tunnel and SSL settings carry over. A connection exported without its password imports without one, so you enter it the first time you connect.
 
 ## Share via Link
 

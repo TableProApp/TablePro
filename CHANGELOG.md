@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A plus button in the bottom bar of the Tables sidebar opens a menu to create a new table or view, without right-clicking. It's disabled while safe mode blocks writes.
 - The sidebar can show every database on the server as an expandable tree. Switch a connection between the flat list and the tree from the View menu (Sidebar Layout); right-click a database or schema to set it active. Set the default layout for new connections in Settings, General. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)
 - A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain, so scripts can provision a connection without entering the password by hand. (#1254)
+- Import connections from Navicat: export a connections file from Navicat (File, Export Connections), then pick it under Import from Other App. SSH tunnel and SSL settings come across, and saved passwords are decrypted during import. (#1485)
 
 ### Changed
 
