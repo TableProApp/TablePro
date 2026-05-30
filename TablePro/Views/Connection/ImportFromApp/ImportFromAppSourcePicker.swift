@@ -15,9 +15,6 @@ struct ImportFromAppSourcePicker: View {
     @State private var includePasswords = true
     @State private var importerStates: [(importer: any ForeignAppImporter, available: Bool, count: Int)] = []
     @State private var isLoading = true
-    @State private var fileImporterPresented = false
-    @State private var pendingImporter: (any ForeignAppImporter)?
-    @State private var pendingIncludePasswords = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,12 +27,6 @@ struct ImportFromAppSourcePicker: View {
             footer
         }
         .onAppear { loadStates() }
-        .fileImporter(
-            isPresented: $fileImporterPresented,
-            allowedContentTypes: pendingImporter?.importFileTypes ?? []
-        ) { result in
-            handleFileSelection(result)
-        }
     }
 
     // MARK: - Header
@@ -127,7 +118,7 @@ struct ImportFromAppSourcePicker: View {
     private var passwordToggle: some View {
         VStack(alignment: .leading, spacing: 2) {
             Toggle("Include passwords", isOn: $includePasswords)
-            Text("Read saved passwords from Keychain (requires permission)")
+            Text(includePasswordsSubtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -153,9 +144,19 @@ struct ImportFromAppSourcePicker: View {
 
     // MARK: - Computed
 
+    private var selectedImporter: (any ForeignAppImporter)? {
+        importerStates.first { $0.importer.id == selectedId }?.importer
+    }
+
     private var isSelectedAvailable: Bool {
-        guard let selectedId else { return false }
-        return importerStates.first { $0.importer.id == selectedId }?.available ?? false
+        importerStates.first { $0.importer.id == selectedId }?.available ?? false
+    }
+
+    private var includePasswordsSubtitle: String {
+        if selectedImporter?.readsPasswordsFromKeychain ?? true {
+            return String(localized: "Read saved passwords from Keychain (requires permission)")
+        }
+        return String(localized: "Saved passwords are decrypted during import")
     }
 
     // MARK: - Actions
@@ -180,23 +181,33 @@ struct ImportFromAppSourcePicker: View {
     }
 
     private func continueAction() {
-        guard let selectedId,
-              let state = importerStates.first(where: { $0.importer.id == selectedId }),
+        guard let state = importerStates.first(where: { $0.importer.id == selectedId }),
               state.available else { return }
 
         if state.importer.importFileTypes != nil {
-            pendingImporter = state.importer
-            pendingIncludePasswords = includePasswords
-            fileImporterPresented = true
+            presentFilePicker(for: state.importer)
         } else {
             onSelect(state.importer, includePasswords)
         }
     }
 
-    private func handleFileSelection(_ result: Result<URL, Error>) {
-        defer { pendingImporter = nil }
-        guard case .success(let url) = result, var importer = pendingImporter else { return }
-        importer.setSelectedFile(url)
-        onSelect(importer, pendingIncludePasswords)
+    private func presentFilePicker(for importer: any ForeignAppImporter) {
+        guard let window = NSApp.keyWindow else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if let types = importer.importFileTypes {
+            panel.allowedContentTypes = types
+        }
+        panel.message = String(format: String(localized: "Choose a %@ export file to import"), importer.displayName)
+
+        let includePasswords = includePasswords
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            var configured = importer
+            configured.setSelectedFile(url)
+            onSelect(configured, includePasswords)
+        }
     }
 }

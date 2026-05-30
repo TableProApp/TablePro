@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("ForeignAppImporterRegistry")

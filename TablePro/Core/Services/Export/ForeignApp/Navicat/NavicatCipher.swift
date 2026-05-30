@@ -5,9 +5,12 @@
 //  Decrypts the password fields in a Navicat `.ncx` export. Navicat ships two
 //  fixed-key ciphers (the keys are baked into the app, so no user secret is
 //  needed): v1 used through Navicat 11 and v2 from Navicat 12 onward. A `.ncx`
-//  never contains the machine-bound v3 cipher, so trial-decrypting v2 then v1
-//  and keeping the first result that is valid UTF-8 recovers every exported
-//  password. Reference: github.com/HyperSine/how-does-navicat-encrypt-password
+//  never contains the machine-bound v3 cipher, so trying v2 then v1 and keeping
+//  the first candidate that decodes to plausible text (valid UTF-8 with no
+//  control characters) recovers exported passwords. The control-character check
+//  stops a v1 ciphertext whose length is a multiple of the AES block size from
+//  being misread as a v2 one.
+//  Reference: github.com/HyperSine/how-does-navicat-encrypt-password
 //
 //  - v2: AES-128-CBC, PKCS#7 padding, key `libcckeylibcckey`, IV `libcciv libcciv `
 //  - v1: Blowfish-ECB blocks wrapped in a custom CBC-style XOR chain, key
@@ -21,7 +24,14 @@ import Foundation
 enum NavicatCipher {
     static func decrypt(_ hex: String) -> String? {
         guard !hex.isEmpty, let ciphertext = Data(navicatHex: hex) else { return nil }
-        return decryptV2(ciphertext) ?? decryptV1(ciphertext)
+        if let value = decryptV2(ciphertext), isPlausibleText(value) { return value }
+        if let value = decryptV1(ciphertext), isPlausibleText(value) { return value }
+        return nil
+    }
+
+    private static func isPlausibleText(_ value: String) -> Bool {
+        guard !value.isEmpty else { return false }
+        return value.unicodeScalars.allSatisfy { $0.properties.generalCategory != .control }
     }
 
     // MARK: - V2 (Navicat 12+)

@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("NavicatImporter", .serialized)
 struct NavicatImporterTests {
@@ -215,6 +215,22 @@ struct NavicatImporterTests {
         let credentials = try importer.importConnections(includePasswords: true).envelope.credentials
         #expect(credentials?["0"]?.password == "This is a test")
         #expect(credentials?["0"]?.sshPassword == "This is a test")
+    }
+
+    @Test("Maps credentials to the right index when some connections have no saved password")
+    func mapsSparseCredentialsByIndex() throws {
+        try writeNCX([
+            conn(name: "Zero", type: "MYSQL", savePassword: "true", password: "B75D320B6211468D63EB3B67C9E85933"),
+            conn(name: "One", type: "POSTGRESQL", savePassword: "false"),
+            conn(name: "Two", type: "MARIADB", savePassword: "true", password: "2E6C8CF471EB0268D3239A0AD531F1B1")
+        ])
+        let result = try importer.importConnections(includePasswords: true)
+        let credentials = result.envelope.credentials
+        #expect(result.envelope.connections.count == 3)
+        #expect(Set(credentials?.keys.map { $0 } ?? []) == Set(["0", "2"]))
+        #expect(credentials?["0"]?.password == "This is a test")
+        #expect(credentials?["1"] == nil)
+        #expect(credentials?["2"]?.password == "Sup3rSecret!Pass")
     }
 
     @Test("Skips the password when SavePassword is false")
