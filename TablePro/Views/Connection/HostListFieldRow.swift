@@ -46,6 +46,7 @@ struct HostListFieldRow: View {
                 ForEach(entries) { entry in
                     TextField("", text: bindingForEntry(entry), prompt: Text(verbatim: "hostname:\(defaultPort)"))
                         .tag(entry.id)
+                        .accessibilityLabel(String(localized: "Host"))
                 }
             }
             .listStyle(.bordered(alternatesRowBackgrounds: false))
