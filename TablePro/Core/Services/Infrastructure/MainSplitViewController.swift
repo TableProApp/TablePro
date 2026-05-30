@@ -495,6 +495,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         sidebarSplitItem?.isCollapsed ?? true
     }
 
+    func focusSidebarSearch() {
+        if sidebarSplitItem?.isCollapsed == true {
+            sidebarSplitItem?.animator().isCollapsed = false
+        }
+        sidebarContainer.focusSearchField()
+    }
+
     func setSidebarTab(_ tab: SidebarTab) {
         guard let connectionId = currentSession?.connection.id else { return }
         let sidebarState = SharedSidebarState.forConnection(connectionId)

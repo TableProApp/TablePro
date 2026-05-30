@@ -182,6 +182,8 @@ struct DatabaseTreeView: View {
             Image(systemName: db.isSystemDatabase ? "gearshape" : "cylinder")
                 .foregroundStyle(db.isSystemDatabase ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
         }
+        .accessibilityLabel(String(format: String(localized: "Database: %@"), db.name))
+        .accessibilityAddTraits(.isHeader)
         .contextMenu {
             Button(String(localized: "Use as Active Database")) {
                 setActiveDatabase(db.name)
@@ -204,6 +206,8 @@ struct DatabaseTreeView: View {
             Image(systemName: "folder")
                 .foregroundStyle(.tint)
         }
+        .accessibilityLabel(String(format: String(localized: "Schema: %@"), schema))
+        .accessibilityAddTraits(.isHeader)
         .contextMenu {
             Button(String(localized: "Use as Active Schema")) {
                 setActiveSchema(database: database, schema: schema)

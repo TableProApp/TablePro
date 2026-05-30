@@ -572,6 +572,26 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Button("Focus Sidebar Filter") {
+                actions?.focusSidebarSearch()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .focusSidebarSearch))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button("Show Tables Sidebar") {
+                actions?.showSidebarTab(.tables)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showSidebarTables))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button("Show Favorites Sidebar") {
+                actions?.showSidebarTab(.favorites)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showSidebarFavorites))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
             Button("Toggle Results") {
                 actions?.toggleResults()
             }

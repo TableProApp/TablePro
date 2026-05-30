@@ -783,6 +783,14 @@ final class MainContentCommandActions {
         coordinator?.inspectorProxy?.toggleInspector()
     }
 
+    func focusSidebarSearch() {
+        coordinator?.splitViewController?.focusSidebarSearch()
+    }
+
+    func showSidebarTab(_ tab: SidebarTab) {
+        coordinator?.splitViewController?.setSidebarTab(tab)
+    }
+
     func toggleResults() {
         guard let coordinator,
               let (_, tabIndex) = coordinator.tabManager.selectedTabAndIndex else { return }
