@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Escape now dismisses search-based sheets and popovers (database switcher, quick switcher, column and connection pickers). Pressing Escape clears the search text first; a second Escape closes the sheet. (#1490)
 - Running `EXPLAIN` or `EXPLAIN ANALYZE` typed in the editor now opens the plan viewer instead of squashing the plan into one truncated grid cell. (#1480)
 - Filtering the data grid keeps you on the keyboard. Applying or clearing a filter returns focus to the grid so you can keep moving through cells, Return applies the filter, and Escape closes the filter panel and returns to the grid. (#1490)
 - Opening a table (Return or double-click in the sidebar) moves keyboard focus into the data grid so you can navigate cells with the arrow keys. Arrowing the sidebar still previews tables without taking focus. (#1490)
