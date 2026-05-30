@@ -136,11 +136,5 @@ if [[ "${#helpers[@]}" -gt 1 && -x "$(command -v lipo)" ]]; then
   exit 0
 fi
 
-for installed in /opt/homebrew/bin/rledger /usr/local/bin/rledger; do
-  if copy_helper "$installed" "Bundled installed rustledger helper after release download failed"; then
-    exit 0
-  fi
-done
-
-echo "Unable to bundle rustledger. Install rledger or set TABLEPRO_RUSTLEDGER_BINARY." >&2
+echo "Unable to bundle rustledger from the pinned release. Set TABLEPRO_RUSTLEDGER_BINARY for local builds or retry the release download." >&2
 exit 1

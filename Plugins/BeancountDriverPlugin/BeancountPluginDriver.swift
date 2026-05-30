@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Dispatch
 import SQLite3
 import TableProPluginKit
 
@@ -74,7 +75,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let parsed = try BeancountLedgerParser().parse(fileURL: fileURL)
-        let signatures = try Self.signatures(for: parsed.sourceFiles)
+        let signatures = try Self.signatures(for: Self.watchedURLs(for: parsed))
         var handle: OpaquePointer?
         guard sqlite3_open(":memory:", &handle) == SQLITE_OK, let handle else {
             throw BeancountDriverError.connectionFailed("Could not initialize SQL projection")
@@ -162,6 +163,9 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchRowCount(query: String) async throws -> Int {
+        if let bql = Self.extractBQLQuery(from: query) {
+            return try executeBQL(query: bql).rows.count
+        }
         let escaped = query.replacingOccurrences(of: ";", with: "")
         let result = try await execute(query: "SELECT COUNT(*) FROM (\(escaped))")
         guard let text = result.rows.first?.first?.asText, let count = Int(text) else { return 0 }
@@ -169,7 +173,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        try await execute(query: "SELECT * FROM (\(query)) LIMIT \(limit) OFFSET \(offset)")
+        if let bql = Self.extractBQLQuery(from: query) {
+            return Self.paginatedResult(try executeBQL(query: bql), offset: offset, limit: limit)
+        }
+        return try await execute(query: "SELECT * FROM (\(query)) LIMIT \(limit) OFFSET \(offset)")
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
@@ -315,11 +322,26 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         process.standardOutput = stdout
         process.standardError = stderr
 
+        let outputCollector = PipeDataCollector()
+        let errorCollector = PipeDataCollector()
+        let readers = DispatchGroup()
+        readers.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            outputCollector.set(stdout.fileHandleForReading.readDataToEndOfFile())
+            readers.leave()
+        }
+        readers.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            errorCollector.set(stderr.fileHandleForReading.readDataToEndOfFile())
+            readers.leave()
+        }
+
         try process.run()
         process.waitUntilExit()
+        readers.wait()
 
-        let output = stdout.fileHandleForReading.readDataToEndOfFile()
-        let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
+        let output = outputCollector.data
+        let errorOutput = errorCollector.data
         guard process.terminationStatus == 0 else {
             let message = String(data: errorOutput, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -397,13 +419,28 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    private static func paginatedResult(_ result: PluginQueryResult, offset: Int, limit: Int) -> PluginQueryResult {
+        let safeOffset = max(offset, 0)
+        let safeLimit = max(limit, 0)
+        let start = min(safeOffset, result.rows.count)
+        let end = min(start + safeLimit, result.rows.count)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: Array(result.rows[start..<end]),
+            rowsAffected: result.rowsAffected,
+            executionTime: result.executionTime,
+            isTruncated: result.isTruncated
+        )
+    }
+
     private func reloadProjectionIfNeeded() throws {
         guard let ledgerURL, let ledger else { return }
-        let currentSignatures = try Self.signatures(for: ledger.sourceFiles)
+        let currentSignatures = try Self.signatures(for: Self.watchedURLs(for: ledger))
         guard currentSignatures != sourceSignatures else { return }
 
         let parsed = try BeancountLedgerParser().parse(fileURL: ledgerURL)
-        let newSignatures = try Self.signatures(for: parsed.sourceFiles)
+        let newSignatures = try Self.signatures(for: Self.watchedURLs(for: parsed))
         var handle: OpaquePointer?
         guard sqlite3_open(":memory:", &handle) == SQLITE_OK, let handle else {
             throw BeancountDriverError.connectionFailed("Could not initialize SQL projection")
@@ -480,17 +517,6 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 .path
         ].compactMap { $0 }
         if let path = bundleCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
-            return path
-        }
-
-        let pathCandidates = [
-            "/opt/homebrew/bin/rledger",
-            "/usr/local/bin/rledger"
-        ] + (environment["PATH"] ?? "")
-            .split(separator: ":")
-            .map { "\($0)/rledger" }
-
-        if let path = pathCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
             return path
         }
 
@@ -725,6 +751,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    private static func watchedURLs(for ledger: BeancountLedger) -> [URL] {
+        Array(Set(ledger.sourceFiles + ledger.watchedDirectories)).sorted { $0.path < $1.path }
+    }
+
     private func expandPath(_ path: String) -> String {
         guard path.hasPrefix("~") else { return path }
         return NSString(string: path).expandingTildeInPath
@@ -732,6 +762,21 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 }
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+private final class PipeDataCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+
+    var data: Data {
+        lock.withLock { storage }
+    }
+
+    func set(_ data: Data) {
+        lock.withLock {
+            storage = data
+        }
+    }
+}
 
 private extension NSLock {
     func withLock<T>(_ body: () throws -> T) rethrows -> T {

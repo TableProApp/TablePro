@@ -1,0 +1,66 @@
+---
+title: Beancount
+description: Open Beancount ledgers with TablePro
+---
+
+# Beancount
+
+TablePro opens `.beancount` ledgers as read-only, file-based connections. The driver projects transactions, postings, accounts, prices, balances, and source files into SQL tables for browsing and exports.
+
+The bundled driver also supports BQL queries through the bundled `rustledger` helper.
+
+## Connecting to a Beancount ledger
+
+<Steps>
+  <Step title="Create a new connection">
+    Open TablePro and click **New Connection** or press <kbd>⌘N</kbd>.
+  </Step>
+  <Step title="Select Beancount">
+    Choose **Beancount** from the database type list.
+  </Step>
+  <Step title="Choose your ledger file">
+    Click **Browse** and select a `.beancount` file.
+  </Step>
+  <Step title="Connect">
+    Click **Connect** to open the ledger.
+  </Step>
+</Steps>
+
+## Connection URL
+
+```text
+beancount:///path/to/main.beancount
+```
+
+See [Connection URL Reference](/databases/connection-urls) for all parameters.
+
+## Tables
+
+| Table | Contents |
+|-------|----------|
+| `transactions` | Transaction date, flag, payee, narration, source file, and line |
+| `postings` | Posting account, amount, commodity, source file, and line |
+| `accounts` | Opened accounts and declared currencies |
+| `prices` | Price directives |
+| `balances` | Balance directives |
+| `source_files` | Parsed ledger and include files |
+
+## Includes
+
+The parser follows Beancount `include` directives. Literal includes and glob patterns such as `include "imports/*.beancount"` and `include "imports/**/*.beancount"` are supported.
+
+## BQL
+
+Prefix a query with `BQL:` to run it through `rustledger`:
+
+```sql
+BQL: SELECT account FROM accounts ORDER BY account
+```
+
+Table browsing, row counts, and pagination work for BQL results. BQL queries do not support SQL parameters.
+
+## Limitations
+
+- Beancount connections are read-only.
+- Schema editing, imports, SSH, SSL, and database switching are not available for ledgers.
+- The SQL projection covers common ledger directives; unsupported directives remain available in the original source files.

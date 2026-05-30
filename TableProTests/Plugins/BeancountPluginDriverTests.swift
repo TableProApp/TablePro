@@ -52,6 +52,49 @@ struct BeancountPluginDriverTests {
         #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking", "Expenses:Food"])
     }
 
+    @Test("reloads the SQL projection when a glob include matches a new file")
+    func reloadsWhenGlobIncludeMatchesNewFile() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("beancount-driver-glob-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+
+        let imports = tempDirectory.appendingPathComponent("imports", isDirectory: true)
+        try FileManager.default.createDirectory(at: imports, withIntermediateDirectories: true)
+        try """
+        2024-01-01 open Assets:Bank:Checking USD
+        """.write(to: imports.appendingPathComponent("accounts.beancount"), atomically: true, encoding: .utf8)
+
+        let ledger = tempDirectory.appendingPathComponent("main.beancount")
+        try """
+        include "imports/*.beancount"
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        let driver = BeancountPluginDriver(config: DriverConnectionConfig(
+            host: "",
+            port: 0,
+            username: "",
+            password: "",
+            database: ledger.path
+        ))
+        try await driver.connect()
+        defer {
+            driver.disconnect()
+        }
+
+        var result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
+        #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking"])
+
+        try """
+        2024-01-02 open Expenses:Food USD
+        """.write(to: imports.appendingPathComponent("expenses.beancount"), atomically: true, encoding: .utf8)
+
+        result = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
+        #expect(result.rows.map { $0[0].asText } == ["Assets:Bank:Checking", "Expenses:Food"])
+    }
+
     @Test("rejects write queries")
     func rejectsWriteQueries() async throws {
         let tempDirectory = FileManager.default.temporaryDirectory
@@ -123,6 +166,16 @@ struct BeancountPluginDriverTests {
             "Expenses:Food",
             "Income:Salary"
         ])
+
+        let count = try await driver.fetchRowCount(query: "BQL: SELECT account FROM accounts ORDER BY account")
+        #expect(count == 3)
+
+        let page = try await driver.fetchRows(
+            query: "BQL: SELECT account FROM accounts ORDER BY account",
+            offset: 1,
+            limit: 1
+        )
+        #expect(page.rows.map { $0.first?.asText } == ["Expenses:Food"])
     }
 
     private static func installedRustledgerPath() -> String? {

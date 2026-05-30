@@ -11,11 +11,11 @@ import Testing
 @MainActor
 @Suite("Beancount driver metadata")
 struct BeancountDriverMetadataTests {
-    @Test("registry exposes Beancount as a downloadable file-based driver")
+    @Test("registry exposes Beancount as a bundled file-based driver")
     func registryMetadata() throws {
         let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forTypeId: "Beancount"))
         #expect(snapshot.displayName == "Beancount")
-        #expect(snapshot.isDownloadable == true)
+        #expect(snapshot.isDownloadable == false)
         #expect(snapshot.connectionMode == .fileBased)
         #expect(snapshot.schema.fileExtensions == ["beancount"])
         #expect(snapshot.pathFieldRole == .filePath)

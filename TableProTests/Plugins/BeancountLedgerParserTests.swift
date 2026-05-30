@@ -88,5 +88,29 @@ struct BeancountLedgerParserTests {
             "expenses.beancount",
             "main.beancount"
         ])
+        #expect(parsed.watchedDirectories.map(\.lastPathComponent).contains("imports"))
+        #expect(parsed.watchedDirectories.map(\.lastPathComponent).contains("nested"))
+    }
+
+    @Test("ignores transaction metadata lines when parsing postings")
+    func ignoresMetadataLinesInsideTransactions() throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("beancount-parser-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+
+        let ledger = tempDirectory.appendingPathComponent("main.beancount")
+        try """
+        2024-01-15 * "Grocery Store" "Weekly shop"
+          receipt: "abc.pdf"
+          Assets:Bank:Checking  -100.00 USD
+          Expenses:Food          100.00 USD
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        let parsed = try BeancountLedgerParser().parse(fileURL: ledger)
+
+        #expect(parsed.postings.map(\.account) == ["Assets:Bank:Checking", "Expenses:Food"])
     }
 }

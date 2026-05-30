@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Beancount ledger support as a bundled, read-only file-based driver with SQL projection and BQL queries.
+
 ## [0.46.0] - 2026-05-28
 
 ### Added

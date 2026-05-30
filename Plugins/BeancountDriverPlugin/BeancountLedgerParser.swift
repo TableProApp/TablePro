@@ -12,6 +12,7 @@ struct BeancountLedger: Sendable {
     let prices: [BeancountPrice]
     let balances: [BeancountBalance]
     let sourceFiles: [URL]
+    let watchedDirectories: [URL]
 }
 
 struct BeancountTransaction: Sendable {
@@ -86,6 +87,7 @@ final class BeancountLedgerParser {
     private var accountsByName: [String: BeancountAccount] = [:]
     private var prices: [BeancountPrice] = []
     private var balances: [BeancountBalance] = []
+    private var watchedDirectories: Set<URL> = []
 
     func parse(fileURL: URL) throws -> BeancountLedger {
         visited.removeAll()
@@ -96,6 +98,7 @@ final class BeancountLedgerParser {
         accountsByName.removeAll()
         prices.removeAll()
         balances.removeAll()
+        watchedDirectories.removeAll()
 
         try parseFile(fileURL.standardizedFileURL)
 
@@ -105,7 +108,8 @@ final class BeancountLedgerParser {
             accounts: accountsByName.values.sorted { $0.name < $1.name },
             prices: prices,
             balances: balances,
-            sourceFiles: sourceFiles
+            sourceFiles: sourceFiles,
+            watchedDirectories: watchedDirectories.sorted { $0.path < $1.path }
         )
     }
 
@@ -205,18 +209,26 @@ final class BeancountLedgerParser {
         let patternPath = patternURL.path
         let searchRoot = globSearchRoot(for: patternPath)
         let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: searchRoot.path) else { return [] }
+        guard fileManager.fileExists(atPath: searchRoot.path) else {
+            watchedDirectories.insert(existingWatchDirectory(for: searchRoot))
+            return []
+        }
+        watchedDirectories.insert(searchRoot)
 
         let regex = try NSRegularExpression(pattern: globRegex(for: patternPath))
         let enumerator = fileManager.enumerator(
             at: searchRoot,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey],
             options: [.skipsHiddenFiles]
         )
 
         var matches: [URL] = []
         while let candidate = enumerator?.nextObject() as? URL {
-            let values = try? candidate.resourceValues(forKeys: [.isRegularFileKey])
+            let values = try? candidate.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
+            if values?.isDirectory == true {
+                watchedDirectories.insert(candidate.standardizedFileURL)
+                continue
+            }
             guard values?.isRegularFile == true else { continue }
 
             let path = candidate.standardizedFileURL.path
@@ -245,6 +257,20 @@ final class BeancountLedgerParser {
         let prefix = components.prefix { !containsGlobPattern($0) }
         let rootPath = NSString.path(withComponents: Array(prefix))
         return URL(fileURLWithPath: rootPath.isEmpty ? "/" : rootPath).standardizedFileURL
+    }
+
+    private func existingWatchDirectory(for missingDirectory: URL) -> URL {
+        var candidate = missingDirectory.standardizedFileURL
+        let fileManager = FileManager.default
+        while candidate.path != "/" {
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                return candidate
+            }
+            candidate.deleteLastPathComponent()
+        }
+        return URL(fileURLWithPath: "/")
     }
 
     private func globRegex(for patternPath: String) -> String {
@@ -366,7 +392,7 @@ final class BeancountLedgerParser {
         guard !trimmed.isEmpty, !trimmed.hasPrefix(";"), !trimmed.hasPrefix("#") else { return nil }
 
         let parts = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
-        guard let account = parts.first, account.contains(":") else { return nil }
+        guard let account = parts.first, isAccountName(account) else { return nil }
         let amount = parts.count >= 2 ? parts[1] : nil
         let commodity = parts.count >= 3 ? parts[2] : nil
 
@@ -380,6 +406,23 @@ final class BeancountLedgerParser {
             sourceFile: sourceFile,
             line: line
         )
+    }
+
+    private func isAccountName(_ value: String) -> Bool {
+        guard value.contains(":"), !value.hasSuffix(":") else { return false }
+        let components = value.split(separator: ":", omittingEmptySubsequences: false)
+        guard components.count >= 2 else { return false }
+
+        let allowedSymbols = CharacterSet(charactersIn: "-_")
+        return components.allSatisfy { component in
+            guard let first = component.unicodeScalars.first,
+                  CharacterSet.uppercaseLetters.contains(first) else {
+                return false
+            }
+            return component.unicodeScalars.allSatisfy { scalar in
+                CharacterSet.alphanumerics.contains(scalar) || allowedSymbols.contains(scalar)
+            }
+        }
     }
 
     private func parseDatePrefix(_ line: String) -> String? {
