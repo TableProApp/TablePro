@@ -67,7 +67,7 @@ count_swift_matches() {
 BASELINE_FILE=".github/duplicate-contract-baseline.txt"
 PLUGINKIT_A="Plugins/TableProPluginKit"
 PLUGINKIT_B="Packages/TableProCore/Sources/TableProPluginKit"
-DATABASETYPE_AUTHORITATIVE="Packages/TableProCore/Sources/TableProModels/DatabaseType.swift"
+DATABASETYPE_AUTHORITATIVE="Packages/TableProCore/Sources/TableProCoreTypes/DatabaseType.swift"
 
 baseline_keys() {
     [ -f "$BASELINE_FILE" ] || return 0
