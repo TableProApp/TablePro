@@ -113,6 +113,10 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsOpportunisticTLS ?? true
     }
 
+    var supportsClientKeyPassphrase: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsClientKeyPassphrase ?? false
+    }
+
     var sslPaneTooltip: String {
         switch rawValue {
         case "PostgreSQL", "Redshift", "CockroachDB":

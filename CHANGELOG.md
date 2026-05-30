@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a table (Return or double-click in the sidebar) moves keyboard focus into the data grid so you can navigate cells with the arrow keys. Arrowing the sidebar still previews tables without taking focus. (#1490)
 - Moving a connection into or out of a group now syncs across devices, instead of leaving it ungrouped on your other Macs.
 - Opening a table on a connection with many tables no longer stalls for several seconds while autocomplete and table metadata load. Background schema introspection now runs on separate connections instead of waiting behind, or blocking, the query that fills the grid. (#1483)
+- Cassandra SSL connections that use a client certificate now have a Key Passphrase field for an encrypted private key, and report a clear "key is encrypted" or "passphrase is incorrect" message instead of a generic handshake failure. The passphrase is stored in the Keychain. (#1487)
 
 ## [0.46.0] - 2026-05-28
 

@@ -432,6 +432,10 @@ enum DatabaseDriverFactory {
         }
         var ssl = connection.sslConfig
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
+        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
+           !sslClientKeyPassphrase.isEmpty {
+            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
+        }
         if connection.usesAWSIAM {
             if ssl.mode == .disabled || ssl.mode == .preferred {
                 ssl.mode = .required

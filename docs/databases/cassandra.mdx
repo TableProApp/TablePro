@@ -36,7 +36,7 @@ See [Connection URL Reference](/databases/connection-urls#cassandra--scylladb) f
 **DataStax Astra DB**: Port 29042, use Client ID/Secret, needs Secure Connect Bundle (SSL/TLS)
 **Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production
 
-**SSL/TLS**: The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Required** for AstraDB, **Verify CA** with a CA certificate path for private PKI. See [SSL/TLS](/features/ssl) for details.
+**SSL/TLS**: The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Required** for AstraDB, **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/features/ssl) for details.
 
 ## Features
 

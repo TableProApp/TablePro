@@ -57,6 +57,7 @@ struct PluginMetadataSnapshot: Sendable {
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
         var supportsCloudflareTunnel: Bool = true
+        var supportsClientKeyPassphrase: Bool = false
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -938,7 +939,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
-                supportsCloudflareTunnel: driverType.supportsSSH
+                supportsCloudflareTunnel: driverType.supportsSSH,
+                supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

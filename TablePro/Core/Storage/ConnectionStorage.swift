@@ -210,6 +210,7 @@ final class ConnectionStorage {
         deletePassword(for: connection.id)
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
+        deleteSSLClientKeyPassphrase(for: connection.id)
         deleteTOTPSecret(for: connection.id)
         deleteCloudflareTokenId(for: connection.id)
         deleteCloudflareTokenSecret(for: connection.id)
@@ -240,6 +241,7 @@ final class ConnectionStorage {
             deletePassword(for: conn.id)
             deleteSSHPassword(for: conn.id)
             deleteKeyPassphrase(for: conn.id)
+            deleteSSLClientKeyPassphrase(for: conn.id)
             deleteTOTPSecret(for: conn.id)
             deleteCloudflareTokenId(for: conn.id)
             deleteCloudflareTokenSecret(for: conn.id)
@@ -306,6 +308,9 @@ final class ConnectionStorage {
         if let keyPassphrase = loadKeyPassphrase(for: connection.id) {
             saveKeyPassphrase(keyPassphrase, for: newId)
         }
+        if let sslKeyPassphrase = loadSSLClientKeyPassphrase(for: connection.id) {
+            saveSSLClientKeyPassphrase(sslKeyPassphrase, for: newId)
+        }
         if let totpSecret = loadTOTPSecret(for: connection.id) {
             saveTOTPSecret(totpSecret, for: newId)
         }
@@ -368,6 +373,23 @@ final class ConnectionStorage {
 
     func deleteKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
+    }
+
+    // MARK: - SSL Client Key Passphrase Storage
+
+    func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        keychain.writeString(passphrase, forKey: key)
+    }
+
+    func loadSSLClientKeyPassphrase(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        return resolveString(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteSSLClientKeyPassphrase(for connectionId: UUID) {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
         keychain.delete(forKey: key)
     }
 
