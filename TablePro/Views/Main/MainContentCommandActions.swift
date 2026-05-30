@@ -783,6 +783,22 @@ final class MainContentCommandActions {
         coordinator?.inspectorProxy?.toggleInspector()
     }
 
+    func goToPreviousPage() {
+        coordinator?.goToPreviousPage()
+    }
+
+    func goToNextPage() {
+        coordinator?.goToNextPage()
+    }
+
+    func goToFirstPage() {
+        coordinator?.goToFirstPage()
+    }
+
+    func goToLastPage() {
+        coordinator?.goToLastPage()
+    }
+
     func focusSidebarSearch() {
         coordinator?.splitViewController?.focusSidebarSearch()
     }

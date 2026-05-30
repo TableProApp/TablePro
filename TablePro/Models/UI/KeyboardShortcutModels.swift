@@ -535,7 +535,7 @@ struct KeyboardSettings: Codable, Equatable {
         .duplicateRow: KeyCombo(key: "d", command: true, shift: true),
         .truncateTable: KeyCombo(key: "delete", option: true, isSpecialKey: true),
         .previewFKReference: KeyCombo(key: "space", isSpecialKey: true),
-        .saveAsFavorite: KeyCombo(key: "d", command: true),
+        .saveAsFavorite: KeyCombo(key: "d", command: true, control: true),
 
         // View
         .toggleTableBrowser: KeyCombo(key: "0", command: true),
