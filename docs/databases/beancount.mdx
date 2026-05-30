@@ -5,9 +5,9 @@ description: Open Beancount ledgers with TablePro
 
 # Beancount
 
-TablePro opens `.beancount` ledgers as read-only, file-based connections. The driver projects transactions, postings, accounts, prices, balances, and source files into SQL tables for browsing and exports.
+TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, balances, and source files into SQL tables for browsing and exports.
 
-The bundled driver also supports BQL queries through the bundled `rustledger` helper.
+The plugin also supports BQL queries through its packaged `rustledger` helper.
 
 ## Connecting to a Beancount ledger
 
