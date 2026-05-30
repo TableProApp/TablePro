@@ -92,12 +92,12 @@ final class KeyHandlingTableView: NSTableView {
 
     private var gridSelection: GridSelectionController? { coordinator?.selectionController }
 
-    private func withSelectionSync(_ work: () -> Void) {
+    private func withProgrammaticRowSelection(_ work: () -> Void) {
         let coordinator = coordinator
-        let wasSyncing = coordinator?.isSyncingSelection ?? false
-        coordinator?.isSyncingSelection = true
+        let wasApplying = coordinator?.isApplyingProgrammaticRowSelection ?? false
+        coordinator?.isApplyingProgrammaticRowSelection = true
         work()
-        coordinator?.isSyncingSelection = wasSyncing
+        coordinator?.isApplyingProgrammaticRowSelection = wasApplying
     }
 
     private func totalRows() -> Int { numberOfRows }
@@ -158,7 +158,7 @@ final class KeyHandlingTableView: NSTableView {
         let disposition = controller.beginDrag(at: coord, modifiers: modifiers)
         switch disposition {
         case .replaceFocus(let activeCoord):
-            withSelectionSync {
+            withProgrammaticRowSelection {
                 selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: false)
             }
             focusedRow = activeCoord.row

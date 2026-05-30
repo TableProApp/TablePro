@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Details pane now updates when you select a row by clicking it, not only with the arrow keys. (#1496)
 - Tab and Shift-Tab move focus out of the AI rules text field in the connection form instead of inserting a tab character. (#1490)
 - The cell inspector's Set NULL, Set DEFAULT, copy, and SQL-function actions are now in a right-click context menu on each field, so they're reachable by keyboard, Full Keyboard Access, and VoiceOver, not only on hover. (#1490)
 - VoiceOver reliability: grid selection changes are announced to all assistive technologies (not only when VoiceOver was already on), the drop and truncate dialog toggles describe their effect, and the favorite query editor is labeled. (#1490)

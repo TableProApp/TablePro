@@ -32,13 +32,17 @@ extension TableViewCoordinator {
 
         let previousSelection = selectedRowIndices
         let newSelection = Set(tableView.selectedRowIndexes.map { $0 })
-        if !isSyncingSelection && newSelection != previousSelection {
+        if RowSelectionSyncDecision.shouldWriteRowBinding(previous: previousSelection, new: newSelection) {
             selectedRowIndices = newSelection
         }
 
         guard let keyTableView = tableView as? KeyHandlingTableView else { return }
 
-        if !isSyncingSelection, !newSelection.isEmpty, !selectionController.isEmpty {
+        if RowSelectionSyncDecision.shouldClearCellSelection(
+            isProgrammatic: isApplyingProgrammaticRowSelection,
+            newSelection: newSelection,
+            cellSelectionEmpty: selectionController.isEmpty
+        ) {
             selectionController.clear()
         }
 
