@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>16</integer>
+	<integer>17</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>SQLite</string>
