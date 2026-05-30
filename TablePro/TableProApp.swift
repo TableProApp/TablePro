@@ -427,6 +427,32 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Button(String(localized: "Previous Page")) {
+                actions?.goToPreviousPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .previousPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Next Page")) {
+                actions?.goToNextPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .nextPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "First Page")) {
+                actions?.goToFirstPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .firstPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Last Page")) {
+                actions?.goToLastPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .lastPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
             Button(String(localized: "Save as Favorite")) {
                 actions?.saveAsFavorite()
             }

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Previous Page, Next Page, First Page, and Last Page are now in the Query menu, so the result pager is discoverable and keyboard-reachable from the menu bar (Previous and Next keep their Cmd+[ and Cmd+] shortcuts). (#1490)
 - Keyboard control of the sidebar: focus the filter field (Cmd+Option+F), and switch between the Tables and Favorites sidebars (Ctrl+1 and Ctrl+2). From the filter field, Tab or the Down arrow moves into the list. All three are rebindable in Settings, Keyboard. (#1490)
 - Mark a table as a favorite by clicking the star button at the end of its sidebar row. Favorites are scoped to the connection, database, and schema, pinned to the top of their section, appear in a dedicated Tables group in the Favorites tab, and sync through iCloud when the Table Favorites toggle is on.
 - A plus button in the bottom bar of the Tables sidebar opens a menu to create a new table or view, without right-clicking. It's disabled while safe mode blocks writes.
