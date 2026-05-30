@@ -17,7 +17,7 @@ final class BeancountPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "beancount-icon"
     static let defaultPort = 0
 
-    static let isDownloadable = false
+    static let isDownloadable = true
     static let pathFieldRole: PathFieldRole = .filePath
     static let requiresAuthentication = false
     static let supportsSSH = false

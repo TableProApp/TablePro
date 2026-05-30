@@ -112,6 +112,10 @@ if [[ "${#requested_triples[@]}" -eq 0 ]]; then
 fi
 
 if [[ -n "${TABLEPRO_RUSTLEDGER_BINARY:-}" ]]; then
+  if [[ "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    echo "TABLEPRO_RUSTLEDGER_BINARY is only allowed for local builds; release builds must use the pinned rustledger download." >&2
+    exit 1
+  fi
   copy_helper "$TABLEPRO_RUSTLEDGER_BINARY" "Bundled rustledger helper from TABLEPRO_RUSTLEDGER_BINARY"
   exit 0
 fi

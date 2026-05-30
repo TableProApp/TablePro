@@ -27,7 +27,6 @@
 		5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A868000100000000 /* PostgreSQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A869000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ABC147400000000000001 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5ABC147400000000000002 /* BeancountDriver.tableplugin in Copy Plug-Ins (13 items) */ = {isa = PBXBuildFile; fileRef = 5ABC147400000000000003 /* BeancountDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86A000D00000000 /* CSVExport.tableplugin in Copy Plug-Ins (12 items) */ = {isa = PBXBuildFile; fileRef = 5A86A000100000000 /* CSVExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86B000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -148,13 +147,6 @@
 			remoteGlobalIDString = 5A869000000000000;
 			remoteInfo = DuckDBDriver;
 		};
-		5ABC147400000000000004 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 5ABC147400000000000005;
-			remoteInfo = BeancountDriver;
-		};
 		5ABC14740000000000000F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
@@ -266,7 +258,6 @@
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A863000D00000000 /* ClickHouseDriver.tableplugin in Copy Plug-Ins (12 items) */,
 				5A867000D00000000 /* RedisDriver.tableplugin in Copy Plug-Ins (12 items) */,
-				5ABC147400000000000002 /* BeancountDriver.tableplugin in Copy Plug-Ins (13 items) */,
 				5A86A000D00000000 /* CSVExport.tableplugin in Copy Plug-Ins (12 items) */,
 				5A86B000D00000000 /* JSONExport.tableplugin in Copy Plug-Ins (12 items) */,
 				5A86C000D00000000 /* SQLExport.tableplugin in Copy Plug-Ins (12 items) */,
@@ -1109,7 +1100,6 @@
 				5A867000C00000000 /* PBXTargetDependency */,
 				5A868000C00000000 /* PBXTargetDependency */,
 				5A869000C00000000 /* PBXTargetDependency */,
-				5ABC14740000000000000C /* PBXTargetDependency */,
 				5A86A000C00000000 /* PBXTargetDependency */,
 				5A86B000C00000000 /* PBXTargetDependency */,
 				5A86C000C00000000 /* PBXTargetDependency */,
@@ -2279,11 +2269,6 @@
 			isa = PBXTargetDependency;
 			target = 5A869000000000000 /* DuckDBDriver */;
 			targetProxy = 5A869000B00000000 /* PBXContainerItemProxy */;
-		};
-		5ABC14740000000000000C /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 5ABC147400000000000005 /* BeancountDriver */;
-			targetProxy = 5ABC147400000000000004 /* PBXContainerItemProxy */;
 		};
 		5ABC147400000000000010 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;

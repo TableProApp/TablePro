@@ -30,6 +30,7 @@ PLUGINS=(
     mongodb
     oracle
     duckdb
+    beancount
     mssql
     cassandra
     etcd
