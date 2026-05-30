@@ -100,6 +100,7 @@ struct QueryEditorView: View {
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Clear Query"))
+            .accessibilityLabel(String(localized: "Clear Query"))
 
             // Format button
             Button(action: formatQuery) {
@@ -108,6 +109,7 @@ struct QueryEditorView: View {
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Format Query (⇧⌘L)"))
+            .accessibilityLabel(String(localized: "Format Query"))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .formatQuery))
 
             Divider()

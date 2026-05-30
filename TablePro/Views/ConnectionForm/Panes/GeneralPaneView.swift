@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct GeneralPaneView: View {
     @Bindable var coordinator: ConnectionFormCoordinator
+    @FocusState private var nameFocused: Bool
 
     private var type: DatabaseType { coordinator.network.type }
     private var connectionMode: ConnectionMode {
@@ -35,6 +36,7 @@ struct GeneralPaneView: View {
                     text: $coordinator.network.name,
                     prompt: Text(String(localized: "Connection name"))
                 )
+                .focused($nameFocused)
             }
 
             connectionSection
@@ -42,6 +44,7 @@ struct GeneralPaneView: View {
             testConnectionSection
         }
         .formStyle(.grouped)
+        .defaultFocus($nameFocused, true)
     }
 
     @ViewBuilder
