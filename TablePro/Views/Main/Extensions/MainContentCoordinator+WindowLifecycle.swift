@@ -30,6 +30,7 @@ extension MainContentCoordinator {
         evictionTask = nil
 
         syncSidebarToSelectedTab()
+        announceActiveTabToVoiceOver()
 
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
@@ -79,6 +80,20 @@ extension MainContentCoordinator {
 
         Self.lifecycleLogger.info(
             "[close] coordinator.handleWindowWillClose done connId=\(self.connectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
+        )
+    }
+
+    /// Announce the active tab title to VoiceOver when the window becomes key,
+    /// so assistive-technology users get the same context the window title gives.
+    private func announceActiveTabToVoiceOver() {
+        guard let title = tabManager.selectedTab?.title, !title.isEmpty else { return }
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: title,
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ]
         )
     }
 
