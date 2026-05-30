@@ -87,5 +87,17 @@ private struct AIRulesEditor: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             text.wrappedValue = textView.string
         }
+
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertTab(_:)) {
+                textView.window?.selectNextKeyView(nil)
+                return true
+            }
+            if commandSelector == #selector(NSResponder.insertBacktab(_:)) {
+                textView.window?.selectPreviousKeyView(nil)
+                return true
+            }
+            return false
+        }
     }
 }

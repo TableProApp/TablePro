@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tab and Shift-Tab move focus out of the AI rules text field in the connection form instead of inserting a tab character. (#1490)
 - Tab moves keyboard focus between the window panes (sidebar, results, inspector) by rebuilding the key view loop when the window appears. (#1490)
 - The license activation sheet focuses the key field on open, the SQL review sheet closes with Escape even while the editor has focus, and the integration token sheet focuses its Done button. (#1490)
 - Copy with Headers now has a default keyboard shortcut (Cmd+Option+C), so it works and is discoverable from the keyboard instead of showing in the Edit menu with no key. (#1490)
