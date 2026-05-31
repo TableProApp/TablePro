@@ -29,6 +29,10 @@ protocol ForeignAppImporter {
     /// chosen URL to `setSelectedFile(_:)` before importing.
     var importFileTypes: [UTType]? { get }
     func installedAppURL() -> URL?
+    /// Declared here (not only in the extension) so concrete overrides dispatch
+    /// through `any ForeignAppImporter`. File-sourced importers return true
+    /// regardless of whether a matching app is installed.
+    func isAvailable() -> Bool
     func connectionCount() -> Int
     mutating func setSelectedFile(_ url: URL)
     func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult

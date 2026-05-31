@@ -74,9 +74,10 @@ struct NavicatImporterTests {
 
     // MARK: - Availability
 
-    @Test("isAvailable is true without an installed app")
-    func isAvailableAlwaysTrue() {
-        #expect(NavicatImporter().isAvailable() == true)
+    @Test("isAvailable is true through the protocol existential without an installed app")
+    func isAvailableThroughExistential() {
+        let importer: any ForeignAppImporter = NavicatImporter()
+        #expect(importer.isAvailable() == true)
     }
 
     @Test("Declares an importable file type")
