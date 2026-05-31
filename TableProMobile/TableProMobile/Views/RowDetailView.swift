@@ -94,7 +94,7 @@ struct RowDetailView: View {
             Button(String(localized: "Save"), role: .destructive) {
                 Task { await executePendingSave() }
             }
-            Button(String(localized: "Cancel"), role: .cancel) {}
+            CancelButton {}
         } message: {
             Text(String(format: String(localized: "This will update a row in %@. Continue?"), viewModel.table?.name ?? ""))
         }
@@ -124,14 +124,14 @@ struct RowDetailView: View {
         ToolbarItem(placement: .primaryAction) {
             if viewModel.canEdit {
                 if viewModel.isEditing {
-                    Button {
+                    ConfirmButton {
                         Task { await handleSave() }
                     } label: {
                         if viewModel.isSaving {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Text("Save")
+                            Text("Done")
                         }
                     }
                     .disabled(viewModel.isSaving)
@@ -143,7 +143,7 @@ struct RowDetailView: View {
 
         if viewModel.isEditing {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { viewModel.cancelEditing() }
+                CancelButton { viewModel.cancelEditing() }
                     .disabled(viewModel.isSaving)
             }
         }

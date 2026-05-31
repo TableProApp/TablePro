@@ -121,7 +121,7 @@ struct SettingsView: View {
                 Button(String(localized: "Refresh from iCloud")) {
                     Task { await runRefresh() }
                 }
-                Button(String(localized: "Cancel"), role: .cancel) {}
+                CancelButton {}
             } message: {
                 Text("TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted.")
             }

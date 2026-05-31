@@ -81,10 +81,10 @@ struct ConnectionFormView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: handleSave)
+                    ConfirmButton(action: handleSave) { Text("Done") }
                         .disabled(!viewModel.canSave)
                 }
             }
@@ -104,7 +104,7 @@ struct ConnectionFormView: View {
             .alert("New Database", isPresented: $showNewDatabaseAlert) {
                 TextField("Database name", text: $viewModel.newDatabaseName)
                 Button("Create") { viewModel.createNewDatabase() }
-                Button("Cancel", role: .cancel) { viewModel.newDatabaseName = "" }
+                CancelButton { viewModel.newDatabaseName = "" }
             } message: {
                 Text("Enter a name for the new SQLite database.")
             }

@@ -113,18 +113,18 @@ struct InsertRowView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    CancelButton { dismiss() }
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
+                    ConfirmButton {
                         Task { await insertRow() }
                     } label: {
                         if isSaving {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Text("Save")
+                            Text("Done")
                         }
                     }
                     .disabled(isSaving)
@@ -145,7 +145,7 @@ struct InsertRowView: View {
                 Button(String(localized: "Insert"), role: .destructive) {
                     Task { await executePendingInsert() }
                 }
-                Button(String(localized: "Cancel"), role: .cancel) {}
+                CancelButton {}
             } message: {
                 Text(String(format: String(localized: "This will insert a row into %@. Continue?"), table.name))
             }

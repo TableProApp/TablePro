@@ -32,15 +32,17 @@ struct GroupFormSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    ConfirmButton {
                         var group = existingGroup ?? ConnectionGroup()
                         group.name = name
                         group.color = color
                         onSave(group)
                         dismiss()
+                    } label: {
+                        Text("Done")
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }

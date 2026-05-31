@@ -151,7 +151,7 @@ struct DataBrowserView: View {
                         Task { await viewModel.goToPage(page) }
                     }
                 }
-                Button("Cancel", role: .cancel) {}
+                CancelButton {}
             } message: {
                 if let total = viewModel.pagination.totalRows {
                     let totalPages = (total + viewModel.pagination.pageSize - 1) / viewModel.pagination.pageSize
