@@ -94,7 +94,7 @@ struct RowDetailView: View {
             Button(String(localized: "Save"), role: .destructive) {
                 Task { await executePendingSave() }
             }
-            CancelButton {}
+            Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
             Text(String(format: String(localized: "This will update a row in %@. Continue?"), viewModel.table?.name ?? ""))
         }
@@ -124,15 +124,8 @@ struct RowDetailView: View {
         ToolbarItem(placement: .primaryAction) {
             if viewModel.canEdit {
                 if viewModel.isEditing {
-                    ConfirmButton {
+                    ConfirmButton(title: "Save", isInProgress: viewModel.isSaving) {
                         Task { await handleSave() }
-                    } label: {
-                        if viewModel.isSaving {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Done")
-                        }
                     }
                     .disabled(viewModel.isSaving)
                 } else {

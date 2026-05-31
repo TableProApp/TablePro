@@ -91,13 +91,11 @@ struct FilterSheetView: View {
                     CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    ConfirmButton {
+                    ConfirmButton(title: "Apply") {
                         filters = draft
                         logicMode = draftLogicMode
                         onApply()
                         dismiss()
-                    } label: {
-                        Text("Done")
                     }
                     .disabled(!hasValidFilters)
                 }

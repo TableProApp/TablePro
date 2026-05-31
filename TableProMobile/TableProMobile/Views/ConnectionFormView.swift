@@ -84,7 +84,7 @@ struct ConnectionFormView: View {
                     CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    ConfirmButton(action: handleSave) { Text("Done") }
+                    ConfirmButton(title: "Save", action: handleSave)
                         .disabled(!viewModel.canSave)
                 }
             }
@@ -104,7 +104,7 @@ struct ConnectionFormView: View {
             .alert("New Database", isPresented: $showNewDatabaseAlert) {
                 TextField("Database name", text: $viewModel.newDatabaseName)
                 Button("Create") { viewModel.createNewDatabase() }
-                CancelButton { viewModel.newDatabaseName = "" }
+                Button("Cancel", role: .cancel) { viewModel.newDatabaseName = "" }
             } message: {
                 Text("Enter a name for the new SQLite database.")
             }

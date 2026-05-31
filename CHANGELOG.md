@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Destructive queries (DROP, TRUNCATE, DELETE without WHERE) now always ask for confirmation, even with Safe Mode off. (#1481)
 - Table structure changes, table creation, maintenance, column reorder, and saved data-grid edits now follow the connection's Safe Mode and read-only setting. (#1481)
 - AI assistant and MCP queries now follow the same Safe Mode confirmation, read-only, and authentication rules as the editor. (#1481)
+- iOS: sheet close, cancel, and confirm buttons use the native iOS 26 button roles, matching system apps like Mail. iOS 18 keeps titled buttons. (#1524)
 
 ### Removed
 

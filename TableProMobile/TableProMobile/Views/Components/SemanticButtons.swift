@@ -24,20 +24,19 @@ struct CancelButton: View {
     }
 }
 
-struct ConfirmButton<Label: View>: View {
-    private let action: () -> Void
-    private let label: Label
-
-    init(action: @escaping () -> Void, @ViewBuilder label: () -> Label) {
-        self.action = action
-        self.label = label()
-    }
+struct ConfirmButton: View {
+    let title: LocalizedStringKey
+    var isInProgress = false
+    let action: () -> Void
 
     var body: some View {
-        if #available(iOS 26.0, *) {
+        if isInProgress {
+            ProgressView()
+                .controlSize(.small)
+        } else if #available(iOS 26.0, *) {
             Button(role: .confirm, action: action)
         } else {
-            Button(action: action) { label }
+            Button(title, action: action)
         }
     }
 }

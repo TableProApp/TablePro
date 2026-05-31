@@ -82,7 +82,7 @@ struct ConnectedView: View {
                 Text(String(format: String(localized: "Connecting to %@..."),
                              connection.name.isEmpty ? connection.host : connection.name))
             }
-            CancelButton {
+            Button(String(localized: "Cancel"), role: .cancel) {
                 dismiss()
             }
             .buttonStyle(.bordered)

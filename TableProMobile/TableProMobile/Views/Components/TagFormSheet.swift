@@ -35,14 +35,12 @@ struct TagFormSheet: View {
                     CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    ConfirmButton {
+                    ConfirmButton(title: "Save") {
                         var tag = existingTag ?? ConnectionTag()
                         tag.name = name
                         tag.color = color
                         onSave(tag)
                         dismiss()
-                    } label: {
-                        Text("Done")
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }

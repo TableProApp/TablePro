@@ -35,14 +35,12 @@ struct GroupFormSheet: View {
                     CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    ConfirmButton {
+                    ConfirmButton(title: "Save") {
                         var group = existingGroup ?? ConnectionGroup()
                         group.name = name
                         group.color = color
                         onSave(group)
                         dismiss()
-                    } label: {
-                        Text("Done")
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
