@@ -20,7 +20,7 @@ struct NavicatImporter: ForeignAppImporter {
     var ncxFileURL: URL?
 
     var importFileTypes: [UTType]? {
-        [UTType(filenameExtension: "ncx", conformingTo: .xml) ?? .xml]
+        [UTType(filenameExtension: "ncx") ?? .data]
     }
 
     func isAvailable() -> Bool { true }

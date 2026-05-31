@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import Testing
+import UniformTypeIdentifiers
 
 @Suite("NavicatImporter", .serialized)
 struct NavicatImporterTests {
@@ -80,9 +81,13 @@ struct NavicatImporterTests {
         #expect(importer.isAvailable() == true)
     }
 
-    @Test("Declares an importable file type")
-    func declaresImportFileTypes() {
-        #expect(NavicatImporter().importFileTypes != nil)
+    @Test("Declares a file type that a real .ncx file matches")
+    func ncxFileMatchesImportFileTypes() throws {
+        let url = tempDir.appendingPathComponent("sample.ncx")
+        try "<Connections Ver=\"1.1\"/>".write(to: url, atomically: true, encoding: .utf8)
+        let resolved = try #require(url.resourceValues(forKeys: [.contentTypeKey]).contentType)
+        let types = try #require(NavicatImporter().importFileTypes)
+        #expect(types.contains { resolved.conforms(to: $0) })
     }
 
     @Test("readsPasswordsFromKeychain is false")
