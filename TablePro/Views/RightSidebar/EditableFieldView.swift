@@ -73,6 +73,22 @@ internal struct FieldDetailView: View {
         }
         .labelsHidden()
         .onHover { isHovered = $0 }
+        .contextMenu {
+            if !context.isReadOnly {
+                FieldMenuContent(
+                    value: context.value.wrappedValue,
+                    columnType: context.columnType,
+                    sqlFunctions: SQLFunctionProvider.functions(for: databaseType),
+                    isPendingNull: isPendingNull,
+                    isPendingDefault: isPendingDefault,
+                    onSetNull: onSetNull,
+                    onSetDefault: onSetDefault,
+                    onSetEmpty: onSetEmpty,
+                    onSetFunction: onSetFunction,
+                    onClear: { context.value.wrappedValue = context.originalValue ?? "" }
+                )
+            }
+        }
     }
 
     // MARK: - Header
@@ -120,8 +136,14 @@ internal struct FieldDetailView: View {
 
     // MARK: - Editor Dispatch
 
-    @ViewBuilder
     private func resolvedEditor(for kind: FieldEditorKind) -> some View {
+        editorContent(for: kind)
+            .accessibilityLabel(context.columnName)
+            .accessibilityValue(context.value.wrappedValue)
+    }
+
+    @ViewBuilder
+    private func editorContent(for kind: FieldEditorKind) -> some View {
         switch kind {
         case .json:
             JsonEditorView(context: context, onExpand: onExpand, onPopOut: onPopOut)

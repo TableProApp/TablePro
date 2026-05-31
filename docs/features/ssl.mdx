@@ -69,6 +69,10 @@ The certificate's CN/SAN doesn't include the host you're connecting to. Switch f
 
 Server requires mutual TLS. Fill in the **Client Certificate** and **Client Key** paths in the SSL tab.
 
+### "client private key is encrypted" / "passphrase is incorrect"
+
+The client key is password-protected. Enter the **Key Passphrase** in the SSL tab. The field appears once a client key path is set, and the passphrase is stored in the Keychain. Currently supported by the Cassandra driver.
+
 ## Preferred fallback behavior
 
 Preferred mode tries TLS first. What happens if the server doesn't support TLS depends on the driver:

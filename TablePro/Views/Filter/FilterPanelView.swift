@@ -40,6 +40,10 @@ struct FilterPanelView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .focusSection()
+        .onExitCommand {
+            closePanelAndFocusGrid()
+        }
         .onAppear {
             if filterState.filters.isEmpty && !columns.isEmpty {
                 coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
@@ -85,6 +89,7 @@ struct FilterPanelView: View {
             Button("Unset") {
                 coordinator.clearFilterState()
                 onUnset()
+                coordinator.focusActiveGrid()
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -96,6 +101,7 @@ struct FilterPanelView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .keyboardShortcut(.defaultAction)
             .disabled(validFilterCount == 0)
             .help(String(localized: "Apply filters"))
         }
@@ -202,9 +208,11 @@ struct FilterPanelView: View {
                         coordinator.removeFilterAndReload(filter)
                         if filterState.filters.isEmpty {
                             coordinator.closeFilterPanel()
+                            coordinator.focusActiveGrid()
                         }
                     },
                     onSubmit: { applyAllValidFilters() },
+                    onCancel: { closePanelAndFocusGrid() },
                     focusedFilterId: $focusedFilterId
                 )
             }
@@ -237,6 +245,12 @@ struct FilterPanelView: View {
     private func applyAllValidFilters() {
         coordinator.applyAllFilters()
         onApply(coordinator.selectedTabFilterState.appliedFilters)
+        coordinator.focusActiveGrid()
+    }
+
+    private func closePanelAndFocusGrid() {
+        coordinator.closeFilterPanel()
+        coordinator.focusActiveGrid()
     }
 
     private var isSQLDialect: Bool {

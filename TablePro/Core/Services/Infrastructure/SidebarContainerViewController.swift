@@ -38,12 +38,14 @@ internal final class SidebarContainerViewController: NSViewController {
         searchField.sendsSearchStringImmediately = true
         searchField.delegate = self
         searchField.setAccessibilityIdentifier("sidebar-filter")
+        searchField.setAccessibilityLabel(String(localized: "Filter"))
         view.addSubview(searchField)
 
         addChild(hostingController)
         let hostingView = hostingController.view
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
+        searchField.nextKeyView = hostingView
 
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
@@ -55,6 +57,11 @@ internal final class SidebarContainerViewController: NSViewController {
             hostingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hostingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+    }
+
+    func focusSearchField() {
+        guard !searchField.isHidden else { return }
+        view.window?.makeFirstResponder(searchField)
     }
 
     func updateSidebarState(_ state: SharedSidebarState?, windowState: WindowSidebarState?) {
@@ -113,6 +120,7 @@ internal final class SidebarContainerViewController: NSViewController {
             searchField.stringValue = activeText
         }
         searchField.placeholderString = placeholder
+        searchField.setAccessibilityLabel(placeholder)
     }
 }
 
@@ -124,6 +132,12 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
 
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
         writeSearchText("")
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.moveDown(_:)) else { return false }
+        view.window?.makeFirstResponder(hostingController.view)
+        return true
     }
 
     private func writeSearchText(_ text: String) {

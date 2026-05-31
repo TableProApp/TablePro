@@ -286,6 +286,7 @@ struct SequelAceImporter: ForeignAppImporter {
             password: dbPassword,
             sshPassword: sshPassword,
             keyPassphrase: nil,
+            sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )

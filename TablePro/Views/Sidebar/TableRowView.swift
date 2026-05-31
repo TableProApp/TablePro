@@ -26,13 +26,15 @@ enum TableRowLogic {
         }
     }
 
-    static func accessibilityLabel(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool) -> String {
+    static func accessibilityLabel(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool, isFavorite: Bool = false) -> String {
         let kind = accessibilityKindLabel(for: table.type)
         var label = String(format: String(localized: "%@: %@"), kind, table.name)
         if isPendingDelete {
             label += ", " + String(localized: "pending delete")
         } else if isPendingTruncate {
             label += ", " + String(localized: "pending truncate")
+        } else if isFavorite {
+            label += ", " + String(localized: "favorite")
         }
         return label
     }
@@ -42,6 +44,10 @@ struct TableRow: View {
     let table: TableInfo
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
+    var isFavorite: Bool = false
+    var onToggleFavorite: (() -> Void)?
+
+    @State private var isHovered = false
 
     @ViewBuilder
     private var pendingStateBadge: some View {
@@ -57,18 +63,67 @@ struct TableRow: View {
     }
 
     var body: some View {
-        Label {
-            Text(table.name)
-                .lineLimit(1)
-        } icon: {
-            Image(systemName: TableRowLogic.iconName(for: table.type))
-                .sidebarTint(Color.accentColor)
-                .frame(width: 16)
-                .overlay(alignment: .bottomTrailing) {
-                    pendingStateBadge
+        HStack(spacing: 6) {
+            Label {
+                Text(table.name)
+                    .lineLimit(1)
+            } icon: {
+                Image(systemName: TableRowLogic.iconName(for: table.type))
+                    .sidebarTint(Color.accentColor)
+                    .frame(width: 16)
+                    .overlay(alignment: .bottomTrailing) {
+                        pendingStateBadge
+                    }
+            }
+
+            Spacer(minLength: 4)
+
+            if let onToggleFavorite {
+                let starVisible = isFavorite || isHovered
+                Button(action: onToggleFavorite) {
+                    Image(systemName: isFavorite ? "star.fill" : "star")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
+                        .contentShape(Rectangle())
+                        .frame(width: 20, height: 20)
                 }
+                .buttonStyle(.plain)
+                .opacity(starVisible ? 1 : 0)
+                .allowsHitTesting(starVisible)
+                .accessibilityHidden(true)
+                .help(isFavorite
+                      ? String(localized: "Remove from Favorites")
+                      : String(localized: "Add to Favorites"))
+            }
         }
+        .onHover { isHovered = $0 }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(TableRowLogic.accessibilityLabel(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
+        .accessibilityLabel(
+            TableRowLogic.accessibilityLabel(
+                table: table,
+                isPendingDelete: isPendingDelete,
+                isPendingTruncate: isPendingTruncate,
+                isFavorite: isFavorite
+            )
+        )
+        .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: onToggleFavorite))
+    }
+}
+
+private struct FavoriteAccessibilityAction: ViewModifier {
+    let isFavorite: Bool
+    let toggle: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        if let toggle {
+            content.accessibilityAction(
+                named: isFavorite
+                    ? Text("Remove from Favorites")
+                    : Text("Add to Favorites"),
+                toggle
+            )
+        } else {
+            content
+        }
     }
 }

@@ -202,6 +202,13 @@
 			remoteGlobalIDString = 5A1091C62EF17EDC0055EA7C;
 			remoteInfo = TablePro;
 		};
+		5AF00A112FB9000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A1091C62EF17EDC0055EA7C;
+			remoteInfo = TablePro;
+		};
 		5ABQR00000000000000000C0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
@@ -297,6 +304,7 @@
 		5A87A000100000000 /* CassandraDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassandraDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABBED792FB55E1400A78382 /* CSVInspectorPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CSVInspectorPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5AF00A102FB9000000000001 /* TableProUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABQR00200000000000000A1 /* BigQueryAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryAuth.swift; sourceTree = "<group>"; };
 		5ABQR00200000000000000A2 /* BigQueryConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryConnection.swift; sourceTree = "<group>"; };
 		5ABQR00200000000000000A3 /* BigQueryPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryPlugin.swift; sourceTree = "<group>"; };
@@ -677,6 +685,11 @@
 			path = TableProTests;
 			sourceTree = "<group>";
 		};
+		5AF00A122FB9000000000001 /* TableProUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TableProUITests;
+			sourceTree = "<group>";
+		};
 		5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -702,6 +715,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A32BBFD2F9D5F1300BAEB5F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5AF00A132FB9000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -939,6 +959,7 @@
 				5A86E000500000000 /* Plugins/MQLExportPlugin */,
 				5A86F000500000000 /* Plugins/SQLImportPlugin */,
 				5ABCC5A82F43856700EAF3FC /* TableProTests */,
+				5AF00A122FB9000000000001 /* TableProUITests */,
 				5A32BC012F9D5F1300BAEB5F /* mcp-server */,
 				5A1091C82EF17EDC0055EA7C /* Products */,
 				5A05FBC72F3EDF7500819CD7 /* Recovered References */,
@@ -968,6 +989,7 @@
 				5A86E000100000000 /* MQLExport.tableplugin */,
 				5A86F000100000000 /* SQLImport.tableplugin */,
 				5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */,
+				5AF00A102FB9000000000001 /* TableProUITests.xctest */,
 				5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */,
 				5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */,
 				5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */,
@@ -1524,6 +1546,27 @@
 			productReference = 5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		5AF00A142FB9000000000001 /* TableProUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5AF00A192FB9000000000001 /* Build configuration list for PBXNativeTarget "TableProUITests" */;
+			buildPhases = (
+				5AF00A152FB9000000000001 /* Sources */,
+				5AF00A132FB9000000000001 /* Frameworks */,
+				5AF00A162FB9000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5AF00A172FB9000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5AF00A122FB9000000000001 /* TableProUITests */,
+			);
+			name = TableProUITests;
+			productName = TableProUITests;
+			productReference = 5AF00A102FB9000000000001 /* TableProUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		5ABQR00600000000000000B0 /* BigQueryDriverPlugin */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5ABQR00800000000000000B0 /* Build configuration list for PBXNativeTarget "BigQueryDriverPlugin" */;
@@ -1671,6 +1714,10 @@
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 5A1091C62EF17EDC0055EA7C;
 					};
+					5AF00A142FB9000000000001 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 5A1091C62EF17EDC0055EA7C;
+					};
 					5AE4F4732F6BC0640097AC5B = {
 						CreatedOnToolsVersion = 26.3;
 						LastSwiftMigration = 2630;
@@ -1725,6 +1772,7 @@
 				5A86E000000000000 /* MQLExport */,
 				5A86F000000000000 /* SQLImport */,
 				5ABCC5A62F43856700EAF3FC /* TableProTests */,
+				5AF00A142FB9000000000001 /* TableProUITests */,
 				5AEA8B292F6808270040461A /* EtcdDriverPlugin */,
 				5AE4F4732F6BC0640097AC5B /* CloudflareD1DriverPlugin */,
 				5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */,
@@ -1738,6 +1786,13 @@
 
 /* Begin PBXResourcesBuildPhase section */
 		5A1091C52EF17EDC0055EA7C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5AF00A162FB9000000000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1923,6 +1978,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A32BBFC2F9D5F1300BAEB5F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5AF00A152FB9000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2211,6 +2273,11 @@
 			isa = PBXTargetDependency;
 			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
 			targetProxy = 5ABCC5AB2F43856700EAF3FC /* PBXContainerItemProxy */;
+		};
+		5AF00A172FB9000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
+			targetProxy = 5AF00A112FB9000000000001 /* PBXContainerItemProxy */;
 		};
 		5ABQR00000000000000000C1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -3713,6 +3780,48 @@
 			};
 			name = Release;
 		};
+		5AF00A182FB9000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.TableProUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.9;
+				TEST_TARGET_NAME = TablePro;
+			};
+			name = Debug;
+		};
+		5AF00A1A2FB9000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.TableProUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.9;
+				TEST_TARGET_NAME = TablePro;
+			};
+			name = Release;
+		};
 		5ABQR00700000000000000B1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -4112,6 +4221,15 @@
 			buildConfigurations = (
 				5ABCC5AE2F43856700EAF3FC /* Debug */,
 				5ABCC5AF2F43856700EAF3FC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5AF00A192FB9000000000001 /* Build configuration list for PBXNativeTarget "TableProUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5AF00A182FB9000000000001 /* Debug */,
+				5AF00A1A2FB9000000000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

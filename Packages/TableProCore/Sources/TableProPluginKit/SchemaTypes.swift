@@ -1,5 +1,13 @@
+//
+//  SchemaTypes.swift
+//  TableProPluginKit
+//
+//  Transfer types for DDL schema operations.
+//
+
 import Foundation
 
+/// Column definition for plugin DDL generation
 public struct PluginColumnDefinition: Sendable {
     public let name: String
     public let dataType: String
@@ -40,6 +48,7 @@ public struct PluginColumnDefinition: Sendable {
     }
 }
 
+/// Index definition for plugin DDL generation
 public struct PluginIndexDefinition: Sendable {
     public let name: String
     public let columns: [String]
@@ -65,6 +74,7 @@ public struct PluginIndexDefinition: Sendable {
     }
 }
 
+/// Foreign key definition for plugin DDL generation
 public struct PluginForeignKeyDefinition: Sendable {
     public let name: String
     public let columns: [String]
@@ -93,6 +103,7 @@ public struct PluginForeignKeyDefinition: Sendable {
     }
 }
 
+/// Full table definition for CREATE TABLE DDL generation
 public struct PluginCreateTableDefinition: Sendable {
     public let tableName: String
     public let columns: [PluginColumnDefinition]

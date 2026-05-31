@@ -882,7 +882,8 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsClientKeyPassphrase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -944,7 +945,8 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsClientKeyPassphrase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

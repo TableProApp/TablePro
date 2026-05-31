@@ -156,7 +156,7 @@ struct DatabaseTreeView: View {
             )
         } primaryAction: { selection in
             guard let ref = selection.first else { return }
-            openTable(ref.table, in: ref.database, schema: ref.schema)
+            openTable(ref.table, in: ref.database, schema: ref.schema, activateGridFocus: true)
         }
         .onExitCommand {
             localSelection.removeAll()
@@ -182,6 +182,8 @@ struct DatabaseTreeView: View {
             Image(systemName: db.isSystemDatabase ? "gearshape" : "cylinder")
                 .foregroundStyle(db.isSystemDatabase ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
         }
+        .accessibilityLabel(String(format: String(localized: "Database: %@"), db.name))
+        .accessibilityAddTraits(.isHeader)
         .contextMenu {
             Button(String(localized: "Use as Active Database")) {
                 setActiveDatabase(db.name)
@@ -204,6 +206,8 @@ struct DatabaseTreeView: View {
             Image(systemName: "folder")
                 .foregroundStyle(.tint)
         }
+        .accessibilityLabel(String(format: String(localized: "Schema: %@"), schema))
+        .accessibilityAddTraits(.isHeader)
         .contextMenu {
             Button(String(localized: "Use as Active Schema")) {
                 setActiveSchema(database: database, schema: schema)
@@ -367,7 +371,7 @@ struct DatabaseTreeView: View {
         }
     }
 
-    private func openTable(_ table: TableInfo, in database: String, schema: String?) {
+    private func openTable(_ table: TableInfo, in database: String, schema: String?, activateGridFocus: Bool = false) {
         Task { @MainActor in
             if database != activeDatabase {
                 await coordinator?.switchDatabase(to: database)
@@ -377,7 +381,7 @@ struct DatabaseTreeView: View {
                PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
                 await coordinator?.switchSchema(to: schema)
             }
-            coordinator?.openTableTab(table)
+            coordinator?.openTableTab(table, activateGridFocus: activateGridFocus)
         }
     }
 

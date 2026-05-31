@@ -167,12 +167,25 @@ final class SyncCoordinator {
             changeTracker.markDirty(.sshProfile, id: profile.id.uuidString)
         }
 
+        let favoriteTables = services.favoriteTablesStorage.loadFavorites()
+        for entry in favoriteTables {
+            changeTracker.markDirty(.tableFavorite, id: FavoriteTablesStorage.syncId(for: entry))
+        }
+
         // Mark all settings categories as dirty
         for category in ["general", "appearance", "editor", "dataGrid", "history", "tabs", "keyboard", "ai"] {
             changeTracker.markDirty(.settings, id: category)
         }
 
-        Self.logger.info("Marked all local data dirty: \(connections.count) connections, \(groups.count) groups, \(tags.count) tags, \(sshProfiles.count) SSH profiles, 8 settings categories")
+        let summary = [
+            "connections=\(connections.count)",
+            "groups=\(groups.count)",
+            "tags=\(tags.count)",
+            "sshProfiles=\(sshProfiles.count)",
+            "favoriteTables=\(favoriteTables.count)",
+            "settings=8"
+        ].joined(separator: ", ")
+        Self.logger.info("Marked all local data dirty: \(summary, privacy: .public)")
     }
 
     /// Called when user disables sync in settings
@@ -291,6 +304,10 @@ final class SyncCoordinator {
             }
         }
 
+        if settings.syncTableFavorites {
+            collectDirtyTableFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
+        }
+
         // Deduplicate deletion IDs to prevent CloudKit "can't delete same record twice" error
         let uniqueDeletions = Array(Set(recordIDsToDelete))
 
@@ -311,6 +328,9 @@ final class SyncCoordinator {
             }
             if settings.syncSettings {
                 changeTracker.clearAllDirty(.settings)
+            }
+            if settings.syncTableFavorites {
+                changeTracker.clearAllDirty(.tableFavorite)
             }
 
             // Clear tombstones only for types that were actually pushed
@@ -335,6 +355,11 @@ final class SyncCoordinator {
             if settings.syncSettings {
                 for tombstone in metadataStorage.tombstones(for: .settings) {
                     metadataStorage.removeTombstone(type: .settings, id: tombstone.id)
+                }
+            }
+            if settings.syncTableFavorites {
+                for tombstone in metadataStorage.tombstones(for: .tableFavorite) {
+                    metadataStorage.removeTombstone(type: .tableFavorite, id: tombstone.id)
                 }
             }
 
@@ -403,6 +428,7 @@ final class SyncCoordinator {
         let groupTombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
+        let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
 
         for record in result.changedRecords {
             switch record.recordType {
@@ -422,6 +448,8 @@ final class SyncCoordinator {
                 applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
             case SyncRecordType.settings.rawValue where settings.syncSettings:
                 applyRemoteSettings(record)
+            case SyncRecordType.tableFavorite.rawValue where settings.syncTableFavorites:
+                applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
             default:
                 break
             }
@@ -431,6 +459,7 @@ final class SyncCoordinator {
         var groupIdsToDelete: Set<UUID> = []
         var tagIdsToDelete: Set<UUID> = []
         var sshProfileIdsToDelete: Set<UUID> = []
+        var tableFavoriteIdsToDelete: Set<String> = []
 
         for recordID in result.deletedRecordIDs {
             let name = recordID.recordName
@@ -449,6 +478,8 @@ final class SyncCoordinator {
             } else if name.hasPrefix("SSHProfile_"),
                       let uuid = UUID(uuidString: String(name.dropFirst("SSHProfile_".count))) {
                 sshProfileIdsToDelete.insert(uuid)
+            } else if name.hasPrefix("FavoriteTable_") {
+                tableFavoriteIdsToDelete.insert(String(name.dropFirst("FavoriteTable_".count)))
             }
         }
 
@@ -473,6 +504,9 @@ final class SyncCoordinator {
             var profiles = services.sshProfileStorage.loadProfiles()
             profiles.removeAll { sshProfileIdsToDelete.contains($0.id) }
             services.sshProfileStorage.saveProfilesWithoutSync(profiles)
+        }
+        for id in tableFavoriteIdsToDelete {
+            services.favoriteTablesStorage.removeFavoriteWithoutSync(id: id)
         }
 
         if actualConnectionChanges || groupsOrTagsChanged {
@@ -585,8 +619,29 @@ final class SyncCoordinator {
         do {
             try applySettingsData(data, for: category)
         } catch {
-            Self.logger.error("Skipping remote settings \(record.recordID.recordName, privacy: .public) (\(category, privacy: .public)): \(error.localizedDescription, privacy: .public)")
+            let recordName = record.recordID.recordName
+            let message = error.localizedDescription
+            Self.logger.error(
+                "Skipping remote settings \(recordName, privacy: .public) (\(category, privacy: .public)): \(message, privacy: .public)"
+            )
         }
+    }
+
+    @discardableResult
+    private func applyRemoteTableFavorite(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
+        let entry: FavoriteTablesStorage.FavoriteEntry
+        do {
+            entry = try SyncRecordMapper.favoriteEntry(from: record)
+        } catch {
+            let recordName = record.recordID.recordName
+            let message = error.localizedDescription
+            Self.logger.error(
+                "Skipping remote favorite table \(recordName, privacy: .public): \(message, privacy: .public)"
+            )
+            return false
+        }
+        if tombstoneIds.contains(FavoriteTablesStorage.syncId(for: entry)) { return false }
+        return services.favoriteTablesStorage.addFavoriteWithoutSync(entry)
     }
 
     // MARK: - Observers
@@ -689,6 +744,7 @@ final class SyncCoordinator {
             case SyncRecordType.tag.rawValue: syncRecordType = .tag
             case SyncRecordType.settings.rawValue: syncRecordType = .settings
             case SyncRecordType.sshProfile.rawValue: syncRecordType = .sshProfile
+            case SyncRecordType.tableFavorite.rawValue: syncRecordType = .tableFavorite
             default: continue
             }
 
@@ -824,6 +880,26 @@ final class SyncCoordinator {
         for tombstone in metadataStorage.tombstones(for: .sshProfile) {
             deletions.append(
                 SyncRecordMapper.recordID(type: .sshProfile, id: tombstone.id, in: zoneID)
+            )
+        }
+    }
+
+    private func collectDirtyTableFavorites(
+        into records: inout [CKRecord],
+        deletions: inout [CKRecord.ID],
+        zoneID: CKRecordZone.ID
+    ) {
+        let dirtyIds = changeTracker.dirtyRecords(for: .tableFavorite)
+        if !dirtyIds.isEmpty {
+            let favorites = services.favoriteTablesStorage.loadFavorites()
+            for entry in favorites where dirtyIds.contains(FavoriteTablesStorage.syncId(for: entry)) {
+                records.append(SyncRecordMapper.toCKRecord(favoriteEntry: entry, in: zoneID))
+            }
+        }
+
+        for tombstone in metadataStorage.tombstones(for: .tableFavorite) {
+            deletions.append(
+                SyncRecordMapper.recordID(type: .tableFavorite, id: tombstone.id, in: zoneID)
             )
         }
     }

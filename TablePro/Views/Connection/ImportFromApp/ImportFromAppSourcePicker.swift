@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ImportFromAppSourcePicker: View {
     let onSelect: (any ForeignAppImporter, Bool) -> Void
@@ -74,7 +75,11 @@ struct ImportFromAppSourcePicker: View {
                 Text(state.importer.displayName)
                     .font(.body)
 
-                if state.available {
+                if state.importer.importFileTypes != nil {
+                    Text(String(localized: "Choose an export file to import"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else if state.available {
                     Text(
                         state.count == 1
                             ? String(localized: "1 connection found")
@@ -113,7 +118,7 @@ struct ImportFromAppSourcePicker: View {
     private var passwordToggle: some View {
         VStack(alignment: .leading, spacing: 2) {
             Toggle("Include passwords", isOn: $includePasswords)
-            Text("Read saved passwords from Keychain (requires permission)")
+            Text(includePasswordsSubtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -139,9 +144,19 @@ struct ImportFromAppSourcePicker: View {
 
     // MARK: - Computed
 
+    private var selectedImporter: (any ForeignAppImporter)? {
+        importerStates.first { $0.importer.id == selectedId }?.importer
+    }
+
     private var isSelectedAvailable: Bool {
-        guard let selectedId else { return false }
-        return importerStates.first { $0.importer.id == selectedId }?.available ?? false
+        importerStates.first { $0.importer.id == selectedId }?.available ?? false
+    }
+
+    private var includePasswordsSubtitle: String {
+        if selectedImporter?.readsPasswordsFromKeychain ?? true {
+            return String(localized: "Read saved passwords from Keychain (requires permission)")
+        }
+        return String(localized: "Saved passwords are decrypted during import")
     }
 
     // MARK: - Actions
@@ -166,9 +181,38 @@ struct ImportFromAppSourcePicker: View {
     }
 
     private func continueAction() {
-        guard let selectedId,
-              let state = importerStates.first(where: { $0.importer.id == selectedId }),
+        guard let state = importerStates.first(where: { $0.importer.id == selectedId }),
               state.available else { return }
-        onSelect(state.importer, includePasswords)
+
+        if state.importer.importFileTypes != nil {
+            presentFilePicker(for: state.importer)
+        } else {
+            onSelect(state.importer, includePasswords)
+        }
+    }
+
+    private func presentFilePicker(for importer: any ForeignAppImporter) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if let types = importer.importFileTypes {
+            panel.allowedContentTypes = types
+        }
+        panel.message = String(format: String(localized: "Choose a %@ export file to import"), importer.displayName)
+
+        let includePasswords = includePasswords
+        let completion: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            var configured = importer
+            configured.setSelectedFile(url)
+            onSelect(configured, includePasswords)
+        }
+
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
+        }
     }
 }

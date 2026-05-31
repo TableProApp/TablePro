@@ -10,6 +10,8 @@ import TableProPluginKit
 
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
+    @State private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
+
     private var schemaService: SchemaService { SchemaService.shared }
 
     var sidebarState: SharedSidebarState
@@ -100,16 +102,14 @@ struct SidebarView: View {
             case .tables:
                 VStack(spacing: 0) {
                     tablesContent
-                    if supportsSchemaFooter {
-                        Divider()
-                        SchemaPickerFooter(connectionId: connectionId, databaseType: viewModel.databaseType)
-                    }
+                    tablesBottomBar
                 }
             case .favorites:
                 if let coordinator {
                     FavoritesTabView(
                         connectionId: connectionId,
                         windowState: coordinator.windowSidebarState,
+                        tables: tables,
                         coordinator: coordinator
                     )
                 } else {
@@ -156,6 +156,42 @@ struct SidebarView: View {
         } else {
             flatContent
         }
+    }
+
+    // MARK: - Bottom Bar
+
+    private var tablesBottomBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 8) {
+                createObjectMenu
+                Spacer()
+                if supportsSchemaFooter {
+                    SchemaPickerControl(
+                        connectionId: connectionId,
+                        databaseType: viewModel.databaseType,
+                        coordinator: coordinator
+                    )
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private var createObjectMenu: some View {
+        Menu {
+            Button(String(localized: "New Table")) { coordinator?.createNewTable() }
+            Button(String(localized: "New View")) { coordinator?.createView() }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "Create a new table or view"))
+        .disabled(coordinator?.safeModeLevel.blocksAllWrites ?? true)
+        .accessibilityIdentifier("sidebar-create-table")
     }
 
     private var usesDatabaseTree: Bool {
@@ -252,6 +288,29 @@ struct SidebarView: View {
 
     // MARK: - Table List
 
+    private var activeDatabase: String? {
+        let name = coordinator?.activeDatabaseName ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    private func isFavorite(_ table: TableInfo) -> Bool {
+        favoriteTables.contains(FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connectionId,
+            database: activeDatabase,
+            schema: table.schema,
+            name: table.name
+        ))
+    }
+
+    private func toggleFavorite(_ table: TableInfo) {
+        FavoriteTablesStorage.shared.toggle(
+            name: table.name,
+            schema: table.schema,
+            database: activeDatabase,
+            connectionId: connectionId
+        )
+    }
+
     private var tableList: some View {
         List(selection: selectedTablesBinding) {
             ForEach(SidebarObjectKind.allCases, id: \.self) { kind in
@@ -294,6 +353,12 @@ struct SidebarView: View {
         .onExitCommand {
             windowState.selectedTables.removeAll()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .favoriteTablesDidChange)) { _ in
+            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+        }
+        .onAppear {
+            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+        }
     }
 
     // MARK: - Section View
@@ -335,7 +400,9 @@ struct SidebarView: View {
                 TableRow(
                     table: table,
                     isPendingTruncate: pendingTruncates.contains(table.name),
-                    isPendingDelete: pendingDeletes.contains(table.name)
+                    isPendingDelete: pendingDeletes.contains(table.name),
+                    isFavorite: isFavorite(table),
+                    onToggleFavorite: { toggleFavorite(table) }
                 )
                 .tag(table)
             }

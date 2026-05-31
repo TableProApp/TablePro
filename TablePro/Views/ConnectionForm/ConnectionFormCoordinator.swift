@@ -318,6 +318,12 @@ final class ConnectionFormCoordinator {
             storage.deleteTOTPSecret(for: connectionToSave.id)
         }
 
+        if !ssl.clientKeyPassphrase.isEmpty && !ssl.clientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty {
+            storage.saveSSLClientKeyPassphrase(ssl.clientKeyPassphrase, for: connectionToSave.id)
+        } else {
+            storage.deleteSSLClientKeyPassphrase(for: connectionToSave.id)
+        }
+
         cloudflareTunnel.save(to: connectionToSave.id, storage: storage)
 
         var savedConnections = storage.loadConnections()
@@ -471,42 +477,24 @@ final class ConnectionFormCoordinator {
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state
         let cloudflareState = cloudflareTunnel.state
+        let sslClientKeyPassphrase = ssl.clientKeyPassphrase
+        let sslClientKeyPath = ssl.clientKeyPath
         let additionalFieldValues = finalAdditionalFields
+
+        persistTestSecrets(
+            for: testConn.id,
+            password: password,
+            promptForPassword: promptForPassword,
+            sshState: sshState,
+            sslClientKeyPassphrase: sslClientKeyPassphrase,
+            sslClientKeyPath: sslClientKeyPath,
+            cloudflareState: cloudflareState,
+            connectionType: connectionType,
+            additionalFieldValues: additionalFieldValues
+        )
 
         testTask = Task { [weak self] in
             do {
-                if !password.isEmpty && !promptForPassword {
-                    services.connectionStorage.savePassword(password, for: testConn.id)
-                }
-                if sshState.enabled && sshState.profileId == nil {
-                    if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
-                        && !sshState.password.isEmpty
-                    {
-                        services.connectionStorage.saveSSHPassword(sshState.password, for: testConn.id)
-                    }
-                    if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
-                        services.connectionStorage.saveKeyPassphrase(sshState.keyPassphrase, for: testConn.id)
-                    }
-                    if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
-                        services.connectionStorage.saveTOTPSecret(sshState.totpSecret, for: testConn.id)
-                    }
-                }
-
-                if cloudflareState.enabled && cloudflareState.authMethod == .serviceToken {
-                    services.connectionStorage.saveCloudflareTokenId(cloudflareState.serviceTokenId, for: testConn.id)
-                    services.connectionStorage.saveCloudflareTokenSecret(cloudflareState.serviceTokenSecret, for: testConn.id)
-                }
-
-                for field in services.pluginManager.additionalConnectionFields(for: connectionType)
-                    where field.isSecure
-                {
-                    if let value = additionalFieldValues[field.id], !value.isEmpty {
-                        services.connectionStorage.savePluginSecureField(
-                            value, fieldId: field.id, for: testConn.id
-                        )
-                    }
-                }
-
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
                 let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
                 let testPwOverride: String? = promptForPassword
@@ -571,10 +559,59 @@ final class ConnectionFormCoordinator {
         }
     }
 
+    private func persistTestSecrets(
+        for testId: UUID,
+        password: String,
+        promptForPassword: Bool,
+        sshState: SSHTunnelFormState,
+        sslClientKeyPassphrase: String,
+        sslClientKeyPath: String,
+        cloudflareState: CloudflareTunnelFormState,
+        connectionType: DatabaseType,
+        additionalFieldValues: [String: String]
+    ) {
+        if !password.isEmpty && !promptForPassword {
+            services.connectionStorage.savePassword(password, for: testId)
+        }
+        if sshState.enabled && sshState.profileId == nil {
+            if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
+                && !sshState.password.isEmpty
+            {
+                services.connectionStorage.saveSSHPassword(sshState.password, for: testId)
+            }
+            if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
+                services.connectionStorage.saveKeyPassphrase(sshState.keyPassphrase, for: testId)
+            }
+            if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
+                services.connectionStorage.saveTOTPSecret(sshState.totpSecret, for: testId)
+            }
+        }
+
+        if !sslClientKeyPassphrase.isEmpty
+            && !sslClientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty
+        {
+            services.connectionStorage.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: testId)
+        }
+
+        if cloudflareState.enabled && cloudflareState.authMethod == .serviceToken {
+            services.connectionStorage.saveCloudflareTokenId(cloudflareState.serviceTokenId, for: testId)
+            services.connectionStorage.saveCloudflareTokenSecret(cloudflareState.serviceTokenSecret, for: testId)
+        }
+
+        for field in services.pluginManager.additionalConnectionFields(for: connectionType)
+            where field.isSecure
+        {
+            if let value = additionalFieldValues[field.id], !value.isEmpty {
+                services.connectionStorage.savePluginSecureField(value, fieldId: field.id, for: testId)
+            }
+        }
+    }
+
     func cleanupTestSecrets(for testId: UUID) {
         services.connectionStorage.deletePassword(for: testId)
         services.connectionStorage.deleteSSHPassword(for: testId)
         services.connectionStorage.deleteKeyPassphrase(for: testId)
+        services.connectionStorage.deleteSSLClientKeyPassphrase(for: testId)
         services.connectionStorage.deleteTOTPSecret(for: testId)
         services.connectionStorage.deleteCloudflareTokenId(for: testId)
         services.connectionStorage.deleteCloudflareTokenSecret(for: testId)

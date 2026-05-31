@@ -247,6 +247,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
             password: decrypt(row.password, key: key),
             sshPassword: decrypt(row.sshPassword, key: key),
             keyPassphrase: decrypt(row.sshKeyfilePassword, key: key),
+            sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )

@@ -88,6 +88,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case previousResultTab
     case nextResultTab
     case closeResultTab
+    case focusSidebarSearch
+    case showSidebarTables
+    case showSidebarFavorites
 
     // Tabs
     case showPreviousTab
@@ -112,7 +115,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .duplicateRow, .truncateTable, .previewFKReference:
             return .edit
         case .toggleTableBrowser, .toggleInspector, .toggleFilters, .toggleHistory,
-             .toggleResults, .previousResultTab, .nextResultTab, .closeResultTab:
+             .toggleResults, .previousResultTab, .nextResultTab, .closeResultTab,
+             .focusSidebarSearch, .showSidebarTables, .showSidebarFavorites:
             return .view
         case .showPreviousTab, .showNextTab:
             return .tabs
@@ -178,6 +182,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .previousResultTab: return String(localized: "Previous Result")
         case .nextResultTab: return String(localized: "Next Result")
         case .closeResultTab: return String(localized: "Close Result Tab")
+        case .focusSidebarSearch: return String(localized: "Focus Sidebar Filter")
+        case .showSidebarTables: return String(localized: "Show Tables Sidebar")
+        case .showSidebarFavorites: return String(localized: "Show Favorites Sidebar")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
         case .aiExplainQuery: return String(localized: "Explain with AI")
@@ -518,6 +525,7 @@ struct KeyboardSettings: Codable, Equatable {
         .cut: KeyCombo(key: "x", command: true),
         .copy: KeyCombo(key: "c", command: true),
         .copyRowsExplicit: KeyCombo(key: "c", command: true, shift: true),
+        .copyWithHeaders: KeyCombo(key: "c", command: true, option: true),
         .copyAsJson: KeyCombo(key: "j", command: true, option: true),
         .paste: KeyCombo(key: "v", command: true),
         .delete: KeyCombo(key: "delete", command: true, isSpecialKey: true),
@@ -527,7 +535,7 @@ struct KeyboardSettings: Codable, Equatable {
         .duplicateRow: KeyCombo(key: "d", command: true, shift: true),
         .truncateTable: KeyCombo(key: "delete", option: true, isSpecialKey: true),
         .previewFKReference: KeyCombo(key: "space", isSpecialKey: true),
-        .saveAsFavorite: KeyCombo(key: "d", command: true),
+        .saveAsFavorite: KeyCombo(key: "d", command: true, control: true),
 
         // View
         .toggleTableBrowser: KeyCombo(key: "0", command: true),
@@ -538,6 +546,9 @@ struct KeyboardSettings: Codable, Equatable {
         .previousResultTab: KeyCombo(key: "[", command: true, option: true),
         .nextResultTab: KeyCombo(key: "]", command: true, option: true),
         .closeResultTab: KeyCombo(key: "w", command: true, shift: true),
+        .focusSidebarSearch: KeyCombo(key: "f", command: true, option: true),
+        .showSidebarTables: KeyCombo(key: "1", control: true),
+        .showSidebarFavorites: KeyCombo(key: "2", control: true),
 
         // Tabs
         .showPreviousTab: KeyCombo(key: "[", command: true, shift: true),

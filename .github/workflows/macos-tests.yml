@@ -1,0 +1,121 @@
+name: macOS Tests
+
+on:
+  pull_request:
+    paths:
+      - "TablePro/**"
+      - "Plugins/**"
+      - "Packages/**"
+      - "TableProTests/**"
+      - "TablePro.xcodeproj/**"
+      - "Libs/**"
+      - ".github/workflows/macos-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "TablePro/**"
+      - "Plugins/**"
+      - "Packages/**"
+      - "TableProTests/**"
+      - "TablePro.xcodeproj/**"
+      - "Libs/**"
+      - ".github/workflows/macos-tests.yml"
+  workflow_dispatch:
+
+# Only one run per PR/branch at a time; new pushes cancel pending older ones.
+concurrency:
+  group: macos-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_PROJECT: TablePro.xcodeproj
+  XCODE_SCHEME: TablePro
+  TEST_DESTINATION: "platform=macOS"
+
+jobs:
+  package-tests:
+    name: TableProCore Package Tests
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.4.1'
+
+      - name: Run package tests
+        run: swift test --package-path Packages/TableProCore
+
+  app-tests:
+    name: macOS App Tests
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.4.1'
+
+      - name: Install xcbeautify
+        run: brew list xcbeautify &>/dev/null || brew install xcbeautify
+
+      - name: Cache static libraries
+        uses: actions/cache@v4
+        with:
+          path: Libs
+          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h') }}
+
+      - name: Download static libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/download-libs.sh
+
+      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so an empty
+      # value is enough for the project to resolve $(ANALYTICS_HMAC_SECRET).
+      - name: Create Secrets.xcconfig
+        env:
+          ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
+        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Secrets.xcconfig
+
+      - name: Resolve Swift package dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -skipPackagePluginValidation
+
+      # Quarantined suites (driver-loading, env-coupled, or hanging headless) are listed
+      # in .github/macos-test-quarantine.txt. Burn that list down over time.
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          SKIP_ARGS=()
+          while IFS= read -r line; do
+            suite="${line%%#*}"
+            suite="$(echo "$suite" | xargs)"
+            [ -z "$suite" ] && continue
+            SKIP_ARGS+=("-skip-testing:TableProTests/$suite")
+          done < .github/macos-test-quarantine.txt
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$TEST_DESTINATION" \
+            -only-testing:TableProTests \
+            "${SKIP_ARGS[@]}" \
+            -parallel-testing-enabled NO \
+            -skipPackagePluginValidation \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-test-results
+          path: TestResults.xcresult
+          retention-days: 7

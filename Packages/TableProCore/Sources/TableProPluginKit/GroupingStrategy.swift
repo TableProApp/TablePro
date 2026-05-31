@@ -1,4 +1,7 @@
-import Foundation
+//
+//  GroupingStrategy.swift
+//  TableProPluginKit
+//
 
 public enum GroupingStrategy: String, Codable, Sendable {
     case byDatabase

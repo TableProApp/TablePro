@@ -192,6 +192,27 @@ extension MainContentCoordinator {
 
         Task { [weak self] in
             guard let self else { return }
+            let decision = await ExecutionGateProvider.shared.authorize(
+                OperationRequest(
+                    connectionId: self.connectionId,
+                    databaseType: self.connection.type,
+                    sql: statements.joined(separator: "\n"),
+                    kind: .maintenance,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: operation
+                )
+            )
+            guard case .authorized = decision else {
+                if let reason = decision.deniedReason {
+                    await AlertHelper.showErrorSheet(
+                        title: String(format: String(localized: "%@ failed"), operation),
+                        message: reason,
+                        window: self.contentWindow
+                    )
+                }
+                return
+            }
             do {
                 var lastResult: QueryResult?
                 for sql in statements {

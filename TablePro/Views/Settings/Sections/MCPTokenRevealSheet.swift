@@ -11,6 +11,7 @@ struct MCPTokenRevealSheet: View {
     @State private var isTokenRevealed = false
     @State private var tokenCopied = false
     @State private var selectedClient: IntegrationClient = .claudeCode
+    @FocusState private var doneFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,10 +30,12 @@ struct MCPTokenRevealSheet: View {
                 Spacer()
                 Button(String(localized: "Done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
+                    .focused($doneFocused)
             }
             .padding()
         }
         .frame(minWidth: 540, minHeight: 520)
+        .defaultFocus($doneFocused, true)
     }
 
     private var warningBanner: some View {

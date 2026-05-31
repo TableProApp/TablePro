@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 public protocol DriverPlugin: TableProPlugin {
     static var databaseTypeId: String { get }

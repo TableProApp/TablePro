@@ -4,9 +4,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("ConnectionStorage Persistence")
 @MainActor
@@ -26,8 +26,12 @@ struct ConnectionStoragePersistenceTests {
             withIntermediateDirectories: true
         )
         let suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
-        self.defaults = UserDefaults(suiteName: suiteName)!
-        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")!
+        guard let defaults = UserDefaults(suiteName: suiteName),
+              let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")
+        else {
+            fatalError("Failed to create isolated test user defaults")
+        }
+        self.defaults = defaults
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         self.syncTracker = SyncChangeTracker(metadataStorage: metadata)
         self.storage = ConnectionStorage(
@@ -49,12 +53,34 @@ struct ConnectionStoragePersistenceTests {
         #expect(reloaded.contains { $0.id == connection.id })
     }
 
+    @Test("updateSafeModeLevel writes the new level through to disk")
+    func updateSafeModeLevelWritesThrough() {
+        let connection = DatabaseConnection(
+            name: "Write Through",
+            host: "127.0.0.1",
+            port: 3_306,
+            type: .mysql,
+            safeModeLevel: .silent
+        )
+
+        storage.addConnection(connection)
+        storage.invalidateCache()
+        #expect(storage.loadConnections().first { $0.id == connection.id }?.safeModeLevel == .silent)
+
+        let updated = storage.updateSafeModeLevel(.readOnly, for: connection.id)
+        #expect(updated)
+
+        storage.invalidateCache()
+        let reloaded = storage.loadConnections().first { $0.id == connection.id }
+        #expect(reloaded?.safeModeLevel == .readOnly)
+    }
+
     @Test("round-trip save and load preserves connections")
     func roundTripSaveLoad() {
         let connection = DatabaseConnection(
             name: "Round Trip Test",
             host: "127.0.0.1",
-            port: 5432,
+            port: 5_432,
             type: .postgresql
         )
 

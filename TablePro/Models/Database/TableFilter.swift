@@ -191,10 +191,10 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var isVisible: Bool
     var filterLogicMode: FilterLogicMode
 
-    init() {
+    init(isVisible: Bool = false) {
         self.filters = []
         self.appliedFilters = []
-        self.isVisible = false
+        self.isVisible = isVisible
         self.filterLogicMode = .and
     }
 

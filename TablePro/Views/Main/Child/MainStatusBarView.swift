@@ -70,6 +70,15 @@ struct MainStatusBarView: View {
     private var isStructureMode: Bool { viewMode == .structure }
     private var showsDataChrome: Bool { !isStructureMode }
 
+    private var filterToggleHelp: String {
+        let label = String(localized: "Toggle Filters")
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .toggleFilters),
+              !combo.isCleared else {
+            return label
+        }
+        return "\(label) (\(combo.displayString))"
+    }
+
     var body: some View {
         HStack {
             if snapshot.tabId != nil {
@@ -191,7 +200,7 @@ struct MainStatusBarView: View {
                         }
                         .toggleStyle(.button)
                         .controlSize(.small)
-                        .help(String(localized: "Toggle Filters (⇧⌘F)"))
+                        .help(filterToggleHelp)
                     }
 
                     if snapshot.tabType == .table, snapshot.hasTableName, showsPaginationControls {

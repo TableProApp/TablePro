@@ -6,15 +6,16 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("SafeModeMigration")
 @MainActor
 struct SafeModeMigrationTests {
     private let storage: ConnectionStorage
     private let defaults: UserDefaults
+    private let tracker: SyncChangeTracker
 
     init() {
         let unique = UUID().uuidString
@@ -26,8 +27,15 @@ struct SafeModeMigrationTests {
             withIntermediateDirectories: true
         )
         let suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
-        self.defaults = UserDefaults(suiteName: suiteName)!
-        self.storage = ConnectionStorage(fileURL: fileURL, userDefaults: defaults)
+        guard let defaults = UserDefaults(suiteName: suiteName),
+              let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")
+        else {
+            fatalError("Failed to create isolated test user defaults")
+        }
+        self.defaults = defaults
+        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        self.tracker = SyncChangeTracker(metadataStorage: metadata)
+        self.storage = ConnectionStorage(fileURL: fileURL, userDefaults: defaults, syncTracker: tracker)
     }
 
     // MARK: - Round-Trip Through ConnectionStorage API
@@ -36,7 +44,7 @@ struct SafeModeMigrationTests {
     func roundTripSilent() throws {
         let id = UUID()
         let connection = DatabaseConnection(
-            id: id, name: "Silent Test", host: "127.0.0.1", port: 3306,
+            id: id, name: "Silent Test", host: "127.0.0.1", port: 3_306,
             database: "test", username: "root", type: .mysql,
             safeModeLevel: .silent
         )
@@ -51,7 +59,7 @@ struct SafeModeMigrationTests {
     func roundTripAlert() throws {
         let id = UUID()
         let connection = DatabaseConnection(
-            id: id, name: "Alert Test", host: "127.0.0.1", port: 5432,
+            id: id, name: "Alert Test", host: "127.0.0.1", port: 5_432,
             database: "test", username: "postgres", type: .postgresql,
             safeModeLevel: .alert
         )
@@ -66,7 +74,7 @@ struct SafeModeMigrationTests {
     func roundTripAlertFull() throws {
         let id = UUID()
         let connection = DatabaseConnection(
-            id: id, name: "AlertFull Test", host: "127.0.0.1", port: 3306,
+            id: id, name: "AlertFull Test", host: "127.0.0.1", port: 3_306,
             database: "test", username: "root", type: .mysql,
             safeModeLevel: .alertFull
         )
@@ -81,7 +89,7 @@ struct SafeModeMigrationTests {
     func roundTripSafeMode() throws {
         let id = UUID()
         let connection = DatabaseConnection(
-            id: id, name: "SafeMode Test", host: "127.0.0.1", port: 3306,
+            id: id, name: "SafeMode Test", host: "127.0.0.1", port: 3_306,
             database: "test", username: "root", type: .mysql,
             safeModeLevel: .safeMode
         )
@@ -96,7 +104,7 @@ struct SafeModeMigrationTests {
     func roundTripSafeModeFull() throws {
         let id = UUID()
         let connection = DatabaseConnection(
-            id: id, name: "SafeModeFull Test", host: "127.0.0.1", port: 3306,
+            id: id, name: "SafeModeFull Test", host: "127.0.0.1", port: 3_306,
             database: "test", username: "root", type: .mysql,
             safeModeLevel: .safeModeFull
         )
@@ -111,7 +119,7 @@ struct SafeModeMigrationTests {
     func roundTripReadOnly() throws {
         let id = UUID()
         let connection = DatabaseConnection(
-            id: id, name: "ReadOnly Test", host: "127.0.0.1", port: 3306,
+            id: id, name: "ReadOnly Test", host: "127.0.0.1", port: 3_306,
             database: "test", username: "root", type: .mysql,
             safeModeLevel: .readOnly
         )
@@ -120,6 +128,174 @@ struct SafeModeMigrationTests {
 
         let found = storage.loadConnections().first { $0.id == id }
         #expect(found?.safeModeLevel == .readOnly)
+    }
+
+    @Test("setSafeModeLevel updates the active session and saved connection default")
+    func setSafeModeLevelPersistsUpdatedDefault() {
+        let id = UUID()
+        let connection = DatabaseConnection(
+            id: id,
+            name: "Persisted Safe Mode",
+            host: "127.0.0.1",
+            port: 3_306,
+            database: "test",
+            username: "root",
+            type: .mysql,
+            safeModeLevel: .silent
+        )
+
+        storage.addConnection(connection)
+        tracker.clearDirty(.connection, id: id.uuidString)
+
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: connection), for: id)
+        defer { manager.removeSession(for: id) }
+
+        manager.setSafeModeLevel(.readOnly, for: id)
+
+        let session = manager.session(for: id)
+        let saved = storage.loadConnections().first { $0.id == id }
+
+        #expect(session?.safeModeLevel == .readOnly)
+        #expect(session?.connection.safeModeLevel == .readOnly)
+        #expect(saved?.safeModeLevel == .readOnly)
+        #expect(tracker.dirtyRecords(for: .connection).contains(id.uuidString))
+    }
+
+    @Test("resolvedConnectionDefinition prefers the persisted safe mode over a stale caller copy")
+    func resolvedConnectionDefinitionUsesPersistedSafeMode() {
+        let id = UUID()
+        let staleConnection = DatabaseConnection(
+            id: id,
+            name: "Stale Safe Mode",
+            host: "127.0.0.1",
+            port: 3_306,
+            database: "test",
+            username: "root",
+            type: .mysql,
+            safeModeLevel: .silent
+        )
+
+        storage.addConnection(staleConnection)
+
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: staleConnection), for: id)
+        manager.setSafeModeLevel(.alertFull, for: id)
+        manager.removeSession(for: id)
+
+        let resolved = manager.resolvedConnectionDefinition(for: staleConnection)
+
+        #expect(staleConnection.safeModeLevel == .silent)
+        #expect(resolved.safeModeLevel == .alertFull)
+    }
+
+    @Test("resolvedConnectionDefinition keeps in-session connection edits and only refreshes safe mode")
+    func resolvedConnectionDefinitionPreservesInSessionEdits() {
+        let id = UUID()
+        let stored = DatabaseConnection(
+            id: id,
+            name: "Switched Database",
+            host: "127.0.0.1",
+            port: 5_432,
+            database: "original",
+            username: "postgres",
+            type: .postgresql,
+            safeModeLevel: .silent
+        )
+
+        storage.addConnection(stored)
+
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: stored), for: id)
+        manager.setSafeModeLevel(.alertFull, for: id)
+        manager.removeSession(for: id)
+
+        var inSession = stored
+        inSession.database = "switched"
+
+        let resolved = manager.resolvedConnectionDefinition(for: inSession)
+
+        #expect(resolved.database == "switched")
+        #expect(resolved.safeModeLevel == .alertFull)
+    }
+
+    @Test("A fresh session seeds from the persisted safe mode after disconnect")
+    func freshSessionSeedsFromPersistedSafeMode() {
+        let id = UUID()
+        let connection = DatabaseConnection(
+            id: id,
+            name: "Reconnect Safe Mode",
+            host: "127.0.0.1",
+            port: 5_432,
+            database: "test",
+            username: "postgres",
+            type: .postgresql,
+            safeModeLevel: .silent
+        )
+
+        storage.addConnection(connection)
+
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: connection), for: id)
+        manager.setSafeModeLevel(.alertFull, for: id)
+        manager.removeSession(for: id)
+
+        let reloaded = storage.loadConnections().first { $0.id == id }
+        let reseededSession = reloaded.map { ConnectionSession(connection: $0) }
+
+        #expect(reloaded?.safeModeLevel == .alertFull)
+        #expect(reseededSession?.safeModeLevel == .alertFull)
+    }
+
+    @Test("updateSafeModeLevel preserves the saved password and marks sync dirty")
+    func updateSafeModeLevelPreservesPasswordAndMarksDirty() {
+        let id = UUID()
+        let connection = DatabaseConnection(
+            id: id,
+            name: "Password Preservation",
+            host: "127.0.0.1",
+            port: 3_306,
+            database: "test",
+            username: "root",
+            type: .mysql,
+            safeModeLevel: .silent
+        )
+
+        storage.addConnection(connection, password: "secret")
+        tracker.clearDirty(.connection, id: id.uuidString)
+        defer { storage.deletePassword(for: id) }
+
+        let updated = storage.updateSafeModeLevel(.safeModeFull, for: id)
+
+        #expect(updated)
+        #expect(storage.loadPassword(for: id) == "secret")
+        #expect(storage.loadConnection(id: id)?.safeModeLevel == .safeModeFull)
+        #expect(tracker.dirtyRecords(for: .connection).contains(id.uuidString))
+    }
+
+    @Test("updateSafeModeLevel skips sync dirtiness for local-only connections")
+    func updateSafeModeLevelSkipsSyncForLocalOnlyConnections() {
+        let id = UUID()
+        let connection = DatabaseConnection(
+            id: id,
+            name: "Local Safe Mode",
+            host: "127.0.0.1",
+            port: 3_306,
+            database: "test",
+            username: "root",
+            type: .mysql,
+            safeModeLevel: .silent,
+            localOnly: true
+        )
+
+        storage.addConnection(connection)
+        tracker.clearDirty(.connection, id: id.uuidString)
+
+        let updated = storage.updateSafeModeLevel(.readOnly, for: id)
+
+        #expect(updated)
+        #expect(storage.loadConnection(id: id)?.safeModeLevel == .readOnly)
+        #expect(!tracker.dirtyRecords(for: .connection).contains(id.uuidString))
     }
 
     // MARK: - Default Level

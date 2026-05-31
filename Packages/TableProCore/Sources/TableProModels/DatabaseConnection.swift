@@ -1,4 +1,5 @@
 import Foundation
+@_exported import TableProCoreTypes
 
 public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var id: UUID

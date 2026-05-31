@@ -261,6 +261,7 @@ struct TablePlusImporter: ForeignAppImporter {
             password: dbPassword,
             sshPassword: sshPassword,
             keyPassphrase: keyPassphrase,
+            sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )

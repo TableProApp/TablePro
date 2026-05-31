@@ -1,14 +1,18 @@
+//
+//  PluginSettingsStorage.swift
+//  TableProPluginKit
+//
+
 import Foundation
 
-public final class PluginSettingsStorage: @unchecked Sendable {
+public final class PluginSettingsStorage {
     private let pluginId: String
-    private let defaults: UserDefaults
+    private let defaults = UserDefaults.standard
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    public init(pluginId: String, defaults: UserDefaults = .standard) {
+    public init(pluginId: String) {
         self.pluginId = pluginId
-        self.defaults = defaults
     }
 
     private func key(for optionKey: String) -> String {

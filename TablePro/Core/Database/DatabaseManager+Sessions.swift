@@ -14,7 +14,9 @@ import TableProPluginKit
 // MARK: - Session Management
 
 extension DatabaseManager {
-    func connectToSession(_ connection: DatabaseConnection) async throws {
+    func connectToSession(_ requestedConnection: DatabaseConnection) async throws {
+        let connection = resolvedConnectionDefinition(for: requestedConnection)
+
         if let existing = activeSessions[connection.id], existing.driver != nil {
             switchToSession(connection.id)
             return
@@ -176,6 +178,13 @@ extension DatabaseManager {
             finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
             throw error
         }
+    }
+
+    internal func resolvedConnectionDefinition(for connection: DatabaseConnection) -> DatabaseConnection {
+        guard let stored = connectionStorage.loadConnection(id: connection.id) else { return connection }
+        var resolved = connection
+        resolved.safeModeLevel = stored.safeModeLevel
+        return resolved
     }
 
     internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
@@ -391,9 +400,12 @@ extension DatabaseManager {
     }
 
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
-        guard var session = activeSessions[connectionId], session.safeModeLevel != level else { return }
+        guard var session = activeSessions[connectionId] else { return }
+        guard session.safeModeLevel != level || session.connection.safeModeLevel != level else { return }
         session.safeModeLevel = level
+        session.connection.safeModeLevel = level
         setSession(session, for: connectionId)
+        _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
     }
 
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {

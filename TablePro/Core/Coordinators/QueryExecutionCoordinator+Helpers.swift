@@ -72,6 +72,19 @@ extension QueryExecutionCoordinator {
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
+        if let planText = ExplainResultRouter.planText(sql: sql, columns: columns, rows: rows) {
+            applyExplainResult(
+                tabId: tabId,
+                planText: planText,
+                executionTime: executionTime,
+                rowCount: rows.count,
+                sql: sql,
+                connection: conn,
+                queryParameterValues: queryParameterValues
+            )
+            return
+        }
+
         let existingTabId = parent.tabManager.tabs[idx].id
         var columnEnumValues: [String: [String]] = [:]
         var columnDefaults: [String: String?] = [:]
@@ -201,6 +214,44 @@ extension QueryExecutionCoordinator {
         if parent.tabManager.selectedTabId == tabId, isEditable, !parent.changeManager.hasChanges {
             parent.changeManager.clearChangesAndUndoHistory()
         }
+    }
+
+    private func applyExplainResult(
+        tabId: UUID,
+        planText: String,
+        executionTime: TimeInterval,
+        rowCount: Int,
+        sql: String,
+        connection conn: DatabaseConnection,
+        queryParameterValues: [QueryParameter]?
+    ) {
+        let plan = QueryPlanParserFactory.parser(for: conn.type)?.parse(rawText: planText)
+
+        parent.tabManager.mutate(tabId: tabId) { tab in
+            tab.execution.executionTime = executionTime
+            tab.execution.rowsAffected = 0
+            tab.execution.statusMessage = nil
+            tab.execution.isExecuting = false
+            tab.execution.lastExecutedAt = Date()
+            tab.display.explainText = planText
+            tab.display.explainPlan = plan
+            tab.display.explainExecutionTime = executionTime
+            if tab.display.isResultsCollapsed {
+                tab.display.isResultsCollapsed = false
+            }
+        }
+        parent.toolbarState.isResultsCollapsed = false
+
+        QueryHistoryManager.shared.recordQuery(
+            query: sql,
+            connectionId: conn.id,
+            databaseName: parent.activeDatabaseName,
+            executionTime: executionTime,
+            rowCount: rowCount,
+            wasSuccessful: true,
+            errorMessage: nil,
+            parameterValues: queryParameterValues
+        )
     }
 
     private func applyDefaultSortIfPending(
