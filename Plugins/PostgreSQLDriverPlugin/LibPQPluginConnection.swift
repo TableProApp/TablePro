@@ -735,7 +735,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 continue
             }
 
-            for (rowIndex, value) in converted.enumerated() where column.index < rows[rowIndex].count {
+            for (rowIndex, value) in converted.enumerated()
+                where hexValues[rowIndex] != nil && column.index < rows[rowIndex].count {
                 rows[rowIndex][column.index] = value
             }
         }
