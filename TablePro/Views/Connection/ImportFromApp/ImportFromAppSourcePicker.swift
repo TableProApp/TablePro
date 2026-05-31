@@ -192,7 +192,6 @@ struct ImportFromAppSourcePicker: View {
     }
 
     private func presentFilePicker(for importer: any ForeignAppImporter) {
-        guard let window = NSApp.keyWindow else { return }
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -203,11 +202,17 @@ struct ImportFromAppSourcePicker: View {
         panel.message = String(format: String(localized: "Choose a %@ export file to import"), importer.displayName)
 
         let includePasswords = includePasswords
-        panel.beginSheetModal(for: window) { response in
+        let completion: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url else { return }
             var configured = importer
             configured.setSelectedFile(url)
             onSelect(configured, includePasswords)
+        }
+
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
         }
     }
 }

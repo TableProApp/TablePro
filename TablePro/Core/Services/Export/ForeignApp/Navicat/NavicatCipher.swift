@@ -2,20 +2,11 @@
 //  NavicatCipher.swift
 //  TablePro
 //
-//  Decrypts the password fields in a Navicat `.ncx` export. Navicat ships two
-//  fixed-key ciphers (the keys are baked into the app, so no user secret is
-//  needed): v1 used through Navicat 11 and v2 from Navicat 12 onward. A `.ncx`
-//  never contains the machine-bound v3 cipher, so trying v2 then v1 and keeping
-//  the first candidate that decodes to plausible text (valid UTF-8 with no
-//  control characters) recovers exported passwords. The control-character check
-//  stops a v1 ciphertext whose length is a multiple of the AES block size from
-//  being misread as a v2 one.
-//  Reference: github.com/HyperSine/how-does-navicat-encrypt-password
-//
-//  - v2: AES-128-CBC, PKCS#7 padding, key `libcckeylibcckey`, IV `libcciv libcciv `
-//  - v1: Blowfish-ECB blocks wrapped in a custom CBC-style XOR chain, key
+//  Fixed-key ciphers a `.ncx` export uses for passwords. Reference:
+//  github.com/HyperSine/how-does-navicat-encrypt-password
+//  - v2 (Navicat 12+): AES-128-CBC, PKCS#7, key `libcckeylibcckey`, IV `libcciv libcciv `
+//  - v1 (Navicat 11): Blowfish-ECB in a custom CBC-style XOR chain, key
 //        `SHA1("3DC5CA39")`, IV `BlowfishECB(0xFF * 8)`
-//  Ciphertext is uppercase hex in both schemes.
 //
 
 import CommonCrypto

@@ -30,29 +30,11 @@ struct NavicatImporter: ForeignAppImporter {
     }
 
     func connectionCount() -> Int {
-        connectionElements()?.count ?? 0
+        (try? loadConnectionElements())?.count ?? 0
     }
 
     func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
-        guard let url = ncxFileURL else {
-            throw ForeignAppImportError.fileNotFound(displayName)
-        }
-
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            throw ForeignAppImportError.fileNotFound(displayName)
-        }
-
-        let document: XMLDocument
-        do {
-            document = try XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever])
-        } catch {
-            throw ForeignAppImportError.parseError(error.localizedDescription)
-        }
-
-        let elements = (try? document.nodes(forXPath: "//Connection"))?.compactMap { $0 as? XMLElement } ?? []
+        let elements = try loadConnectionElements()
         guard !elements.isEmpty else {
             throw ForeignAppImportError.noConnectionsFound
         }
@@ -85,13 +67,26 @@ struct NavicatImporter: ForeignAppImporter {
 // MARK: - Parsing
 
 private extension NavicatImporter {
-    func connectionElements() -> [XMLElement]? {
-        guard let url = ncxFileURL,
-              let data = try? Data(contentsOf: url),
-              let document = try? XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever]),
-              let nodes = try? document.nodes(forXPath: "//Connection") else {
-            return nil
+    func loadConnectionElements() throws -> [XMLElement] {
+        guard let url = ncxFileURL else {
+            throw ForeignAppImportError.fileNotFound(displayName)
         }
+
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw ForeignAppImportError.fileNotFound(displayName)
+        }
+
+        let document: XMLDocument
+        do {
+            document = try XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever])
+        } catch {
+            throw ForeignAppImportError.parseError(error.localizedDescription)
+        }
+
+        let nodes = (try? document.nodes(forXPath: "//Connection")) ?? []
         return nodes.compactMap { $0 as? XMLElement }
     }
 
