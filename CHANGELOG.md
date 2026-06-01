@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection list rows show the database name after the host, so connections that share a name and host are easier to tell apart. (#1535)
 - Save as Favorite uses Cmd+D again. The Cmd+Control+D set in 0.47.0 is reserved by macOS for Look Up, so it never fired.
 - Editor toolbar buttons show their keyboard shortcut in the tooltip, and it updates if you rebind the shortcut.
+- Window toolbar layout: the connection and database selectors are now navigation items pinned to the left, and the Refresh and Save buttons move to the right next to the tab and query controls. Toolbars customized before this change reset once to the new layout.
 
 ### Fixed
 
