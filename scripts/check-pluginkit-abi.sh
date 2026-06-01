@@ -1,83 +1,91 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PluginKit ABI gate.
+# PluginKit ABI gate (toolchain-independent).
 #
-# Builds TableProPluginKit and compares its generated public interface against
-# the committed baseline. Any divergence is an ABI change that must be
-# acknowledged before merge:
+# Builds TableProPluginKit at the current tree AND at a base ref with the SAME toolchain, then
+# diffs their public Swift interfaces. Comparing two builds from one compiler means Swift version
+# drift between a dev machine and CI cannot produce a false diff, so there is no committed baseline
+# to keep in sync. A reported diff is a real ABI change to act on:
 #
-#   Additive (a new requirement WITH a default implementation, a new field on a
-#   non-@frozen struct, a new case on a non-@frozen enum): no version bump.
-#   Refresh the baseline with `scripts/check-pluginkit-abi.sh --update` and commit it.
+#   Additive (a new requirement WITH a default implementation, a new field on a non-@frozen struct,
+#   a new case on a non-@frozen enum): no version bump needed.
+#   Breaking (changed/removed/renamed signature, a new case on a @frozen enum, a changed frozen
+#   layout): bump currentPluginKitVersion in PluginManager.swift, raise TableProPluginKitVersion in
+#   every plugin Info.plist, then run scripts/release-all-plugins.sh <newVersion>.
 #
-#   Breaking (changed/removed/renamed signature, a new case on a @frozen enum, a
-#   changed frozen layout): also bump currentPluginKitVersion in PluginManager.swift,
-#   raise TableProPluginKitVersion in every plugin Info.plist, refresh the baseline,
-#   then run `scripts/release-all-plugins.sh <newVersion>`.
-#
-# Usage:
-#   scripts/check-pluginkit-abi.sh            verify the interface matches the baseline
-#   scripts/check-pluginkit-abi.sh --update   regenerate the baseline from the current source
+# Usage: scripts/check-pluginkit-abi.sh [base-ref]   (default: origin/main)
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASELINE="$PROJECT_DIR/Plugins/TableProPluginKit/ABI-Baseline.swiftinterface"
+BASE_REF="${1:-origin/main}"
+INTERFACE_REL="Debug/TableProPluginKit.framework/Versions/A/Modules/TableProPluginKit.swiftmodule/arm64-apple-macos.swiftinterface"
 
-mode="check"
-if [ "${1:-}" = "--update" ]; then
-    mode="update"
-fi
+RESULT=""
 
-derived="$(mktemp -d)"
-build_log="$(mktemp)"
-trap 'rm -rf "$derived" "$build_log"' EXIT
+# Build TableProPluginKit in project dir $1, writing its normalized public interface to $2.
+# Sets RESULT to ok | none (no interface emitted, i.e. Library Evolution off) | failed.
+build_interface() {
+    local dir="$1" out="$2" sym
+    sym="$(mktemp -d)"
+    [ -f "$dir/Secrets.xcconfig" ] || touch "$dir/Secrets.xcconfig"
+    if ! xcodebuild -project "$dir/TablePro.xcodeproj" -target TableProPluginKit -configuration Debug \
+            -skipPackagePluginValidation build SYMROOT="$sym" >"$sym/build.log" 2>&1; then
+        RESULT="failed"
+        tail -20 "$sym/build.log"
+        return
+    fi
+    if [ -f "$sym/$INTERFACE_REL" ]; then
+        grep -v '^// swift-' "$sym/$INTERFACE_REL" > "$out"
+        RESULT="ok"
+    else
+        RESULT="none"
+    fi
+}
 
-echo "Building TableProPluginKit..."
-if ! xcodebuild -project "$PROJECT_DIR/TablePro.xcodeproj" \
-        -target TableProPluginKit -configuration Debug \
-        -skipPackagePluginValidation build SYMROOT="$derived" \
-        >"$build_log" 2>&1; then
-    echo "::error::TableProPluginKit build failed"
-    tail -30 "$build_log"
+if ! git -C "$PROJECT_DIR" diff --quiet HEAD; then
+    echo "::error::Working tree has uncommitted changes; commit or stash before running the ABI gate."
     exit 1
 fi
 
-fresh="$derived/Debug/TableProPluginKit.framework/Versions/A/Modules/TableProPluginKit.swiftmodule/arm64-apple-macos.swiftinterface"
-if [ ! -f "$fresh" ]; then
-    echo "::error::No .swiftinterface produced at $fresh"
-    exit 1
-fi
+base_sha="$(git -C "$PROJECT_DIR" rev-parse --verify "$BASE_REF" 2>/dev/null)" || {
+    echo "::error::cannot resolve base ref '$BASE_REF'"; exit 1
+}
 
-# Strip the toolchain-specific header (compiler version, module flags, paths) so the
-# baseline only captures the public declarations, not the build environment.
-normalized="$derived/normalized.swiftinterface"
-grep -v '^// swift-' "$fresh" > "$normalized"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
 
-if [ "$mode" = "update" ]; then
-    cp "$normalized" "$BASELINE"
-    echo "Baseline updated: ${BASELINE#"$PROJECT_DIR"/}"
+echo "Building current TableProPluginKit..."
+build_interface "$PROJECT_DIR" "$work/head.txt"
+[ "$RESULT" = "failed" ] && { echo "::error::current TableProPluginKit build failed"; exit 1; }
+head_result="$RESULT"
+
+echo "Building base ($BASE_REF -> ${base_sha:0:8})..."
+git clone --quiet --local --no-hardlinks "$PROJECT_DIR" "$work/base"
+git -C "$work/base" checkout --quiet "$base_sha"
+build_interface "$work/base" "$work/base.txt"
+[ "$RESULT" = "failed" ] && { echo "::error::base TableProPluginKit build failed at $BASE_REF"; exit 1; }
+base_result="$RESULT"
+
+if [ "$base_result" = "none" ]; then
+    echo "Base has no resilient interface (Library Evolution not enabled there). Bootstrap, nothing to compare. Pass."
     exit 0
 fi
 
-if [ ! -f "$BASELINE" ]; then
-    echo "::error::No ABI baseline at ${BASELINE#"$PROJECT_DIR"/}. Generate it with: scripts/check-pluginkit-abi.sh --update"
+if [ "$head_result" = "none" ]; then
+    echo "::error::current build produced no .swiftinterface but the base did. Was BUILD_LIBRARY_FOR_DISTRIBUTION turned off?"
     exit 1
 fi
 
-if diff -u "$BASELINE" "$normalized"; then
-    echo "PluginKit ABI matches the baseline."
+if diff -u "$work/base.txt" "$work/head.txt"; then
+    echo "PluginKit ABI unchanged vs $BASE_REF."
     exit 0
 fi
 
 cat <<'EOF'
 
-::error::TableProPluginKit public ABI changed (diff above). Decide additive vs breaking:
-  Additive  (new requirement with a default, new field on a non-@frozen struct, new
-            case on a non-@frozen enum): refresh the baseline and commit it ->
-                scripts/check-pluginkit-abi.sh --update
-  Breaking  (changed/removed/renamed signature, new case on a @frozen enum, changed
-            frozen layout): ALSO bump currentPluginKitVersion in PluginManager.swift,
-            raise TableProPluginKitVersion in every plugin Info.plist, refresh the
-            baseline, then run scripts/release-all-plugins.sh <newVersion>.
+::error::TableProPluginKit public ABI changed vs base (diff above). Decide additive vs breaking:
+  Additive: no version bump.
+  Breaking: bump currentPluginKitVersion + every plugin Info.plist TableProPluginKitVersion,
+            then run scripts/release-all-plugins.sh <newVersion>.
 EOF
 exit 1
