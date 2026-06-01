@@ -119,6 +119,7 @@ internal struct FieldDetailView: View {
 
             TypeBadge(context.columnType.badgeLabel)
         }
+        .textSelection(.enabled)
     }
 
     private func editorMinHeight(for kind: FieldEditorKind) -> CGFloat? {

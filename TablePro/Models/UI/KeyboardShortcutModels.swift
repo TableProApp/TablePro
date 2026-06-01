@@ -401,6 +401,7 @@ struct KeyCombo: Codable, Equatable, Hashable {
         KeyCombo(key: "q", command: true, control: true), // Lock Screen
         KeyCombo(key: "f", command: true, control: true), // Full Screen
         KeyCombo(key: "d", command: true, option: true), // Toggle Dock
+        KeyCombo(key: "d", command: true, control: true), // Look Up / Define
     ]
 
     /// Check if this combo is reserved by the system
@@ -535,7 +536,7 @@ struct KeyboardSettings: Codable, Equatable {
         .duplicateRow: KeyCombo(key: "d", command: true, shift: true),
         .truncateTable: KeyCombo(key: "delete", option: true, isSpecialKey: true),
         .previewFKReference: KeyCombo(key: "space", isSpecialKey: true),
-        .saveAsFavorite: KeyCombo(key: "d", command: true, control: true),
+        .saveAsFavorite: KeyCombo(key: "d", command: true),
 
         // View
         .toggleTableBrowser: KeyCombo(key: "0", command: true),

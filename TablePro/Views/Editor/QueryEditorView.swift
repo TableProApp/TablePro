@@ -112,6 +112,15 @@ struct QueryEditorView: View {
             .accessibilityLabel(String(localized: "Format Query"))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .formatQuery))
 
+            Button(action: { onSaveAsFavorite?(queryText) }) {
+                Image(systemName: "star")
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Save as Favorite (⌘D)"))
+            .accessibilityLabel(String(localized: "Save as Favorite"))
+            .disabled(!hasQueryText)
+
             Divider()
                 .frame(height: 16)
 
