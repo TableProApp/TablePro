@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- iOS: open DuckDB database files and in-memory DuckDB databases, matching the Mac app. (#1526)
+
 ## [0.47.0] - 2026-06-01
 
 ### Added

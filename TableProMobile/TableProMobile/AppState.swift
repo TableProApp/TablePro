@@ -189,6 +189,7 @@ final class AppState {
         try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(connection.id.uuidString)")
+        FileBookmarkStore().delete(for: connection.id)
         clearPerConnectionPreferences(for: connection.id)
         persist(connections: updated)
         updateWidgetData()
