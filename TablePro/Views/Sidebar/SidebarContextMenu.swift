@@ -138,10 +138,12 @@ struct SidebarContextMenu: View {
                 for: coordinator?.connection.type ?? .mysql
             )
         ) {
-            Button("Import...") {
-                perform { coordinator?.openImportDialog() }
-            }
-            .disabled(isReadOnly)
+            ImportMenuItems(
+                formats: PluginManager.shared.importFormatOptions(for: coordinator?.connection.type ?? .mysql),
+                isDisabled: isReadOnly,
+                shortcut: nil,
+                action: { formatId in perform { coordinator?.openImportDialog(formatId: formatId) } }
+            )
         }
 
         let maintenanceOps = coordinator?.supportedMaintenanceOperations() ?? []

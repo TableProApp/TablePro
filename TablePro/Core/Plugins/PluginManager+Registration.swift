@@ -262,6 +262,31 @@ extension PluginManager {
         return Array(importPlugins.values)
     }
 
+    func importPlugins(for databaseType: DatabaseType) -> [any ImportFormatPlugin] {
+        guard supportsImport(for: databaseType) else { return [] }
+        let typeId = databaseType.rawValue
+        return allImportPlugins()
+            .filter { plugin in
+                let supported = type(of: plugin).supportedDatabaseTypeIds
+                let excluded = type(of: plugin).excludedDatabaseTypeIds
+                if !supported.isEmpty && !supported.contains(typeId) { return false }
+                if excluded.contains(typeId) { return false }
+                return true
+            }
+            .sorted { lhs, rhs in
+                let lhsRowBased = type(of: lhs).requiresTargetTable
+                let rhsRowBased = type(of: rhs).requiresTargetTable
+                if lhsRowBased != rhsRowBased { return !lhsRowBased }
+                return type(of: lhs).formatDisplayName < type(of: rhs).formatDisplayName
+            }
+    }
+
+    func importFormatOptions(for databaseType: DatabaseType) -> [ImportFormatOption] {
+        importPlugins(for: databaseType).map {
+            ImportFormatOption(id: type(of: $0).formatId, name: type(of: $0).formatDisplayName)
+        }
+    }
+
     /// Returns a temporary plugin driver for query building (buildBrowseQuery), or nil
     /// if the plugin doesn't implement custom query building (NoSQL hooks).
     func queryBuildingDriver(for databaseType: DatabaseType) -> (any PluginDatabaseDriver)? {

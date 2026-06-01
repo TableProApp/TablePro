@@ -208,7 +208,7 @@ Import `.sql` and `.sql.gz` files (statements execute directly against your data
 
 <Steps>
   <Step title="Open Import Dialog">
-    Click **File** > **Import** (`Cmd+Shift+I`), or drag and drop a `.sql` / `.sql.gz` file onto the app.
+    Click **File** > **Import** > **From SQL** (`Cmd+Shift+I`), or drag and drop a `.sql` / `.sql.gz` file onto the app.
   </Step>
   <Step title="Configure Options">
     Set encoding, transaction wrapping, and foreign key check options.
@@ -259,7 +259,7 @@ In **Skip and Continue** mode, failed statements are collected (up to 1,000) wit
 
 ### Import JSON Data
 
-Pick a `.json`, `.jsonl`, or `.ndjson` file in **File** > **Import** and TablePro opens a dedicated JSON import sheet. It accepts an array of objects `[{...}, {...}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {...} ] }`, so an export round-trips back in.
+Choose **File** > **Import** > **From JSON** and pick a `.json`, `.jsonl`, or `.ndjson` file, and TablePro opens a dedicated JSON import sheet. It accepts an array of objects `[{...}, {...}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {...} ] }`, so an export round-trips back in.
 
 Choose a destination:
 

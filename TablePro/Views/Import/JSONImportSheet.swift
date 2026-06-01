@@ -18,6 +18,7 @@ struct JSONImportSheet: View {
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
     let fileURL: URL
+    let formatId: String
 
     private enum Destination: Hashable {
         case existingTable
@@ -295,12 +296,22 @@ struct JSONImportSheet: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 150)
                             .disabled(!row.include)
-                        Picker("", selection: columnBinding(row).type) {
+                        Menu {
                             ForEach(typeOptions(including: row.type), id: \.self) { type in
-                                Text(type).tag(type)
+                                Button {
+                                    columnBinding(row).type.wrappedValue = type
+                                } label: {
+                                    if type.caseInsensitiveCompare(row.type) == .orderedSame {
+                                        Label(type, systemImage: "checkmark")
+                                    } else {
+                                        Text(type)
+                                    }
+                                }
                             }
+                        } label: {
+                            Text(row.type)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .labelsHidden()
                         .frame(width: 150)
                         .disabled(!row.include)
                         Toggle("", isOn: columnBinding(row).isPrimaryKey).labelsHidden().disabled(!row.include)
@@ -387,14 +398,7 @@ struct JSONImportSheet: View {
     // MARK: - Plugin
 
     private var currentPlugin: (any ImportFormatPlugin)? {
-        let ext = fileURL.pathExtension.lowercased()
-        return PluginManager.shared.allImportPlugins().first {
-            type(of: $0).requiresTargetTable && type(of: $0).acceptedFileExtensions.contains(ext)
-        }
-    }
-
-    private var formatId: String {
-        currentPlugin.map { type(of: $0).formatId } ?? "json"
+        PluginManager.shared.importPlugin(forFormat: formatId)
     }
 
     private var canImport: Bool {

@@ -137,43 +137,43 @@ extension MainContentCoordinator {
         activeSheet = .exportQueryResults
     }
 
-    func openImportDialog() {
+    func openImportDialog(formatId: String) {
         guard !safeModeLevel.blocksAllWrites else { return }
         guard PluginManager.shared.supportsImport(for: connection.type) else {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Import Not Supported"),
-                message: String(format: String(localized: "SQL import is not supported for %@ connections."), connection.type.rawValue),
+                message: String(format: String(localized: "Import is not supported for %@ connections."), connection.type.rawValue),
                 window: nil
             )
             return
         }
+        guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else { return }
+        let pluginType = type(of: plugin)
+
         let panel = NSOpenPanel()
         var contentTypes: [UTType] = []
-        for plugin in PluginManager.shared.allImportPlugins() {
-            for ext in type(of: plugin).acceptedFileExtensions {
-                if let utType = UTType(filenameExtension: ext) {
-                    contentTypes.append(utType)
-                }
+        for ext in pluginType.acceptedFileExtensions {
+            if let utType = UTType(filenameExtension: ext) {
+                contentTypes.append(utType)
             }
         }
-        if let gzType = UTType(filenameExtension: "gz") {
+        if !pluginType.requiresTargetTable, let gzType = UTType(filenameExtension: "gz") {
             contentTypes.append(gzType)
         }
         if !contentTypes.isEmpty {
             panel.allowedContentTypes = contentTypes
         }
         panel.allowsMultipleSelection = false
-        panel.message = "Select SQL file to import"
+        panel.message = String(format: String(localized: "Select %@ file to import"), pluginType.formatDisplayName)
 
         guard let window = contentWindow else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             self?.importFileURL = url
-            let ext = url.pathExtension.lowercased()
-            let isRowBased = PluginManager.shared.allImportPlugins().contains {
-                type(of: $0).requiresTargetTable && type(of: $0).acceptedFileExtensions.contains(ext)
+            switch ImportRouting.route(formatId: formatId, requiresTargetTable: pluginType.requiresTargetTable) {
+            case .statement(let id): self?.activeSheet = .importDialog(formatId: id)
+            case .rowMapping(let id): self?.activeSheet = .rowImport(formatId: id)
             }
-            self?.activeSheet = isRowBased ? .jsonImport : .importDialog
         }
     }
 

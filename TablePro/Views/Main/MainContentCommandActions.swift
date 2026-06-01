@@ -677,8 +677,12 @@ final class MainContentCommandActions {
         coordinator?.openExportQueryResultsDialog()
     }
 
-    func importTables() {
-        coordinator?.openImportDialog()
+    func importTables(formatId: String) {
+        coordinator?.openImportDialog(formatId: formatId)
+    }
+
+    var availableImportFormats: [ImportFormatOption] {
+        PluginManager.shared.importFormatOptions(for: currentDatabaseType)
     }
 
     func backupDatabase() {

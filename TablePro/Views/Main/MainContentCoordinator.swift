@@ -45,8 +45,8 @@ enum ActiveSheet: Identifiable {
     case quickSwitcher
     case sqlPreview
     case exportDialog
-    case importDialog
-    case jsonImport
+    case importDialog(formatId: String)
+    case rowImport(formatId: String)
     case exportQueryResults
     case backupDatabase
     case restoreDatabase(fileURL: URL)
@@ -58,8 +58,8 @@ enum ActiveSheet: Identifiable {
         case .quickSwitcher: "quickSwitcher"
         case .sqlPreview: "sqlPreview"
         case .exportDialog: "exportDialog"
-        case .importDialog: "importDialog"
-        case .jsonImport: "jsonImport"
+        case .importDialog(let formatId): "importDialog-\(formatId)"
+        case .rowImport(let formatId): "rowImport-\(formatId)"
         case .exportQueryResults: "exportQueryResults"
         case .backupDatabase: "backupDatabase"
         case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"

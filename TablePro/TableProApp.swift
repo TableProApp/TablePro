@@ -339,14 +339,11 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!(actions?.isConnected ?? false))
 
-            Button("Import...") {
-                actions?.importTables()
-            }
-            .optionalKeyboardShortcut(shortcut(for: .importData))
-            .disabled(
-                !(actions?.isConnected ?? false)
-                    || actions?.isReadOnly ?? false
-                    || !(actions.map { PluginManager.shared.supportsImport(for: $0.currentDatabaseType) } ?? true)
+            ImportMenuItems(
+                formats: actions?.availableImportFormats ?? [],
+                isDisabled: !(actions?.isConnected ?? false) || (actions?.isReadOnly ?? false),
+                shortcut: shortcut(for: .importData),
+                action: { formatId in actions?.importTables(formatId: formatId) }
             )
 
             Button(String(localized: "Backup Dump\u{2026}")) {

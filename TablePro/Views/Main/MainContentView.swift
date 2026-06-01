@@ -216,7 +216,7 @@ struct MainContentView: View {
                     )
                 }
             }
-        case .importDialog:
+        case .importDialog(let formatId):
             let importDismiss = Binding<Bool>(
                 get: { coordinator.activeSheet != nil },
                 set: { if !$0 {
@@ -228,10 +228,11 @@ struct MainContentView: View {
             ImportDialog(
                 isPresented: importDismiss,
                 connection: connection,
-                initialFileURL: coordinator.importFileURL
+                initialFileURL: coordinator.importFileURL,
+                initialFormatId: formatId
             )
-        case .jsonImport:
-            let jsonDismiss = Binding<Bool>(
+        case .rowImport(let formatId):
+            let rowDismiss = Binding<Bool>(
                 get: { coordinator.activeSheet != nil },
                 set: { if !$0 {
                     coordinator.activeSheet = nil
@@ -241,9 +242,10 @@ struct MainContentView: View {
             )
             if let url = coordinator.importFileURL {
                 JSONImportSheet(
-                    isPresented: jsonDismiss,
+                    isPresented: rowDismiss,
                     connection: connection,
-                    fileURL: url
+                    fileURL: url,
+                    formatId: formatId
                 )
             }
         case .backupDatabase:

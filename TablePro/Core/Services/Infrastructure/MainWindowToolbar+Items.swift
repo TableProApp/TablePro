@@ -65,14 +65,34 @@ extension MainWindowToolbar {
     }
 
     func subitemImport() -> NSToolbarItem {
-        menuOnlyItem(
-            id: Self.importTables,
-            label: String(localized: "Import"),
-            symbol: "square.and.arrow.down",
-            action: #selector(performImport(_:)),
-            keyEquivalent: "i",
-            modifiers: [.command, .shift]
-        )
+        let label = String(localized: "Import")
+        let item = NSToolbarItem(itemIdentifier: Self.importTables)
+        item.label = label
+        item.paletteLabel = label
+        item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: label)
+
+        let menuItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
+        menuItem.image = item.image
+        menuItem.submenu = buildImportSubmenu()
+        item.menuFormRepresentation = menuItem
+
+        return item
+    }
+
+    private func buildImportSubmenu() -> NSMenu {
+        let menu = NSMenu()
+        guard let databaseType = coordinator?.connection.type else { return menu }
+        for format in PluginManager.shared.importFormatOptions(for: databaseType) {
+            let menuItem = NSMenuItem(
+                title: format.submenuLabel,
+                action: #selector(performImportFormat(_:)),
+                keyEquivalent: ""
+            )
+            menuItem.target = self
+            menuItem.representedObject = format.id
+            menu.addItem(menuItem)
+        }
+        return menu
     }
 
     // MARK: - Helpers
