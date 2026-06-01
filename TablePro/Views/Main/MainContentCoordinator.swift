@@ -192,6 +192,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var postConnectCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
+    @ObservationIgnored private var schemaSwitchCancellable: AnyCancellable?
 
     var fileConflictRequest: FileConflictRequest?
 
@@ -423,6 +424,15 @@ final class MainContentCoordinator {
                 self.checkOpenTabsForExternalModification()
             }
 
+        schemaSwitchCancellable = services.appEvents.currentSchemaChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] changedConnectionId in
+                guard let self, changedConnectionId == self.connectionId else { return }
+                Task { @MainActor in
+                    await self.refreshTables()
+                }
+            }
+
         self.filterCoordinator = FilterCoordinator(parent: self)
         self.queryExecutionCoordinator = QueryExecutionCoordinator(parent: self)
         self.paginationCoordinator = PaginationCoordinator(parent: self)
@@ -619,6 +629,7 @@ final class MainContentCoordinator {
         }
         postConnectCancellable = nil
         externalFileModCancellable = nil
+        schemaSwitchCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
         currentQueryTask?.cancel()
