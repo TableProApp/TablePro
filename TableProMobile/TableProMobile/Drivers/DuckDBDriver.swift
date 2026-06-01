@@ -33,6 +33,8 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         let resolvedPath = try resolvePath()
         try await actor.open(path: resolvedPath)
+        try? await actor.query("SET autoinstall_known_extensions=false")
+        try? await actor.query("SET autoload_known_extensions=false")
     }
 
     func disconnect() async throws {

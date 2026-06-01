@@ -42,7 +42,7 @@ Double-click any `.duckdb` file in Finder to open it directly in TablePro.
 
 The iOS app supports DuckDB too. In the connection form, pick DuckDB and either turn on **In-Memory Database** or open a `.duckdb`/`.ddb` file through the Files app. Opened files keep working across launches through a security-scoped bookmark, so edits write back to the original file.
 
-The iOS build links the `json`, `parquet`, and `icu` extensions. Extensions that download at runtime (such as `httpfs`) are not available on iOS. Large in-memory databases are bounded by the app's memory budget.
+The iOS build links the `core_functions`, `json`, `parquet`, and `icu` extensions. Runtime extension autoloading is off, so extensions that download on demand (such as `httpfs`) are not available on iOS. Large in-memory databases are bounded by the app's memory budget.
 
 ## Querying files directly
 

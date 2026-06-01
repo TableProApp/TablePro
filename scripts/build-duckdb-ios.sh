@@ -24,7 +24,7 @@ set -euo pipefail
 #   DUCKDB_VERSION=v1.3.2 scripts/build-duckdb-ios.sh
 
 DUCKDB_VERSION="${1:-${DUCKDB_VERSION:-v1.5.2}}"
-CORE_EXTENSIONS="${CORE_EXTENSIONS:-json;parquet;icu}"
+CORE_EXTENSIONS="${CORE_EXTENSIONS:-core_functions;json;parquet;icu}"
 DEPLOYMENT_TARGET="${DEPLOYMENT_TARGET:-15.0}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
