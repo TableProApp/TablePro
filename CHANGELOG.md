@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The database plugin interface is now binary-stable. Adding plugin capabilities in a later release no longer forces installed plugins to be rebuilt; only a breaking interface change does.
+
 ## [0.47.0] - 2026-06-01
 
 ### Added

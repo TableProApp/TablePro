@@ -565,6 +565,7 @@ private extension PluginCapability {
         case .exportFormat: String(localized: "Export Format")
         case .importFormat: String(localized: "Import Format")
         case .documentInspector: String(localized: "Document Inspector")
+        @unknown default: String(localized: "Unknown")
         }
     }
 }

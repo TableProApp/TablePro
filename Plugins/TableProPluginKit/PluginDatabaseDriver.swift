@@ -1,11 +1,13 @@
 import Foundation
 
+@frozen
 public enum ParameterStyle: String, Sendable {
     case questionMark  // ?
     case dollar        // $1, $2
 }
 
 public struct PluginRowChange: Sendable {
+    @frozen
     public enum ChangeType: Sendable {
         case insert
         case update

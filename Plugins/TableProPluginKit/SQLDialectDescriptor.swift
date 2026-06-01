@@ -34,6 +34,7 @@ public struct SQLDialectDescriptor: Sendable {
     // Query limit style
     public let autoLimitStyle: AutoLimitStyle
 
+    @frozen
     public enum RegexSyntax: String, Sendable {
         case regexp        // MySQL: column REGEXP 'pattern'
         case tilde         // PostgreSQL: column ~ 'pattern'
@@ -53,6 +54,7 @@ public struct SQLDialectDescriptor: Sendable {
         case explicit // PostgreSQL, SQLite, etc: need ESCAPE '\' clause
     }
 
+    @frozen
     public enum PaginationStyle: String, Sendable {
         case limit       // MySQL, PostgreSQL, SQLite, etc: LIMIT n
         case offsetFetch // Oracle, MSSQL: OFFSET n ROWS FETCH NEXT m ROWS ONLY

@@ -5,6 +5,7 @@
 
 import Foundation
 
+@frozen
 public enum ImportErrorHandling: String, Codable, CaseIterable, Sendable {
     case stopAndRollback
     case stopAndCommit

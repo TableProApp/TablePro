@@ -94,11 +94,15 @@ All database drivers are `.tableplugin` bundles loaded at runtime by `PluginMana
 
 When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add target to pbxproj, add `DatabaseType` static constant, add case to `resolve_plugin_info()` in `.github/workflows/build-plugin.yml`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-system/` for details.
 
-When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`.
+When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`. This is an additive, ABI-safe change (see below) and needs no version bump.
 
-**PluginKit ABI versioning**: When `DriverPlugin` or `PluginDatabaseDriver` protocol changes (new methods, changed signatures), bump `currentPluginKitVersion` in `PluginManager.swift` AND `TableProPluginKitVersion` in every plugin's `Info.plist`. Stale user-installed plugins with mismatched versions crash on load with `EXC_BAD_INSTRUCTION` (not catchable in Swift). Removing protocol methods that have default `nil` implementations does NOT require a version bump. Adding new `static var` or `func` requirements to `DriverPlugin` DOES require a version bump even with default implementations via protocol extension — Swift protocol witness tables are compiled statically.
+**PluginKit ABI (resilient)**: TableProPluginKit is built with `BUILD_LIBRARY_FOR_DISTRIBUTION = YES` (Swift Library Evolution), so its public ABI is resilient. The Swift runtime instantiates witness tables for already-built plugins and fills any requirement the plugin did not implement from the protocol's default, so a plugin built against an older PluginKit keeps loading under a newer app.
 
-**Post-ABI-bump checklist (mandatory)**: After bumping `currentPluginKitVersion`, every registry-published plugin must be rebuilt against the new ABI. App auto-update reconciliation handles the user-facing recovery, but the registry has to carry binaries for the new PluginKit version first.
+**Additive changes are binary-compatible and need NO version bump**: adding a requirement to `DriverPlugin` / `PluginDatabaseDriver` that has a default implementation, reordering requirements, adding a field to a non-`@frozen` transfer struct, or removing a requirement that defaulted to `nil`.
+
+**Bump `currentPluginKitVersion` (in `PluginManager.swift`) and `TableProPluginKitVersion` in every plugin `Info.plist` ONLY for a breaking change**: changing or removing an existing requirement's signature, adding a requirement without a default, adding a case to a `@frozen` enum, or changing a frozen type's layout. Closed value enums in PluginKit are `@frozen` (committed layout, fast, switch-exhaustive without `@unknown default`); the driver protocols and transfer structs stay non-frozen so they can grow. The strict version gate in `validateBundleVersions` still rejects a stale plugin cleanly after a breaking bump (no `EXC_BAD_INSTRUCTION`).
+
+**Post-ABI-bump checklist (mandatory, breaking bumps only)**: Bumps are now rare (only the breaking changes listed above). After one, every registry-published plugin must be rebuilt against the new ABI. App auto-update reconciliation handles the user-facing recovery, but the registry has to carry binaries for the new PluginKit version first.
 
 1. Commit the bump (updates `PluginManager.swift` and every bundled plugin's `Info.plist`). Bundled plugins ship with the next app release. Do not tag them.
 2. Trigger the bulk re-release:
