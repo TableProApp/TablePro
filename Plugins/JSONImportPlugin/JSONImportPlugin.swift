@@ -70,10 +70,10 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
                                      inserted: &inserted, skipped: &skipped, errors: &errors, maxErrors: maxErrors)
                 }
             } else {
-                let rows = try Self.parseRows(at: url, targetTable: sink.targetTable)
-                for (index, row) in rows.enumerated() {
+                let rawRows = try Self.parseRows(at: url, targetTable: sink.targetTable)
+                for (index, rawRow) in rawRows.enumerated() {
                     try progress.checkCancellation()
-                    try await insert(row, into: sink, at: index + 1, progress: progress,
+                    try await insert(Self.convertRow(rawRow), into: sink, at: index + 1, progress: progress,
                                      inserted: &inserted, skipped: &skipped, errors: &errors, maxErrors: maxErrors)
                 }
             }
@@ -145,10 +145,10 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
         return convertRow(dict)
     }
 
-    static func parseRows(at url: URL, targetTable: String?) throws -> [[String: PluginCellValue]] {
+    static func parseRows(at url: URL, targetTable: String?) throws -> [[String: Any]] {
         let data = try Data(contentsOf: url)
         let object = try JSONSerialization.jsonObject(with: data)
-        return try extractRows(from: object, targetTable: targetTable).map(convertRow)
+        return try extractRows(from: object, targetTable: targetTable)
     }
 
     static func extractRows(from object: Any, targetTable: String?) throws -> [[String: Any]] {
