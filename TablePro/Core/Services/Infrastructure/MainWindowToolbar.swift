@@ -78,6 +78,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             .sidebarTrackingSeparator,
             Self.connectionGroup,
             Self.refreshSaveGroup,
+            .flexibleSpace,
             Self.principal,
             .flexibleSpace,
             Self.quickSwitcher,
