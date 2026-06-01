@@ -102,6 +102,8 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 
 **Bump `currentPluginKitVersion` (in `PluginManager.swift`) and `TableProPluginKitVersion` in every plugin `Info.plist` ONLY for a breaking change**: changing or removing an existing requirement's signature, adding a requirement without a default, adding a case to a `@frozen` enum, or changing a frozen type's layout. Closed value enums in PluginKit are `@frozen` (committed layout, fast, switch-exhaustive without `@unknown default`); the driver protocols and transfer structs stay non-frozen so they can grow. The strict version gate in `validateBundleVersions` still rejects a stale plugin cleanly after a breaking bump (no `EXC_BAD_INSTRUCTION`).
 
+**ABI gate**: `scripts/check-pluginkit-abi.sh` builds TableProPluginKit and diffs its public interface against `Plugins/TableProPluginKit/ABI-Baseline.swiftinterface`. CI runs it on every PR that touches `Plugins/TableProPluginKit/**`. Any ABI change fails the gate until you regenerate the baseline (`scripts/check-pluginkit-abi.sh --update`) and commit it, so the change is visible in review and a breaking one cannot merge without the version bump above.
+
 **Post-ABI-bump checklist (mandatory, breaking bumps only)**: Bumps are now rare (only the breaking changes listed above). After one, every registry-published plugin must be rebuilt against the new ABI. App auto-update reconciliation handles the user-facing recovery, but the registry has to carry binaries for the new PluginKit version first.
 
 1. Commit the bump (updates `PluginManager.swift` and every bundled plugin's `Info.plist`). Bundled plugins ship with the next app release. Do not tag them.
