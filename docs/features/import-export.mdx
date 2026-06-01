@@ -198,7 +198,7 @@ Paste tabular data directly into the data grid. Press `Cmd+V` after selecting a 
 
 ## Import Data
 
-Import `.sql` and `.sql.gz` files. Statements execute directly against your database: backups, migrations, seed data.
+Import `.sql` and `.sql.gz` files (statements execute directly against your database: backups, migrations, seed data), or `.json` / `.jsonl` files into a table (see [Import JSON Data](#import-json-data)).
 
 <Note>
 **MongoDB**: SQL import is not available. Use `mongoimport` or the MQL shell.
@@ -256,6 +256,17 @@ Three modes for handling errors during import:
 | **Skip and Continue** | Logs failed statements and continues importing. Shows a summary with all errors at the end. Transaction wrapping is disabled in this mode. |
 
 In **Skip and Continue** mode, failed statements are collected (up to 1,000) with line numbers and error messages. After import completes, a summary dialog shows how many succeeded vs failed, with a scrollable error list and a "Copy Errors to Clipboard" button.
+
+### Import JSON Data
+
+Pick a `.json`, `.jsonl`, or `.ndjson` file in **File** > **Import** and TablePro opens a dedicated JSON import sheet. It accepts an array of objects `[{...}, {...}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {...} ] }`, so an export round-trips back in.
+
+Choose a destination:
+
+- **Existing table**: pick the table, then map each JSON field to a column. Fields are auto-matched by name; toggle any field off to skip it, or remap it to a different column. Columns with no matching field keep their default or NULL.
+- **New table**: name the table and review the columns TablePro infers from the data. Each column's name, type, primary key, nullable flag, and default are editable before the table is created.
+
+Rows insert through parameterized statements, so JSON values are never concatenated into SQL. Nested objects and arrays are stored as JSON text. The on-error, transaction, and "delete existing rows" options work the same as SQL import.
 
 ## Progress and Errors
 

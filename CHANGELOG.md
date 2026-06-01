@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Import a JSON file into a table. A dedicated sheet accepts an array of objects, newline-delimited JSON, or TablePro's own JSON export, and lets you map each field to a column in an existing table or in a new table with inferred, editable columns.
 - Save the current query as a favorite from a star button in the SQL editor toolbar.
 - Field names and types in the row Details panel can now be selected and copied.
 
