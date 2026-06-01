@@ -7,6 +7,7 @@
 //  table with columns inferred from the data.
 //
 
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
@@ -62,24 +63,28 @@ struct JSONImportSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    fileInfoSection
-                    Divider()
-                    destinationPicker
-                    destinationDetail
-                    Divider()
-                    centralSection
-                    optionsSection
-                }
-                .padding(16)
-            }
-            .frame(width: 700, height: 560)
-
+            headerView
+                .padding()
             Divider()
+
+            destinationForm
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+            Divider()
+
+            contentArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+
+            optionsForm
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+            Divider()
+
             footerView
+                .padding()
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(width: 720, height: 600)
         .task {
             await loadTables()
             await loadNewColumns()
@@ -108,6 +113,235 @@ struct JSONImportSheet: View {
         }
     }
 
+    // MARK: - Header / forms
+
+    private var headerView: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "curlybraces")
+                .font(.title)
+                .foregroundStyle(.blue)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(fileURL.lastPathComponent)
+                    .font(.headline)
+                Text("Import JSON rows into a table")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if isLoadingContext {
+                ProgressView().controlSize(.small)
+            }
+        }
+    }
+
+    private var destinationForm: some View {
+        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 10) {
+            GridRow {
+                Text("Destination:")
+                    .gridColumnAlignment(.trailing)
+                Picker("", selection: $destination) {
+                    Text("Existing table").tag(Destination.existingTable)
+                    Text("New table").tag(Destination.newTable)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+
+            if destination == .existingTable {
+                GridRow {
+                    Text("Import into:")
+                    Picker("", selection: $selectedTargetTable) {
+                        Text("Select a table…").tag(String?.none)
+                        ForEach(availableTables, id: \.id) { table in
+                            Text(table.name).tag(String?.some(table.name))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 280, alignment: .leading)
+                }
+            } else {
+                GridRow {
+                    Text("New table:")
+                    TextField("", text: $newTableName, prompt: Text("table_name"))
+                        .frame(maxWidth: 280)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var optionsForm: some View {
+        Group {
+            if let settable = currentPlugin as? any SettablePluginDiscoverable,
+               let optionsView = settable.settingsView() {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Options").font(.callout.weight(.semibold))
+                    optionsView
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var footerView: some View {
+        HStack {
+            Button("Cancel") { isPresented = false }
+                .keyboardShortcut(.cancelAction)
+            Spacer()
+            Button("Import") { performImport() }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canImport)
+                .keyboardShortcut(.defaultAction)
+        }
+    }
+
+    // MARK: - Content tables
+
+    @ViewBuilder
+    private var contentArea: some View {
+        switch destination {
+        case .existingTable:
+            if selectedTargetTable == nil {
+                placeholder("Choose a destination table to map fields.")
+            } else if mappings.isEmpty {
+                placeholder(loadError ?? "No fields found in the file.")
+            } else {
+                mappingTable
+            }
+        case .newTable:
+            if newColumns.isEmpty {
+                placeholder(loadError ?? "No columns found in the file.")
+            } else {
+                newColumnsTable
+            }
+        }
+    }
+
+    private func placeholder(_ message: String) -> some View {
+        VStack {
+            Spacer()
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var mappingTable: some View {
+        ScrollView {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                GridRow {
+                    Text("Import")
+                    Text("JSON field")
+                    Text("Column")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Divider().gridCellColumns(3)
+
+                ForEach(mappings) { row in
+                    GridRow {
+                        Toggle("", isOn: mappingBinding(row).include).labelsHidden()
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(row.field.name).lineLimit(1)
+                            if let sample = row.field.sampleValue, !sample.isEmpty {
+                                Text(sample).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                        Picker("", selection: mappingBinding(row).targetColumn) {
+                            Text("Skip").tag(String?.none)
+                            ForEach(targetColumns, id: \.self) { column in
+                                Text(column).tag(String?.some(column))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 240, alignment: .leading)
+                        .disabled(!row.include)
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var newColumnsTable: some View {
+        ScrollView {
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                GridRow {
+                    Text("Create")
+                    Text("Column")
+                    Text("Type")
+                    Text("Key")
+                    Text("Null")
+                    Text("Default")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Divider().gridCellColumns(6)
+
+                ForEach(newColumns) { row in
+                    GridRow {
+                        Toggle("", isOn: columnBinding(row).include).labelsHidden()
+                        TextField("name", text: columnBinding(row).name)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 150)
+                            .disabled(!row.include)
+                        Picker("", selection: columnBinding(row).type) {
+                            ForEach(typeOptions(including: row.type), id: \.self) { type in
+                                Text(type).tag(type)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 150)
+                        .disabled(!row.include)
+                        Toggle("", isOn: columnBinding(row).isPrimaryKey).labelsHidden().disabled(!row.include)
+                        Toggle("", isOn: columnBinding(row).isNullable).labelsHidden().disabled(!row.include)
+                        TextField("", text: columnBinding(row).defaultValue)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 120)
+                            .disabled(!row.include)
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Bindings
+
+    private func mappingBinding(_ row: FieldMapping) -> Binding<FieldMapping> {
+        guard let index = mappings.firstIndex(where: { $0.id == row.id }) else {
+            return .constant(row)
+        }
+        return $mappings[index]
+    }
+
+    private func columnBinding(_ row: NewColumn) -> Binding<NewColumn> {
+        guard let index = newColumns.firstIndex(where: { $0.id == row.id }) else {
+            return .constant(row)
+        }
+        return $newColumns[index]
+    }
+
+    private var dialectTypes: [String] {
+        PluginManager.shared.columnTypesByCategory(for: connection.type)
+            .values
+            .flatMap { $0 }
+            .sorted()
+    }
+
+    private func typeOptions(including current: String) -> [String] {
+        var types = dialectTypes
+        if !types.contains(where: { $0.caseInsensitiveCompare(current) == .orderedSame }) {
+            types.insert(current, at: 0)
+        }
+        return types
+    }
+
     // MARK: - Plugin
 
     private var currentPlugin: (any ImportFormatPlugin)? {
@@ -130,198 +364,6 @@ struct JSONImportSheet: View {
             return !newTableName.trimmingCharacters(in: .whitespaces).isEmpty
                 && newColumns.contains { $0.include && !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
         }
-    }
-
-    // MARK: - Sections
-
-    private var fileInfoSection: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "curlybraces")
-                .font(.title)
-                .foregroundStyle(.blue)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(fileURL.lastPathComponent)
-                    .font(.body.weight(.semibold))
-                Text("Import JSON rows into a table")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if isLoadingContext {
-                ProgressView().controlSize(.small)
-            }
-        }
-    }
-
-    private var destinationPicker: some View {
-        Picker("Destination", selection: $destination) {
-            Text("Existing table").tag(Destination.existingTable)
-            Text("New table").tag(Destination.newTable)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(maxWidth: 300)
-    }
-
-    @ViewBuilder
-    private var destinationDetail: some View {
-        switch destination {
-        case .existingTable:
-            HStack(spacing: 8) {
-                Text("Import into:")
-                    .frame(width: 90, alignment: .leading)
-                Picker("", selection: $selectedTargetTable) {
-                    Text("Select a table…").tag(String?.none)
-                    ForEach(availableTables, id: \.id) { table in
-                        Text(table.name).tag(String?.some(table.name))
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 260)
-                Spacer()
-            }
-        case .newTable:
-            HStack(spacing: 8) {
-                Text("New table:")
-                    .frame(width: 90, alignment: .leading)
-                TextField("table_name", text: $newTableName)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 260)
-                Spacer()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var centralSection: some View {
-        switch destination {
-        case .existingTable:
-            if selectedTargetTable != nil {
-                mappingSection
-            } else {
-                Text("Select a destination table to map fields.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-        case .newTable:
-            newColumnsSection
-        }
-    }
-
-    // MARK: - Existing-table mapping
-
-    private var mappingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            mappingHeader
-            ForEach($mappings) { $mapping in
-                HStack(spacing: 8) {
-                    Toggle("", isOn: $mapping.include)
-                        .labelsHidden()
-                        .frame(width: 50, alignment: .leading)
-                    fieldLabel(mapping.field)
-                        .frame(width: 200, alignment: .leading)
-                    Picker("", selection: $mapping.targetColumn) {
-                        Text("Skip").tag(String?.none)
-                        ForEach(targetColumns, id: \.self) { column in
-                            Text(column).tag(String?.some(column))
-                        }
-                    }
-                    .labelsHidden()
-                    .disabled(!mapping.include)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        }
-    }
-
-    private var mappingHeader: some View {
-        HStack {
-            Text("Field Mapping").font(.callout.weight(.semibold))
-            Spacer()
-            if let loadError {
-                Text(loadError).font(.caption).foregroundStyle(.red)
-            }
-        }
-    }
-
-    // MARK: - New-table columns
-
-    private var newColumnsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Columns").font(.callout.weight(.semibold))
-                Spacer()
-                if let loadError {
-                    Text(loadError).font(.caption).foregroundStyle(.red)
-                }
-            }
-            HStack(spacing: 8) {
-                Text("Create").frame(width: 50, alignment: .leading)
-                Text("Column").frame(width: 150, alignment: .leading)
-                Text("Type").frame(width: 130, alignment: .leading)
-                Text("PK").frame(width: 34, alignment: .leading)
-                Text("Null").frame(width: 40, alignment: .leading)
-                Text("Default").frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            ForEach($newColumns) { $column in
-                HStack(spacing: 8) {
-                    Toggle("", isOn: $column.include).labelsHidden().frame(width: 50, alignment: .leading)
-                    TextField("name", text: $column.name)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 150)
-                        .disabled(!column.include)
-                    TextField("type", text: $column.type)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 130)
-                        .disabled(!column.include)
-                    Toggle("", isOn: $column.isPrimaryKey).labelsHidden().frame(width: 34, alignment: .leading)
-                        .disabled(!column.include)
-                    Toggle("", isOn: $column.isNullable).labelsHidden().frame(width: 40, alignment: .leading)
-                        .disabled(!column.include)
-                    TextField("", text: $column.defaultValue)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: .infinity)
-                        .disabled(!column.include)
-                }
-            }
-        }
-    }
-
-    private func fieldLabel(_ field: PluginImportField) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(field.name).font(.body).lineLimit(1)
-            if let sample = field.sampleValue, !sample.isEmpty {
-                Text(sample).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var optionsSection: some View {
-        if let settable = currentPlugin as? any SettablePluginDiscoverable,
-           let optionsView = settable.settingsView() {
-            Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Options").font(.callout.weight(.semibold))
-                optionsView
-            }
-        }
-    }
-
-    private var footerView: some View {
-        HStack {
-            Button("Cancel") { isPresented = false }
-                .keyboardShortcut(.cancelAction)
-            Spacer()
-            Button("Import") { performImport() }
-                .buttonStyle(.borderedProminent)
-                .disabled(!canImport)
-                .keyboardShortcut(.defaultAction)
-        }
-        .padding(16)
     }
 
     // MARK: - Loading
