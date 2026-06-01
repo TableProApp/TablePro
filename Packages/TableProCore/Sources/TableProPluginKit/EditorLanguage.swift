@@ -1,4 +1,7 @@
-import Foundation
+//
+//  EditorLanguage.swift
+//  TableProPluginKit
+//
 
 public enum EditorLanguage: Sendable, Equatable {
     case sql

@@ -432,6 +432,10 @@ enum DatabaseDriverFactory {
         }
         var ssl = connection.sslConfig
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
+        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
+           !sslClientKeyPassphrase.isEmpty {
+            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
+        }
         if connection.usesAWSIAM {
             if ssl.mode == .disabled || ssl.mode == .preferred {
                 ssl.mode = .required
@@ -479,6 +483,9 @@ enum DatabaseDriverFactory {
             return try await resolveIAMPassword(for: connection, fields: fields)
         }
         if let override { return override }
+        if let passwordSource = connection.passwordSource {
+            return try await PasswordSourceResolver.resolve(passwordSource)
+        }
         if connection.usePgpass {
             let pgpassHost = connection.additionalFields["pgpassOriginalHost"] ?? connection.host
             let pgpassPort = connection.additionalFields["pgpassOriginalPort"]

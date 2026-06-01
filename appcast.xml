@@ -3,6 +3,119 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.47.0</title>
+            <pubDate>Mon, 01 Jun 2026 01:06:48 +0000</pubDate>
+            <sparkle:version>93</sparkle:version>
+            <sparkle:shortVersionString>0.47.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Previous Page, Next Page, First Page, and Last Page are now in the Query menu. Previous and Next keep their Cmd+[ and Cmd+] shortcuts. (#1490)</li>
+<li>Keyboard control of the sidebar: focus the filter field (Cmd+Option+F) and switch between the Tables and Favorites sidebars (Ctrl+1 and Ctrl+2). Tab or Down moves from the filter field into the list. All rebindable in Settings, Keyboard. (#1490)</li>
+<li>Star a table in its sidebar row to favorite it. Favorites are scoped to the connection, database, and schema, pinned to the top of their section, listed in the Favorites tab, and synced through iCloud when Table Favorites is on.</li>
+<li>A plus button in the Tables sidebar footer creates a new table or view without right-clicking. Disabled while safe mode blocks writes.</li>
+<li>The sidebar can show every database on the server as an expandable tree. Switch between the flat list and the tree in the View menu (Sidebar Layout), and right-click a database or schema to set it active. Set the default for new connections in Settings, General. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)</li>
+<li>A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain, so scripts can provision it without typing the password. (#1254)</li>
+<li>PostgreSQL: PostGIS `geometry` and `geography` columns render as WKT with SRID instead of raw hex. (#1458)</li>
+<li>Import connections from Navicat: export from Navicat (File, Export Connections), then pick the file under Import from Other App. SSH tunnel and SSL settings carry over, and saved passwords are decrypted during import. (#1485)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Save as Favorite moved from Cmd+D to Cmd+Control+D, leaving Cmd+D free for the system "Don't Save" action. Rebindable in Settings, Keyboard. (#1490)</li>
+<li>The Tables sidebar footer uses native macOS styling. The schema switcher is now a borderless pull-down matching the Favorites footer, and switching schemas goes through the same path as the toolbar so filters and the active tab stay in sync.</li>
+<li>The Maintenance submenu in the sidebar context menu is hidden when no operations apply or the target is read-only, instead of showing an empty disabled menu.</li>
+<li>The window minimum width adjusts to the visible panes, so opening the inspector on a small window no longer pushes content off-screen.</li>
+<li>Destructive queries (DROP, TRUNCATE, DELETE without WHERE) always ask for confirmation, even with Safe Mode off. (#1481)</li>
+<li>Table structure changes, table creation, maintenance, column reorder, and saved data-grid edits follow the connection's Safe Mode and read-only setting. (#1481)</li>
+<li>AI assistant and MCP queries follow the same Safe Mode, read-only, and authentication rules as the editor. (#1481)</li>
+<li>iOS: sheet close, cancel, and confirm buttons use the native iOS 26 button roles, matching system apps like Mail. iOS 18 keeps titled buttons. (#1524)</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>"Create New Table…" from the sidebar right-click menu. Use the plus button in the Tables sidebar footer instead.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>The Details pane updates when you select a row by clicking, not only with the arrow keys. (#1496)</li>
+<li>Tab and Shift-Tab move focus out of the AI rules field in the connection form instead of inserting a tab. (#1490)</li>
+<li>The cell inspector's Set NULL, Set DEFAULT, copy, and SQL-function actions are now in a right-click menu on each field, reachable by keyboard, Full Keyboard Access, and VoiceOver, not only on hover. (#1490)</li>
+<li>VoiceOver: grid selection changes are announced even when VoiceOver was not already on, the drop and truncate dialog toggles describe their effect, and the favorite query editor is labeled. (#1490)</li>
+<li>Tab moves keyboard focus between the window panes (sidebar, results, inspector). (#1490)</li>
+<li>The license activation sheet focuses the key field on open, the SQL review sheet closes with Escape even while the editor has focus, and the integration token sheet focuses its Done button. (#1490)</li>
+<li>Copy with Headers now has a default shortcut (Cmd+Option+C) instead of appearing in the Edit menu with no key. (#1490)</li>
+<li>VoiceOver reads the column name and current value for each field editor in the cell inspector. (#1490)</li>
+<li>VoiceOver announces the active tab title when you switch between window tabs. (#1490)</li>
+<li>Opening a query tab no longer pulls keyboard focus from the sidebar or another control; the editor takes focus only when nothing else holds it. VoiceOver now labels the SQL editor and the Clear and Format buttons. (#1490)</li>
+<li>The connection form opens with the Name field focused, Return or Down in the welcome search moves to the connection list, and focus returns to the list after a sheet closes, so you can set up a connection without the mouse. (#1490)</li>
+<li>Escape dismisses search-based sheets and popovers (database switcher, quick switcher, column and connection pickers). The first Escape clears the search text; a second closes the sheet. (#1490)</li>
+<li>Running `EXPLAIN` or `EXPLAIN ANALYZE` in the editor opens the plan viewer instead of squashing the plan into one truncated grid cell. (#1480)</li>
+<li>Filtering the data grid keeps you on the keyboard: applying or clearing a filter returns focus to the grid, Return applies the filter, and Escape closes the filter panel. (#1490)</li>
+<li>Opening a table (Return or double-click in the sidebar) moves keyboard focus into the data grid for arrow-key navigation. Arrowing the sidebar still previews tables without taking focus. (#1490)</li>
+<li>Moving a connection into or out of a group syncs across devices instead of leaving it ungrouped on your other Macs.</li>
+<li>Opening a table on a connection with many tables no longer stalls for several seconds while autocomplete and metadata load. Schema introspection runs on separate connections instead of blocking the query that fills the grid. (#1483)</li>
+<li>Cassandra SSL connections with a client certificate now have a Key Passphrase field for an encrypted private key, and report "key is encrypted" or "passphrase is incorrect" instead of a generic handshake failure. The passphrase is stored in the Keychain. (#1487)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.47.0/TablePro-0.47.0-arm64.zip" length="18590030" type="application/octet-stream" sparkle:edSignature="mhpyWSQVMTDJDUdc5N4ngAWLJi3buADabCYFuUXKND64Leq+QiGJQpdguzfz90P/EWrwwbUhNubU5dcmghdqBQ=="/>
+        </item>
+        <item>
+            <title>0.47.0</title>
+            <pubDate>Mon, 01 Jun 2026 01:06:48 +0000</pubDate>
+            <sparkle:version>93</sparkle:version>
+            <sparkle:shortVersionString>0.47.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Previous Page, Next Page, First Page, and Last Page are now in the Query menu. Previous and Next keep their Cmd+[ and Cmd+] shortcuts. (#1490)</li>
+<li>Keyboard control of the sidebar: focus the filter field (Cmd+Option+F) and switch between the Tables and Favorites sidebars (Ctrl+1 and Ctrl+2). Tab or Down moves from the filter field into the list. All rebindable in Settings, Keyboard. (#1490)</li>
+<li>Star a table in its sidebar row to favorite it. Favorites are scoped to the connection, database, and schema, pinned to the top of their section, listed in the Favorites tab, and synced through iCloud when Table Favorites is on.</li>
+<li>A plus button in the Tables sidebar footer creates a new table or view without right-clicking. Disabled while safe mode blocks writes.</li>
+<li>The sidebar can show every database on the server as an expandable tree. Switch between the flat list and the tree in the View menu (Sidebar Layout), and right-click a database or schema to set it active. Set the default for new connections in Settings, General. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)</li>
+<li>A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain, so scripts can provision it without typing the password. (#1254)</li>
+<li>PostgreSQL: PostGIS `geometry` and `geography` columns render as WKT with SRID instead of raw hex. (#1458)</li>
+<li>Import connections from Navicat: export from Navicat (File, Export Connections), then pick the file under Import from Other App. SSH tunnel and SSL settings carry over, and saved passwords are decrypted during import. (#1485)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Save as Favorite moved from Cmd+D to Cmd+Control+D, leaving Cmd+D free for the system "Don't Save" action. Rebindable in Settings, Keyboard. (#1490)</li>
+<li>The Tables sidebar footer uses native macOS styling. The schema switcher is now a borderless pull-down matching the Favorites footer, and switching schemas goes through the same path as the toolbar so filters and the active tab stay in sync.</li>
+<li>The Maintenance submenu in the sidebar context menu is hidden when no operations apply or the target is read-only, instead of showing an empty disabled menu.</li>
+<li>The window minimum width adjusts to the visible panes, so opening the inspector on a small window no longer pushes content off-screen.</li>
+<li>Destructive queries (DROP, TRUNCATE, DELETE without WHERE) always ask for confirmation, even with Safe Mode off. (#1481)</li>
+<li>Table structure changes, table creation, maintenance, column reorder, and saved data-grid edits follow the connection's Safe Mode and read-only setting. (#1481)</li>
+<li>AI assistant and MCP queries follow the same Safe Mode, read-only, and authentication rules as the editor. (#1481)</li>
+<li>iOS: sheet close, cancel, and confirm buttons use the native iOS 26 button roles, matching system apps like Mail. iOS 18 keeps titled buttons. (#1524)</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>"Create New Table…" from the sidebar right-click menu. Use the plus button in the Tables sidebar footer instead.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>The Details pane updates when you select a row by clicking, not only with the arrow keys. (#1496)</li>
+<li>Tab and Shift-Tab move focus out of the AI rules field in the connection form instead of inserting a tab. (#1490)</li>
+<li>The cell inspector's Set NULL, Set DEFAULT, copy, and SQL-function actions are now in a right-click menu on each field, reachable by keyboard, Full Keyboard Access, and VoiceOver, not only on hover. (#1490)</li>
+<li>VoiceOver: grid selection changes are announced even when VoiceOver was not already on, the drop and truncate dialog toggles describe their effect, and the favorite query editor is labeled. (#1490)</li>
+<li>Tab moves keyboard focus between the window panes (sidebar, results, inspector). (#1490)</li>
+<li>The license activation sheet focuses the key field on open, the SQL review sheet closes with Escape even while the editor has focus, and the integration token sheet focuses its Done button. (#1490)</li>
+<li>Copy with Headers now has a default shortcut (Cmd+Option+C) instead of appearing in the Edit menu with no key. (#1490)</li>
+<li>VoiceOver reads the column name and current value for each field editor in the cell inspector. (#1490)</li>
+<li>VoiceOver announces the active tab title when you switch between window tabs. (#1490)</li>
+<li>Opening a query tab no longer pulls keyboard focus from the sidebar or another control; the editor takes focus only when nothing else holds it. VoiceOver now labels the SQL editor and the Clear and Format buttons. (#1490)</li>
+<li>The connection form opens with the Name field focused, Return or Down in the welcome search moves to the connection list, and focus returns to the list after a sheet closes, so you can set up a connection without the mouse. (#1490)</li>
+<li>Escape dismisses search-based sheets and popovers (database switcher, quick switcher, column and connection pickers). The first Escape clears the search text; a second closes the sheet. (#1490)</li>
+<li>Running `EXPLAIN` or `EXPLAIN ANALYZE` in the editor opens the plan viewer instead of squashing the plan into one truncated grid cell. (#1480)</li>
+<li>Filtering the data grid keeps you on the keyboard: applying or clearing a filter returns focus to the grid, Return applies the filter, and Escape closes the filter panel. (#1490)</li>
+<li>Opening a table (Return or double-click in the sidebar) moves keyboard focus into the data grid for arrow-key navigation. Arrowing the sidebar still previews tables without taking focus. (#1490)</li>
+<li>Moving a connection into or out of a group syncs across devices instead of leaving it ungrouped on your other Macs.</li>
+<li>Opening a table on a connection with many tables no longer stalls for several seconds while autocomplete and metadata load. Schema introspection runs on separate connections instead of blocking the query that fills the grid. (#1483)</li>
+<li>Cassandra SSL connections with a client certificate now have a Key Passphrase field for an encrypted private key, and report "key is encrypted" or "passphrase is incorrect" instead of a generic handshake failure. The passphrase is stored in the Keychain. (#1487)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.47.0/TablePro-0.47.0-x86_64.zip" length="19637958" type="application/octet-stream" sparkle:edSignature="Ok6UQocGu+VLnFxAZyOCdUILy+zXUjkCo83Z9effbAdeP3Chh794JBP0V/yRnbAc0dewhjNWXfitXiDWfe5fDQ=="/>
+        </item>
+        <item>
             <title>0.46.0</title>
             <pubDate>Thu, 28 May 2026 15:22:43 +0000</pubDate>
             <sparkle:version>92</sparkle:version>

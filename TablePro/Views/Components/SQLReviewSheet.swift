@@ -55,6 +55,7 @@ struct SQLReviewSheet: View {
         }
         .frame(width: 560, height: 460)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onExitCommand { dismiss() }
         .task { await prepare() }
     }
 

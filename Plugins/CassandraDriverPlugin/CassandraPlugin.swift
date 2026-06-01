@@ -137,7 +137,10 @@ private actor CassandraConnectionActor {
         password: String?,
         keyspace: String?,
         sslMode: SSLMode,
-        sslCaCertPath: String?
+        sslCaCertPath: String?,
+        sslClientCertPath: String?,
+        sslClientKeyPath: String?,
+        sslClientKeyPassphrase: String?
     ) throws {
         cluster = cass_cluster_new()
         guard let cluster else {
@@ -180,6 +183,21 @@ private actor CassandraConnectionActor {
                     cass_cluster_free(cluster)
                     self.cluster = nil
                     throw SSLHandshakeError.untrustedCertificate(serverMessage: "CA certificate at \(caCertPath) is not a valid PEM")
+                }
+            }
+
+            let trimmedClientCertPath = sslClientCertPath?.trimmingCharacters(in: .whitespaces) ?? ""
+            let trimmedClientKeyPath = sslClientKeyPath?.trimmingCharacters(in: .whitespaces) ?? ""
+            if !trimmedClientCertPath.isEmpty || !trimmedClientKeyPath.isEmpty {
+                try applyClientCertificate(
+                    to: ssl,
+                    certPath: trimmedClientCertPath,
+                    keyPath: trimmedClientKeyPath,
+                    keyPassphrase: sslClientKeyPassphrase
+                ) {
+                    cass_ssl_free(ssl)
+                    cass_cluster_free(cluster)
+                    self.cluster = nil
                 }
             }
 
@@ -233,6 +251,60 @@ private actor CassandraConnectionActor {
         session = newSession
 
         Self.logger.info("Connected to Cassandra at \(host):\(port)")
+    }
+
+    private func applyClientCertificate(
+        to ssl: OpaquePointer,
+        certPath: String,
+        keyPath: String,
+        keyPassphrase: String?,
+        cleanup: () -> Void
+    ) throws {
+        guard !certPath.isEmpty else {
+            cleanup()
+            throw SSLHandshakeError.clientCertRequired(serverMessage: "A client certificate is required when a client key is set")
+        }
+        guard !keyPath.isEmpty else {
+            cleanup()
+            throw SSLHandshakeError.clientCertRequired(serverMessage: "A client key is required when a client certificate is set")
+        }
+
+        guard let certData = FileManager.default.contents(atPath: certPath),
+              let certString = String(data: certData, encoding: .utf8) else {
+            cleanup()
+            throw SSLHandshakeError.clientCertRequired(serverMessage: "Could not read client certificate at \(certPath)")
+        }
+        let certResult = cass_ssl_set_cert(ssl, certString)
+        if certResult != CASS_OK {
+            cleanup()
+            throw SSLHandshakeError.clientCertRequired(serverMessage: "Client certificate at \(certPath) is not a valid PEM")
+        }
+
+        guard let keyData = FileManager.default.contents(atPath: keyPath),
+              let keyString = String(data: keyData, encoding: .utf8) else {
+            cleanup()
+            throw SSLHandshakeError.clientKeyInvalid(serverMessage: "Could not read client key at \(keyPath)")
+        }
+        let passphrase = keyPassphrase?.isEmpty == false ? keyPassphrase : nil
+        let keyResult = cass_ssl_set_private_key(ssl, keyString, passphrase)
+        if keyResult != CASS_OK {
+            cleanup()
+            throw Self.privateKeyLoadError(keyPEM: keyString, hasPassphrase: passphrase != nil, keyPath: keyPath)
+        }
+    }
+
+    static func isEncryptedPrivateKey(_ pem: String) -> Bool {
+        pem.contains("ENCRYPTED PRIVATE KEY") || (pem.contains("Proc-Type:") && pem.contains("ENCRYPTED"))
+    }
+
+    static func privateKeyLoadError(keyPEM: String, hasPassphrase: Bool, keyPath: String) -> SSLHandshakeError {
+        guard isEncryptedPrivateKey(keyPEM) else {
+            return .clientKeyInvalid(serverMessage: "The client key at \(keyPath) is not a valid private key")
+        }
+        if hasPassphrase {
+            return .clientKeyPassphraseIncorrect(serverMessage: "The passphrase for the client key at \(keyPath) is incorrect")
+        }
+        return .clientKeyPassphraseRequired(serverMessage: "The client key at \(keyPath) is encrypted. Enter its passphrase.")
     }
 
     func close() {
@@ -921,6 +993,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let keyspace = config.database.isEmpty ? nil : config.database
         let legacyCaPath = config.additionalFields["sslCaCertPath"]
         let resolvedCaPath = config.ssl.caCertificatePath.isEmpty ? legacyCaPath : config.ssl.caCertificatePath
+        let clientCertPath = config.ssl.clientCertificatePath.isEmpty ? nil : config.ssl.clientCertificatePath
+        let clientKeyPath = config.ssl.clientKeyPath.isEmpty ? nil : config.ssl.clientKeyPath
+        let clientKeyPassphrase = config.additionalFields["sslClientKeyPassphrase"]
 
         try await connectionActor.connect(
             host: config.host,
@@ -929,7 +1004,10 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             password: config.password.isEmpty ? nil : config.password,
             keyspace: keyspace,
             sslMode: config.ssl.mode,
-            sslCaCertPath: resolvedCaPath
+            sslCaCertPath: resolvedCaPath,
+            sslClientCertPath: clientCertPath,
+            sslClientKeyPath: clientKeyPath,
+            sslClientKeyPassphrase: clientKeyPassphrase
         )
 
         if let keyspace {

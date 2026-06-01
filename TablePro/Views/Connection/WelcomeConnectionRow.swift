@@ -48,12 +48,12 @@ struct WelcomeConnectionRow: View {
                     .font(.body)
                     .foregroundStyle(.primary)
 
-                Text(subtitleText)
+                Text(connection.connectionSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .help(subtitleText)
+                    .help(connection.connectionSubtitle)
             }
 
             Spacer(minLength: 8)
@@ -130,40 +130,5 @@ struct WelcomeConnectionRow: View {
                 .imageScale(.small)
                 .foregroundStyle(.tertiary)
         }
-    }
-
-    private var subtitleText: String {
-        var components: [String] = [primaryEndpoint]
-        if let viaText = sshViaText {
-            components.append(viaText)
-        }
-        return components.joined(separator: " · ")
-    }
-
-    private var primaryEndpoint: String {
-        if connection.host.isEmpty {
-            return connection.database.isEmpty ? connection.type.rawValue : connection.database
-        }
-        if connection.host.hasPrefix("/") {
-            return (connection.host as NSString).abbreviatingWithTildeInPath
-        }
-        if let mongoHosts = connection.additionalFields["mongoHosts"], mongoHosts.contains(",") {
-            let count = mongoHosts.split(separator: ",").count
-            return String(format: String(localized: "%@ (+%d more)"), hostWithOptionalPort, count - 1)
-        }
-        return hostWithOptionalPort
-    }
-
-    private var hostWithOptionalPort: String {
-        if connection.port == connection.type.defaultPort {
-            return connection.host
-        }
-        return "\(connection.host):\(connection.port)"
-    }
-
-    private var sshViaText: String? {
-        let ssh = connection.resolvedSSHConfig
-        guard ssh.enabled, !ssh.host.isEmpty else { return nil }
-        return String(format: String(localized: "via %@"), ssh.host)
     }
 }

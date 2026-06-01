@@ -4,6 +4,37 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="June 1, 2026" description="v0.47.0">
+  ### New Features
+
+  - **Favorite Tables**: Star a table in the sidebar to pin it to the top of its section and the Favorites tab. Favorites are scoped to the connection, database, and schema, and sync through iCloud
+  - **Database Tree Sidebar**: Show every database on the server as an expandable tree. Switch a connection between the flat list and the tree from the View menu, and set the default for new connections in Settings (#139)
+  - **Import from Navicat**: Export a connections file from Navicat, then pick it under Import from Other App. SSH tunnel and SSL settings carry over, and saved passwords are decrypted during import (#1485)
+  - **PostGIS Rendering**: PostgreSQL `geometry` and `geography` columns render as WKT with SRID instead of raw hex (#1458)
+  - **External Password Sources**: A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain (#1254)
+  - **Create Tables from the Sidebar**: A plus button in the Tables sidebar footer creates a new table or view without right-clicking
+  - **Sidebar Keyboard Control**: Focus the filter field (Cmd+Option+F) and switch between the Tables and Favorites sidebars (Ctrl+1 and Ctrl+2), all rebindable in Settings (#1490)
+  - **Result Pager in the Query Menu**: Previous, Next, First, and Last Page are now in the Query menu, with Previous and Next on Cmd+[ and Cmd+] (#1490)
+
+  ### Improvements
+
+  - **Safe Mode Everywhere**: Table structure changes, creation, maintenance, column reorder, and saved grid edits now follow the connection's Safe Mode and read-only setting, and AI assistant and MCP queries follow the same rules (#1481)
+  - **Always Confirm Destructive Queries**: DROP, TRUNCATE, and DELETE without WHERE always ask for confirmation, even with Safe Mode off (#1481)
+  - **Native Sidebar Footer**: The Tables sidebar footer uses native macOS styling, and switching schemas stays in sync with the toolbar
+  - **Window Sizing**: The window minimum width adjusts to the visible panes, so opening the inspector on a small window no longer pushes content off-screen
+  - **Save as Favorite Shortcut**: Moved to Cmd+Control+D, leaving Cmd+D free for the system "Don't Save" action (#1490)
+  - **iOS Button Roles**: Sheet close, cancel, and confirm buttons use the native iOS 26 button roles (#1524)
+
+  ### Bug Fixes
+
+  - **Keyboard and VoiceOver Accessibility**: Tab moves focus between panes and out of the AI rules field, opening a table or query tab focuses the right control, Escape dismisses search sheets, filtering keeps you on the keyboard, and VoiceOver labels and announcements were added across the grid, inspector, tabs, and sheets. Copy with Headers gains a default Cmd+Option+C shortcut (#1490)
+  - **Details Pane on Click**: The Details pane updates when you select a row by clicking, not only with the arrow keys (#1496)
+  - **EXPLAIN Plan Viewer**: Running EXPLAIN or EXPLAIN ANALYZE in the editor opens the plan viewer instead of one truncated grid cell (#1480)
+  - **Faster Table Open**: Opening a table on a connection with many tables no longer stalls while autocomplete and metadata load (#1483)
+  - **Connection Group Sync**: Moving a connection into or out of a group syncs across devices
+  - **Cassandra Encrypted Keys**: Cassandra SSL connections with a client certificate gain a Key Passphrase field and clearer error messages (#1487)
+</Update>
+
 <Update label="May 28, 2026" description="v0.46.0">
   ### New Features
 

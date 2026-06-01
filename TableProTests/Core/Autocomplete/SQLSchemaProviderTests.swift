@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 // MARK: - Mock Driver
 
@@ -332,5 +332,39 @@ struct SQLSchemaProviderTests {
         #expect(items.count == 2)
         #expect(items[0].label == "users.id")
         #expect(items[1].label == "orders.id")
+    }
+
+    @Test("getColumns uses injected metadata source instead of cached driver")
+    func getColumnsUsesMetadataSource() async {
+        let driver = MockDatabaseDriver()
+        driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _ in [TestFixtures.makeColumnInfo(name: "from_source")] },
+            fetchAllColumns: { [:] }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+        await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
+
+        let columns = await provider.getColumns(for: "users")
+        #expect(columns.first?.name == "from_source")
+        #expect(driver.fetchColumnsCallCount == 0)
+    }
+
+    @Test("eager column load uses injected metadata source instead of cached driver")
+    func eagerLoadUsesMetadataSource() async throws {
+        let driver = MockDatabaseDriver()
+        driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _ in [TestFixtures.makeColumnInfo(name: "lazy_source")] },
+            fetchAllColumns: { ["users": [TestFixtures.makeColumnInfo(name: "eager_source")]] }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+        await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
+
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        let columns = await provider.getColumns(for: "users")
+        #expect(columns.first?.name == "eager_source")
+        #expect(driver.fetchColumnsCallCount == 0)
     }
 }

@@ -22,6 +22,14 @@ extension MainContentCoordinator {
         )
     }
 
+    func executeSelectedTableTabQuery() {
+        if selectedTabHiddenColumns.isEmpty {
+            executeTableTabQueryDirectly()
+        } else {
+            requeryWithColumnScope()
+        }
+    }
+
     func requeryWithColumnScope(debounced: Bool = false) {
         columnScopeRequeryTask?.cancel()
         columnScopeRequeryTask = Task { @MainActor [weak self] in
@@ -30,25 +38,29 @@ extension MainContentCoordinator {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
             }
-            guard let (tab, tabIndex) = self.tabManager.selectedTabAndIndex,
-                  tab.tabType == .table,
-                  let tableName = tab.tableContext.tableName else { return }
-            await self.loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
-            guard !Task.isCancelled, tabIndex < self.tabManager.tabs.count else { return }
-            self.filterCoordinator.rebuildTableQuery(at: tabIndex)
+            guard await self.rebuildSelectedTableColumnScopedQuery() else { return }
             self.runQuery()
         }
+    }
+
+    @discardableResult
+    func rebuildSelectedTableColumnScopedQuery() async -> Bool {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
+              let tableName = tab.tableContext.tableName else { return false }
+        await loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
+        guard !Task.isCancelled, tabIndex < tabManager.tabs.count else { return false }
+        filterCoordinator.rebuildTableQuery(at: tabIndex)
+        return true
     }
 
     func loadSchemaColumns(for tableName: String, schema: String?) async {
         let key = schemaColumnsKey(tableName, schema: schema)
         guard schemaColumnsCache[key] == nil else { return }
-        guard let driver = services.databaseManager.driver(for: connectionId) else {
-            columnScopeLog.error("loadSchemaColumns: no driver for connection; cannot scope columns for table=\(tableName, privacy: .public)")
-            return
-        }
         do {
-            let columns = try await driver.fetchColumns(table: tableName, schema: schema)
+            let columns = try await services.databaseManager.withMetadataDriver(connectionId: connectionId) { driver in
+                try await driver.fetchColumns(table: tableName, schema: schema)
+            }
             guard !columns.isEmpty else {
                 columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .public); cannot scope")
                 return

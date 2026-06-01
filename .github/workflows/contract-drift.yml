@@ -1,0 +1,39 @@
+name: Contract Drift
+
+on:
+  pull_request:
+    paths:
+      - "Plugins/TableProPluginKit/**"
+      - "Packages/TableProCore/Sources/TableProPluginKit/**"
+      - "Packages/TableProCore/Sources/TableProModels/**"
+      - "TablePro/Models/**"
+      - "TableProMobile/**"
+      - "scripts/audit-refactor-health.sh"
+      - ".github/duplicate-contract-baseline.txt"
+      - ".github/workflows/contract-drift.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Plugins/TableProPluginKit/**"
+      - "Packages/TableProCore/Sources/TableProPluginKit/**"
+      - "Packages/TableProCore/Sources/TableProModels/**"
+      - "TablePro/Models/**"
+      - "TableProMobile/**"
+      - "scripts/audit-refactor-health.sh"
+      - ".github/duplicate-contract-baseline.txt"
+      - ".github/workflows/contract-drift.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: contract-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Shared contract drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail on new duplicate-contract drift
+        run: scripts/audit-refactor-health.sh --check

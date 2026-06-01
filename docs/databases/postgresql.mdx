@@ -111,6 +111,10 @@ ORDER BY rank DESC;
 
 Supports `jsonb` (formatted JSON), `array`, `uuid`, `inet` (IP), `timestamp with time zone`, `interval`, `bytea` (binary).
 
+### PostGIS
+
+If the PostGIS extension is installed, `geometry` and `geography` columns render as EWKT with the SRID preserved (`SRID=4326;POINT(-73 40.7237)`) instead of the raw EWKB hex libpq returns. TablePro detects spatial columns from a one-time `pg_type` lookup at connect time, then converts the fetched values with `ST_AsEWKT(...)`. Your query is never re-run, so parameterized, multi-statement, and any other query shape all render EWKT. NULL stays NULL and `POINT EMPTY` round-trips. If the conversion fails, the raw hex is kept without an error.
+
 ## Troubleshooting
 
 **Connection refused**: Check server is running (`brew services start postgresql@16`), verify `listen_addresses` in `postgresql.conf`, ensure firewall allows port 5432.

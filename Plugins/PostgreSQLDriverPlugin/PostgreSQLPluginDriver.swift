@@ -46,8 +46,11 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        core.onPostConnect = { [weak self] in
+            await self?.probeCatalogPresence()
+            await self?.probePostgisOids()
+        }
         try await core.connect()
-        await probeCatalogPresence()
     }
 
     private func probeCatalogPresence() async {
@@ -57,6 +60,23 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             catalogPresence = PostgreSQLCatalogPresence(relationNames: relationNames)
         } catch {
             Self.logger.debug("Catalog presence probe failed; using version-based capabilities: \(error.localizedDescription)")
+        }
+    }
+
+    private func probePostgisOids() async {
+        do {
+            let result = try await core.execute(query: PostGISSpatialRewrite.probeQuery)
+            var map: [UInt32: String] = [:]
+            for row in result.rows {
+                guard row.count >= 2,
+                      let oidText = row[0].asText,
+                      let oid = UInt32(oidText),
+                      let typname = row[1].asText else { continue }
+                map[oid] = typname
+            }
+            core.setPostgisOidMap(map)
+        } catch {
+            Self.logger.debug("PostGIS OID probe failed; spatial rewrite disabled for this session: \(error.localizedDescription)")
         }
     }
 

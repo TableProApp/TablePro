@@ -1,10 +1,19 @@
 import Foundation
 
+public struct CompletionEntry: Sendable {
+    public let label: String
+    public let insertText: String
+    public init(label: String, insertText: String) {
+        self.label = label
+        self.insertText = insertText
+    }
+}
+
 public enum AutoLimitStyle: String, Sendable {
-    case limit
-    case fetchFirst
-    case top
-    case none
+    case limit       // LIMIT n
+    case fetchFirst  // FETCH FIRST n ROWS ONLY (Oracle)
+    case top         // SELECT TOP n ... (MSSQL)
+    case none        // Don't auto-limit (non-SQL)
 }
 
 public struct SQLDialectDescriptor: Sendable {
@@ -14,6 +23,7 @@ public struct SQLDialectDescriptor: Sendable {
     public let dataTypes: Set<String>
     public let tableOptions: [String]
 
+    // Filter dialect
     public let regexSyntax: RegexSyntax
     public let booleanLiteralStyle: BooleanLiteralStyle
     public let likeEscapeStyle: LikeEscapeStyle
@@ -21,30 +31,31 @@ public struct SQLDialectDescriptor: Sendable {
     public let offsetFetchOrderBy: String
     public let requiresBackslashEscaping: Bool
 
+    // Query limit style
     public let autoLimitStyle: AutoLimitStyle
 
     public enum RegexSyntax: String, Sendable {
-        case regexp
-        case tilde
-        case regexpMatches
-        case match
-        case regexpLike
-        case unsupported
+        case regexp        // MySQL: column REGEXP 'pattern'
+        case tilde         // PostgreSQL: column ~ 'pattern'
+        case regexpMatches // DuckDB: regexp_matches(column, 'pattern')
+        case match         // ClickHouse: match(column, 'pattern')
+        case regexpLike    // Oracle: REGEXP_LIKE(column, 'pattern')
+        case unsupported   // SQLite, MSSQL, MongoDB, Redis
     }
 
     public enum BooleanLiteralStyle: String, Sendable {
-        case truefalse
-        case numeric
+        case truefalse // PostgreSQL, DuckDB: TRUE/FALSE
+        case numeric   // MySQL, SQLite, etc: 1/0
     }
 
     public enum LikeEscapeStyle: String, Sendable {
-        case implicit
-        case explicit
+        case implicit // MySQL: backslash is default escape, no ESCAPE clause needed
+        case explicit // PostgreSQL, SQLite, etc: need ESCAPE '\' clause
     }
 
     public enum PaginationStyle: String, Sendable {
-        case limit
-        case offsetFetch
+        case limit       // MySQL, PostgreSQL, SQLite, etc: LIMIT n
+        case offsetFetch // Oracle, MSSQL: OFFSET n ROWS FETCH NEXT m ROWS ONLY
     }
 
     public init(

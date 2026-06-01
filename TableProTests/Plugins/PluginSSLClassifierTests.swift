@@ -209,3 +209,60 @@ struct ClickHouseClassifierTests {
         #expect(ClickHouseClassifier.classifySSLError(error) == nil)
     }
 }
+
+@Suite("Cassandra Client Key Classifier")
+struct CassandraClassifierTests {
+    private let encryptedPkcs8 = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIF...\n-----END ENCRYPTED PRIVATE KEY-----"
+    private let encryptedPkcs1 = """
+    -----BEGIN RSA PRIVATE KEY-----
+    Proc-Type: 4,ENCRYPTED
+    DEK-Info: AES-256-CBC,1234
+
+    MIIE...
+    -----END RSA PRIVATE KEY-----
+    """
+    private let unencryptedPkcs8 = "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
+
+    @Test("Detects PKCS#8 and PKCS#1 encrypted keys, not unencrypted ones")
+    func testEncryptionDetection() {
+        #expect(CassandraClassifier.isEncryptedPrivateKey(encryptedPkcs8))
+        #expect(CassandraClassifier.isEncryptedPrivateKey(encryptedPkcs1))
+        #expect(!CassandraClassifier.isEncryptedPrivateKey(unencryptedPkcs8))
+    }
+
+    @Test("Encrypted key with no passphrase → clientKeyPassphraseRequired")
+    func testEncryptedNoPassphrase() {
+        let error = CassandraClassifier.privateKeyLoadError(
+            keyPEM: encryptedPkcs8, hasPassphrase: false, keyPath: "/k.pem")
+        guard case .clientKeyPassphraseRequired = error else {
+            Issue.record("Expected clientKeyPassphraseRequired")
+            return
+        }
+    }
+
+    @Test("Encrypted key with wrong passphrase → clientKeyPassphraseIncorrect")
+    func testEncryptedWrongPassphrase() {
+        let error = CassandraClassifier.privateKeyLoadError(
+            keyPEM: encryptedPkcs1, hasPassphrase: true, keyPath: "/k.pem")
+        guard case .clientKeyPassphraseIncorrect = error else {
+            Issue.record("Expected clientKeyPassphraseIncorrect")
+            return
+        }
+    }
+
+    @Test("Unencrypted but unreadable key → clientKeyInvalid, never a passphrase error")
+    func testUnencryptedInvalid() {
+        let withoutPassphrase = CassandraClassifier.privateKeyLoadError(
+            keyPEM: unencryptedPkcs8, hasPassphrase: false, keyPath: "/k.pem")
+        let withPassphrase = CassandraClassifier.privateKeyLoadError(
+            keyPEM: unencryptedPkcs8, hasPassphrase: true, keyPath: "/k.pem")
+        guard case .clientKeyInvalid = withoutPassphrase else {
+            Issue.record("Expected clientKeyInvalid without passphrase")
+            return
+        }
+        guard case .clientKeyInvalid = withPassphrase else {
+            Issue.record("Expected clientKeyInvalid with passphrase")
+            return
+        }
+    }
+}

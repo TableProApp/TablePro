@@ -25,7 +25,14 @@ enum KeychainStringResult: Sendable, Equatable {
     case error(OSStatus)
 }
 
-final class KeychainHelper: Sendable {
+protocol KeychainStoring: Sendable {
+    @discardableResult
+    func writeString(_ value: String, forKey key: String) -> Bool
+    func readStringResult(forKey key: String) -> KeychainStringResult
+    func delete(forKey key: String)
+}
+
+final class KeychainHelper: KeychainStoring {
     static let shared = KeychainHelper()
     static let passwordSyncEnabledKey = "com.TablePro.keychainPasswordSyncEnabled"
 

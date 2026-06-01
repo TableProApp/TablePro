@@ -52,6 +52,13 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             )
         }
 
+        try await context.authPolicy.checkSafeModeDialog(
+            sql: query,
+            connectionId: connectionId,
+            databaseType: meta.databaseType,
+            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+        )
+
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(

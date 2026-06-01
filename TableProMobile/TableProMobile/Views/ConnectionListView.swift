@@ -160,7 +160,7 @@ struct ConnectionListView: View {
                 SettingsView()
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
-                            Button(String(localized: "Done")) {
+                            CloseButton {
                                 showingSettings = false
                             }
                         }

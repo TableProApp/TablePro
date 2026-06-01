@@ -118,11 +118,8 @@ struct AIChatCodeBlockView: View, Equatable {
         guard !trimmed.isEmpty else { return nil }
         let firstNonCommentLine = trimmed
             .split(whereSeparator: { $0.isNewline })
-            .first(where: { line in
-                let head = line.trimmingCharacters(in: .whitespaces)
-                return !head.isEmpty && !head.hasPrefix("--") && !head.hasPrefix("/*")
-            })
-            .map(String.init) ?? trimmed
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first(where: { !$0.isEmpty && !$0.hasPrefix("--") && !$0.hasPrefix("/*") }) ?? trimmed
 
         let sqlPrefixes = [
             "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "WITH ",

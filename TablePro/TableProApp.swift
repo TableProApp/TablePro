@@ -143,6 +143,13 @@ struct AppMenuCommands: Commands {
         focusedActions ?? commandRegistry.current
     }
 
+    private var sidebarLayoutBinding: Binding<SidebarLayout> {
+        Binding(
+            get: { actions?.sidebarLayout ?? .flat },
+            set: { actions?.setSidebarLayout($0) }
+        )
+    }
+
     private func shortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
@@ -420,6 +427,32 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Button(String(localized: "Previous Page")) {
+                actions?.goToPreviousPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .previousPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Next Page")) {
+                actions?.goToNextPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .nextPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "First Page")) {
+                actions?.goToFirstPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .firstPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Last Page")) {
+                actions?.goToLastPage()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .lastPage))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
             Button(String(localized: "Save as Favorite")) {
                 actions?.saveAsFavorite()
             }
@@ -540,6 +573,17 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Picker(selection: sidebarLayoutBinding) {
+                Text("Sidebar as List").tag(SidebarLayout.flat)
+                Text("Sidebar as Tree").tag(SidebarLayout.tree)
+            } label: {
+                Text("Sidebar Layout")
+            }
+            .pickerStyle(.inline)
+            .disabled(!(actions?.canSwitchSidebarLayout ?? false))
+
+            Divider()
+
             Button("Toggle Filters") {
                 actions?.toggleFilterPanel()
             }
@@ -550,6 +594,26 @@ struct AppMenuCommands: Commands {
                 actions?.toggleHistoryPanel()
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleHistory))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
+            Button("Focus Sidebar Filter") {
+                actions?.focusSidebarSearch()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .focusSidebarSearch))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button("Show Tables Sidebar") {
+                actions?.showSidebarTab(.tables)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showSidebarTables))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button("Show Favorites Sidebar") {
+                actions?.showSidebarTab(.favorites)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .showSidebarFavorites))
             .disabled(!(actions?.isConnected ?? false))
 
             Divider()

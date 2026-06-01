@@ -202,6 +202,7 @@ struct OnboardingContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .transition(.opacity)
                 } else {
                     Button("Get Started") {
@@ -209,6 +210,7 @@ struct OnboardingContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .transition(.opacity)
                 }
             }

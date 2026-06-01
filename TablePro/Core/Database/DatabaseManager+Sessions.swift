@@ -14,7 +14,9 @@ import TableProPluginKit
 // MARK: - Session Management
 
 extension DatabaseManager {
-    func connectToSession(_ connection: DatabaseConnection) async throws {
+    func connectToSession(_ requestedConnection: DatabaseConnection) async throws {
+        let connection = resolvedConnectionDefinition(for: requestedConnection)
+
         if let existing = activeSessions[connection.id], existing.driver != nil {
             switchToSession(connection.id)
             return
@@ -178,6 +180,13 @@ extension DatabaseManager {
         }
     }
 
+    internal func resolvedConnectionDefinition(for connection: DatabaseConnection) -> DatabaseConnection {
+        guard let stored = connectionStorage.loadConnection(id: connection.id) else { return connection }
+        var resolved = connection
+        resolved.safeModeLevel = stored.safeModeLevel
+        return resolved
+    }
+
     internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
         guard !cancelled else { return }
         removeSessionEntry(for: connectionId)
@@ -260,6 +269,7 @@ extension DatabaseManager {
                 session.connection.database = database
                 session.currentDatabase = database
                 session.currentSchema = nil
+                session.status = .connecting
             }
             appSettingsStorage.saveLastSchema(nil, for: connectionId)
             await SchemaService.shared.invalidate(connectionId: connectionId)
@@ -347,10 +357,12 @@ extension DatabaseManager {
         removeSessionEntry(for: sessionId)
 
         await SchemaService.shared.invalidate(connectionId: sessionId)
+        await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: sessionId)
 
         SchemaProviderRegistry.shared.clear(for: sessionId)
 
         SharedSidebarState.removeConnection(sessionId)
+        SidebarViewModel.removeConnection(sessionId)
 
         if currentSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {
@@ -388,9 +400,12 @@ extension DatabaseManager {
     }
 
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
-        guard var session = activeSessions[connectionId], session.safeModeLevel != level else { return }
+        guard var session = activeSessions[connectionId] else { return }
+        guard session.safeModeLevel != level || session.connection.safeModeLevel != level else { return }
         session.safeModeLevel = level
+        session.connection.safeModeLevel = level
         setSession(session, for: connectionId)
+        _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
     }
 
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {

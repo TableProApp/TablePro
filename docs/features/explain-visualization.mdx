@@ -9,6 +9,8 @@ Click **Explain** in the query editor toolbar to get the execution plan.
 
 PostgreSQL shows a dropdown with **EXPLAIN** (estimated plan) and **EXPLAIN ANALYZE** (runs the query and shows actual timing). MySQL, MariaDB, SQLite, and other databases show a single Explain button.
 
+Typing an `EXPLAIN`, `EXPLAIN ANALYZE`, `EXPLAIN FORMAT=JSON`, or MariaDB's `ANALYZE FORMAT=JSON` statement in the editor and running it opens the same plan viewer, as long as the plan comes back in a single column. Multi-column plans like MySQL's plain `EXPLAIN` table stay in the results grid.
+
 <Frame caption="EXPLAIN diagram view">
   <img
     className="block dark:hidden"

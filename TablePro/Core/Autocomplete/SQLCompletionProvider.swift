@@ -111,14 +111,6 @@ final class SQLCompletionProvider {
     ) async -> [SQLCompletionItem] {
         var items: [SQLCompletionItem] = []
 
-        // Check for favorite keyword matches first (highest priority)
-        if !favoriteKeywords.isEmpty && !context.prefix.isEmpty {
-            let lowerPrefix = context.prefix.lowercased()
-            for (keyword, value) in favoriteKeywords where keyword.lowercased().hasPrefix(lowerPrefix) {
-                items.append(.favorite(keyword: keyword, name: value.name, query: value.query))
-            }
-        }
-
         // If we have a dot prefix, we're looking for columns of a specific table
         if let dotPrefix = context.dotPrefix {
             // Resolve the table name from alias or direct reference
@@ -456,7 +448,18 @@ final class SQLCompletionProvider {
             items += await schemaProvider.tableCompletionItems()
         }
 
+        items += favoriteCompletions(matching: context.prefix)
+
         return items
+    }
+
+    private func favoriteCompletions(matching prefix: String) -> [SQLCompletionItem] {
+        guard !prefix.isEmpty, !favoriteKeywords.isEmpty else { return [] }
+        let lowerPrefix = prefix.lowercased()
+        return favoriteKeywords
+            .filter { $0.key.lowercased().hasPrefix(lowerPrefix) }
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+            .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
     }
 
     /// SQL data type keywords (database-aware), with a slight priority boost

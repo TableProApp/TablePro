@@ -57,6 +57,7 @@ internal enum JSONTreeParseError: Error {
 internal enum JSONTreeParser {
     private static let maxNodes = 5_000
     private static let maxInputLength = 100_000
+    private static let maxDisplayLength = 300
 
     static func parse(_ jsonString: String) -> Result<JSONTreeNode, JSONTreeParseError> {
         guard (jsonString as NSString).length <= maxInputLength else {
@@ -109,9 +110,8 @@ internal enum JSONTreeParser {
             let decoded = JsonSyntaxParser.decodeStringLiteral(raw)
             let escaped = decoded.replacingOccurrences(of: "\"", with: "\\\"")
             let display: String
-            let nsLen = (escaped as NSString).length
-            if nsLen > 80 {
-                display = "\"\((escaped as NSString).substring(to: 80))...\""
+            if (escaped as NSString).length > maxDisplayLength {
+                display = "\"\((escaped as NSString).substring(to: maxDisplayLength))...\""
             } else {
                 display = "\"\(escaped)\""
             }

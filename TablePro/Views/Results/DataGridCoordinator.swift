@@ -115,7 +115,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var cachedColumnCount: Int = 0
     private(set) var enumOrSetColumns: Set<Int> = []
     private(set) var fkColumns: Set<Int> = []
-    var isSyncingSelection = false
+    var isApplyingProgrammaticRowSelection = false
     var isRebuildingColumns: Bool = false
     var isEscapeCancelling = false
     var isCommittingCellEdit = false
@@ -602,6 +602,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
            firstResponder.isDescendant(of: tableView) {
             window.makeFirstResponder(tableView)
         }
+    }
+
+    @discardableResult
+    internal func focusGrid() -> Bool {
+        guard let tableView, let window = tableView.window else { return false }
+        window.makeFirstResponder(tableView)
+        return true
     }
 
     func beginEditing(displayRow: Int, column: Int) {

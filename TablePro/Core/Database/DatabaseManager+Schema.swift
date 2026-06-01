@@ -61,6 +61,27 @@ extension DatabaseManager {
             )
             let statements = try generator.generate(changes: changes)
 
+            let combinedSQL = statements.map(\.sql).joined(separator: "\n")
+            let schemaKind: OperationKind =
+                QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
+                ? .destructiveQuery : .schemaMutation
+            let authorization = await ExecutionGateProvider.shared.authorize(
+                OperationRequest(
+                    connectionId: connectionId,
+                    databaseType: databaseType,
+                    sql: combinedSQL,
+                    kind: schemaKind,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: String(localized: "Apply Schema Changes")
+                )
+            )
+            guard case .authorized = authorization else {
+                throw DatabaseError.queryFailed(
+                    authorization.deniedReason ?? String(localized: "Schema change was not authorized")
+                )
+            }
+
             let useTransaction = driver.supportsTransactions
 
             if useTransaction {

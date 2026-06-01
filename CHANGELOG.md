@@ -10,6 +10,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The window title bar shows the open table's name, with its database and schema below, so you can tell which table you're viewing without checking the sidebar. (#1475)
+- Save the current query as a favorite from a star button in the SQL editor toolbar.
+- Field names and types in the row Details panel can now be selected and copied.
+
+### Changed
+
+- Connection list rows show the database name after the host, so connections that share a name and host are easier to tell apart. (#1535)
+- Save as Favorite uses Cmd+D again. The Cmd+Control+D set in 0.47.0 is reserved by macOS for Look Up, so it never fired.
+- Editor toolbar buttons show their keyboard shortcut in the tooltip, and it updates if you rebind the shortcut.
+
+### Fixed
+
+- Import now detects the Setapp edition of TablePlus and reads connections from its data folder. It was reported as not installed before. (#1528)
+- Favorite keyword suggestions now show in the editor autocomplete when you type the keyword. They were being dropped before reaching the popup.
+
+## [0.47.0] - 2026-06-01
+
+### Added
+
+- Previous Page, Next Page, First Page, and Last Page are now in the Query menu. Previous and Next keep their Cmd+[ and Cmd+] shortcuts. (#1490)
+- Keyboard control of the sidebar: focus the filter field (Cmd+Option+F) and switch between the Tables and Favorites sidebars (Ctrl+1 and Ctrl+2). Tab or Down moves from the filter field into the list. All rebindable in Settings, Keyboard. (#1490)
+- Star a table in its sidebar row to favorite it. Favorites are scoped to the connection, database, and schema, pinned to the top of their section, listed in the Favorites tab, and synced through iCloud when Table Favorites is on.
+- A plus button in the Tables sidebar footer creates a new table or view without right-clicking. Disabled while safe mode blocks writes.
+- The sidebar can show every database on the server as an expandable tree. Switch between the flat list and the tree in the View menu (Sidebar Layout), and right-click a database or schema to set it active. Set the default for new connections in Settings, General. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)
+- A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain, so scripts can provision it without typing the password. (#1254)
+- PostgreSQL: PostGIS `geometry` and `geography` columns render as WKT with SRID instead of raw hex. (#1458)
+- Import connections from Navicat: export from Navicat (File, Export Connections), then pick the file under Import from Other App. SSH tunnel and SSL settings carry over, and saved passwords are decrypted during import. (#1485)
+
+### Changed
+
+- Save as Favorite moved from Cmd+D to Cmd+Control+D, leaving Cmd+D free for the system "Don't Save" action. Rebindable in Settings, Keyboard. (#1490)
+- The Tables sidebar footer uses native macOS styling. The schema switcher is now a borderless pull-down matching the Favorites footer, and switching schemas goes through the same path as the toolbar so filters and the active tab stay in sync.
+- The Maintenance submenu in the sidebar context menu is hidden when no operations apply or the target is read-only, instead of showing an empty disabled menu.
+- The window minimum width adjusts to the visible panes, so opening the inspector on a small window no longer pushes content off-screen.
+- Destructive queries (DROP, TRUNCATE, DELETE without WHERE) always ask for confirmation, even with Safe Mode off. (#1481)
+- Table structure changes, table creation, maintenance, column reorder, and saved data-grid edits follow the connection's Safe Mode and read-only setting. (#1481)
+- AI assistant and MCP queries follow the same Safe Mode, read-only, and authentication rules as the editor. (#1481)
+- iOS: sheet close, cancel, and confirm buttons use the native iOS 26 button roles, matching system apps like Mail. iOS 18 keeps titled buttons. (#1524)
+
+### Removed
+
+- "Create New Table…" from the sidebar right-click menu. Use the plus button in the Tables sidebar footer instead.
+
+### Fixed
+
+- The Details pane updates when you select a row by clicking, not only with the arrow keys. (#1496)
+- Tab and Shift-Tab move focus out of the AI rules field in the connection form instead of inserting a tab. (#1490)
+- The cell inspector's Set NULL, Set DEFAULT, copy, and SQL-function actions are now in a right-click menu on each field, reachable by keyboard, Full Keyboard Access, and VoiceOver, not only on hover. (#1490)
+- VoiceOver: grid selection changes are announced even when VoiceOver was not already on, the drop and truncate dialog toggles describe their effect, and the favorite query editor is labeled. (#1490)
+- Tab moves keyboard focus between the window panes (sidebar, results, inspector). (#1490)
+- The license activation sheet focuses the key field on open, the SQL review sheet closes with Escape even while the editor has focus, and the integration token sheet focuses its Done button. (#1490)
+- Copy with Headers now has a default shortcut (Cmd+Option+C) instead of appearing in the Edit menu with no key. (#1490)
+- VoiceOver reads the column name and current value for each field editor in the cell inspector. (#1490)
+- VoiceOver announces the active tab title when you switch between window tabs. (#1490)
+- Opening a query tab no longer pulls keyboard focus from the sidebar or another control; the editor takes focus only when nothing else holds it. VoiceOver now labels the SQL editor and the Clear and Format buttons. (#1490)
+- The connection form opens with the Name field focused, Return or Down in the welcome search moves to the connection list, and focus returns to the list after a sheet closes, so you can set up a connection without the mouse. (#1490)
+- Escape dismisses search-based sheets and popovers (database switcher, quick switcher, column and connection pickers). The first Escape clears the search text; a second closes the sheet. (#1490)
+- Running `EXPLAIN` or `EXPLAIN ANALYZE` in the editor opens the plan viewer instead of squashing the plan into one truncated grid cell. (#1480)
+- Filtering the data grid keeps you on the keyboard: applying or clearing a filter returns focus to the grid, Return applies the filter, and Escape closes the filter panel. (#1490)
+- Opening a table (Return or double-click in the sidebar) moves keyboard focus into the data grid for arrow-key navigation. Arrowing the sidebar still previews tables without taking focus. (#1490)
+- Moving a connection into or out of a group syncs across devices instead of leaving it ungrouped on your other Macs.
+- Opening a table on a connection with many tables no longer stalls for several seconds while autocomplete and metadata load. Schema introspection runs on separate connections instead of blocking the query that fills the grid. (#1483)
+- Cassandra SSL connections with a client certificate now have a Key Passphrase field for an encrypted private key, and report "key is encrypted" or "passphrase is incorrect" instead of a generic handshake failure. The passphrase is stored in the Keychain. (#1487)
 
 ## [0.46.0] - 2026-05-28
 
@@ -32,6 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Safe mode level changes in the toolbar persist as the connection default across reconnects.
 - Toolbar customizations persist after closing and reopening a session window. (#1455)
 - Pasting rows with commas in a cell keeps each value in its own column and preserves NULL vs the literal text "NULL".
 - BigQuery: switching to another table loads its data immediately instead of leaving the grid empty.
@@ -51,6 +114,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Double-clicking a CSV or TSV file when TablePro is closed opens the file directly. (#1443)
 - Opening a `.sql` file names the tab after the file instead of "SQL Query". (#1220)
 - Server Dashboard shows the Slow Queries panel, with a draggable vertical split and remembered divider positions. (#1464)
+- Data grid row context menus now copy the clicked or focused cell value for Copy, while Copy Rows still keeps the full-row TSV action.
+- Opening a table in a new tab now restores saved hidden columns before the first load, so the initial query matches the visible column set.
+- The JSON detail popover now shows long string values up to 300 characters in the tree view instead of cutting them off at 80.
+- Restoring or previewing a table no longer leaves the Tables sidebar spinner stuck after the table list has already loaded.
 
 ## [0.45.0] - 2026-05-26
 
@@ -2039,7 +2106,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.46.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.47.0...HEAD
+[0.47.0]: https://github.com/TableProApp/TablePro/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/TableProApp/TablePro/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/TableProApp/TablePro/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/TableProApp/TablePro/compare/v0.43.3...v0.44.0

@@ -81,10 +81,10 @@ struct ConnectionFormView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: handleSave)
+                    ConfirmButton(title: "Save", action: handleSave)
                         .disabled(!viewModel.canSave)
                 }
             }

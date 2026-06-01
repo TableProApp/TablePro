@@ -291,9 +291,9 @@ struct DataGridView: NSViewRepresentable {
         let currentSelection = tableView.selectedRowIndexes
         let targetSelection = IndexSet(selectedRowIndices)
         guard currentSelection != targetSelection else { return }
-        coordinator.isSyncingSelection = true
+        coordinator.isApplyingProgrammaticRowSelection = true
         tableView.selectRowIndexes(targetSelection, byExtendingSelection: false)
-        coordinator.isSyncingSelection = false
+        coordinator.isApplyingProgrammaticRowSelection = false
     }
 
     private func reconcileColumnPool(

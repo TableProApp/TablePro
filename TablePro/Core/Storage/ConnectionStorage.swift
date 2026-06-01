@@ -28,14 +28,14 @@ final class ConnectionStorage {
 
     private let fileURL: URL
 
-    private let keychain: KeychainHelper
+    private let keychain: any KeychainStoring
 
     init(
         fileURL: URL = ConnectionStorage.defaultFileURL(),
         userDefaults: UserDefaults = .standard,
         syncTracker: SyncChangeTracker = .shared,
         appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
-        keychain: KeychainHelper = .shared
+        keychain: any KeychainStoring = KeychainHelper.shared
     ) {
         self.fileURL = fileURL
         self.defaults = userDefaults
@@ -105,6 +105,10 @@ final class ConnectionStorage {
             Self.logger.error("Failed to load connections: \(error)")
             return []
         }
+    }
+
+    func loadConnection(id: UUID) -> DatabaseConnection? {
+        loadConnections().first { $0.id == id }
     }
 
     /// Save all connections. Returns `true` if persisted, `false` if encoding or
@@ -189,9 +193,38 @@ final class ConnectionStorage {
         guard didMutate, saveConnections(connections) else {
             return false
         }
-        for connection in updatesById.values where !connection.localOnly && !connection.isSample {
-            syncTracker.markDirty(.connection, id: connection.id.uuidString)
+        let dirtyIds = updatesById.values
+            .filter { !$0.localOnly && !$0.isSample }
+            .map { $0.id.uuidString }
+        syncTracker.markDirty(.connection, ids: dirtyIds)
+        return true
+    }
+
+    @discardableResult
+    func updateSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) -> Bool {
+        var connections = loadConnections()
+        guard let index = connections.firstIndex(where: { $0.id == connectionId }) else {
+            Self.logger.notice(
+                "Skipped updateSafeModeLevel: connection not found for \(connectionId, privacy: .public)"
+            )
+            return false
         }
+
+        guard connections[index].safeModeLevel != level else { return true }
+
+        connections[index].safeModeLevel = level
+        guard saveConnections(connections) else {
+            Self.logger.error(
+                "Aborted updateSafeModeLevel: persistence failed for \(connectionId, privacy: .public)"
+            )
+            return false
+        }
+
+        let updatedConnection = connections[index]
+        if !updatedConnection.localOnly && !updatedConnection.isSample {
+            syncTracker.markDirty(.connection, id: updatedConnection.id.uuidString)
+        }
+
         return true
     }
 
@@ -209,6 +242,7 @@ final class ConnectionStorage {
         deletePassword(for: connection.id)
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
+        deleteSSLClientKeyPassphrase(for: connection.id)
         deleteTOTPSecret(for: connection.id)
         deleteCloudflareTokenId(for: connection.id)
         deleteCloudflareTokenSecret(for: connection.id)
@@ -219,6 +253,8 @@ final class ConnectionStorage {
         let appSettings = appSettingsProvider()
         appSettings.saveLastDatabase(nil, for: connection.id)
         appSettings.saveLastSchema(nil, for: connection.id)
+
+        FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
     }
 
     /// Batch-delete multiple connections and clean up their Keychain entries
@@ -237,6 +273,7 @@ final class ConnectionStorage {
             deletePassword(for: conn.id)
             deleteSSHPassword(for: conn.id)
             deleteKeyPassphrase(for: conn.id)
+            deleteSSLClientKeyPassphrase(for: conn.id)
             deleteTOTPSecret(for: conn.id)
             deleteCloudflareTokenId(for: conn.id)
             deleteCloudflareTokenSecret(for: conn.id)
@@ -245,6 +282,7 @@ final class ConnectionStorage {
             let appSettings = appSettingsProvider()
             appSettings.saveLastDatabase(nil, for: conn.id)
             appSettings.saveLastSchema(nil, for: conn.id)
+            FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
         }
     }
 
@@ -277,6 +315,7 @@ final class ConnectionStorage {
             startupCommands: connection.startupCommands,
             sortOrder: connection.sortOrder,
             localOnly: connection.localOnly,
+            passwordSource: connection.passwordSource,
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
 
@@ -300,6 +339,9 @@ final class ConnectionStorage {
         }
         if let keyPassphrase = loadKeyPassphrase(for: connection.id) {
             saveKeyPassphrase(keyPassphrase, for: newId)
+        }
+        if let sslKeyPassphrase = loadSSLClientKeyPassphrase(for: connection.id) {
+            saveSSLClientKeyPassphrase(sslKeyPassphrase, for: newId)
         }
         if let totpSecret = loadTOTPSecret(for: connection.id) {
             saveTOTPSecret(totpSecret, for: newId)
@@ -363,6 +405,23 @@ final class ConnectionStorage {
 
     func deleteKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        keychain.delete(forKey: key)
+    }
+
+    // MARK: - SSL Client Key Passphrase Storage
+
+    func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        keychain.writeString(passphrase, forKey: key)
+    }
+
+    func loadSSLClientKeyPassphrase(for connectionId: UUID) -> String? {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        return resolveString(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
+    }
+
+    func deleteSSLClientKeyPassphrase(for connectionId: UUID) {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
         keychain.delete(forKey: key)
     }
 
@@ -590,6 +649,9 @@ private struct StoredConnection: Codable {
     // Plugin-driven additional fields
     let additionalFields: [String: String]?
 
+    // Password source (file, env, or command) for connections provisioned outside the app
+    let passwordSource: PasswordSource?
+
     init(from connection: DatabaseConnection) {
         self.id = connection.id
         self.name = connection.name
@@ -675,6 +737,9 @@ private struct StoredConnection: Codable {
 
         // Plugin-driven additional fields
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
+
+        // Password source (not synced to iCloud; see SyncRecordMapper)
+        self.passwordSource = connection.passwordSource
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -697,6 +762,7 @@ private struct StoredConnection: Codable {
         case localOnly
         case isSample
         case isFavorite
+        case passwordSource
     }
 
     func encode(to encoder: Encoder) throws {
@@ -740,6 +806,7 @@ private struct StoredConnection: Codable {
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
         try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encodeIfPresent(passwordSource, forKey: .passwordSource)
     }
 
     // Custom decoder to handle migration from old format
@@ -806,6 +873,7 @@ private struct StoredConnection: Codable {
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
         cloudflareTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudflareTunnelModeJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
+        passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
@@ -913,6 +981,7 @@ private struct StoredConnection: Codable {
             localOnly: localOnly,
             isSample: isSample,
             isFavorite: isFavorite,
+            passwordSource: passwordSource,
             additionalFields: mergedFields
         )
     }

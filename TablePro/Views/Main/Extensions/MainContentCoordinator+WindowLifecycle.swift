@@ -30,6 +30,7 @@ extension MainContentCoordinator {
         evictionTask = nil
 
         syncSidebarToSelectedTab()
+        announceActiveTabToVoiceOver()
 
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
@@ -82,6 +83,20 @@ extension MainContentCoordinator {
         )
     }
 
+    /// Announce the active tab title to VoiceOver when the window becomes key,
+    /// so assistive-technology users get the same context the window title gives.
+    private func announceActiveTabToVoiceOver() {
+        guard let title = tabManager.selectedTab?.title, !title.isEmpty else { return }
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: title,
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ]
+        )
+    }
+
     // MARK: - Sidebar Sync
 
     /// Update the window-scoped sidebar selection so the active table tab
@@ -125,7 +140,7 @@ extension MainContentCoordinator {
         tableLoadTasks[tabId] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.tableLoadTasks[tabId] = nil }
-            self.executeTableTabQueryDirectly()
+            self.executeSelectedTableTabQuery()
             if let task = self.currentQueryTask {
                 await task.value
             }

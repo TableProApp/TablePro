@@ -124,15 +124,8 @@ struct RowDetailView: View {
         ToolbarItem(placement: .primaryAction) {
             if viewModel.canEdit {
                 if viewModel.isEditing {
-                    Button {
+                    ConfirmButton(title: "Save", isInProgress: viewModel.isSaving) {
                         Task { await handleSave() }
-                    } label: {
-                        if viewModel.isSaving {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Save")
-                        }
                     }
                     .disabled(viewModel.isSaving)
                 } else {
@@ -143,7 +136,7 @@ struct RowDetailView: View {
 
         if viewModel.isEditing {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { viewModel.cancelEditing() }
+                CancelButton { viewModel.cancelEditing() }
                     .disabled(viewModel.isSaving)
             }
         }

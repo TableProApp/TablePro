@@ -9,6 +9,7 @@ let package = Package(
         .iOS(.v17)
     ],
     products: [
+        .library(name: "TableProCoreTypes", targets: ["TableProCoreTypes"]),
         .library(name: "TableProPluginKit", targets: ["TableProPluginKit"]),
         .library(name: "TableProModels", targets: ["TableProModels"]),
         .library(name: "TableProDatabase", targets: ["TableProDatabase"]),
@@ -19,28 +20,33 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "TableProCoreTypes",
+            dependencies: [],
+            path: "Sources/TableProCoreTypes"
+        ),
+        .target(
             name: "TableProPluginKit",
             dependencies: [],
             path: "Sources/TableProPluginKit"
         ),
         .target(
             name: "TableProModels",
-            dependencies: ["TableProPluginKit"],
+            dependencies: ["TableProPluginKit", "TableProCoreTypes"],
             path: "Sources/TableProModels"
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels"],
+            dependencies: ["TableProModels", "TableProCoreTypes"],
             path: "Sources/TableProDatabase"
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit"],
+            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes"],
             path: "Sources/TableProQuery"
         ),
         .target(
             name: "TableProSync",
-            dependencies: ["TableProModels"],
+            dependencies: ["TableProModels", "TableProCoreTypes"],
             path: "Sources/TableProSync"
         ),
         .target(

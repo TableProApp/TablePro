@@ -63,7 +63,19 @@ final class SchemaProviderRegistry {
         if let existing = providers[connectionId] {
             return existing
         }
-        let provider = SQLSchemaProvider()
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { table in
+                try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
+                    try await driver.fetchColumns(table: table)
+                }
+            },
+            fetchAllColumns: {
+                try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
+                    try await driver.fetchAllColumns()
+                }
+            }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
         providers[connectionId] = provider
         return provider
     }
