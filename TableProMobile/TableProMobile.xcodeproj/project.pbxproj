@@ -2171,7 +2171,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-					HEADER_SEARCH_PATHS = "$(SRCROOT)/../Libs/ios/DuckDB.xcframework/ios-arm64/Headers";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
@@ -2195,7 +2194,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-					HEADER_SEARCH_PATHS = "$(SRCROOT)/../Libs/ios/DuckDB.xcframework/ios-arm64/Headers";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
