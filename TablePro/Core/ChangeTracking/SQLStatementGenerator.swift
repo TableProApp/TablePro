@@ -196,6 +196,36 @@ struct SQLStatementGenerator {
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
 
+    func insertStatement(columns insertColumns: [String], rows: [[PluginCellValue]])
+        -> ParameterizedStatement?
+    {
+        guard !insertColumns.isEmpty, !rows.isEmpty,
+              rows.allSatisfy({ $0.count == insertColumns.count }) else { return nil }
+
+        var bindParameters: [Any?] = []
+        let columnList = insertColumns.map(quoteIdentifierFn).joined(separator: ", ")
+        let rowTuples = rows.map { values -> String in
+            let placeholders = values.map { value -> String in
+                bindParameters.append(value.asAny)
+                return placeholder(at: bindParameters.count - 1)
+            }.joined(separator: ", ")
+            return "(\(placeholders))"
+        }.joined(separator: ", ")
+
+        let sql =
+            "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnList)) VALUES \(rowTuples)"
+
+        return ParameterizedStatement(sql: sql, parameters: bindParameters)
+    }
+
+    var maxBindParameters: Int {
+        switch databaseType {
+        case .sqlite: 32_766
+        case .mssql: 2_100
+        default: 65_535
+        }
+    }
+
     func deleteAllRowsStatement() -> String {
         "DELETE FROM \(quoteIdentifierFn(tableName))"
     }

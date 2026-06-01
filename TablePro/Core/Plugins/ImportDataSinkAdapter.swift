@@ -72,6 +72,55 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
     }
 
+    func insertRows(_ rows: [[String: PluginCellValue]]) async throws {
+        guard targetTable != nil else {
+            throw PluginImportError.importFailed("No target table configured for row import")
+        }
+        guard let rowGenerator else {
+            throw PluginImportError.importFailed("Could not resolve SQL dialect for row import")
+        }
+
+        var index = 0
+        while index < rows.count {
+            let (columns, values) = mappedColumnsAndValues(rows[index])
+            guard !columns.isEmpty else {
+                index += 1
+                continue
+            }
+
+            var groupValues: [[PluginCellValue]] = [values]
+            var next = index + 1
+            while next < rows.count {
+                let (nextColumns, nextValues) = mappedColumnsAndValues(rows[next])
+                guard nextColumns == columns else { break }
+                groupValues.append(nextValues)
+                next += 1
+            }
+            index = next
+
+            let chunkSize = max(1, rowGenerator.maxBindParameters / columns.count)
+            var offset = 0
+            while offset < groupValues.count {
+                let end = min(offset + chunkSize, groupValues.count)
+                let chunk = Array(groupValues[offset..<end])
+                if let statement = rowGenerator.insertStatement(columns: columns, rows: chunk) {
+                    _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+                }
+                offset = end
+            }
+        }
+    }
+
+    private func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
+        var pairs: [(column: String, value: PluginCellValue)] = []
+        for (field, value) in values {
+            guard let column = columnMapping[field.lowercased()] else { continue }
+            pairs.append((column, value))
+        }
+        pairs.sort { $0.column < $1.column }
+        return (pairs.map(\.column), pairs.map(\.value))
+    }
+
     func deleteAllRowsFromTargetTable() async throws {
         guard targetTable != nil, let rowGenerator else {
             throw PluginImportError.importFailed("No target table configured for row import")

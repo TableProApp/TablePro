@@ -65,6 +65,44 @@ struct SQLStatementGeneratorImportTests {
         #expect(generator.insertStatement(columns: ["a"], values: ["1", "2"]) == nil)
     }
 
+    @Test("multi-row insertStatement emits one VALUES tuple per row with shared columns (MySQL)")
+    func testMultiRowInsertMySQL() throws {
+        let generator = try makeGenerator()
+        let stmt = try #require(generator.insertStatement(
+            columns: ["id", "name"],
+            rows: [["1", .text("a")], ["2", .text("b")]]
+        ))
+        #expect(stmt.sql == "INSERT INTO `users` (`id`, `name`) VALUES (?, ?), (?, ?)")
+        #expect(stmt.parameters.count == 4)
+        #expect(stmt.parameters[2] as? String == "2")
+        #expect(stmt.parameters[3] as? String == "b")
+    }
+
+    @Test("multi-row insertStatement numbers placeholders across rows for PostgreSQL")
+    func testMultiRowInsertPostgres() throws {
+        let generator = try makeGenerator(databaseType: .postgresql)
+        let stmt = try #require(generator.insertStatement(
+            columns: ["id", "name"],
+            rows: [["1", .text("a")], ["2", .text("b")]]
+        ))
+        #expect(stmt.sql == "INSERT INTO \"users\" (\"id\", \"name\") VALUES ($1, $2), ($3, $4)")
+    }
+
+    @Test("multi-row insertStatement returns nil for empty rows or arity mismatch")
+    func testMultiRowInsertGuards() throws {
+        let generator = try makeGenerator()
+        #expect(generator.insertStatement(columns: ["a"], rows: []) == nil)
+        #expect(generator.insertStatement(columns: ["a", "b"], rows: [["1"]]) == nil)
+    }
+
+    @Test("maxBindParameters reflects each engine's protocol limit")
+    func testMaxBindParameters() throws {
+        #expect(try makeGenerator(databaseType: .postgresql).maxBindParameters == 65_535)
+        #expect(try makeGenerator(databaseType: .sqlite).maxBindParameters == 32_766)
+        #expect(try makeGenerator(databaseType: .mssql).maxBindParameters == 2_100)
+        #expect(try makeGenerator(databaseType: .mysql).maxBindParameters == 65_535)
+    }
+
     @Test("deleteAllRowsStatement quotes the table identifier per dialect")
     func testDeleteAllRows() throws {
         #expect(try makeGenerator(databaseType: .mysql).deleteAllRowsStatement() == "DELETE FROM `users`")

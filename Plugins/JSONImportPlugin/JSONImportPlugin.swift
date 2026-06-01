@@ -43,12 +43,12 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
         let url = source.fileURL()
         let useTransaction = settings.wrapInTransaction && settings.errorHandling != .skipAndContinue
 
-        progress.setEstimatedTotal(max(1, Int(source.fileSizeBytes() / 256)))
-
+        let batchSize = 500
         var inserted = 0
         var skipped = 0
         var errors: [PluginImportResult.ImportStatementError] = []
         let maxErrors = 1_000
+        var batch: [(line: Int, row: [String: PluginCellValue])] = []
 
         do {
             if settings.deleteExistingRows {
@@ -59,24 +59,34 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
             }
 
             if JSONImportParsing.isLineDelimited(url) {
+                progress.setEstimatedTotal(max(1, Int(source.fileSizeBytes() / 256)))
                 var lineNumber = 0
                 for try await line in url.lines {
                     try progress.checkCancellation()
                     lineNumber += 1
                     let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { continue }
-                    let row = try JSONImportParsing.parseRow(fromLine: trimmed)
-                    try await insert(row, into: sink, at: lineNumber, progress: progress,
-                                     inserted: &inserted, skipped: &skipped, errors: &errors, maxErrors: maxErrors)
+                    batch.append((lineNumber, try JSONImportParsing.parseRow(fromLine: trimmed)))
+                    if batch.count >= batchSize {
+                        try await flush(&batch, into: sink, progress: progress,
+                                        inserted: &inserted, skipped: &skipped, errors: &errors, maxErrors: maxErrors)
+                    }
                 }
             } else {
                 let rawRows = try JSONImportParsing.parseRows(at: url, targetTable: sink.targetTable)
+                progress.setEstimatedTotal(rawRows.count)
                 for (index, rawRow) in rawRows.enumerated() {
                     try progress.checkCancellation()
-                    try await insert(JSONImportParsing.convertRow(rawRow), into: sink, at: index + 1, progress: progress,
-                                     inserted: &inserted, skipped: &skipped, errors: &errors, maxErrors: maxErrors)
+                    batch.append((index + 1, JSONImportParsing.convertRow(rawRow)))
+                    if batch.count >= batchSize {
+                        try await flush(&batch, into: sink, progress: progress,
+                                        inserted: &inserted, skipped: &skipped, errors: &errors, maxErrors: maxErrors)
+                    }
                 }
             }
+
+            try await flush(&batch, into: sink, progress: progress,
+                            inserted: &inserted, skipped: &skipped, errors: &errors, maxErrors: maxErrors)
 
             if useTransaction {
                 try await sink.commitTransaction()
@@ -127,6 +137,41 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
                     errors.append(.init(statement: "row \(line)", line: line, errorMessage: error.localizedDescription))
                 }
                 progress.incrementStatement()
+            }
+        }
+    }
+
+    private func flush(
+        _ batch: inout [(line: Int, row: [String: PluginCellValue])],
+        into sink: any PluginImportDataSink,
+        progress: PluginImportProgress,
+        inserted: inout Int,
+        skipped: inout Int,
+        errors: inout [PluginImportResult.ImportStatementError],
+        maxErrors: Int
+    ) async throws {
+        guard !batch.isEmpty else { return }
+        let entries = batch
+        batch.removeAll(keepingCapacity: true)
+
+        do {
+            try await sink.insertRows(entries.map(\.row))
+            inserted += entries.count
+            progress.incrementStatement(by: entries.count)
+        } catch {
+            switch settings.errorHandling {
+            case .stopAndRollback, .stopAndCommit:
+                let firstLine = entries.first?.line ?? 0
+                throw PluginImportError.statementFailed(
+                    statement: "rows \(firstLine)-\(entries.last?.line ?? firstLine)",
+                    line: firstLine,
+                    underlyingError: error
+                )
+            case .skipAndContinue:
+                for entry in entries {
+                    try await insert(entry.row, into: sink, at: entry.line, progress: progress,
+                                     inserted: &inserted, skipped: &skipped, errors: &errors, maxErrors: maxErrors)
+                }
             }
         }
     }

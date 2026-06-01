@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Import a JSON file into a table. The Import menu now lets you pick the source, SQL or JSON, instead of going straight to SQL. The JSON flow accepts an array of objects, newline-delimited JSON, or TablePro's own JSON export, and lets you map each field to a column in an existing table or in a new table with inferred, editable columns.
+- Import a JSON file into a table. The Import menu now lets you pick the source, SQL or JSON, instead of going straight to SQL. The JSON flow accepts an array of objects, newline-delimited JSON, or TablePro's own JSON export, and lets you map each field to a column in an existing table or in a new table with inferred, editable columns. Rows insert in batched multi-row statements, so large imports over a remote connection finish in seconds instead of minutes.
 - The window title bar shows the open table's name, with its database and schema below, so you can tell which table you're viewing without checking the sidebar. (#1475)
 - iOS: open DuckDB database files and in-memory DuckDB databases, matching the Mac app. (#1526)
 - Save the current query as a favorite from a star button in the SQL editor toolbar.

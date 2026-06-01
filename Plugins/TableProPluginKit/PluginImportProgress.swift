@@ -27,6 +27,18 @@ public final class PluginImportProgress: @unchecked Sendable {
         }
     }
 
+    public func incrementStatement(by amount: Int) {
+        guard amount > 0 else { return }
+        lock.lock()
+        let previous = internalCount
+        internalCount += amount
+        let count = internalCount
+        lock.unlock()
+        if count / updateInterval != previous / updateInterval {
+            progress.completedUnitCount = Int64(count)
+        }
+    }
+
     public func setStatus(_ message: String) {
         progress.localizedAdditionalDescription = message
     }
