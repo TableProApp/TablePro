@@ -127,4 +127,52 @@ struct JSONImportPluginTests {
         #expect(row["score"] == .text("3.14"))
         #expect(row["active"] == .text("true"))
     }
+
+    // MARK: - Type inference
+
+    private func array(_ json: String) throws -> [Any] {
+        try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [Any])
+    }
+
+    @Test("Inference: all integers")
+    func testInferInteger() throws {
+        #expect(JSONImportPlugin.inferType(from: try array("[1, 2, 3]")) == .integer)
+    }
+
+    @Test("Inference: any decimal makes the field real")
+    func testInferReal() throws {
+        #expect(JSONImportPlugin.inferType(from: try array("[1, 2.5, 3]")) == .real)
+    }
+
+    @Test("Inference: all booleans")
+    func testInferBoolean() throws {
+        #expect(JSONImportPlugin.inferType(from: try array("[true, false]")) == .boolean)
+    }
+
+    @Test("Inference: all-nested values are json")
+    func testInferJSON() throws {
+        #expect(JSONImportPlugin.inferType(from: try array(#"[{"a":1}, [1,2]]"#)) == .json)
+    }
+
+    @Test("Inference: mixed types fall back to text")
+    func testInferText() throws {
+        #expect(JSONImportPlugin.inferType(from: try array(#"["a", 1]"#)) == .text)
+    }
+
+    @Test("Inference: empty values are text")
+    func testInferEmpty() {
+        #expect(JSONImportPlugin.inferType(from: []) == .text)
+    }
+
+    @Test("detectFields reports sorted fields with inferred types and a sample")
+    func testDetectFields() throws {
+        let raw = #"[{"id":1,"name":"a","active":true},{"id":2,"name":"b","active":false}]"#
+        let rows = try #require(try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [[String: Any]])
+        let fields = JSONImportPlugin.detectFields(in: rows)
+        #expect(fields.map(\.name) == ["active", "id", "name"])
+        #expect(fields.first { $0.name == "id" }?.inferredType == .integer)
+        #expect(fields.first { $0.name == "active" }?.inferredType == .boolean)
+        #expect(fields.first { $0.name == "name" }?.inferredType == .text)
+        #expect(fields.first { $0.name == "id" }?.sampleValue == "1")
+    }
 }

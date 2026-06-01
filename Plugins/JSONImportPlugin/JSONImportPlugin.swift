@@ -218,4 +218,92 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
         }
         return string
     }
+
+    // MARK: - Source introspection
+
+    func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] {
+        let rows = try Self.sampleRawRows(at: url, targetTable: targetTable, limit: 200)
+        return Self.detectFields(in: rows)
+    }
+
+    static func sampleRawRows(at url: URL, targetTable: String?, limit: Int) throws -> [[String: Any]] {
+        if isLineDelimited(url) {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let text = String(bytes: handle.readData(ofLength: 256 * 1_024), encoding: .utf8) ?? ""
+            var rows: [[String: Any]] = []
+            for line in text.split(separator: "\n") where rows.count < limit {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                if let object = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any] {
+                    rows.append(object)
+                }
+            }
+            return rows
+        }
+        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
+        return Array(try extractRows(from: object, targetTable: targetTable).prefix(limit))
+    }
+
+    static func detectFields(in rows: [[String: Any]]) -> [PluginImportField] {
+        var names: [String] = []
+        var seen = Set<String>()
+        var valuesByField: [String: [Any]] = [:]
+        for row in rows {
+            for (key, value) in row {
+                if seen.insert(key).inserted { names.append(key) }
+                valuesByField[key, default: []].append(value)
+            }
+        }
+        return names.sorted().map { name in
+            let nonNull = (valuesByField[name] ?? []).filter { !($0 is NSNull) }
+            return PluginImportField(
+                name: name,
+                sampleValue: nonNull.first.map(sampleString),
+                inferredType: inferType(from: nonNull)
+            )
+        }
+    }
+
+    static func inferType(from values: [Any]) -> PluginImportFieldType {
+        guard !values.isEmpty else { return .text }
+        var allNested = true
+        var allBoolean = true
+        var allInteger = true
+        var allNumber = true
+        for value in values {
+            if value is [Any] || value is [String: Any] {
+                allBoolean = false
+                allInteger = false
+                allNumber = false
+            } else {
+                allNested = false
+                if let number = value as? NSNumber {
+                    if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                        allInteger = false
+                        allNumber = false
+                    } else {
+                        allBoolean = false
+                        if CFNumberIsFloatType(number) { allInteger = false }
+                    }
+                } else {
+                    allBoolean = false
+                    allInteger = false
+                    allNumber = false
+                }
+            }
+        }
+        if allNested { return .json }
+        if allBoolean { return .boolean }
+        if allInteger { return .integer }
+        if allNumber { return .real }
+        return .text
+    }
+
+    private static func sampleString(_ value: Any) -> String {
+        switch cellValue(from: value) {
+        case .text(let string): return String(string.prefix(80))
+        case .bytes, .null: return ""
+        }
+    }
 }

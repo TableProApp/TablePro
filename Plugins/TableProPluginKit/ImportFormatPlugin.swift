@@ -20,6 +20,8 @@ public protocol ImportFormatPlugin: TableProPlugin {
         sink: any PluginImportDataSink,
         progress: PluginImportProgress
     ) async throws -> PluginImportResult
+
+    func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField]
 }
 
 public extension ImportFormatPlugin {
@@ -27,4 +29,6 @@ public extension ImportFormatPlugin {
     static var supportedDatabaseTypeIds: [String] { [] }
     static var excludedDatabaseTypeIds: [String] { [] }
     static var requiresTargetTable: Bool { false }
+
+    func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] { [] }
 }
