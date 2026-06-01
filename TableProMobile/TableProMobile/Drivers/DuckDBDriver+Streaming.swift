@@ -99,7 +99,9 @@ extension DuckDBActor {
         endStream()
 
         let plan = try planColumns(connection: connection, query: query)
-        let streamQuery = Self.buildStreamQuery(originalQuery: query, columns: plan)
+        let streamQuery = plan.contains(where: { $0.castToText })
+            ? Self.castedQuery(originalQuery: query, columns: plan)
+            : query
 
         var stmt: duckdb_prepared_statement?
         guard duckdb_prepare(connection, streamQuery, &stmt) != DuckDBError, let preparedStmt = stmt else {
@@ -188,7 +190,7 @@ extension DuckDBActor {
             let type = duckdb_column_type(&probe, index)
             columns.append(DuckDBStreamColumn(
                 name: name,
-                typeName: Self.streamTypeName(for: type),
+                typeName: Self.typeName(for: type),
                 type: type,
                 castToText: Self.requiresTextCast(type)
             ))
@@ -198,39 +200,5 @@ extension DuckDBActor {
 
     private static func zeroRowQuery(for query: String) -> String {
         "SELECT * FROM (\(stripTrailingSemicolon(query))) AS _tp_probe LIMIT 0"
-    }
-
-    static func buildStreamQuery(originalQuery: String, columns: [DuckDBStreamColumn]) -> String {
-        guard columns.contains(where: { $0.castToText }) else {
-            return originalQuery
-        }
-        let projection = columns.map { column -> String in
-            let quoted = quoteIdentifier(column.name)
-            guard column.castToText else { return quoted }
-            if column.type == DUCKDB_TYPE_GEOMETRY {
-                return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE ST_AsText(\(quoted)) END AS \(quoted)"
-            }
-            return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE CAST(\(quoted) AS VARCHAR) END AS \(quoted)"
-        }
-        return "SELECT \(projection.joined(separator: ", ")) FROM (\(stripTrailingSemicolon(originalQuery))) AS _tp_stream"
-    }
-
-    private static func stripTrailingSemicolon(_ query: String) -> String {
-        var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasSuffix(";") {
-            trimmed = String(trimmed.dropLast())
-        }
-        return trimmed
-    }
-
-    private static func requiresTextCast(_ type: duckdb_type) -> Bool {
-        switch type {
-        case DUCKDB_TYPE_LIST, DUCKDB_TYPE_STRUCT, DUCKDB_TYPE_MAP, DUCKDB_TYPE_ARRAY, DUCKDB_TYPE_UNION,
-             DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_GEOMETRY,
-             DUCKDB_TYPE_INTERVAL, DUCKDB_TYPE_BIT, DUCKDB_TYPE_DECIMAL, DUCKDB_TYPE_ENUM:
-            return true
-        default:
-            return false
-        }
     }
 }

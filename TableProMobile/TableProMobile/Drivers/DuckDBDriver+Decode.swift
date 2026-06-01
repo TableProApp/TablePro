@@ -140,44 +140,26 @@ extension DuckDBActor {
         return "\(String(s[0..<8]))-\(String(s[8..<12]))-\(String(s[12..<16]))-\(String(s[16..<20]))-\(String(s[20..<32]))"
     }
 
-    static func streamTypeName(for type: duckdb_type) -> String {
+    // Single source of truth for which types decodeCell handles directly from
+    // vector data. Anything not in this allowlist is cast to VARCHAR in the
+    // query (requiresTextCast), so an unhandled or future type can never reach
+    // the native decode path and reinterpret non-string bytes as a string.
+    static func isNativelyDecodable(_ type: duckdb_type) -> Bool {
         switch type {
-        case DUCKDB_TYPE_BOOLEAN: return "BOOLEAN"
-        case DUCKDB_TYPE_TINYINT: return "TINYINT"
-        case DUCKDB_TYPE_SMALLINT: return "SMALLINT"
-        case DUCKDB_TYPE_INTEGER: return "INTEGER"
-        case DUCKDB_TYPE_BIGINT: return "BIGINT"
-        case DUCKDB_TYPE_UTINYINT: return "UTINYINT"
-        case DUCKDB_TYPE_USMALLINT: return "USMALLINT"
-        case DUCKDB_TYPE_UINTEGER: return "UINTEGER"
-        case DUCKDB_TYPE_UBIGINT: return "UBIGINT"
-        case DUCKDB_TYPE_FLOAT: return "FLOAT"
-        case DUCKDB_TYPE_DOUBLE: return "DOUBLE"
-        case DUCKDB_TYPE_TIMESTAMP: return "TIMESTAMP"
-        case DUCKDB_TYPE_DATE: return "DATE"
-        case DUCKDB_TYPE_TIME: return "TIME"
-        case DUCKDB_TYPE_INTERVAL: return "INTERVAL"
-        case DUCKDB_TYPE_HUGEINT: return "HUGEINT"
-        case DUCKDB_TYPE_UHUGEINT: return "UHUGEINT"
-        case DUCKDB_TYPE_VARCHAR: return "VARCHAR"
-        case DUCKDB_TYPE_BLOB: return "BLOB"
-        case DUCKDB_TYPE_DECIMAL: return "DECIMAL"
-        case DUCKDB_TYPE_TIMESTAMP_S: return "TIMESTAMP_S"
-        case DUCKDB_TYPE_TIMESTAMP_MS: return "TIMESTAMP_MS"
-        case DUCKDB_TYPE_TIMESTAMP_NS: return "TIMESTAMP_NS"
-        case DUCKDB_TYPE_ENUM: return "ENUM"
-        case DUCKDB_TYPE_LIST: return "LIST"
-        case DUCKDB_TYPE_STRUCT: return "STRUCT"
-        case DUCKDB_TYPE_MAP: return "MAP"
-        case DUCKDB_TYPE_ARRAY: return "ARRAY"
-        case DUCKDB_TYPE_UUID: return "UUID"
-        case DUCKDB_TYPE_UNION: return "UNION"
-        case DUCKDB_TYPE_BIT: return "BIT"
-        case DUCKDB_TYPE_TIMESTAMP_TZ: return "TIMESTAMPTZ"
-        case DUCKDB_TYPE_TIME_TZ: return "TIMETZ"
-        case DUCKDB_TYPE_GEOMETRY: return "GEOMETRY"
-        default: return "VARCHAR"
+        case DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_BLOB, DUCKDB_TYPE_BOOLEAN,
+             DUCKDB_TYPE_TINYINT, DUCKDB_TYPE_SMALLINT, DUCKDB_TYPE_INTEGER, DUCKDB_TYPE_BIGINT,
+             DUCKDB_TYPE_UTINYINT, DUCKDB_TYPE_USMALLINT, DUCKDB_TYPE_UINTEGER, DUCKDB_TYPE_UBIGINT,
+             DUCKDB_TYPE_FLOAT, DUCKDB_TYPE_DOUBLE, DUCKDB_TYPE_HUGEINT, DUCKDB_TYPE_UHUGEINT,
+             DUCKDB_TYPE_UUID, DUCKDB_TYPE_DATE, DUCKDB_TYPE_TIME,
+             DUCKDB_TYPE_TIMESTAMP, DUCKDB_TYPE_TIMESTAMP_S, DUCKDB_TYPE_TIMESTAMP_MS, DUCKDB_TYPE_TIMESTAMP_NS:
+            return true
+        default:
+            return false
         }
+    }
+
+    static func requiresTextCast(_ type: duckdb_type) -> Bool {
+        !isNativelyDecodable(type)
     }
 }
 

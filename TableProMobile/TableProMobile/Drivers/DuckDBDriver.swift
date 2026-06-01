@@ -241,7 +241,7 @@ actor DuckDBActor {
                 name: name,
                 typeName: Self.typeName(for: type),
                 type: type,
-                castToText: Self.isUnrenderable(type)
+                castToText: Self.requiresTextCast(type)
             ))
         }
 
@@ -259,7 +259,7 @@ actor DuckDBActor {
 
         if plan.contains(where: { $0.castToText }) {
             duckdb_destroy_result(&result)
-            let wrapped = Self.buildWrappedQuery(originalQuery: sql, columns: plan.map(\.name), types: plan.map(\.type))
+            let wrapped = Self.castedQuery(originalQuery: sql, columns: plan)
             var recast = duckdb_result()
             if duckdb_query(connection, wrapped, &recast) == DuckDBError {
                 let message = duckdb_result_error(&recast).map { String(cString: $0) } ?? "Unknown DuckDB error"
@@ -332,47 +332,34 @@ actor DuckDBActor {
 
     // MARK: - Type Rendering
 
-    private static func isUnrenderable(_ type: duckdb_type) -> Bool {
-        switch type {
-        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_GEOMETRY,
-             DUCKDB_TYPE_LIST, DUCKDB_TYPE_STRUCT, DUCKDB_TYPE_MAP, DUCKDB_TYPE_ARRAY, DUCKDB_TYPE_UNION,
-             DUCKDB_TYPE_DECIMAL, DUCKDB_TYPE_ENUM, DUCKDB_TYPE_INTERVAL, DUCKDB_TYPE_BIT:
-            return true
-        default:
-            return false
+    static func castedQuery(originalQuery: String, columns: [DuckDBStreamColumn]) -> String {
+        let projection = columns.map { column in
+            column.castToText ? castExpression(for: column.type, column: column.name) : quoteIdentifier(column.name)
         }
-    }
-
-    private static func buildWrappedQuery(originalQuery: String, columns: [String], types: [duckdb_type]) -> String {
-        let castExpressions = columns.enumerated().map { index, name in
-            castExpression(for: types[index], column: name)
-        }
-        var trimmed = originalQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasSuffix(";") {
-            trimmed = String(trimmed.dropLast())
-        }
-        return "SELECT \(castExpressions.joined(separator: ", ")) FROM (\(trimmed)) AS _tp_cast"
+        return "SELECT \(projection.joined(separator: ", ")) FROM (\(stripTrailingSemicolon(originalQuery))) AS _tp_cast"
     }
 
     private static func castExpression(for type: duckdb_type, column: String) -> String {
         let quoted = quoteIdentifier(column)
-        switch type {
-        case DUCKDB_TYPE_GEOMETRY:
+        if type == DUCKDB_TYPE_GEOMETRY {
             return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE ST_AsText(\(quoted)) END AS \(quoted)"
-        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ,
-             DUCKDB_TYPE_LIST, DUCKDB_TYPE_STRUCT, DUCKDB_TYPE_MAP, DUCKDB_TYPE_ARRAY, DUCKDB_TYPE_UNION,
-             DUCKDB_TYPE_DECIMAL, DUCKDB_TYPE_ENUM, DUCKDB_TYPE_INTERVAL, DUCKDB_TYPE_BIT:
-            return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE CAST(\(quoted) AS VARCHAR) END AS \(quoted)"
-        default:
-            return quoted
         }
+        return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE CAST(\(quoted) AS VARCHAR) END AS \(quoted)"
     }
 
     static func quoteIdentifier(_ identifier: String) -> String {
         "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
-    private static func typeName(for type: duckdb_type) -> String {
+    static func stripTrailingSemicolon(_ query: String) -> String {
+        var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasSuffix(";") {
+            trimmed = String(trimmed.dropLast())
+        }
+        return trimmed
+    }
+
+    static func typeName(for type: duckdb_type) -> String {
         switch type {
         case DUCKDB_TYPE_BOOLEAN: return "BOOLEAN"
         case DUCKDB_TYPE_TINYINT: return "TINYINT"

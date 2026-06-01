@@ -47,6 +47,7 @@ final class DuckDBDriverTests: XCTestCase {
                 'abc'::BLOB AS payload,
                 '550e8400-e29b-41d4-a716-446655440000'::UUID AS uid,
                 12.34::DECIMAL(5,2) AS dec,
+                INTERVAL '1' MONTH AS iv,
                 [1, 2, 3] AS lst,
                 {'a': 1, 'b': 2} AS strct
             """
