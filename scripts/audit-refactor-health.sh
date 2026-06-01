@@ -75,6 +75,7 @@ baseline_keys() {
 }
 
 pluginkit_divergent_paths() {
+    [ -L "$PLUGINKIT_B" ] && return 0
     [ -d "$PLUGINKIT_A" ] && [ -d "$PLUGINKIT_B" ] || return 0
     { diff -qr "$PLUGINKIT_A" "$PLUGINKIT_B" 2>/dev/null || true; } | sed -E \
         -e "s#^Files $PLUGINKIT_A/(.*) and .* differ#\\1#" \
@@ -112,7 +113,7 @@ report_duplicate_contracts() {
     echo "PluginKit source trees:"
     local pk_divergent
     pk_divergent=$(pluginkit_divergent_paths)
-    if [ -d "$PLUGINKIT_A" ] && [ -d "$PLUGINKIT_B" ]; then
+    if [ -d "$PLUGINKIT_A" ] && [ -d "$PLUGINKIT_B" ] && [ ! -L "$PLUGINKIT_B" ]; then
         echo "  both present; $(printf '%s\n' "$pk_divergent" | grep -c . || true) divergent file(s) pending Phase 1 consolidation"
     else
         echo "  single source ✅"

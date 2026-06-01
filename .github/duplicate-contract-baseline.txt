@@ -8,5 +8,3 @@
 #   databasetype:<file defining a production DatabaseType other than the TableProCore source>
 
 databasetype:TablePro/Models/Connection/DatabaseConnection.swift
-
-pluginkit:Info.plist

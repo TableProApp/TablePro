@@ -27,7 +27,8 @@ let package = Package(
         .target(
             name: "TableProPluginKit",
             dependencies: [],
-            path: "Sources/TableProPluginKit"
+            path: "Sources/TableProPluginKit",
+            exclude: ["Info.plist"]
         ),
         .target(
             name: "TableProModels",
