@@ -34,6 +34,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
         self.managedToolbar.autosavesConfiguration = true
+        self.managedToolbar.centeredItemIdentifiers = [Self.principal]
     }
 
     func invalidate() {
@@ -77,7 +78,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             .sidebarTrackingSeparator,
             Self.connectionGroup,
             Self.refreshSaveGroup,
-            .flexibleSpace,
             Self.principal,
             .flexibleSpace,
             Self.quickSwitcher,
