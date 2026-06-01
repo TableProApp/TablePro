@@ -24,6 +24,7 @@ public extension DocumentInspectorPlugin {
     static var iconName: String { "doc.text" }
 }
 
+@frozen
 public enum InspectorColumnType: String, Sendable, Equatable, CaseIterable {
     case text
     case integer

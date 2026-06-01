@@ -1,5 +1,6 @@
 import Foundation
 
+@frozen
 public enum FieldSection: String, Codable, Sendable {
     case authentication
     case advanced
@@ -61,6 +62,7 @@ public struct ConnectionField: Codable, Sendable {
         }
     }
 
+    @frozen
     public enum FieldType: Codable, Sendable, Equatable {
         case text
         case secure
