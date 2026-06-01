@@ -336,7 +336,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeLiteral(table)
-        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let quotedTable = quoteIdentifier(table)
         let caps = versionedCapabilities
 
         let identityClause: String = caps.hasIdentityColumns ? """
@@ -431,7 +431,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         var parts = columnDefs
         parts.append(contentsOf: constraints)
 
-        let quotedSchema = "\"\(core.currentSchema.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let quotedSchema = quoteIdentifier(core.currentSchema)
         let ddl = "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
             parts.joined(separator: ",\n  ") +
             "\n);"
@@ -599,9 +599,9 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             let incrementBy = row[4].asText ?? "1"
             let cycle = row[5].asText == "t" ? " CYCLE" : ""
             let lastValue = row.count > 6 ? row[6].asText : nil
-            let quotedSeqName = "\"\(seqName.replacingOccurrences(of: "\"", with: "\"\""))\""
-            let escapedSchemaForLiteral = schemaName.replacingOccurrences(of: "'", with: "''")
-            let escapedSeqForLiteral = seqName.replacingOccurrences(of: "'", with: "''")
+            let quotedSeqName = quoteIdentifier(seqName)
+            let escapedSchemaForLiteral = escapeStringLiteral(schemaName)
+            let escapedSeqForLiteral = escapeStringLiteral(seqName)
             var ddl = "CREATE SEQUENCE \(quotedSeqName) INCREMENT BY \(incrementBy)"
                 + " MINVALUE \(minVal) MAXVALUE \(maxVal)"
                 + " START WITH \(startVal)\(cycle);"
@@ -692,7 +692,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let quotedName = request.name.replacingOccurrences(of: "\"", with: "\"\"")
+        let quotedName = quoteIdentifier(request.name)
 
         guard let encoding = request.values["encoding"] else {
             throw LibPQPluginError(
@@ -709,7 +709,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             )
         }
 
-        var sql = "CREATE DATABASE \"\(quotedName)\" ENCODING '\(encoding)'"
+        var sql = "CREATE DATABASE \(quotedName) ENCODING '\(encoding)'"
 
         let supportsProvider = versionedCapabilities.hasDatabaseICULocale
         let provider = supportsProvider ? (request.values["provider"] ?? "libc") : "libc"
@@ -789,8 +789,7 @@ final class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func dropDatabase(name: String) async throws {
-        let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "DROP DATABASE \"\(escapedName)\"")
+        _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
     }
 
     private struct Template1Defaults {

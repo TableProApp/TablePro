@@ -295,8 +295,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeLiteral(table)
-        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
-        let quotedSchema = "\"\(core.currentSchema.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let quotedTable = quoteIdentifier(table)
+        let quotedSchema = quoteIdentifier(core.currentSchema)
 
         do {
             let showResult = try await execute(query: "SHOW TABLE \(quotedSchema).\(quotedTable)")
@@ -508,14 +508,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             )
         }
 
-        let quotedName = request.name.replacingOccurrences(of: "\"", with: "\"\"")
-        let sql = "CREATE DATABASE \"\(quotedName)\" COLLATE \(collate)"
+        let sql = "CREATE DATABASE \(quoteIdentifier(request.name)) COLLATE \(collate)"
         _ = try await execute(query: sql)
     }
 
     func dropDatabase(name: String) async throws {
-        let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await execute(query: "DROP DATABASE \"\(escapedName)\"")
+        _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
     }
 
     // MARK: - All Tables Metadata
@@ -537,5 +535,4 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         ORDER BY "table"
         """
     }
-
 }
