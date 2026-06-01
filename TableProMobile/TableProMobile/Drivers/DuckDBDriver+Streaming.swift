@@ -58,7 +58,7 @@ extension DuckDBDriver {
 
                     var emitted = 0
                     rows: while !Task.isCancelled, emitted < options.maxRows {
-                        guard let chunk = try await actor.fetchStreamChunk(options: options) else { break }
+                        guard let chunk = await actor.fetchStreamChunk(options: options) else { break }
                         for cells in chunk {
                             if emitted >= options.maxRows {
                                 continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
@@ -221,10 +221,6 @@ extension DuckDBActor {
             trimmed = String(trimmed.dropLast())
         }
         return trimmed
-    }
-
-    static func quoteIdentifier(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
     private static func requiresTextCast(_ type: duckdb_type) -> Bool {

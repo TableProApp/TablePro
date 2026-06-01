@@ -345,7 +345,7 @@ actor DuckDBActor {
         }
     }
 
-    private static func quoteIdentifier(_ identifier: String) -> String {
+    static func quoteIdentifier(_ identifier: String) -> String {
         "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
