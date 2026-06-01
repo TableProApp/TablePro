@@ -57,6 +57,28 @@ build_platform() {
   local platform="$1" archs="$2" out_lib="$3" duckdb_platform="$4"
   local build_dir="$WORK_DIR/build-$platform"
 
+  # The linked-extension registration in DuckDB core (extension_helper.cpp) is
+  # gated on GENERATED_EXTENSION_HEADERS plus a DUCKDB_EXTENSION_<NAME>_LINKED
+  # define per extension. CMake enables those only inside the extension/ subdir
+  # scope, which is processed after src/, so core compiles with the registration
+  # call sites disabled and the extensions never self-register (DuckDB then tries
+  # to autoload them, which fails on iOS). Enabling the defines globally makes
+  # core register the statically linked extensions at startup. The header gate
+  # pulls in <build>/codegen/include/generated_extension_headers.hpp, which
+  # includes each extension's entry header, so core also needs those include
+  # dirs. No force_load or runtime install needed.
+  local ext_root="$WORK_DIR/duckdb/extension"
+  local linked_defines="-DGENERATED_EXTENSION_HEADERS=1"
+  linked_defines+=" -DDUCKDB_EXTENSION_CORE_FUNCTIONS_LINKED=1"
+  linked_defines+=" -DDUCKDB_EXTENSION_JSON_LINKED=1"
+  linked_defines+=" -DDUCKDB_EXTENSION_PARQUET_LINKED=1"
+  linked_defines+=" -DDUCKDB_EXTENSION_ICU_LINKED=1"
+  linked_defines+=" -I$build_dir/codegen/include"
+  linked_defines+=" -I$ext_root/core_functions/include"
+  linked_defines+=" -I$ext_root/json/include"
+  linked_defines+=" -I$ext_root/parquet/include"
+  linked_defines+=" -I$ext_root/icu/include"
+
   echo "Building DuckDB for PLATFORM=$platform (archs: $archs)..."
   cmake -S "$WORK_DIR/duckdb" -B "$build_dir" -G "Unix Makefiles" \
     -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
@@ -66,6 +88,8 @@ build_platform() {
     -DENABLE_ARC=OFF \
     -DCMAKE_BUILD_TYPE=Release \
     -DDUCKDB_EXPLICIT_PLATFORM="$duckdb_platform" \
+    -DCMAKE_C_FLAGS="$linked_defines" \
+    -DCMAKE_CXX_FLAGS="$linked_defines" \
     -DBUILD_SHELL=0 \
     -DBUILD_UNITTESTS=0 \
     -DBUILD_BENCHMARKS=0 \
