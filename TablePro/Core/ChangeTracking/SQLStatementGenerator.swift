@@ -178,6 +178,24 @@ struct SQLStatementGenerator {
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
 
+    func insertStatement(columns insertColumns: [String], values: [PluginCellValue])
+        -> ParameterizedStatement?
+    {
+        guard !insertColumns.isEmpty, insertColumns.count == values.count else { return nil }
+
+        var bindParameters: [Any?] = []
+        let columnList = insertColumns.map(quoteIdentifierFn).joined(separator: ", ")
+        let placeholders = values.map { value -> String in
+            bindParameters.append(value.asAny)
+            return placeholder(at: bindParameters.count - 1)
+        }.joined(separator: ", ")
+
+        let sql =
+            "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnList)) VALUES (\(placeholders))"
+
+        return ParameterizedStatement(sql: sql, parameters: bindParameters)
+    }
+
     private func generateInsertSQLFromCellChanges(for change: RowChange) -> ParameterizedStatement?
     {
         guard !change.cellChanges.isEmpty else { return nil }

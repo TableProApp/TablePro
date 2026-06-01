@@ -13,6 +13,7 @@ public protocol ImportFormatPlugin: TableProPlugin {
     static var iconName: String { get }
     static var supportedDatabaseTypeIds: [String] { get }
     static var excludedDatabaseTypeIds: [String] { get }
+    static var requiresTargetTable: Bool { get }
 
     func performImport(
         source: any PluginImportSource,
@@ -25,4 +26,5 @@ public extension ImportFormatPlugin {
     static var capabilities: [PluginCapability] { [.importFormat] }
     static var supportedDatabaseTypeIds: [String] { [] }
     static var excludedDatabaseTypeIds: [String] { [] }
+    static var requiresTargetTable: Bool { false }
 }
