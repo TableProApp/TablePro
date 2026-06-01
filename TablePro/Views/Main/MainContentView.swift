@@ -227,6 +227,22 @@ struct MainContentView: View {
                 connection: connection,
                 initialFileURL: coordinator.importFileURL
             )
+        case .jsonImport:
+            let jsonDismiss = Binding<Bool>(
+                get: { coordinator.activeSheet != nil },
+                set: { if !$0 {
+                    coordinator.activeSheet = nil
+                    coordinator.importFileURL = nil
+                }
+                }
+            )
+            if let url = coordinator.importFileURL {
+                JSONImportSheet(
+                    isPresented: jsonDismiss,
+                    connection: connection,
+                    fileURL: url
+                )
+            }
         case .backupDatabase:
             BackupDatabaseFlow(
                 isPresented: dismissBinding,

@@ -169,7 +169,11 @@ extension MainContentCoordinator {
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             self?.importFileURL = url
-            self?.activeSheet = .importDialog
+            let ext = url.pathExtension.lowercased()
+            let isRowBased = PluginManager.shared.allImportPlugins().contains {
+                type(of: $0).requiresTargetTable && type(of: $0).acceptedFileExtensions.contains(ext)
+            }
+            self?.activeSheet = isRowBased ? .jsonImport : .importDialog
         }
     }
 

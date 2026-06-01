@@ -46,6 +46,7 @@ enum ActiveSheet: Identifiable {
     case sqlPreview
     case exportDialog
     case importDialog
+    case jsonImport
     case exportQueryResults
     case backupDatabase
     case restoreDatabase(fileURL: URL)
@@ -58,6 +59,7 @@ enum ActiveSheet: Identifiable {
         case .sqlPreview: "sqlPreview"
         case .exportDialog: "exportDialog"
         case .importDialog: "importDialog"
+        case .jsonImport: "jsonImport"
         case .exportQueryResults: "exportQueryResults"
         case .backupDatabase: "backupDatabase"
         case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"
