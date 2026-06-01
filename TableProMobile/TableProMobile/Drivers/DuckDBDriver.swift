@@ -12,6 +12,7 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     private let stateLock = NSLock()
     private var currentSchemaName = "main"
     private var securedURL: URL?
+    nonisolated(unsafe) private var interruptHandle: duckdb_connection?
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -35,9 +36,11 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         try await actor.open(path: resolvedPath)
         try? await actor.query("SET autoinstall_known_extensions=false")
         try? await actor.query("SET autoload_known_extensions=false")
+        setInterruptHandle(await actor.connectionHandle)
     }
 
     func disconnect() async throws {
+        setInterruptHandle(nil)
         await actor.close()
         if let url = takeSecuredURL() {
             url.stopAccessingSecurityScopedResource()
@@ -100,7 +103,11 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func cancelCurrentQuery() async throws {
-        await actor.interrupt()
+        stateLock.lock()
+        let handle = interruptHandle
+        stateLock.unlock()
+        guard let handle else { return }
+        duckdb_interrupt(handle)
     }
 
     // MARK: - Transactions
@@ -132,6 +139,12 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         stateLock.unlock()
     }
 
+    private func setInterruptHandle(_ handle: duckdb_connection?) {
+        stateLock.lock()
+        interruptHandle = handle
+        stateLock.unlock()
+    }
+
     private func setSecuredURL(_ url: URL) {
         stateLock.lock()
         securedURL = url
@@ -155,10 +168,7 @@ actor DuckDBActor {
     private var database: duckdb_database?
     private var connection: duckdb_connection?
 
-    func interrupt() {
-        guard let connection else { return }
-        duckdb_interrupt(connection)
-    }
+    var connectionHandle: duckdb_connection? { connection }
 
     func open(path: String) throws {
         var db: duckdb_database?
@@ -224,32 +234,30 @@ actor DuckDBActor {
             typeNames.append(Self.typeName(for: type))
         }
 
-        if types.contains(where: Self.isUnrenderable) {
+        if types.contains(where: Self.isUnrenderable),
+           var recast = Self.recastUnrenderable(connection: connection, sql: sql, columns: names, types: types) {
             duckdb_destroy_result(&result)
-            return try queryWithCasts(connection: connection, sql: sql, names: names, typeNames: typeNames, types: types, startTime: startTime)
+            defer { duckdb_destroy_result(&recast) }
+            return Self.extract(&recast, names: names, typeNames: typeNames, startTime: startTime)
         }
 
         defer { duckdb_destroy_result(&result) }
         return Self.extract(&result, names: names, typeNames: typeNames, startTime: startTime)
     }
 
-    private func queryWithCasts(
+    private static func recastUnrenderable(
         connection: duckdb_connection,
         sql: String,
-        names: [String],
-        typeNames: [String],
-        types: [duckdb_type],
-        startTime: Date
-    ) throws -> DuckDBRawResult {
-        let wrapped = Self.buildWrappedQuery(originalQuery: sql, columns: names, types: types)
+        columns: [String],
+        types: [duckdb_type]
+    ) -> duckdb_result? {
+        let wrapped = buildWrappedQuery(originalQuery: sql, columns: columns, types: types)
         var result = duckdb_result()
         if duckdb_query(connection, wrapped, &result) == DuckDBError {
-            let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
             duckdb_destroy_result(&result)
-            throw DuckDBDriverError.queryFailed(message)
+            return nil
         }
-        defer { duckdb_destroy_result(&result) }
-        return Self.extract(&result, names: names, typeNames: typeNames, startTime: startTime)
+        return result
     }
 
     private static func extract(
