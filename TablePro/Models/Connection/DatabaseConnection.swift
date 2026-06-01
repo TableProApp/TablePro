@@ -157,6 +157,10 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.category ?? .other
     }
 
+    var pathFieldRole: PathFieldRole {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.pathFieldRole ?? .database
+    }
+
     var tagline: String? {
         let raw = PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.tagline ?? ""
         return raw.isEmpty ? nil : raw

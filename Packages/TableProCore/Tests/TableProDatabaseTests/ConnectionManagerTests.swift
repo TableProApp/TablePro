@@ -8,13 +8,17 @@ import Foundation
 private final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var isConnected = false
     var shouldFailConnect = false
+    private(set) var disconnectCount = 0
 
     func connect() async throws {
         if shouldFailConnect { throw NSError(domain: "test", code: 1) }
         isConnected = true
     }
 
-    func disconnect() async throws { isConnected = false }
+    func disconnect() async throws {
+        isConnected = false
+        disconnectCount += 1
+    }
     func ping() async throws -> Bool { isConnected }
 
     func execute(query: String) async throws -> QueryResult {
@@ -109,6 +113,30 @@ struct ConnectionManagerTests {
 
         let session = manager.session(for: connection.id)
         #expect(session == nil)
+    }
+
+    @Test("Reconnecting for the same id tears down the previous session")
+    func reconnectDisconnectsPrevious() async throws {
+        let factory = MockDriverFactory()
+        let store = MockSecureStore()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: store)
+
+        let connection = DatabaseConnection(
+            name: "Test",
+            type: DatabaseType(rawValue: "mock")
+        )
+
+        let first = MockDatabaseDriver()
+        factory.drivers["mock"] = first
+        _ = try await manager.connect(connection)
+
+        let second = MockDatabaseDriver()
+        factory.drivers["mock"] = second
+        _ = try await manager.connect(connection)
+
+        #expect(first.disconnectCount == 1)
+        #expect(second.isConnected)
+        #expect(manager.session(for: connection.id)?.driver === second)
     }
 
     @Test("Connect with unknown type throws driverNotFound")

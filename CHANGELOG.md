@@ -10,16 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Import a JSON file into a table. A dedicated sheet accepts an array of objects, newline-delimited JSON, or TablePro's own JSON export, and lets you map each field to a column in an existing table or in a new table with inferred, editable columns.
+- The window title bar shows the open table's name, with its database and schema below, so you can tell which table you're viewing without checking the sidebar. (#1475)
+- iOS: open DuckDB database files and in-memory DuckDB databases, matching the Mac app. (#1526)
 - Save the current query as a favorite from a star button in the SQL editor toolbar.
 - Field names and types in the row Details panel can now be selected and copied.
 
 ### Changed
 
+- Connection list rows show the database name after the host, so connections that share a name and host are easier to tell apart. (#1535)
 - Save as Favorite uses Cmd+D again. The Cmd+Control+D set in 0.47.0 is reserved by macOS for Look Up, so it never fired.
 - Editor toolbar buttons show their keyboard shortcut in the tooltip, and it updates if you rebind the shortcut.
 
 ### Fixed
 
+- Import now detects the Setapp edition of TablePlus and reads connections from its data folder. It was reported as not installed before. (#1528)
 - Favorite keyword suggestions now show in the editor autocomplete when you type the keyword. They were being dropped before reaching the popup.
 
 ## [0.47.0] - 2026-06-01

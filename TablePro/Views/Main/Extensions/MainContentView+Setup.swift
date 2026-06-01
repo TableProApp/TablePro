@@ -200,6 +200,10 @@ extension MainContentView {
                 ?? selectedTab?.title
                 ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
         }
+        windowSubtitle = MainSplitViewController.resolveDefaultSubtitle(
+            tab: selectedTab,
+            connection: connection
+        )
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
         viewWindow?.isDocumentEdited = selectedTab?.content.isFileDirty ?? false
     }
@@ -211,11 +215,6 @@ extension MainContentView {
             "[open] configureWindow start windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public)"
         )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
-        if isPreview {
-            window.subtitle = String(format: String(localized: "%@ - Preview"), connection.name)
-        } else {
-            window.subtitle = connection.name
-        }
 
         let resolvedId = WindowManager.tabbingIdentifier(for: connection.id)
         window.tabbingIdentifier = resolvedId

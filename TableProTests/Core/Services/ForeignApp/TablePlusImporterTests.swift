@@ -19,8 +19,7 @@ struct TablePlusImporterTests {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
         var imp = TablePlusImporter()
-        imp.connectionsFileURL = tempDir.appendingPathComponent("Connections.plist")
-        imp.groupsFileURL = tempDir.appendingPathComponent("ConnectionGroups.plist")
+        imp.dataDirectoryOverride = tempDir
         importer = imp
     }
 
@@ -91,17 +90,74 @@ struct TablePlusImporterTests {
         return entry
     }
 
-    // MARK: - isAvailable
+    // MARK: - Edition detection
 
-    @Test("isAvailable returns true when file exists")
-    func testIsAvailable_whenFileExists_returnsTrue() throws {
-        try writeConnections([makeConnection()])
-        #expect(importer.isAvailable() == true)
+    @Test("isAvailable returns true when the standalone app is installed")
+    func testIsAvailable_whenStandaloneInstalled_returnsTrue() {
+        var imp = TablePlusImporter()
+        imp.resolveAppURL = { $0 == "com.tinyapp.TablePlus" ? URL(fileURLWithPath: "/Applications/TablePlus.app") : nil }
+        #expect(imp.isAvailable() == true)
     }
 
-    @Test("isAvailable returns false when file is missing")
-    func testIsAvailable_whenFileMissing_returnsFalse() {
-        #expect(importer.isAvailable() == false)
+    @Test("isAvailable returns true when only the Setapp edition is installed")
+    func testIsAvailable_whenSetappInstalled_returnsTrue() {
+        var imp = TablePlusImporter()
+        imp.resolveAppURL = {
+            $0 == "com.tinyapp.TablePlus-setapp"
+                ? URL(fileURLWithPath: "/Applications/Setapp/TablePlus.app")
+                : nil
+        }
+        #expect(imp.isAvailable() == true)
+        #expect(imp.installedAppURL() == URL(fileURLWithPath: "/Applications/Setapp/TablePlus.app"))
+    }
+
+    @Test("isAvailable returns false when no edition is installed")
+    func testIsAvailable_whenNoEditionInstalled_returnsFalse() {
+        var imp = TablePlusImporter()
+        imp.resolveAppURL = { _ in nil }
+        #expect(imp.isAvailable() == false)
+        #expect(imp.installedAppURL() == nil)
+    }
+
+    @Test("installedAppURL prefers the standalone edition when both are installed")
+    func testInstalledAppURL_prefersStandaloneWhenBothInstalled() {
+        let standalone = URL(fileURLWithPath: "/Applications/TablePlus.app")
+        let setapp = URL(fileURLWithPath: "/Applications/Setapp/TablePlus.app")
+        var imp = TablePlusImporter()
+        imp.resolveAppURL = { $0 == "com.tinyapp.TablePlus" ? standalone : setapp }
+        #expect(imp.installedAppURL() == standalone)
+    }
+
+    @Test("dataDirectory derives from the Setapp bundle identifier")
+    func testDataDirectory_forSetappEdition() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let dir = TablePlusImporter.dataDirectory(forBundleIdentifier: "com.tinyapp.TablePlus-setapp", home: home)
+        #expect(dir.path == "/Users/test/Library/Application Support/com.tinyapp.TablePlus-setapp/Data")
+    }
+
+    @Test("connectionsFileURL follows the installed Setapp edition")
+    func testConnectionsFileURL_followsSetappEdition() {
+        var imp = TablePlusImporter()
+        imp.resolveAppURL = {
+            $0 == "com.tinyapp.TablePlus-setapp"
+                ? URL(fileURLWithPath: "/Applications/Setapp/TablePlus.app")
+                : nil
+        }
+        #expect(imp.connectionsFileURL.path.hasSuffix(
+            "Library/Application Support/com.tinyapp.TablePlus-setapp/Data/Connections.plist"
+        ))
+        #expect(imp.groupsFileURL.path.hasSuffix(
+            "Library/Application Support/com.tinyapp.TablePlus-setapp/Data/ConnectionGroups.plist"
+        ))
+    }
+
+    @Test("connectionsFileURL falls back to the standalone edition when none is installed")
+    func testConnectionsFileURL_fallsBackToStandalone() {
+        var imp = TablePlusImporter()
+        imp.resolveAppURL = { _ in nil }
+        #expect(imp.connectionsFileURL.path.hasSuffix(
+            "Library/Application Support/com.tinyapp.TablePlus/Data/Connections.plist"
+        ))
     }
 
     // MARK: - connectionCount

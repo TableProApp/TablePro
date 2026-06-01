@@ -228,7 +228,6 @@ extension MainContentCoordinator {
             }
             toolbarState.isTableTab = true
         }
-        updatePreviewSubtitle(isPreview: createAsPreview)
         restoreLastHiddenColumnsForTable(tableName)
         restoreFiltersForTable(tableName)
         if isInPlace, let dbIndex = Int(currentDatabase) {
@@ -273,7 +272,6 @@ extension MainContentCoordinator {
             }
             toolbarState.isTableTab = true
         }
-        updatePreviewSubtitle(isPreview: createAsPreview)
         restoreLastHiddenColumnsForTable(tableName)
         restoreFiltersForTable(tableName)
         executeSelectedTableTabQuery()
@@ -301,13 +299,6 @@ extension MainContentCoordinator {
         guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
               tab.isPreview else { return }
         tabManager.mutate(at: tabIndex) { $0.isPreview = false }
-        updatePreviewSubtitle(isPreview: false)
-    }
-
-    private func updatePreviewSubtitle(isPreview: Bool) {
-        contentWindow?.subtitle = isPreview
-            ? String(format: String(localized: "%@ - Preview"), connection.name)
-            : connection.name
     }
 
     func showAllTablesMetadata() {
