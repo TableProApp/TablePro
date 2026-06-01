@@ -82,31 +82,33 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     static func resolveDefaultSubtitle(tab: QueryTab?, connection: DatabaseConnection) -> String {
-        guard let tab, tab.tabType == .table,
-              let tableName = tab.tableContext.tableName, !tableName.isEmpty else {
-            return connection.name
-        }
-        return tableSubtitle(
-            databaseName: tab.tableContext.databaseName,
-            schemaName: tab.tableContext.schemaName,
+        tableSubtitle(
+            isTable: tab?.tabType == .table,
+            tableName: tab?.tableContext.tableName,
+            databaseName: tab?.tableContext.databaseName ?? "",
+            schemaName: tab?.tableContext.schemaName,
             fallback: connection.name
         )
     }
 
     static func resolveDefaultSubtitle(payload: EditorTabPayload?, connection: DatabaseConnection) -> String {
-        guard let payload, payload.tabType == .table,
-              let tableName = payload.tableName, !tableName.isEmpty else {
-            return connection.name
-        }
-        return tableSubtitle(
-            databaseName: payload.databaseName ?? "",
-            schemaName: payload.schemaName,
+        tableSubtitle(
+            isTable: payload?.tabType == .table,
+            tableName: payload?.tableName,
+            databaseName: payload?.databaseName ?? "",
+            schemaName: payload?.schemaName,
             fallback: connection.name
         )
     }
 
-    private static func tableSubtitle(databaseName: String, schemaName: String?, fallback: String) -> String {
-        guard !databaseName.isEmpty else { return fallback }
+    private static func tableSubtitle(
+        isTable: Bool,
+        tableName: String?,
+        databaseName: String,
+        schemaName: String?,
+        fallback: String
+    ) -> String {
+        guard isTable, let tableName, !tableName.isEmpty, !databaseName.isEmpty else { return fallback }
         if let schemaName, !schemaName.isEmpty {
             return "\(databaseName) · \(schemaName)"
         }
