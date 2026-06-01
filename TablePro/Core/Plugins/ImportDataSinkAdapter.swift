@@ -72,6 +72,13 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
     }
 
+    func deleteAllRowsFromTargetTable() async throws {
+        guard targetTable != nil, let rowGenerator else {
+            throw PluginImportError.importFailed("No target table configured for row import")
+        }
+        _ = try await driver.execute(query: rowGenerator.deleteAllRowsStatement())
+    }
+
     func beginTransaction() async throws {
         try await driver.beginTransaction()
     }

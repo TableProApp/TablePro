@@ -196,6 +196,10 @@ struct SQLStatementGenerator {
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
 
+    func deleteAllRowsStatement() -> String {
+        "DELETE FROM \(quoteIdentifierFn(tableName))"
+    }
+
     private func generateInsertSQLFromCellChanges(for change: RowChange) -> ParameterizedStatement?
     {
         guard !change.cellChanges.isEmpty else { return nil }
