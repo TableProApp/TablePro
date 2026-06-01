@@ -21,11 +21,12 @@ final class PlainFileImportSource: PluginImportSource, @unchecked Sendable {
     }
 
     func fileSizeBytes() -> Int64 {
+        let path = url.path(percentEncoded: false)
         do {
-            let attrs = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
+            let attrs = try FileManager.default.attributesOfItem(atPath: path)
             return attrs[.size] as? Int64 ?? 0
         } catch {
-            Self.logger.warning("Failed to get file size for \(url.path(percentEncoded: false)): \(error.localizedDescription)")
+            Self.logger.warning("Failed to get file size for \(path): \(error.localizedDescription)")
             return 0
         }
     }

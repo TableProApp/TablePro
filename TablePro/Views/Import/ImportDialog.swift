@@ -39,6 +39,14 @@ struct ImportDialog: View {
     @State private var countStatementsTask: Task<Void, Never>?
     @State private var importTask: Task<Void, Never>?
 
+    // MARK: - Row import (target table + mapping)
+
+    @State private var availableTables: [TableInfo] = []
+    @State private var selectedTargetTable: String?
+    @State private var columnMapping: [String: String] = [:]
+    @State private var loadTablesTask: Task<Void, Never>?
+    @State private var loadColumnsTask: Task<Void, Never>?
+
     // MARK: - Import Service
 
     @State private var importService: ImportService?
@@ -54,6 +62,11 @@ struct ImportDialog: View {
 
                 if availableFormats.count > 1 {
                     formatPickerView
+                    Divider()
+                }
+
+                if requiresTargetTable {
+                    targetTableSection
                     Divider()
                 }
 
@@ -76,6 +89,23 @@ struct ImportDialog: View {
                     selectedFormatId = type(of: first).formatId
                 }
             }
+            if requiresTargetTable {
+                startLoadingTables()
+            }
+        }
+        .onChange(of: selectedFormatId) { _, _ in
+            selectedTargetTable = nil
+            columnMapping = [:]
+            availableTables = []
+            if requiresTargetTable {
+                startLoadingTables()
+            }
+        }
+        .onChange(of: selectedTargetTable) { _, newValue in
+            columnMapping = [:]
+            loadColumnsTask?.cancel()
+            guard let table = newValue else { return }
+            loadColumnsTask = Task { await loadMapping(for: table) }
         }
         .onExitCommand {
             if !(importService?.state.isImporting ?? false) {
@@ -91,6 +121,8 @@ struct ImportDialog: View {
             loadFileTask?.cancel()
             countStatementsTask?.cancel()
             importTask?.cancel()
+            loadTablesTask?.cancel()
+            loadColumnsTask?.cancel()
             cleanupTempFiles()
         }
         .sheet(isPresented: $showProgressDialog) {
@@ -141,6 +173,10 @@ struct ImportDialog: View {
 
     private var currentPlugin: (any ImportFormatPlugin)? {
         PluginManager.shared.importPlugin(forFormat: selectedFormatId)
+    }
+
+    private var requiresTargetTable: Bool {
+        currentPlugin.map { type(of: $0).requiresTargetTable } ?? false
     }
 
     // MARK: - View Components
@@ -209,6 +245,33 @@ struct ImportDialog: View {
             .frame(width: 120)
 
             Spacer()
+        }
+    }
+
+    private var targetTableSection: some View {
+        HStack(spacing: 8) {
+            Text("Import into:")
+                .font(.body)
+                .frame(width: 80, alignment: .leading)
+
+            Picker("", selection: $selectedTargetTable) {
+                Text("Select a table…").tag(String?.none)
+                ForEach(availableTables, id: \.id) { table in
+                    Text(table.name).tag(String?.some(table.name))
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: 240)
+
+            if selectedTargetTable != nil && columnMapping.isEmpty {
+                ProgressView().controlSize(.small)
+            }
+
+            Spacer()
+
+            Text("Fields are matched to columns by name")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -283,7 +346,13 @@ struct ImportDialog: View {
                 performImport()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(fileURL == nil || (importService?.state.isImporting ?? false) || availableFormats.isEmpty || hasPreviewError)
+            .disabled(
+                fileURL == nil
+                    || (importService?.state.isImporting ?? false)
+                    || availableFormats.isEmpty
+                    || hasPreviewError
+                    || (requiresTargetTable && selectedTargetTable == nil)
+            )
             .keyboardShortcut(.defaultAction)
         }
         .padding(16)
@@ -326,6 +395,12 @@ struct ImportDialog: View {
         }
 
         fileURL = url
+
+        if let match = availableFormats.first(where: {
+            type(of: $0).acceptedFileExtensions.contains(url.pathExtension.lowercased())
+        }) {
+            selectedFormatId = type(of: match).formatId
+        }
 
         do {
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
@@ -373,6 +448,7 @@ struct ImportDialog: View {
         }
 
         countStatementsTask?.cancel()
+        guard !requiresTargetTable else { return }
         countStatementsTask = Task {
             await countStatements(url: urlToRead)
         }
@@ -399,6 +475,38 @@ struct ImportDialog: View {
         isCountingStatements = false
     }
 
+    private func startLoadingTables() {
+        loadTablesTask?.cancel()
+        loadTablesTask = Task { await loadTables() }
+    }
+
+    @MainActor
+    private func loadTables() async {
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+        do {
+            let tables = try await driver.fetchTables()
+            availableTables = tables.filter { $0.type == .table }
+        } catch {
+            Self.logger.warning("Failed to load tables for import: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    @MainActor
+    private func loadMapping(for table: String) async {
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+        do {
+            let columns = try await driver.fetchColumns(table: table)
+            var mapping: [String: String] = [:]
+            for column in columns {
+                mapping[column.name] = column.name
+            }
+            columnMapping = mapping
+        } catch {
+            Self.logger.warning("Failed to load columns for \(table, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            columnMapping = [:]
+        }
+    }
+
     private func performImport() {
         guard let url = fileURL else { return }
 
@@ -419,7 +527,9 @@ struct ImportDialog: View {
                     encoding: selectedEncoding.encoding,
                     decompressedURL: decompressedURL,
                     ownsDecompressedFile: ownsDecompressedFile,
-                    knownStatementCount: statementCount > 0 ? statementCount : nil
+                    knownStatementCount: statementCount > 0 ? statementCount : nil,
+                    targetTable: selectedTargetTable,
+                    columnMapping: columnMapping
                 )
 
                 await MainActor.run {
