@@ -173,6 +173,11 @@ actor DuckDBActor {
 
     var connectionHandle: duckdb_connection? { connection }
 
+    func interrupt() {
+        guard let connection else { return }
+        duckdb_interrupt(connection)
+    }
+
     func open(path: String) throws {
         var db: duckdb_database?
         var errorPtr: UnsafeMutablePointer<CChar>?
