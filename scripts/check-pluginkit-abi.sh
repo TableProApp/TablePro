@@ -18,14 +18,15 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE_REF="${1:-origin/main}"
-INTERFACE_REL="Debug/TableProPluginKit.framework/Versions/A/Modules/TableProPluginKit.swiftmodule/arm64-apple-macos.swiftinterface"
 
 RESULT=""
 
 # Build TableProPluginKit in project dir $1, writing its normalized public interface to $2.
 # Sets RESULT to ok | none (no interface emitted, i.e. Library Evolution off) | failed.
+# The .swiftinterface lives under an arch-named subdir (arm64-apple-macos on Apple Silicon,
+# x86_64-apple-macos on Intel), so locate it by glob instead of hardcoding the host arch.
 build_interface() {
-    local dir="$1" out="$2" sym
+    local dir="$1" out="$2" sym interface
     sym="$(mktemp -d)"
     [ -f "$dir/Secrets.xcconfig" ] || touch "$dir/Secrets.xcconfig"
     if ! xcodebuild -project "$dir/TablePro.xcodeproj" -target TableProPluginKit -configuration Debug \
@@ -34,8 +35,9 @@ build_interface() {
         tail -20 "$sym/build.log"
         return
     fi
-    if [ -f "$sym/$INTERFACE_REL" ]; then
-        grep -v '^// swift-' "$sym/$INTERFACE_REL" > "$out"
+    interface="$(find "$sym/Debug/TableProPluginKit.framework" -name '*.swiftinterface' 2>/dev/null | head -1)"
+    if [ -n "$interface" ]; then
+        grep -v '^// swift-' "$interface" > "$out"
         RESULT="ok"
     else
         RESULT="none"
