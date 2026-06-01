@@ -45,7 +45,8 @@ enum ActiveSheet: Identifiable {
     case quickSwitcher
     case sqlPreview
     case exportDialog
-    case importDialog
+    case importDialog(formatId: String)
+    case rowImport(formatId: String)
     case exportQueryResults
     case backupDatabase
     case restoreDatabase(fileURL: URL)
@@ -57,7 +58,8 @@ enum ActiveSheet: Identifiable {
         case .quickSwitcher: "quickSwitcher"
         case .sqlPreview: "sqlPreview"
         case .exportDialog: "exportDialog"
-        case .importDialog: "importDialog"
+        case .importDialog(let formatId): "importDialog-\(formatId)"
+        case .rowImport(let formatId): "rowImport-\(formatId)"
         case .exportQueryResults: "exportQueryResults"
         case .backupDatabase: "backupDatabase"
         case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"
@@ -190,6 +192,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var postConnectCancellable: AnyCancellable?
     @ObservationIgnored private var externalFileModCancellable: AnyCancellable?
+    @ObservationIgnored private var schemaSwitchCancellable: AnyCancellable?
 
     var fileConflictRequest: FileConflictRequest?
 
@@ -421,6 +424,15 @@ final class MainContentCoordinator {
                 self.checkOpenTabsForExternalModification()
             }
 
+        schemaSwitchCancellable = services.appEvents.currentSchemaChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] changedConnectionId in
+                guard let self, changedConnectionId == self.connectionId else { return }
+                Task { @MainActor in
+                    await self.refreshTables()
+                }
+            }
+
         self.filterCoordinator = FilterCoordinator(parent: self)
         self.queryExecutionCoordinator = QueryExecutionCoordinator(parent: self)
         self.paginationCoordinator = PaginationCoordinator(parent: self)
@@ -617,6 +629,7 @@ final class MainContentCoordinator {
         }
         postConnectCancellable = nil
         externalFileModCancellable = nil
+        schemaSwitchCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
         currentQueryTask?.cancel()

@@ -30,6 +30,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         didSet { view.window?.title = windowTitle }
     }
 
+    var windowSubtitle: String {
+        didSet { view.window?.subtitle = windowSubtitle }
+    }
+
     // MARK: - Split View Items
 
     private var sidebarSplitItem: NSSplitViewItem!
@@ -77,6 +81,40 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         return String(localized: "SQL Query")
     }
 
+    static func resolveDefaultSubtitle(tab: QueryTab?, connection: DatabaseConnection) -> String {
+        tableSubtitle(
+            isTable: tab?.tabType == .table,
+            tableName: tab?.tableContext.tableName,
+            databaseName: tab?.tableContext.databaseName ?? "",
+            schemaName: tab?.tableContext.schemaName,
+            fallback: connection.name
+        )
+    }
+
+    static func resolveDefaultSubtitle(payload: EditorTabPayload?, connection: DatabaseConnection) -> String {
+        tableSubtitle(
+            isTable: payload?.tabType == .table,
+            tableName: payload?.tableName,
+            databaseName: payload?.databaseName ?? "",
+            schemaName: payload?.schemaName,
+            fallback: connection.name
+        )
+    }
+
+    private static func tableSubtitle(
+        isTable: Bool,
+        tableName: String?,
+        databaseName: String,
+        schemaName: String?,
+        fallback: String
+    ) -> String {
+        guard isTable, let tableName, !tableName.isEmpty, !databaseName.isEmpty else { return fallback }
+        if let schemaName, !schemaName.isEmpty {
+            return "\(databaseName) · \(schemaName)"
+        }
+        return databaseName
+    }
+
     // MARK: - Init
 
     init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?) {
@@ -104,6 +142,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             resolvedSession = DatabaseManager.shared.activeSessions[currentId]
         }
         self.currentSession = resolvedSession
+
+        let subtitleConnection = self.payloadConnection ?? resolvedSession?.connection
+        if let subtitleConnection {
+            self.windowSubtitle = Self.resolveDefaultSubtitle(payload: payload, connection: subtitleConnection)
+        } else {
+            self.windowSubtitle = ""
+        }
 
         if let session = resolvedSession {
             self.rightPanelState = RightPanelState()
@@ -196,9 +241,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         guard let window = view.window else { return }
 
         window.title = windowTitle
-        if let session = currentSession {
-            window.subtitle = session.connection.name
-        }
+        window.subtitle = windowSubtitle
 
         if let sessionState {
             sessionState.coordinator.inspectorProxy = self
@@ -298,8 +341,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         if payload?.tableName == nil,
            windowTitle == String(localized: "SQL Query") || windowTitle.hasSuffix(" Query") {
             windowTitle = newSession.connection.name
+            windowSubtitle = newSession.connection.name
         }
-        view.window?.subtitle = newSession.connection.name
 
         if rightPanelState == nil {
             rightPanelState = RightPanelState()
@@ -383,6 +426,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 connection: currentSession.connection,
                 payload: payload,
                 windowTitle: windowTitleBinding,
+                windowSubtitle: windowSubtitleBinding,
                 sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
                 pendingTruncates: sessionPendingTruncatesBinding,
                 pendingDeletes: sessionPendingDeletesBinding,
@@ -463,6 +507,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         Binding(
             get: { [weak self] in self?.windowTitle ?? "" },
             set: { [weak self] in self?.windowTitle = $0 }
+        )
+    }
+
+    private var windowSubtitleBinding: Binding<String> {
+        Binding(
+            get: { [weak self] in self?.windowSubtitle ?? "" },
+            set: { [weak self] in self?.windowSubtitle = $0 }
         )
     }
 

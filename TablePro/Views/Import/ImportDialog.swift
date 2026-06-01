@@ -18,6 +18,13 @@ struct ImportDialog: View {
     let connection: DatabaseConnection
     let initialFileURL: URL?
 
+    init(isPresented: Binding<Bool>, connection: DatabaseConnection, initialFileURL: URL?, initialFormatId: String) {
+        self._isPresented = isPresented
+        self.connection = connection
+        self.initialFileURL = initialFileURL
+        self._selectedFormatId = State(initialValue: initialFormatId)
+    }
+
     // MARK: - State
 
     @State private var fileURL: URL?

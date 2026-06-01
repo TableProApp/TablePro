@@ -30,6 +30,7 @@ struct MainContentView: View {
 
     // Shared state from parent
     @Binding var windowTitle: String
+    @Binding var windowSubtitle: String
     @Bindable var schemaService = SchemaService.shared
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
@@ -68,6 +69,7 @@ struct MainContentView: View {
         connection: DatabaseConnection,
         payload: EditorTabPayload?,
         windowTitle: Binding<String>,
+        windowSubtitle: Binding<String>,
         sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -81,6 +83,7 @@ struct MainContentView: View {
         self.connection = connection
         self.payload = payload
         self._windowTitle = windowTitle
+        self._windowSubtitle = windowSubtitle
         self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
@@ -213,7 +216,7 @@ struct MainContentView: View {
                     )
                 }
             }
-        case .importDialog:
+        case .importDialog(let formatId):
             let importDismiss = Binding<Bool>(
                 get: { coordinator.activeSheet != nil },
                 set: { if !$0 {
@@ -225,8 +228,26 @@ struct MainContentView: View {
             ImportDialog(
                 isPresented: importDismiss,
                 connection: connection,
-                initialFileURL: coordinator.importFileURL
+                initialFileURL: coordinator.importFileURL,
+                initialFormatId: formatId
             )
+        case .rowImport(let formatId):
+            let rowDismiss = Binding<Bool>(
+                get: { coordinator.activeSheet != nil },
+                set: { if !$0 {
+                    coordinator.activeSheet = nil
+                    coordinator.importFileURL = nil
+                }
+                }
+            )
+            if let url = coordinator.importFileURL {
+                JSONImportSheet(
+                    isPresented: rowDismiss,
+                    connection: connection,
+                    fileURL: url,
+                    formatId: formatId
+                )
+            }
         case .backupDatabase:
             BackupDatabaseFlow(
                 isPresented: dismissBinding,

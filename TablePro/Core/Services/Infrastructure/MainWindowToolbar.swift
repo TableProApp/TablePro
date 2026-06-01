@@ -13,7 +13,7 @@ import TableProPluginKit
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar")
+    internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v2")
 
     weak var coordinator: MainContentCoordinator?
 
@@ -34,6 +34,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
         self.managedToolbar.autosavesConfiguration = true
+        self.managedToolbar.centeredItemIdentifiers = [Self.principal]
     }
 
     func invalidate() {
@@ -76,10 +77,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             Self.sidebarToggle,
             .sidebarTrackingSeparator,
             Self.connectionGroup,
-            Self.refreshSaveGroup,
-            .flexibleSpace,
             Self.principal,
             .flexibleSpace,
+            Self.refreshSaveGroup,
             Self.quickSwitcher,
             Self.newTab,
             Self.previewSQL,
@@ -110,7 +110,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         case Self.sidebarToggle:
             return makeSidebarToggleItem(coordinator: coordinator)
         case Self.connectionGroup:
-            return makeGroup(
+            let group = makeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Connection"),
                 subitems: [subitemConnection(), subitemDatabase()],
@@ -119,6 +119,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                     DatabaseToolbarButton(coordinator: coordinator)
                 }
             )
+            group.isNavigational = true
+            return group
         case Self.principal:
             let item = hostingItem(
                 id: itemIdentifier,

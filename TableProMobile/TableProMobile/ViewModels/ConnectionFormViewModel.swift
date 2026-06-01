@@ -52,6 +52,11 @@ final class ConnectionFormViewModel {
     // File picker output
     var selectedFileURL: URL?
     var newDatabaseName = ""
+    var duckDBInMemory = false {
+        didSet { onDuckDBInMemoryChange() }
+    }
+    private var pendingBookmark: Data?
+    private let bookmarkStore = FileBookmarkStore()
 
     // Async state
     private(set) var isTesting = false
@@ -95,6 +100,13 @@ final class ConnectionFormViewModel {
         if conn.type == .sqlite {
             selectedFileURL = URL(fileURLWithPath: conn.database)
         }
+        if conn.type == .duckdb {
+            if conn.database == DuckDBDriver.inMemoryPath {
+                duckDBInMemory = true
+            } else if !conn.database.isEmpty {
+                selectedFileURL = URL(fileURLWithPath: conn.database)
+            }
+        }
     }
 
     // MARK: - Computed
@@ -103,7 +115,14 @@ final class ConnectionFormViewModel {
         if type == .sqlite {
             return !database.isEmpty
         }
+        if type == .duckdb {
+            return duckDBInMemory || !database.isEmpty
+        }
         return !host.isEmpty
+    }
+
+    var isFileBased: Bool {
+        type == .sqlite || type == .duckdb
     }
 
     var isEditing: Bool { existingConnection != nil }
@@ -131,6 +150,18 @@ final class ConnectionFormViewModel {
         updateDefaultPort()
         selectedFileURL = nil
         database = ""
+        pendingBookmark = nil
+        duckDBInMemory = false
+    }
+
+    private func onDuckDBInMemoryChange() {
+        if duckDBInMemory {
+            selectedFileURL = nil
+            pendingBookmark = nil
+            database = DuckDBDriver.inMemoryPath
+        } else if database == DuckDBDriver.inMemoryPath {
+            database = ""
+        }
     }
 
     private func updateDefaultPort() {
@@ -149,6 +180,20 @@ final class ConnectionFormViewModel {
         database = destURL.path
         if name.isEmpty {
             name = destURL.deletingPathExtension().lastPathComponent
+        }
+    }
+
+    func handleDuckDBFilePicker(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, let url = urls.first else { return }
+        guard url.startAccessingSecurityScopedResource() else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        guard let data = try? url.bookmarkData() else { return }
+        pendingBookmark = data
+        selectedFileURL = url
+        database = url.path
+        if name.isEmpty {
+            name = url.deletingPathExtension().lastPathComponent
         }
     }
 
@@ -189,17 +234,21 @@ final class ConnectionFormViewModel {
     func clearSelectedFile() {
         selectedFileURL = nil
         database = ""
+        pendingBookmark = nil
     }
 
     func createNewDatabase() {
         guard !newDatabaseName.isEmpty else { return }
 
-        let safeName = newDatabaseName.hasSuffix(".db") ? newDatabaseName : "\(newDatabaseName).db"
+        let fileExtension = type == .duckdb ? "duckdb" : "db"
+        let suffix = ".\(fileExtension)"
+        let safeName = newDatabaseName.hasSuffix(suffix) ? newDatabaseName : "\(newDatabaseName)\(suffix)"
         guard let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
         let fileURL = documentsDir.appendingPathComponent(safeName)
 
         selectedFileURL = fileURL
         database = fileURL.path
+        pendingBookmark = nil
         if name.isEmpty {
             name = newDatabaseName
         }
@@ -264,6 +313,14 @@ final class ConnectionFormViewModel {
     func save(appState: AppState, secureStore: any SecureStore) -> DatabaseConnection? {
         let connection = buildConnection()
         var storageFailed = false
+
+        if type == .duckdb {
+            if duckDBInMemory {
+                bookmarkStore.delete(for: connection.id)
+            } else if let pendingBookmark {
+                bookmarkStore.save(pendingBookmark, for: connection.id)
+            }
+        }
 
         if !password.isEmpty {
             do {
