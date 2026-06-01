@@ -163,10 +163,13 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
 // MARK: - DuckDB Actor (thread-safe C API access)
 
 actor DuckDBActor {
-    private static let maxRows = 100_000
+    static let maxRows = 100_000
 
     private var database: duckdb_database?
-    private var connection: duckdb_connection?
+    var connection: duckdb_connection?
+
+    var streamResult: duckdb_result?
+    var streamColumns: [DuckDBStreamColumn] = []
 
     var connectionHandle: duckdb_connection? { connection }
 
