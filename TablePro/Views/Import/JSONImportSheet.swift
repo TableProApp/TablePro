@@ -188,6 +188,12 @@ struct JSONImportSheet: View {
         HStack {
             Button("Cancel") { isPresented = false }
                 .keyboardShortcut(.cancelAction)
+            if let message = validationMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
             Spacer()
             Button("Import") { performImport() }
                 .buttonStyle(.borderedProminent)
@@ -233,12 +239,12 @@ struct JSONImportSheet: View {
         ScrollView {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                 GridRow {
-                    Text("Import")
-                    Text("JSON field")
-                    Text("Column")
+                    Toggle("", isOn: allMappingsIncluded)
+                        .labelsHidden()
+                        .help(String(localized: "Import all fields"))
+                    Text("JSON field").font(.caption).foregroundStyle(.secondary)
+                    Text("Column").font(.caption).foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
                 Divider().gridCellColumns(3)
 
                 ForEach(mappings) { row in
@@ -271,15 +277,15 @@ struct JSONImportSheet: View {
         ScrollView {
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
                 GridRow {
-                    Text("Create")
-                    Text("Column")
-                    Text("Type")
-                    Text("Key")
-                    Text("Null")
-                    Text("Default")
+                    Toggle("", isOn: allColumnsIncluded)
+                        .labelsHidden()
+                        .help(String(localized: "Create all columns"))
+                    Text("Column").font(.caption).foregroundStyle(.secondary)
+                    Text("Type").font(.caption).foregroundStyle(.secondary)
+                    Text("Key").font(.caption).foregroundStyle(.secondary)
+                    Text("Null").font(.caption).foregroundStyle(.secondary)
+                    Text("Default").font(.caption).foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
                 Divider().gridCellColumns(6)
 
                 ForEach(newColumns) { row in
@@ -327,6 +333,42 @@ struct JSONImportSheet: View {
         return $newColumns[index]
     }
 
+    private var allMappingsIncluded: Binding<Bool> {
+        Binding(
+            get: { !mappings.isEmpty && mappings.allSatisfy(\.include) },
+            set: { value in for index in mappings.indices { mappings[index].include = value } }
+        )
+    }
+
+    private var allColumnsIncluded: Binding<Bool> {
+        Binding(
+            get: { !newColumns.isEmpty && newColumns.allSatisfy(\.include) },
+            set: { value in for index in newColumns.indices { newColumns[index].include = value } }
+        )
+    }
+
+    private var validationMessage: String? {
+        switch destination {
+        case .existingTable:
+            let columns = mappings.filter { $0.include }.compactMap { $0.targetColumn?.lowercased() }
+            if Set(columns).count != columns.count {
+                return String(localized: "Each column can be mapped from only one field.")
+            }
+            return nil
+        case .newTable:
+            let names = newColumns
+                .filter { $0.include }
+                .map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
+            if names.contains(where: \.isEmpty) {
+                return String(localized: "Every included column needs a name.")
+            }
+            if Set(names).count != names.count {
+                return String(localized: "Column names must be unique.")
+            }
+            return nil
+        }
+    }
+
     private var dialectTypes: [String] {
         PluginManager.shared.columnTypesByCategory(for: connection.type)
             .values
@@ -356,7 +398,7 @@ struct JSONImportSheet: View {
     }
 
     private var canImport: Bool {
-        guard !(importService?.state.isImporting ?? false) else { return false }
+        guard !(importService?.state.isImporting ?? false), validationMessage == nil else { return false }
         switch destination {
         case .existingTable:
             return selectedTargetTable != nil && mappings.contains { $0.include && $0.targetColumn != nil }
