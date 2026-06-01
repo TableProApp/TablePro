@@ -30,6 +30,26 @@ struct ShortcutActionDefaultsTests {
     func cancelQueryDefault() {
         #expect(KeyboardSettings.defaultShortcuts[.cancelQuery] == KeyCombo(key: ".", command: true))
     }
+
+    @Test("Save as Favorite default is Cmd+D")
+    func saveAsFavoriteDefault() {
+        #expect(KeyboardSettings.defaultShortcuts[.saveAsFavorite] == KeyCombo(key: "d", command: true))
+    }
+}
+
+@Suite("System reserved shortcuts")
+struct SystemReservedShortcutTests {
+    @Test("Ctrl+Cmd+D is reserved by macOS for Look Up")
+    func ctrlCmdDIsReserved() {
+        #expect(KeyCombo(key: "d", command: true, control: true).isSystemReserved)
+    }
+
+    @Test("No default shortcut collides with a system-reserved combo")
+    func defaultsAvoidSystemReserved() {
+        for (action, combo) in KeyboardSettings.defaultShortcuts {
+            #expect(!combo.isSystemReserved, "\(action.rawValue) ships a system-reserved default: \(combo.displayString)")
+        }
+    }
 }
 
 @Suite("Bare-key validation")
