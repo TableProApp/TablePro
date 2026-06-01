@@ -314,8 +314,12 @@ final class ConnectionFormViewModel {
         let connection = buildConnection()
         var storageFailed = false
 
-        if type == .duckdb, let pendingBookmark {
-            bookmarkStore.save(pendingBookmark, for: connection.id)
+        if type == .duckdb {
+            if duckDBInMemory {
+                bookmarkStore.delete(for: connection.id)
+            } else if let pendingBookmark {
+                bookmarkStore.save(pendingBookmark, for: connection.id)
+            }
         }
 
         if !password.isEmpty {
