@@ -232,95 +232,111 @@ actor DuckDBActor {
         }
 
         let columnCount = duckdb_column_count(&result)
-        var names: [String] = []
-        var typeNames: [String] = []
-        var types: [duckdb_type] = []
+        let rowsChanged = Int(duckdb_rows_changed(&result))
+        var plan: [DuckDBStreamColumn] = []
         for index in 0..<columnCount {
-            names.append(duckdb_column_name(&result, index).map { String(cString: $0) } ?? "column_\(index)")
+            let name = duckdb_column_name(&result, index).map { String(cString: $0) } ?? "column_\(index)"
             let type = duckdb_column_type(&result, index)
-            types.append(type)
-            typeNames.append(Self.typeName(for: type))
+            plan.append(DuckDBStreamColumn(
+                name: name,
+                typeName: Self.typeName(for: type),
+                type: type,
+                castToText: Self.isUnrenderable(type)
+            ))
         }
 
-        if types.contains(where: Self.isUnrenderable),
-           var recast = Self.recastUnrenderable(connection: connection, sql: sql, columns: names, types: types) {
+        if columnCount == 0 {
             duckdb_destroy_result(&result)
-            defer { duckdb_destroy_result(&recast) }
-            return Self.extract(&recast, names: names, typeNames: typeNames, startTime: startTime)
+            return DuckDBRawResult(
+                columnNames: [],
+                columnTypeNames: [],
+                rows: [],
+                rowsAffected: rowsChanged,
+                executionTime: Date().timeIntervalSince(startTime),
+                isTruncated: false
+            )
+        }
+
+        if plan.contains(where: { $0.castToText }) {
+            duckdb_destroy_result(&result)
+            let wrapped = Self.buildWrappedQuery(originalQuery: sql, columns: plan.map(\.name), types: plan.map(\.type))
+            var recast = duckdb_result()
+            if duckdb_query(connection, wrapped, &recast) == DuckDBError {
+                let message = duckdb_result_error(&recast).map { String(cString: $0) } ?? "Unknown DuckDB error"
+                duckdb_destroy_result(&recast)
+                throw DuckDBDriverError.queryFailed(message)
+            }
+            result = recast
         }
 
         defer { duckdb_destroy_result(&result) }
-        return Self.extract(&result, names: names, typeNames: typeNames, startTime: startTime)
+        return Self.decodeMaterialized(&result, plan: plan, rowsChanged: rowsChanged, startTime: startTime)
     }
 
-    private static func recastUnrenderable(
-        connection: duckdb_connection,
-        sql: String,
-        columns: [String],
-        types: [duckdb_type]
-    ) -> duckdb_result? {
-        let wrapped = buildWrappedQuery(originalQuery: sql, columns: columns, types: types)
-        var result = duckdb_result()
-        if duckdb_query(connection, wrapped, &result) == DuckDBError {
-            duckdb_destroy_result(&result)
-            return nil
-        }
-        return result
-    }
-
-    private static func extract(
+    private static func decodeMaterialized(
         _ result: inout duckdb_result,
-        names: [String],
-        typeNames: [String],
+        plan: [DuckDBStreamColumn],
+        rowsChanged: Int,
         startTime: Date
     ) -> DuckDBRawResult {
-        let columnCount = duckdb_column_count(&result)
-        let rowCount = duckdb_row_count(&result)
-        let rowsChanged = duckdb_rows_changed(&result)
-        let cappedRowCount = min(rowCount, UInt64(maxRows))
-
+        let options = StreamOptions(textTruncationBytes: Int.max, maxRows: maxRows)
         var rows: [[String?]] = []
-        rows.reserveCapacity(Int(cappedRowCount))
+        var truncated = false
 
-        for row in 0..<cappedRowCount {
-            var values: [String?] = []
-            values.reserveCapacity(Int(columnCount))
-            for col in 0..<columnCount {
-                if duckdb_value_is_null(&result, col, row) {
-                    values.append(nil)
-                } else if duckdb_column_type(&result, col) == DUCKDB_TYPE_BLOB {
-                    let blob = duckdb_value_blob(&result, col, row)
-                    if let pointer = blob.data {
-                        values.append(Data(bytes: pointer, count: Int(blob.size)).base64EncodedString())
-                    } else {
-                        values.append("")
-                    }
-                    duckdb_free(blob.data)
-                } else if let valuePointer = duckdb_value_varchar(&result, col, row) {
-                    values.append(String(cString: valuePointer))
-                    duckdb_free(valuePointer)
-                } else {
-                    values.append(nil)
-                }
+        chunks: while true {
+            var chunk = duckdb_fetch_chunk(result)
+            guard chunk != nil else { break }
+            defer { duckdb_destroy_data_chunk(&chunk) }
+
+            let size = duckdb_data_chunk_get_size(chunk)
+            var vectors: [duckdb_vector?] = []
+            for index in 0..<plan.count {
+                vectors.append(duckdb_data_chunk_get_vector(chunk, idx_t(index)))
             }
-            rows.append(values)
+            for row in 0..<size {
+                if rows.count >= maxRows {
+                    truncated = true
+                    break chunks
+                }
+                var values: [String?] = []
+                values.reserveCapacity(plan.count)
+                for index in 0..<plan.count {
+                    guard let vector = vectors[index] else {
+                        values.append(nil)
+                        continue
+                    }
+                    values.append(cellText(decodeCell(vector: vector, row: row, column: plan[index], options: options)))
+                }
+                rows.append(values)
+            }
         }
 
         return DuckDBRawResult(
-            columnNames: names,
-            columnTypeNames: typeNames,
+            columnNames: plan.map(\.name),
+            columnTypeNames: plan.map(\.typeName),
             rows: rows,
-            rowsAffected: Int(rowsChanged),
+            rowsAffected: rowsChanged,
             executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: rowCount > UInt64(maxRows)
+            isTruncated: truncated
         )
+    }
+
+    private static func cellText(_ cell: Cell) -> String? {
+        switch cell {
+        case .null: return nil
+        case .text(let value): return value
+        case .truncatedText(let prefix, _, _): return prefix
+        case .binary: return nil
+        }
     }
 
     // MARK: - Type Rendering
 
     private static func isUnrenderable(_ type: duckdb_type) -> Bool {
         switch type {
-        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_GEOMETRY:
+        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_GEOMETRY,
+             DUCKDB_TYPE_LIST, DUCKDB_TYPE_STRUCT, DUCKDB_TYPE_MAP, DUCKDB_TYPE_ARRAY, DUCKDB_TYPE_UNION,
+             DUCKDB_TYPE_DECIMAL, DUCKDB_TYPE_ENUM, DUCKDB_TYPE_INTERVAL, DUCKDB_TYPE_BIT:
             return true
         default:
             return false
@@ -343,7 +359,9 @@ actor DuckDBActor {
         switch type {
         case DUCKDB_TYPE_GEOMETRY:
             return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE ST_AsText(\(quoted)) END AS \(quoted)"
-        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ:
+        case DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ,
+             DUCKDB_TYPE_LIST, DUCKDB_TYPE_STRUCT, DUCKDB_TYPE_MAP, DUCKDB_TYPE_ARRAY, DUCKDB_TYPE_UNION,
+             DUCKDB_TYPE_DECIMAL, DUCKDB_TYPE_ENUM, DUCKDB_TYPE_INTERVAL, DUCKDB_TYPE_BIT:
             return "CASE WHEN \(quoted) IS NULL THEN NULL ELSE CAST(\(quoted) AS VARCHAR) END AS \(quoted)"
         default:
             return quoted

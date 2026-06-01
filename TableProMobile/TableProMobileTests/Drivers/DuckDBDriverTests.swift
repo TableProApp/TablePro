@@ -68,6 +68,21 @@ final class DuckDBDriverTests: XCTestCase {
         XCTAssertEqual(streamed.last, ["2000", "row2000"])
     }
 
+    func testExecuteRendersComplexAndScalarTypes() async throws {
+        let driver = try XCTUnwrap(driver)
+        let result = try await driver.execute(query: """
+            SELECT [1,2,3] AS lst, {'a':1,'b':2} AS strct, 12.34::DECIMAL(5,2) AS dec,
+            '550e8400-e29b-41d4-a716-446655440000'::UUID AS uid, DATE '2024-03-09' AS dt,
+            TIMESTAMP '2024-03-09 12:34:56' AS ts, 'abc'::BLOB AS payload
+            """)
+        XCTAssertEqual(result.rows.count, 1)
+        XCTAssertEqual(result.rows[0][0], "[1, 2, 3]")
+        XCTAssertEqual(result.rows[0][1], "{'a': 1, 'b': 2}")
+        XCTAssertEqual(result.rows[0][2], "12.34")
+        XCTAssertEqual(result.rows[0][3], "550e8400-e29b-41d4-a716-446655440000")
+        XCTAssertEqual(result.rows[0][4], "2024-03-09")
+    }
+
     func testPing() async throws {
         let driver = try XCTUnwrap(driver)
         let alive = try await driver.ping()
