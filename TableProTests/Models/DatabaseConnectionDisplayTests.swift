@@ -73,6 +73,27 @@ struct DatabaseConnectionDisplayTests {
         #expect(connection.connectionSubtitle == "/var/db/app.sqlite")
     }
 
+    @Test("File-based connection abbreviates a home-relative path with a tilde")
+    func fileBasedAbbreviatesHomePath() {
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent("databases/app.sqlite")
+        let connection = DatabaseConnection(
+            name: "Local", host: "", port: 0, database: path, type: .sqlite
+        )
+
+        #expect(connection.connectionSubtitle == "~/databases/app.sqlite")
+    }
+
+    @Test("Unix socket host is abbreviated and keeps the database segment")
+    func unixSocketHostAbbreviatesAndKeepsDatabase() {
+        let socket = (NSHomeDirectory() as NSString).appendingPathComponent("run/mysql.sock")
+        let connection = DatabaseConnection(
+            name: "Project", host: socket, port: 3_306,
+            database: "appdb", type: .mysql
+        )
+
+        #expect(connection.connectionSubtitle == "~/run/mysql.sock · appdb")
+    }
+
     @Test("File-based connection with no path falls back to the type name")
     func fileBasedEmptyFallsBackToType() {
         let connection = DatabaseConnection(

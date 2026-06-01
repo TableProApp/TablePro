@@ -18,9 +18,10 @@ extension DatabaseConnection {
         return components.joined(separator: " · ")
     }
 
-    var endpointDescription: String {
+    private var endpointDescription: String {
         if host.isEmpty {
-            return database.isEmpty ? type.rawValue : database
+            let trimmed = database.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty ? type.rawValue : (trimmed as NSString).abbreviatingWithTildeInPath
         }
         if host.hasPrefix("/") {
             return (host as NSString).abbreviatingWithTildeInPath
@@ -32,7 +33,7 @@ extension DatabaseConnection {
         return hostWithOptionalPort
     }
 
-    var databaseDescriptor: String? {
+    private var databaseDescriptor: String? {
         guard !host.isEmpty else { return nil }
         switch type.pathFieldRole {
         case .database, .serviceName:
