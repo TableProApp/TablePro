@@ -109,6 +109,22 @@ build_platform() {
   fi
   # shellcheck disable=SC2086
   libtool -static -o "$out_lib" $archives
+
+  # DuckDB ships two definitions of ExtensionHelper::LoadAllExtensions: the real
+  # generated_extension_loader (registers the statically linked extensions) and
+  # dummy_static_extension_loader (a no-op fallback for builds without static
+  # extensions). Merging every archive pulls in both, and the linker can resolve
+  # the no-op one, leaving the extensions unregistered (DuckDB then tries to
+  # autoload them, which fails on iOS). Drop the dummy so only the real loader
+  # remains.
+  if ar -t "$out_lib" | grep -q '^dummy_static_extension_loader.cpp.o$'; then
+    ar -d "$out_lib" dummy_static_extension_loader.cpp.o
+    ranlib "$out_lib"
+    echo "Removed dummy_static_extension_loader from $out_lib"
+  else
+    echo "error: dummy_static_extension_loader not found in $out_lib; verify the loader merge" >&2
+    exit 1
+  fi
   echo "Merged $(echo "$archives" | wc -l | tr -d ' ') archives into $out_lib"
 }
 
