@@ -108,7 +108,7 @@ struct QueryEditorView: View {
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.borderless)
-            .help(String(localized: "Format Query (⇧⌘L)"))
+            .help(shortcutHint(String(localized: "Format Query"), for: .formatQuery))
             .accessibilityLabel(String(localized: "Format Query"))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .formatQuery))
 
@@ -117,7 +117,7 @@ struct QueryEditorView: View {
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.borderless)
-            .help(String(localized: "Save as Favorite (⌘D)"))
+            .help(shortcutHint(String(localized: "Save as Favorite"), for: .saveAsFavorite))
             .accessibilityLabel(String(localized: "Save as Favorite"))
             .disabled(!hasQueryText)
 
@@ -135,6 +135,7 @@ struct QueryEditorView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .help(shortcutHint(String(localized: "Execute"), for: .executeQuery))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQuery))
         }
         .padding(.horizontal, 12)
@@ -143,6 +144,13 @@ struct QueryEditorView: View {
     }
 
     // MARK: - Helpers
+
+    private func shortcutHint(_ label: String, for action: ShortcutAction) -> String {
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: action), !combo.isCleared else {
+            return label
+        }
+        return "\(label) (\(combo.displayString))"
+    }
 
     @ViewBuilder
     private func explainButton(hasQueryText: Bool) -> some View {
@@ -167,6 +175,7 @@ struct QueryEditorView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .help(shortcutHint(String(localized: "Explain"), for: .explainQuery))
             .disabled(!hasQueryText)
         } else {
             Menu {
@@ -187,6 +196,7 @@ struct QueryEditorView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .help(shortcutHint(String(localized: "Explain"), for: .explainQuery))
             .disabled(!hasQueryText)
         }
     }
