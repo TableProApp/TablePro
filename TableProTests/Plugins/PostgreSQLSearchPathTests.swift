@@ -16,6 +16,14 @@ struct PostgreSQLSearchPathTests {
         )
     }
 
+    @Test("omits the redundant public fallback when public is the selected schema")
+    func publicSchema() {
+        #expect(
+            PostgreSQLSchemaQueries.setSearchPath(toSchema: "public")
+                == "SET search_path TO \"public\""
+        )
+    }
+
     @Test("preserves mixed-case schema names with identifier quoting")
     func mixedCaseSchema() {
         #expect(
