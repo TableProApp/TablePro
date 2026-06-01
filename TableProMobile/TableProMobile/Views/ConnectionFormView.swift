@@ -18,6 +18,7 @@ struct ConnectionFormView: View {
 
     enum ActiveFilePicker: Identifiable {
         case sqliteDatabase
+        case duckdbDatabase
         case sshKey
         var id: Int { hashValue }
     }
@@ -50,11 +51,13 @@ struct ConnectionFormView: View {
 
                 if viewModel.type == .sqlite {
                     sqliteSection(viewModel: viewModel)
+                } else if viewModel.type == .duckdb {
+                    duckDBSection(viewModel: viewModel)
                 } else {
                     serverSection(viewModel: viewModel)
                 }
 
-                if viewModel.type != .sqlite {
+                if !viewModel.isFileBased {
                     Section {
                         if viewModel.type == .mssql {
                             // FreeTDS db-lib only honors on/off encryption (DBSETENCRYPT). Per-connection
@@ -90,13 +93,14 @@ struct ConnectionFormView: View {
             }
             .fileImporter(
                 isPresented: showFilePicker,
-                allowedContentTypes: activeFilePicker == .sqliteDatabase ? sqliteContentTypes : [.data],
+                allowedContentTypes: contentTypes(for: activeFilePicker),
                 allowsMultipleSelection: false
             ) { result in
                 let picker = pendingFilePicker
                 pendingFilePicker = nil
                 switch picker {
                 case .sqliteDatabase: viewModel.handleSQLiteFilePicker(result)
+                case .duckdbDatabase: viewModel.handleDuckDBFilePicker(result)
                 case .sshKey: viewModel.handleSSHKeyFilePicker(result)
                 case nil: break
                 }
@@ -106,7 +110,7 @@ struct ConnectionFormView: View {
                 Button("Create") { viewModel.createNewDatabase() }
                 Button("Cancel", role: .cancel) { viewModel.newDatabaseName = "" }
             } message: {
-                Text("Enter a name for the new SQLite database.")
+                Text("Enter a name for the new database file.")
             }
             .alert("Keychain Warning", isPresented: showCredentialError) {
                 Button("OK", role: .cancel) {}
@@ -191,24 +195,7 @@ struct ConnectionFormView: View {
     private func sqliteSection(viewModel: ConnectionFormViewModel) -> some View {
         Section("Database File") {
             if let url = viewModel.selectedFileURL {
-                HStack {
-                    Image(systemName: "doc.fill")
-                        .foregroundStyle(.blue)
-                    VStack(alignment: .leading) {
-                        Text(url.lastPathComponent)
-                            .font(.body)
-                        Text(url.deletingLastPathComponent().lastPathComponent)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        viewModel.clearSelectedFile()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                selectedFileRow(url, viewModel: viewModel)
             }
 
             Button {
@@ -222,6 +209,59 @@ struct ConnectionFormView: View {
                 showNewDatabaseAlert = true
             } label: {
                 Label("Create New Database", systemImage: "plus.circle")
+            }
+        }
+    }
+
+    // MARK: - DuckDB Section
+
+    @ViewBuilder
+    private func duckDBSection(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        Section("Mode") {
+            Toggle("In-Memory Database", isOn: $viewModel.duckDBInMemory)
+        }
+
+        if !viewModel.duckDBInMemory {
+            Section("Database File") {
+                if let url = viewModel.selectedFileURL {
+                    selectedFileRow(url, viewModel: viewModel)
+                }
+
+                Button {
+                    pendingFilePicker = .duckdbDatabase
+                    activeFilePicker = .duckdbDatabase
+                } label: {
+                    Label("Open Database File", systemImage: "folder")
+                }
+
+                Button {
+                    showNewDatabaseAlert = true
+                } label: {
+                    Label("Create New Database", systemImage: "plus.circle")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func selectedFileRow(_ url: URL, viewModel: ConnectionFormViewModel) -> some View {
+        HStack {
+            Image(systemName: "doc.fill")
+                .foregroundStyle(.blue)
+            VStack(alignment: .leading) {
+                Text(url.lastPathComponent)
+                    .font(.body)
+                Text(url.deletingLastPathComponent().lastPathComponent)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                viewModel.clearSelectedFile()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -384,8 +424,21 @@ struct ConnectionFormView: View {
 
     // MARK: - Helpers
 
+    private func contentTypes(for picker: ActiveFilePicker?) -> [UTType] {
+        switch picker {
+        case .sqliteDatabase: return sqliteContentTypes
+        case .duckdbDatabase: return duckDBContentTypes
+        default: return [.data]
+        }
+    }
+
     private var sqliteContentTypes: [UTType] {
         let extensions = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
         return [UTType.database] + extensions.compactMap { UTType(filenameExtension: $0) } + [.data]
+    }
+
+    private var duckDBContentTypes: [UTType] {
+        let extensions = ["duckdb", "ddb"]
+        return extensions.compactMap { UTType(filenameExtension: $0) } + [.data]
     }
 }
