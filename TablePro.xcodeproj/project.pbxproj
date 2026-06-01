@@ -498,6 +498,13 @@
 			);
 			target = 5A86F001000000000 /* JSONImport */;
 		};
+		5A86F002900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "TableProTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				JSONImportParsing.swift,
+			);
+			target = 5ABCC5A62F43856700EAF3FC /* TableProTests */;
+		};
 		5A87A000900000000 /* Exceptions for "Plugins/CassandraDriverPlugin" folder in "CassandraDriver" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -686,6 +693,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				5A86F001900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "JSONImport" target */,
+				5A86F002900000000 /* Exceptions for "Plugins/JSONImportPlugin" folder in "TableProTests" target */,
 			);
 			path = Plugins/JSONImportPlugin;
 			sourceTree = "<group>";
