@@ -41,26 +41,24 @@ struct TablePlusImporter: ForeignAppImporter {
     }
 
     func installedAppURL() -> URL? {
-        for bundleIdentifier in Self.knownBundleIdentifiers {
-            if let url = resolveAppURL(bundleIdentifier) {
-                return url
-            }
-        }
-        return nil
+        installedBundleIdentifier.flatMap { resolveAppURL($0) }
+    }
+
+    private var installedBundleIdentifier: String? {
+        Self.knownBundleIdentifiers.first { resolveAppURL($0) != nil }
     }
 
     private var dataDirectory: URL {
         if let dataDirectoryOverride {
             return dataDirectoryOverride
         }
-        let installedBundleIdentifier = Self.knownBundleIdentifiers.first { resolveAppURL($0) != nil }
         return Self.dataDirectory(
-            for: installedBundleIdentifier ?? appBundleIdentifier,
+            forBundleIdentifier: installedBundleIdentifier ?? appBundleIdentifier,
             home: FileManager.default.homeDirectoryForCurrentUser
         )
     }
 
-    static func dataDirectory(for bundleIdentifier: String, home: URL) -> URL {
+    static func dataDirectory(forBundleIdentifier bundleIdentifier: String, home: URL) -> URL {
         home.appendingPathComponent("Library/Application Support/\(bundleIdentifier)/Data")
     }
 
@@ -72,13 +70,14 @@ struct TablePlusImporter: ForeignAppImporter {
     }
 
     func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
-        guard FileManager.default.fileExists(atPath: connectionsFileURL.path) else {
+        let connectionsURL = connectionsFileURL
+        guard FileManager.default.fileExists(atPath: connectionsURL.path) else {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
 
         let data: Data
         do {
-            data = try Data(contentsOf: connectionsFileURL)
+            data = try Data(contentsOf: connectionsURL)
         } catch {
             throw ForeignAppImportError.parseError(error.localizedDescription)
         }

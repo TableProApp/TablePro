@@ -131,7 +131,7 @@ struct TablePlusImporterTests {
     @Test("dataDirectory derives from the Setapp bundle identifier")
     func testDataDirectory_forSetappEdition() {
         let home = URL(fileURLWithPath: "/Users/test")
-        let dir = TablePlusImporter.dataDirectory(for: "com.tinyapp.TablePlus-setapp", home: home)
+        let dir = TablePlusImporter.dataDirectory(forBundleIdentifier: "com.tinyapp.TablePlus-setapp", home: home)
         #expect(dir.path == "/Users/test/Library/Application Support/com.tinyapp.TablePlus-setapp/Data")
     }
 
