@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Import now detects the Setapp edition of TablePlus and reads connections from its data folder. It was reported as not installed before. (#1528)
 - Favorite keyword suggestions now show in the editor autocomplete when you type the keyword. They were being dropped before reaching the popup.
 
 ## [0.47.0] - 2026-06-01
