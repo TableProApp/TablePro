@@ -41,7 +41,7 @@ extension DuckDBDriver {
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         let actor = self.actor
-        return AsyncThrowingStream { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
                 do {
                     let columns: [DuckDBStreamColumn]
