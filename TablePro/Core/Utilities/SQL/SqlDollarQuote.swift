@@ -22,10 +22,22 @@ enum SqlDollarQuote {
         isIdentifierStart(ch) || (ch >= 0x30 && ch <= 0x39)
     }
 
+    /// Whether a `$` following this character is part of the preceding identifier,
+    /// per PostgreSQL's rule that a dollar quote must be separated from a
+    /// preceding identifier by whitespace (so `a$$b` is one identifier, not an
+    /// opener).
+    static func isIdentifierContinuation(_ ch: unichar) -> Bool {
+        isIdentifierPart(ch) || ch == dollar
+    }
+
     /// Resolves a `$` at `pos` to a dollar-quote opener, a positional parameter
-    /// like `$1`, or a non-tag dollar. Returns `needsMoreData` when the buffer
-    /// ends mid-tag; a whole-string caller treats that as `notOpener`.
+    /// like `$1`, or a non-tag dollar. A `$` glued to a preceding identifier is
+    /// not an opener. Returns `needsMoreData` when the buffer ends mid-tag; a
+    /// whole-string caller treats that as `notOpener`.
     static func scanOpener(at pos: Int, in buffer: NSString, bufLen: Int) -> Opener {
+        if pos > 0, isIdentifierContinuation(buffer.character(at: pos - 1)) {
+            return .notOpener
+        }
         var p = pos + 1
         while p < bufLen {
             let ch = buffer.character(at: p)

@@ -30,9 +30,9 @@ enum SQLStatementScanner {
     }
 
     /// Returns statements preserving trailing semicolons, for display/history/favorites.
-    static func allStatementsPreservingSemicolons(in sql: String, dialect: SqlDialect = .generic) -> [String] {
+    static func allStatementsPreservingSemicolons(in sql: String) -> [String] {
         var results: [String] = []
-        scan(sql: sql, cursorPosition: nil, dialect: dialect) { rawSQL, _ in
+        scan(sql: sql, cursorPosition: nil) { rawSQL, _ in
             let trimmed = rawSQL.trimmingCharacters(in: .whitespacesAndNewlines)
             let withoutSemicolon = trimmed.hasSuffix(";")
                 ? String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -77,12 +77,6 @@ enum SQLStatementScanner {
     private static let newline = UInt16(UnicodeScalar("\n").value)
     private static let backslash = UInt16(UnicodeScalar("\\").value)
     private static let dollar = UInt16(UnicodeScalar("$").value)
-
-    private static func isIdentifierContinuation(before index: Int, in buffer: NSString) -> Bool {
-        guard index > 0 else { return false }
-        let prev = buffer.character(at: index - 1)
-        return SqlDollarQuote.isIdentifierPart(prev) || prev == dollar
-    }
 
     private static func scan(
         sql: String,
@@ -172,7 +166,7 @@ enum SQLStatementScanner {
                 }
             }
 
-            if dollarQuotesEnabled, !inString, ch == dollar, !isIdentifierContinuation(before: i, in: nsQuery),
+            if dollarQuotesEnabled, !inString, ch == dollar,
                case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(at: i, in: nsQuery, bufLen: length) {
                 inDollarQuote = true
                 dollarTag = tag
