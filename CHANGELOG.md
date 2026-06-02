@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- SQL Server: connections work when the login can only reach its own database, such as an Azure SQL contained user. The database is sent during login instead of switched afterward, which the server rejected with a "Login failed" error.
+- SQL Server: connections work when the login can only reach its own database, such as an Azure SQL contained user. The database is now sent during login. Previously it was switched afterward, which the server rejected with a "Login failed" error.
 
 ## [0.48.0] - 2026-06-02
 
