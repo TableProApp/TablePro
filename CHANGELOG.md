@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Custom keyboard shortcuts now work on non-US keyboard layouts, and shifted symbols like Cmd+[ record correctly.
+- The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), and each changed shortcut has its own reset button.
+- Conflict detection now checks live macOS system shortcuts and the editor's built-in commands, and lets the same key serve the editor and the data grid because focus decides which one runs.
+- Show Tables and Show Favorites sidebars moved off Control+1 and Control+2, which switch macOS Spaces, to Cmd+Option+1 and Cmd+Option+2.
+- Cmd+N now opens a new connection; Manage Connections keeps its File menu item.
+- First Page and Last Page now default to Cmd+Option+Up and Cmd+Option+Down.
+- Shortcuts can be bound to function keys (F1 through F12), with or without a modifier.
+
+### Fixed
+
+- Custom Copy and Cut shortcuts now take effect in the SQL editor.
+- The Delete shortcut in the data grid now follows a custom binding.
+- Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) now work in the editor.
+- Pagination buttons no longer fire their page shortcut twice.
+
 ## [0.48.0] - 2026-06-02
 
 ### Added

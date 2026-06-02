@@ -15,9 +15,10 @@ struct KeyboardSettingsView: View {
     @State private var searchText = ""
     @State private var conflictAlert: ConflictAlertState?
     @State private var systemReservedAlert: ShortcutAction?
+    @State private var reservedAlert: ReservedAlertState?
     @State private var needsModifierAlert: ShortcutAction?
 
-    var body: some View {
+    private var content: some View {
         VStack(spacing: 0) {
             NativeSearchField(
                 text: $searchText,
@@ -27,7 +28,6 @@ struct KeyboardSettingsView: View {
             .padding(.top, 16)
             .padding(.bottom, 8)
 
-            // Shortcut list
             Form {
                 ForEach(ShortcutCategory.allCases) { category in
                     let actions = filteredActions(for: category)
@@ -52,6 +52,10 @@ struct KeyboardSettingsView: View {
             }
             .formStyle(.grouped)
         }
+    }
+
+    var body: some View {
+        content
         .alert(
             String(localized: "Shortcut Conflict"),
             isPresented: Binding(
@@ -64,9 +68,7 @@ struct KeyboardSettingsView: View {
             }
             Button(String(localized: "Reassign")) {
                 if let state = conflictAlert {
-                    // Clear the conflicting action's shortcut
                     settings.clearShortcut(for: state.conflictingAction)
-                    // Assign the new combo to the intended action
                     settings.setShortcut(state.combo, for: state.action)
                 }
                 conflictAlert = nil
@@ -74,7 +76,12 @@ struct KeyboardSettingsView: View {
         } message: {
             if let state = conflictAlert {
                 Text(
-                    "\(state.combo.displayString) is already assigned to \"\(state.conflictingAction.displayName)\". Reassigning will remove it from that action."
+                    String(
+                        format: String(localized: "%@ is already used by \"%@\" in %@. Reassigning removes it from that action."),
+                        state.combo.displayString,
+                        state.conflictingAction.displayName,
+                        state.conflictingAction.category.displayName
+                    )
                 )
             }
         }
@@ -92,6 +99,26 @@ struct KeyboardSettingsView: View {
             Text(String(localized: "This shortcut is reserved by macOS and cannot be assigned."))
         }
         .alert(
+            String(localized: "Reserved Shortcut"),
+            isPresented: Binding(
+                get: { reservedAlert != nil },
+                set: { if !$0 { reservedAlert = nil } }
+            )
+        ) {
+            Button(String(localized: "OK"), role: .cancel) {
+                reservedAlert = nil
+            }
+        } message: {
+            if let state = reservedAlert {
+                Text(
+                    String(
+                        format: String(localized: "This shortcut is reserved for \"%@\" and cannot be assigned."),
+                        state.name
+                    )
+                )
+            }
+        }
+        .alert(
             String(localized: "Modifier Key Required"),
             isPresented: Binding(
                 get: { needsModifierAlert != nil },
@@ -104,15 +131,30 @@ struct KeyboardSettingsView: View {
         } message: {
             Text(String(localized: "This action needs a modifier key like ⌘ or ⌥. A plain key won't reach the menu reliably."))
         }
+        .onAppear {
+            SystemHotkeyChecker.shared.reload()
+        }
     }
 
     // MARK: - Shortcut Row
 
     @ViewBuilder
     private func shortcutRow(for action: ShortcutAction) -> some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(action.displayName)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if settings.isCustomized(action) {
+                Button {
+                    settings.resetToDefault(for: action)
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(String(localized: "Reset to default"))
+                .accessibilityLabel(String(localized: "Reset to default"))
+            }
 
             ShortcutRecorderView(
                 combo: Binding(
@@ -141,34 +183,34 @@ struct KeyboardSettingsView: View {
         return categoryActions.filter { $0.displayName.lowercased().contains(query) }
     }
 
-    private func handleRecord(_ combo: KeyCombo, for action: ShortcutAction) {
-        if combo.isSystemReserved {
-            systemReservedAlert = action
-            return
-        }
-
-        if !combo.hasModifier, !action.allowsBareKey {
+    private func handleRecord(_ key: BoundKey, for action: ShortcutAction) {
+        if !key.hasModifier, !action.allowsBareKey, !key.isFunctionKey {
             needsModifierAlert = action
             return
         }
 
-        if let conflict = settings.findConflict(for: combo, excluding: action) {
-            conflictAlert = ConflictAlertState(
-                action: action,
-                conflictingAction: conflict,
-                combo: combo
-            )
-            return
+        switch ShortcutConflictResolver.resolve(key, for: action, in: settings) {
+        case .none:
+            settings.setShortcut(key, for: action)
+        case .systemReserved:
+            systemReservedAlert = action
+        case .reserved(let name):
+            reservedAlert = ReservedAlertState(action: action, name: name)
+        case .otherAction(let other):
+            conflictAlert = ConflictAlertState(action: action, conflictingAction: other, combo: key)
         }
-
-        settings.setShortcut(combo, for: action)
     }
 }
 
-// MARK: - Conflict Alert State
+// MARK: - Alert State
 
 private struct ConflictAlertState {
     let action: ShortcutAction
     let conflictingAction: ShortcutAction
-    let combo: KeyCombo
+    let combo: BoundKey
+}
+
+private struct ReservedAlertState {
+    let action: ShortcutAction
+    let name: String
 }

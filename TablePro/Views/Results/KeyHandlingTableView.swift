@@ -334,7 +334,7 @@ final class KeyHandlingTableView: NSTableView {
             super.keyDown(with: event)
             return
         case .delete, .forwardDelete:
-            if modifiers.isEmpty || modifiers == .command {
+            if modifiers.isEmpty || matchesDeleteShortcut(event) {
                 deleteSelectedRowsIfPossible()
                 return
             }
@@ -359,6 +359,13 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         interpretKeyEvents([event])
+    }
+
+    private func matchesDeleteShortcut(_ event: NSEvent) -> Bool {
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .delete), !combo.isCleared else {
+            return false
+        }
+        return combo.matches(event)
     }
 
     private func handleHorizontalArrow(direction: GridSelectionController.Direction, modifiers: NSEvent.ModifierFlags, currentRow: Int) {
