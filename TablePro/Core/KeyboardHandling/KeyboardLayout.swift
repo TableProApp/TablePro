@@ -5,6 +5,13 @@
 //  Resolves between hardware key codes and their base (unshifted) characters
 //  for the active ASCII-capable keyboard layout. Built once and cached.
 //
+//  The cache is a `static let`, so Swift's one-time initializer builds it
+//  exactly once even under concurrent first access. Every Carbon call here is a
+//  pure read (`TISCopyCurrentASCIICapableKeyboardLayoutInputSource` copies,
+//  `UCKeyTranslate` and `LMGetKbdType` only read), so the build is safe off the
+//  main thread. This matters because Swift Testing exercises it from parallel
+//  test tasks; pinning it to the main actor would break those.
+//
 
 import AppKit
 import Carbon.HIToolbox

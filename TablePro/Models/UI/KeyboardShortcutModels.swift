@@ -20,6 +20,13 @@ enum ShortcutContext: String {
     case editor
     case dataGrid
 
+    /// Two contexts overlap when they can be the active responder at the same
+    /// time. Non-overlapping contexts (editor vs data grid) may share a combo:
+    /// the editor's local key monitor consumes the keystroke while it is focused,
+    /// so the grid's menu key-equivalent only fires when the grid has focus. The
+    /// conflict resolver guards uniqueness within an overlapping context; it does
+    /// not stop a user from binding a grid combo that also reaches a global menu
+    /// item, which focus alone cannot disambiguate.
     func overlaps(_ other: ShortcutContext) -> Bool {
         self == .global || other == .global || self == other
     }
@@ -290,6 +297,10 @@ struct KeyboardSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // BoundKey requires `keyCode` and LegacyKeyCombo requires `key`, and
+        // neither field exists in the other shape, so the two never decode each
+        // other's payload. Modern data is tried first; a legacy file fails that
+        // decode and falls through to migration.
         if let modern = try? container.decodeIfPresent([String: BoundKey].self, forKey: .shortcuts) {
             shortcuts = modern ?? [:]
         } else if let legacy = try container.decodeIfPresent([String: LegacyKeyCombo].self, forKey: .shortcuts) {

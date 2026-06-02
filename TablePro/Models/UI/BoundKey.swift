@@ -48,6 +48,11 @@ struct BoundKey: Codable, Equatable, Hashable {
 
     /// Build a binding from a base character, resolving it to a key code on the
     /// active layout. Used to anchor default shortcuts to a semantic character.
+    /// A character with no key code on the active layout yields the cleared
+    /// sentinel, so the binding reads as unassigned rather than silently aliasing
+    /// some other physical key. Every default and reserved character is ASCII and
+    /// resolves through the US fallback, so the failure path is a programmer error
+    /// and trips an assertion in debug.
     static func character(
         _ character: Character,
         command: Bool = false,
@@ -55,7 +60,10 @@ struct BoundKey: Codable, Equatable, Hashable {
         option: Bool = false,
         control: Bool = false
     ) -> BoundKey {
-        let keyCode = KeyboardLayout.keyCode(for: character) ?? 0xFFFF
+        guard let keyCode = KeyboardLayout.keyCode(for: character) else {
+            assertionFailure("No key code for '\(character)' on the active keyboard layout")
+            return .cleared
+        }
         return BoundKey(keyCode: keyCode, command: command, shift: shift, option: option, control: control)
     }
 
