@@ -22,8 +22,8 @@ struct FilterPanelView: View {
     @State private var focusedFilterId: UUID?
     @State private var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
 
-    private let estimatedFilterRowHeight: CGFloat = 32
     private let maxFilterListHeight: CGFloat = 200
+    @State private var filterRowsHeight: CGFloat = 0
 
     private var filterState: TabFilterState {
         coordinator.selectedTabFilterState
@@ -64,6 +64,7 @@ struct FilterPanelView: View {
         .sheet(isPresented: $showSQLSheet) {
             SQLPreviewSheet(sql: generatedSQL)
         }
+        .onPreferenceChange(FilterRowsHeightKey.self) { filterRowsHeight = $0 }
     }
 
     private var filterHeader: some View {
@@ -73,13 +74,14 @@ struct FilterPanelView: View {
 
             if filterState.filters.count > 1 {
                 Picker("", selection: coordinator.filterLogicModeBinding()) {
-                    Text("AND").tag(FilterLogicMode.and)
-                    Text("OR").tag(FilterLogicMode.or)
+                    Text("Match all").tag(FilterLogicMode.and)
+                    Text("Match any").tag(FilterLogicMode.or)
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 80)
+                .pickerStyle(.menu)
+                .fixedSize()
+                .labelsHidden()
                 .accessibilityLabel(String(localized: "Filter logic mode"))
-                .help(String(localized: "Match ALL filters (AND) or ANY filter (OR)"))
+                .help(String(localized: "Match all filters or any filter"))
             }
 
             Spacer()
@@ -101,9 +103,9 @@ struct FilterPanelView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .keyboardShortcut(.defaultAction)
-            .disabled(validFilterCount == 0)
-            .help(String(localized: "Apply filters"))
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(enabledValidFilterCount == 0 && !filterState.hasAppliedFilters)
+            .help(String(localized: "Apply active filters (Cmd+Return)"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -196,6 +198,7 @@ struct FilterPanelView: View {
                     completions: completionItems(),
                     enumValuesByColumn: enumValuesByColumn,
                     rawSQLCompletionProvider: rawSQLCompletionProvider,
+                    isApplied: filterState.commit == .solo(filter.id),
                     onAdd: {
                         coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
                         focusedFilterId = filterState.filters.last?.id
@@ -211,6 +214,7 @@ struct FilterPanelView: View {
                             coordinator.focusActiveGrid()
                         }
                     },
+                    onApply: { applySoloFilter(filter) },
                     onSubmit: { applyAllValidFilters() },
                     onCancel: { closePanelAndFocusGrid() },
                     focusedFilterId: $focusedFilterId
@@ -220,21 +224,28 @@ struct FilterPanelView: View {
         .padding(.vertical, 4)
     }
 
+    private var measuredFilterRows: some View {
+        filterRows.background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: FilterRowsHeightKey.self, value: proxy.size.height)
+            }
+        )
+    }
+
     @ViewBuilder
     private var filterList: some View {
-        let estimatedHeight = CGFloat(filterState.filters.count) * estimatedFilterRowHeight + 8
-        if estimatedHeight > maxFilterListHeight {
+        if filterRowsHeight > maxFilterListHeight {
             ScrollView {
-                filterRows
+                measuredFilterRows
             }
-            .frame(maxHeight: maxFilterListHeight)
+            .frame(height: maxFilterListHeight)
         } else {
-            filterRows
+            measuredFilterRows
         }
     }
 
-    private var validFilterCount: Int {
-        filterState.filters.count(where: \.isValid)
+    private var enabledValidFilterCount: Int {
+        filterState.filters.count { $0.isEnabled && $0.isValid }
     }
 
     private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
@@ -248,14 +259,19 @@ struct FilterPanelView: View {
         coordinator.focusActiveGrid()
     }
 
+    private func applySoloFilter(_ filter: TableFilter) {
+        coordinator.applySoloFilter(filter)
+        onApply(coordinator.selectedTabFilterState.appliedFilters)
+        coordinator.focusActiveGrid()
+    }
+
     private func closePanelAndFocusGrid() {
         coordinator.closeFilterPanel()
         coordinator.focusActiveGrid()
     }
 
     private var isSQLDialect: Bool {
-        let langName = PluginManager.shared.queryLanguageName(for: databaseType)
-        return langName == "SQL" || langName == "CQL" || langName == "PartiQL"
+        PluginManager.shared.sqlDialect(for: databaseType) != nil
     }
 
     private func completionItems() -> [String] {
@@ -278,5 +294,12 @@ struct FilterPanelView: View {
             databaseType: databaseType,
             tableName: tableName
         )
+    }
+}
+
+private struct FilterRowsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

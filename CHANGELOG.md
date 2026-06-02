@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Each filter row has a checkbox to turn it on or off and an Apply button to filter by just that row. The main Apply runs every active filter, and disabled filters stay in the panel for later. (#1561)
 - Importing connections from other apps now detects duplicates by host, port, database, and username, and lets you replace, add a copy, or skip each one before import.
 
 ### Changed

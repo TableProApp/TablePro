@@ -108,7 +108,7 @@ extension MainContentCoordinator {
     ) -> EditorTabPayload {
         let fkFilterState = TabFilterState(
             filters: [filter],
-            appliedFilters: [filter],
+            commit: .all,
             isVisible: true,
             filterLogicMode: .and
         )

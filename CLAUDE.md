@@ -172,8 +172,9 @@ Missing a case produces a wrong "{Language} Query" title on the first frame.
 | User preferences     | UserDefaults     | `AppSettingsStorage` / `AppSettingsManager` |
 | Query history        | SQLite FTS5      | `QueryHistoryStorage`                       |
 | Tab state            | JSON persistence | `TabPersistenceService` / `TabStateStorage` |
-| Filter presets       | UserDefaults     | `FilterSettingsStorage`                     |
-| Per-table filters    | UserDefaults     | `FilterSettingsStorage` (saves `appliedFilters` only) |
+| Filter defaults      | UserDefaults     | `FilterSettingsStorage` (default column/operator, panel state) |
+| Filter presets       | UserDefaults     | `FilterPresetStorage`                       |
+| Per-table filters    | JSON files       | `FilterSettingsStorage` (one file per connection + database + schema + table; saves the valid working set, each row's enabled flag included) |
 | Favorite tables      | UserDefaults     | `FavoriteTablesStorage` (per connection + database + schema; iCloud-synced) |
 
 ### Logging & Debugging
